@@ -269,7 +269,7 @@ public final class Pid implements PidController {
     }
 
     /**
-     * Debug helper: emit current gains & state.
+     * Debug helper: emit current gains and state.
      *
      * @param dbg    debug sink (may be {@code null}; if null, no output is produced)
      * @param prefix base key prefix, e.g. "shooter.pid" or "heading.pid"

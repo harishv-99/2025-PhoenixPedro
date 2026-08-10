@@ -17,7 +17,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.supervisor.HeldValue;
 
 /**
- * <h1>Example 08: Lift with Held Height Selection + External Sensor Feedback</h1>
+ * <h2>Example 08: Lift with Held Height Selection + External Sensor Feedback</h2>
  *
  * <p>This example shows a simple layered mechanism without a lot of ceremony:</p>
  *

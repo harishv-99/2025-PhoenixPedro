@@ -24,6 +24,18 @@ is the ordinary managed TeleOp-and-Auto example. Framework changes follow the
 - [`Common Problems`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/troubleshooting/Common Problems.md>)
 - [`Phoenix production robot`](<TeamCode/src/main/java/edu/ftcphoenix/robots/phoenix/README.md>)
 
+## Searchable documentation site
+
+When GitHub Pages is enabled, the documentation workflow publishes the
+[generated Phoenix documentation site](https://harishv-99.github.io/2025-PhoenixPedro/) from
+`master`. It presents the same checked-in Markdown plus generated framework Javadocs with
+responsive navigation and local search. Markdown and Javadocs remain authoritative; never edit
+`build/docs-site`.
+
+See the [`Maintainer Notes`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/maintainers/Maintainer Notes.md>)
+for local preview, the strict combined-site build, and the renderer-upgrade procedure. Ordinary
+robot builds do not require Python or Zensical.
+
 ## Get this Phoenix project
 
 Clone this repository:

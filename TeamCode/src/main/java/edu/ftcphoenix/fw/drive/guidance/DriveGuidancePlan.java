@@ -36,7 +36,7 @@ public final class DriveGuidancePlan {
      * {@link edu.ftcphoenix.fw.drive.DriveSignal} units (roughly -1..1). That makes them easy to use
      * in TeleOp without any drivetrain characterization.</p>
      *
-     * <h3>How to tune (quick checklist)</h3>
+     * <h2>How to tune (quick checklist)</h2>
      * <ol>
      *   <li>Start with {@link #defaults()}.</li>
      *   <li>If the assist feels <b>too weak</b>: increase the relevant kP.</li>
@@ -44,7 +44,7 @@ public final class DriveGuidancePlan {
      *   <li>If it moves/turns <b>too fast</b>: lower {@link #maxTranslateCmd} / {@link #maxOmegaCmd}.</li>
      * </ol>
      *
-     * <h3>Typical values</h3>
+     * <h2>Typical values</h2>
      * <ul>
      *   <li>{@code maxTranslateCmd}: 0.3–0.8</li>
      *   <li>{@code maxOmegaCmd}: 0.3–1.0</li>

@@ -16,7 +16,7 @@ import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.input.Gamepads;
 
 /**
- * <h1>Example 01: Basic Mecanum TeleOp</h1>
+ * <h2>Example 01: Basic Mecanum TeleOp</h2>
  *
  * <p>Shows how to wire a mecanum drivebase and read sticks using Phoenix helpers.</p>
  *

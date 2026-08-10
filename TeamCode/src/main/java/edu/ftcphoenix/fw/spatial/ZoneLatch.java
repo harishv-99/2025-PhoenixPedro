@@ -28,8 +28,10 @@ public final class ZoneLatch {
      * </ul>
      *
      * @param zone                signed-distance robot zone rule
-     * @param enterDistanceInches latch turns ON when signedDistance >= enterDistanceInches
-     * @param exitDistanceInches  latch turns OFF when signedDistance <= exitDistanceInches
+     * @param enterDistanceInches latch turns ON when
+     *                            {@code signedDistance >= enterDistanceInches}
+     * @param exitDistanceInches  latch turns OFF when
+     *                            {@code signedDistance <= exitDistanceInches}
      */
     public ZoneLatch(RobotZone2d zone, double enterDistanceInches, double exitDistanceInches) {
         this.zone = Objects.requireNonNull(zone, "zone");

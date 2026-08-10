@@ -66,7 +66,7 @@ public final class Gamepads {
     }
 
     /**
-     * Debug helper: emit player 1 & player 2 axis calibration state.
+     * Debug helper: emit player 1 and player 2 axis calibration state.
      */
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {

@@ -45,7 +45,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *             gamepads.p2().rightBumper(),
  *             shooter::instantStartShooter,
  *             shooter::instantStopShooter);
- * }</pre>
+ * }}</pre>
  *
  * <p>Ordinary FTC robot code gets this adapter from its framework-created
  * {@link edu.ftcphoenix.fw.ftc.RobotProgram}; that program owns the shared binding and runner

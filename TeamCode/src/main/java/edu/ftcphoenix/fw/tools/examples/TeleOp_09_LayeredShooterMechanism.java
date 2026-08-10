@@ -25,7 +25,7 @@ import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
 /**
- * <h1>Example 09: Explicit Layered Shooter (Requests → Behavior → Realization)</h1>
+ * <h2>Example 09: Explicit Layered Shooter (Requests → Behavior → Realization)</h2>
  *
  * <p>This example is the first runnable framework example that names the three internal mechanism
  * roles directly:</p>

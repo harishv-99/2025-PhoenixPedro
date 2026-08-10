@@ -134,12 +134,12 @@ public final class IntTuner {
     /**
      * Attach an analog axis that continuously adjusts the target.
      *
-     * <p>Example: for encoder targets, you might want:
+     * <p>Example: for encoder targets, you might want:</p>
      * <ul>
      *   <li>fineRate = 250 ticks/sec</li>
      *   <li>coarseRate = 1500 ticks/sec</li>
      * </ul>
-     * so holding the stick moves the target smoothly.</p>
+     * <p>Holding the stick then moves the target smoothly.</p>
      *
      * @param axis              axis to read (e.g., gamepads.p1().leftY())
      * @param deadband          raw axis deadband
@@ -263,7 +263,8 @@ public final class IntTuner {
     /**
      * Update the target from the attached axis nudge, if configured.
      *
-     * @param dtSec time since last loop (seconds)
+     * @param clock loop clock forwarded to the attached axis and used for elapsed time; when null,
+     *              elapsed time is zero and the attached source still receives null
      * @param active optional gate; if provided and it returns {@code false}, axis nudge is ignored
      */
     public void updateFromAxis(LoopClock clock, BooleanSupplier active) {

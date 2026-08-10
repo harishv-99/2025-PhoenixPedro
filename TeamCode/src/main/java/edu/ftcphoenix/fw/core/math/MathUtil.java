@@ -148,7 +148,7 @@ public final class MathUtil {
      *
      * @param value    input value
      * @param deadband non-negative deadband radius around zero
-     * @return 0 if |value| <= deadband; otherwise {@code value}
+     * @return 0 if {@code Math.abs(value) <= deadband}; otherwise {@code value}
      */
     public static double deadband(double value, double deadband) {
         if (deadband < 0.0) {

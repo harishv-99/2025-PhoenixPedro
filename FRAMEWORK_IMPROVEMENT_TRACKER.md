@@ -163,7 +163,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
 | 77 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
-| 79 | DOC-03 | Generated Phoenix documentation site | Proposed | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
+| 79 | DOC-03 | Generated Phoenix documentation site | Done | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -9592,15 +9592,170 @@ writer, and explicit lifecycle ownership.
 
 ### DOC-03 - Generated Phoenix documentation site
 
-- **Problem to confirm:** Markdown in Android Studio remains usable and reviewable, but a generated
-  site could make the same material easier for students to search and navigate on phones and school
-  computers. Hand-maintained HTML would create a second source that can drift.
-- **Leading hypothesis:** pin one static documentation generator, initially compare MkDocs Material
-  against VitePress, consume the existing canonical Markdown and Javadocs, fail strictly on broken
-  links or build errors, keep generated output untracked, and publish the exact artifact verified by
-  CI. GitHub Pages ownership, URLs, and deployment permissions belong to this separate item.
-- **Decision record:** _Pending. DOC-02 changes content and navigation only; it adds no generator,
-  JavaScript/Python toolchain, workflow, generated HTML, or publication._
+- **Research start and scope (2026-08-09):** DOC-03 owns only generated presentation of the current
+  DOC-02 corpus, strict framework Javadoc generation, the documentation-only verification workflow,
+  and publication of that exact artifact. Markdown remains the narrative source and Java Javadocs
+  remain the method-level API source. No framework or robot runtime, public Java signature, authored
+  HTML copy, custom domain, general framework CI policy, or unrelated copied-workflow cleanup is in
+  scope. Gate 1 is read-only apart from this tracker record and ignored feasibility output; no site
+  configuration, dependency, workflow, source/Javadoc correction, or publication has started.
+- **Gate 1 decision (2026-08-09):**
+  - **Confirmed source topology:** the canonical learner corpus is **47 Markdown files** under
+    `fw/docs`; the complete linked Phoenix documentation corpus is **54 Markdown files** under
+    `TeamCode/src/main/java/edu/ftcphoenix`. That common source root contains only **373 files / about
+    4.15 MiB**: the 54 Markdown files and 319 Java files. It preserves 370 repository-local links and
+    leaves only the lesson's link to the repository-root README outside the site source. Restricting
+    the site to `fw/docs` would instead strand 82 links across 34 framework, Pedro, Phoenix, starter,
+    and Java-source targets. Moving or copying the guides into a new root `docs/` tree would create
+    path churn or a second source with no student benefit.
+  - **Current tooling and publication facts:** the repository has no site configuration, Python or
+    Node manifest, generated-site task, Javadoc task, active Phoenix build workflow, custom domain,
+    or hosting descriptor. The three inherited Pedro Quickstart workflows are inert because every
+    job is repository-gated to `Pedro-Pathing/Quickstart`. GitHub reports Pages disabled
+    (`has_pages: false`), so `https://harishv-99.github.io/2025-PhoenixPedro/` is the truthful
+    proposed project URL but is not live. This workstation has Android Studio's JDK but neither
+    Python, Node, nor Docker; ordinary Android/robot builds must remain independent of the optional
+    documentation renderer.
+  - **Generator comparison and chosen tool:** use **Zensical 0.0.51**, pinned exactly with a fully
+    pinned Python dependency file and a native `zensical.toml`. Zensical is the actively developed
+    successor from the Material for MkDocs team and already supports every feature used here:
+    a relative deep `docs_dir`, README index pages, explicit navigation, responsive/mobile output,
+    built-in client-side search, strict missing-link and anchor validation, local preview, and static
+    GitHub Pages output. Its package is still classified alpha/`0.0.x`, but its maintainers state it
+    is production-ready when the required features are supported; exact pinning and use of only
+    documented built-ins bound that risk. Material for MkDocs 9.7.7 is mature but officially in
+    maintenance mode with critical support promised only through at least November 2026, while its
+    MkDocs 1.x base is no longer an appropriate greenfield dependency. VitePress would add Node,
+    ESM, Vue-aware Markdown, and JavaScript/TypeScript navigation; its path rewrites would require
+    links to be authored for generated routes rather than the Android Studio source tree. Jekyll,
+    Docusaurus, and Docsify respectively lose built-in documentation search/Windows simplicity,
+    add a React application stack, or provide no strictly verified static artifact. Do not add a
+    plugin, custom theme, custom CSS/JavaScript, analytics, or a second renderer.
+  - **One-source site shape:** point Zensical directly at
+    `TeamCode/src/main/java/edu/ftcphoenix`; do not stage or transform authored Markdown. Add one
+    short `edu/ftcphoenix/README.md` doorway so the project root has an index while the existing
+    `fw/docs/README.md` remains the canonical hub. Curate navigation in DOC-02's beginner-first
+    order and label paths by student meaning so filenames with spaces, ampersands, and an apostrophe
+    remain an implementation detail. Retarget the one out-of-root README link to the public
+    repository and the nine directory-browse links to concrete compiling entry files; retain the
+    other repository-local Markdown and Java-source links. Zensical writes only to ignored
+    `build/docs-site`.
+  - **Javadoc feasibility and bounded debt:** TeamCode is an AGP 8.7 Android application module, not
+    a Java module, and 60+ of the 271 `edu.ftcphoenix.fw` sources depend on Android, FTC, Pedro, or
+    another boundary type. A temporary ignored probe proved the supported lazy AGP path:
+    `androidComponents.onVariants` supplies the debug Java sources and compile classpath while
+    `sdkComponents.bootClasspath` supplies Android types. The standard doclet reached output, but
+    strict `-Xdoclint:all,-missing` truthfully failed on **27 existing errors and 14 warnings**:
+    malformed/unclosed HTML and inline tags, invalid heading order, raw HTML entities/comparators,
+    and one nonexistent `@param`. DOC-03 will correct all of those Javadoc-only defects rather than
+    disable doclint or omit public framework/tool-example classes. One lazy
+    `:TeamCode:phoenixJavadocs` task will cover all and only `edu.ftcphoenix.fw`, publish public and
+    protected contracts with the debug/boot classpaths, use UTF-8, omit generated timestamps, and
+    fail on invalid documentation. It will not publish robot, legacy, or FTC sample packages.
+  - **Search and artifact contract:** this is one public site/origin and one CI artifact with two
+    source-appropriate searches, not one lossy combined index. Zensical search covers the narrative
+    Markdown; standard Javadoc under `/api/` provides its own type/member search. A clear navigation
+    entry joins them. Converting Java contracts to generated Markdown or adding a custom HTML
+    crawler solely to merge search boxes would blur the two authorities and add another toolchain.
+  - **Build and Pages ownership:** use Python 3.12 only for site work and a fully pinned
+    `requirements-docs.txt`; students editing robot code or Markdown in Android Studio need not
+    install it. Use the repository's Gradle wrapper with Temurin JDK 17 for the focused Markdown
+    test and variant-aware Javadocs. A single `docs-site.yml` builds strictly on relevant pull
+    requests and on `master`, with only `contents: read`; it builds canonical Markdown, Javadocs,
+    and final artifact checks before uploading that exact `build/docs-site` directory. A separate
+    `deploy` job needs that build, runs only for a trusted `master` commit, targets the
+    `github-pages` environment, and alone receives `pages: write` plus `id-token: write`. It never
+    rebuilds and never publishes a PR head. Pin every GitHub Action to a verified full commit SHA
+    with its release tag in a comment; add no repository secret or privileged bootstrap token.
+  - **One-time external owner action:** an administrator must set **Settings -> Pages -> Source** to
+    **GitHub Actions** and restrict the `github-pages` environment to `master`. The workflow's normal
+    `GITHUB_TOKEN` must not be expanded to self-enable Pages. The current local `gh` credential is
+    invalid, so implementation cannot assume this settings mutation is available. The final
+    combined publication authorization must explicitly include this one-time public Pages
+    enablement in addition to commit, push, pull request, and merge. HTTPS at the default project URL
+    is in scope; a custom domain/CNAME and PR preview deployments are not.
+  - **Framework Principles check:** one obvious path remains editing Markdown/Javadocs in place;
+    one owner (`docs-site.yml`) verifies and publishes one artifact; the existing source tree and
+    Javadocs remain the two truthful authored boundaries; generated output is ignored; and the
+    beginner-first current story becomes easier to search on phones and school computers without
+    changing robot lifecycle, hardware realization, or student robot-code concepts. The site
+    toolchain is maintainer-facing and cannot affect ordinary Gradle compile/test tasks.
+  - **Bounded implementation and verification:** add only the pinned renderer configuration and
+    dependency file, the short site doorway, one Pages workflow, the AGP-aware Javadoc/build tasks,
+    the ten required link-target corrections, the confirmed Javadoc-only doclint repairs, and
+    synchronized maintainer/root navigation instructions. Run the focused `DocumentationLinksTest`,
+    the strict clean Zensical build, `phoenixJavadocs`, full TeamCode unit tests and debug Java
+    compilation, artifact/root/API/search assertions, `git diff --check`, generated-output and
+    executable-Java-diff scans, and desktop/mobile visual navigation and search review. On the PR,
+    prove the read-only verification job; after authorized merge and Pages enablement, prove the
+    fresh `master` build deployed the same artifact and the default HTTPS URL serves both guide and
+    API search. No robot run is required because no executable behavior changes.
+- **Required design approval:** this introduces a pinned Python renderer, an active hosted workflow,
+  public GitHub Pages publication, deployment permissions, and a one-time repository setting. Stop
+  before implementation. The exact approval phrase is:
+  **`Approve DOC-03 Zensical generated-site and public GitHub Pages design`**.
+- **Design approval received (2026-08-09):** the user supplied the exact approval phrase above.
+  Implementation began from `origin/master` on
+  `codex/doc-03-zensical-generated-pages` with the recorded scope unchanged.
+- **Gate 2 implementation (2026-08-10):** DOC-03 is **Verifying** on
+  `codex/doc-03-zensical-generated-pages`, based on
+  `origin/master@1c055b9ef8fa126dbca4b47c8be345fce0c178ef`.
+  - `zensical.toml` now reads the canonical `edu/ftcphoenix` source tree directly, writes only the
+    ignored `build/docs-site` tree, gives all 55 Markdown pages one beginner-first navigation
+    location, and links the standard Javadocs at `/api/`. The site uses only Zensical's responsive
+    modern theme, local search, and strict link/anchor validation. The pinned Python 3.12 dependency
+    list is isolated in `requirements-docs.txt`; ordinary robot builds do not use it.
+  - A short source-root doorway was added, the one site-root escape now points to the public
+    repository README, and nine directory-browse links now target concrete compiling Java entry
+    files. The root README keeps students on the beginner path and routes all renderer commands to
+    Maintainer Notes. Markdown and Javadocs remain the only authored authorities.
+  - Lazy AGP debug-variant task `:TeamCode:phoenixJavadocs` documents all and only the 271 framework
+    Java sources with the Android/FTC/Pedro compile and boot classpaths, public/protected members,
+    UTF-8, stable output, `-Xdoclint:all,-missing`, and `-Werror`. Twenty-two framework Java files
+    received Javadoc-only corrections for the confirmed 27 errors and 14 warnings; no executable
+    Java line changed.
+  - `.github/workflows/docs-site.yml` verifies relevant pull requests and every upstream `master`
+    push with read-only source access, Python 3.12, Temurin 17, strict narrative/API generation,
+    focused and full Gradle verification, and explicit artifact assertions. Five official actions
+    are pinned to full release SHAs, checkout credentials are not persisted, hidden generated files
+    are included, and only the gated deploy job receives Pages/OIDC write permissions. Workflow-
+    level per-ref concurrency plus a fail-closed live-`master` SHA check prevents stale artifact
+    rollback; deployment consumes the exact same-run `github-pages` artifact and never rebuilds it.
+  - Adversarial review caused four bounded corrections before handoff: Javadoc warnings became
+    fatal, maintainer-only preview commands left the beginner README, all maintained Markdown paths
+    joined the pull-request trigger, and the one-time Pages/environment security settings became
+    normative maintainer documentation. The version list is described accurately as version-pinned,
+    not as a cryptographic or bit-for-bit toolchain lock.
+- **Gate 2 verification (2026-08-10):**
+  - A clean official Python 3.12 environment installed the complete pin set; `pip check` reports no
+    broken requirements. `python -m zensical build --clean --strict` finished with **No issues
+    found**. A source/navigation audit reports **55 Markdown files / 55 unique nav entries / zero
+    missing, unknown, or duplicate pages**.
+  - `:TeamCode:phoenixJavadocs` passes with Temurin **17.0.20+8** after the final clean narrative
+    build, covering all **271** framework sources with strict doclint and warning promotion. The
+    combined artifact has **919 files**, **569 HTML files**, **19,933,350 bytes**, every required
+    home/search/API index, `FtcRobotOpMode` in API search, and zero symbolic links or reparse points.
+  - The focused `DocumentationLinksTest`, full `:TeamCode:testDebugUnitTest`, and
+    `:TeamCode:compileDebugJavaWithJavac` pass under JDK 17. Full XML results report **1,241 tests
+    across 135 suites**, with zero failures, errors, or skips. YAML parsing, five full-SHA action
+    checks, exact-artifact assertions, generated-output exclusion, Java executable-diff audit,
+    local-directory-link scan, `git diff --check`, and trailing-whitespace scan also pass.
+  - Desktop, true 390-by-844 mobile emulation, responsive navigation, narrative search, and standard
+    Javadoc type/member search were visually exercised from the generated artifact. Narrative search
+    returned Plant results and Javadocs returned `FtcRobotOpMode`; the measured mobile document had
+    no horizontal overflow. The in-app browser runtime could not initialize, so this review used
+    local headless Edge/Chrome and Chrome DevTools Protocol emulation instead.
+  - No robot run is required because the Java diff is documentation-only and the renderer/workflow
+    cannot enter an ordinary robot build. Gate 3 consists of Android Studio review, the combined
+    commit/push/PR/merge authorization, one-time Pages source and `github-pages` environment setup,
+    and proof that the resulting upstream `master` deployment serves both the guide and `/api/`.
+- **Gate 3 review and publication authorization (2026-08-10):** the user approved the reviewed
+  Android Studio diff and supplied the exact combined authorization for committing
+  `codex/doc-03-zensical-generated-pages`, pushing it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening and merging its pull request into
+  `master`, enabling GitHub Pages with GitHub Actions as its source, and restricting the
+  `github-pages` environment to `master`. DOC-03 is **Done**; no robot-hardware validation was
+  required or claimed.
 
 ### CI-01 - Framework verification in CI
 

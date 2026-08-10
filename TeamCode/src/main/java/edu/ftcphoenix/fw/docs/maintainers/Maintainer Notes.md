@@ -120,3 +120,51 @@ fences in maintained Markdown without depending on network access. It skips gene
 and the four copied FTC SDK/sample Markdown files. It does not claim that an external website is
 reachable or that prose and code are semantically identical; those still require review alongside
 the compiled canonical examples.
+
+### 1.8 Generated documentation site
+
+Author Markdown and Javadocs in place. The root `zensical.toml` presents those sources; it does not
+create a second authored documentation tree. Generated files belong only under the ignored
+`build/docs-site` directory and must never be edited or committed.
+
+The renderer is optional maintainer tooling. Students editing or compiling robot code do not need
+Python. For a local narrative preview on Windows, use Python 3.12 from the repository root:
+
+```powershell
+python -m venv build/docs-venv
+.\build\docs-venv\Scripts\python.exe -m pip install --requirement requirements-docs.txt
+.\build\docs-venv\Scripts\python.exe -m zensical serve
+```
+
+On macOS or Linux, activate or invoke the equivalent `build/docs-venv/bin` executables. The preview
+server rebuilds the narrative pages as their source files change. Stop it before creating the exact
+combined artifact, then run the strict narrative build before Javadocs so Zensical's clean step
+does not remove the generated API pages:
+
+```powershell
+.\build\docs-venv\Scripts\python.exe -m zensical build --clean --strict
+.\gradlew.bat --console=plain :TeamCode:phoenixJavadocs
+```
+
+Serve `build/docs-site` with any local static-file server when reviewing the final combined guide
+and `/api/` tree. Check navigation and both searches on desktop and a narrow mobile viewport. A
+strict Zensical build checks narrative links and anchors; the standard doclet checks exact Java API
+documentation. Neither replaces `DocumentationLinksTest` or Java compilation.
+
+The checked-in documentation workflow verifies pull requests with read-only repository access and
+deploys only the exact artifact built for an upstream `master` push. Before the first publication,
+set **Settings > Pages > Build and deployment > Source** to **GitHub Actions**. Then restrict the
+`github-pages` environment's deployment branches to `master` under **Settings > Environments**;
+do not permit arbitrary branches. Keep these repository settings aligned with the workflow's
+upstream-repository and live-`master` checks.
+
+`requirements-docs.txt` is the complete version-pinned Python 3.12 dependency list, not a floating
+list of minimum versions. Zensical is still a `0.0.x` package, so upgrades are deliberate:
+
+1. choose one exact Zensical release after reviewing its changelog and supported features;
+2. create a new clean Python 3.12 environment outside the checked-in source tree;
+3. install only `zensical==<new-version>` and inspect `python -m pip freeze --local`;
+4. replace every runtime pin in `requirements-docs.txt`, retaining platform markers such as the
+   Windows-only `colorama` dependency and checking the release's tagged upstream lock; and
+5. install the revised lock in clean Windows and Linux environments, then rerun the strict combined
+   build, link test, search/artifact checks, and visual review before accepting the upgrade.

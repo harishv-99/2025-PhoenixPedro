@@ -3,13 +3,13 @@
 **Classification:** Copyable starter
 
 **Audience:** Students who have completed the first-mechanism lesson
-**Source authority:** [`edu.ftcphoenix.robots.examples.starter`](<../../../robots/examples/starter/>)
+**Source entry:** [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>)
 
 Use this example as the smallest compiling Phoenix structure shared by TeleOp and Auto. It has one
 direct mecanum drive, one intake mechanism, one mode-neutral intake capability, one controls owner,
 and one declaration-only composition root. FTC lifecycle ceremony is supplied by
 `FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
-remain in the seven source files linked above.
+remain in the seven source files listed below.
 
 If this is your first Phoenix project, follow [`Build and run Phoenix`](<../getting-started/Build and Run.md>),
 [`Your first mechanism`](<../getting-started/First Mechanism.md>), and

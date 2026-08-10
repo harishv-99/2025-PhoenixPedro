@@ -107,9 +107,11 @@ public final class ScalarRegulators {
      *
      * @param inner            regulator that computes the nominal command
      * @param supplyVoltage    source of current supply voltage in volts
-     * @param referenceVoltage voltage the nominal regulator was tuned for; must be finite and > 0
-     * @param minimumVoltage   lowest denominator used for scaling; must be finite, > 0, and <= referenceVoltage
-     * @param maximumScale     maximum compensation multiplier; must be finite and >= 1
+     * @param referenceVoltage voltage the nominal regulator was tuned for; must be finite and
+     *                         {@code > 0}
+     * @param minimumVoltage   lowest denominator used for scaling; must be finite, {@code > 0},
+     *                         and {@code <= referenceVoltage}
+     * @param maximumScale     maximum compensation multiplier; must be finite and {@code >= 1}
      * @return regulator decorator that applies voltage compensation to {@code inner}
      */
     public static ScalarRegulator voltageCompensated(ScalarRegulator inner,

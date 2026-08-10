@@ -19,7 +19,7 @@ import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
 /**
- * <h1>Example 07: Supervisor + Subsystem (Discrete Poses)</h1>
+ * <h2>Example 07: Supervisor + Subsystem (Discrete Poses)</h2>
  *
  * <p>This example demonstrates the recommended Phoenix architecture when you have a mechanism that
  * supports a small set of valid positions (poses). It is the stepping stone to the fully

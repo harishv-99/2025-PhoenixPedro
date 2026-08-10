@@ -8,12 +8,11 @@ fixed practice route, one Plant-backed mechanism capability, explicit route-outc
 stable follower heartbeat, and deterministic cleanup. It is not the first-route tutorial; start at
 the canonical [`Phoenix docs hub`](<../README.md>) for the guided learning path.
 
-The five files live in
-[`edu.ftcphoenix.robots.examples.pedro`](<../../../robots/examples/pedro/>). They use the ordinary
-`FtcRobotOpMode`/`RobotProgram` grammar and the project's pinned Pedro Pathing dependency. The
-disabled host borrows this repository's Phoenix hardware configuration only to make the example
-concrete. Production Phoenix Auto uses `PhoenixAutoOpMode`; this package is the independent
-reference for another robot.
+Start with the compiling [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>)
+entry. Its five-file example uses the ordinary `FtcRobotOpMode`/`RobotProgram` grammar and the
+project's pinned Pedro Pathing dependency. The disabled host borrows this repository's Phoenix
+hardware configuration only to make the example concrete. Production Phoenix Auto uses
+`PhoenixAutoOpMode`; this package is the independent reference for another robot.
 
 ## The five owner roles
 

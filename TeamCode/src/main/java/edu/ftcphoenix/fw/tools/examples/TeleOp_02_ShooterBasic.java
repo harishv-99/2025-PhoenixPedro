@@ -21,7 +21,7 @@ import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
- * <h1>Example 02: Shooter + Transfer + Pusher (Basic TeleOp)</h1>
+ * <h2>Example 02: Shooter + Transfer + Pusher (Basic TeleOp)</h2>
  *
  * <p>This example builds directly on
  * <b>Example 01: Mecanum Basic</b> and shows how to control a simple
@@ -40,7 +40,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *
  * <p>It keeps the <b>same driving code</b> and loop structure as Example 01,
  * and adds the mechanism control on top.</p>
- * <p>
  * <hr/>
  *
  * <h2>Big picture: what this example teaches</h2>
@@ -78,7 +77,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *     </ol>
  *   </li>
  * </ol>
- * <p>
  * <hr/>
  *
  * <h2>Hardware assumed for this example</h2>
@@ -96,7 +94,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *
  * <p>You can change these names to match your FTC Robot Configuration, but
  * the structure stays the same.</p>
- * <p>
  * <hr/>
  *
  * <h2>Driver controls (suggested)</h2>
@@ -119,7 +116,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *     </ul>
  *   </li>
  * </ul>
- * <p>
  * <hr/>
  *
  * <h2>What this example <b>does not</b> include yet</h2>
@@ -139,7 +135,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       </ul>
  *   </li>
  * </ul>
- * <p>
  * <hr/>
  *
  * <h2>Reading order for examples</h2>
