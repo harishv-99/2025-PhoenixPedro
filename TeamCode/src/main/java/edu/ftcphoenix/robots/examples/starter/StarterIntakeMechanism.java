@@ -6,7 +6,6 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.ScalarTasks;
-import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
@@ -83,9 +82,7 @@ final class StarterIntakeMechanism implements StarterIntake, RobotProgram.Output
 
     @Override
     public void stop() {
-        CleanupActions.attemptAll(
-                () -> plant.commandTarget().set(STOPPED_POWER),
-                plant::stop);
+        plant.stop();
     }
 
     private double powerFor(Mode mode) {

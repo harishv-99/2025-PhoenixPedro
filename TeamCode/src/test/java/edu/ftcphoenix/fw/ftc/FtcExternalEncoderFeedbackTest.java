@@ -162,12 +162,6 @@ public final class FtcExternalEncoderFeedbackTest {
         assertEquals(0, flywheel.positionReadCount);
         assertEquals(0, flywheel.velocityReadCount);
 
-        boreEncoder.positionTicks = 500;
-        plant.reset();
-        plant.update(clock.clock());
-        assertEquals(0.0, plant.getMeasurement(), EPSILON);
-        assertEquals(3, boreEncoder.positionReadCount);
-        assertEquals(0, boreEncoder.velocityReadCount);
     }
 
     @Test

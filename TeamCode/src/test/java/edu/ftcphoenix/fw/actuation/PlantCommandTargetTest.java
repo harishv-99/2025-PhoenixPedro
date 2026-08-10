@@ -59,10 +59,6 @@ public final class PlantCommandTargetTest {
         assertSame(command, plant.commandTarget());
         assertEquals(readsAfterUpdate, command.reads);
 
-        plant.reset();
-        assertSame(command, plant.commandTarget());
-        assertEquals(readsAfterUpdate, command.reads);
-
         plant.stop();
         assertSame(command, plant.commandTarget());
         assertEquals(readsAfterUpdate, command.reads);

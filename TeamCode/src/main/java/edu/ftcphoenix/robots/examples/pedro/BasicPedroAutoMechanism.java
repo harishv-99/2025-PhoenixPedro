@@ -17,8 +17,9 @@ import edu.ftcphoenix.fw.task.Task;
  * Small intake capability used by the basic Pedro Auto reference.
  *
  * <p>The capability creates fresh Tasks while the retained Plant remains the only final actuator
- * owner. Immediate cleanup and deferred Tasks use the Plant's stable
- * {@link Plant#commandTarget() graph-owned command}, so both change the same request. A real robot
+ * owner. Deferred Tasks use the Plant's stable
+ * {@link Plant#commandTarget() graph-owned command}; final cleanup terminates the Plant without
+ * rewriting that graph. A real robot
  * normally replaces this class with its existing mechanism capability. Ordinary FTC construction
  * receives {@code HardwareMap} plus the mechanism's data-only {@link Config} and privately builds
  * its Plant; the completed-Plant constructor remains only a package-private hardware-neutral
@@ -151,7 +152,7 @@ public final class BasicPedroAutoMechanism implements RobotProgram.Output {
     }
 
     /**
-     * Restores the idle request and immediately stops the Plant, attempting both exactly once.
+     * Permanently stops the Plant without rewriting its persistent command.
      */
     @Override
     public void stop() {
@@ -160,10 +161,7 @@ public final class BasicPedroAutoMechanism implements RobotProgram.Output {
         }
         stopped = true;
 
-        CleanupActions.attemptAll(
-                () -> intakePlant.commandTarget().set(IDLE_POWER),
-                intakePlant::stop
-        );
+        intakePlant.stop();
     }
 
     private static Plant requireCommandPlant(Plant plant) {

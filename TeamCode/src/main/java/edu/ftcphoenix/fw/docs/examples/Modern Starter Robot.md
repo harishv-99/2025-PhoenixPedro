@@ -130,7 +130,7 @@ final class StarterIntakeMechanism
 
     @Override
     public void stop() {
-        // request zero, then stop the private Plant/output
+        // terminally stop the private Plant; no target rewrite is needed
     }
 }
 ```

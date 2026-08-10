@@ -27,6 +27,9 @@ final class RegulatedPowerChannel {
     private double normalizedPowerCommand = Double.NaN;
     private String status = "NOT_UPDATED";
     private boolean lastStopSubmitted;
+    private boolean lastStopCompleted;
+    private boolean lastResetSucceeded;
+    private boolean terminalStopReassertRequired;
 
     RegulatedPowerChannel(PowerOutput output, ScalarRegulator regulator, String controlPath) {
         this.output = Objects.requireNonNull(output, "output");
@@ -37,17 +40,27 @@ final class RegulatedPowerChannel {
     }
 
     /** Evaluate the regulator once and submit one finite normalized command. */
-    void update(double setpoint, double measurement, LoopClock clock) {
+    void update(double setpoint,
+                double measurement,
+                LoopClock clock,
+                PlantLifecycle lifecycle) {
+        Objects.requireNonNull(lifecycle, "lifecycle");
+        if (!lifecycle.isActive()) return;
         lastStopSubmitted = false;
+        lastStopCompleted = false;
+        lastResetSucceeded = false;
+        terminalStopReassertRequired = false;
 
         final double raw;
         try {
             raw = regulator.update(setpoint, measurement, clock);
         } catch (RuntimeException failure) {
+            if (!lifecycle.isActive()) throw failure;
             regulatorOutput = Double.NaN;
-            failStop("REGULATOR_FAILED", failure);
+            failStop("REGULATOR_FAILED", failure, lifecycle);
             return; // failStop always throws
         }
+        if (!lifecycle.isActive()) return;
         regulatorOutput = raw;
 
         if (!Double.isFinite(raw)) {
@@ -57,7 +70,7 @@ final class RegulatedPowerChannel {
                             + ", measurement=" + measurement
                             + ". Phoenix rejected the command and attempted fail-stop cleanup;"
                             + " fix the regulator or control law.");
-            failStop("NON_FINITE_REGULATOR_OUTPUT", failure);
+            failStop("NON_FINITE_REGULATOR_OUTPUT", failure, lifecycle);
             return; // failStop always throws
         }
 
@@ -68,8 +81,18 @@ final class RegulatedPowerChannel {
         try {
             output.setPower(normalized);
         } catch (RuntimeException failure) {
-            failStop("OUTPUT_WRITE_FAILED", failure);
+            if (!lifecycle.isActive()) {
+                terminalStopReassertRequired = true;
+                throw failure;
+            }
+            failStop("OUTPUT_WRITE_FAILED", failure, lifecycle);
             return; // failStop always throws
+        }
+        if (!lifecycle.isActive()) {
+            // A reentrant terminal stop may have been overwritten by the remainder of the outer
+            // hardware callback. The owning Plant must issue one final natural stop.
+            terminalStopReassertRequired = true;
+            return;
         }
 
         normalizedPowerCommand = normalized;
@@ -81,9 +104,12 @@ final class RegulatedPowerChannel {
     /** Reset controller state without claiming that any new hardware command was submitted. */
     void reset() {
         lastStopSubmitted = false;
+        lastStopCompleted = false;
+        lastResetSucceeded = false;
         regulatorOutput = Double.NaN;
         try {
             regulator.reset();
+            lastResetSucceeded = true;
             status = "RESET_WITHOUT_WRITE";
         } catch (RuntimeException failure) {
             status = "RESET_FAILED_WITHOUT_WRITE";
@@ -132,10 +158,83 @@ final class RegulatedPowerChannel {
             primary = suppress(primary, failure);
         }
 
-        status = "STOP_"
-                + (lastStopSubmitted ? "SUBMITTED" : "FAILED")
-                + "_RESET_"
-                + (resetSucceeded ? "SUCCEEDED" : "FAILED");
+        publishStopDiagnostics(allOutputStopsSucceeded, resetSucceeded);
+        if (primary != null) throw primary;
+    }
+
+    /**
+     * Stop this channel during an active nonterminal operation.
+     *
+     * <p>If the output callback reentrantly claims the owning Plant's terminal lifecycle, that
+     * public terminal stop owns controller cleanup and diagnostics. This outer operational stop
+     * therefore returns or propagates its output failure without resetting the regulator or
+     * overwriting the terminal facts.</p>
+     */
+    void stopWhileActive(PlantLifecycle lifecycle) {
+        Objects.requireNonNull(lifecycle, "lifecycle");
+        if (!lifecycle.isActive()) return;
+
+        regulatorOutput = Double.NaN;
+        RuntimeException primary = null;
+        boolean outputStopSucceeded = false;
+        try {
+            output.stop();
+            outputStopSucceeded = true;
+        } catch (RuntimeException failure) {
+            primary = failure;
+        }
+        if (!lifecycle.isActive()) {
+            if (primary != null) throw primary;
+            return;
+        }
+
+        boolean resetSucceeded = false;
+        try {
+            regulator.reset();
+            resetSucceeded = true;
+        } catch (RuntimeException failure) {
+            primary = suppress(primary, failure);
+        }
+        if (!lifecycle.isActive()) {
+            if (primary != null) throw primary;
+            return;
+        }
+
+        publishStopDiagnostics(outputStopSucceeded, resetSucceeded);
+        if (primary != null) throw primary;
+    }
+
+    /** Reassert terminal zero at the main output without resetting the regulator again. */
+    void reassertTerminalOutputStop() {
+        reassertTerminalOutputStop(null);
+    }
+
+    /**
+     * Reassert terminal zero at the main and optional distinct companion outputs, attempting all
+     * physical stops but never resetting the regulator again.
+     */
+    void reassertTerminalOutputStop(PowerOutput companionOutput) {
+        RuntimeException primary = null;
+        boolean allOutputStopsSucceeded = true;
+        try {
+            output.stop();
+        } catch (RuntimeException failure) {
+            allOutputStopsSucceeded = false;
+            primary = failure;
+        }
+        if (companionOutput != null && companionOutput != output) {
+            try {
+                companionOutput.stop();
+            } catch (RuntimeException failure) {
+                allOutputStopsSucceeded = false;
+                primary = suppress(primary, failure);
+            }
+        }
+
+        // Keep the controller-reset result established by the terminal stop. Only physical output
+        // truth is refreshed here: successful reassertion proves zero; any failure makes it unknown.
+        publishStopDiagnostics(allOutputStopsSucceeded, lastResetSucceeded);
+        terminalStopReassertRequired = false;
         if (primary != null) throw primary;
     }
 
@@ -156,6 +255,16 @@ final class RegulatedPowerChannel {
         return lastStopSubmitted;
     }
 
+    /** True only when the most recent stop submitted every output stop and reset the regulator. */
+    boolean lastStopCompleted() {
+        return lastStopCompleted;
+    }
+
+    /** Whether an outer power write returned after a reentrant terminal stop. */
+    boolean terminalStopReassertRequired() {
+        return terminalStopReassertRequired;
+    }
+
     void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;
         String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
@@ -165,17 +274,20 @@ final class RegulatedPowerChannel {
         regulator.debugDump(dbg, p + ".regulator");
     }
 
-    private void failStop(String failureStatus, RuntimeException primary) {
+    private void failStop(String failureStatus,
+                          RuntimeException primary,
+                          PlantLifecycle lifecycle) {
         boolean stopSucceeded = false;
         try {
             output.stop();
-            normalizedPowerCommand = 0.0;
-            lastStopSubmitted = true;
             stopSucceeded = true;
         } catch (RuntimeException cleanupFailure) {
-            normalizedPowerCommand = Double.NaN;
-            lastStopSubmitted = false;
             suppress(primary, cleanupFailure);
+        }
+        if (!lifecycle.isActive()) {
+            // A reentrant public Plant.stop() owns the terminal cleanup facts. Do not overwrite
+            // them or reset its controller a second time from this recoverable failure path.
+            throw primary;
         }
 
         boolean resetSucceeded = false;
@@ -185,11 +297,27 @@ final class RegulatedPowerChannel {
         } catch (RuntimeException cleanupFailure) {
             suppress(primary, cleanupFailure);
         }
+        if (!lifecycle.isActive()) throw primary;
 
+        normalizedPowerCommand = stopSucceeded ? 0.0 : Double.NaN;
+        lastStopSubmitted = stopSucceeded;
+        lastResetSucceeded = resetSucceeded;
         status = failureStatus
                 + "_STOP_" + (stopSucceeded ? "SUBMITTED" : "FAILED")
                 + "_RESET_" + (resetSucceeded ? "SUCCEEDED" : "FAILED");
+        lastStopCompleted = stopSucceeded && resetSucceeded;
         throw primary;
+    }
+
+    private void publishStopDiagnostics(boolean outputStopSucceeded, boolean resetSucceeded) {
+        lastStopSubmitted = outputStopSucceeded;
+        lastResetSucceeded = resetSucceeded;
+        normalizedPowerCommand = outputStopSucceeded ? 0.0 : Double.NaN;
+        status = "STOP_"
+                + (outputStopSucceeded ? "SUBMITTED" : "FAILED")
+                + "_RESET_"
+                + (resetSucceeded ? "SUCCEEDED" : "FAILED");
+        lastStopCompleted = outputStopSucceeded && resetSucceeded;
     }
 
     private static RuntimeException suppress(RuntimeException primary, RuntimeException additional) {

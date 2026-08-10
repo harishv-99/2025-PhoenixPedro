@@ -84,10 +84,11 @@ public final class BasicPedroAutoMechanismTest {
         idle.start(time.clock());
         assertEquals(0.0, plant.target.get(), 0.0);
 
+        plant.target.set(0.40);
         mechanism.stop();
 
-        assertEquals(4, plant.commandTargetCalls);
-        assertEquals(0.0, plant.target.get(), 0.0);
+        assertEquals(3, plant.commandTargetCalls);
+        assertEquals(0.40, plant.target.get(), 0.0);
     }
 
     @Test

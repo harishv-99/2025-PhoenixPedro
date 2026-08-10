@@ -25,6 +25,32 @@ public final class FtcHardwareCommandDomainValidationTest {
     private static final double EPSILON = 1.0e-12;
 
     @Test
+    public void servoStopWaitsForFirstSuccessfulCommandThenReassertsIt() {
+        ServoProbe probe = new ServoProbe();
+        PositionOutput output = FtcHardware.servoPosition(probe.servo, Direction.FORWARD);
+
+        assertTrue(Double.isNaN(output.getCommandedPosition()));
+        output.stop();
+        assertEquals(0, probe.positionWrites);
+
+        probe.positionFailure = new IllegalStateException("simulated servo write failure");
+        expect(IllegalStateException.class, () -> output.setPosition(0.35));
+        assertTrue(Double.isNaN(output.getCommandedPosition()));
+        assertEquals(0, probe.positionWrites);
+        output.stop();
+        assertEquals(0, probe.positionWrites);
+
+        probe.positionFailure = null;
+        output.setPosition(0.35);
+        assertEquals(0.35, output.getCommandedPosition(), EPSILON);
+        assertEquals(1, probe.positionWrites);
+
+        output.stop();
+        assertEquals(2, probe.positionWrites);
+        assertEquals(0.35, probe.position, EPSILON);
+    }
+
+    @Test
     public void servoRejectsNonFiniteBeforeCacheOrSdkAndRetainsFiniteClampDefense() {
         ServoProbe probe = new ServoProbe();
         PositionOutput output = FtcHardware.servoPosition(probe.servo, Direction.FORWARD);
@@ -202,6 +228,7 @@ public final class FtcHardwareCommandDomainValidationTest {
         private final Servo servo;
         private int positionWrites;
         private double position;
+        private RuntimeException positionFailure;
         private Servo.Direction direction = Servo.Direction.FORWARD;
 
         private ServoProbe() {
@@ -222,6 +249,7 @@ public final class FtcHardwareCommandDomainValidationTest {
             }
             if ("getDirection".equals(name)) return direction;
             if ("setPosition".equals(name)) {
+                if (positionFailure != null) throw positionFailure;
                 position = (double) args[0];
                 positionWrites++;
                 return null;

@@ -25,9 +25,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * Unbounded maps are permitted, so the direct-output path calculates each native command into a
  * temporary and rejects non-finite results before applied-target commit or output. That failure
  * keeps the mapping exception primary while invoking the output's natural stop best-effort:
- * successful cleanup publishes the same zero-applied stopped state as {@link #stop()}, while a
- * failed stop retains the prior applied/status/resolution facts and is suppressed. A non-finite
- * inverse conversion publishes measurement {@link Double#NaN} and cannot be at target.</p>
+ * successful cleanup publishes the same zero-applied stopped diagnostic state as {@link #stop()},
+ * while a failed stop retains the prior applied/status/resolution facts and is suppressed. Unlike
+ * explicit {@code stop()}, this internal fail-stop is nonterminal so an advanced host may correct
+ * the cause and retry. A non-finite inverse conversion publishes measurement {@link Double#NaN}
+ * and cannot be at target.</p>
  */
 final class MappedVelocityPlant implements Plant {
 
@@ -39,6 +41,7 @@ final class MappedVelocityPlant implements Plant {
     private final PlantTargetResolver targetResolver;
     private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
+    private final PlantLifecycle lifecycle = new PlantLifecycle();
     private final ScalarRange configuredRange;
     private final double nativePerPlantUnit;
     private final double tolerance;
@@ -253,20 +256,24 @@ final class MappedVelocityPlant implements Plant {
 
     @Override
     public void update(LoopClock clock) {
+        if (!lifecycle.isActive()) return;
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
         PlantTargetResolution priorTargetResolution = targetResolution;
         samplePlantMeasurement(clock);
+        if (!lifecycle.isActive()) return;
         PlantTargetContext context = PlantTargetContext.simple(
                 true, lastMeasurement, configuredRange, requestedTarget, appliedTarget);
         PlantTargetResolution nextTargetResolution = targetResolver.resolve(context, clock);
+        if (!lifecycle.isActive()) return;
+        double nextRequestedTarget;
         if (nextTargetResolution != null && nextTargetResolution.hasTarget()) {
-            requestedTarget = nextTargetResolution.target();
+            nextRequestedTarget = nextTargetResolution.target();
         } else {
-            requestedTarget = appliedTarget;
+            nextRequestedTarget = appliedTarget;
         }
 
-        double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
+        double candidate = Double.isFinite(nextRequestedTarget) ? nextRequestedTarget : appliedTarget;
         PlantTargetStatus status = (nextTargetResolution != null && nextTargetResolution.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
                 : PlantTargetStatus.targetUnavailable(nextTargetResolution != null
@@ -284,6 +291,8 @@ final class MappedVelocityPlant implements Plant {
         }
         PlantTargetGuards.Result guarded = PlantTargetSafety.applyGuards(
                 targetGuards, candidate, status, appliedTarget, range, "velocity", clock);
+        if (!lifecycle.isActive()) return;
+        requestedTarget = nextRequestedTarget;
 
         double nativeCommand = Double.NaN;
         if (velocityOut != null) {
@@ -307,17 +316,63 @@ final class MappedVelocityPlant implements Plant {
         appliedTarget = guarded.target;
         targetStatus = guarded.status;
         targetResolution = nextTargetResolution;
+        double effectAppliedTarget = appliedTarget;
+        PlantTargetStatus effectTargetStatus = targetStatus;
+        PlantTargetResolution effectTargetResolution = targetResolution;
         if (velocityOut != null) {
-            velocityOut.setVelocity(nativeCommand);
+            RuntimeException effectFailure = null;
+            try {
+                velocityOut.setVelocity(nativeCommand);
+            } catch (RuntimeException failure) {
+                effectFailure = failure;
+            }
+            if (!lifecycle.isActive()) {
+                try {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                } catch (RuntimeException cleanupFailure) {
+                    effectFailure = suppress(effectFailure, cleanupFailure);
+                }
+            }
+            if (effectFailure != null) {
+                if (lifecycle.isActive()) {
+                    failStopDirectOutputFailure(
+                            priorAppliedTarget,
+                            priorTargetStatus,
+                            priorTargetResolution,
+                            effectAppliedTarget,
+                            effectTargetStatus,
+                            effectTargetResolution,
+                            effectFailure);
+                }
+                throw effectFailure;
+            }
+            if (!lifecycle.isActive()) return;
         } else {
             regulatedActuationCompleted = false;
             lastAtTarget = false;
             try {
-                regulatedPowerChannel.update(appliedTarget, lastMeasurement, clock);
+                regulatedPowerChannel.update(appliedTarget, lastMeasurement, clock, lifecycle);
             } catch (RuntimeException failure) {
                 handleRegulatedUpdateFailure(
                     priorAppliedTarget, priorTargetStatus, priorTargetResolution, failure);
+                if (!lifecycle.isActive()
+                        && regulatedPowerChannel.terminalStopReassertRequired()) {
+                    try {
+                        enforceTerminalStopAfterReentrantEffect(
+                                effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                    } catch (RuntimeException cleanupFailure) {
+                        suppress(failure, cleanupFailure);
+                    }
+                }
                 throw failure;
+            }
+            if (!lifecycle.isActive()) {
+                if (regulatedPowerChannel.terminalStopReassertRequired()) {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                }
+                return;
             }
             regulatedActuationCompleted = true;
         }
@@ -325,51 +380,33 @@ final class MappedVelocityPlant implements Plant {
     }
 
     @Override
-    public void reset() {
-        regulatedActuationCompleted = false;
-        lastAtTarget = false;
-        targetResolver.reset();
-        nativeMeasurement.reset();
-        targetGuards.reset();
-        if (regulatedPowerChannel != null) regulatedPowerChannel.reset();
-        requestedTarget = 0.0;
-        appliedTarget = 0.0;
-        lastMeasurement = Double.NaN;
-        lastNativeMeasurement = Double.NaN;
-        targetStatus = PlantTargetStatus.STOPPED;
-        targetResolution = PlantTargetResolution.unavailable("not sampled");
-    }
-
-    @Override
     public void stop() {
-        if (regulatedPowerChannel == null) {
-            velocityOut.stop();
-            targetGuards.reset();
-            appliedTarget = 0.0;
-            targetStatus = PlantTargetStatus.STOPPED;
-            targetResolution = PlantTargetResolution.unavailable("plant stopped");
-            return;
-        }
+        if (!lifecycle.claimStop()) return;
 
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
         PlantTargetResolution priorTargetResolution = targetResolution;
         regulatedActuationCompleted = false;
         lastAtTarget = false;
-
         RuntimeException primary = null;
-        try {
-            regulatedPowerChannel.stop();
-        } catch (RuntimeException failure) {
-            primary = failure;
-        }
-        try {
-            targetGuards.reset();
-        } catch (RuntimeException failure) {
-            primary = suppress(primary, failure);
+        boolean outputStopSucceeded = false;
+        if (regulatedPowerChannel == null) {
+            try {
+                velocityOut.stop();
+                outputStopSucceeded = true;
+            } catch (RuntimeException failure) {
+                primary = failure;
+            }
+        } else {
+            try {
+                regulatedPowerChannel.stop();
+            } catch (RuntimeException failure) {
+                primary = failure;
+            }
+            outputStopSucceeded = regulatedPowerChannel.lastStopSubmitted();
         }
 
-        if (regulatedPowerChannel.lastStopSubmitted()) {
+        if (outputStopSucceeded) {
             markSuccessfullyStopped();
         } else {
             restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
@@ -435,8 +472,10 @@ final class MappedVelocityPlant implements Plant {
     }
 
     private void samplePlantMeasurement(LoopClock clock) {
-        lastNativeMeasurement = nativeMeasurement.getAsDouble(clock);
-        double plantMeasurement = fromNative(lastNativeMeasurement);
+        double nativeValue = nativeMeasurement.getAsDouble(clock);
+        if (!lifecycle.isActive()) return;
+        lastNativeMeasurement = nativeValue;
+        double plantMeasurement = fromNative(nativeValue);
         lastMeasurement = Double.isFinite(plantMeasurement) ? plantMeasurement : Double.NaN;
         if (!Double.isFinite(lastMeasurement)) lastAtTarget = false;
     }
@@ -486,13 +525,64 @@ final class MappedVelocityPlant implements Plant {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
         restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+        failStopDirectOutputFailure(
+                priorAppliedTarget,
+                priorTargetStatus,
+                priorTargetResolution,
+                priorAppliedTarget,
+                priorTargetStatus,
+                priorTargetResolution,
+                failure);
+        throw failure;
+    }
+
+    private void failStopDirectOutputFailure(
+            double priorAppliedTarget,
+            PlantTargetStatus priorTargetStatus,
+            PlantTargetResolution priorTargetResolution,
+            double effectAppliedTarget,
+            PlantTargetStatus effectTargetStatus,
+            PlantTargetResolution effectTargetResolution,
+            RuntimeException failure) {
+        boolean outputStopSucceeded = false;
         try {
-            stop();
+            velocityOut.stop();
+            outputStopSucceeded = true;
         } catch (RuntimeException cleanupFailure) {
             suppress(failure, cleanupFailure);
+        }
+
+        if (!lifecycle.isActive()) {
+            if (outputStopSucceeded) {
+                markSuccessfullyStopped();
+            } else {
+                restoreTargetState(
+                        effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+            }
+            return;
+        }
+
+        boolean cleanupSucceeded = outputStopSucceeded;
+        try {
+            targetGuards.reset();
+        } catch (RuntimeException cleanupFailure) {
+            suppress(failure, cleanupFailure);
+            cleanupSucceeded = false;
+        }
+        if (!lifecycle.isActive()) {
+            try {
+                enforceTerminalStopAfterReentrantEffect(
+                        effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+            } catch (RuntimeException cleanupFailure) {
+                suppress(failure, cleanupFailure);
+            }
+            return;
+        }
+        if (cleanupSucceeded) {
+            markSuccessfullyStopped();
+        } else {
             restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
         }
-        throw failure;
     }
 
     private void handleRegulatedUpdateFailure(double priorAppliedTarget,
@@ -501,12 +591,16 @@ final class MappedVelocityPlant implements Plant {
                                               RuntimeException failure) {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
+        if (!lifecycle.isActive()) return;
+        boolean guardCleanupSucceeded = true;
         try {
             targetGuards.reset();
         } catch (RuntimeException cleanupFailure) {
             suppress(failure, cleanupFailure);
+            guardCleanupSucceeded = false;
         }
-        if (regulatedPowerChannel.lastStopSubmitted()) {
+        if (!lifecycle.isActive()) return;
+        if (regulatedPowerChannel.lastStopCompleted() && guardCleanupSucceeded) {
             markSuccessfullyStopped();
         } else {
             restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
@@ -517,6 +611,38 @@ final class MappedVelocityPlant implements Plant {
         appliedTarget = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;
         targetResolution = PlantTargetResolution.unavailable("plant stopped");
+    }
+
+    private void enforceTerminalStopAfterReentrantEffect(
+            double effectAppliedTarget,
+            PlantTargetStatus effectTargetStatus,
+            PlantTargetResolution effectTargetResolution) {
+        RuntimeException failure = null;
+        boolean outputStopSucceeded = false;
+        if (regulatedPowerChannel == null) {
+            try {
+                velocityOut.stop();
+                outputStopSucceeded = true;
+            } catch (RuntimeException stopFailure) {
+                failure = stopFailure;
+            }
+        } else {
+            try {
+                // The reentrant public stop already reset the regulator. Only reassert physical
+                // zero after the outer hardware callback returns.
+                regulatedPowerChannel.reassertTerminalOutputStop();
+            } catch (RuntimeException stopFailure) {
+                failure = stopFailure;
+            }
+            outputStopSucceeded = regulatedPowerChannel.lastStopSubmitted();
+        }
+
+        if (outputStopSucceeded) {
+            markSuccessfullyStopped();
+        } else {
+            restoreTargetState(effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+        }
+        if (failure != null) throw failure;
     }
 
     private void restoreTargetState(double priorAppliedTarget,

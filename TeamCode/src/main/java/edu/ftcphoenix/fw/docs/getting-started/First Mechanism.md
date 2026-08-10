@@ -111,14 +111,15 @@ public void update(LoopClock clock) {
 
 @Override
 public void stop() {
-    CleanupActions.attemptAll(
-            () -> plant.commandTarget().set(STOPPED_POWER),
-            plant::stop);
+    plant.stop();
 }
 ```
 
 The mechanism is the only owner that updates and stops this Plant. Controls and Tasks change its
-request; they never add another hardware update.
+request; they never add another hardware update. This final `stop()` immediately applies the
+power Plant's natural zero-power stop and makes the Plant terminal. It does not need to rewrite the
+command target: every later `update(...)` is inert. Request `STOPPED` through `setMode(...)` when
+the mechanism should idle during the active match and remain usable afterward.
 
 ## 4. See how Auto declares the mechanism
 
@@ -189,7 +190,8 @@ test. Do not increase power until those facts are checked.
 **The motor keeps running after 0.75 seconds or STOP.**
 
 Press STOP, power down the mechanism, and inspect local changes before continuing. The checked-in
-Task ends at zero and the mechanism's `stop()` requests zero again.
+Task ends at zero and the mechanism's terminal `stop()` immediately submits the Plant's natural
+zero-power stop.
 
 **Can a lift use this power Plant?**
 

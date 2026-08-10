@@ -898,7 +898,6 @@ public final class Intake {
     public void stop() {
         CleanupActions.attemptAll(
                 feedQueue::cancelAndClear,
-                () -> intakePlant.commandTarget().set(0.0),
                 intakePlant::stop,
                 feederPlant::stop);
     }
@@ -910,11 +909,12 @@ the queue and then the Plants. The queue, resolver, sensor source, and Plants re
 see semantic requests and a small status snapshot.
 
 This example deliberately treats holding either feeder-servo position at FTC STOP as mechanically
-safe. A standard-servo Plant's `stop()` re-commands its last applied position; cancelling the queue
-changes what a future update would select but does not move the servo without that update. If a real
-mechanism must retract before shutdown, make retraction a bounded cooperative Task before STOP or
-use a hardware adapter with an explicit safe stop behavior. Do not imply that merely setting an idle
-target inside `stop()` applies it.
+safe. A standard-servo Plant's terminal `stop()` re-commands its last applied position, while the
+power Plant submits zero. Neither stop rewrites its resolver, and neither Plant will realize another
+target afterward. Cancelling the independently owned queue remains necessary for truthful Task
+cleanup, not to disable the stopped feeder Plant. If a real mechanism must retract before shutdown,
+make retraction a bounded cooperative Task before STOP or use a hardware adapter with an explicit
+safe stop behavior. Do not imply that merely setting an idle target inside `stop()` applies it.
 
 ```java
 intake = new Intake(hardwareMap, profile.intake);

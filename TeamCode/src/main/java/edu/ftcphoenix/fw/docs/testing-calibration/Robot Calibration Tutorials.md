@@ -41,9 +41,9 @@ raw/native hardware coordinate
     -> PositionPlant invokes its target resolver
 ```
 
-`Plant.reset()` should not redefine physical zero. Homing, indexing, manual zeroing, and static
-endpoint scaling belong in the position-Plant reference/mapping layer and the robot mechanism
-service that decides when to run it.
+There is no catch-all Plant reset. `Plant.stop()` ends that Plant instance and must not redefine
+physical zero. Homing, indexing, manual zeroing, and static endpoint scaling belong in the
+position-Plant reference/mapping layer and the robot mechanism service that decides when to run it.
 
 ### Common initialization choices
 
@@ -115,9 +115,9 @@ Task indexTray = PositionCalibrationTasks.search(tray)
 ```
 
 `resumeTargeting()` preserves the Plant's persistent command and final target resolver. It requests
-a stop of the temporary raw output and releases the search, but it does not leave a continuously
-updated Plant disabled or stopped; the downstream Plant phase immediately evaluates the unchanged
-graph. By contrast, `holdAfterReference(value)` writes that graph-owned command before releasing
+a nonterminal stop of the temporary raw output and releases the search; it does not call terminal
+`Plant.stop()`. The downstream Plant phase immediately evaluates the unchanged graph. By contrast,
+`holdAfterReference(value)` writes that graph-owned command before releasing
 the search. The full resolver still runs afterward, so an enabled overlay may select another
 target. Timeout and active cancellation request the same stop and release the search without
 changing the persistent command.

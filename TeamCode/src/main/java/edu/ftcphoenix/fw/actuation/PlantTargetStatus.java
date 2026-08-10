@@ -43,7 +43,10 @@ public final class PlantTargetStatus {
          */
         TARGET_UNAVAILABLE,
         /**
-         * Plant has been stopped.
+         * The Plant's realization most recently completed a natural output stop.
+         *
+         * <p>This is output/target diagnostic state, not a public lifecycle query. It may follow
+         * terminal {@link Plant#stop()} or a successful internal recoverable fail-stop.</p>
          */
         STOPPED
     }

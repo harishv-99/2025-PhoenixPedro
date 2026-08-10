@@ -21,7 +21,8 @@ Before enabling a mechanism:
 2. Start from the current checked-in four-gain tuple.
 3. Configure the Plant's target range and the complete regulator's output range before tuning.
 4. Start with a zero or disabled target and require a deliberate arm action.
-5. Make the tuning mode's stop and failure paths request zero and stop the owned mechanism.
+5. Make the tuning mode's stop and failure paths cancel transient work and terminally stop the
+   owned mechanism; its power or velocity Plant submits zero itself.
 6. Retain both the standard `PidfRegulator` and its outermost regulator composition in the robot
    realization.
 
@@ -180,10 +181,11 @@ a Java `double`; do not round the copyable assignments for display.
 - **Invalid candidate:** report the validation error. The previously applied gains remain in use.
 - **Valid but poor candidate:** disarm first, then explicitly reapply the last known-good or
   checked-in four-gain tuple through the same method.
-- **Apply, reset, or update failure:** request zero and stop the mechanism owned by the tuning mode.
-  Do not claim an automatic transaction across arbitrary decorators or physical hardware.
-- **OpMode stop:** request zero, cancel any robot-owned transient work, and stop the Plant or
-  mechanism owner normally.
+- **Apply, regulator-reset, or update failure:** cancel transient work and terminally stop the
+  mechanism owned by the tuning mode. Do not claim an automatic transaction across arbitrary
+  decorators or physical hardware; start a fresh OpMode/Plant lifetime before trying again.
+- **OpMode stop:** cancel any robot-owned transient work and terminally stop the Plant or mechanism
+  owner. A power or velocity Plant submits zero without a separate target rewrite.
 
 Restoring four numbers cannot restore controller history or undo a physical command. Fail-stop and
 explicit reapply are more truthful than a generic automatic rollback promise.
@@ -208,7 +210,7 @@ keeping the live UI out of production modes, not from a global "tuning values sa
 |---|---|
 | All-or-nothing validation of four finite gains in `setGains(...)` | Publication of one coherent candidate |
 | Applied-gain getters | Safe mechanism-specific gains and test targets |
-| A reset lifecycle; built-in regulator decorators propagate it inward | Retaining and resetting the correct outer composition |
+| A regulator reset contract; built-in regulator decorators propagate it inward | Retaining and resetting the correct outer composition |
 | Normal Plant target and output defenses | Arming, stop, and failure policy |
 | One shared OpMode-loop boundary | Copying and committing profile values, plus physical confirmation |
 

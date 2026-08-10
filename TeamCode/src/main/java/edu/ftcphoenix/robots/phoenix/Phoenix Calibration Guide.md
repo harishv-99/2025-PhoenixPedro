@@ -91,7 +91,8 @@ Use these rules when adding Phoenix mechanisms:
 - Every explicit plant/native reference value must be finite and is rejected rather than clamped.
   A reference is a coordinate anchor, not a target command, so its plant value need not lie inside
   the Plant's target range.
-- Runtime homing/indexing should be modeled as a `Task`, not as a `Plant.reset()` side effect.
+- A Plant has no catch-all reset; runtime homing/indexing is an explicit `Task`, while
+  `Plant.stop()` permanently ends that Plant instance.
 
 Example homing task:
 
@@ -129,8 +130,9 @@ Task releases the search first, the same phase evaluates the normal final resolv
 `holdAfterReference(0.0)` changes the Plant's graph-owned command before that handoff; the complete
 resolver can still mask or transform it. Use `resumeTargeting()` when success should preserve the
 existing persistent command and unchanged resolver. That option does not leave the continuously
-updated Plant disabled. Timeout and active cancellation also request a temporary-output stop and
-release the search without changing the persistent command.
+updated Plant disabled. Timeout and active cancellation also request the same internal,
+nonterminal temporary-output stop and release the search without changing the persistent command;
+none of those calibration handoffs calls terminal `Plant.stop()`.
 
 The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 

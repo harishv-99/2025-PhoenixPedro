@@ -153,8 +153,10 @@ Setting a `ScalarTarget` stores intent; it does not write hardware. Verify that:
 4. no Task or controls class calls `plant.update(clock)` itself; and
 5. the Plant's final resolver, guards, reference state, and bounds allow the request.
 
-At STOP, the mechanism must request its safe state and stop its owned Plant/resources. The program
-manages when that output lifecycle runs; the mechanism remains the one hardware realization owner.
+At STOP, the mechanism must cancel independently owned transient work and terminally stop its owned
+Plants/resources. A Plant's natural stop acts immediately and later updates are inert, so shutdown
+does not also rewrite its target graph. The program manages when that output lifecycle runs; the
+mechanism remains the one hardware realization owner.
 
 ## Cancelling a Task does not produce the motion I expected
 
@@ -163,8 +165,9 @@ requests that Task owns. It does not bypass the Plant source graph or directly s
 
 For a feedback move, choose either `cancelTo(...)` or `leaveTargetOnCancel()`. For a timed scalar
 write, choose the documented final-target behavior. For a queued output, use the total-abort API
-that cancels active work and clears pending work. Robot-level STOP must still reset coordinated
-requests and stop the final owners.
+that cancels active work and clears pending work. Robot-level STOP must still cancel independently
+owned coordinated work and terminally stop the final owners; it need not neutralize every stopped
+Plant's resolver graph.
 
 ## Drive commands fight or an assist has no effect
 

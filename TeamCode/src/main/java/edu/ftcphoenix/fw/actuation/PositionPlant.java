@@ -32,6 +32,16 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * encoder already converted into degrees, or a simulator source. Others need homing/indexing before
  * ranges and targets are safe. Until the coordinate is referenced, {@link #targetRange()} should
  * return an invalid range and position targets should not be applied to hardware.</p>
+ *
+ * <h2>Stop lifecycle</h2>
+ *
+ * <p>This interface does not define a second position-specific meaning for stop. The inherited
+ * {@link #stop()} is terminal for every Plant. Its concrete position realization performs its
+ * natural final action: a standard servo normally retains its last commanded position, while a
+ * motor- or framework-regulated path may remove power. Holding a position while the Plant remains
+ * active is expressed through its target graph rather than lifecycle stop. When stop returns
+ * normally, the Plant's cached applied position remains its last applied target; a throwing output
+ * stop leaves that physical result unproven.</p>
  */
 public interface PositionPlant extends Plant {
 
@@ -125,6 +135,7 @@ public interface PositionPlant extends Plant {
      * @param plantPosition finite reference value in plant units
      * @throws IllegalArgumentException if {@code plantPosition} is non-finite
      * @throws IllegalStateException if the reference cannot produce a finite required mapping
+     *                               or this Plant has been stopped
      */
     void establishReferenceAt(double plantPosition);
 
@@ -139,7 +150,7 @@ public interface PositionPlant extends Plant {
      * @param clock         current loop clock used to sample native feedback consistently
      * @throws IllegalArgumentException if {@code plantPosition} is non-finite
      * @throws IllegalStateException if feedback is unavailable or the reference cannot produce a
-     *                               finite required mapping
+     *                               finite required mapping, or this Plant has been stopped
      */
     default void establishReferenceAt(double plantPosition, LoopClock clock) {
         establishReferenceAt(plantPosition);
@@ -181,6 +192,7 @@ public interface PositionPlant extends Plant {
      * @throws IllegalArgumentException if an otherwise eligible search receives non-finite or
      *                                  out-of-range power
      * @throws IllegalStateException if calibration search is unsupported or already active
+     *                               or this Plant has been stopped
      */
     default void beginCalibrationSearch(double power) {
         throw new IllegalStateException("This PositionPlant does not support calibration search drive");
@@ -189,12 +201,13 @@ public interface PositionPlant extends Plant {
     /**
      * Release an acquired calibration search and request an immediate stop of its temporary output.
      *
-     * <p>Normal target resolution resumes on the next owner {@link #update(LoopClock)}. This
-     * active-only operation is safe to repeat after release; it does not disable the Plant or
-     * change its persistent command/target graph. Search ownership must be cleared before an
-     * external stop callback, so a later owner update cannot refresh search power if that callback
-     * throws. A throwing stop leaves the physical output state unknown and propagates that failure;
-     * it must not be described as a confirmed physical stop.</p>
+     * <p>Normal target resolution resumes on the next owner {@link #update(LoopClock)} while the
+     * Plant remains active. This operation is safe to repeat after release; it does not disable the
+     * Plant or change its persistent command/target graph. After terminal {@link #stop()}, it is a
+     * harmless no-op and cannot resume or restart the Plant. Search ownership must be cleared before
+     * an external stop callback, so a later owner update cannot refresh search power if that callback
+     * throws. A throwing output stop leaves the physical output state unknown and propagates that
+     * failure; it must not be described as a confirmed physical stop.</p>
      */
     default void endCalibrationSearch() {
         // default: no search mode to exit

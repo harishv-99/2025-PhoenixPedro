@@ -128,15 +128,16 @@ final class IntakeMechanism implements RobotProgram.Output {
 
     @Override
     public void stop() {
-        CleanupActions.attemptAll(
-                () -> intake.commandTarget().set(0.0),
-                intake::stop);
+        intake.stop();
     }
 }
 ```
 
 Direct power Plant targets are normalized to `[-1, +1]`. A Task changes the command target; the
-mechanism remains the only Plant update and stop owner.
+mechanism remains the only Plant update and stop owner. `Plant.stop()` is final for that Plant
+instance: it applies the realization's natural stop and makes later updates inert without rewriting
+the resolver or command target. Use a zero command for active-match idle; construct a fresh Plant
+for another lifecycle.
 
 ## Choose a Plant recipe
 

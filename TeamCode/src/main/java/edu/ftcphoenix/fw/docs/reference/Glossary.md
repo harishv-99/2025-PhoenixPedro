@@ -79,6 +79,8 @@ Work remembered until behavior can consume it, such as queued shots.
 
 The framework mechanism runtime. One final `PlantTargetResolver` selects a numeric target; the Plant
 applies bounds, references, guards, control, and hardware output when its owner updates it.
+`Plant.stop()` applies the realization's natural final stop and makes that Plant instance terminal;
+another lifecycle uses a newly constructed Plant.
 
 ### `PlantTargetResolver`
 

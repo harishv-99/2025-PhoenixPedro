@@ -230,7 +230,8 @@ The first finite sample establishes the baseline and returns `0.0`. A zero-time 
 previous rate without consuming movement; a regressing clock re-establishes the baseline. A
 non-finite sample or calculated rate returns `NaN` for that cycle without poisoning the last valid
 baseline. Calling `reset()` propagates upstream and clears the baseline, so restart the estimator at
-an intentional lifecycle boundary—normally while a regulated mechanism is stopped.
+an intentional source lifecycle boundary. An advanced owner may do this while its active mechanism
+is safely idle; terminal `Plant.stop()` is not a reset point and that Plant is never restarted.
 
 `ratePerSecond()` deliberately does not guess a counter width, angular period, discontinuity, sensor
 direction, counts per revolution, or filter. Unwrap a periodic or wrapping position in the layer that

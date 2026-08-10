@@ -66,7 +66,8 @@ public interface Plant {
      * and refresh measurement/status caches. A searchable position Plant may instead submit its
      * active temporary search command. Robot code calls this once per loop after updating the shared
      * {@link LoopClock} and advancing behavior Tasks; Tasks request behavior but do not become
-     * competing Plant heartbeat owners.</p>
+     * competing Plant heartbeat owners. After {@link #stop()}, this method is permanently inert for
+     * this Plant instance.</p>
      */
     void update(LoopClock clock);
 
@@ -137,8 +138,9 @@ public interface Plant {
      *
      * <p>Open-loop plants default to {@code false} because Phoenix cannot prove physical arrival.
      * Framework-regulated feedback Plants additionally require the latest regulated actuation to
-     * have completed normally; reset, stop, or a failed actuation invalidates completion evidence
-     * until a later successful update.</p>
+     * have completed normally; stop or a failed actuation invalidates completion evidence. A
+     * failed actuation may be retried by an advanced host after correcting its cause, while an
+     * explicit stop is terminal.</p>
      */
     default boolean atTarget() {
         return false;
@@ -198,20 +200,21 @@ public interface Plant {
     }
 
     /**
-     * Reset transient state such as controllers, target guards, and cached measurements.
+     * Permanently stop this Plant instance using its realization's natural stop behavior.
      *
-     * <p>For a framework-regulated Plant, reset invalidates completion and resets the regulator but
-     * does not write or imply a stopped actuator command.</p>
-     */
-    default void reset() {
-    }
-
-    /**
-     * Immediately stop driving this plant in the most reasonable way for its implementation.
+     * <p>The Plant becomes terminal before any output or controller callback is invoked. A later
+     * {@link #update(LoopClock)} is therefore inert: it does not sample feedback, resolve a target,
+     * advance a plan or guard, evaluate a controller, or command hardware. Repeated calls are
+     * harmless. If cleanup throws, that failure is propagated but the Plant remains terminal; use a
+     * newly constructed Plant for another lifecycle.</p>
      *
-     * <p>Framework-regulated implementations attempt to stop owned outputs before resetting the
-     * regulator, invalidate completion evidence, and propagate runtime cleanup failures. A normally
-     * returning top-level stop establishes seam-level zero submission, not physical proof.</p>
+     * <p>Natural stop behavior depends on the owned realization. Power and velocity paths attempt
+     * to submit zero. A position output may retain its last position command, while a motor- or
+     * framework-regulated position path may remove power. When cleanup returns normally, target
+     * status is stopped; the applied power/velocity target is zero and an applied position target
+     * remains at its last value. A throwing output stop does not invent those target facts. This
+     * method does not rewrite or reset the Plant's resolver graph, target guards, or optional
+     * {@link #commandTarget()}.</p>
      */
     void stop();
 

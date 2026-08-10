@@ -82,11 +82,17 @@ public final class StarterIntakeAndControlsTest {
 
         assertEquals(1, output.stopCalls);
         assertEquals(0.0, output.commandedPower, 0.0);
-        assertEquals(StarterIntake.Mode.STOPPED, intake.status().mode());
+        assertEquals(-0.45, plant.commandTarget().get(), 0.0);
+        assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
+
+        intake.setMode(StarterIntake.Mode.COLLECT);
+        intake.update(time.nextCycle(0.02));
+        assertEquals(0.0, output.commandedPower, 0.0);
+        assertEquals(StarterIntake.Mode.COLLECT, intake.status().mode());
     }
 
     @Test
-    public void stopStillStopsPlantWhenClearingTheRetainedRequestFails() {
+    public void stopDoesNotRewriteTheGraphOwnedCommand() {
         ScalarTarget failingTarget = new ScalarTarget() {
             @Override
             public void set(double value) {
@@ -107,12 +113,7 @@ public final class StarterIntakeAndControlsTest {
                 0.65,
                 -0.45);
 
-        try {
-            intake.stop();
-            fail("Expected retained-request failure");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("request write failed"));
-        }
+        intake.stop();
 
         assertEquals(1, output.stopCalls);
         assertEquals(0.0, output.commandedPower, 0.0);

@@ -236,9 +236,7 @@ final class IntakeMechanism {
     }
 
     void stop() {
-        CleanupActions.attemptAll(
-                () -> intake.commandTarget().set(STOPPED_POWER),
-                intake::stop);
+        intake.stop();
     }
 }
 ```
@@ -255,6 +253,24 @@ completed Plant. A read-only or planned mechanism also constructs and retains on
 does not require or invent a command target. A policy object that only writes a standalone or
 deliberately shared request and does not own Plant lifecycle receives only the `ScalarTarget` or a
 robot-owned semantic capability.
+
+### Lifecycle stop is not another target
+
+`Plant.stop()` permanently ends that Plant instance. It claims the terminal state before invoking
+the realization's natural stop, and every later `update(clock)` returns before sampling feedback,
+resolving an exact/overlay/equivalent/planned graph, advancing guards or controllers, or commanding
+hardware. Repeated calls are harmless, and a cleanup failure still leaves the Plant terminal.
+
+The resolver graph and optional command target are deliberately left unchanged. A planned or
+read-only Plant therefore needs no plan-specific disable operation, while a shared target is not
+silently changed for another consumer. Use a normal zero-power/zero-velocity command or position
+hold when a mechanism should pause and later resume during the active match. A new lifetime uses a
+new Plant rather than a reset or restart method.
+
+The natural final output action depends on the realization, not merely the public target domain.
+Power and velocity paths submit zero; a standard-servo position path retains its last position
+command; motor and framework-regulated position paths may remove power. `PositionPlant` inherits
+the same terminal `stop()` contract rather than defining a second meaning.
 
 Injecting a completed Plant is an explicit exception for a package-private hardware-neutral test
 seam, a custom hardware adapter, or another deliberately portable host. Label that constructor as
@@ -321,7 +337,8 @@ Every feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` i
 continue.
 Neither option imperatively stops hardware: `cancelTo(...)` changes the command target, while
 the final target still flows through overlays, bounds, references, and guards on the next Plant
-update. An owner-level shutdown must coordinate every related request and behavior layer.
+update. At final owner shutdown, cancel independently owned Tasks and queues, then terminally stop
+the Plant; there is no need to neutralize its resolver graph solely to prevent later actuation.
 
 ## Same command, equivalent periodic positions
 
@@ -766,6 +783,10 @@ complete resolver and may select an enabled overlay instead. Use `resumeTargetin
 should preserve the existing persistent command and resume the unchanged resolver. Timeout and
 active cancellation also preserve that command while requesting a temporary-output stop and
 releasing the search.
+
+That calibration stop is an internal, nonterminal output handoff, not public `Plant.stop()`.
+Calibration can therefore resume normal targeting after it releases search ownership without
+introducing a second public Plant lifecycle method.
 
 The resolver should not decide when zero is trustworthy. Homing, indexing, manual zeroing, and
 semantic presets belong in the robot mechanism/service layer. Finite software values cannot prove

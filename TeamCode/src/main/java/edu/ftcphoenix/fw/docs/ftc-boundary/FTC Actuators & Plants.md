@@ -138,6 +138,37 @@ periodicity or homing/reference questions. Power is simpler still: every direct 
 fixed normalized range `[-1.0, +1.0]`, so there is no redundant bounds step. A finite request outside
 that range clamps during normal targeting.
 
+### One final Plant lifecycle action
+
+`Plant.stop()` permanently ends that Plant instance. It claims the terminal state before invoking
+external cleanup and immediately attempts the selected realization's natural stop. Every later
+`update(clock)` is inert before feedback, resolver or plan, guards, controllers, and hardware. The
+stop leaves the resolver graph, target guards, and optional command target unchanged, so a
+planned/read-only Plant needs no special disable path and a shared command is not silently changed
+for another consumer.
+Repeated stop is harmless; even when cleanup throws, that Plant remains terminal. Construct a new
+Plant for another lifecycle.
+
+When stop returns normally, target status is `STOPPED`; power and velocity applied targets are zero,
+while a position applied target remains at its last applied value. If an output stop throws, the
+lifecycle is still terminal, but Phoenix retains the prior applied/status/resolution facts instead
+of inventing zero, hold, or successful-stop proof.
+
+The contract is shared by `Plant` and `PositionPlant`, but the natural hardware attempt remains
+truthful to the realization:
+
+| Realization | Natural final-stop attempt |
+| --- | --- |
+| Power | Submit zero power |
+| Velocity | Submit zero velocity, or zero regulated power |
+| Standard-servo position | Reassert the last successfully submitted position; do nothing if this adapter has never submitted one |
+| Device-managed motor position | Remove power and return to `RUN_USING_ENCODER` |
+| Framework-regulated position | Stop the regulated power channel and reset controller state |
+
+This is different from active-match idle. Use a zero target when a power or velocity mechanism
+should remain available, and use an ordinary position target when an active mechanism should hold.
+Do not add a second public pause/resume or output-stop path around the Plant source graph.
+
 ### Grouped hardware-name identity
 
 The student-facing calls stay unchanged, but grouped construction validates the configured names
@@ -264,11 +295,10 @@ hardware. If that final defense changes a result, status explains the correction
 limiter is reconciled to the command that was actually applied.
 
 A max-rate guard uses actual elapsed loop time; it does not predict the future loop period. The first
-sample initializes directly to the first guarded candidate, and `stop()`/`reset()` clear dynamic guard
-state. If loop time is temporarily non-finite, it holds the last output until a finite time baseline
-has been restored. If a mechanism needs startup limiting from a known physical position, initialize
-the command target from that measurement or use an appropriate reference policy before requesting
-a far-away target.
+sample initializes directly to the first guarded candidate. If loop time is temporarily non-finite,
+it holds the last output until a finite time baseline has been restored. If a mechanism needs
+startup limiting from a known physical position, initialize the command target from that measurement
+or use an appropriate reference policy before requesting a far-away target.
 
 ---
 
@@ -462,6 +492,14 @@ to keep normalized actuator commands finite and inside their semantic range.
 For a framework-regulated position or velocity Plant, the regulator result passes through one final
 normalized-power boundary immediately before the configured `PowerOutput`:
 
+For regulated **position**, that same `PowerOutput` channel also realizes calibration search. This
+does not reuse the regulator's numeric result: normal control submits each regulator result, while
+search mode bypasses the regulator and submits the independent power selected by
+`PositionCalibrationTasks.search(...).withPower(...)`. The modes are mutually exclusive. A
+device-managed position Plant needs an additional raw-power adapter only because its normal
+`PositionOutput` cannot express open-loop power; `FtcActuators` derives both adapters from the same
+named motor group for ordinary robot code.
+
 | Regulator/output event | Plant behavior |
 |---|---|
 | Finite result inside `[-1.0, +1.0]` | Submit it unchanged, including exact boundaries and signed zero. |
@@ -473,13 +511,20 @@ Finite saturation at this universal boundary is normal actuator-domain behavior.
 the regulator nor supplies generic anti-windup. Use an outermost `outputLimited(...)` when the robot
 intentionally needs a narrower or asymmetric policy such as `[0.0, maximumFlywheelPower]`.
 
-`reset()` clears regulator/completion state but does not send a hardware command. The last normally
-submitted normalized command therefore remains the truthful command fact until another output
-operation returns normally. `stop()` attempts to submit zero before resetting the regulator and
-attempts both operations even when one fails. A normally returning top-level stop supports a
-seam-level "zero submitted" fact even if regulator reset then fails; a throwing output stop leaves
-the command unknown. In either case, `atTarget()` and `atTarget(value)` stay false until a complete
-later regulated actuation returns normally.
+The public Plant has no reset or restart method. A tuning owner may reset its retained regulator
+directly while it separately owns a safe actuator policy, but that regulator reset does not send a
+hardware command. Terminal `Plant.stop()` attempts to submit zero before resetting the regulator and
+attempts both operations even when one fails. If the output-zero submission succeeds but the later
+regulator reset fails, the stop throws while retaining the truthful seam-level "zero submitted"
+fact. If the output stop itself throws, cleanup cannot invent that fact. Either way the Plant remains
+terminal, and `atTarget()` and `atTarget(value)` cannot become true from a later update.
+
+A runtime mapping, regulator, or output failure uses an internal nonterminal fail-stop,
+resets the control state it owns, and propagates the original failure. This is not public
+`Plant.stop()`: an advanced/custom host may correct the cause and retry a later update. The ordinary
+managed runtime instead treats the propagated failure as program-terminal cleanup. A successful
+internal output stop may publish target status `STOPPED` as a diagnostic fact even though that
+advanced retry remains possible; `PlantTargetStatus` is not a terminal-lifecycle query.
 
 The debug fields deliberately keep different kinds of truth separate:
 
@@ -683,10 +728,11 @@ Plant-unit feedback arithmetic must finish finite; otherwise measurement is unav
 `atTarget()` is false.
 
 A runtime forward-mapping overflow throws an actionable `IllegalStateException` before submitting
-the invalid command, then best-effort invokes the output's natural stop. If that cleanup returns
-normally, the Plant exposes its ordinary stopped state. If cleanup itself fails, that failure is
-suppressed under the original mapping failure and prior applied/status/resolution state is retained.
-This deterministic mapping policy does not claim that arbitrary SDK writes are transactional.
+the invalid command, then best-effort invokes the output's natural nonterminal fail-stop. It does
+not call terminal `Plant.stop()`, so an advanced host may correct the cause and retry a later update.
+If cleanup itself fails, that failure is suppressed under the original mapping failure and prior
+applied/status/resolution state is retained. This deterministic mapping policy does not claim that
+arbitrary SDK writes are transactional.
 
 ---
 
@@ -983,8 +1029,9 @@ The builder hides that acquisition difference; robot code still chooses only whi
 source it wired.
 
 The first valid external-position sample establishes the baseline and reports bootstrap velocity
-`0.0`. Plant/source reset clears that history, so reset feedback while the mechanism is stopped or
-otherwise account for the new baseline in robot policy. Repeated samples in one
+`0.0`. A newly constructed Plant/source lifetime starts with a fresh baseline. An advanced owner of
+a directly supplied feedback source may reset that source while its active mechanism is safely idle,
+but a terminally stopped Plant is never restarted. Repeated samples in one
 `LoopClock.cycle()` reuse one result, skipped cycles use their complete elapsed interval, and the
 estimator does not hide smoothing, counts-per-revolution conversion, or outlier policy.
 
@@ -1327,7 +1374,10 @@ hardware resolution. A runtime-dependent reference gets core candidate-map valid
 established and a final FTC-domain check before each realized write. During operation, Phoenix
 computes and validates every child command into temporaries before writing the first child. That
 prevents a predictable later-child mapping error from moving an earlier child, but it does not make
-sequential SDK writes atomic if an actual device call fails.
+sequential SDK writes atomic if an actual device call fails. This preflight guarantee covers the
+requested command itself. If rejection propagates through a Plant update, the Plant then invokes
+the group's natural stop as separate nonterminal fail-safe cleanup, so zero-power/zero-velocity or
+position-stop writes may follow the rejection.
 
 ### Opposed flywheels with a fixed speed ratio
 
@@ -1350,9 +1400,11 @@ this.flywheels = FtcActuators.plant(hardwareMap)
 
 A shared target of `2500.0` commands the reference child to `2500.0` and the scaled child to
 `2400.0`. An active target of exact zero passes through the scale and submits zero to both children.
-Lifecycle `stop()` invokes each child's natural stop directly. Those paths agree on zero actuation,
-but they need not have the same FTC mode acquisition or lifecycle sequence; for example, an active
-command may assert its device-managed mode while a lifecycle stop need not reacquire it.
+Terminal lifecycle `stop()` invokes each child's natural stop directly, leaves the command unchanged,
+and prevents the Plant from realizing that command or any later target. The active-zero and
+lifecycle paths agree on zero actuation, but they need not have the same FTC mode acquisition or
+lifecycle sequence; for example, an active command may assert its device-managed mode while
+lifecycle stop need not reacquire it.
 
 Grouped device-managed feedback inverse-maps each child's sample into shared group units and reports
 their overflow-safe arithmetic mean. Consequently, grouped `atTarget()` compares that aggregate
