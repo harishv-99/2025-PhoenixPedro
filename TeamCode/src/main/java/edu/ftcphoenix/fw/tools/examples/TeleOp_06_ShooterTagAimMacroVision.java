@@ -45,7 +45,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
 /**
- * <h1>Example 06: Shooter + DriveGuidance Auto-Aim + Vision Distance + Macro</h1>
+ * <h2>Example 06: Shooter + DriveGuidance Auto-Aim + Vision Distance + Macro</h2>
  *
  * <p>This example combines:</p>
  *

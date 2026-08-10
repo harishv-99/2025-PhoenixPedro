@@ -1,0 +1,100 @@
+[project]
+site_name = "Phoenix Framework"
+site_url = "https://harishv-99.github.io/2025-PhoenixPedro/"
+site_description = "Beginner-first guides and API reference for the Phoenix FTC robot framework."
+site_author = "Phoenix FTC"
+docs_dir = "TeamCode/src/main/java/edu/ftcphoenix"
+site_dir = "build/docs-site"
+
+nav = [
+  { "Home" = "README.md" },
+  { "Start here" = [
+    { "Documentation home" = "fw/docs/README.md" },
+    { "Getting started" = "fw/docs/getting-started/README.md" },
+    { "Phoenix in five minutes" = "fw/docs/getting-started/Framework Overview.md" },
+    { "Beginner course checklist" = "fw/docs/getting-started/Beginner's Guide.md" },
+    { "1. Build and run" = "fw/docs/getting-started/Build and Run.md" },
+    { "2. Your first mechanism" = "fw/docs/getting-started/First Mechanism.md" },
+    { "3. Your first TeleOp" = "fw/docs/getting-started/First TeleOp.md" },
+    { "4. Your first Task and Auto" = "fw/docs/getting-started/First Task and Auto.md" },
+    { "Optional: your first Pedro Auto" = "fw/docs/getting-started/First Pedro Auto.md" },
+  ] },
+  { "Reference and troubleshooting" = [
+    { "Reference home" = "fw/docs/reference/README.md" },
+    { "Phoenix Cheat Sheet" = "fw/docs/reference/Phoenix Cheat Sheet.md" },
+    { "Glossary" = "fw/docs/reference/Glossary.md" },
+    { "Troubleshooting home" = "fw/docs/troubleshooting/README.md" },
+    { "Common Problems" = "fw/docs/troubleshooting/Common Problems.md" },
+  ] },
+  { "API reference" = "api/" },
+  { "Examples" = [
+    { "Examples home" = "fw/docs/examples/README.md" },
+    { "Modern starter robot" = "fw/docs/examples/Modern Starter Robot.md" },
+    { "Manual-lifecycle concept labs" = "fw/docs/examples/Examples Progression & Layered Mechanisms.md" },
+    { "Layered shooter" = "fw/docs/examples/Layered Shooter Example.md" },
+    { "Shooter case study" = "fw/docs/examples/Shooter Case Study & Examples Walkthrough.md" },
+    { "Pedro autonomous reference" = "fw/docs/examples/Pedro Autonomous Reference.md" },
+  ] },
+  { "Core concepts" = [
+    { "Core concepts home" = "fw/docs/core-concepts/README.md" },
+    { "Loop structure" = "fw/docs/core-concepts/Loop Structure.md" },
+    { "Sources and signals" = "fw/docs/core-concepts/Sources and Signals.md" },
+  ] },
+  { "Mechanisms and FTC hardware" = [
+    { "FTC boundary home" = "fw/docs/ftc-boundary/README.md" },
+    { "FTC actuators and Plants" = "fw/docs/ftc-boundary/FTC Actuators & Plants.md" },
+    { "FTC sensors" = "fw/docs/ftc-boundary/FTC Sensors.md" },
+    { "FTC UI helpers" = "fw/docs/ftc-boundary/FTC UI Helpers.md" },
+    { "Auto-to-TeleOp handoff" = "fw/docs/ftc-boundary/FTC Auto-to-TeleOp Handoff.md" },
+  ] },
+  { "Tasks and robot design" = [
+    { "Robot design home" = "fw/docs/design/README.md" },
+    { "Tasks and macros" = "fw/docs/design/Tasks & Macros Quickstart.md" },
+    { "Architecture roles and controls" = "fw/docs/design/Framework Lanes & Robot Controls.md" },
+    { "Robot capabilities and mode clients" = "fw/docs/design/Robot Capabilities & Mode Clients.md" },
+    { "Recommended robot design" = "fw/docs/design/Recommended Robot Design.md" },
+    { "Supervisors and pipelines" = "fw/docs/design/Supervisors & Pipelines.md" },
+    { "Output Tasks and queues" = "fw/docs/design/Output Tasks & Queues.md" },
+  ] },
+  { "Drive, spatial reasoning, and vision" = [
+    { "Drive and vision home" = "fw/docs/drive-vision/README.md" },
+    { "Spatial queries" = "fw/docs/drive-vision/Spatial Queries.md" },
+    { "Drive guidance" = "fw/docs/drive-vision/Drive Guidance.md" },
+    { "Mechanism target planning" = "fw/docs/drive-vision/Mechanism Target Planning.md" },
+    { "AprilTag localization and fixed layouts" = "fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md" },
+    { "AprilTag practice setup" = "fw/docs/drive-vision/AprilTag Practice Setup.md" },
+  ] },
+  { "Testing and calibration" = [
+    { "Testing and calibration home" = "fw/docs/testing-calibration/README.md" },
+    { "Robot calibration tutorials" = "fw/docs/testing-calibration/Robot Calibration Tutorials.md" },
+    { "Software PIDF tuning" = "fw/docs/testing-calibration/Software PIDF Tuning Workflow.md" },
+    { "Guided calibration walkthroughs" = "fw/docs/testing-calibration/Guided Calibration Walkthroughs.md" },
+  ] },
+  { "Production Phoenix robot" = [
+    { "Production robot home" = "robots/phoenix/README.md" },
+    { "Phoenix architecture" = "robots/phoenix/Phoenix Architecture.md" },
+    { "Phoenix calibration guide" = "robots/phoenix/Phoenix Calibration Guide.md" },
+    { "Phoenix Pedro autonomous" = "robots/phoenix/autonomous/pedro/README.md" },
+  ] },
+  { "Pedro Pathing integration" = "fw/integrations/pedro/README.md" },
+  { "Maintainers" = [
+    { "Maintainers home" = "fw/docs/maintainers/README.md" },
+    { "Framework Principles" = "fw/Framework Principles.md" },
+    { "Maintainer Notes" = "fw/docs/maintainers/Maintainer Notes.md" },
+    { "Framework package doorway" = "fw/README.md" },
+  ] },
+]
+
+[project.theme]
+variant = "modern"
+features = [
+  "navigation.sections",
+  "navigation.path",
+  "navigation.top",
+  "search.highlight",
+  "toc.follow",
+]
+
+[project.validation]
+invalid_links = true
+invalid_link_anchors = true

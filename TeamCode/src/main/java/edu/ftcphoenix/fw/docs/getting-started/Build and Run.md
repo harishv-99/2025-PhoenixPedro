@@ -15,7 +15,8 @@ motion.
 
 **Files for this lesson:**
 
-- repository [`README.md`](<../../../../../../../../../README.md>) — project and FTC SDK setup;
+- public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
+  and FTC SDK setup;
 - [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) — the first course
   OpMode;
 - [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) — the later simple Auto.

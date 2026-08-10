@@ -127,7 +127,7 @@ public interface Source<T> {
      * modeled as a source. When the window boundary is itself a signal in the source graph,
      * prefer {@link #accumulateUntil(BooleanSource, BiFunction, Object)}.</p>
      *
-     * <p>Contract:
+     * <p>Contract:</p>
      * <ul>
      *   <li>The upstream source must never return {@code null}.</li>
      *   <li>{@code initial} must be non-null.</li>
@@ -136,7 +136,6 @@ public interface Source<T> {
      *   <li>{@code step} must return a non-null immutable or otherwise independently stable
      *       value. Returning the same value-semantic instance for an unchanged state is valid.</li>
      * </ul>
-     * </p>
      *
      * <p>A reducer failure leaves the previously published state intact and may be retried in the
      * same cycle. Generic code cannot truthfully roll back a mutable object that the reducer changed
@@ -333,21 +332,19 @@ public interface Source<T> {
      * when the source is not sampled every loop and a deliberate clock reset cannot make an old
      * value current again.</p>
      *
-     * <p>When the input becomes invalid:
+     * <p>When the input becomes invalid:</p>
      * <ul>
      *   <li>If the last valid value is newer than {@code maxHoldSec}, the last valid value is returned.</li>
      *   <li>Otherwise, {@code fallback} is returned.</li>
      * </ul>
-     * </p>
      *
-     * <p>Contract:
+     * <p>Contract:</p>
      * <ul>
      *   <li>The upstream source must never return {@code null}.</li>
      *   <li>{@code fallback} must be non-null.</li>
      *   <li>{@code isValid} is a side-effect-free value decision and may be retried after a
      *       failure.</li>
      * </ul>
-     * </p>
      *
      * @param isValid    predicate that defines which values are considered valid
      * @param maxHoldSec finite maximum age of the held value in seconds; must be {@code >= 0}

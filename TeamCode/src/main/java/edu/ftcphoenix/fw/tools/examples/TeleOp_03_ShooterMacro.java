@@ -26,7 +26,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
 /**
- * <h1>Example 03: Shooter Macro (Tasks + ScalarTasks)</h1>
+ * <h2>Example 03: Shooter Macro (Tasks + ScalarTasks)</h2>
  *
  * <p>This example builds on <b>Example 02: Shooter Basic</b> and shows how
  * to use the {@code fw.task} and {@code ScalarTasks} utilities to create a
@@ -50,7 +50,6 @@ import edu.ftcphoenix.fw.task.Tasks;
  *   </li>
  *   <li>Spin the shooter back down to 0.</li>
  * </ol>
- * <p>
  * <hr/>
  *
  * <h2>Big picture: what this example teaches</h2>
@@ -83,7 +82,6 @@ import edu.ftcphoenix.fw.task.Tasks;
  *     </ul>
  *   </li>
  * </ol>
- * <p>
  * <hr/>
  *
  * <h2>Hardware assumed (same as Example 02)</h2>
@@ -108,7 +106,6 @@ import edu.ftcphoenix.fw.task.Tasks;
  *     </ul>
  *   </li>
  * </ul>
- * <p>
  * <hr/>
  *
  * <h2>Driver controls (suggested)</h2>
@@ -128,7 +125,6 @@ import edu.ftcphoenix.fw.task.Tasks;
  *     </ul>
  *   </li>
  * </ul>
- * <p>
  * <hr/>
  *
  * <h2>What this example does NOT cover yet</h2>

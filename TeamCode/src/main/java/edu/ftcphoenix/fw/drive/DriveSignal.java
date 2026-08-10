@@ -202,13 +202,13 @@ public final class DriveSignal {
     /**
      * Linearly interpolate between this signal and {@code other}.
      *
-     * <p>{@code alpha} is clamped to [0, 1]:
+     * <p>{@code alpha} is clamped to [0, 1]:</p>
      * <ul>
      *   <li>{@code alpha = 0} → returns this signal.</li>
      *   <li>{@code alpha = 1} → returns {@code other}.</li>
      *   <li>Values in between produce a blended command.</li>
      * </ul>
-     * This is useful for "driver assist" behaviors where you want to blend
+     * <p>This is useful for "driver assist" behaviors where you want to blend
      * manual control with some automatic behavior.</p>
      *
      * @param other the target signal to blend toward; if null, this signal is returned

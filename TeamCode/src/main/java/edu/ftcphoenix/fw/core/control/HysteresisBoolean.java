@@ -38,12 +38,14 @@ public final class HysteresisBoolean {
      */
     public enum Mode {
         /**
-         * Turn ON when value is <= enter threshold, and OFF when value is >= exit threshold.
+         * Turn ON when {@code value <= enterThreshold}, and OFF when
+         * {@code value >= exitThreshold}.
          */
         ON_WHEN_BELOW_OFF_WHEN_ABOVE,
 
         /**
-         * Turn ON when value is >= enter threshold, and OFF when value is <= exit threshold.
+         * Turn ON when {@code value >= enterThreshold}, and OFF when
+         * {@code value <= exitThreshold}.
          */
         ON_WHEN_ABOVE_OFF_WHEN_BELOW
     }

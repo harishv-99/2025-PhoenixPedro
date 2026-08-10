@@ -23,7 +23,7 @@ import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
- * <h1>Example 04: Shooter with Interpolation Table (manual "distance")</h1>
+ * <h2>Example 04: Shooter with Interpolation Table (manual "distance")</h2>
  *
  * <p>This example builds on the shooter examples and shows how to use
  * {@link InterpolatingTable1D} to map a "distance to target" into a
@@ -52,7 +52,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *
  * <p>Later, you can replace this manual distance with a real vision
  * distance (AprilTag) by swapping only the "distance source" logic.</p>
- * <p>
  * <hr/>
  *
  * <h2>Why a manual distance source?</h2>
@@ -73,7 +72,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * distanceInches = vision.getDistanceInches(); // from AprilTag
  * shooter.commandTarget().set(table.interpolate(distanceInches));
  * }</pre>
- * <p>
  * <hr/>
  *
  * <h2>Hardware assumed</h2>
@@ -87,7 +85,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *     </ul>
  *   </li>
  * </ul>
- * <p>
  * <hr/>
  *
  * <h2>Driver controls (suggested)</h2>
@@ -107,7 +104,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *     </ul>
  *   </li>
  * </ul>
- * <p>
  * <hr/>
  *
  * <h2>Calibration table (distance → velocity)</h2>

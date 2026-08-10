@@ -5,9 +5,9 @@ study only the focused idea.
 
 | Classification | Example | Use it for |
 |---|---|---|
-| **Copyable starter** | [`Modern Starter Robot`](<Modern Starter Robot.md>) and its [compiled source](<../../../robots/examples/starter/>) | The ordinary managed TeleOp/Auto structure for a new robot. |
-| **Optional Pedro integration reference** | [`Pedro Autonomous Reference`](<Pedro Autonomous Reference.md>) and its [compiled source](<../../../robots/examples/pedro/>) | A small managed Auto with one Pedro boundary, studied after the guided software lesson. |
-| **Concept labs** | [`TeleOp_01` through `TeleOp_09`](<../../tools/examples/>) | Focused framework behavior with explicit lifecycle phases visible. Do not copy their manual host as the ordinary robot architecture. |
+| **Copyable starter** | [`Modern Starter Robot`](<Modern Starter Robot.md>) and its [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) entry | The ordinary managed TeleOp/Auto structure for a new robot. |
+| **Optional Pedro integration reference** | [`Pedro Autonomous Reference`](<Pedro Autonomous Reference.md>) and its [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) entry | A small managed Auto with one Pedro boundary, studied after the guided software lesson. |
+| **Concept labs** | Start with [`TeleOp_01_MecanumBasic.java`](<../../tools/examples/TeleOp_01_MecanumBasic.java>), then follow the `TeleOp_02` through `TeleOp_09` progression | Focused framework behavior with explicit lifecycle phases visible. Do not copy their manual host as the ordinary robot architecture. |
 | **Advanced case study** | [`Layered Shooter Example`](<Layered Shooter Example.md>) | Held, frame-valued, and pending requests inside one mechanism owner. |
 | **Advanced case study** | [`Shooter Case Study & Examples Walkthrough`](<Shooter Case Study & Examples Walkthrough.md>) | AprilTag selection, shared aim intent, and shooter guidance. |
 | **Production reference** | [`Phoenix robot`](<../../../robots/phoenix/README.md>) | A complete season robot with real policy, readiness, localization, scoring, and Pedro routes. |

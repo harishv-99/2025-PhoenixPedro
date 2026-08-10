@@ -31,7 +31,7 @@ public interface RobotHeading2d {
      *
      * @param fieldToRobot robot pose in the field frame
      * @param tolRad       absolute tolerance in radians
-     * @return true if |error| <= tolRad
+     * @return true if {@code Math.abs(error) <= tolRad}
      */
     default boolean within(Pose2d fieldToRobot, double tolRad) {
         double e = errorRad(fieldToRobot);

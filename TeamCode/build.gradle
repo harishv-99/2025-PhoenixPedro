@@ -8,6 +8,8 @@
 // please think carefully as to whether such customizations are really necessary
 // before doing so.
 
+import org.gradle.external.javadoc.JavadocMemberLevel
+
 
 // Custom definitions may go here
 
@@ -27,4 +29,31 @@ dependencies {
     implementation project(':FtcRobotController')
 
     testImplementation 'junit:junit:4.13.2'
+}
+
+def phoenixAndroidComponents = androidComponents
+phoenixAndroidComponents.onVariants(
+        phoenixAndroidComponents.selector().withName('debug')) { variant ->
+    tasks.register('phoenixJavadocs', Javadoc) {
+        group = 'documentation'
+        description = 'Generates strict API documentation for the Phoenix framework.'
+
+        source(variant.sources.java.all)
+        include('edu/ftcphoenix/fw/**/*.java')
+        classpath = files(
+                variant.compileClasspath,
+                phoenixAndroidComponents.sdkComponents.bootClasspath)
+        destinationDir = rootProject.layout.buildDirectory.dir('docs-site/api').get().asFile
+        failOnError = true
+
+        options.memberLevel = JavadocMemberLevel.PROTECTED
+        options.encoding = 'UTF-8'
+        options.charSet = 'UTF-8'
+        options.docEncoding = 'UTF-8'
+        options.windowTitle = 'Phoenix Framework API'
+        options.docTitle = 'Phoenix Framework API'
+        options.noTimestamp = true
+        options.addBooleanOption('Xdoclint:all,-missing', true)
+        options.addBooleanOption('Werror', true)
+    }
 }

@@ -41,7 +41,7 @@ import edu.ftcphoenix.fw.spatial.ReferencePoint2d;
 import edu.ftcphoenix.fw.spatial.References;
 
 /**
- * <h1>Example 05: Shooter + DriveGuidance Auto-Aim + Vision Distance</h1>
+ * <h2>Example 05: Shooter + DriveGuidance Auto-Aim + Vision Distance</h2>
  *
  * <p>This example combines three ideas:</p>
  *
