@@ -10,18 +10,22 @@ one ordinary Phoenix tool for answering two hardware questions:
 The tool establishes configuration evidence. It does not automatically find a hard stop, tune a
 controller, edit a profile, or prove that a mechanism is safe under production load.
 
-## Before Driver Station START
+## Before starting the OpMode
 
 - Remove game pieces and support the robot so the selected device cannot drive it away.
 - Keep people, hair, tools, and wires outside every possible motion path.
 - Begin unloaded. Do not use the generic tool on an unsupported gravity-loaded arm or lift.
 - Decide what **positive** motion should mean before testing direction.
-- Know where Driver Station STOP is and assign one person to use it.
+- Know how to stop the selected tester entry and assign one person to do it. When using Panels,
+  browser STOP is not a physical emergency stop; keep immediate access to robot power.
 - For a bounded mechanism, mark a conservative point short of each physical obstruction. Capture
   these safe points, not a stall or collision.
 
-Run the ready-made **FW: Testers** OpMode, then open **HW: Actuator Bring-up**. The picker lists
-configured hardware by type and name, for example:
+Run either **FW: Testers (Driver Station)** with physical gamepad input or
+**FW: Testers (Panels)** with Panels virtual-gamepad input, then open **HW: Actuator Bring-up**.
+Both entries use this same tester, controls, and telemetry. See the
+[`testing and calibration`](<README.md>) entry guide before using Panels. The picker lists configured
+hardware by type and name, for example:
 
 ```text
 [DC motor] lift
@@ -30,13 +34,13 @@ configured hardware by type and name, for example:
 ```
 
 Selecting an entry during INIT only inspects it. The tester does not command an actuator until you
-press Driver Station START and the controls have returned to neutral.
+start the OpMode and the controls have returned to neutral.
 
 ## One control grammar
 
 | Control | Meaning |
 |---|---|
-| A | Arm after Driver Station START and a neutral sample; a standard servo reporting unknown-state `NaN` uses the deliberate two-press bootstrap below |
+| A | Arm after the OpMode starts and a neutral sample; a standard servo reporting unknown-state `NaN` uses the deliberate two-press bootstrap below |
 | B | Disarm; write motor/CR-servo power zero, or stop standard-servo jog updates and retain its last request |
 | X | While disarmed, test the other temporary FTC `Direction`; captures are cleared |
 | D-pad up/down | While disarmed, increase/decrease the conservative jog rate |
@@ -66,7 +70,7 @@ behavior. It never resets the encoder.
 
 For direction-only devices such as an intake or flywheel:
 
-1. Press Driver Station START, neutralize the controls, and press A.
+1. Start the OpMode, neutralize the controls, and press A.
 2. Hold the right bumper briefly to test positive command; use the left bumper only to cross-check
    negative command.
 3. Press B and confirm the positive direction means what you decided.

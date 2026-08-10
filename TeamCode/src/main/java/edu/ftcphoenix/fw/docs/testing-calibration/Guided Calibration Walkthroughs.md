@@ -180,4 +180,5 @@ Use labels that make the role obvious:
 - `Loc:` for validation of a localizer or pose-estimation pipeline
 - `Guide:` for the deliberate walkthrough entrypoint
 
-Short labels matter. Students should be able to find the right tester from across the room on the Driver Station screen.
+Short labels matter. Students should be able to find the right tester from across the room on the
+selected telemetry console.

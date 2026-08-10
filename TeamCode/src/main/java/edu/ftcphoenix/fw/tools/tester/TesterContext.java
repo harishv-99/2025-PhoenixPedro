@@ -29,13 +29,18 @@ public final class TesterContext {
      */
     public final HardwareMap hw;
 
-    /** FTC telemetry (typically the Driver Hub telemetry). */
+    /**
+     * Host-selected FTC telemetry sink.
+     *
+     * <p>A console adapter may mirror the same row-oriented frame to multiple displays. Testers
+     * write one frame here and never select a transport themselves.</p>
+     */
     public final Telemetry telemetry;
 
-    /** FTC gamepad 1. */
+    /** Stable FTC gamepad 1 owned by the selected tester console. */
     public final Gamepad gamepad1;
 
-    /** FTC gamepad 2. */
+    /** Stable FTC gamepad 2 owned by the selected tester console. */
     public final Gamepad gamepad2;
 
     /**
@@ -50,9 +55,9 @@ public final class TesterContext {
      * Create a tester context.
      *
      * @param hw FTC hardware map
-     * @param telemetry FTC telemetry sink
-     * @param gamepad1 FTC gamepad 1
-     * @param gamepad2 FTC gamepad 2
+     * @param telemetry host-selected FTC telemetry sink
+     * @param gamepad1 stable gamepad 1 from the selected console
+     * @param gamepad2 stable gamepad 2 from the selected console
      * @param clock shared per-loop clock advanced by the tester runner
      */
     public TesterContext(

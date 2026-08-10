@@ -9,6 +9,7 @@ message first: it normally names the invalid value, expected domain, or owner th
 |---|---|
 | Project does not build | Android Studio Gradle/JDK setup and the first compiler error |
 | OpMode is missing on Driver Station | `@Disabled`, annotation, build, and deployment |
+| Panels tester stops after losing its client | Reconnect Panels, then start a fresh Panels tester OpMode |
 | Hardware name error during INIT | Robot Configuration spelling, case, and duplicate group names |
 | START remains blocked | Always-on readiness telemetry and the named calibration/config fact |
 | Motor or servo moves the wrong way | Configured `Direction`, then `HW: Actuator Bring-up` |
@@ -65,6 +66,23 @@ distinct names inside one homogeneous actuator or mecanum group before it resolv
 A group-local duplicate check does not prove physical device identity and does not prevent a
 separate read-only feedback adapter from intentionally using the same configured device.
 
+## The Panels tester loses its client
+
+**FW: Testers (Panels)** accepts only Panels virtual-gamepad input. If no client is connected, its
+last client disconnects, or input cannot be sampled, that tester run terminally fail-stops and
+best-effort stops its active tester. Later reconnecting cannot rearm the same OpMode instance.
+
+Stop the OpMode, reconnect Panels, verify its controls are neutral, then begin a fresh INIT/start.
+Use **FW: Testers (Driver Station)** instead when physical gamepads should own input; the two
+entries never merge or switch input owners. Both entries mirror tester telemetry to Driver Station
+and Panels.
+
+Browser STOP is not a physical emergency stop. Keep immediate access to robot power during every
+powered tester run, and validate disconnect and stop behavior on the actual robot before relying on
+the Panels workflow. Phoenix sees only Panels' total client count. If another client remains after
+the input view closes, the host relies on the pinned Panels transport aging unattended controls to
+neutral; a stalled OpMode loop still cannot apply a new neutral command.
+
 ## FTC START remains blocked
 
 A `RobotProgram.Prestart` may return `BLOCKED` when a complete mode is not ready to operate safely.
@@ -82,7 +100,8 @@ Stop immediately. Do not compensate by changing every target sign.
 1. Confirm which physical member moved.
 2. Check its configured `Direction` at the FTC boundary.
 3. For a group, verify each member independently before testing the group.
-4. Run **FW: Testers → HW: Actuator Bring-up** with the device isolated and robot safely supported.
+4. Run either **FW: Testers (Driver Station) → HW: Actuator Bring-up** or **FW: Testers (Panels) →
+   HW: Actuator Bring-up** with the device isolated and robot safely supported.
 5. Only after direction is correct, tune scale, bounds, gains, or mechanism targets.
 
 Use the [`actuator bring-up runbook`](<../testing-calibration/Actuator Bring-up.md>) and then

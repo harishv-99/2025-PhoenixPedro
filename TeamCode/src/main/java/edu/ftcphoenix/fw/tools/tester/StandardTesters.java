@@ -30,8 +30,9 @@ import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocaliz
  *       path when they already provide their own configured walkthroughs and robot-specific tester
  *       categories (for example Phoenix).</li>
  *   <li><b>Framework-only home suite</b> via {@link #createSuite()}. This is the no-robot-glue
- *       entrypoint used by the framework-owned {@code FW: Testers} OpMode, so teams that copy only
- *       {@code fw} still get a meaningful tester tree immediately.</li>
+ *       entrypoint used by both framework-owned {@code FW: Testers (...)} console OpModes, so
+ *       teams that copy the framework with its pinned Panels integration get a meaningful tester
+ *       tree immediately.</li>
  * </ul>
  *
  * <p>Both paths expose the same ordinary actuator entry: one device-first bring-up wizard. Typed
@@ -233,13 +234,13 @@ public final class StandardTesters {
 
         suite.add(
                 "Advanced: Motor Position",
-                "Driver Station START-locked RUN_TO_POSITION diagnostic with stepped target and power.",
+                "OpMode START-locked RUN_TO_POSITION diagnostic with stepped target and power.",
                 DcMotorPositionTester::new
         );
 
         suite.add(
                 "Advanced: Motor Velocity",
-                "Driver Station START-locked DcMotorEx setVelocity diagnostic with stepped target.",
+                "OpMode START-locked DcMotorEx setVelocity diagnostic with stepped target.",
                 DcMotorVelocityTester::new
         );
 

@@ -1,6 +1,7 @@
 # FTC UI Helpers
 
-Phoenix's FTC UI helpers are small telemetry-screen building blocks for places where the Driver Station needs to show choices during `init_loop()` or a tester run.
+Phoenix's FTC UI helpers are small telemetry-screen building blocks for places where an FTC
+telemetry console needs to show choices during `init_loop()` or a tester run.
 
 The important layering rule is:
 
@@ -18,6 +19,21 @@ edu.ftcphoenix.fw.ftc.ui
 ```
 
 This package is FTC-facing because it renders to `Telemetry` and some helpers enumerate `HardwareMap`. It should not be used by FTC-independent framework core classes.
+
+## Tester console ownership
+
+Phoenix exposes exactly two ready tester entries: **FW: Testers (Driver Station)** and
+**FW: Testers (Panels)**. Both use these same menu helpers, tester suite, and controls, and both mirror
+their row-oriented telemetry to Driver Station and Panels. The named entry is the sole input owner
+for its lifetime: the Driver Station entry reads only physical gamepads, while the Panels entry
+reads only Panels virtual gamepads. Stop and start the other entry instead of merging or switching
+input sources.
+
+The Panels entry terminally fail-stops when it has no connected client, loses its last client, or
+cannot sample input. Reconnection does not rearm that OpMode instance; reconnect and start a fresh
+run. Browser STOP is not a physical emergency stop, so powered tests still require immediate access
+to robot power. These UI helpers remain console-independent; tester code does not create a second
+Panels-specific menu or control grammar.
 
 ## `SelectionMenu<T>`
 

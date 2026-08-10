@@ -166,6 +166,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 79 | DOC-03 | Generated Phoenix documentation site | Done | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
 | 80 | PLANT-03 | Terminal Plant lifecycle | Done | Make `Plant.stop()` terminal, remove broad `Plant.reset()`, and keep recoverable output fail-stop internal. |
 | 81 | TESTER-02 | Canonical actuator bring-up | Done | The reviewed device-first workflow, truthful type-specific evidence, advanced-only diagnostics, synchronized course/docs, and verification are approved for publication. |
+| 82 | TESTER-03 | Driver Station and Panels tester consoles | Done | The reviewed fixed-owner consoles, mirrored telemetry, fail-closed Panels input, synchronized guidance, automated verification, and publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -15545,6 +15546,111 @@ writer, and explicit lifecycle ownership.
   authorized committing the reviewed diff on `codex/tester-02-canonical-actuator-bring-up`, pushing
   it to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it
   into `master`. This authorization applies to TESTER-02 only and does not start another item.
+
+### TESTER-03 - Driver Station and Panels tester consoles
+
+- **Gate 2 approval (2026-08-10):** after reviewing the tester lifecycle, current Panels dependency,
+  telemetry and gamepad APIs, browser OpMode control, disconnect behavior, and future PIDF reuse,
+  the user directed **`Implement the plan.`** TESTER-03 alone is now **In progress** on
+  `codex/tester-03-panels-tester-consoles`, based exactly on fetched
+  `origin/master@be9a583dccbf5c1fe7041e21f8e511441a1a1f36`. Publication is not authorized.
+- **Confirmed failure:** `FW: Testers` requires Driver Station gamepad input and reports only through
+  its injected FTC telemetry sink even though the pinned project already includes Panels. Students
+  working at a bench therefore cannot deliberately choose a browser-owned tester workflow, and a
+  future mechanism-specific tuning workflow has no small, explicit console transport to reuse.
+- **Alternatives considered:** combine physical and browser controls; switch input owners at
+  runtime; build a custom browser menu; replace FTC telemetry throughout the tester API; make
+  Panels mandatory; or expose two parallel OpModes over one tester suite and one control grammar.
+  Combining or switching inputs obscures who can command hardware. A custom menu and new telemetry
+  abstraction duplicate working concepts. The selected design confines the existing pinned vendor
+  dependency to an integration boundary and makes the OpMode name choose one input owner for its
+  whole lifetime.
+- **Chosen public workflow:** expose exactly two ready entries named **`FW: Testers (Driver
+  Station)`** and **`FW: Testers (Panels)`**. Both build `StandardTesters.createSuite()` and mirror
+  the same row-oriented tester telemetry to Driver Station and Panels. The Driver Station entry
+  accepts only its physical gamepads; the Panels entry accepts only Panels virtual gamepads. They
+  never merge controls, and selecting a different owner requires stopping and starting the other
+  OpMode.
+- **Lifecycle and safety:** add one host-owned tester-console seam. Its telemetry and stable gamepad
+  objects are chosen once, and it snapshots inputs immediately before tester `init`, every
+  `initLoop`, `start`, and `loop` callback while the existing host remains the sole `LoopClock` and
+  fail-stop owner. Panels input requires a connected client. An initial input failure prevents
+  tester initialization without calling `stop()` on an untouched tester. No client, loss of the
+  last client, or sampling failure after initialization terminally detaches and best-effort stops
+  the active tester exactly once; a reconnect cannot rearm that OpMode instance. Browser STOP is
+  not presented as a physical emergency stop, and on-robot validation still requires immediate
+  access to robot power.
+- **Boundary and simplicity:** keep all `com.bylazar` types private to
+  `edu.ftcphoenix.fw.integrations.panels`; generic tester interfaces continue to receive FTC
+  `Telemetry` and stable FTC `Gamepad` objects. Reuse the existing D-pad/A/B/bumper/menu grammar in
+  both consoles. The Panels adapter promises the row operations used by Phoenix testers, not every
+  richer FTC retained-item/log semantic. Keep the existing pinned `fullpanels:1.0.12` dependency.
+- **PIDF boundary:** a later mechanism-specific PIDF tool may reuse this console transport,
+  lifecycle, telemetry fan-out, and Panels graph/configuration facilities. It must still activate
+  the real robot-owned mechanism/controller graph and require deliberate application of draft
+  values; TESTER-03 does not add a generic raw-actuator tuner.
+- **Verification plan:** cover console creation/validation, stable refreshed gamepad identities,
+  snapshot-before-callback order, exact input-source isolation, missing client and disconnect
+  terminal cleanup, no callbacks after failure, telemetry fan-out without duplicate commits, exact
+  ready OpMode names/suite parity, synchronized documentation, Panels import boundaries, focused
+  and full unit tests, Java compilation, Javadocs, documentation checks, and `git diff --check`.
+  Hardware remains required to verify browser init/start/stop, dual-display latency, held-control
+  disconnect behavior, and physical actuator fail-stop timing on the pinned Panels runtime.
+- **Implementation record (2026-08-10):** TESTER-03 is **Done**. The advanced
+  `FtcTeleOpTesterOpMode.TesterConsole` seam selects one telemetry sink and two stable gamepad
+  identities once, then samples immediately before tester `init`, `initLoop`, `start`, and `loop`
+  while the original host retains sole clock and lifecycle ownership. The default console keeps
+  raw FTC telemetry/gamepad behavior. Initial sampling precedes tester ownership transfer so an
+  unavailable console cannot broaden `TeleOpTester.stop()` into a pre-init contract.
+- **Panels boundary and ready entries:** added `FtcPanelsTeleOpTesterOpMode` under
+  `fw.integrations.panels`. It privately joins Driver Station and Panels telemetry, freezes either
+  physical or Panels input for the OpMode lifetime, copies Panels state into stable synthetic FTC
+  gamepads, and checks the total client count before and after each remote sample. It reads the
+  pinned `GamepadManager` fields directly because its convenience conversion catches every
+  `Throwable`; Options/START, Share/BACK, face-button, and guide aliases are normalized before the
+  SDK copy can discard them. Removed the ambiguous `FW: Testers` entry and added exactly the
+  parallel `FW: Testers (Driver Station)` and `FW: Testers (Panels)` entries, both returning a fresh
+  `StandardTesters.createSuite()`.
+- **Documentation and audit corrections:** synchronized the beginner course, tester/calibration
+  runbooks, troubleshooting, FTC UI reference, tester Javadocs, and on-screen START wording. The
+  Panels path now names the pinned UI's `OpModes Control`, `Telemetry`, and default `Combined
+  Gamepad`, explains that the widget contains two virtual gamepads rather than merged physical/web
+  input, and keeps future PIDF reuse limited to transport/lifecycle/presentation. Adversarial review
+  corrected an earlier pre-init cleanup mismatch, the pinned widget names, and a telemetry test that
+  initially covered only the ready line. Active-frame coverage now exercises `clearAll`, `addData`,
+  `addLine`, and one `update` on both delegates. The docs also record that Phoenix sees only total
+  client count; another remaining client leaves stale-input neutralization to the pinned Panels
+  transport, which is not an emergency-stop guarantee.
+- **Verification result (2026-08-10):** focused host/Panels/entry-shape/documentation coverage passes
+  **36/36** (`FtcTeleOpTesterOpModeTest` 20, `FtcPanelsTeleOpTesterOpModeTest` 9,
+  `FrameworkTesterOpModesShapeTest` 2, and `DocumentationLinksTest` 5). The full
+  `:TeamCode:testDebugUnitTest` suite passes **142 suites / 1,329 tests, 0 failures, 0 errors,
+  0 skipped**; `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:phoenixJavadocs` succeed.
+  Static scans find exactly two ready annotations, no Panels combined/convenience gamepad API use,
+  and all `com.bylazar` imports confined to `fw.integrations.panels`; tracked and new-file whitespace
+  checks are clean. Gradle emits only the existing Java 8 source/target and FTC sample deprecation
+  warnings. A local strict Zensical render could not run because no real Python/docs virtual
+  environment is installed; Markdown links/fences and Javadocs are verified locally, and the
+  checked-in Pages workflow will perform the strict render on publication.
+- **Hardware scope:** software verification proves host order, stable identities, fixed source
+  isolation, alias mapping, client-count failure handling, one-shot cleanup, telemetry fan-out, and
+  entry shape. A supervised robot check must still verify Panels browser INIT/START/STOP, both
+  displays, control latency, stale-control neutralization, last-client loss while a dead-man command
+  is held, motor/CR-servo zero, standard-servo retained command/no new writes, and immediate access
+  to robot power. Browser STOP is not a physical emergency stop, and a stalled OpMode loop cannot
+  write a new neutral command.
+- **Android Studio audit point (2026-08-10):** inspect the console ownership-transfer order in
+  `FtcTeleOpTesterOpMode`, the direct pinned-manager reads/client checks/alias normalization in
+  `FtcPanelsTeleOpTesterOpMode`, the two parallel ready entries, the focused lifecycle and boundary
+  tests, and the beginner Panels workflow/safety language. No file is staged, committed, pushed, or
+  merged. Stop before publication or another tracker item until the user replies
+  **`TESTER-03 looks good`** and authorizes the combined publication step.
+- **Manual verification and publication authorization (2026-08-10):** the user reviewed TESTER-03,
+  replied **`TESTER-03 looks good`**, and authorized committing the reviewed diff on
+  `codex/tester-03-panels-tester-consoles`, pushing it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. This approval completes Gate 3 for TESTER-03 only and does not start another tracker
+  item. No robot-hardware validation is claimed.
 
 ## Explicitly deferred architectural ideas
 

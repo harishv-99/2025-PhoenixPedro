@@ -9,6 +9,12 @@ controller instead and has a different tuning path.
 Tune in a dedicated tuning/tester OpMode. Production TeleOp and Auto start only from checked-in
 profile values and never read mutable tuning-UI state.
 
+A mechanism-specific tuner may reuse only the tester console transport: fixed input ownership,
+lifecycle, telemetry fan-out, and Panels display/configuration delivery. The tuning OpMode must
+still activate the real robot-owned mechanism and controller graph. It must publish draft values
+coherently and apply them deliberately on the owning OpMode loop. The console transport is not a
+generic raw-actuator PIDF tuner.
+
 A live value is not production configuration merely because the mechanism ran successfully. It
 becomes production configuration only after a student copies it into the robot profile, reviews and
 commits the source, and starts a fresh production OpMode that loads that checked-in snapshot.
