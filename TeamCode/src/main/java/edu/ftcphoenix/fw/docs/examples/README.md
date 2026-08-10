@@ -1,32 +1,23 @@
-# Examples & case studies
+# Examples
 
-Use this section when you want concrete, runnable framework examples plus the design reasoning
-behind them.
+Examples have different jobs. Check the classification before deciding whether to copy the file or
+study only the focused idea.
 
-The examples folder now has five complementary docs. Start with the managed starter for ordinary
-robot code; the numbered examples keep their phases explicit as focused framework lessons:
+| Classification | Example | Use it for |
+|---|---|---|
+| **Copyable starter** | [`Modern Starter Robot`](<Modern Starter Robot.md>) and its [compiled source](<../../../robots/examples/starter/>) | The ordinary managed TeleOp/Auto structure for a new robot. |
+| **Optional Pedro integration reference** | [`Pedro Autonomous Reference`](<Pedro Autonomous Reference.md>) and its [compiled source](<../../../robots/examples/pedro/>) | A small managed Auto with one Pedro boundary, studied after the guided software lesson. |
+| **Concept labs** | [`TeleOp_01` through `TeleOp_09`](<../../tools/examples/>) | Focused framework behavior with explicit lifecycle phases visible. Do not copy their manual host as the ordinary robot architecture. |
+| **Advanced case study** | [`Layered Shooter Example`](<Layered Shooter Example.md>) | Held, frame-valued, and pending requests inside one mechanism owner. |
+| **Advanced case study** | [`Shooter Case Study & Examples Walkthrough`](<Shooter Case Study & Examples Walkthrough.md>) | AprilTag selection, shared aim intent, and shooter guidance. |
+| **Production reference** | [`Phoenix robot`](<../../../robots/phoenix/README.md>) | A complete season robot with real policy, readiness, localization, scoring, and Pedro routes. |
 
-- a complete `FtcRobotOpMode`/`RobotProgram` starter shared by TeleOp and Auto,
-- a progression guide for the full `TeleOp_01` → `TeleOp_09` sequence,
-- a dedicated walkthrough for the first explicit layered mechanism example,
-- a shooter-focused case study for the AprilTag aim-assist examples,
-- and a complete small Pedro autonomous reference using that same managed lifecycle.
+[`Examples Progression & Layered Mechanisms`](<Examples Progression & Layered Mechanisms.md>) is an
+index to the concept labs. Its explicit clock and FTC callbacks are useful when studying the phases
+or building a genuinely custom host; ordinary code under `edu.ftcphoenix.robots` uses
+`FtcRobotOpMode` and `RobotProgram`.
 
-## Read in this order
+If this is your first Phoenix robot, follow the
+[`beginner course`](<../getting-started/Beginner's Guide.md>) before browsing the advanced examples.
 
-1. [`Modern Starter Robot.md`](<Modern Starter Robot.md>)
-2. [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>)
-3. [`Layered Shooter Example.md`](<Layered Shooter Example.md>)
-4. [`Shooter Case Study & Examples Walkthrough.md`](<Shooter Case Study & Examples Walkthrough.md>)
-5. [`Pedro Autonomous Reference.md`](<Pedro Autonomous Reference.md>)
-6. [`../../tools/examples/`](<../../tools/examples/>)
-
-[`CustomVisionOwnershipExample.java`](../../tools/examples/CustomVisionOwnershipExample.java) in
-that source folder shows the advanced ownership pattern:
-one robot-owned semantic interface and immutable timestamped snapshot, with separate webcam-processor and
-Limelight-pipeline realizations. It is intentionally not another numbered full OpMode.
-
-## Pair with
-
-- [`../design/README.md`](<../design/README.md>)
-- [`../getting-started/Beginner's Guide.md`](<../getting-started/Beginner's Guide.md>)
+[Back to the Phoenix docs home](<../README.md>)

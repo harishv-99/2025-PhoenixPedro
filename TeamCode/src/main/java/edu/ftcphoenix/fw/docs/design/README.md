@@ -1,19 +1,28 @@
-# Design
+# Robot design and behavior
 
-Use this section when choosing ownership boundaries, behavior patterns, subsystem shape, task structure,
-and output arbitration.
+These are intermediate and advanced guides. Finish the
+[`beginner course`](<../getting-started/Beginner's Guide.md>) before using them as a design menu.
 
-## Read in this order
+## Structure a robot
 
-1. [`Framework Lanes & Robot Controls.md`](<Framework Lanes & Robot Controls.md>)
-2. [`Robot Capabilities & Mode Clients.md`](<Robot Capabilities & Mode Clients.md>)
-3. [`Recommended Robot Design.md`](<Recommended Robot Design.md>)
-4. [`Supervisors & Pipelines.md`](<Supervisors & Pipelines.md>)
-5. [`Tasks & Macros Quickstart.md`](<Tasks & Macros Quickstart.md>)
-6. [`Output Tasks & Queues.md`](<Output Tasks & Queues.md>)
+- [`Architecture Roles, Framework Lanes, and Robot Controls`](<Framework Lanes & Robot Controls.md>)
+  defines primitives, lanes, field facts, controls, capability families, mechanisms, supervisors,
+  services, presenters, profiles, and the composition root.
+- [`Robot Capabilities and Mode Clients`](<Robot Capabilities & Mode Clients.md>) explains the
+  mode-neutral vocabulary shared by TeleOp and Auto.
+- [`Recommended Robot Design`](<Recommended Robot Design.md>) compares behavior patterns and shows
+  larger mechanism examples.
+- [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>) covers robot-owned policy and final
+  Plant-target arbitration.
 
-## Pair with
+## Build behavior over time
 
-- [`../core-concepts/README.md`](<../core-concepts/README.md>)
-- [`../examples/README.md`](<../examples/README.md>)
-- [`../../Framework Principles.md`](<../../Framework Principles.md>)
+- [`Tasks and Macros`](<Tasks & Macros Quickstart.md>) is the main Task guide.
+- [`Output Tasks & Queues`](<Output Tasks & Queues.md>) is the advanced temporary-output and queued
+  pulse pattern.
+
+The current lifecycle contract lives in [`Loop Structure`](<../core-concepts/Loop Structure.md>).
+The [`Framework Principles`](<../../Framework Principles.md>) govern framework changes rather than
+ordinary first-robot use.
+
+[Back to the Phoenix docs home](<../README.md>)

@@ -1,11 +1,12 @@
 # Phoenix Architecture
 
-This document describes the modern framework-based robot under
-`edu.ftcphoenix.robots.phoenix`. It is the reference robot design, not a template for preserving
-legacy FTC callback code.
+This document describes the production framework-based robot under
+`edu.ftcphoenix.robots.phoenix`. It is the complete reference design for applying the framework's
+ownership, lifecycle, capability, targeting, and autonomous contracts to one competition robot.
 
 The repository-wide [`Framework Principles`](<../../fw/Framework Principles.md>) remain the primary
-design authority.
+design authority. Use the package [`README`](<README.md>) for a shorter map of what to read and
+where to make common robot changes.
 
 ## Big picture
 
@@ -160,8 +161,10 @@ route Task starts. `PhoenixPedroPathFactory` remains the one owner of Pedro geom
 declared starting poses, and route maturity.
 
 Each route start has one retained execution identity. The integration classifies endpoint success,
-follower timeout/stall, interruption, replacement, failure, and unknown terminal state. Robot
-routine policy—not a generic Task sequence—decides continue, fallback, or abort.
+follower timeout/stall, interruption, replacement, failure, and unknown terminal state. `RouteTask`
+retains that integration classification and adds Task-owned `TASK_TIMEOUT`, `CANCELLED`,
+or fail-closed `FAILED` when applicable; `FAILED` can originate at either boundary. Robot routine
+policy—not a generic Task sequence—decides continue, fallback, or abort.
 
 ## Pedro and localization
 

@@ -1,6 +1,8 @@
-# Architecture Roles, Framework Lanes, and Robot Build Guide
+# Architecture Roles, Framework Lanes, and Robot Controls
 
-This document is the framework's main guide for **how to structure a robot**.
+This is the detailed architecture guide for **structuring a complete robot**. Finish the
+[`Beginner's Guide`](<../getting-started/Beginner's Guide.md>) first; this page defines the ownership
+vocabulary used when a robot grows beyond the starter.
 
 Read this if you want to answer questions like:
 
@@ -8,9 +10,10 @@ Read this if you want to answer questions like:
 - What should live in the framework versus in robot code?
 - Where should controls, strategy, capability families, field facts, and telemetry go?
 - How should TeleOp and Auto share code without building a giant base robot class?
-- How can I build a clean robot from scratch without copying an old robot verbatim?
+- How should a new robot be divided into understandable owners?
 
-The goal is not just to explain the current Phoenix robot. The goal is to make the architecture explicit enough that a future robot can be designed from first principles.
+The goal is to make the architecture explicit enough that a robot can be designed from its actual
+hardware, operator meanings, and game strategy.
 
 ---
 
@@ -1357,7 +1360,7 @@ Why it is a problem:
 
 - a low-level primitive suddenly chooses a button
 - drive controls become split across different files
-- future robots inherit one specific control scheme by accident
+- one reusable primitive accidentally dictates a specific control scheme across robots
 
 Instead, create the primitive with explicit axes and apply slow mode in the controls owner.
 
@@ -1414,7 +1417,7 @@ Phoenix is the reference example for this split:
 - composition root: `PhoenixRobot`
 - profile: `PhoenixProfile`
 
-That is the intended pattern for future robots too. Copy the structure, not the season-specific behavior.
+Use that pattern for other robots: copy the structure, not the season-specific behavior.
 
 ---
 
@@ -1424,6 +1427,6 @@ That is the intended pattern for future robots too. Copy the structure, not the 
 - [`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mode Clients.md>)
 - [`Recommended Robot Design`](<Recommended Robot Design.md>)
 - [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>)
-- [`Tasks & Macros Quickstart`](<Tasks & Macros Quickstart.md>)
+- [`Tasks and Macros`](<Tasks & Macros Quickstart.md>)
 - [`Framework Overview`](<../getting-started/Framework Overview.md>)
 - [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>)

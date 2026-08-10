@@ -45,7 +45,7 @@ applies policy and chooses a requested target.
 
 ## Builder shape
 
-`SpatialQuery` now follows the same guided-builder rule as Drive Guidance and Mechanism Target
+`SpatialQuery` follows the same guided-builder rule as Drive Guidance and Mechanism Target
 Planning: answer the required conceptual questions explicitly, and do not expose `build()` before the
 query has both a target and solve lanes.
 

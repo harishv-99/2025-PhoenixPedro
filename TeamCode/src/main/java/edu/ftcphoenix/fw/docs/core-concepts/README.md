@@ -1,20 +1,15 @@
 # Core concepts
 
-This section covers the Phoenix loop contract and the generic signal model.
+Use these guides after the beginner course when you need to understand the contracts behind the
+ordinary API.
 
-## Read in this order
+- [`Loop Structure`](<Loop Structure.md>) — the managed lifecycle, one `LoopClock`, phase order,
+  same-cycle behavior, telemetry, and the advanced explicit-host exception.
+- [`Sources & Signals`](<Sources and Signals.md>) — `Source<T>`, `ScalarSource`, `BooleanSource`,
+  edges, memoization, selection, accumulation, debounce, and hysteresis.
 
-1. [`Loop Structure.md`](<Loop Structure.md>)
-2. [`Sources and Signals.md`](<Sources and Signals.md>)
+For a quick reminder, use the [`Phoenix Cheat Sheet`](<../reference/Phoenix Cheat Sheet.md>) or
+[`Glossary`](<../reference/Glossary.md>). For robot ownership decisions, continue to
+[`Design`](<../design/README.md>).
 
-## Use this section when
-
-- you are composing `Source<T>`, `ScalarSource`, or `BooleanSource` graphs
-- you need to reason about memoization, debounce, hysteresis, edges, or hold-last behavior
-- you are deciding between reset-by-signal (`accumulateUntil(...)`) and lifecycle reset (`reset()`)
-
-## Pair with
-
-- [`../design/Recommended Robot Design.md`](<../design/Recommended Robot Design.md>)
-- [`../ftc-boundary/FTC Sensors.md`](<../ftc-boundary/FTC Sensors.md>)
-- [`../../Framework Principles.md`](<../../Framework Principles.md>)
+[Back to the Phoenix docs home](<../README.md>)

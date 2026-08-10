@@ -42,7 +42,10 @@ This keeps stable framework code reusable across seasons without turning the lif
 giant robot capability superclass. It also keeps each robot's control scheme and game logic easy to
 find, instead of scattering it across convenience helpers and subsystem constructors.
 
-Before reading the rest of this file, read [`Framework Lanes & Robot Controls`](<Framework Lanes & Robot Controls.md>). That document defines the ownership vocabulary used throughout the framework and shows how to build a robot from scratch without copying an older robot.
+This is an architecture guide for readers who have completed the
+[`Beginner's Guide`](<../getting-started/Beginner's Guide.md>). Read
+[`Framework Lanes & Robot Controls`](<Framework Lanes & Robot Controls.md>) when you need the full
+ownership vocabulary used here.
 
 This document describes Phoenix's recommended design for robot code that will be shared between
 TeleOp and Auto.
@@ -57,13 +60,11 @@ The short version is:
 
 If you keep those rules, a robot can stay understandable even as it grows.
 
-## Read this with
+## Related guides
 
-- [`Framework Overview`](<../getting-started/Framework Overview.md>)
-- [`Beginner's Guide`](<../getting-started/Beginner's Guide.md>)
 - [`Loop Structure`](<../core-concepts/Loop Structure.md>)
 - [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>)
-- [`Tasks & Macros Quickstart`](<Tasks & Macros Quickstart.md>)
+- [`Tasks and Macros`](<Tasks & Macros Quickstart.md>)
 - [`Framework Principles`](<../../Framework Principles.md>)
 
 Most examples in this document use real Phoenix types. A few route-library snippets are
@@ -242,9 +243,10 @@ immediately; storing zero for a future heartbeat is not enough.
 
 Separate route identity from mutable follower state too. `RouteFollower.follow(route)` returns a
 `RouteExecution` whose `status()` and `cancel()` belong only to that run. The adapter classifies the
-vendor transition once; `RouteTask.getRouteStatus()` then preserves normal completion, timeout or
-stall, interruption, replacement, failure, and unknown-terminal meaning for robot policy. This
-complexity belongs in the integration, not at every Auto call site.
+vendor transition once; `RouteTask.getRouteStatus()` then reports one exact terminal status:
+`COMPLETED`, `FOLLOWER_TIMEOUT_OR_STALL`, `INTERRUPTED`, `REPLACED`, `TASK_TIMEOUT`, `CANCELLED`,
+`FAILED`, or `UNKNOWN_TERMINAL`. This complexity belongs at the route boundary, not at every Auto
+call site.
 
 Keep fixed geometry on the ordinary eager `RouteTasks.follow(...)` path. When a later route must
 start from the robot's live pose or a current vision choice, use
@@ -632,7 +634,8 @@ or potentiometer gives the measured height.
 
 This is not a spatial problem. It is one scalar measured variable driven toward a scalar target.
 
-With the current plant design, the clean implementation is a **regulated position plant**: a raw actuator command (motor power), a controller/regulator, and a feedback source packaged into one plant owned by the subsystem.
+The clean implementation is a **regulated position plant**: a raw actuator command (motor power),
+a controller/regulator, and a feedback source packaged into one Plant owned by the subsystem.
 
 ### Recommended subsystem shape
 
@@ -1056,13 +1059,27 @@ bindings.onFall(pads.p2().b(), shooter::endShooting);
 ### Auto interaction
 
 ```java
+Task waitUntilReady = Tasks.waitUntil(
+        () -> shooter.status().readyToShoot(),
+        1.5
+);
+
 Task fireOne = Tasks.sequence(
         Tasks.runOnce(() -> shooter.setFlywheelEnabled(true)),
-        Tasks.waitUntil(() -> shooter.status().readyToShoot(), 1.5),
-        Tasks.runOnce(shooter::requestSingleShot),
-        Tasks.waitUntil(() -> shooter.status().shotComplete(), 1.0)
+        Tasks.branchOnOutcome(
+                waitUntilReady,
+                Tasks.sequence(
+                        Tasks.runOnce(shooter::requestSingleShot),
+                        Tasks.waitUntil(() -> shooter.status().shotComplete(), 1.0)
+                ),
+                Tasks.runOnce(() -> shooter.setFlywheelEnabled(false))
+        )
 );
 ```
+
+The shot is requested only after readiness succeeds. If readiness times out, the explicit fallback
+turns the flywheel request off instead. Direct cancellation does not start either branch, so the
+owner of a larger routine must still release any persistent shooter request that routine owns.
 
 ### Why this is the recommended design
 
@@ -1170,7 +1187,8 @@ Task followCyclePath =
         RouteTasks.follow("cycle", roadRunnerAdapter, cyclePath, routeTimeoutSec);
 ```
 
-The adapter is still project-specific, but Phoenix now provides the generic `RouteFollower<RouteT>` / `RouteTask<RouteT>` seam so the rest of your Auto can stay inside the normal task vocabulary.
+The adapter is project-specific, while Phoenix provides the generic `RouteFollower<RouteT>` /
+`RouteTask<RouteT>` seam so the rest of your Auto can stay inside the normal Task vocabulary.
 
 Each `RouteTask` retains the `RouteExecution` returned when it starts. Ordinary code still uses the
 same one-line `RouteTasks.follow(...)` call. Code that genuinely needs the terminal reason can keep
@@ -1248,20 +1266,27 @@ RouteTask<YourRoute> preloadRoute = RouteTasks.follow(
 );
 ```
 
-Build the semantic mechanism work separately:
+Build the semantic lift move separately, including its timeout outcome:
 
 ```java
-Task scorePreload = Tasks.sequence(
+Task raiseLift = Tasks.sequence(
         Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
-        Tasks.waitUntil(() -> lift.status().atTarget(), 1.5),
-        Tasks.runOnce(shooter::requestSingleShot)
+        Tasks.waitUntil(() -> lift.status().atTarget(), 1.5)
+);
+
+Task scorePreload = Tasks.branchOnOutcome(
+        raiseLift,
+        Tasks.runOnce(shooter::requestSingleShot),
+        Tasks.runOnce(() -> lift.setTargetHeightIn(0.0))
 );
 ```
 
 The robot policy selects `scorePreload` only after `preloadRoute.getRouteStatus()` is `COMPLETED`.
-It may select a start-time-built safe route after timeout, while cancellation-like results abort and
-direct cancellation never launches recovery. If the route or scoring phase owns a transient request,
-its cancellation path clears that request through the robot capability; it does not reset unrelated
+Within that scoring Task, the shot starts only after the lift reaches its target; a lift timeout
+selects the example's explicit return-to-low request instead. An adopting robot must choose the
+fallback that is physically safe for its mechanism. Cancellation-like results abort, and direct
+cancellation never launches recovery. If the route or scoring phase owns a transient request, its
+cancellation path clears that request through the robot capability; it does not reset unrelated
 mechanism intent. Drive may be special internally, but the routine still uses the same small Task and
 capability vocabulary.
 

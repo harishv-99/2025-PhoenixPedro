@@ -12,29 +12,18 @@ This document introduces the framework's generic, composable building blocks for
 
 ---
 
-## Why this exists
+## One source model
 
-Historically we had:
-
-* "continuous" inputs as `Axis`
-* "discrete" inputs as `BooleanSource`
-* special-purpose latches for stability / hysteresis
-
-That worked, but it created two recurring problems:
-
-1. **Logic scattered across layers**: shaping in `Axis`, edge detection in `Button`, stability in latches,
-   and then "actual behavior" elsewhere.
-2. **No single mental model** for sensor readings vs operator intent vs generated targets.
-
-`Source` unifies these into one simple rule:
+Sensor readings, operator intent, and generated values use one rule:
 
 > A source produces values on the shared `LoopClock`; a stateful source publishes no more than one
 > successful observation for a loop cycle.
 
-That makes stateful filters (debounce, hysteresis, rate limiting, etc.) straightforward and keeps
-logic consistent with the one-heartbeat loop.
+Stateful filters such as debounce, hysteresis, and rate limiting therefore share the same
+one-heartbeat behavior.
 
-One important specialization: `DriveSource` is now explicitly the drive-specific form of `Source<DriveSignal>`. That keeps the mental model consistent — drive sources are not a separate universe, just a domain-specific source type with some helpful composition methods.
+`DriveSource` is the drive-specific form of `Source<DriveSignal>`. It follows the same source model
+and adds composition methods for drive intent.
 
 ---
 
@@ -52,7 +41,7 @@ A `Source<T>` is the minimal interface:
 
 ### `ScalarSource`
 
-A `ScalarSource` produces a `double` each loop. It is the generalized successor to `Axis`.
+A `ScalarSource` produces a `double` each loop and adds numeric transforms.
 
 Common uses:
 

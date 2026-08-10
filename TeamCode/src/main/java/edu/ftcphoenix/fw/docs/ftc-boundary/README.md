@@ -1,18 +1,18 @@
-# FTC boundary
+# FTC boundary reference
 
-This section covers Phoenix's FTC SDK boundary adapters and where sensor logic should live.
+Phoenix keeps FTC SDK hardware and UI details at this explicit boundary. Ordinary robot mechanisms
+usually enter through `FtcActuators`, while the rest of their policy stays in robot-owned classes.
 
-## Read in this order
+- [`FTC Actuators & Plants`](<FTC Actuators & Plants.md>) — staged construction for motors, servos,
+  CR servos, grouped outputs, units, references, feedback, and control strategy.
+- [`FTC Sensors`](<FTC Sensors.md>) — battery, encoder, distance, color, touch, digital, and analog
+  sources.
+- [`FTC UI Helpers`](<FTC UI Helpers.md>) — selection menus, navigation, summaries, and hardware
+  name pickers.
+- [`FTC Auto-to-TeleOp handoff`](<FTC Auto-to-TeleOp Handoff.md>) — advanced process-local,
+  cleanup-gated state transfer.
 
-1. [`FTC Actuators & Plants.md`](<FTC Actuators & Plants.md>)
-2. [`FTC Sensors.md`](<FTC Sensors.md>)
-3. [`FTC UI Helpers.md`](<FTC UI Helpers.md>)
-4. [`FTC Auto-to-TeleOp Handoff.md`](<FTC Auto-to-TeleOp Handoff.md>)
+For the ordinary Plant shape, start with [`Your first mechanism`](<../getting-started/First Mechanism.md>)
+or the [`Phoenix Cheat Sheet`](<../reference/Phoenix Cheat Sheet.md>).
 
-## Pair with
-
-- [`../core-concepts/Sources and Signals.md`](<../core-concepts/Sources and Signals.md>)
-- [`../testing-calibration/README.md`](<../testing-calibration/README.md>)
-- [`../getting-started/Beginner's Guide.md`](<../getting-started/Beginner's Guide.md>)
-- [`../design/Recommended Robot Design.md`](<../design/Recommended Robot Design.md>)
-- [`../design/Robot Capabilities & Mode Clients.md`](<../design/Robot Capabilities & Mode Clients.md>)
+[Back to the Phoenix docs home](<../README.md>)

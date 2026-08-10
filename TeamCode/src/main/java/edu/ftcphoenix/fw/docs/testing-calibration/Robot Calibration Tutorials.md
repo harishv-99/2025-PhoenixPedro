@@ -2,7 +2,7 @@
 
 This is the framework's start-to-finish bring-up path for the core calibration steps that most FTC robots need before localization and driver assists are trustworthy.
 
-The framework now supports two complementary ways to reach this material:
+The framework provides two complementary ways to reach this material:
 
 - a **guided walkthrough menu** inside the tester tree for students who want one recommended order
 - a **category-based tester tree** for teams who already know which individual tool they want

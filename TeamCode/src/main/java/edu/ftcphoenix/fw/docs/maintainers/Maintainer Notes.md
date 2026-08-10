@@ -3,9 +3,8 @@
 This document is for mentors and framework maintainers.
 Most students should not need anything here to write robot code.
 
-For the student-facing architecture, start with [`Framework Overview`](<../getting-started/Framework Overview.md>) and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>).
-
-For current AprilTag/localization follow-up work, also see [`AprilTag Localization Follow-Ups`](<AprilTag Localization Follow-Ups.md>).
+For all student-facing paths, start with the canonical [`Phoenix docs hub`](<../README.md>).
+For framework design authority, use [`Framework Principles`](<../../Framework Principles.md>).
 
 For the fixed-tag policy itself — detector library vs field-fixed layout, selected-tag localization rules, and season bring-up guidance — see [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
 
@@ -13,19 +12,17 @@ For the fixed-tag policy itself — detector library vs field-fixed layout, sele
 
 ## 1. Advanced notes
 
-### 1.1 Multiple `TaskRunner`s
+### 1.1 `TaskRunner` in a custom host
 
-The recommended starting point is **one `TaskRunner` per robot**.
+Ordinary robot code does not choose a runner count. Its framework-created `RobotProgram` owns one
+private `TaskRunner`, and robot code declares root or input-launched Tasks through the program.
+Different duration or interruption policy is not a reason to construct another runner; express
+that policy with Task composition, capability state, or a mechanism-owned output queue.
 
-Use multiple runners only when it genuinely reduces complexity, for example:
-
-- one Runner A: a long, non-interruptible sequence (like an endgame climb)
-- Runner B: small, interruptible TeleOp macros
-
-If you do this, be explicit about **ownership**:
-
-- Which runner is allowed to command which plants/drive behaviors
-- What happens when a macro is interrupted (what targets are left behind)
+Only an explicitly advanced custom portable host or diagnostic with lifecycle requirements that do
+not fit `FtcRobotOpMode` may own a `TaskRunner` directly. If such a host genuinely needs more than
+one, every runner must have disjoint command ownership and a documented update, cancellation,
+failure, and cleanup boundary. Do not present that exception as a second ordinary robot recipe.
 
 ### 1.2 Idle behavior and safety
 
@@ -57,7 +54,8 @@ It lets Phoenix:
 - keep official-season fixed/non-fixed policy in one framework-owned place,
 - and let one robot behavior use a smaller fixed-tag subset without copying tag poses or re-implementing tag filtering logic.
 
-When a new FTC season arrives, the framework should absorb the policy update in `FtcGameTagLayout` instead of making robot code rediscover which IDs are safe to trust.
+Season-specific fixed/non-fixed tag policy belongs in `FtcGameTagLayout`, so robot code does not
+rediscover which IDs are safe to trust.
 
 ### 1.4 FTC boundary rule (for maintainers)
 
@@ -70,14 +68,23 @@ This keeps the student-facing building blocks (`actuation/drive/input/task/...`)
 
 ### 1.5 Documentation topology
 
-Keep the docs easy to navigate from four places:
+Keep [`../README.md`](<../README.md>) as the one canonical documentation hub. Repository,
+framework-root, and section `README.md` files are short doorways into that hub, not parallel maps.
+If a current reference lives beside code, give its package a short landing page and link that page
+from the hub.
 
-- the repository root [`README.md`](<../../../../../../../../../README.md>)
-- the framework documentation root [`README.md`](<../../README.md>)
-- the full hub [`../README.md`](<../README.md>)
-- the local section `README.md` in whatever docs folder you are editing
+Use this authoring contract:
 
-If you add or move a maintainer-facing doc that lives outside `docs/`, link it back into the hub so it stays visible to future maintainers.
+- Give each page one purpose and one primary audience; state both near the top.
+- Structure a tutorial checkpoint as: goal, prerequisites, files to inspect or edit, numbered
+  steps, observable result, common problems, and one next step.
+- Link to compiling source for complete programs. Keep excerpts short enough to teach one idea
+  without creating a copied program that can drift.
+- Describe the supported present state directly. Keep migration narratives, completed work logs,
+  and speculative backlogs out of user documentation.
+- Keep Markdown as the sole authored source for narrative guides and generated guide-site
+  presentation; maintain its local links, anchors, and fences. Javadocs remain the authored exact
+  method-level API contract and must stay synchronized with those guides.
 
 ### 1.6 Automated framework unit tests
 

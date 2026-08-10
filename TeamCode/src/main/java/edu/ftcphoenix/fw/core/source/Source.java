@@ -24,9 +24,8 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
  * value observation must not be published as a cached result; a later nonrecursive read in the
  * same cycle may retry.</p>
  *
- * <p>This abstraction is the generalized form of the old {@code Axis} concept: "something that
- * returns a value each loop". For common primitives, see {@link ScalarSource} and
- * {@link BooleanSource}.</p>
+ * <p>Use this abstraction for a clock-aware object value sampled from the loop. For primitive
+ * scalar and boolean values, use {@link ScalarSource} and {@link BooleanSource}.</p>
  */
 public interface Source<T> {
 

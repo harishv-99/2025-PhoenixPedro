@@ -450,7 +450,7 @@ Boolean filter. Disabled and shadowed target producers still are not resolved.
 
 ## Target-resolution diagnostics
 
-Plants now report two different target diagnostics:
+Plants report two different target diagnostics:
 
 ```java
 plant.getTargetResolution(); // how PlantTargets selected the requested target

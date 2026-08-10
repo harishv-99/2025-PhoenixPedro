@@ -254,7 +254,7 @@ Benefits:
 ### Pattern B: pick one small input-memory shape before adding logic
 
 When a mechanism grows past one boolean, it helps to make the caller-owned memory explicit.
-Phoenix now has three small helpers for the most common cases:
+Phoenix provides three small helpers for the most common cases:
 
 - **`HeldValue<T>`** — the value stays until another call changes it.
 - **`FrameValue<T>`** — the value is fresh only for the current loop, then falls back automatically.

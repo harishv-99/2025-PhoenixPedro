@@ -14,8 +14,7 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 /**
  * A {@link Source} that produces a {@code double} each loop.
  *
- * <p>{@code ScalarSource} is the principled generalization of the old {@code Axis} abstraction:
- * "something that returns a double each loop". It is used for gamepad sticks/triggers,
+ * <p>Use {@code ScalarSource} for clock-aware scalar values such as gamepad sticks and triggers,
  * sensor readings, and generated targets.</p>
  *
  * <p>All sampling is done through {@link #getAsDouble(LoopClock)} so sources can be stateful
@@ -428,7 +427,7 @@ public interface ScalarSource extends Source<Double> {
     /**
      * Drive-style shaping: deadband -> normalize -> pow(expo) -> rescale.
      *
-     * <p>This matches the behavior used historically by Phoenix drive stick shaping.</p>
+     * <p>This is the standard Phoenix drive-stick shaping order.</p>
      */
     default ScalarSource shaped(double deadband, double expo, double min, double max) {
         ScalarSource self = this;

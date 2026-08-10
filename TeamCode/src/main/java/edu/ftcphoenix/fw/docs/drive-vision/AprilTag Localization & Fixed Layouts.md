@@ -1,6 +1,8 @@
 # AprilTag Localization & Fixed Layouts
 
-This guide explains Phoenix's AprilTag-localization policy, the difference between detector libraries and trusted field layouts, and how the framework now splits localization into **absolute pose estimators**, **motion predictors**, and **corrected/global estimators**.
+This guide explains Phoenix's AprilTag-localization policy, the difference between detector
+libraries and trusted field layouts, and the framework's three localization roles: **absolute pose
+estimators**, **motion predictors**, and **corrected/global estimators**.
 
 The short version:
 
@@ -11,7 +13,7 @@ The short version:
 - **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last accepted motion baseline?"
 - **`CorrectedPoseEstimator`** combines a motion predictor with one absolute correction source.
 
-That split matters because a camera can be shared by localization, alignment, and future vision jobs while the localization stack remains free to choose whether it trusts a raw AprilTag solve, a direct smart-camera pose, or some future absolute field-anchor signal.
+That split matters because a camera can be shared by localization, alignment, and other vision jobs while the localization stack remains free to choose whether it trusts a raw AprilTag solve, a direct smart-camera pose, or another absolute field-anchor signal.
 
 ---
 
@@ -62,7 +64,7 @@ Use `fromLibraryAllTags(...)` only when you already know every tag in that libra
 
 ## 2. Localization roles: absolute pose vs motion prediction
 
-Phoenix now formalizes three distinct localization roles.
+Phoenix defines three distinct localization roles.
 
 ### 2.1 `AbsolutePoseEstimator`
 
@@ -72,7 +74,7 @@ Examples:
 
 - `AprilTagPoseEstimator` — solves `field -> robot` from raw AprilTag observations and a trusted `TagLayout`
 - `LimelightFieldPoseEstimator` — uses Limelight's direct full-field pose output as an absolute pose source
-- future line/tape, landmark, beacon, or wall-anchor localizers — if they can directly answer "where is the robot on the field?"
+- line/tape, landmark, beacon, or wall-anchor localizers — if they can directly answer "where is the robot on the field?"
 
 This is the interface most consumers want:
 
@@ -104,7 +106,7 @@ Current example:
 
 - `PinpointOdometryPredictor`
 
-Future examples could include:
+Other implementations can include:
 
 - a wheel + IMU dead-reckoner
 - a drivetrain-state propagator
@@ -475,7 +477,8 @@ CorrectedPoseEstimator corrected =
 Notes:
 
 - `predictorHistorySec` should be at least `maxCorrectionAgeSec` when latency compensation is enabled.
-- corrected estimators now consume an explicit `MotionDelta` from the predictor instead of reverse-engineering motion from two unrelated pose snapshots.
+- corrected estimators consume an explicit `MotionDelta` from the predictor instead of
+  reverse-engineering motion from two unrelated pose snapshots.
 - repeated same-cycle updates cannot apply that delta or EKF process covariance twice, and a retained
   equal/older predictor timestamp does not clear valid replay history.
 - every accepted/manual pose anchor excludes predictor motion from before that anchor. When the
@@ -521,11 +524,13 @@ If direct Limelight field pose is unstable while moving:
 4. compare against the raw AprilTag solve in the tester
 5. fall back to `APRILTAG_POSE` as the correction source until the direct path is proven trustworthy
 
-One important ownership note: Phoenix currently assumes the Limelight device is already configured with a field map that matches the trusted `TagLayout` you intend to use. Keep those aligned whenever you use direct device field pose.
+One important ownership note: Phoenix assumes the Limelight device is configured with a field map
+that matches the trusted `TagLayout` you intend to use. Keep those aligned whenever you use direct
+device field pose.
 
 ---
 
-## 9. Future signals beyond AprilTags
+## 9. Other absolute signals
 
 The current localization model already leaves room for other pose signals.
 

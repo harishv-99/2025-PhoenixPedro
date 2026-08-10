@@ -1,18 +1,60 @@
 # Getting started
 
-Use this section for the first pass through Phoenix.
+This is the shortest supported path from a clean checkout to a Phoenix TeleOp and Auto. The core
+course uses the checked-in starter robot throughout, so every core lesson points to Java that the
+project compiles and tests.
 
-## Read in this order
+Phoenix has one ordinary robot-programming path:
 
-1. [`Framework Overview.md`](<Framework Overview.md>)
-2. [`Beginner's Guide.md`](<Beginner's Guide.md>)
-3. [`../examples/Modern Starter Robot.md`](<../examples/Modern Starter Robot.md>)
-4. [`../design/Framework Lanes & Robot Controls.md`](<../design/Framework Lanes & Robot Controls.md>)
-5. [`../core-concepts/Loop Structure.md`](<../core-concepts/Loop Structure.md>)
-6. [`../design/Tasks & Macros Quickstart.md`](<../design/Tasks & Macros Quickstart.md>)
+1. extend `FtcRobotOpMode`;
+2. declare the robot once in `configure(RobotProgram program)`; and
+3. let the framework run bindings, Tasks, outputs, drive, telemetry, and cleanup.
 
-## Then branch by need
+You do not forward FTC lifecycle callbacks or construct a clock or Task runner in ordinary robot
+code.
 
-- clean robot architecture → [`../design/README.md`](<../design/README.md>)
-- loop semantics and signal composition → [`../core-concepts/README.md`](<../core-concepts/README.md>)
-- bring-up and calibration → [`../testing-calibration/README.md`](<../testing-calibration/README.md>)
+## Orientation
+
+Read these two pages before the numbered lessons:
+
+- [`Framework Overview.md`](<Framework Overview.md>) — understand Phoenix in five minutes.
+- [`Beginner's Guide.md`](<Beginner's Guide.md>) — see the complete course and checkpoints.
+
+## Core beginner course
+
+1. [`Build and Run.md`](<Build and Run.md>) — build the project before connecting motion hardware.
+2. [`First Mechanism.md`](<First Mechanism.md>) — configure one intake motor and run a safe Auto
+   checkpoint.
+3. [`First TeleOp.md`](<First TeleOp.md>) — add conservatively limited drive motors and map A/B/X
+   controls.
+4. [`First Task and Auto.md`](<First Task and Auto.md>) — run timed behavior without blocking.
+
+These four lessons use one continuous starter robot.
+
+## Optional next track
+
+[`First Pedro Auto.md`](<First Pedro Auto.md>) is a software-first route-following walkthrough for
+students who have finished the core course. It switches to the dedicated Pedro reference, remains
+`@Disabled`, and explains the separate configuration and calibration required before any later
+physical test. It is not another required starter lesson.
+
+The core source lives under
+[`edu.ftcphoenix.robots.examples.starter`](<../../../robots/examples/starter/>). The optional Pedro
+track uses its separate reference under
+[`edu.ftcphoenix.robots.examples.pedro`](<../../../robots/examples/pedro/>).
+
+## Keep these three rules visible
+
+- Robot behavior must not sleep or wait in a blocking loop. Use a `Task` for work over time.
+- A mechanism privately owns its Plants and exposes robot meanings such as `collect()` or
+  `collectForSeconds(...)`.
+- Verify names, directions, limits, physical placement, and immediate STOP behavior on the actual
+  robot. A successful build cannot prove those facts.
+
+## After the course
+
+Use the main [`Phoenix docs hub`](<../README.md>) to find mechanism, controls, vision, localization,
+calibration, and design references. Those pages explain deeper behavior but are not prerequisites
+for the first robot.
+
+**Next:** [`Phoenix in five minutes`](<Framework Overview.md>)
