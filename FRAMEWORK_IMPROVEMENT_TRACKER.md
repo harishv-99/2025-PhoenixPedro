@@ -165,6 +165,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
 | 79 | DOC-03 | Generated Phoenix documentation site | Done | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
 | 80 | PLANT-03 | Terminal Plant lifecycle | Done | Make `Plant.stop()` terminal, remove broad `Plant.reset()`, and keep recoverable output fail-stop internal. |
+| 81 | TESTER-02 | Canonical actuator bring-up | Done | The reviewed device-first workflow, truthful type-specific evidence, advanced-only diagnostics, synchronized course/docs, and verification are approved for publication. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -15384,6 +15385,166 @@ writer, and explicit lifecycle ownership.
   - **Manual verification (2026-07-23):** the user reviewed the implementation in Android Studio
     and replied `VISION-02 looks good`. VISION-02 is **Done**, and this approval authorizes Gate 3
     staging, publication, and merge for this item only; it does not authorize starting TARGET-03.
+
+### TESTER-02 - Canonical actuator bring-up
+
+- **Gate 2 approval (2026-08-10):** after reviewing the existing actuator testers, beginner course,
+  hardware-servo-programmer semantics, encoder reference behavior, Plant mappings, and PIDF scope,
+  the user directed **`Implement the plan.`** TESTER-02 alone is now **In progress** on
+  `codex/tester-02-canonical-actuator-bring-up`, based exactly on fetched
+  `origin/master@77416bd77dd77fbc1b29261e3a1fdd2c4dd4e027`. Publication is not authorized.
+- **Confirmed failure:** the beginner currently meets several class-first tester entries with
+  different controls and safety behavior. Position and velocity testers can stage or command motion
+  during INIT, the motor-position path starts from zero and offers an ordinary encoder reset, and
+  the servo path can make coarse command jumps while presenting SDK command cache as if it were
+  physical feedback. The course instead asks students to discover direction in mechanism-specific
+  OpModes and does not teach the reusable hardware tool. This is more ceremony and less truthful
+  evidence than one device-first bring-up path.
+- **Caller and API audit:** `StandardTesters` owns the public suite factories and menus; the current
+  walkthrough and generic hardware-suite factories have no independent production caller.
+  `DrivetrainMotorDirectionTester` is Phoenix integration verification because it exercises the
+  directions already stored in `PhoenixProfile`, not raw discovery. The FTC adapters expose typed
+  `DcMotor`, `CRServo`, and `Servo` behavior; they do not provide one honest universal position or
+  feedback model. No Plant API change is needed.
+- **Alternatives considered:** keep every tester and only rewrite documentation; harden each typed
+  tester but retain five beginner choices; add bounds capture only to the existing motor and servo
+  position screens; invent a universal actuator or feedback interface; discover limits by stall;
+  automatically edit profiles/preferences; or provide one device-first shell with typed internal
+  sessions. Documentation alone leaves inconsistent safety. Parallel class-first screens preserve
+  the decision burden. A universal interface would hide real motor/CR-servo/standard-servo
+  differences. Stall discovery, automatic configuration mutation, and coupled/external-feedback
+  mechanisms require device- and robot-specific safety policy.
+- **Simplicity comparison:** the selected ordinary entry is `HW: Actuator Bring-up`. It lists
+  configured devices as `[DC motor] name`, `[CR servo] name`, or `[Servo] name` and then uses one
+  control grammar: A arms after neutral; B disarms, writes motor/CR-servo zero, and stops new
+  standard-servo jog updates while retaining its last request; X tests the actual temporary FTC
+  direction while disarmed; D-pad up/down adjusts a
+  conservative rate, bumpers provide dead-man motion, D-pad left/right capture semantic Plant-min
+  and Plant-max endpoints, gamepad START clears captures, Y finalizes one copy-ready result, and BACK
+  returns to the picker after restoring temporary settings. BACK also commands motor/CR-servo zero;
+  a standard servo retains its last request and may still be moving. Type differences stay visible
+  where they are real instead of becoming separate beginner workflows.
+- **Chosen motor and CR-servo behavior:** no actuator write occurs during INIT. Driver Station START
+  plus a fresh, neutral A prepares the selected device. Motor preparation snapshots run mode,
+  direction, and
+  zero-power behavior, submits zero, uses `RUN_WITHOUT_ENCODER`, and never resets the encoder.
+  Motor/CR-servo motion starts at 0.05, changes only while disarmed in 0.05 steps up to 0.30, and
+  requires exactly one held bumper; neither, both, B, BACK, STOP, selection change, or failure
+  applies immediate zero. Direction changes clear captures and require rearm. CR servos report no
+  positional bounds without external feedback.
+- **Chosen motor endpoint evidence:** after a student approaches slowly, deliberately backs away,
+  and disarms, captures read `getCurrentPosition()`. The result retains raw semantic minimum and
+  maximum, exact tested Direction, signed span using overflow-safe arithmetic, and absolute span.
+  A positive signed span is required for the simple relative convention. The tool recommends either
+  `.bounded(0.0, safeTravelTicks).nativeUnits().needsReference(...)` or meaningful Plant units with
+  `.scaleToNative(span / plantTravel).needsReference(...)`; it never claims that an incremental
+  encoder's arbitrary raw minimum is a durable zero. Homing or explicit reference acquisition later
+  establishes Plant zero.
+- **Chosen standard-servo behavior:** the FTC native command remains the SDK logical
+  `0.0..1.0` domain. The configured FTC servo type/controller maps it to PWM; servo programming and
+  mechanics determine physical travel. Gradual dead-man jogs start from a finite known SDK command
+  state. If `Servo.getPosition()` explicitly returns its documented unknown-state `NaN`, two fresh
+  A presses acknowledge full-travel clearance and then submit logical `0.5`; B has priority over A.
+  Release or B retains the last request rather than inventing power zero. A returned call is
+  submission evidence, not proof of physical delivery, shaft position, or arrival.
+  Semantic Plant-min and Plant-max captures preserve order, including reversed mappings, and yield
+  Direction plus
+  `.bounded(PLANT_MIN, PLANT_MAX).rangeMapsToNative(nativeAtPlantMin, nativeAtPlantMax)`.
+  The wizard does not choose Plant units. `rangeMapsToNative(...)` is an affine command-space map;
+  it changes no FTC PWM or servo programming and proves neither physical nor linkage linearity.
+  Changing FTC servo type/PWM configuration, Direction, servo programming, horn geometry, or linkage
+  invalidates the physical endpoint evidence.
+- **Result and cleanup contract:** selection transitions use rearm-after-neutral. Finalization
+  requires at least one successful nonzero jog under the current Direction, then freezes an on-screen
+  result and logs it exactly once under `PhoenixActuatorBringUp`; it does not edit code, profiles,
+  or preferences. Cleanup commands motor/CR-servo zero and restores their original
+  direction/mode/zero-power behavior. Standard-servo cleanup stops new writes and restores temporary
+  Direction while retaining the last request, which may still be moving.
+  Cleanup failure remains visible and blocks unsafe child replacement through the existing tester
+  lifecycle contract.
+- **Menu and legacy scope:** add `StandardTesters.createActuatorBringUp()` as the sole ordinary
+  actuator factory. The framework home lists actuator bring-up, calibration/localization, and an
+  explicitly advanced hardware-diagnostics suite. Retire the old walkthrough and generic
+  hardware-suite factory paths after migrating callers. Retained direct-versus-derived encoder
+  velocity evidence is advanced and Driver Station START-locked; duplicate CR-servo and servo
+  beginner entries are removed. Rename and Driver Station START-gate Phoenix's direction screen as
+  configured-drivetrain verification,
+  with conflicting buttons forcing all motors to zero. The raised-wheel TeleOp check remains the
+  final configured drivetrain and mecanum integration proof.
+- **Documentation scope:** add one canonical actuator-bring-up page and route the overview, build
+  checklist, beginner course, first mechanism, first TeleOp, calibration index/tutorial,
+  troubleshooting, Phoenix calibration guidance, and generated-site navigation through it. Teach
+  the sequence isolate, establish facts, copy configuration, then verify production integration.
+  Define native domain/endpoint, controller PWM/servo physical mapping, physical safe interval,
+  Plant bounds, mapping, and reference. Explicitly exclude automatic stall discovery, unsafe gravity loads,
+  coupled or external-feedback mechanisms, periodic mechanisms, and mechanism-specific homing.
+- **PIDF boundary:** a future tuning effort may reuse tester presentation controls, but PIDF tuning
+  must activate the real robot-owned mechanism graph and collect mechanism-specific evidence. No
+  generic PIDF actuator tester is part of TESTER-02.
+- **Verification plan:** fake-hardware tests cover zero INIT writes; fresh-neutral rearm; dead-man
+  release, conflict, B, BACK, STOP, transition, and failure stops; restoration; capture invalidation;
+  no encoder reset; full encoder-domain target stepping and overflow-safe signed spans/errors;
+  unknown-state servo bootstrap, B-priority, returned-command/reversed-endpoint evidence, current-
+  Direction jog proof, one-shot logging, and cleanup-failure replacement blocking. Retained advanced
+  motor diagnostics reject `STOP_AND_RESET_ENCODER` before any write. Add menu, Phoenix verifier,
+  documentation, and removed-factory checks; run focused tests, the full TeamCode unit suite, Java
+  compilation, Javadocs, documentation/site validation where locally available, and
+  `git diff --check`. Real hardware remains required to validate physical direction, clearance,
+  load behavior, inertia/overshoot, and hardware-programmer settings.
+- **Implementation record (2026-08-10):** TESTER-02 is **Done**. Added the package-private
+  device-first `ActuatorBringUpTester` behind the sole ordinary public factory
+  `StandardTesters.createActuatorBringUp()`. Its typed, sorted picker and one control grammar now
+  cover DC motors, CR servos, and standard servos without INIT writes. Motor evidence never resets
+  an encoder; standard-servo evidence distinguishes logical command state, configured PWM/servo
+  programming, and physical travel, including an explicit two-press unknown-state bootstrap.
+  Finalization requires a successful nonzero jog under the retained Direction, emits one
+  `PhoenixActuatorBringUp` result, and cleanup retains any failure instead of replaying uncertain
+  hardware writes.
+- **Legacy and integration migration:** removed the parallel ordinary CR-servo/standard-servo
+  testers and the old generic hardware-suite/walkthrough factories. The home menu now presents
+  actuator bring-up, calibration/localization, and an explicitly advanced diagnostics submenu.
+  Phoenix's raw direction screen became START-gated `ConfiguredDrivetrainVerificationTester`, which
+  validates all four trimmed names and directions, resolves all four `DcMotorEx` devices, and
+  rejects SDK-object aliases before any Plant can configure hardware. The guided Phoenix sequence
+  begins with generic actuator facts and then verifies the copied drivetrain configuration.
+- **Retained advanced-diagnostic hardening:** motor power, position, and velocity diagnostics remain
+  advanced because they collect genuinely different SDK evidence. They are INIT-read-only,
+  reject `STOP_AND_RESET_ENCODER` before writes, make staged/submitted/unavailable telemetry
+  explicit, give a physically held B level-sensitive stop priority, clear stale targets before
+  direction/sign changes, and retain one-shot cleanup failures without replay. The opt-in REV
+  velocity comparison uses one explicit bulk packet without changing the module caching mode,
+  applies the pinned SDK configured-Direction plus motor-orientation coordinate normalization, and
+  logs all normalization inputs. The calibration guide discloses that the explicit snapshot clears
+  and refills the module cache and must remain the isolated cache owner for that diagnostic OpMode.
+- **Documentation and principles:** added the canonical `Actuator Bring-up.md` runbook and routed
+  the beginner overview, build/run checklist, first mechanism, first TeleOp, calibration indexes,
+  troubleshooting, FTC actuator guide, Phoenix calibration guide, cheat sheet, and Zensical nav
+  through it. Framework principles now name truthful tester evidence and the one ordinary
+  actuator path. PIDF tuning remains a separate real-mechanism workflow.
+- **Verification result (2026-08-10):** focused fake-hardware/menu/Phoenix coverage passes
+  **40/40** (`ActuatorBringUpTesterTest` 18, `AdvancedMotorTesterSafetyTest` 14,
+  `StandardTestersShapeTest` 3, `ConfiguredDrivetrainVerificationTesterTest` 4, and
+  `PhoenixCalibrationWalkthroughShapeTest` 1). `DocumentationLinksTest` passes **5/5**. The full
+  `:TeamCode:testDebugUnitTest` suite passes **140 suites / 1,311 tests, 0 failures, 0 errors,
+  0 skipped**; `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:phoenixJavadocs` succeed.
+  Removed-factory/caller scans and `git diff --check` are clean; Gradle emits only the existing Java
+  8 source/target and FTC sample deprecation warnings. A local Zensical render could not run because
+  no Python/Zensical runtime is installed; its checked-in nav path/case is covered by review and the
+  documentation link test.
+- **Hardware scope:** software tests establish lifecycle, command-submission, mapping, restoration,
+  and evidence-shape contracts only. Real isolated hardware remains adoption validation for actual
+  rotation direction, clearance, servo-programmer/PWM behavior, endpoint safety under inertia and
+  load, and production mechanism integration.
+- **Android Studio audit point (2026-08-10):** inspect the new device-first workflow and controls,
+  unknown-servo bootstrap, endpoint/result wording, cleanup-failure latches, retained advanced
+  diagnostics, configured-drivetrain preflight, menu/caller migration, and synchronized beginner
+  documentation. No file is staged, committed, pushed, or merged. Stop before publication or
+  another tracker item until the user replies **`TESTER-02 looks good`**.
+- **Manual verification and publication authorization (2026-08-10):** after GitHub confirmed that
+  this repository's default branch is `master`, the user approved the Android Studio review and
+  authorized committing the reviewed diff on `codex/tester-02-canonical-actuator-bring-up`, pushing
+  it to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it
+  into `master`. This authorization applies to TESTER-02 only and does not start another item.
 
 ## Explicitly deferred architectural ideas
 

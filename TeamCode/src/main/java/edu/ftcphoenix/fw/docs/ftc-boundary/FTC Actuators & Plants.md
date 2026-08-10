@@ -682,6 +682,12 @@ candidate core map at reference commit and checks the FTC raw domain before each
 So for a servo declared as `bounded(-45.0, 90.0)`, calling `rangeMapsToNative(0.22, 0.76)` means
 “plant `-45.0` maps to raw servo `0.22`, and plant `90.0` maps to raw servo `0.76`.”
 
+Those native values are FTC SDK logical commands. The configured FTC servo type/controller maps
+them to PWM, while servo programming and mechanics determine physical travel.
+`rangeMapsToNative(...)` does not change any of those downstream mappings, measure shaft angle, or
+prove that a linkage is physically linear. The ordinary supervised way to establish candidate
+endpoints is [`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>).
+
 Example:
 
 ```java
@@ -894,6 +900,13 @@ normally non-periodic, while a plate or indexer may be periodic when positions o
 are interchangeable. The mechanism therefore answers periodicity explicitly just like every other
 position branch. Standard Servo construction does not expose motor control strategy, feedback
 tolerance, reference policy, open-loop calibration search, or unbounded travel.
+
+The `[0.0, 1.0]` native domain is the FTC SDK logical command range; it is not a promise of 180
+degrees or of any specific physical span. The configured FTC servo type/controller maps it to PWM,
+and servo programming and mechanics determine the resulting travel. A team may configure and
+program a nominal 270-degree response and then map only the mechanically safe 180-degree subrange
+into Plant degrees. Changing the FTC servo type/PWM configuration, `Direction`, servo programming,
+horn geometry, or linkage invalidates previously measured physical endpoint evidence.
 
 Raw servo units:
 

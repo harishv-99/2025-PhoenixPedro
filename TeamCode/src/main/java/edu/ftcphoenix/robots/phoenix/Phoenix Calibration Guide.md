@@ -158,22 +158,46 @@ That walkthrough links to the real testers in the recommended order.
 
 If you already know what you need, browse instead through:
 
-- `Phoenix: Hardware Bring-up`
+- `Phoenix: Configured Hardware Verification`
 - `Phoenix: Calibration & Localization`
 
 ---
 
 ## 3. Step-by-step bring-up
 
-### Step 1: drivetrain motor direction
+### Step 1: raw actuator direction and optional endpoints
 
 Menu entry:
 
-- `HW: Drivetrain Motor Direction`
+- `HW: Actuator Bring-up`
 
 Goal:
 
-- confirm each wheel would drive the robot forward when the tester says it should
+- isolate one configured motor or servo, establish its tested FTC `Direction`, and capture only
+  already-backed-off safe native endpoints when the mechanism is genuinely bounded
+
+Follow the canonical [`actuator bring-up runbook`](<../../fw/docs/testing-calibration/Actuator Bring-up.md>).
+Copy its result into `PhoenixProfile` or the owning mechanism config, then rebuild. The tool does not
+edit Phoenix code, choose Plant units, establish an incremental encoder's runtime zero, or tune
+PIDF.
+
+---
+
+### Step 2: configured drivetrain verification
+
+Menu entry:
+
+- `HW: Configured Drivetrain Verification`
+
+Goal:
+
+- verify that the motor names and directions already stored in the Phoenix profile select the
+  expected wheel and make positive power contribute to robot-forward motion
+
+Before this Phoenix-specific check, complete the preceding canonical
+[`HW: Actuator Bring-up`](<../../fw/docs/testing-calibration/Actuator Bring-up.md>) tool to establish
+each raw motor's FTC `Direction`. Copy those facts into the profile and rebuild. The configured
+drivetrain verifier does not discover direction and does not edit the profile.
 
 Fix in code:
 
@@ -181,9 +205,27 @@ Fix in code:
 PhoenixProfile.current().drive.wiring
 ```
 
+Run the verification safely:
+
+1. Raise and secure the chassis so all four wheels are clear. Keep people, wires, and loose items
+   away from the wheels.
+2. Enter the tester. INIT is presentation-only and never updates or writes its drivetrain Plants.
+3. Press Driver Station START, then release A/B/X/Y once so the controls arm from neutral.
+4. Hold exactly one mapped button: X = front-left, Y = front-right, A = back-left, B = back-right.
+   Releasing the button commands every motor to zero. Holding two or more mapped buttons also
+   commands every motor to zero.
+5. Confirm that only the named wheel turns and that its positive motion would contribute to
+   robot-forward travel. STOP commands all four motors to zero.
+
+This isolated test proves only that the checked-in Phoenix names/directions reach the expected
+motors under controlled software conditions. Real hardware observation is still required. For the
+final drivetrain integration verification, keep every wheel raised, run the production Phoenix
+TeleOp, and test forward, strafe, and turn separately. That final check exercises the real TeleOp
+controls, mecanum mixing, configured drivetrain, and output path together.
+
 ---
 
-### Step 2: camera mount
+### Step 3: camera mount
 
 Menu entry:
 
@@ -251,7 +293,7 @@ Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2
 
 ---
 
-### Step 3: AprilTag-only localization sanity check
+### Step 4: AprilTag-only localization sanity check
 
 Menu entry:
 
@@ -281,7 +323,7 @@ So the practice tool should match production AprilTag-solving math closely.
 
 ---
 
-### Step 4: Pinpoint axis directions
+### Step 5: Pinpoint axis directions
 
 Menu entry:
 
@@ -311,7 +353,7 @@ mechanisms remain available, with the required tester named in Driver Station te
 
 ---
 
-### Step 5: Pinpoint pod offsets
+### Step 6: Pinpoint pod offsets
 
 Menu entry:
 
@@ -361,7 +403,7 @@ where the chassis is on the field. Place the robot at the displayed pose before 
 
 ---
 
-### Step 6: default corrected-global localization validation
+### Step 7: default corrected-global localization validation
 
 Menu entry:
 
@@ -417,7 +459,7 @@ intend to use.
 
 ---
 
-### Step 7: optional EKF comparison
+### Step 8: optional EKF comparison
 
 Menu entry:
 
@@ -465,15 +507,17 @@ Other additions that fit this model include:
 
 ## 5. Quick checklist for a fresh Phoenix robot
 
-1. drivetrain direction
-2. camera mount
-3. raw AprilTag localization check
-4. Pinpoint axis directions
-5. Pinpoint pod offsets
-6. default corrected-global localization validation
-7. confirm TeleOp reports pose assists `READY`
-8. confirm the intended Auto has calibrated field facts and `MATCH_READY` geometry
-9. optional EKF comparison
+1. establish raw drivetrain motor direction with `HW: Actuator Bring-up`
+2. run Phoenix configured-drivetrain verification with all wheels raised
+3. run the production TeleOp raised-wheel forward/strafe/turn integration check
+4. camera mount
+5. raw AprilTag localization check
+6. Pinpoint axis directions
+7. Pinpoint pod offsets
+8. default corrected-global localization validation
+9. confirm TeleOp reports pose assists `READY`
+10. confirm the intended Auto has calibrated field facts and `MATCH_READY` geometry
+11. optional EKF comparison
 
 ---
 

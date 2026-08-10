@@ -9,12 +9,14 @@ ordered [`Phoenix calibration guide`](<../../../robots/phoenix/Phoenix Calibrati
 
 ## Student runbooks
 
-1. [`Robot Calibration Tutorials`](<Robot Calibration Tutorials.md>) — mechanism references,
-   drivetrain direction, encoders, camera mount, AprilTags, Pinpoint, and corrected localization.
-2. [`AprilTag Practice Setup`](<../drive-vision/AprilTag Practice Setup.md>) — a known small test
+1. [`Actuator bring-up`](<Actuator Bring-up.md>) — the one ordinary device-first workflow for
+   motor/servo direction and optional safe endpoint evidence.
+2. [`Robot Calibration Tutorials`](<Robot Calibration Tutorials.md>) — mechanism references,
+   drivetrain integration, encoders, camera mount, AprilTags, Pinpoint, and corrected localization.
+3. [`AprilTag Practice Setup`](<../drive-vision/AprilTag Practice Setup.md>) — a known small test
    area when a complete field is unavailable.
-3. [`Software PIDF Tuning Workflow`](<Software PIDF Tuning Workflow.md>) — safe candidate, apply,
-   observe, record, and restart behavior.
+4. [`Software PIDF Tuning Workflow`](<Software PIDF Tuning Workflow.md>) — a separate
+   mechanism-owned safe-candidate, apply, observe, record, and restart workflow.
 
 ## Mentor and tester-author reference
 

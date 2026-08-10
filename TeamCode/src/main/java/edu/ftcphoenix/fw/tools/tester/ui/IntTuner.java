@@ -212,14 +212,25 @@ public final class IntTuner {
      * Increase the target by the current step size.
      */
     public void inc() {
-        setTarget(target + step());
+        adjustBy(step());
     }
 
     /**
      * Decrease the target by the current step size.
      */
     public void dec() {
-        setTarget(target - step());
+        adjustBy(-((long) step()));
+    }
+
+    private void adjustBy(long delta) {
+        long candidate = ((long) target) + delta;
+        if (candidate <= min) {
+            target = min;
+        } else if (candidate >= max) {
+            target = max;
+        } else {
+            target = (int) candidate;
+        }
     }
 
     /**
@@ -293,7 +304,7 @@ public final class IntTuner {
 
         if (delta != 0) {
             axisCarry -= delta;
-            setTarget(target + delta);
+            adjustBy(delta);
         }
     }
 

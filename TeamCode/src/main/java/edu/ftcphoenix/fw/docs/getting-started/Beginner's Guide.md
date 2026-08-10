@@ -32,7 +32,7 @@ separate project.
 | Step | Lesson | You are done when… |
 |---:|---|---|
 | 1 | [`Build and Run`](<Build and Run.md>) | The TeamCode module compiles and its unit tests pass. |
-| 2 | [`Your first mechanism`](<First Mechanism.md>) | The one-motor starter Auto collects for 0.75 seconds and returns to stopped. |
+| 2 | [`Your first mechanism`](<First Mechanism.md>) | The generic wizard establishes the motor direction, then the one-motor starter Auto collects for 0.75 seconds and returns to stopped. |
 | 3 | [`Your first TeleOp`](<First TeleOp.md>) | The starter drives, slows with right bumper, and maps A/B/X to intake meanings. |
 | 4 | [`Your first Task and Auto`](<First Task and Auto.md>) | You can explain and safely adapt the non-blocking timed behavior already observed. |
 
@@ -75,7 +75,8 @@ The split keeps the OpModes short without hiding robot behavior in a robot-speci
 Before setting `hardwareConfigurationReviewed = true` or removing `@Disabled`:
 
 - match every configured name to the Robot Controller configuration;
-- review every configured direction and write down the expected motion;
+- isolate each new actuator in [`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>),
+  review its configured direction, and write down the expected positive motion;
 - use conservative mechanism powers and explicit conservative drive scales;
 - keep people, wires, game pieces, and tools outside moving mechanisms;
 - leave enough clear floor space for any drive or Pedro test; and

@@ -35,7 +35,26 @@ checkpoint before adding a drivetrain.
   immediately removes power.
 - Set `hardwareConfigurationReviewed = true` only after reviewing the values used by this Auto.
 
-## 1. Configure only the intake facts
+## 1. Establish the motor direction in the generic wizard
+
+Leave both starter OpModes disabled. Deploy the project and run **FW: Testers**, then open
+**HW: Actuator Bring-up** and choose `[DC motor] YOUR_INTAKE_NAME`.
+
+1. Press Driver Station START with every control neutral.
+2. Press A to arm, then hold the right bumper briefly to test positive command at the initial
+   `0.05` power. Use the left bumper only to cross-check negative command.
+3. Press B and confirm that the chosen positive direction means `COLLECT` for this mechanism.
+4. If necessary, press X while disarmed, return to neutral, rearm, and retest.
+5. Press Y without endpoint captures. This free-running intake needs a tested `Direction`, not a
+   positional range.
+6. Copy the reported direction, press BACK, and confirm power returns to zero.
+
+The wizard does not edit robot code. It isolates the hardware fact before the starter's mechanism,
+Task, or power signs can obscure it. Read the complete
+[`actuator bring-up runbook`](<../testing-calibration/Actuator Bring-up.md>) before using the tool on
+a bounded or position-controlled mechanism.
+
+## 2. Configure only the intake facts
 
 `StarterRobot.declareAuto(...)` calls `profile.requireReadyForAuto()`. That check requires the
 shared intake fields but does not require the unused mecanum configuration.
@@ -57,11 +76,12 @@ public static StarterProfile current() {
 }
 ```
 
-Replace the name with the exact case-sensitive Robot Controller configuration name. The direction
-and powers above show the required value types; verify the signs on your hardware. The two powers
+Replace the name with the exact case-sensitive Robot Controller configuration name and replace
+`Direction.FORWARD` with the wizard's tested result. The powers above show the required value
+types; verify their semantic signs on your hardware. The two powers
 must be finite, nonzero, different, and inside `[-1.0, +1.0]`.
 
-## 2. Read the capability before the motor code
+## 3. Read the capability before the motor code
 
 `StarterIntake` gives TeleOp and Auto one robot vocabulary:
 
@@ -80,7 +100,7 @@ Status status();
 Callers ask for `COLLECT`; they do not know the motor name or power. That keeps the same behavior
 available to both modes.
 
-## 3. Follow the ownership chain
+## 4. Follow the ownership chain
 
 The mechanism receives `HardwareMap` plus its data-only config, copies the config, and privately
 builds one normalized-power Plant:
@@ -121,7 +141,7 @@ power Plant's natural zero-power stop and makes the Plant terminal. It does not 
 command target: every later `update(...)` is inert. Request `STOPPED` through `setMode(...)` when
 the mechanism should idle during the active match and remain usable afterward.
 
-## 4. See how Auto declares the mechanism
+## 5. See how Auto declares the mechanism
 
 `StarterRobot.declareAuto(...)` transfers the completed mechanism to the managed program, asks the
 capability for one behavior, and declares that behavior as the root:
@@ -136,7 +156,7 @@ program.rootTask(root);
 The next Task lesson explains how the timed behavior works. For this checkpoint, observe its visible
 contract: collect for the requested duration, then return to stopped.
 
-## 5. Enable and run the one-motor Auto
+## 6. Enable and run the one-motor Auto
 
 Remove `@Disabled` from `StarterAuto`. Leave `StarterTeleOp` and the Pedro example disabled.
 
@@ -162,6 +182,7 @@ capability unchanged.
 ## Expected checkpoint
 
 - Auto initializes without requiring drive motor configuration.
+- The generic wizard established and reported the copied motor direction without endpoint claims.
 - INIT produces no motor motion.
 - START commands the reviewed collection direction for 0.75 seconds.
 - The mechanism returns to `STOPPED` automatically.

@@ -88,6 +88,10 @@ public final class StarterTeleOp extends FtcRobotOpMode {
 Do not remove `@Disabled` until the next lesson has reviewed every hardware name, direction,
 mechanism power, and drive scale required by that mode.
 
+The ready-made **FW: Testers** OpMode is separate from the disabled starter. The next lesson uses
+its **HW: Actuator Bring-up** wizard to establish one motor's direction at low power before the
+starter owns that motor.
+
 ## 5. Deploy without enabling the starter
 
 If a Robot Controller is available, use the team's normal Android Studio deployment process to
@@ -108,6 +112,7 @@ Phoenix begins after those FTC controller and deployment steps are working.
 - `:TeamCode:compileDebugJavaWithJavac` reports `BUILD SUCCESSFUL`.
 - `:TeamCode:testDebugUnitTest` reports `BUILD SUCCESSFUL`.
 - Android Studio can navigate to `FtcRobotOpMode`, `RobotProgram`, and the starter examples.
+- You can find **FW: Testers** on Driver Station for the next supervised hardware lesson.
 - No course OpMode has been enabled and no hardware has moved.
 
 ## Common problems

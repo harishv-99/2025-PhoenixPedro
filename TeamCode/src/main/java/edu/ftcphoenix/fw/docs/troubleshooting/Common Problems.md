@@ -11,7 +11,7 @@ message first: it normally names the invalid value, expected domain, or owner th
 | OpMode is missing on Driver Station | `@Disabled`, annotation, build, and deployment |
 | Hardware name error during INIT | Robot Configuration spelling, case, and duplicate group names |
 | START remains blocked | Always-on readiness telemetry and the named calibration/config fact |
-| Motor or servo moves the wrong way | Configured `Direction`, then the hardware direction tester |
+| Motor or servo moves the wrong way | Configured `Direction`, then `HW: Actuator Bring-up` |
 | A button does nothing or fires repeatedly | `onRise`, `mirrorOnChange`, or `copyEachCycle` semantics |
 | A macro works once | A started Task object was reused instead of rebuilt |
 | Feedback move is rejected | The Plant is open-loop or the Task names the wrong command target |
@@ -82,11 +82,13 @@ Stop immediately. Do not compensate by changing every target sign.
 1. Confirm which physical member moved.
 2. Check its configured `Direction` at the FTC boundary.
 3. For a group, verify each member independently before testing the group.
-4. Run the appropriate low-power direction tester with the robot safely supported.
+4. Run **FW: Testers → HW: Actuator Bring-up** with the device isolated and robot safely supported.
 5. Only after direction is correct, tune scale, bounds, gains, or mechanism targets.
 
-Use [`Robot Calibration Tutorials`](<../testing-calibration/Robot Calibration Tutorials.md>) for the
-ordered checks. A passing software range check does not prove wiring, mounting, load, or safe motion.
+Use the [`actuator bring-up runbook`](<../testing-calibration/Actuator Bring-up.md>) and then
+[`Robot Calibration Tutorials`](<../testing-calibration/Robot Calibration Tutorials.md>) for the
+ordered integration checks. A captured endpoint or passing software range check does not prove
+wiring, mounting, load, overshoot, or safe motion.
 
 ## A button action does not behave as expected
 

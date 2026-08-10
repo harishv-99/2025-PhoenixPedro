@@ -87,7 +87,7 @@ public final class PhoenixRobotTesters {
 
         suite.add(
                 "Guide: Phoenix Calibration Walkthrough",
-                "Recommended order for bringing Phoenix from fresh wiring to validated localization.",
+                "Recommended Phoenix sequence, beginning with canonical actuator bring-up.",
                 PhoenixCalibrationWalkthrough::createSuite
         );
 
@@ -98,27 +98,27 @@ public final class PhoenixRobotTesters {
         );
 
         suite.add(
-                "Phoenix: Hardware Bring-up",
-                "Robot-specific hardware sanity checks.",
-                PhoenixRobotTesters::createHardwareSuite
+                "Phoenix: Configured Hardware Verification",
+                "Robot-specific integration checks after canonical actuator bring-up.",
+                PhoenixRobotTesters::createConfiguredHardwareVerificationSuite
         );
     }
 
     /**
-     * Builds the Phoenix hardware bring-up submenu.
+     * Builds the Phoenix configured-hardware verification submenu.
      *
-     * @return tester suite containing robot-specific hardware sanity checks
+     * @return tester suite containing robot-specific configuration checks
      */
-    public static TesterSuite createHardwareSuite() {
+    public static TesterSuite createConfiguredHardwareVerificationSuite() {
         TesterSuite suite = new TesterSuite()
-                .setTitle("Phoenix Hardware Bring-up")
-                .setHelp("Robot-specific hardware sanity checks.")
+                .setTitle("Phoenix Configured Hardware Verification")
+                .setHelp("Verify Phoenix configuration after raw actuator facts are established.")
                 .setMaxVisibleItems(8);
 
         suite.add(
-                "HW: Drivetrain Motor Direction",
-                "Hold X / Y / A / B to run FL / FR / BL / BR. Each should drive the robot forward.",
-                PhoenixRobotTesters::drivetrainMotorDirection
+                "HW: Configured Drivetrain Verification",
+                "After actuator bring-up, verify Phoenix's configured FL / FR / BL / BR one raised wheel at a time.",
+                PhoenixRobotTesters::configuredDrivetrainVerification
         );
 
         return suite;
@@ -293,12 +293,13 @@ public final class PhoenixRobotTesters {
     }
 
     /**
-     * Creates the Phoenix drivetrain motor-direction tester.
+     * Creates the Phoenix configured-drivetrain verification tester.
      *
-     * @return tester that runs one drivetrain motor at a time to verify direction wiring
+     * @return tester that verifies the profile's drivetrain names and directions one raised wheel
+     *         at a time
      */
-    public static TeleOpTester drivetrainMotorDirection() {
-        return new DrivetrainMotorDirectionTester();
+    public static TeleOpTester configuredDrivetrainVerification() {
+        return new ConfiguredDrivetrainVerificationTester();
     }
 
     /**

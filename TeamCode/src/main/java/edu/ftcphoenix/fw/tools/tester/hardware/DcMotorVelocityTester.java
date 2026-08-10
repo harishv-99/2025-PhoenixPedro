@@ -7,6 +7,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
+import edu.ftcphoenix.fw.tools.tester.StandardTesters;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
@@ -25,16 +26,23 @@ import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
  *   <li><b>RUN (motor selected)</b>:
  *     <ul>
  *       <li><b>A</b>: enable/disable velocity control</li>
- *       <li><b>X</b>: toggle motor direction (FORWARD/REVERSE)</li>
- *       <li><b>START</b>: toggle fine/coarse (affects target step and stick nudge rate)</li>
+ *       <li><b>X</b>: toggle motor direction while disabled (FORWARD/REVERSE)</li>
+ *       <li><b>START</b>: toggle fine/coarse target step</li>
  *       <li><b>Dpad Up/Down</b>: step target velocity</li>
- *       <li><b>Right stick Y</b>: smoothly nudge target velocity (hold to change continuously)</li>
  *       <li><b>Y</b>: set target velocity to 0 (does not disable)</li>
  *       <li><b>B</b>: stop (disable + target=0)</li>
  *       <li><b>BACK</b>: return to picker (change motor)</li>
  *     </ul>
  *   </li>
  * </ul>
+ *
+ * <p><b>Advanced diagnostic:</b> ordinary direction and safe-endpoint setup should enter the one
+ * device-first path from {@link StandardTesters#createActuatorBringUp()}. Use this class directly
+ * only to exercise an isolated {@link DcMotorEx} velocity channel.</p>
+ *
+ * <p><b>Lifecycle:</b> selection and INIT are observation-only. Driver Station START prepares the
+ * selected motor. Each held control must be released before its next edge can act; B remains a
+ * level-sensitive priority stop throughout RUN.</p>
  *
  * <p><b>Safety:</b> motor is commanded to 0 on stop and original settings are restored.</p>
  */
@@ -47,10 +55,6 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
     private static final int VEL_FINE_STEP_TPS = 50;
     private static final int VEL_COARSE_STEP_TPS = 250;
 
-    // Stick nudge speed (ticks/sec change per second at full deflection)
-    private static final double NUDGE_FINE_RATE_TPS_PER_SEC = 500.0;
-    private static final double NUDGE_COARSE_RATE_TPS_PER_SEC = 3000.0;
-
     private final String preferredName;
 
     private HardwareNamePicker picker;
@@ -61,7 +65,14 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
     private DcMotorEx motorEx = null;
 
     private boolean ready = false;
+    private boolean opModeStarted = false;
+    private boolean motorPreparationStarted = false;
+    private boolean motorPrepared = false;
+    private boolean restorationAttempted = false;
+    private RuntimeException retainedRestorationFailure = null;
+    private long selectedMotorCycle = Long.MIN_VALUE;
     private String resolveError = null;
+    private String testerError = null;
 
     private final IntTuner targetVelTps =
             new IntTuner("TargetVel(tps)",
@@ -105,6 +116,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
     /** {@inheritDoc} */
     @Override
     protected void onInit() {
+        opModeStarted = false;
         picker = new HardwareNamePicker(
                 ctx.hw,
                 DcMotor.class,
@@ -115,11 +127,6 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
 
         // Enable/disable is useful here.
         targetVelTps.setEnableSupported(true);
-
-        // Attach stick nudge for target velocity (right stick Y).
-        targetVelTps.attachAxisNudge(gamepads.p1().rightY(), 0.08,
-                NUDGE_FINE_RATE_TPS_PER_SEC,
-                NUDGE_COARSE_RATE_TPS_PER_SEC);
 
         // Prefer name passed in (RobotConfig), but fall back to picker if it fails.
         if (preferredName != null && !preferredName.trim().isEmpty()) {
@@ -142,7 +149,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         );
 
         Bindings.ControlContext liveControls = bindings.contextWhen(
-                BooleanSource.of(() -> ready),
+                BooleanSource.of(this::controlsActive),
                 Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
         );
 
@@ -156,7 +163,11 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         });
 
         // X: toggle motor direction.
-        liveControls.onRise(gamepads.p1().x(), this::toggleDirection);
+        liveControls.onRise(gamepads.p1().x(), () -> {
+            if (!targetVelTps.isEnabled()) {
+                toggleDirection();
+            }
+        });
 
         // START: fine/coarse
         liveControls.onRise(gamepads.p1().start(), targetVelTps::toggleFine);
@@ -191,13 +202,9 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         }
         targetVelTps.setTarget(0);
 
-        stopMotorNow();
         restoreOriginalSettings();
 
-        ready = false;
-        motor = null;
-        motorEx = null;
-        resolveError = null;
+        clearSelectedMotor();
 
         picker.clearChoice();
         picker.refresh();
@@ -215,7 +222,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
             renderPicker();
             return;
         }
-        updateAndRender(dtSec);
+        renderTelemetry();
     }
 
     /** {@inheritDoc} */
@@ -225,13 +232,31 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
             renderPicker();
             return;
         }
+        if (gamepads.p1().b().getAsBoolean(clock)) {
+            targetVelTps.setTarget(0);
+            if (targetVelTps.isEnabled()) {
+                targetVelTps.toggleEnabled();
+            }
+            stopMotorNow();
+            renderTelemetry();
+            return;
+        }
         updateAndRender(dtSec);
     }
 
     /** {@inheritDoc} */
     @Override
+    protected void onStart() {
+        opModeStarted = true;
+        if (ready) {
+            prepareSelectedMotor();
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override
     protected void onStop() {
-        stopMotorNow();
+        opModeStarted = false;
         restoreOriginalSettings();
     }
 
@@ -255,18 +280,6 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
             return;
         }
 
-        // Snapshot original settings.
-        origMode = safeGetMode(motor);
-        origDir = safeGetDir(motor);
-        origZpb = safeGetZpb(motor);
-
-        // Put motor into a test-friendly default.
-        try {
-            motor.setPower(0.0);
-            motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        } catch (Exception ignored) {
-        }
-
         // Default: disabled until user presses A
         if (targetVelTps.isEnabled()) {
             targetVelTps.toggleEnabled();
@@ -274,12 +287,14 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         targetVelTps.setTarget(0);
 
         ready = true;
+        testerError = null;
+        selectedMotorCycle = clock.cycle();
+        if (opModeStarted) {
+            prepareSelectedMotor();
+        }
     }
 
     private void updateAndRender(double dtSec) {
-        // Stick nudge always updates target, even if disabled.
-        targetVelTps.updateFromAxis(clock, () -> ready);
-
         if (targetVelTps.isEnabled()) {
             applyVelocity(targetVelTps.applied());
         } else {
@@ -295,77 +310,168 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         try {
             motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             motorEx.setVelocity(tps);
-        } catch (Exception ignored) {
-            // Fail-safe
+            testerError = null;
+        } catch (RuntimeException commandFailure) {
             if (targetVelTps.isEnabled()) {
                 targetVelTps.toggleEnabled();
             }
-            stopMotorNow();
+            testerError = "Velocity command failed: " + describe(commandFailure);
+            try {
+                stopMotorNow();
+            } catch (RuntimeException cleanupFailure) {
+                commandFailure.addSuppressed(cleanupFailure);
+                throw new IllegalStateException(
+                        "Velocity command and fail-stop cleanup both failed",
+                        commandFailure);
+            }
         }
     }
 
     private void stopMotorNow() {
         if (motor == null) return;
+        RuntimeException failure = null;
         try {
             if (motorEx != null) motorEx.setVelocity(0);
-        } catch (Exception ignored) {
+        } catch (RuntimeException ex) {
+            failure = ex;
         }
         try {
             motor.setPower(0.0);
-        } catch (Exception ignored) {
+        } catch (RuntimeException ex) {
+            failure = combine(failure, ex);
+        }
+        if (failure != null) {
+            throw new IllegalStateException("Failed to stop velocity motor safely", failure);
         }
     }
 
     private void toggleDirection() {
         if (motor == null) return;
-        try {
-            DcMotor.Direction d = motor.getDirection();
-            motor.setDirection(d == DcMotor.Direction.FORWARD ? DcMotor.Direction.REVERSE : DcMotor.Direction.FORWARD);
-        } catch (Exception ignored) {
-        }
+        targetVelTps.setTarget(0);
+        stopMotorNow();
+        DcMotor.Direction d = motor.getDirection();
+        motor.setDirection(d == DcMotor.Direction.FORWARD
+                ? DcMotor.Direction.REVERSE
+                : DcMotor.Direction.FORWARD);
     }
 
     private void restoreOriginalSettings() {
-        if (motor == null) return;
-
+        if (motor == null || !motorPreparationStarted) return;
+        if (restorationAttempted) {
+            if (retainedRestorationFailure != null) throw retainedRestorationFailure;
+            return;
+        }
+        restorationAttempted = true;
+        RuntimeException failure = null;
+        try {
+            if (motorEx != null) motorEx.setVelocity(0.0);
+        } catch (RuntimeException ex) {
+            failure = ex;
+        }
         try {
             motor.setPower(0.0);
-        } catch (Exception ignored) {
+        } catch (RuntimeException ex) {
+            failure = combine(failure, ex);
         }
-
         try {
             if (origDir != null) motor.setDirection(origDir);
-        } catch (Exception ignored) {
+        } catch (RuntimeException ex) {
+            failure = combine(failure, ex);
         }
         try {
             if (origZpb != null) motor.setZeroPowerBehavior(origZpb);
-        } catch (Exception ignored) {
+        } catch (RuntimeException ex) {
+            failure = combine(failure, ex);
         }
         try {
             if (origMode != null) motor.setMode(origMode);
-        } catch (Exception ignored) {
+        } catch (RuntimeException ex) {
+            failure = combine(failure, ex);
+        }
+        if (failure != null) {
+            retainedRestorationFailure = new IllegalStateException(
+                    "Failed to command motor zero and/or restore its prior settings",
+                    failure);
+            throw retainedRestorationFailure;
+        }
+        motorPreparationStarted = false;
+        motorPrepared = false;
+        origMode = null;
+        origDir = null;
+        origZpb = null;
+    }
+
+    private boolean controlsActive() {
+        return ready
+                && opModeStarted
+                && motorPrepared
+                && !gamepads.p1().b().getAsBoolean(clock)
+                && clock.cycle() != selectedMotorCycle;
+    }
+
+    private void prepareSelectedMotor() {
+        if (motor == null || motorPrepared) return;
+        origMode = motor.getMode();
+        if (origMode == DcMotor.RunMode.STOP_AND_RESET_ENCODER) {
+            origMode = null;
+            throw new IllegalStateException(
+                    "Selected motor is in STOP_AND_RESET_ENCODER. Put it in a normal run mode "
+                            + "before starting motor-velocity diagnostics; this tester never "
+                            + "resets or restores encoder-reset mode.");
+        }
+        origDir = motor.getDirection();
+        origZpb = motor.getZeroPowerBehavior();
+        restorationAttempted = false;
+        retainedRestorationFailure = null;
+        motorPreparationStarted = true;
+        try {
+            motorEx.setVelocity(0.0);
+            motor.setPower(0.0);
+            motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            motorPrepared = true;
+        } catch (RuntimeException preparationFailure) {
+            try {
+                restoreOriginalSettings();
+            } catch (RuntimeException cleanupFailure) {
+                preparationFailure.addSuppressed(cleanupFailure);
+            }
+            throw new IllegalStateException(
+                    "Cannot prepare selected motor for velocity diagnostics",
+                    preparationFailure);
         }
     }
 
-    private static DcMotor.RunMode safeGetMode(DcMotor m) {
-        try {
-            return m.getMode();
-        } catch (Exception ignored) {
-            return null;
-        }
+    private void clearSelectedMotor() {
+        ready = false;
+        motor = null;
+        motorEx = null;
+        resolveError = null;
+        testerError = null;
+        selectedMotorCycle = Long.MIN_VALUE;
+        motorPreparationStarted = false;
+        motorPrepared = false;
+        restorationAttempted = false;
+        retainedRestorationFailure = null;
+        origMode = null;
+        origDir = null;
+        origZpb = null;
+    }
+
+    private static RuntimeException combine(RuntimeException first, RuntimeException next) {
+        if (first == null) return next;
+        if (first != next) first.addSuppressed(next);
+        return first;
+    }
+
+    private static String describe(RuntimeException ex) {
+        String message = ex.getMessage();
+        return ex.getClass().getSimpleName()
+                + ((message == null || message.trim().isEmpty()) ? "" : ": " + message);
     }
 
     private static DcMotor.Direction safeGetDir(DcMotor m) {
         try {
             return m.getDirection();
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static DcMotor.ZeroPowerBehavior safeGetZpb(DcMotor m) {
-        try {
-            return m.getZeroPowerBehavior();
         } catch (Exception ignored) {
             return null;
         }
@@ -399,16 +505,32 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         t.addLine("=== DcMotor Velocity Tester ===");
         t.addLine("Motor: " + motorName);
         t.addData("Enable [A]", targetVelTps.isEnabled() ? "RUN_USING_ENCODER ON" : "OFF");
-        t.addData("Direction [X]", String.valueOf(safeGetDir(motor)));
-        t.addData("Step [START]", "%s (%d tps)",
+        DcMotor.Direction observedDirection = safeGetDir(motor);
+        t.addData("Direction [X]",
+                observedDirection == null ? "unavailable" : observedDirection.name());
+        t.addData("Step [gamepad START]", "%s (%d tps)",
                 targetVelTps.isFine() ? "FINE" : "COARSE",
                 targetVelTps.step());
-        t.addData("Target vel [Dpad U/D | RightStickY]", "%d tps", targetVelTps.target());
-        t.addData("Applied target", "%d tps", targetVelTps.applied());
+        t.addData("Staged target [Dpad U/D]", "%d tps", targetVelTps.target());
+        if (targetVelTps.isEnabled()) {
+            t.addData("Submitted target this cycle", "%d tps", targetVelTps.applied());
+        } else if (!opModeStarted) {
+            t.addData("Velocity command", "INIT - no command submitted");
+        } else {
+            t.addData("Velocity command", "not active; velocity/power zero submitted");
+        }
         t.addData("Zero target [Y]", "target -> 0 tps");
         t.addData("Stop [B]", "disable + velocity 0");
 
-        double measured = 0.0;
+        if (!opModeStarted) {
+            t.addData("Output lock", "INIT - press Driver Station START, release controls, then press A");
+        }
+        if (testerError != null) {
+            t.addData("Tester error", testerError);
+        }
+
+        Double measured = null;
+        boolean nonFiniteMeasurement = false;
         DcMotor.RunMode mode = null;
 
         try {
@@ -416,14 +538,30 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         } catch (Exception ignored) {
         }
         try {
-            if (motorEx != null) measured = motorEx.getVelocity();
+            if (motorEx != null) {
+                double sample = motorEx.getVelocity();
+                if (Double.isFinite(sample)) {
+                    measured = sample;
+                } else {
+                    nonFiniteMeasurement = true;
+                }
+            }
         } catch (Exception ignored) {
         }
 
         t.addLine("");
-        t.addData("Measured velocity", "%.1f tps", measured);
-        t.addData("Velocity error", "%.1f tps", targetVelTps.target() - measured);
-        t.addData("Mode", String.valueOf(mode));
+        if (measured == null) {
+            t.addData("Measured velocity",
+                    nonFiniteMeasurement ? "unavailable (non-finite reading)" : "unavailable");
+        } else {
+            t.addData("Measured velocity", "%.1f tps", measured);
+        }
+        if (targetVelTps.isEnabled() && measured != null) {
+            t.addData("Velocity error", "%.1f tps", targetVelTps.applied() - measured);
+        } else {
+            t.addData("Velocity error", "unavailable (target inactive or velocity unreadable)");
+        }
+        t.addData("Mode", mode == null ? "unavailable" : mode.name());
 
         t.addLine("");
         t.addLine("BACK: return to the motor picker.");
