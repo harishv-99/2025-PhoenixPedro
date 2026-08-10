@@ -77,7 +77,7 @@ SimpleTagLayout layout = new SimpleTagLayout()
 
 ## 4) Use the layout/library with Phoenix testers
 
-The testers that use AprilTags now support:
+The testers that use AprilTags support:
 
 - A **tag layout override** (e.g. `SimpleTagLayout`)
 - A **tag library override** (e.g. `FtcAprilTags.singleTagLibrary(...)`)

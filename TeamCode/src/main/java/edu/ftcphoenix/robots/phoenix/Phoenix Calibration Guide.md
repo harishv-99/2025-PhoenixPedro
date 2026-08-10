@@ -42,8 +42,8 @@ nonzero additive offset would make an active zero command disagree with stop.
 
 The framework validates this scale as finite and preflights the complete `[-1.0, +1.0]` group image
 before fresh hardware effects. That numeric proof does not establish the correct physical ratio;
-confirm direction, relative speed, loading, and transfer behavior on the robot. If a future
-mechanism proves it needs additive or nonlinear per-wheel intent, model that pair inside its owner
+confirm direction, relative speed, loading, and transfer behavior on the robot. If a mechanism
+needs additive or nonlinear per-wheel intent, model that pair inside its owner
 with two private Plants rather than hiding another command in an actuator map.
 
 
@@ -77,7 +77,7 @@ this.lift = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-Use these rules when adding future Phoenix mechanisms:
+Use these rules when adding Phoenix mechanisms:
 
 - **Plant units** are the units Phoenix services, presets, scalar planners, and telemetry should
   speak in. They may be inches, degrees, logical servo units, or encoder ticks.
@@ -120,7 +120,7 @@ the mechanism should predictably hold that exact position.
 Create a fresh search Task for each homing attempt. Search Task objects follow the framework's
 single-use lifecycle and are not restarted after they have begun.
 
-For a future Phoenix mechanism, `RobotProgram` advances Tasks before calling the owning
+For a Phoenix mechanism, `RobotProgram` advances Tasks before calling the owning
 mechanism's update in both TeleOp and Auto. The search Task owns its cue, reference, timeout, and
 handoff recipe but never calls `lift.update(clock)`; the mechanism remains the sole Plant heartbeat
 owner. If the search is still active, that one downstream update submits its staged power. If the
@@ -144,7 +144,7 @@ raw-domain check. An unbounded core Plant-to-native conversion is checked indivi
 applied-target state or output.
 
 These finite-value checks do not prove the physical pose, mapping scale/sign, cue, travel, or hold
-is correct or safe. The future Phoenix mechanism owner must validate those facts on its robot.
+is correct or safe. The Phoenix mechanism owner must validate those facts on its robot.
 
 ## 2. Where to start in the tester menu
 
@@ -233,12 +233,14 @@ set concurrently; a Limelight runs one onboard pipeline and must confirm a fresh
 requested change. Phoenix displays `vision.componentReadiness` and `vision.readinessReason` every
 loop independently of target visibility. A ready lane may legitimately see no tags.
 
-Future custom vision should keep the concrete advanced owner in a robot realization:
+Custom multi-purpose vision keeps the concrete advanced owner in a robot realization:
 `FtcWebcamVisionPortalLane` maps semantic modes to processor enablement, while
 `FtcLimelightVisionLane` maps them to one pipeline request at each transition. Auto and TeleOp
 should consume one robot-owned immutable timestamped snapshot rather than FTC or Limelight result types.
 
-Phoenix can now also use Limelight's direct device field pose as an **optional** correction source through `PhoenixProfile.localization.correctionSource`, but the raw AprilTag path remains available either way. Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2 pose access.
+Phoenix can use Limelight's direct device field pose as an **optional** correction source through
+`PhoenixProfile.localization.correctionSource`, while the raw AprilTag path remains available.
+Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2 pose access.
 
 ### Phoenix notes
 
@@ -408,7 +410,8 @@ Start conservatively:
 - require at least 2 visible tags if direct pose looks noisy in motion
 - keep motion-aware degradation enabled
 
-Phoenix's direct Limelight path currently assumes the Limelight field map already matches the field/tag layout you intend to use.
+Phoenix's direct Limelight path assumes the Limelight field map matches the field/tag layout you
+intend to use.
 
 ---
 
@@ -442,15 +445,15 @@ Use the tester to compare behavior first. Only then consider changing the robot'
 
 ## 4. The localization model Phoenix is using
 
-Phoenix now treats localization as three different roles:
+Phoenix treats localization as three different roles:
 
 - `MotionPredictor` -> short-term motion propagation (`PinpointOdometryPredictor`)
 - `AbsolutePoseEstimator` -> field-anchored absolute pose (`AprilTagPoseEstimator`, optional `LimelightFieldPoseEstimator`)
 - `CorrectedPoseEstimator` -> combines a predictor with one absolute correction source (`OdometryCorrectionFusionEstimator` or `OdometryCorrectionEkfEstimator`)
 
-That split is important because it gives Phoenix a clean extension path later.
+That split keeps each extension at the role whose contract it satisfies.
 
-Examples of future additions that would fit this model naturally:
+Other additions that fit this model include:
 
 - field tape / line tracking that can directly anchor robot pose -> another `AbsolutePoseEstimator`
 - wheel + IMU dead-reckoning -> another `MotionPredictor`
@@ -480,9 +483,9 @@ Examples of future additions that would fit this model naturally:
 - [`Robot Calibration Tutorials`](<../../fw/docs/testing-calibration/Robot Calibration Tutorials.md>)
 - [`Guided Calibration Walkthroughs`](<../../fw/docs/testing-calibration/Guided Calibration Walkthroughs.md>)
 
-## Future mechanism calibration pattern
+## Periodic mechanism calibration pattern
 
-Phoenix's current checked-in robot does not include an independently rotating turret or tray, but the framework now supports the pattern we would use for them.
+An independently rotating turret or tray uses the framework's periodic mechanism pattern.
 
 A mechanism service should establish a calibrated native coordinate before resolving
 `PlantTargets.equivalentPositionsOf(...)` commands or advanced `PlantTargets.plan(request)` requests:

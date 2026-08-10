@@ -162,6 +162,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 75 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
 | 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
 | 77 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
+| 79 | DOC-03 | Generated Phoenix documentation site | Proposed | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -9425,6 +9427,180 @@ writer, and explicit lifecycle ownership.
   with **`DOC-01 looks good`**. DOC-01 is now **Done**; Gate 3 finalization, publication, and merge
   are authorized for this item only. No robot run is required for the documentation/test-only
   contract, and CLEAN-01, CI-01, BOUNDARY-01, and every other tracker item remain unstarted.
+
+### DOC-02 - Beginner-first current-state documentation
+
+- **Research start and scope (2026-08-09):** the user asked for Phoenix to be documented from the
+  current framework outward, without preserving migration history, and for the onboarding path to
+  work for a high-school student seeing the framework for the first time. DOC-02 owns the
+  information architecture, beginner journey, current-state prose, navigation, glossary,
+  quick-reference, and symptom-led troubleshooting. It changes no production API or behavior.
+  Generated-site tooling, GitHub Pages publication, workflows, and general CI remain separate work;
+  INPUT-02, BOUNDARY-01, CI-01, and every other tracker item remain out of scope.
+- **Gate 1 decision (2026-08-09):**
+  - **Confirmed behavior and traced entry path:** the maintained framework documentation has 40
+    Markdown pages and about 82,700 words. The advertised six-page beginner path alone spans about
+    4,570 lines and 26,400 words. `Framework Overview` mixes orientation with package inventories,
+    controller construction, mapping details, Plant grammar, AprilTag policy, and Pedro lifecycle;
+    `Beginner's Guide` similarly advances from the first skeleton into staged builders and detailed
+    control theory. Four entry-point READMEs repeat overlapping maps, while no framework glossary,
+    one-page cheat sheet, or top-level symptom-led troubleshooting page exists. The result is
+    locally accurate after DOC-01 but does not provide one discoverable five-minute mental model or
+    one bounded route from build to a first working robot.
+  - **Current callers and example authority:** the seven compiled classes in
+    `edu.ftcphoenix.robots.examples.starter` are the ordinary robot-code authority. `StarterAuto`
+    provides the smallest one-motor physical checkpoint; `StarterTeleOp` adds mecanum drive; the
+    shared profile, mechanism, controls, robot, and managed runtime demonstrate the current normal
+    ownership path. `edu.ftcphoenix.robots.examples.pedro` is the compiled Pedro continuation.
+    `edu.ftcphoenix.fw.tools.examples` remains useful as focused concept labs, but its explicit
+    lifecycle ceremony is not the beginner robot architecture and will be labeled advanced rather
+    than placed on the normal course.
+  - **External documentation comparison:** official NextFTC documentation demonstrates the value
+    of a separate beginner guide, persistent navigation, search, short concept pages, and a coherent
+    mechanism example. FTCLib demonstrates an immediately stated mental model and an obvious
+    preferred runtime, but its feature-first navigation and co-located legacy paths show why Phoenix
+    should not expose every alternative up front. Pedro Pathing's strongest pattern is an ordered,
+    outcome-oriented setup/tuning journey with symptom-led troubleshooting and visual checkpoints.
+    All three support progressive disclosure; none makes a large reference page an adequate first
+    lesson.
+  - **Alternatives and simplicity comparison:** leaving the content unchanged preserves zero diff
+    but leaves students with four entry points and more than 26,000 words before completing the
+    advertised path. A navigation-only edit improves discovery but keeps lessons that teach too
+    many concepts at once. Hand-authored HTML would add navigation while creating a second prose
+    source that can drift. Adding VitePress now would add Node/npm and JavaScript configuration;
+    GitBook would add an external authoring and publication owner; Docsify would render at runtime
+    without producing build-verified static HTML; Jekyll would not fit the existing deep source
+    tree without a custom workflow. MkDocs Material is the smallest promising future renderer for
+    canonical Markdown, but adding an unbuildable site shell before the content and CI contracts
+    exist would increase concepts and maintenance without improving today's repository path.
+  - **Chosen bounded implementation:** keep Markdown as the one authored source for narrative
+    guides and any later generated guide site, while Javadocs remain the authored method-level API
+    contract. Establish `fw/docs/README.md` as the canonical hub; make the other READMEs short
+    doorways instead of competing maps; replace the kitchen-sink overview with a five-minute model;
+    turn the beginner guide into one linear course; add short lessons with prerequisites, safety,
+    files, steps, observable checkpoints, common problems, and a single next step; add a glossary,
+    cheat sheet, and symptom-led troubleshooting; label reference and advanced material by audience;
+    link lessons to compiled source rather than maintaining complete copied programs; and delete
+    backlog/follow-up documents plus historical comparison sections that do not describe the
+    current system. Preserve detailed current-state concept, design, integration, calibration, and
+    maintainer guides as progressively disclosed material.
+  - **Rejected designs:** do not duplicate Markdown as checked-in HTML; do not add a second beginner
+    API grammar; do not delete or alter current technical contracts merely to shorten them; do not use the
+    manual-lifecycle teaching labs as ordinary robot templates; and do not mix a documentation-site
+    dependency, deployment workflow, or external publication authorization into this content item.
+    A later site item may add one pinned static generator that builds these same Markdown sources,
+    runs strictly in CI alongside `DocumentationLinksTest`, keeps generated output untracked, and
+    publishes the exact CI artifact.
+  - **Framework Principles check:** the structure makes the current managed runtime and ordinary
+    mechanism-owned Plant path the sole beginner route; keeps Sources, Tasks, Plants, drive intent,
+    FTC boundaries, one clock, and ownership truthful; keeps implementation/Javadocs/examples as
+    API authority; and moves complexity behind explicit advanced/reference links. No framework,
+    FTC, vendor, robot-runtime, lifecycle, or construction behavior changes. Because this is a
+    documentation-only realization of the user's explicit request and makes no public API or major
+    lifecycle/ownership change, Gate 1 does not require a separate implementation approval.
+  - **Verification plan:** run the focused `DocumentationLinksTest`; run
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`; count JUnit XML outcomes;
+    run `git diff --check`; scan for deleted historical filenames, migration language, stale API
+    names, broken navigation, and unintended production-code changes; and complete independent
+    truth, student-journey, Framework Principles, scope, and documentation reviews. Hardware cannot
+    verify prose structure; physical results are labeled adopting-robot checkpoints rather than
+    DOC-02 completion evidence.
+- **Implementation start (2026-08-09):** after Gate 1 was complete, `origin/master` was fetched at
+  `17be6f9690c07461ae7101ddfc14b1dd85ffce8b`, and
+  `codex/doc-02-beginner-first-documentation` was created from that exact merged base. DOC-02 is now
+  **In progress** with only the bounded documentation structure above in scope.
+- **User-directed scope correction (2026-08-09):** during document review, the user asked that
+  `Framework Principles.md` itself be simplified into a small set of core principles whose
+  implications explain one ordinary path, parallel naming, and documentation as parts of making
+  robot code simple. The current design authority is 1,429 lines and about 12,300 words; its first
+  section calls itself a few goals but embeds detailed source-cache, vision, route, Plant-mapping,
+  controller-domain, and debug contracts before the one-way/parallelism rule appears. Keeping that
+  file unchanged would leave the most important documentation entry inconsistent with DOC-02.
+  Adding only an executive summary would preserve the same competing hierarchy and duplicated
+  reference material. The corrected design therefore reorganizes the authority around six
+  memorable and parallel principles: **one obvious path, one owner, one heartbeat, one realization
+  path, truthful boundaries, and one current, proven story**. Detailed contracts remain as concise
+  implications, while recipe-level material routes to the current loop, Source, Plant, Task,
+  architecture, integration, and maintainer guides. This is a structural condensation, not
+  permission to weaken lifecycle, safety, range, feedback, coordinate, naming, documentation, or
+  verification contracts. The user's explicit direction authorizes this documentation-only
+  correction within DOC-02; no production API or behavior changes.
+- **Gate 2 implementation (2026-08-09):** DOC-02 is **Verifying** on
+  `codex/doc-02-beginner-first-documentation`, still based exactly on
+  `origin/master@17be6f9690c07461ae7101ddfc14b1dd85ffce8b`.
+  - The root README now presents one Phoenix path and links upstream FTC orientation instead of
+    embedding a second starter path and historical release log. `fw/docs/README.md` is the canonical
+    goal-based hub; package and section READMEs are short doorways. The four-lesson core course uses
+    one compiled starter from build through mechanism, TeleOp, and Task/Auto checkpoints. Its first
+    hardware motion starts with explicit reduced limits, neutral-controller calibration, staged
+    supervised checks, observable results, STOP/power-removal instructions, and truthful separation
+    between software and physical evidence. Pedro is an optional software-only continuation that
+    remains disabled until an adopting robot owns tuning, localization, constraints, placement, and
+    safety review.
+  - New short reference and recovery paths provide a glossary, build-season cheat sheet, and
+    symptom-led common-problems guide. The production Phoenix package has one current owner map and
+    change-routing page. Manual-host examples are labeled concept labs rather than ordinary robot
+    templates; timeout examples branch on outcomes instead of continuing unsafe work; route status
+    prose distinguishes integration evidence from Task-owned timeout, cancellation, and failure.
+    Four backlog/follow-up Markdown files and historical/migration narration were removed rather
+    than retained as current user documentation.
+  - `Framework Principles.md` was condensed from about 12,300 words to about 3,200 around six
+    parallel principles: one obvious path, one owner, one heartbeat, one realization path, truthful
+    boundaries, and one current, proven story. Their implications retain managed lifecycle,
+    same-cycle, Task, Plant, drive, range/status, coordinate, route, diagnostics, documentation, and
+    verification contracts, while detailed recipes route to focused guides and Javadocs. The
+    repository instructions now state the same final managed-OpMode callback ownership. The three
+    Java changes are Javadoc-only present-state corrections; no executable line, signature, public
+    API, dependency, runtime, or physical behavior changed.
+  - Official NextFTC, FTCLib, and Pedro documentation informed the separate beginner/reference
+    paths, persistent goal-oriented navigation, coherent example, ordered outcome checkpoints, and
+    symptom-led help. Hand-authored HTML was rejected as a drifting second source. DOC-03 records the
+    separate proposed decision for a pinned, searchable static generator that consumes canonical
+    Markdown/Javadocs, keeps output untracked, fails strictly, and publishes only a CI-verified
+    artifact; DOC-02 adds no generator, toolchain, workflow, HTML, or publication.
+  - A forced fresh `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run executed all
+    32 Gradle tasks successfully: **1,241 tests across 135 suites, 0 failures, 0 errors, 0 skipped**.
+    After the final prose corrections, the forced focused `DocumentationLinksTest` run again
+    executed all 32 tasks and passed **5 tests, 0 failures, 0 errors, 0 skipped**, proving the final
+    maintained local paths, canonical case, fragments, and fences. Only the existing Java 8
+    source/target-on-JDK-21 and deprecated FTC SDK warnings remain.
+  - The final scope is 54 paths: 43 tracked modifications/deletions and 11 new Markdown files. All
+    50 extant changed/untracked files have a final newline and no trailing whitespace;
+    `git diff --check`, deleted-file reference, stale migration-language, source-authority,
+    course-numbering, and executable-Java scans pass. Three independent reviews covered student
+    onboarding, physical safety, API/lifecycle/Plant/Task/route truth, principle preservation,
+    one-item scope, and site-tooling separation. Each reviewer rechecked its corrections and has no
+    remaining actionable finding.
+- **Android Studio audit point (2026-08-09):** DOC-02 intentionally remains unstaged and
+  uncommitted. Follow the root README into the hub, five-minute overview, checklist, and four core
+  lessons; inspect the first-motion and optional-Pedro safety boundaries; sample the cheat sheet,
+  glossary, Common Problems, example labels, production Phoenix owner map, and current-state route
+  wording; then review the six-principle hierarchy against its detailed-guide links. No robot run
+  can validate this information architecture, and DOC-02 makes no physical-behavior claim. If the
+  review succeeds, use this exact combined authorization:
+
+  > `DOC-02 looks good. Authorize committing the reviewed DOC-02 diff on codex/doc-02-beginner-first-documentation, pushing that branch to https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into master.`
+
+  That authorization finalizes and publishes DOC-02 only. It does not start DOC-03, CI-01,
+  BOUNDARY-01, INPUT-02, or another tracker item.
+- **Manual verification and publication authorization (2026-08-09):** the user completed the
+  Android Studio review and sent the exact combined authorization above. DOC-02 is now **Done**;
+  Gate 3 may create one reviewed commit on `codex/doc-02-beginner-first-documentation`, push it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge that pull
+  request into `master`. No robot run is required for this documentation/information-architecture
+  contract. DOC-03, CI-01, BOUNDARY-01, INPUT-02, and every other item remain unstarted.
+
+### DOC-03 - Generated Phoenix documentation site
+
+- **Problem to confirm:** Markdown in Android Studio remains usable and reviewable, but a generated
+  site could make the same material easier for students to search and navigate on phones and school
+  computers. Hand-maintained HTML would create a second source that can drift.
+- **Leading hypothesis:** pin one static documentation generator, initially compare MkDocs Material
+  against VitePress, consume the existing canonical Markdown and Javadocs, fail strictly on broken
+  links or build errors, keep generated output untracked, and publish the exact artifact verified by
+  CI. GitHub Pages ownership, URLs, and deployment permissions belong to this separate item.
+- **Decision record:** _Pending. DOC-02 changes content and navigation only; it adds no generator,
+  JavaScript/Python toolchain, workflow, generated HTML, or publication._
 
 ### CI-01 - Framework verification in CI
 

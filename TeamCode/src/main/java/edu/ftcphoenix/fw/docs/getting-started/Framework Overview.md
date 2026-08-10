@@ -1,876 +1,152 @@
-# Framework Overview
+# Phoenix in five minutes
 
-Phoenix is a small FTC framework that helps you declare robot behavior around a clean, repeatable
-loop.
+## Goal
 
-The big idea is: **ordinary robot code declares services, bindings, Tasks, outputs, drive, and
-presenters once; `FtcRobotOpMode` advances one `LoopClock` and manages their lifecycle**. A custom
-host may own the phases explicitly, but it must preserve the same one-heartbeat contract.
+Understand where ordinary TeleOp and Auto code belongs without learning the framework internals.
 
-Useful companions to this document are [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>), [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>), and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). Together they explain the ownership vocabulary, how to split framework lanes from robot code, how TeleOp and Auto should share mechanism APIs through robot-owned capability families, and how to choose the right internal behavior pattern for a mechanism.
+**Time:** 5–10 minutes
 
-See the framework documentation [`README`](<../../README.md>) for the full map and suggested
-reading paths.
+**Prerequisites:** Basic Java classes and FTC OpModes are helpful, but no Phoenix experience is
+required.
 
----
+**Files for this lesson:**
 
-## Package structure
+- [`FtcRobotOpMode.java`](<../../ftc/FtcRobotOpMode.java>)
+- [`RobotProgram.java`](<../../ftc/RobotProgram.java>)
+- [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>)
+- [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>)
 
-Phoenix is organized by **robot concepts**, not by FTC SDK details.
+**Safety:** This lesson only reads code. Do not enable a checked-in example or command hardware yet.
 
-### Packages students use day-to-day
+## The whole idea
 
-Most robot code should only need imports from these packages:
+Phoenix separates **what your robot should do** from **when the FTC loop calls it**.
 
-* `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`) that expose axes as `ScalarSource` and buttons as `BooleanSource`.
-* `edu.ftcphoenix.fw.input.binding` — `Bindings`: map boolean signal events and levels to actions.
-* `edu.ftcphoenix.fw.haptic` — the device-neutral `HapticSink` used by robot controls for short controller feedback cues.
-* `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
-* `edu.ftcphoenix.fw.actuation` — `Plant`, `Plants`, `ScalarTasks`: mechanism/runtime abstractions
-  and deferred numeric commands.
-* `edu.ftcphoenix.fw.core.source` — the small signal vocabulary shared by controls and mechanisms,
-  including the persistent `ScalarTarget` command.
-* `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
-* `edu.ftcphoenix.fw.ftc` — the ordinary `FtcRobotOpMode`/`RobotProgram` lifecycle entry and FTC
-  adapters such as `FtcDrives` and `FtcHaptics`.
-* `edu.ftcphoenix.fw.ftc.ui` — telemetry UI helpers such as `SelectionMenu`, `MenuNavigator`, and `HardwareNamePicker`.
-* `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
-* `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, lightweight fusion, optional EKF-style fusion).
-* `edu.ftcphoenix.fw.field` — field metadata (tag layouts, constants).
-
-For the AprilTag-specific policy around fixed vs detectable tags, see [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
-
-For odometry + AprilTag global localization specifically, the framework now makes three roles explicit:
-
-* `AbsolutePoseEstimator` — a field-anchored pose source such as `AprilTagPoseEstimator` or `LimelightFieldPoseEstimator`
-* `MotionPredictor` — a predictor that exposes both a current pose and a latest `MotionDelta`, such as `PinpointOdometryPredictor`
-* `CorrectedPoseEstimator` — a global localizer that combines one predictor with one absolute correction source
-
-Phoenix ships both a simpler gain-based corrected estimator and an optional covariance-aware EKF-style estimator. The advanced estimator is intentionally opt-in; the simpler corrected localizer remains the default starting point.
-
-All framework localization owners use the same non-null `LoopClock` and publish at most one update
-attempt per cycle. The owning lane and each directly usable estimator protect their own lifecycle;
-students do not add a memoization wrapper. Corrected estimators also use `MotionDelta` timestamps to
-avoid consuming one retained predictor interval in two different cycles.
-
-Within `drive/`, subpackages are intentionally parallel and predictable:
-
-* `drive.source` — “where drive commands come from” (gamepad, autonomous logic).
-* `drive.guidance` — driver-assist and closed-loop drive behavior helpers (auto-aim, go-to-point, pose lock, task wrappers).
-
-### Packages that are intentionally “behind the scenes”
-
-These exist so the student-facing packages stay small and consistent:
-
-* The remaining `edu.ftcphoenix.fw.core.*` packages — shared plumbing: time, math, geometry,
-  control, debug, and the HAL.
-* `edu.ftcphoenix.fw.ftc.*` — the **FTC SDK boundary** (hardware adapters, frame conversions, FTC vision plumbing). Most teams only touch a couple entrypoints like `FtcDrives`.
-* `edu.ftcphoenix.fw.ftc.ui` — FTC telemetry UI helpers for menus, breadcrumbs, hardware-name pickers, and pre-start selectors.
-* `edu.ftcphoenix.fw.tools.*` — testers and examples you can copy.
-
-### Tester menus and calibration flows
-
-The tester framework is now organized around two complementary ideas:
-
-- **category suites**, where each tester has one natural home
-- **guided walkthroughs**, where a robot can present a recommended bring-up order for students
-
-If you are trying to bring up a fresh robot, start with [`Robot Calibration Tutorials`](<../testing-calibration/Robot Calibration Tutorials.md>) and [`Guided Calibration Walkthroughs`](<../testing-calibration/Guided Calibration Walkthroughs.md>). Those docs explain both the student-facing calibration flow and the framework helpers used to build robot-specific walkthrough menus.
-
-One important gotcha with FTC vision:
-
-* A concrete vision lane **owns the camera**. Close that owner on `stop()`/BACK navigation so the
-  next tester can start the device cleanly; do not treat a borrowed processor or sensor view as the
-  lifecycle owner. Retry means successfully close the failed owner and then construct a fresh owner
-  (and, for a `VisionPortal`, fresh processor instances). If close fails, do not open a replacement:
-  stop and restart the OpMode because hardware ownership is uncertain.
-* Webcam and Limelight ownership are deliberately parallel rather than identical. A webcam portal
-  can run a fixed set of processors together and enable/disable each one. A Limelight runs one
-  onboard pipeline at a time, so a requested switch must be confirmed by a fresh result before
-  robot code interprets that result.
-* `VisionReadiness` answers whether the configured component can safely provide results. It does
-  not answer whether a target is visible; a ready camera may have no target in view.
-
-One more gotcha that matters a lot for AprilTags:
-
-### Coordinate frames and 3rd-party conventions (especially AprilTags)
-
-Phoenix uses `Pose2d`/`Pose3d` heavily. Those are just *math objects* — they don't know what "+X" means
-unless you define the frame.
-
-Phoenix's standard convention is right-handed:
-
-* Units: **inches** (translation) and **radians** (angles).
-* Rotations:
-  * yaw = rotation about **+Z** (turning left / CCW is positive)
-  * pitch = rotation about **+Y**
-  * roll = rotation about **+X**
-
-For field-centric work, Phoenix uses the **FTC Field Coordinate System**:
-
-* Origin at the field center
-* +Z up
-* Stand at the **Red Wall center** facing the field: +X is to your right, +Y is away from the Red Wall
-
-AprilTags add two separate complications: FTC exposes *multiple pose frames*, and the detector's
-SDK library is not the same thing as Phoenix's fixed-field layout.
-
-* **Detector library** (`AprilTagLibrary`)
-  * Tells the processor which tags exist and how big they are.
-  * May include tags that are useful to detect but are not safe localization landmarks.
-* **Field-fixed layout** (`TagLayout`)
-  * Tells Phoenix which tag IDs may be trusted as fixed field landmarks.
-  * Tag poses usually come from FTC metadata (`fieldPosition` + `fieldOrientation`), but the
-    framework curates the fixed subset explicitly.
-* **Detections** (`AprilTagDetection`)
-  * `rawPose` is the **native AprilTag/OpenCV camera frame** (+X right, +Y down, +Z forward).
-  * `ftcPose` is a **convenience re-frame** (+X right, +Y forward, +Z up) with yaw/pitch/roll labels.
-
-Phoenix's rule of thumb:
-
-* If you are composing detections with the FTC game database (localization, camera mount calibration),
-  use `rawPose` (then convert it into Phoenix camera axes). Mixing `ftcPose` with game database
-  metadata can put you in two different coordinate systems and produce nonsense transforms.
-
-Implementation pointers:
-
-* `fw.ftc.FtcFrames` documents the basis transforms and exposes the conversion matrices.
-* The FTC webcam AprilTag adapter builds `AprilTagObservation.cameraToTagPose` from `rawPose` and
-  converts it into Phoenix camera axes (+X forward, +Y left, +Z up).
-* `fw.ftc.FtcGameTagLayout.currentGameFieldFixed()` builds the framework-owned official fixed-tag
-  layout for the current FTC season.
-
-For the full library-vs-layout explanation, see
-[`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
-
-Tester naming conventions (telemetry menus):
-
-* Prefix calibration routines with `Calib:`
-* Prefix localization/pose display tools with `Loc:`
-* Prefix hardware sanity checks with `HW:`
-* If a tester is robot-specific, make that obvious in the label (for example, append `(Robot)` or include the robot name)
-
-Two rules of thumb:
-
-1. If a class references FTC SDK types (`com.qualcomm.*`), it belongs in `fw.ftc` or `fw.tools`, not in the core building blocks.
-2. The package tree is kept **parallel** on purpose (for example, `sensing.vision` ↔ `localization.apriltag`, and later predictor-side FTC localizers ↔ corrected/absolute localization packages). That makes it easy to predict where new features should go.
-
----
-
-## Framework lanes vs robot controls
-
-Phoenix distinguishes several ownership roles that older FTC code often blurred together:
-
-- **primitives/direct owners**: small reusable building blocks like `GamepadDriveSource`,
-  `MecanumDrivebase`, `AprilTagSensor`, and `PinpointOdometryPredictor`; the FTC factory returns the
-  actual `MecanumDrivebase` because a forwarding drive wrapper would add no runtime capability
-- **framework lanes**: stable reusable multi-object resource owners, such as the backend-neutral
-  `AprilTagVisionLane` seam (commonly implemented by an AprilTag-specialized
-  webcam or Limelight owner), the advanced `FtcWebcamVisionPortalLane` and
-  `FtcLimelightVisionLane` owners, and `FtcOdometryAprilTagLocalizationLane`
-- **field facts**: shared environment data such as `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
-- **robot-owned capability families**: the shared mode-neutral API used by both TeleOp and Auto
-- **robot-owned controls/policy**: button semantics, scoring logic, auto-aim rules, and telemetry presentation
-
-That split is deliberate. A framework primitive should not decide that "right bumper means slow mode" any more than an estimator should decide which scoring target matters this year. Stable hardware/resource ownership belongs in the narrowest truthful reusable owner; reserve a framework lane for a qualified multi-object resource graph. Operator semantics and game strategy belong in robot code.
-
-See [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>) for the full role glossary and from-scratch robot build guide, [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>) for the shared TeleOp/Auto API pattern, then use [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the deeper mechanism/supervisor patterns.
-
-## The layers (top → bottom)
-
-Think of Phoenix as a few thin layers you stack:
-
-1. **OpMode / Robot declarations (you)**
-
-    * Override one `configure(RobotProgram)` method, construct robot-specific owners, and declare
-      their semantic roles and downstream order.
-2. **Input** (`fw.input`)
-
-    * `Gamepads`, `GamepadDevice`, `ScalarSource`, `BooleanSource`.
-    * `BooleanSource` supports edge detection (`risingEdge`/`fallingEdge`) and rise-to-toggle state
-      via `BooleanSource.toggled()` (useful when enabling drive overlays).
-3. **Managed program + Bindings** (`fw.ftc`, `fw.input.binding`)
-
-    * `RobotProgram` owns the one clock, private `Bindings`/`TaskRunner`, fixed phases, telemetry
-      commit, and fail-stop cleanup.
-    * Its `BindingRegistrar` turns boolean signal edges, changes, levels, toggles, and nudges into
-      actions without exposing another heartbeat.
-4. **Tasks / Macros** (`fw.task`, plus helpers in other packages)
-
-    * `Task`, `TaskRunner`, `Tasks`, `ScalarTasks`, and the exclusive Auto/test helper in
-      `DriveTasks`.
-5. **Drive behavior** (`fw.drive` + `fw.drive.source` + `fw.drive.guidance`)
-
-    * `DriveSource` (a specialized `Source<DriveSignal>`) produces a `DriveSignal` each loop (stick drive, driver assist overlays, etc.).
-6. **Actuation**
-
-    * Drivebase: `MecanumDrivebase`.
-    * Mechanisms: `Plant`.
-7. **Core HAL** (`fw.core.hal`)
-
-    * Tiny device-neutral interfaces: `PowerOutput`, `PositionOutput`, `VelocityOutput`.
-8. **FTC boundary** (`fw.ftc`)
-
-    * `FtcHardware` wraps FTC SDK hardware into Phoenix HAL outputs.
-
----
-
-## The loop clock (and why it matters)
-
-`LoopClock` (in `fw.core.time`) tracks:
-
-* `nowSec()` — current time
-* `dtSec()` — delta time since last loop
-* `cycle()` — a monotonically increasing **per-loop id**
-
-Several Phoenix systems are **idempotent by `clock.cycle()`** (safe if accidentally called twice in the same loop), including:
-
-* `Bindings.update(clock)`
-* `TaskRunner.update(clock)`
-
-This prevents bugs like “button press fired twice” or “tasks advanced twice” when helper code gets layered.
-
----
-
-## Hardware and mechanisms: `FtcActuators`, `Plant`, and the HAL
-
-### HAL outputs (lowest level)
-
-Phoenix abstracts FTC hardware into small output interfaces (in `fw.core.hal`):
-
-* `PowerOutput` — normalized power (typically `[-1, +1]`)
-* `PositionOutput` — native position units (servo `0..1`, motor encoder ticks, etc.)
-* `VelocityOutput` — native velocity units (e.g., ticks/sec)
-
-These HAL outputs are intentionally **command-only**. Plant-level feedback lives on `Plant.getMeasurement()` and raw sensor reads live in `ScalarSource` / `FtcSensors`.
-The generic interfaces are device-neutral; `PowerOutput` itself does not choose an FTC motor run
-mode.
-
-### FTC boundary: `FtcHardware`
-
-`edu.ftcphoenix.fw.ftc.FtcHardware` provides factories like:
-
-* `FtcHardware.motorPower(hw, name, direction)`
-* `FtcHardware.motorVelocity(hw, name, direction)`
-* `FtcHardware.motorPosition(hw, name, direction)`
-* `FtcHardware.servoPosition(hw, name, direction)`
-* `FtcHardware.crServoPower(hw, name, direction)`
-
-These return command-only HAL outputs. Measurement lives separately as `ScalarSource` values (for example via `FtcSensors`) so internal encoders, external encoders, and derived mechanism units all share the same feedback abstraction.
-
-`FtcHardware.motorPower(...)` has a narrower FTC meaning: raw/open-loop motor power. Constructing
-the adapter does not acquire a motor mode. Each explicit `setPower(...)` command, including
-`setPower(0.0)`, conditionally establishes `RUN_WITHOUT_ENCODER`; when a transition is needed, the
-adapter first writes zero in the current mode, then selects and verifies the raw-power mode before
-writing the request. Lifecycle `stop()` instead writes zero without acquiring or restoring a mode,
-and the adapter never resets encoder position. The device-managed motor-position and motor-velocity
-outputs establish their corresponding modes when commanded.
-
-The FTC adapters also own their final numeric representation. Standard-Servo position is finite raw
-`[0.0, 1.0]`; motor velocity is finite with no invented generic speed ceiling; and motor position
-must round into the SDK's signed integer-tick target before any cache, mode, target, or power effect.
-Finite Servo and power clamping remains last-resort protection for direct expert calls, not a
-substitute for a valid Plant recipe.
-
-Run mode follows the command path, not the feedback choice. A framework-regulated motor uses the
-raw-power mode whether it reads an internal encoder or an external encoder. A separately named
-external-encoder channel remains measurement-only: Phoenix does not set its power, mode, or encoder
-reference as a side effect of reading it. Student code using the standard `FtcActuators` and
-`FtcDrives` paths should not add its own `setMode(...)` calls.
-
-### Beginner entrypoint: `FtcActuators`
-
-Most teams should **not** call `FtcHardware` directly. Use the staged builder in `FtcActuators`:
-
-In a structured robot, use this builder inside the mechanism constructor. The composition root
-passes `HardwareMap` and the mechanism's data-only profile config; the mechanism defensively copies
-that config, constructs and retains its private Plants, and owns their update and stop order. The
-fragments below focus only on the low-level builder choices, so their literal names and values stand
-in for fields from that copied config. See [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>)
-for the complete ordinary ownership shape.
+Your OpMode declares a robot once:
 
 ```java
-import edu.ftcphoenix.fw.core.hal.Direction;
-import edu.ftcphoenix.fw.ftc.FtcActuators;
-import edu.ftcphoenix.fw.actuation.Plant;
-
-private final Plant shooter;
-private final Plant transfer;
-private final Plant pusher;
-
-// In the owning mechanism constructor:
-// Shooter: dual-motor velocity plant with a rate limit.
-this.shooter = FtcActuators.plant(hardwareMap)
-        .motor("shooterLeftMotor", Direction.FORWARD)
-        .andMotor("shooterRightMotor", Direction.REVERSE)
-        .velocity()
-        .deviceManagedWithDefaults()
-        .bounded(0.0, 2600.0)
-        .nativeUnits()
-        .velocityTolerance(100.0)
-        .targetGuards()
-            .maxTargetRate(500.0)    // max delta in plant units per second
-            .doneTargetGuards()
-        .targetFromNewCommand(0.0)
-        .build();
-
-// Transfer: CR servo power plant.
-this.transfer = FtcActuators.plant(hardwareMap)
-        .crServo("transferServo", Direction.FORWARD)
-        .power()
-        .targetFromNewCommand(0.0)
-        .build();
-
-// Pusher: positional servo plant (0..1).
-this.pusher = FtcActuators.plant(hardwareMap)
-        .servo("pusherServo", Direction.FORWARD)
-        .position()
-        .nonPeriodic()
-            .bounded(0.0, 1.0)
-            .nativeUnits()
-        .targetFromNewCommand(0.0)
-        .build();
-```
-
-Each simple exact mechanism retains only its Plant. `targetFromNewCommand(...)` creates its one stable
-`ScalarTarget`; `plant.commandTarget()` returns that same object without sampling or writing
-hardware, so immediate methods and `ScalarTasks` may use it directly. Keep a separate named target
-when it is standalone, deliberately shared, owned by a target-only policy object, or needed while
-assembling a composed target graph; bind a standalone target with
-`targetFromResolver(PlantTargets.exact(target))` or bind the resulting composed resolver with
-`targetFromResolver(...)`. The latter method binds whatever final resolver the caller supplies; it
-does not assert whether that resolver carries a command target. A recognized graph based on a
-`ScalarTarget` can carry that stable command identity, while a read-only or planned graph can carry
-none.
-
-The builder stays domain-first (`power()`, `position()`, `velocity()`). Position Plants then ask
-small guided questions about control strategy, periodicity, bounds, unit mapping, and reference policy.
-For example, a regulated motor position path uses `motor(...).position().regulated()` followed by
-one direct feedback answer and `.regulator(...)` instead of hiding those choices inside a large
-argument object. Once the public units are known, every feedback Plant requires exactly one
-plant-unit `positionTolerance(...)` or `velocityTolerance(...)` answer before target binding. A
-command-only standard-servo position Plant skips that feedback-only question.
-
-There are two boundary gateways into one Plant-construction engine. Ordinary FTC mechanisms use
-only `FtcActuators.plant(hardwareMap)` because it owns SDK lookup, direction, grouping, run modes,
-and controller configuration. A custom adapter, hardware-neutral test, or portable host that
-already owns Phoenix output ports uses only `Plants.fromOutputs()`:
-
-```java
-import edu.ftcphoenix.fw.actuation.Plants;
-import edu.ftcphoenix.fw.actuation.PositionPlant;
-
-PositionPlant custom = Plants.fromOutputs()
-        .commandedPosition(positionOut)
-        .nonPeriodic()
-        .bounded(-45.0, 90.0)          // public Plant units
-        .rangeMapsToNative(0.22, 0.76) // native output units
-        .targetFromNewCommand(0.0)
-        .build();
-```
-
-The two gateways have different starting evidence, not competing builder implementations. They
-share the same periodicity, range, mapping, guard, target, validation, and hidden runtime grammar.
-Command-only position omits feedback-only reference and tolerance questions.
-
-That shared engine evaluates one explicit normal target-realization pipeline:
-
-```text
-Plant target -> shared Plant-to-native map
-             -> child scale/bias transform
-             -> output adapter
-```
-
-Core `Plants` validates finite forward and inverse arithmetic without assuming an FTC device.
-`FtcActuators` adds the selected Servo, normalized-power, motor-velocity, or integer-position
-domain. A fully known static bounded affine map is proved at its endpoints before hardware lookup.
-A runtime reference validates the candidate core map before reference commit. An unbounded core map
-checks each actual Plant-to-native conversion before applied state or output. The later FTC layer
-precomputes every child transform and native-domain check before the first child write; it does not
-claim transactional Plant-state rollback. Mapping overflow is rejected rather than clamped into a
-plausible command.
-
-Group child scale is a fixed ratio. Power and velocity child maps are scale-only so exact active
-target zero commands every child to zero; a finite bias remains a position-only alignment where the
-branch supports it. Lifecycle stop also asks each child for its natural zero but may follow a
-different FTC mode/lifecycle sequence. Grouped feedback is an aggregate in the shared coordinate,
-not proof that every child is independently within tolerance. See
-[`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md#14-grouped-actuator-child-mappings>)
-for the opposed-flywheel ratio example and the subsystem-owned two-Plant escape for a proven
-additive/nonlinear trim.
-
-Temporary grouped device-managed motor-position calibration search is a separate normalized-power
-path. It bypasses position scale/bias and sends the shared search command identically through each
-motor's configured `Direction`, so normal coordinate alignment cannot turn search zero into motion.
-
-A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.0]`. It clamps a
-finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp
-as final boundary defense.
-
-FTC configured names use a trimmed, case-sensitive lookup identity. Phoenix therefore rejects a
-blank name or two trim-equivalent names within one homogeneous actuator command group before fresh
-group hardware resolution or configuration. Reusing a retained builder stage to attempt an invalid
-addition has no additional hardware effects. This validation does not change the fluent call, prove
-that differently named entries are physically different devices, or reserve names across owners.
-The actuator and its feedback may intentionally use the same configured name.
-
-**Important:** ordinary target-writing Tasks change the Plant's graph-owned command; a calibration
-search Task may instead acquire, stage, and release a temporary search mode. Neither kind of Task
-calls `plant.update(clock)`. The owning mechanism's downstream `update(clock)` remains the sole
-heartbeat and must call each private Plant exactly once per cycle so it either submits active search
-power or invokes the final target resolver and applies hardware guards.
-
-Calibration-search power must be finite and inside the inclusive normalized range `[-1.0, +1.0]`.
-The Task recipe and direct `PositionPlant` seam reject invalid values immediately instead of relying on
-adapter clamping. The robot's mechanism owner still chooses and validates the safe magnitude,
-direction, cue, and mechanical setup. In a grouped device-managed motor-position Plant, every motor
-receives the same logical search-power value through its configured `Direction`; normal position
-scale/bias remains outside this temporary path.
-
----
-
-## Drive: `DriveSignal`, `DriveSource`, and `MecanumDrivebase`
-
-### `DriveSignal` (robot-centric command)
-
-A `DriveSignal` is **robot-centric** and follows Phoenix pose conventions:
-
-* `axial > 0` → forward
-* `lateral > 0` → left
-* `omega > 0` → counter-clockwise (CCW)
-
-### `DriveSource` (where commands come from)
-
-A `DriveSource` is the drive-specific specialization of `Source<DriveSignal>` and produces a `DriveSignal` each loop:
-
-* Manual TeleOp: `GamepadDriveSource`
-* Assisted aiming / guidance: `DriveGuidance` (build a plan) + `DriveSource.overlayWhen(...)`
-* Autonomous logic: anything implementing `DriveSource`
-
-`DriveSource` also supports composition helpers (like scaling and blending) via default methods.
-
-A common beginner-to-intermediate pattern is:
-
-```java
-ReferencePoint2d speakerAim = References.relativeToTagPoint(5, 0.0, 0.0);
-
-DriveGuidancePlan aimPlan = DriveGuidance.plan()
-        .faceTo()
-            .point(speakerAim)
-        .solveWith()
-            .aprilTagsOnly()
-            .aprilTags(tagSensor, cameraMount)
-            .maxAgeSec(0.25)
-            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-            .doneAprilTagsOnly()
-        .build();
-
-DriveSource driveWithAim = baseDrive.overlayWhen(
-        gamepads.p1().leftBumper(),
-        aimPlan.overlay(),
-        DriveOverlayMask.OMEGA_ONLY
-);
-```
-
-That keeps normal stick translation while guidance owns omega.
-
-When code only needs a place to *send* drive commands, Phoenix now uses the smaller `DriveCommandSink` seam. `MecanumDrivebase` implements that interface, but route adapters can implement it too.
-
-Ordinary TeleOp Tasks do decision/source/Plant-target work before one final drive phase samples the
-composed `DriveSource` and writes its `DriveSignal` to that sink. Do not let a Task and the final
-TeleOp drive phase compete as behavior-command writers.
-
-For a simple open-loop Auto routine or drive tester,
-`DriveTasks.driveExclusivelyForSeconds(...)` may own the sink for a fixed interval, but only when it
-is the sole behavior-command writer. It refreshes the sink and writes the signal every active cycle,
-then stops on completion or active cancellation. If an adapter's supported lifecycle requires
-updates beyond active Tasks, its composition root continues calling `update(clock)` with the shared
-`LoopClock`, and the adapter deduplicates the Task's same-cycle update.
-
-When code needs to follow an external route object (Pedro `PathChain`, Road Runner trajectory, or
-your own route type), Phoenix provides the matching generic seam: `RouteFollower<RouteT>` in
-`edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then compose its status-bearing
-`RouteTask` with an explicit robot-owned route policy.
-
-`RouteFollower.follow(route)` returns a `RouteExecution` for that one run. Its `status()` and
-active-only, idempotent `cancel()` remain bound to that execution, so an old Task cannot mistake a
-replacement route for its own completion or cancel the replacement. `RouteTask` retains that exact
-handle and exposes its backend-neutral result through `getRouteStatus()`.
-
-`RouteStatus` distinguishes normal completion from follower timeout/stall, interruption,
-replacement, Task timeout, active cancellation, failure, and an unknown terminal transition.
-`COMPLETED` maps to Task success; follower/Task timeouts map to `TaskOutcome.TIMEOUT`; other abnormal
-terminal states use the existing fail-closed `TaskOutcome.CANCELLED` compatibility bucket. Use
-`getRouteStatus()` when robot policy needs the precise reason instead of reconstructing it from a
-vendor busy flag.
-
-Fixed routes use the ordinary eager `RouteTasks.follow(...)` factory. If a return or fallback route
-must use live pose, vision, or another current fact, use the explicitly named
-`RouteTasks.followBuiltAtStart(...)` factory instead:
-
-```java
-RouteTask<PathChain> returnToStart = RouteTasks.followBuiltAtStart(
-        "returnToStart",
-        pedro.driveAdapter(),
-        () -> robotPaths.buildReturnFromCurrentPose(returnPose),
-        routeTimeoutSec
-);
-```
-
-The supplier runs exactly once at that Task's `start(clock)` boundary. Keep it quick and
-non-blocking, and let robot-owned path code read current snapshots and build the vendor route. Core
-Task code and the follower adapter still receive no sensor, vision, alliance, or strategy types.
-
-Both eager and start-time factories require a nonblank diagnostic name. Their ordinary bounded
-forms take a finite, positive Task-level timeout directly; zero, negative, and non-finite values
-are rejected instead of meaning “no timeout.” When robot policy deliberately assigns its outer
-Task-level budget elsewhere, select `followWithoutTaskTimeout(...)` or
-`followBuiltAtStartWithoutTaskTimeout(...)` explicitly. Those variants disable only
-`RouteStatus.TASK_TIMEOUT`; a follower can still report `FOLLOWER_TIMEOUT_OR_STALL`.
-
-A stateful external follower may need a heartbeat even after its route Task completes. Pedro, for
-example, keeps hold-end control, pose updates, callbacks, and manual drive inside
-`Follower.update()`. Its adapter therefore has one stable Auto composition-root owner and
-deduplicates any same-cycle update made by `RouteTask` or `DriveGuidanceTask`:
-
-Production Phoenix TeleOp and Pedro Auto both use the ordinary managed program. Auto declares one
-data-only `Prestart`, one stable Pedro service, one root Task, scoring output, presenters, and an
-optional typed stop handoff:
-
-```java
-PedroPathingRuntime pedro = Constants.createPhoenixAutoRuntime(hardwareMap, profile);
-robot.declareAuto(
-        program,
-        pedro.driveAdapter(),
-        pedro.motionPredictor(),
-        frozenEligibleTagIds,
-        BooleanSource.constant(true),
-        BooleanSource.constant(false),
-        () -> pedro.setStartingPose(frozenPedroStartPose())
-);
-```
-
-The two boolean sources are the Auto targeting policies: ordinary Phoenix Auto keeps auto aim
-enabled and the manual override disabled. An advanced direct assembly may supply clock-aware
-policies through this same declaration method; it does not take over lifecycle callbacks.
-
-At START, prestart freezes the spec before the shared clock resets. `READY` applies the frozen pose
-and begins services/Tasks/outputs; `BLOCKED` keeps them inert and continues presenters. Fixed roots
-are built eagerly. A selector declares `Tasks.buildAtStart(...)` for only its Task graph, never for
-hardware construction. `RobotProgram` owns the sole clock, recurring adapter heartbeat, failure
-cleanup, and final stop.
-
-The runtime owns one configured Pinpoint predictor and gives Pedro a passive localizer view of that
-same predictor. Phoenix therefore owns the localization/correction update first, Pedro sees that
-current-cycle pose in its downstream heartbeat, and no second Pinpoint object resets or polls the
-device. Apply the frozen route's Pedro start pose through the service's exact-START action before
-the first heartbeat.
-
-Tasks still select routes and guidance; they do not become the only Pedro lifecycle owner. The
-adapter also uses Pedro's immediate typed break operation for cancellation/shutdown instead of
-merely storing a zero vector for a future update.
-
-Do not call raw Pedro Follower lifecycle methods from robot routines. Starting, breaking,
-replacing, manually taking over, or updating a route outside the adapter bypasses its per-execution
-status and is unsupported. Route construction and read-only Follower inspection remain valid at the
-Pedro boundary.
-
-Even in a one-module repo, keep those adapters and runtime bridges in a library-specific edge
-folder/package such as `fw/integrations/pedro/`, and keep robot-specific examples in a matching
-robot-side folder such as `autonomous/pedro/`. The folder split does not make the dependency
-optional by itself, but it keeps the boundary obvious and makes later source-set or module
-extraction mechanical.
-
-The following snippet keeps a fixed outbound route eager and prepares a return that will build from
-live state only if robot policy selects it. Keep the typed Tasks so that policy can read the exact
-result; do not place a position-dependent shot immediately after `outbound` in a generic sequence.
-
-```java
-RouteTask<PathChain> outbound = RouteTasks.follow(
-        "outbound",
-        pedro.driveAdapter(),
-        outboundPath,
-        routeTimeoutSec
-);
-
-RouteTask<PathChain> livePoseReturn = RouteTasks.followBuiltAtStart(
-        "return",
-        pedro.driveAdapter(),
-        () -> robotPaths.buildReturnFromCurrentPose(returnPose),
-        routeTimeoutSec
-);
-```
-
-Give those fresh Tasks and the scoring capability action to one robot routine helper/coordinator.
-That routine runs scoring only after `outbound` reports `COMPLETED`, may choose `livePoseReturn` as a
-timeout fallback, and aborts on its explicitly cancellation-like results. A direct routine cancel
-cancels the active child and never starts the fallback. This keeps route-library ownership outside
-the framework without inventing another public scheduler or route-policy API.
-
-Timed open-loop drive is not a substitute for normal Pedro route movement. Use `RouteTasks` or the
-guidance helpers so the adapter can preserve its supported route lifecycle and truthful terminal
-status.
-
-The truthful status does not choose robot strategy. Generic Task composition keeps its existing
-semantics; deciding whether a non-completed route should continue, run a fallback, or abort belongs
-in the robot's Auto routine. Do not assume a generic sequence automatically stops after an abnormal
-route ending. Cleanup also remains robot-owned: cancel only transient mechanism work and held
-requests created by that routine phase, through its capability API rather than direct Plant or
-hardware writes.
-
-### `MecanumDrivebase` + `FtcDrives`
-
-`FtcDrives.mecanum(hardwareMap)` is the beginner-friendly way to wire a mecanum drivetrain.
-
-```java
-import edu.ftcphoenix.fw.drive.*;
-import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
-import edu.ftcphoenix.fw.ftc.FtcDrives;
-import edu.ftcphoenix.fw.input.Gamepads;
-
-Gamepads pads = Gamepads.create(gamepad1, gamepad2);
-
-MecanumDrivebase drivebase = FtcDrives.mecanum(hardwareMap);
-DriveSource drive = new GamepadDriveSource(
-        pads.p1().leftX(),
-        pads.p1().leftY(),
-        pads.p1().rightX(),
-        GamepadDriveSource.Config.defaults()
-).scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
-```
-
-For custom names, directions, BRAKE/FLOAT behavior, or normalized drive scaling, use the same
-factory with one complete config:
-
-```java
-FtcDrives.MecanumConfig driveConfig = FtcDrives.MecanumConfig.defaults();
-driveConfig.wiring.frontLeftName = "leftFront";
-driveConfig.enableZeroPowerBrake = true;
-driveConfig.drivebase.maxOmega = 0.75;
-
-MecanumDrivebase drivebase = FtcDrives.mecanum(hardwareMap, driveConfig);
-```
-
-Custom FTC mecanum wiring follows the same trimmed, case-sensitive group contract: all four motor
-names must be nonblank and distinct before fresh group hardware resolution or configuration. This
-is a configuration-string check, not proof of physical wiring or a global ownership claim.
-
-Smooth or rate-limit drive behavior in the `DriveSource` graph. Direct
-`MecanumDrivebase.drive(...)` writes the command immediately and needs no `update(clock)` call.
-Pedro and other stateful vendor adapters may require a real composition-root heartbeat through
-`DriveCommandSink.update(clock)`; keep that adapter-specific call when its lifecycle documents it.
-
-### Spatial reasoning layers (math → queries/predicates → controllers)
-
-Phoenix tries to keep “spatial logic” reusable by splitting it into four layers:
-
-1. **Spatial math** (pure geometry): `Pose2d`, `SpatialMath2d`, region/shape primitives.
-2. **Spatial predicates** (answering yes/no): `RobotZones2d`, `RobotHeadings2d` (often with
-   hysteresis latches).
-3. **Spatial queries** (solving target ↔ controlled-frame relationships): `SpatialQuery`,
-   `SpatialSolveLane`, `SpatialControlFrames`.
-4. **Controllers / planners** (turn solved relationships into commands): `DriveGuidanceSpec` +
-   `DriveGuidancePlan` and their overlays/tasks/queries.
-
-If you only want to ask “is the robot in the zone?” or “is the robot aimed?”, use layer (2). If you
-want reusable relationship solves without drivetrain policy, use layer (3). If you want the framework
-to *drive*, use layer (4).
-
-Reference-first guidance is still the intended mental model: define the meaningful point or frame
-once, then let solve lanes answer it from field pose, live AprilTags, or both. `DriveGuidance` now
-consumes the shared `SpatialQuery` layer internally, so the same geometry and solve-lane setup can
-later be reused by mechanism planners as well.
-
----
-
-## Tasks and macros
-
-### `Task` and `TaskRunner`
-
-A `Task` is non-blocking work that progresses over multiple loop cycles.
-
-A `TaskRunner` runs tasks **sequentially** (FIFO): start one task, update it each cycle until it completes, then move to the next.
-
-Each Task object is single-use. A repeated driver request should call the macro/builder again (or a
-`Supplier<Task>` / `OutputTaskFactory`) to create a fresh graph. The runner rejects one object being
-current or queued twice, and framework Tasks throw a clear error if an already-started object reaches
-`start(...)` again after completion or through another runner.
-
-The runner may start and update a new task in the same loop. Framework timed tasks anchor their
-durations and timeouts to that start timestamp, so the preceding loop's `dtSec()` cannot erase a
-short wait or command. Every positive-duration output or Plant request remains available to its
-later realization phase for at least one loop. The exclusive timed-drive helper instead publishes
-directly when its Task starts and on each active cycle, so a positive interval is observable without
-a competing downstream drive writer. Zero-duration intervals may finish immediately.
-
-Use `cancelAndClear()` to abort automation. It cooperatively cancels the active Task, if any, and
-always discards every queued Task; queued Tasks receive no pre-start cancellation callback. There
-is no abrupt queue-forgetting path that can silently abandon active work. Framework Task
-cancellation is active-only: it is a no-op before start, terminal while active, and a no-op after
-completion or when repeated. Calling `update(...)` before `start(...)` is an actionable lifecycle
-error; `Tasks.noop()` is the intentional exception because it is already successfully complete when
-created.
-
-If task start, update, completion checking, or cancellation throws a `RuntimeException`, the runner
-fails closed: it best-effort cancels active or partially started work, clears its queue and state,
-and rethrows the original failure with any cleanup failure suppressed.
-
-### Factories: `Tasks`, `ScalarTasks`, `DriveTasks`
-
-Phoenix gives you factories so your code reads like intent:
-
-* `Tasks` — generic Task factories and composition (`sequence`, `parallelAll`, `parallelDeadline`,
-  `withTimeout`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
-* `ScalarTasks` — one staged `set(target, value)` path for write-once, timed, and feedback-aware
-  writes
-* `DriveTasks` — `driveExclusivelyForSeconds(...)` for simple timed open-loop Auto/test movement when
-  its Task is the sole behavior-command writer for the `DriveCommandSink`
-* `DriveGuidancePlan.task(...)` — execute a guidance plan as an autonomous-style Task
-* `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
-* `GoToPoseTasks` — convenience wrappers for common go-to-pose behaviors (`goToPoseFieldRelative`, `goToPoseTagRelative`, …)
-
-`Tasks` is the one public construction layer for generic composition. `parallelAll(...)` waits for
-every child. `parallelDeadline(deadline, companions...)` instead lets its first argument, named
-`deadline`, own the group's lifetime and natural outcome; when it finishes, the composite asks
-every start-attempted companion to cancel. A route Task is a common deadline, but the API contains
-no route types. Companions must own cancellation-safe cleanup, while persistent mechanism requests
-remain capability/service state.
-
-`withTimeout(task, timeoutSec)` gives a parent one hard elapsed-time budget around a complete Task
-or composite graph. It starts timing when the wrapper starts and uses the child's ordinary active
-`cancel()` at the boundary. When a continuation is valid after every non-throwing terminal result,
-put it after that wrapper—for example, `sequence(withTimeout(prePark, 25.0), park)`—so early
-completion starts it early and the expired timer cannot later interrupt it. When exact route or
-domain status may suppress the continuation, keep the same timed shape behind a robot-owned policy
-coordinator; generic sequence does not choose that policy. Direct cancellation and cleanup failures
-must not start the continuation. Keep an operation's own timeout when it has phase-relative timing,
-operation-specific safe cleanup, or a richer result such as `RouteStatus.TASK_TIMEOUT`; the outer
-wrapper may report `TIMEOUT` while its cancelled child reports `CANCELLED`.
-
-Example macro (shoot one disc) inside the mechanism that owns the private Plants:
-
-```java
-import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.ScalarTasks;
-import edu.ftcphoenix.fw.task.Task;
-import edu.ftcphoenix.fw.task.Tasks;
-
-private final Plant shooter;
-private final Plant transfer;
-
-public Task createShootOneDiscTask() {
-    return Tasks.sequence(
-            ScalarTasks.set(shooter.commandTarget(), 3200.0)
-                    .untilReachedBy(shooter)
-                    .cancelTo(0.0)
-                    .timeout(1.0)
-                    .build(),
-            ScalarTasks.set(transfer.commandTarget(), 1.0)
-                    .forSeconds(0.20)
-                    .then(0.0)
-                    .build()
-    );
-}
-```
-
-The feedback branch retrieves the shooter's command target and also names `shooter` as the
-feedback/provenance observer. The timed transfer branch retrieves only the transfer Plant's stable
-command. The mechanism therefore keeps one variable per simple Plant and exposes a semantic Task
-factory instead of accepting raw Plants at the call site or retaining duplicate targets beside
-them. Each call creates a fresh, single-use Task graph.
-
-A feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
-`.untilReachedBy(plant)`. `cancelTo(...)` changes the command target in Plant units; it does not
-bypass the Plant's overlays, bounds, references, or guards and therefore is not a guaranteed
-hardware stop.
-Robot-owned coordinated cleanup must still cancel related behavior and reset every related target.
-For timed writes, `.then(value)` runs on active cancellation as well as normal completion;
-selecting `.leaveThere()` instead leaves the current request in place. This ending choice is
-required before `build()`.
-
----
-
-## Inputs and bindings
-
-### `Gamepads`
-
-`Gamepads` wraps FTC `gamepad1` / `gamepad2` and exposes calibrated axes (`ScalarSource`) and
-buttons (`BooleanSource`).
-
-There is **no global update step** for gamepads. Sources are sampled when you call `get(...)`.
-If you need edges/toggles, use `risingEdge()` / `fallingEdge()` / `toggled()` (or use `Bindings`).
-
-### `Bindings`
-
-`Bindings` is still boolean-first, but it now has one small continuous-copy helper as well. The core names are signal-based, not button-specific:
-
-* `onRise(...)` and `onFall(...)` run once on edges.
-* `mirrorOnChange(...)` mirrors the current high/low value to a setter, including the first sample.
-* `whileHigh(...)` and `whileLow(...)` run every loop while a level is active.
-* `toggleOnRise(...)` and `nudgeOnRise(...)` combine an edge trigger with a stateful helper.
-* `copyEachCycle(...)` forwards a scalar value every loop. This is the standard pairing with frame-valued capability commands.
-
-Most commonly: **enqueue a macro** on rise.
-
-```java
-program.taskBindings().onRise(
-        gamepads.p1().y(),
-        scoring::createShootOneDiscTask
-);
-```
-
-Here `scoring` is the robot-owned mechanism/capability visible to controls; raw Plants remain private
-to its realization.
-
-For a continuous non-drive mechanism command, bind the scalar each loop instead of writing directly to a plant:
-
-```java
-program.bindings().copyEachCycle(
-        gamepads.p2().leftY().deadbandNormalized(0.08, -1.0, 1.0),
-        lift::commandManualPower
-);
-```
-
-The managed program updates its private binding graph once per active loop and immediately advances
-its private Task runner afterward. Robot controls receive only `BindingRegistrar`; they do not own
-or forward another binding heartbeat. Direct `new Bindings()` and `new TaskRunner()` remain valid
-for framework tools and deliberate custom hosts, not the ordinary robot recipe.
-
----
-
-## A standard robot program shape
-
-This is the “everything has a place” pattern Phoenix is built around:
-
-```java
-public final class MyTeleOp extends FtcRobotOpMode {
+public final class StarterTeleOp extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
-        ScoringMechanism scoring = program.output(
-                new ScoringMechanism(hardwareMap, profile.scoring));
-        MyControls controls = new MyControls(
-                program.bindings(), new GamepadDevice(gamepad1), scoring);
-
-        program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, profile.drive));
-        program.presenter((clock, telemetry) ->
-                telemetry.addData("scoring.ready", scoring.status().ready()));
+        new StarterRobot(hardwareMap, profile).declareTeleOp(program, gamepad1);
     }
 }
 ```
 
-The framework owns `Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one
-telemetry commit`. Tasks finish their decisions before downstream outputs. Do not add an exclusive
-`DriveTasks` interval while the program's ordinary final drive declaration is active.
+`FtcRobotOpMode` then owns INIT, START, each active loop, STOP, one telemetry commit, and fail-stop
+cleanup. Ordinary robot code does not override those callbacks.
 
----
+## The beginner mental model
 
-## Where to go next
+```text
+gamepads and sensors
+        |
+        v
+controls and Tasks choose robot intent
+        |
+        v
+capabilities express meanings such as COLLECT or STOPPED
+        |
+        v
+mechanism outputs and drive apply the final commands
+        |
+        v
+hardware
+```
 
-* [`Beginner’s Guide`](<Beginner's Guide.md>) — first setup + “how to write a Phoenix OpMode”.
-* [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) — how TeleOp and Auto should share intents, status, supervisors, and lanes.
-* [`Framework Principles`](<../../Framework Principles.md>) — the rules of thumb Phoenix expects you to follow.
-* [`Loop Structure`](<../core-concepts/Loop Structure.md>) — deeper reasoning about update order and idempotency.
-* [`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) — how to build task graphs quickly.
-* [`Examples Progression & Layered Mechanisms`](<../examples/Examples Progression & Layered Mechanisms.md>) — shows how the full `TeleOp_01` → `TeleOp_09` sequence fits together.
-* [`Layered Shooter Example`](<../examples/Layered Shooter Example.md>) — walks through the first explicit `Requests → Behavior → Realization` mechanism example (`TeleOp_09`).
-* [`Shooter Case Study & Examples Walkthrough`](<../examples/Shooter Case Study & Examples Walkthrough.md>) — dives into the shooter + vision examples (`TeleOp_05` and `TeleOp_06`).
+The framework runs the declared roles in the safe order. Students work mostly with these five
+ideas:
+
+1. **`FtcRobotOpMode`** is the FTC host.
+2. **`RobotProgram`** is the declaration surface received by `configure(...)`.
+3. **Bindings** connect gamepad signals to semantic robot actions.
+4. **Tasks** describe non-blocking behavior that takes time.
+5. **Outputs and drive** are the owners that finally command hardware.
+
+## What `RobotProgram` declarations mean
+
+You will meet these methods in the course:
+
+| Declaration | Meaning |
+|---|---|
+| `program.bindings()` | Register immediate button or axis meanings. |
+| `program.taskBindings()` | Construct and enqueue a fresh Task from a control event. |
+| `program.output(owner)` | Register a mechanism that owns update and safe stop. |
+| `program.drive(source, sink)` | Connect the final drive intent to the drivetrain owner. |
+| `program.rootTask(task)` | Declare the one Auto routine that starts at FTC START. |
+| `program.presenter(...)` | Add read-only rows to the one telemetry frame. |
+
+The program returns registered owners from `output(...)` and `drive(...)`, so construction and
+ownership stay visible at the declaration site.
+
+## TeleOp and Auto use the same robot vocabulary
+
+The starter intake exposes meanings such as:
+
+```java
+void setMode(Mode mode);
+Task collectForSeconds(double durationSec);
+```
+
+TeleOp controls call `setMode(...)`. Auto asks for a fresh `collectForSeconds(...)` Task. The
+mechanism owns the hardware in both modes, so the two modes do not duplicate motor code.
+
+## The three habits Phoenix expects
+
+### Keep behavior non-blocking
+
+Do not call `sleep(...)` or spin in `while (...)` waiting for time or a sensor. Build a Task and let
+the managed program advance it while the rest of the robot remains responsive.
+
+### Keep hardware inside its owner
+
+An ordinary mechanism constructor receives `HardwareMap` plus data-only configuration, privately
+builds its Plants, and implements `RobotProgram.Output`. Controls and Auto call its capability
+methods instead of reaching into a Plant or FTC motor.
+
+### Create a fresh Task for every run
+
+A Task instance represents one run. A method such as `collectForSeconds(...)` builds and returns a
+new Task whenever a button or Auto routine needs that behavior again.
+
+## What you can defer
+
+You do not need these topics to finish the beginner course:
+
+- the framework clock and same-cycle safeguards;
+- direct Task-runner lifecycle;
+- target resolvers, overlays, and custom Plant adapters;
+- custom Task state machines;
+- prestart selection and Auto-to-TeleOp handoff;
+- Pedro adapter heartbeat and route-execution internals.
+
+The framework and integration references document them when a robot actually needs them.
+
+## Expected checkpoint
+
+You can answer these questions:
+
+- Which method does an ordinary Phoenix OpMode override? `configure(RobotProgram)`.
+- Who calls the FTC lifecycle and updates the robot? `FtcRobotOpMode` and its `RobotProgram`.
+- Where do button meanings live? In robot-owned controls registered through bindings.
+- Where does motor or servo construction live? In the mechanism that owns the Plant.
+- How does code wait without blocking? With a fresh Task.
+
+## Common problems
+
+**“Where is the loop method I should edit?”**
+
+There is no student-owned loop method in the managed path. Declare owners and behavior in
+`configure(...)`; the framework calls them.
+
+**“Should my controls set motor power directly?”**
+
+No. Controls call capability methods such as `setMode(...)`. The mechanism translates that intent
+to its private Plant.
+
+**“Do I need to understand every `RobotProgram` role?”**
+
+No. The course introduces only the roles used by the starter. Services and prestart policy belong
+to later robot features.
+
+**Next:** [`Phoenix beginner course`](<Beginner's Guide.md>)

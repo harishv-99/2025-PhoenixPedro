@@ -1,8 +1,10 @@
-# Tasks & Macros Quickstart
+# Tasks and Macros
 
-This guide explains Phoenix tasks in isolation. For how tasks fit into shared TeleOp + Auto robot design, also read [`Recommended Robot Design`](<Recommended Robot Design.md>) and [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>).
+This is the detailed guide to Phoenix **Tasks**: non-blocking behaviors that continue over several
+robot loops. If this is your first Task, complete
+[`First Task and Auto`](<../getting-started/First Task and Auto.md>) before using this reference.
 
-This guide explains how to use **Tasks** in the Phoenix framework to build non‑blocking behaviors:
+Tasks are used for:
 
 * TeleOp **macros** (e.g., shooting sequences).
 * **Autonomous routines** built out of reusable pieces.
@@ -14,22 +16,9 @@ We assume you already have an ordinary robot owner wired like the
 * Gamepad meanings declared through `program.bindings()` or `program.taskBindings()`.
 * Drive and Plant-owning mechanisms declared as the program's downstream outputs.
 
-Everything here is **non‑blocking** – there is no `sleep()` and no `while` loops that stall TeleOp.
-
----
-
-## Related: spatial predicates (zones, safety gating)
-
-Not every decision needs to be a task.
-
-If you want a simple safety gate like “enable shooting only when the robot is in the shooting zone”, use the **spatial predicate** layer:
-
-* `ConvexRegion2d` / `ConvexRegions2d` to describe the zone geometry (convex polygons, circles, AABBs)
-* `RobotGeometry2d` + `RobotZones2d` to define what “robot in zone” means (point-in-zone, footprint overlap, fully inside)
-* `ZoneLatch` to add hysteresis so the gate doesn’t chatter on a boundary
-* `RobotHeadings2d` + `HeadingLatch` if you also want a direction/aim gate (“facing target?”)
-
-These live in `edu.ftcphoenix.fw.spatial` and can be used in TeleOp, tasks, testers, or anywhere else.
+Everything here is **non-blocking**: there is no `sleep()` and no long-running `while` loop that
+stalls TeleOp. Spatial zones and heading predicates are a separate topic in
+[`Spatial Queries`](<../drive-vision/Spatial Queries.md>).
 
 ---
 

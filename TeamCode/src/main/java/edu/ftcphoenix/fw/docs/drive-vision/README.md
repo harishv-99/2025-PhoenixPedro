@@ -1,13 +1,19 @@
-# Drive, Vision, and Mechanism Targeting
+# Drive, spatial reasoning, and vision
 
-Read these documents in this order when using spatial data or guided targeting:
+These guides are feature-specific. Start with the page that matches the result you need.
 
-1. [`Spatial Queries.md`](<Spatial Queries.md>)
-2. [`Drive Guidance.md`](<Drive Guidance.md>)
-3. [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>)
-4. [`AprilTag Localization & Fixed Layouts.md`](<AprilTag Localization & Fixed Layouts.md>)
-5. [`AprilTag Practice Setup.md`](<AprilTag Practice Setup.md>)
+| Goal | Guide |
+|---|---|
+| Ask a spatial question in a named frame | [`Spatial Queries`](<Spatial Queries.md>) |
+| Shape or override drivetrain intent | [`Drive Guidance`](<Drive Guidance.md>) |
+| Generate a mechanism target from exact, periodic, overlaid, or spatial requests | [`Mechanism Target Planning`](<Mechanism Target Planning.md>) |
+| Build AprilTag and odometry localization | [`AprilTag Localization & Fixed Layouts`](<AprilTag Localization & Fixed Layouts.md>) |
+| Set up AprilTags away from a full field | [`AprilTag Practice Setup`](<AprilTag Practice Setup.md>) |
 
-Use Drive Guidance when the drivetrain should move. Use Mechanism Target Planning when a Plant should
-consume a target generated from scalar requests, equivalent positions, overlays, or spatial-derived
-mechanism goals.
+Use Drive Guidance when the drivetrain should move. Use Mechanism Target Planning when a Plant
+should consume a generated target. Keep frames and units explicit: Phoenix robot axes are `+X`
+forward, `+Y` left, and `+Z` up; yaw and omega are counter-clockwise positive.
+
+For physical bring-up order, see [`Testing & calibration`](<../testing-calibration/README.md>).
+
+[Back to the Phoenix docs home](<../README.md>)

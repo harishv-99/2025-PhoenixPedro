@@ -67,9 +67,8 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  *         .build();
  * }</pre>
  *
- * <p>This reference-first API replaces older tag-specific public target nouns. Guidance now talks
- * about semantic points / frames, while the evaluation layer decides whether those are solved from
- * field pose, live AprilTags, or both.</p>
+ * <p>This reference-first API describes targets as semantic points or frames. The evaluation layer
+ * decides whether to solve them from field pose, live AprilTags, or both.</p>
  */
 public final class DriveGuidance {
 

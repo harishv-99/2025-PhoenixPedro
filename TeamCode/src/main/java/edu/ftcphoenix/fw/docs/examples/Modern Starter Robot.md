@@ -1,11 +1,20 @@
 # Modern starter robot
 
+**Classification:** Copyable starter
+
+**Audience:** Students who have completed the first-mechanism lesson
+**Source authority:** [`edu.ftcphoenix.robots.examples.starter`](<../../../robots/examples/starter/>)
+
 Use this example as the smallest compiling Phoenix structure shared by TeleOp and Auto. It has one
 direct mecanum drive, one intake mechanism, one mode-neutral intake capability, one controls owner,
 and one declaration-only composition root. FTC lifecycle ceremony is supplied by
 `FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
-remain in the seven files under
-[`edu.ftcphoenix.robots.examples.starter`](<../../../robots/examples/starter/>).
+remain in the seven source files linked above.
+
+If this is your first Phoenix project, follow [`Build and run Phoenix`](<../getting-started/Build and Run.md>),
+[`Your first mechanism`](<../getting-started/First Mechanism.md>), and
+[`Your first TeleOp`](<../getting-started/First TeleOp.md>) first. This page then explains how
+the complete starter fits together.
 
 ## Read the seven files
 
@@ -28,6 +37,8 @@ scoring, route, or strategy vocabulary. It owns only the reusable FTC callback/l
 OpMode, fill and review:
 
 - drive motor names/directions for TeleOp,
+- explicit, conservatively reduced first-motion values for `maxAxial`, `maxLateral`, and
+  `maxOmega` (the framework defaults are normalized software values, not reviewed physical limits),
 - intake motor name/direction,
 - distinct finite nonzero collect/eject powers in `[-1, +1]`, and
 - `hardwareConfigurationReviewed = true`.
@@ -168,7 +179,7 @@ owner rather than creating an unsafe registration gap.
 
 For a new robot:
 
-1. complete and physically review the profile;
+1. complete and review the profile's software facts and expected physical motion;
 2. rename the capability and modes to real robot meanings;
 3. keep Plant construction/update/stop in each mechanism output;
 4. pass `program.bindings()` into the controls owner;
@@ -176,14 +187,19 @@ For a new robot:
 6. declare upstream computation as services and final realization as outputs; and
 7. keep `configure(program)` declarative rather than adding FTC lifecycle methods.
 
-The OpModes remain `@Disabled` until names, directions, power, clear space, wheel direction, and
-immediate STOP behavior are checked on the actual robot. Software tests prove declaration order,
-cancellation, and output-seam zero commands—not physical motion.
+The OpModes remain `@Disabled` until names, intended directions, reduced first-test limits, clear
+space, and an operator-on-STOP plan are reviewed. The first enabled test is supervised with wheels
+or mechanisms safely unloaded; it verifies physical direction and immediate STOP before the robot is
+lowered or limits are increased. Release sticks and triggers before INIT so `GamepadDevice`
+calibrates their physical neutral positions. Software tests prove declaration order, cancellation,
+and output-seam zero commands—not physical motion.
 
 ## Related reading
 
-- [`../getting-started/Beginner's Guide.md`](<../getting-started/Beginner's Guide.md>)
-- [`../design/Framework Lanes & Robot Controls.md`](<../design/Framework Lanes & Robot Controls.md>)
-- [`../design/Robot Capabilities & Mode Clients.md`](<../design/Robot Capabilities & Mode Clients.md>)
-- [`../core-concepts/Loop Structure.md`](<../core-concepts/Loop Structure.md>)
-- [`../../Framework Principles.md`](<../../Framework Principles.md>)
+- [`Phoenix Cheat Sheet`](<../reference/Phoenix Cheat Sheet.md>)
+- [`Common Problems`](<../troubleshooting/Common Problems.md>)
+- [`Beginner course`](<../getting-started/Beginner's Guide.md>)
+- [`Architecture Roles, Framework Lanes, and Robot Controls`](<../design/Framework Lanes & Robot Controls.md>)
+- [`Robot Capabilities and Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>)
+- [`Loop Structure`](<../core-concepts/Loop Structure.md>)
+- [`Framework Principles`](<../../Framework Principles.md>)

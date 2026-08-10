@@ -1,108 +1,87 @@
-# Phoenix docs hub
+# Phoenix documentation
 
-Use this page when you want the full documentation map from inside the `docs/` tree.
+Phoenix helps an FTC team build non-blocking TeleOp and Auto programs from a small set of ideas:
+sources describe values, bindings turn controls into intent, Tasks coordinate behavior over time,
+Plants realize mechanism targets, and one managed program owns the loop.
 
-For the durable framework design reference, also keep [`../Framework Principles.md`](<../Framework Principles.md>) nearby.
+## New to Phoenix
 
-## Start here
+Begin with two short orientation pages:
 
-If you are new to Phoenix, read in this order:
+- [`Phoenix in five minutes`](<getting-started/Framework Overview.md>) — learn the mental model.
+- [`Beginner course checklist`](<getting-started/Beginner's Guide.md>) — see the complete journey
+  and its checkpoints.
 
-1. [`getting-started/README.md`](<getting-started/README.md>)
-2. [`getting-started/Framework Overview.md`](<getting-started/Framework Overview.md>)
-3. [`getting-started/Beginner's Guide.md`](<getting-started/Beginner's Guide.md>)
-4. [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>) — the ordinary managed
-   FTC lifecycle and declaration grammar
-5. [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
-6. [`core-concepts/Loop Structure.md`](<core-concepts/Loop Structure.md>)
-7. [`design/Tasks & Macros Quickstart.md`](<design/Tasks & Macros Quickstart.md>)
+Then follow the four core lessons in order. Each has one outcome and one observable checkpoint.
 
-## Reading paths by goal
+1. [`Build and run Phoenix`](<getting-started/Build and Run.md>) — prove the project builds and its
+   software tests pass.
+2. [`Your first mechanism`](<getting-started/First Mechanism.md>) — configure the intake and run the
+   starter's one-motor Auto checkpoint.
+3. [`Your first TeleOp`](<getting-started/First TeleOp.md>) — add conservative drive configuration
+   and controls.
+4. [`Your first Task and Auto`](<getting-started/First Task and Auto.md>) — explain and adapt the
+   starter's timed behavior in an autonomous routine.
 
-### I want to write my first Phoenix robot
+After the core course, [`Your first Pedro Auto`](<getting-started/First Pedro Auto.md>) is an
+**optional software-first track**. It requires no robot motion; any later physical route test needs
+a separately configured, localized, calibrated, and tuned robot. Pedro is not required to learn the
+ordinary Phoenix structure.
 
-- [`getting-started/README.md`](<getting-started/README.md>)
-- [`getting-started/Framework Overview.md`](<getting-started/Framework Overview.md>)
-- [`getting-started/Beginner's Guide.md`](<getting-started/Beginner's Guide.md>)
-- [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
-- [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
-- [`design/Tasks & Macros Quickstart.md`](<design/Tasks & Macros Quickstart.md>)
+The compiling [`modern starter robot`](<examples/Modern Starter Robot.md>) is the source authority
+for the ordinary TeleOp-and-Auto structure.
 
-### I want a clean TeleOp + Auto robot design
+## Find an answer
 
-- [`design/README.md`](<design/README.md>)
-- [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
-- [`design/Robot Capabilities & Mode Clients.md`](<design/Robot Capabilities & Mode Clients.md>)
-- [`design/Recommended Robot Design.md`](<design/Recommended Robot Design.md>)
-- [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
-- [`design/Supervisors & Pipelines.md`](<design/Supervisors & Pipelines.md>)
-- [`design/Output Tasks & Queues.md`](<design/Output Tasks & Queues.md>)
-- [`ftc-boundary/FTC Auto-to-TeleOp Handoff.md`](<ftc-boundary/FTC Auto-to-TeleOp Handoff.md>)
-- [`examples/Pedro Autonomous Reference.md`](<examples/Pedro Autonomous Reference.md>)
-- [`../Framework Principles.md`](<../Framework Principles.md>)
+| Goal | Start here |
+|---|---|
+| Remember the ordinary API shape | [`Phoenix Cheat Sheet`](<reference/Phoenix Cheat Sheet.md>) |
+| Look up a Phoenix term | [`Glossary`](<reference/Glossary.md>) |
+| Fix something that is not working | [`Common Problems`](<troubleshooting/Common Problems.md>) |
+| Build a mechanism or choose a Plant recipe | [`FTC Actuators & Plants`](<ftc-boundary/FTC Actuators & Plants.md>) |
+| Build a macro or Auto routine | [`Tasks and Macros`](<design/Tasks & Macros Quickstart.md>) |
+| Understand sources, edges, or signal shaping | [`Sources & Signals`](<core-concepts/Sources and Signals.md>) |
+| Structure a larger robot | [`Architecture Roles, Framework Lanes, and Robot Controls`](<design/Framework Lanes & Robot Controls.md>) |
+| Bring up or calibrate hardware | [`Testing & calibration`](<testing-calibration/README.md>) |
+| Add drive guidance or localization | [`Drive & vision`](<drive-vision/README.md>) |
+| Build a Pedro autonomous | [`Pedro autonomous reference`](<examples/Pedro Autonomous Reference.md>) |
+| Understand the production Phoenix robot | [`Phoenix production reference`](<../../robots/phoenix/README.md>) |
+| Maintain or extend the framework | [`Maintainers`](<maintainers/README.md>) |
 
-### I am building signal pipelines or stateful source composition
+## Browse by audience
 
-- [`core-concepts/README.md`](<core-concepts/README.md>)
-- [`core-concepts/Loop Structure.md`](<core-concepts/Loop Structure.md>)
-- [`core-concepts/Sources and Signals.md`](<core-concepts/Sources and Signals.md>)
-- [`ftc-boundary/FTC Sensors.md`](<ftc-boundary/FTC Sensors.md>)
-- [`design/Recommended Robot Design.md`](<design/Recommended Robot Design.md>)
+### Students building a robot
 
-### I am building drive assists, localization, or AprilTag tooling
+- [`Getting started`](<getting-started/README.md>) — the linear first-robot course
+- [`Reference`](<reference/README.md>) — short lookups and exact current vocabulary
+- [`Troubleshooting`](<troubleshooting/README.md>) — symptom-led recovery
+- [`Examples`](<examples/README.md>) — clearly labeled starters, labs, and case studies
+- [`Testing & calibration`](<testing-calibration/README.md>) — physical bring-up in a safe order
 
-- [`drive-vision/README.md`](<drive-vision/README.md>)
-- [`drive-vision/Drive Guidance.md`](<drive-vision/Drive Guidance.md>)
-- [`drive-vision/Mechanism Target Planning.md`](<drive-vision/Mechanism Target Planning.md>)
-- [`drive-vision/AprilTag Localization & Fixed Layouts.md`](<drive-vision/AprilTag Localization & Fixed Layouts.md>)
-- [`drive-vision/AprilTag Practice Setup.md`](<drive-vision/AprilTag Practice Setup.md>)
-- [`examples/Pedro Autonomous Reference.md`](<examples/Pedro Autonomous Reference.md>)
-- [`../integrations/pedro/README.md`](<../integrations/pedro/README.md>)
-- [`testing-calibration/Robot Calibration Tutorials.md`](<testing-calibration/Robot Calibration Tutorials.md>)
+### Students adding a feature
 
-### I want to bring up and calibrate a robot from scratch
+- [`Core concepts`](<core-concepts/README.md>) — loop and source semantics
+- [`Design`](<design/README.md>) — Tasks, capability families, supervisors, and output queues
+- [`FTC boundary`](<ftc-boundary/README.md>) — actuator, sensor, UI, and handoff APIs
+- [`Drive & vision`](<drive-vision/README.md>) — spatial queries, guidance, and localization
+- [`Pedro Pathing integration`](<../integrations/pedro/README.md>) — the narrow vendor boundary
 
-- [`testing-calibration/README.md`](<testing-calibration/README.md>)
-- [`testing-calibration/Robot Calibration Tutorials.md`](<testing-calibration/Robot Calibration Tutorials.md>)
-- [`testing-calibration/Guided Calibration Walkthroughs.md`](<testing-calibration/Guided Calibration Walkthroughs.md>)
-- [`ftc-boundary/FTC Sensors.md`](<ftc-boundary/FTC Sensors.md>)
-- [`drive-vision/AprilTag Practice Setup.md`](<drive-vision/AprilTag Practice Setup.md>)
+### Mentors and framework maintainers
 
-### I want a concrete end-to-end example
+- [`Framework Principles`](<../Framework Principles.md>) — architecture and API design authority
+- [`Maintainer notes`](<maintainers/Maintainer Notes.md>) — tests and extension notes
+- [`Phoenix Architecture`](<../../robots/phoenix/Phoenix Architecture.md>) — production robot ownership
 
-- [`examples/README.md`](<examples/README.md>)
-- [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
-- [`examples/Examples Progression & Layered Mechanisms.md`](<examples/Examples Progression & Layered Mechanisms.md>)
-- [`examples/Layered Shooter Example.md`](<examples/Layered Shooter Example.md>)
-- [`examples/Shooter Case Study & Examples Walkthrough.md`](<examples/Shooter Case Study & Examples Walkthrough.md>)
-- [`examples/Pedro Autonomous Reference.md`](<examples/Pedro Autonomous Reference.md>)
-- [`../tools/examples/`](<../tools/examples/>)
+## Example labels
 
-### I am maintaining or extending the framework
+Examples have different jobs. Check the label before copying one:
 
-- [`maintainers/README.md`](<maintainers/README.md>)
-- [`../Framework Principles.md`](<../Framework Principles.md>)
-- [`maintainers/Maintainer Notes.md`](<maintainers/Maintainer Notes.md>)
-- [`maintainers/Future Robot Boilerplate Helpers.md`](<maintainers/Future Robot Boilerplate Helpers.md>)
-- [`maintainers/AprilTag Localization Follow-Ups.md`](<maintainers/AprilTag Localization Follow-Ups.md>)
-- [`../integrations/pedro/README.md`](<../integrations/pedro/README.md>)
+- **Copyable starter** — the ordinary managed robot structure to adapt.
+- **Optional Pedro integration reference** — a managed integration example to study after the
+  software-first Pedro lesson.
+- **Concept lab** — a focused framework lesson that may expose advanced lifecycle ceremony.
+- **Advanced case study** — a deeper design to study after the beginner course.
+- **Production reference** — a real robot with season-specific hardware and strategy.
 
-## Browse by section
-
-- [`getting-started/README.md`](<getting-started/README.md>) — overview and beginner ramp
-- [`core-concepts/README.md`](<core-concepts/README.md>) — loop semantics and source composition
-- [`design/README.md`](<design/README.md>) — robot architecture, tasks, queues, supervisors
-- [`drive-vision/README.md`](<drive-vision/README.md>) — drive guidance and AprilTag localization
-- [`testing-calibration/README.md`](<testing-calibration/README.md>) — ordered bring-up and walkthrough guidance
-- [`ftc-boundary/README.md`](<ftc-boundary/README.md>) — FTC-boundary sensor adapters and placement rules
-- [`examples/README.md`](<examples/README.md>) — case studies and runnable examples
-- [`maintainers/README.md`](<maintainers/README.md>) — maintainer-only references
-
-## Notes on structure
-
-- The repository root [`README.md`](<../../../../../../../../README.md>) introduces the project and
-  links into Phoenix documentation.
-- The framework documentation root [`../README.md`](<../README.md>) is the Phoenix orientation page.
-- This file is the full docs hub.
-- Each major docs folder has its own `README.md` so folder-level browsing still has an obvious entrypoint.
-- Some docs intentionally live next to code instead of under `docs/` (for example optional integrations); when that happens, link them from here so they stay discoverable.
+The repository guides, compiling examples, Javadocs, and tests are the current documentation
+authority.

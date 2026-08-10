@@ -1,6 +1,6 @@
 # Guided calibration walkthroughs
 
-The tester framework now supports a cleaner split between:
+The tester framework separates:
 
 - **category suites**, where every tester has one obvious home
 - **guided walkthrough suites**, where a robot can present a recommended bring-up order for students
@@ -78,7 +78,7 @@ A robot project should usually expose three entry points:
 2. a **robot-specific calibration/localization category**
 3. a **robot-specific hardware bring-up category**
 
-That is the pattern Phoenix now uses.
+Phoenix uses this pattern.
 
 ## Example
 
@@ -166,7 +166,7 @@ A calibration system is easiest to learn when it is documented in two directions
 - **from the beginning**: one ordered tutorial covering the whole bring-up path
 - **from the system**: links near a specific subsystem that jump directly to the relevant calibration step
 
-The framework docs now follow that structure:
+The framework docs follow that structure:
 
 - [`Robot Calibration Tutorials`](<Robot Calibration Tutorials.md>) for the full ordered path
 - subsystem docs should link back into the relevant section of that tutorial when calibration matters

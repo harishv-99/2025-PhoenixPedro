@@ -1,286 +1,94 @@
-# Examples Progression & Layered Mechanisms
+# Manual-lifecycle concept labs
 
-This guide explains how the runnable framework examples fit together as one learning sequence.
+**Audience:** students and mentors who already understand the managed Phoenix robot structure and
+want to inspect one loop phase or mechanism pattern in isolation.
 
-These numbered files are concept lessons, not a complete robot package. After learning the loop and
-mechanism patterns here, use [`Modern Starter Robot`](<Modern Starter Robot.md>) for the compiling
-profile/capability/controls/composition-root shape shared by TeleOp and Auto. Their explicit clocks
-and loop forwarding make each phase visible for teaching and custom-host work; ordinary FTC robot
-code uses `FtcRobotOpMode`/`RobotProgram` instead of copying that lifecycle ceremony.
+The numbered `fw.tools.examples` OpModes are disabled, one-file concept labs. They extend the FTC
+SDK `OpMode` directly so their clock, bindings, Tasks, outputs, telemetry, and cleanup remain
+visible. They are useful for focused teaching and custom-host work, but they are not a beginner
+course or an ordinary robot template.
 
-The short version is:
+For a first robot, start at the canonical [`Phoenix docs hub`](<../README.md>) and use
+[`Modern Starter Robot`](<Modern Starter Robot.md>) as the compiling TeleOp/Auto ownership
+reference. Ordinary robot code uses `FtcRobotOpMode` and `RobotProgram` instead of copying the
+manual lifecycle ceremony in these labs.
 
-- `TeleOp_01` through `TeleOp_04` are the beginner ramp,
-- `TeleOp_05` and `TeleOp_06` are the shooter + vision case study,
-- `TeleOp_07` and `TeleOp_08` are the bridge into mechanism-layering ideas,
-- and `TeleOp_09` is the first example that makes the three internal layers explicit.
+## Choose a lab by concept
 
-If you are reading the examples to understand the framework's layering philosophy, the most
-important files are now:
+| Lab | Focus |
+|---|---|
+| [`TeleOp_01_MecanumBasic`](<../../tools/examples/TeleOp_01_MecanumBasic.java>) | One `LoopClock`, a manual `DriveSource`, and an immediate direct-drive write. |
+| [`TeleOp_02_ShooterBasic`](<../../tools/examples/TeleOp_02_ShooterBasic.java>) | FTC actuator construction, simple scoring modes, and one owner for Plant updates and stop. |
+| [`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>) | Fresh, non-blocking Task graphs for a timed shooter sequence. |
+| [`TeleOp_04_ShooterInterpolated`](<../../tools/examples/TeleOp_04_ShooterInterpolated.java>) | A calibration table that maps range to a shooter request. |
+| [`TeleOp_05_ShooterTagAimVision`](<../../tools/examples/TeleOp_05_ShooterTagAimVision.java>) | Shared AprilTag selection, omega-only guidance, and shooter speed from range. |
+| [`TeleOp_06_ShooterTagAimMacroVision`](<../../tools/examples/TeleOp_06_ShooterTagAimMacroVision.java>) | The same targeting graph combined with a non-blocking shooting macro. |
+| [`TeleOp_07_SupervisorPoseMechanism`](<../../tools/examples/TeleOp_07_SupervisorPoseMechanism.java>) | Remembered semantic poses plus a temporary output-queue override. |
+| [`TeleOp_08_LiftExternalSensorControl`](<../../tools/examples/TeleOp_08_LiftExternalSensorControl.java>) | A framework-regulated position Plant using external analog feedback. |
+| [`TeleOp_09_LayeredShooterMechanism`](<../../tools/examples/TeleOp_09_LayeredShooterMechanism.java>) | Explicit Requests, Behavior, and Realization roles inside one mechanism lesson. |
 
-- `TeleOp_07_SupervisorPoseMechanism`
-- `TeleOp_08_LiftExternalSensorControl`
-- `TeleOp_09_LayeredShooterMechanism`
+Examples 05 and 06 are explained in
+[`Shooter Case Study & Examples Walkthrough`](<Shooter Case Study & Examples Walkthrough.md>).
+Example 09 is explained in
+[`Layered Shooter Example`](<Layered Shooter Example.md>).
 
-Those final examples are not “off theme.” They are the place where the examples stop being only
-shooter variations and start showing how robot-owned mechanism structure should look.
+## Contracts shared by every lab
 
----
+The visible lifecycle is part of each lesson. When reading or adapting a lab, preserve these
+contracts:
 
-## 1. Read the examples as a progression, not as isolated files
+1. Advance one `LoopClock` exactly once at the start of each loop.
+2. Sample controls and advance Tasks before the downstream owner applies Plant or drive output.
+3. Give each Plant one final resolver and one update owner.
+4. Keep drive intent upstream of one final drive writer.
+5. Use fresh Task instances for repeated behavior and make active cancellation safe.
+6. Stop every owned output and resource from the FTC `stop()` boundary, even though ordinary
+   managed robot code delegates that work to `RobotProgram`.
+7. Keep telemetry observational; it must not advance a source, controller, Task, or hardware owner.
 
-### Example 01: `TeleOp_01_MecanumBasic`
+The labs are `@Disabled` because their hardware names, directions, bounds, tuning, and physical
+motion must be reviewed for the robot that runs them.
 
-This is the drive-stream baseline.
+## Mechanism-layering labs
 
-It teaches:
+The last three labs answer different architecture questions. They are alternatives selected by
+the concept being studied, not steps required in every mechanism.
 
-- `LoopClock` update order,
-- gamepad → drive-source flow,
-- source sampling followed by an immediate direct-drive write,
-- and the shared one-loop clock used across the framework.
+### Example 07: remembered intent plus a temporary override
 
-The direct `MecanumDrivebase` has no heartbeat of its own. Stateful vendor adapters such as Pedro
-may require a separate documented `DriveCommandSink.update(clock)` heartbeat.
+`TeleOp_07_SupervisorPoseMechanism` keeps the selected semantic pose as persistent intent. An
+`OutputTaskRunner` proposes a short-lived override through `PlantTargets.overlay(...)`; when that
+proposal ends, the resolver naturally returns to the remembered pose. The subsystem remains the
+only Plant update and stop owner.
 
-This example intentionally stays flat and does not try to introduce held/frame/pending mechanism
-inputs yet.
+Use this pattern when a temporary behavior should win without erasing the base request.
 
-### Example 02: `TeleOp_02_ShooterBasic`
+### Example 08: external feedback realization
 
-This is the first mechanism example.
+`TeleOp_08_LiftExternalSensorControl` maps a held height selection into a regulated position Plant
+whose feedback comes from an analog sensor. The middle behavior decision is intentionally small;
+the useful lesson is that the Plant realization owns the feedback loop, units, bounds, update, and
+stop.
 
-It keeps the drive path simple and adds a small scoring mechanism with direct mode selection. The
-value of Example 02 is not a full layering story yet; it is showing how to turn FTC hardware into
-plants and how to map simple controls into those plants without losing the basic loop shape.
+Use this lab to inspect an external-feedback control path. In ordinary robot code, construct and
+retain that Plant inside the mechanism rather than in the OpMode.
 
-### Example 03: `TeleOp_03_ShooterMacro`
+### Example 09: requests, behavior, and realization
 
-This adds non-blocking macro behavior.
+`TeleOp_09_LayeredShooterMechanism` places three kinds of intent in one lesson:
 
-The core lesson is that timed sequences should become tasks/macros rather than ad-hoc sleeps or
-hand-written timers spread through the OpMode.
+- **held:** flywheel enable and selected velocity;
+- **frame:** manual feed power refreshed each loop;
+- **pending:** bounded shot requests retained until behavior consumes them.
 
-### Example 04: `TeleOp_04_ShooterInterpolated`
+`Behavior` owns readiness, timing, priority, and feed-pulse decisions. `Realization` alone writes
+the graph-owned Plant commands, advances the Plants, and publishes readback for the next loop.
+This separation is useful when a mechanism has enough policy to justify named internal roles; a
+simple mechanism does not need empty layers merely for symmetry.
 
-This adds data-driven calibration. Instead of hardcoding one shooter speed, the example uses a
-small interpolation table.
+## Related reading
 
-That prepares you for later examples where the selected target, distance estimate, or calibration
-curve may vary at runtime.
-
-### Examples 05-06: shooter + vision
-
-These are the detailed shooter examples documented in the separate shooter case study.
-
-- `TeleOp_05_ShooterTagAimVision` adds tag selection, aim assist, and shooter speed from vision
-  range.
-- `TeleOp_06_ShooterTagAimMacroVision` layers a shooting macro on top of the same selector.
-
-Read [`Shooter Case Study & Examples Walkthrough.md`](<Shooter Case Study & Examples Walkthrough.md>)
-for the full reasoning behind those two examples.
-
-### Examples 07-09: mechanism layering
-
-These are the architecture bridge from simple examples to real robot code.
-
-They are where the framework's newer vocabulary becomes visible:
-
-- held state,
-- frame-valued manual commands,
-- pending work,
-- behavior/execution logic,
-- and plant-owned realization.
-
----
-
-## 2. Why Examples 07, 08, and 09 matter
-
-The framework now encourages a simple mental model inside one mechanism owner:
-
-1. caller-owned requests or selections are remembered,
-2. robot-owned behavior decides what should happen now,
-3. plant-owned realization computes and applies final targets.
-
-The examples introduce that model progressively instead of forcing full ceremony everywhere.
-
-- Example 07 is a stepping stone: supervisor + subsystem, with one place that owns policy and one
-  place that owns the plant.
-- Example 08 shows that a regulated plant can be the realization layer even when behavior is
-  almost a pass-through.
-- Example 09 is the first explicit version where the code literally has <b>Requests</b>,
-  <b>Behavior</b>, and <b>Realization</b> as separate internal owners.
-
-That is why the examples section should be broader than “shooter docs.” Shooter remains one
-important case study, but the final examples are teaching robot structure more directly.
-
----
-
-## 3. Example 07: supervisor + subsystem, with a temporary override
-
-`TeleOp_07_SupervisorPoseMechanism` shows a very common robot pattern:
-
-- the driver requests one of a few semantic poses,
-- the subsystem remembers that pose,
-- a short temporary override can win for a moment,
-- and the subsystem owns the final target resolver and Plant update order.
-
-The example is intentionally small, but it shows three important ideas.
-
-### 3.1 Pose requests are remembered state
-
-The requested pose is not a one-cycle signal. It is state that stays active until the next request
-replaces it.
-
-That makes discrete-pose mechanisms feel stable and predictable.
-
-### 3.2 Timed special behavior should not overwrite the base request forever
-
-The “pulse open” command is modeled as a short-lived override. It temporarily wins, then the
-mechanism naturally falls back to the remembered base pose.
-
-This is exactly the kind of situation where output queues or task runners help: behavior owns the
-short-lived execution, and the Plant owner still owns the final target resolver and update order.
-
-### 3.3 The subsystem still owns the target resolvers and Plant update order
-
-Even though a supervisor is involved, the supervisor does not command hardware directly. The
-subsystem still composes the final target resolver and updates the Plant, which invokes that resolver.
-
-That matches the framework principle of keeping one Plant/resolver owner per mechanism.
-
----
-
-## 4. Example 08: held selection + regulated realization
-
-`TeleOp_08_LiftExternalSensorControl` is the example to read when you want the cleanest
-introduction to the newer mechanism-input vocabulary without a lot of scaffolding.
-
-It has three especially useful ideas.
-
-### 4.1 The requested lift height is a held selection
-
-The driver taps A/B/Y to choose a desired lift height.
-
-That choice is remembered in a `HeldValue<Double>`. This is a good example of a value that belongs
-to caller-owned request memory:
-
-- it is not a pending action queue,
-- it is not a per-cycle manual command,
-- it is simply the currently selected target.
-
-### 4.2 Behavior is trivial here, and that is okay
-
-Not every mechanism needs a fancy behavior layer.
-
-Example 08 intentionally shows that the behavior step can be almost a pass-through when the
-mechanism is simple:
-
-- read the selected height,
-- decide that the lift should hold that height,
-- send that semantic target to the plant.
-
-This is still consistent with the layered model. The middle layer is just small because the example
-is simple.
-
-### 4.3 Realization owns the regulated plant
-
-The lift plant is built from:
-
-- a raw motor-power output,
-- an external analog position sensor,
-- a PID regulator,
-- and bounded native units.
-
-The plant then owns the actual feedback loop and target tracking. That keeps the hardware-side
-details in the realization layer instead of scattering them through the OpMode.
-
----
-
-## 5. Example 09: explicit requests, behavior, and realization
-
-`TeleOp_09_LayeredShooterMechanism` is the copyable mechanism-layering example. It intentionally
-keeps all of its roles nested in one TeleOp; it is not the complete robot architecture reference.
-
-It deliberately combines the three common request shapes in one mechanism owner:
-
-- <b>Held</b>: flywheel enabled + selected flywheel velocity.
-- <b>Frame</b>: manual feed power, refreshed every loop through `Bindings.copyEachCycle(...)`.
-- <b>Pending</b>: shot requests stored in a `RequestCounter` until behavior consumes them.
-
-Then it makes the next two layers explicit.
-
-### 5.1 Requests only remember caller intent
-
-The request layer does not know anything about timing, pulse duration, or final target-resolver composition.
-
-Its only job is to remember:
-
-- what the caller wants held,
-- what the caller commanded this frame,
-- and how many shots are still pending.
-
-### 5.2 Behavior owns the interesting part
-
-The behavior layer decides:
-
-- whether pending shots are blocked by manual feed,
-- whether the flywheel is ready for a shot,
-- when a shot request becomes an active feed pulse,
-- whether the feed should currently be idle, manual, or pulsing,
-- and whether the flywheel should stay spun up because work is still pending.
-
-That is the heart of the mechanism. It is also the layer where timing belongs.
-
-### 5.3 Realization stays boring on purpose
-
-The realization layer is intentionally boring:
-
-- it takes the chosen flywheel target and feed power,
-- writes them to the plants,
-- updates the plants,
-- and exports a small readback snapshot for the next loop.
-
-That simplicity is a feature. It keeps the target-resolver ownership rule obvious.
-
-For a deeper walkthrough of Example 09, read
-[`Layered Shooter Example.md`](<Layered Shooter Example.md>).
-
----
-
-## 6. Where held, frame, and pending fit in the examples
-
-The examples now line up like this:
-
-- <b>Held</b> values show up naturally in Examples 07, 08, and 09 for remembered pose, height,
-  flywheel, and selected-velocity state.
-- <b>Frame</b> values show up explicitly in Example 09 for the manual feed command that must be
-  refreshed each loop.
-- <b>Pending</b> work is represented by `RequestCounter` in Example 09. The behavior layer drains
-  that counter one shot at a time when the mechanism is ready.
-
-Drive remains the main exception: raw manual drivetrain control is still best expressed as a
-continuous drive-source stream rather than a capability-style frame value.
-
----
-
-## 7. Recommended reading order from here
-
-If you are new to the framework:
-
-1. read `TeleOp_01` and `TeleOp_02`,
-2. skim `TeleOp_03` and `TeleOp_04`,
-3. read the shooter case study for `TeleOp_05` and `TeleOp_06`,
-4. then study `TeleOp_07`, `TeleOp_08`, and `TeleOp_09` as the bridge to real robot
-   architecture,
-5. then read [`Modern Starter Robot`](<Modern Starter Robot.md>) to see those ideas placed in a
-   compiling TeleOp/Auto robot package.
-
-If you are already comfortable with the basics and want the architectural takeaways quickly:
-
-1. read `TeleOp_07_SupervisorPoseMechanism`,
-2. read `TeleOp_08_LiftExternalSensorControl`,
-3. then read `TeleOp_09_LayeredShooterMechanism` and
-   [`Layered Shooter Example.md`](<Layered Shooter Example.md>),
-4. then read [`Modern Starter Robot`](<Modern Starter Robot.md>) for the whole-robot ownership
-   boundary.
+- [`Modern Starter Robot`](<Modern Starter Robot.md>) — ordinary managed robot structure
+- [`Tasks and Macros`](<../design/Tasks & Macros Quickstart.md>) — Task construction and cancellation
+- [`Output Tasks & Queues`](<../design/Output Tasks & Queues.md>) — source proposals and temporary overrides
+- [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) — mechanism and composition-root ownership

@@ -322,8 +322,10 @@ with integrations whose work is genuinely Task-local.
 
 The integration owner should also preserve each route's terminal meaning in the backend-neutral
 `RouteExecution` returned by `RouteFollower.follow(...)`. `RouteTask.getRouteStatus()` lets the Auto
-client distinguish completion, timeout/stall, interruption, replacement, failure, and unknown
-termination without exposing vendor types. The adapter reports facts; the Auto client owns any
+client distinguish `COMPLETED`, `FOLLOWER_TIMEOUT_OR_STALL`, `INTERRUPTED`, `REPLACED`,
+`TASK_TIMEOUT`, `CANCELLED`, `FAILED`, and `UNKNOWN_TERMINAL` without exposing vendor types. The
+adapter reports integration facts; the Task boundary may add its own timeout, cancellation, or
+fail-closed `FAILED` status, so `FAILED` can originate at either boundary. The Auto client owns any
 continue, fallback, or abort policy.
 
 That policy must gate position-dependent capability work rather than relying on a generic sequence

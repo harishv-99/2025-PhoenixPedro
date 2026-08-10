@@ -204,7 +204,7 @@ Notes:
   Hue gets noisy when chroma is low.
 * If your sensor supports a built-in light or gain, set those during initialization; `FtcSensors`
   only adapts the reading into Phoenix sources.
-* The framework hardware menu now includes `HW: Color Sensor (Normalized)`, which prints
+* The framework hardware menu includes `HW: Color Sensor (Normalized)`, which prints
   normalized RGBA, ratios, alpha/chroma, HSV, and optional raw RGBA detail while you tune gain.
 
 ### Reset-driven slot / window memory

@@ -1,20 +1,22 @@
 # Shooter Case Study & Examples Walkthrough
 
-This walkthrough is the shooter-focused companion to [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>).
+This advanced concept-lab walkthrough explains the shooter, AprilTag selection, drive guidance,
+and macro composition in Examples 05 and 06. The numbered examples expose their clock and FTC
+lifecycle phases for teaching; use [`Modern Starter Robot`](<Modern Starter Robot.md>) for the
+ordinary managed robot structure.
 
 If you want the smaller architecture-first shooter example that explicitly spells out
 `Requests → Behavior → Realization`, read [`Layered Shooter Example.md`](<Layered Shooter Example.md>) first.
 
-It explains the current shooter + auto-aim examples using the selector-based AprilTag model, and it specifically covers the two shooter/vision example OpModes:
+It covers these two shooter/vision OpModes:
 
 - `TeleOp_05_ShooterTagAimVision`
 - `TeleOp_06_ShooterTagAimMacroVision`
 
-The most important update is this:
+The central contract is:
 
-> **the robot no longer relies on a hidden “best tag” helper.**
->
-> Instead, raw camera detections stay available, and a shared `TagSelectionSource` is used anywhere the code needs one semantic answer to “which scoring tag do we mean right now?”
+> Raw camera detections remain available, while one shared `TagSelectionSource` supplies the
+> semantic answer to “which scoring tag do we mean right now?”
 
 ---
 
@@ -218,7 +220,7 @@ That tells the driver and tuner the same thing the robot is actually using.
 
 ## 8. Idempotence and loop behavior
 
-These examples still rely on Phoenix's one-loop heartbeat model.
+These examples use Phoenix's one-loop heartbeat model.
 
 Important consequence:
 
@@ -231,13 +233,9 @@ So you can safely share the same selector across drive logic, shooter logic, and
 
 ---
 
-## 9. What changed from the older design
+## 9. Selection contract
 
-Older versions often used a helper that silently picked the “best” tag.
-
-The current design deliberately avoids that hidden policy.
-
-Now the robot code states:
+The robot code states:
 - where detections come from,
 - which candidate IDs and freshness window are valid,
 - which selection policy is used,
@@ -249,9 +247,9 @@ That makes the examples easier to understand and much easier to debug.
 
 ---
 
-## 10. Extension ideas
+## 10. Optional extensions
 
-These examples are a good base for several future directions:
+The same contracts support these optional additions:
 
 ### Add localization fallback to aim assist
 

@@ -123,8 +123,9 @@ the framework API.
   owner for feed queues, target overlays, flywheel readiness, and scoring Plant update order.
 - Keep targeting and drive-assist decisions in their robot-owned services; do not move season-specific
   scoring or aim policy into reusable framework lanes.
-- Keep OpModes thin: choose configuration/specification, construct the runtime, forward FTC lifecycle
-  calls, and clean up owned resources.
+- Keep ordinary OpModes thin: choose configuration/specification and declare the robot's roles only
+  through `configure(RobotProgram)`. `FtcRobotOpMode` owns the final FTC lifecycle callbacks,
+  managed loop phases, and cleanup. An explicitly custom host is the advanced exception.
 
 ## Change workflow
 

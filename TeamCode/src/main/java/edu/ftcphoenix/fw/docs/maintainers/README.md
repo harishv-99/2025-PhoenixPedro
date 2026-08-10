@@ -1,17 +1,14 @@
 # Maintainers
 
-Use this section when evolving Phoenix itself.
+This section is for people changing or extending the framework itself. It is not part of the
+beginner course.
 
-## Read in this order
+1. Read the [`Framework Principles`](<../../Framework Principles.md>) before designing a change.
+2. Use [`Maintainer Notes`](<Maintainer Notes.md>) for tests, boundaries, and documentation checks.
+3. Keep the [`Phoenix docs home`](<../README.md>), implementation, Javadocs, and compiling examples
+   synchronized.
+4. For the optional Pedro boundary, read the
+   [`Pedro Pathing integration`](<../../integrations/pedro/README.md>).
 
-1. [`../../Framework Principles.md`](<../../Framework Principles.md>)
-2. [`Maintainer Notes.md`](<Maintainer Notes.md>)
-3. [`Builder Improvement Backlog.md`](<Builder Improvement Backlog.md>)
-4. [`Future Robot Boilerplate Helpers.md`](<Future Robot Boilerplate Helpers.md>)
-5. [`AprilTag Localization Follow-Ups.md`](<AprilTag Localization Follow-Ups.md>)
-
-## Also relevant
-
-- [`../core-concepts/README.md`](<../core-concepts/README.md>)
-- [`../design/README.md`](<../design/README.md>)
-- [`../../integrations/pedro/README.md`](<../../integrations/pedro/README.md>)
+Proposed work and completion history belong in the framework tracker or issue workflow, not in the
+student-facing documentation tree.
