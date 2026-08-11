@@ -49,8 +49,12 @@ specializations.
 
 ### Binding
 
-A declared mapping from a source event, change, or level to an action. `program.bindings()` exposes
-the registration-only surface; the managed program owns its update.
+A declared mapping from a source event, change, or level to an action.
+
+### `CallbackBindings`
+
+The registration-only surface returned by `program.callbackBindings()`. It maps input events,
+changes, or levels to synchronous callbacks; the managed program owns its update and cleanup.
 
 ### `TaskBindings`
 

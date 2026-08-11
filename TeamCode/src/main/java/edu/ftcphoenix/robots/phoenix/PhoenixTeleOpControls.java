@@ -10,7 +10,7 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.Gamepads;
-import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 
 /**
  * Phoenix TeleOp controls owner.
@@ -31,35 +31,28 @@ import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
 public final class PhoenixTeleOpControls {
 
     private final PhoenixProfile.TeleOpControlsConfig cfg;
-    private final BindingRegistrar bindingRegistrar;
     private final DriveSource manualDrive;
     private final ScalarSource manualTranslateMagnitude;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverride;
     private final GamepadDevice driver;
     private final GamepadDevice operator;
+    private boolean bindAttempted;
 
     /**
      * Creates the Phoenix TeleOp controls owner.
      *
      * <p>
      * The constructor only establishes the stable driver/operator sources. Mechanism-specific button
-     * bindings are registered later through {@link #bind(PhoenixCapabilities)} once the shared
-     * robot capability families exist.
+     * bindings are registered later through {@link #bind(CallbackBindings, PhoenixCapabilities)}
+     * once the shared robot capability families exist.
      * </p>
      *
-     * @param bindingRegistrar managed program registration surface that owns no independent
-     *                         heartbeat in this controls object
      * @param gamepads         wrapped gamepad sources used to map driver/operator controls
      * @param config           TeleOp control-layer config; defensively copied for local ownership
      */
-    public PhoenixTeleOpControls(BindingRegistrar bindingRegistrar,
-                                 Gamepads gamepads,
+    public PhoenixTeleOpControls(Gamepads gamepads,
                                  PhoenixProfile.TeleOpControlsConfig config) {
-        this.bindingRegistrar = Objects.requireNonNull(
-                bindingRegistrar,
-                "bindingRegistrar"
-        );
         Objects.requireNonNull(gamepads, "gamepads");
         this.cfg = Objects.requireNonNull(config, "config").copy();
 
@@ -87,39 +80,68 @@ public final class PhoenixTeleOpControls {
     }
 
     /**
-     * Registers the Phoenix scoring control semantics on the managed binding registrar.
+     * Declares the Phoenix scoring control semantics on the managed callback surface.
      *
      * <p>
      * TeleOp binds against the shared robot capability families instead of directly depending on
      * Phoenix internals. That keeps the control layer mode-neutral and leaves room for Auto to use
      * the same vocabulary through tasks instead of button bindings. Future frame-valued manual
      * mechanism commands should also be registered here through
-     * {@code BindingRegistrar.copyEachCycle(...)}. The managed program retains the one heartbeat
+     * {@code CallbackBindings.copyEachCycle(...)}. The managed program retains the one heartbeat
      * and cleanup owner for every declaration made here.
      * </p>
      *
+     * <p>This declaration is single-use. A repeated call, including a retry after a callback
+     * surface rejected part of the first declaration, fails before adding another registration.</p>
+     *
+     * @param callbackBindings managed callback surface that owns no independent heartbeat here
      * @param capabilities shared Phoenix capability families exposed by the robot container
+     * @throws NullPointerException if an argument or its scoring family is {@code null}; this does
+     *                              not consume the bind opportunity
+     * @throws IllegalStateException if a bind was already attempted, including one whose callback
+     *                               registration failed partway through
      */
-    public void bind(PhoenixCapabilities capabilities) {
-        PhoenixCapabilities.Scoring scoring =
-                Objects.requireNonNull(capabilities, "capabilities").scoring();
+    public void bind(CallbackBindings callbackBindings, PhoenixCapabilities capabilities) {
+        CallbackBindings requiredCallbacks = Objects.requireNonNull(
+                callbackBindings,
+                "callbackBindings"
+        );
+        PhoenixCapabilities requiredCapabilities = Objects.requireNonNull(
+                capabilities,
+                "capabilities"
+        );
+        PhoenixCapabilities.Scoring scoring = Objects.requireNonNull(
+                requiredCapabilities.scoring(),
+                "capabilities.scoring()"
+        );
+        claimBind();
 
-        bindingRegistrar.toggleOnRise(operator.a(), scoring::setIntakeEnabled);
-        bindingRegistrar.toggleOnRise(operator.rightBumper(), scoring::setFlywheelEnabled);
+        requiredCallbacks.toggleOnRise(operator.a(), scoring::setIntakeEnabled);
+        requiredCallbacks.toggleOnRise(operator.rightBumper(), scoring::setFlywheelEnabled);
 
         // Declaration order is intentional: if capture and a nudge rise in the same input frame,
         // capture the suggested velocity first and then apply the student's selected adjustment.
-        bindingRegistrar.onRise(operator.leftBumper(), scoring::captureSuggestedShotVelocity);
+        requiredCallbacks.onRise(operator.leftBumper(), scoring::captureSuggestedShotVelocity);
 
-        bindingRegistrar.mirrorOnChange(operator.b(), scoring::setShootingEnabled);
-        bindingRegistrar.mirrorOnChange(operator.x(), scoring::setEjectEnabled);
+        requiredCallbacks.mirrorOnChange(operator.b(), scoring::setShootingEnabled);
+        requiredCallbacks.mirrorOnChange(operator.x(), scoring::setEjectEnabled);
 
-        bindingRegistrar.nudgeOnRise(
+        requiredCallbacks.nudgeOnRise(
                 operator.dpadUp(),
                 operator.dpadDown(),
                 cfg.selectedVelocityStepNative,
                 scoring::adjustSelectedVelocityNative
         );
+    }
+
+    private void claimBind() {
+        if (bindAttempted) {
+            throw new IllegalStateException(
+                    "PhoenixTeleOpControls.bind(...) may be called only once; "
+                            + "create a fresh controls owner for another callback graph"
+            );
+        }
+        bindAttempted = true;
     }
 
     /**

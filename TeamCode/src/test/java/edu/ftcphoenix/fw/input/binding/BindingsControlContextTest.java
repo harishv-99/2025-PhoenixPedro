@@ -548,8 +548,8 @@ public final class BindingsControlContextTest {
         Bindings bindings = new Bindings();
         Bindings.ControlContext oldContext = bindings.contextWhen(
                 BooleanSource.constant(true), Bindings.ActivationPolicy.ACCEPT_CURRENT);
-        BindingRegistrar registrar = oldContext;
-        assertSame(oldContext, registrar);
+        CallbackBindings callbackBindings = oldContext;
+        assertSame(oldContext, callbackBindings);
 
         bindings.clear();
 

@@ -167,6 +167,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 80 | PLANT-03 | Terminal Plant lifecycle | Done | Make `Plant.stop()` terminal, remove broad `Plant.reset()`, and keep recoverable output fail-stop internal. |
 | 81 | TESTER-02 | Canonical actuator bring-up | Done | The reviewed device-first workflow, truthful type-specific evidence, advanced-only diagnostics, synchronized course/docs, and verification are approved for publication. |
 | 82 | TESTER-03 | Driver Station and Panels tester consoles | Done | The reviewed fixed-owner consoles, mirrored telemetry, fail-closed Panels input, synchronized guidance, automated verification, and publication authorization are complete. |
+| 83 | API-07 | Explicit callback and Task binding grammar | Done | The reviewed breaking grammar, source-only controls construction, one-shot binding, synchronized callers/docs, automated verification, and publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -15651,6 +15652,105 @@ writer, and explicit lifecycle ownership.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
   `master`. This approval completes Gate 3 for TESTER-03 only and does not start another tracker
   item. No robot-hardware validation is claimed.
+
+### API-07 - Explicit callback and Task binding grammar
+
+- **Gate 2 approval (2026-08-10):** after comparing the hidden constructor registration in the
+  starter controls, Phoenix's separate but repeatable `bind(...)`, the `BindingRegistrar` and
+  `TaskBindings` vocabularies, and ordinary robot call sites, the user selected the explicit-bind
+  design and the parallel **`CallbackBindings` / `TaskBindings`** names, then directed
+  **`Implement the plan.`** API-07 alone is now **In progress** on
+  `codex/api-07-explicit-callback-bindings`, based exactly on fetched
+  `origin/master@7b9682c9852763c45a5049726d08a84de14a931e`. Publication is not authorized.
+- **Confirmed behavior:** constructing `StarterTeleOpControls` immediately mutates the supplied
+  binding graph, so the constructor name does not reveal that mappings were declared and a second
+  controls object silently duplicates callbacks. `PhoenixTeleOpControls` separates construction
+  from `bind(...)` because its sources are needed before the capability graph can be completed, but
+  repeated calls likewise append duplicate mappings. The public noun `BindingRegistrar` describes
+  an implementation role while sibling `TaskBindings` describes what is bound, obscuring why one
+  surface invokes short callbacks in the binding phase and the other creates and schedules fresh
+  single-use Tasks.
+- **Current callers and common path:** `RobotProgram` is the managed owner of the root `Bindings`,
+  callback registration view, `TaskBindings`, and `TaskRunner`. The compiling starter and production
+  Phoenix TeleOp are the student-facing paths; FTC UI helpers, tuners, tests, and guides also accept
+  the narrow callback surface. `Bindings.ControlContext` must expose that same surface without
+  broadening context ownership. No caller needs a controls constructor to register behavior.
+- **Alternatives considered:** documentation-only would leave hidden mutation and duplicate-binding
+  behavior intact. Keeping the starter constructor exception or adding a named factory would retain
+  two control grammars. Renaming only the registrar would not fix lifecycle ambiguity. Renaming the
+  root `Bindings` owner would add broad churn without simplifying robot code. One combined callback
+  and Task surface would blur immediate binding-phase callbacks with fresh Task creation and runner
+  ownership. `ActionBindings` was rejected because Road Runner uses Action as its Task-like behavior
+  concept; `DirectBindings` was rejected because `direct` already describes hardware, power, and
+  drive paths in this repository.
+- **Chosen design and simplicity comparison:** rename `BindingRegistrar` to `CallbackBindings`,
+  rename `RobotProgram.bindings()` to `callbackBindings()`, retain `TaskBindings` and
+  `RobotProgram.taskBindings()`, and provide no deprecated aliases. Both starter and Phoenix control
+  constructors create stable input sources only. Each exposes one explicit, one-shot
+  `bind(CallbackBindings, capability)` declaration with the binding surface first and the capability
+  second. Arguments are validated before the bind attempt is claimed; the claim occurs before the
+  first registration, so a second call or retry after partial failure fails before another callback
+  can be appended. Before API-07, students must remember that one controls constructor binds while
+  another constructor does not; afterward both read as construct sources, then explicitly bind
+  meanings. The ordinary call gains one visible line but removes a hidden side effect and an entire
+  exceptional lifecycle rule.
+- **Ownership and bounded scope:** `Bindings` remains the graph/update owner and both `Bindings` and
+  `Bindings.ControlContext` implement `CallbackBindings`; `TaskBindings.of(...)` consumes the narrow
+  callback surface. If a future controls owner needs both callback and Task mappings, it receives
+  both narrow surfaces rather than a whole `RobotProgram`. API-07 does not change binding method
+  names, declaration-order dispatch, context selection, `OutputTaskRunner`, Task semantics, or the
+  proposed INPUT-02 failure-retention policy. This is not a staged-builder API; it is an explicit
+  ownership/lifecycle declaration.
+- **Verification plan:** migrate all source, Javadoc, Markdown, example, and test references; prove
+  controls construction has no registration effect; prove first bind preserves declared mapping
+  order; prove a second bind and a retry after partial registration failure fail before mutation;
+  lock the `RobotProgram` public grammar and absence of legacy aliases; retain TaskBindings' focused
+  API-shape contract; run focused binding/starter/Phoenix/runtime tests, the full TeamCode unit suite,
+  Java compilation, Phoenix Javadocs, documentation checks, exhaustive stale-name scans, and
+  whitespace checks. Robot hardware is not required because this change concerns deterministic
+  graph construction and public API shape only.
+- **Implementation record (2026-08-10):** API-07 is **Done**. Added the narrow
+  `CallbackBindings` surface and removed `BindingRegistrar`; `Bindings`, `ControlContext`,
+  `TaskBindings.of(...)`, FTC UI helpers, and tuners now use the current noun. `RobotProgram`
+  exposes the parallel `callbackBindings()` and `taskBindings()` methods with no compatibility
+  alias. Starter and production Phoenix controls now construct stable sources only, then declare
+  mappings through a surface-first `bind(...)` that validates arguments before claiming one attempt
+  and claims it before the first registration. Both production composition roots use that same
+  grammar. Current-state principles, architecture, beginner/course, reference, UI, and Task guides
+  are synchronized.
+- **Adversarial review corrections (2026-08-10):** independent read-only transaction and migration
+  audits found no production behavior defect and confirmed that API-07 does not change binding
+  dispatch, contexts, Task/runner behavior, `OutputTaskRunner`, or INPUT-02. The review did catch and
+  correct a stale beginner variable, a cheat-sheet shortcut that declared controls directly in the
+  composition root, one obsolete prose noun, imprecise synchronous-callback and bind-failure
+  Javadocs, post-claim capability-family validation in the normative generic example, and tests
+  that did not yet forbid an additional bind overload.
+- **Verification result (2026-08-10):** the focused starter, Phoenix controls, callback API,
+  context, TaskBindings, Task API, managed-runtime, and prestart/handoff slice passes **77/77 tests**.
+  After all review corrections, the full `:TeamCode:testDebugUnitTest` suite passes **143 suites /
+  1,341 tests, 0 failures, 0 errors, 0 skipped**; `:TeamCode:compileDebugJavaWithJavac` and
+  `:TeamCode:phoenixJavadocs` succeed. `DocumentationLinksTest` passes **5/5**. Current production
+  and authored documentation contain no `BindingRegistrar`, `binding registrar`, or old
+  `.bindings()` caller; the deleted interface file is absent, exact API-shape tests reject both old
+  aliases and extra controls bind overloads, and tracked/new-file whitespace checks are clean.
+  Gradle emits only the existing Java 8 source/target and FTC sample deprecation warnings. A strict
+  local Zensical render could not run because this workstation has no Python runtime; the authored
+  Markdown link/fence checks and generated Javadocs pass locally, and the checked-in Pages workflow
+  remains the strict site renderer on publication.
+- **Hardware scope:** no robot-hardware claim is needed or made. API-07 changes deterministic
+  declaration ownership, failure semantics, public names, and documentation; its observable
+  contracts are covered at the callback graph and managed-runtime seams.
+- **Android Studio audit point (2026-08-10):** inspect `CallbackBindings` beside `TaskBindings`, the
+  two parallel `RobotProgram` accessors, Starter/Phoenix source-only constructors and one-shot bind
+  implementations, their production call sites, failure-injection/API-shape tests, and the updated
+  beginner/cheat-sheet grammar. No file is staged, committed, pushed, or merged. Stop before
+  publication or another tracker item until the user replies **`API-07 looks good`** and authorizes
+  the combined commit/push/PR/merge step.
+- **Manual verification and publication authorization (2026-08-10):** the user reviewed API-07,
+  replied **`API-07 looks good`**, and authorized committing the reviewed diff on
+  `codex/api-07-explicit-callback-bindings`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. This approval completes Gate 3 for API-07 only and does not start another tracker item.
 
 ## Explicitly deferred architectural ideas
 

@@ -12,7 +12,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 
 /**
  * FTC telemetry helper for choosing a configured hardware device name from the Robot Configuration.
@@ -125,7 +125,7 @@ public final class HardwareNamePicker {
      * standard mapping this is {@code X}; {@code B/BACK} remain available to parent screens as
      * back/cancel.</p>
      */
-    public void bind(BindingRegistrar bindings,
+    public void bind(CallbackBindings bindings,
                      UiControls controls,
                      BooleanSupplier enabled,
                      Consumer<String> onChoose) {
@@ -144,7 +144,7 @@ public final class HardwareNamePicker {
      * @param enabled when false, picker ignores inputs
      * @param onChoose optional callback invoked when a name is chosen
      */
-    public void bind(BindingRegistrar bindings,
+    public void bind(CallbackBindings bindings,
                      BooleanSource up,
                      BooleanSource down,
                      BooleanSource choose,

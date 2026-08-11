@@ -98,7 +98,9 @@ public final class RobotProgramPrestartAndHandoffTest {
         program.beginInit(5.0);
         program.prestart(prestart);
         program.service(service);
-        program.bindings().whileHigh(BooleanSource.constant(true), () -> bindingCalls[0]++);
+        program.callbackBindings().whileHigh(
+                BooleanSource.constant(true),
+                () -> bindingCalls[0]++);
         program.rootTask(root);
         program.output(output);
         program.presenter((clock, destination) -> {
@@ -501,7 +503,7 @@ public final class RobotProgramPrestartAndHandoffTest {
 
         program.beginInit(0.0);
         program.service(service);
-        program.bindings().whileHigh(BooleanSource.constant(true), () -> {
+        program.callbackBindings().whileHigh(BooleanSource.constant(true), () -> {
             events.add("binding.action");
             try {
                 program.stop();

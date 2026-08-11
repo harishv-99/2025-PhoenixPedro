@@ -84,6 +84,12 @@ An ordinary Phoenix mechanism constructor receives `HardwareMap` plus data-only 
 defensively snapshots that configuration, constructs and privately owns its final resolver/Plant
 graph, and owns update/stop. The OpMode does not prebuild or inject Plants.
 
+`PhoenixTeleOpControls` constructs its stable driver and operator sources without registering
+behavior. After `PhoenixCapabilities` exists, `PhoenixRobot` calls
+`controls.bind(program.callbackBindings(), capabilities)` exactly once. This explicit boundary keeps
+callback-graph mutation out of constructors while the managed program retains the only binding
+heartbeat.
+
 `PhoenixRobot` is constructed once for one mode. `declareTeleOp(...)` or `declareAuto(...)` may be
 called once. Both modes retain the complete defensive `PhoenixProfile`; neither constructs an
 alliance-filtered hardware profile. Their prestart owners instead supply a source that becomes one

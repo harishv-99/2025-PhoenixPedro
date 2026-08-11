@@ -307,7 +307,6 @@ public final class PhoenixRobot {
         loopPhaseProfiler.reset();
 
         teleOpControls = new PhoenixTeleOpControls(
-                requiredProgram.bindings(),
                 gamepads,
                 profile.controls
         );
@@ -355,7 +354,7 @@ public final class PhoenixRobot {
         registerOutputOrClean(requiredProgram, scoringOutput, scoringPath::stop);
 
         capabilities = createCapabilities();
-        teleOpControls.bind(capabilities);
+        teleOpControls.bind(requiredProgram.callbackBindings(), capabilities);
 
         Source<ScoringPath.Status> scoringStatus =
                 Source.of(ignoredClock -> scoringPath.status());

@@ -101,7 +101,7 @@ screen. A held selection button does not become a fresh press merely because a n
 Do not create one control context per picker for that flow. Use a `Bindings.ControlContext` when a
 whole navigator is optional, or when controls actually change meaning or eligibility—for example,
 switching from picker navigation to live hardware controls. UI registration helpers accept either
-root `Bindings` or a context through `BindingRegistrar`; the root still owns the only
+root `Bindings` or a context through `CallbackBindings`; the root still owns the only
 `bindings.update(clock)` call.
 
 

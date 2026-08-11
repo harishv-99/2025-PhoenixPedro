@@ -9,7 +9,7 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 
 /**
  * Reusable "integer target" controller for tester UIs.
@@ -315,7 +315,7 @@ public final class IntTuner {
     /**
      * Bind a standard set of controls to manipulate this tuner.
      *
-     * <p>The supplied registrar owns whether these actions are eligible. Pass a
+     * <p>The supplied callback surface owns whether these callbacks are eligible. Pass a
      * {@link edu.ftcphoenix.fw.input.binding.Bindings.ControlContext} when a whole tuner control
      * group should share one activation policy. Context rearming remains independent for each
      * registered input.</p>
@@ -327,7 +327,7 @@ public final class IntTuner {
      * @param decButton button that decrements the target (nullable)
      * @param zeroButton button that resets to the disabled value (nullable)
      */
-    public void bind(BindingRegistrar bindings,
+    public void bind(CallbackBindings bindings,
                      BooleanSource enableToggle,
                      BooleanSource fineToggle,
                      BooleanSource incButton,

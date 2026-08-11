@@ -15,7 +15,8 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
  *     protected void configure(RobotProgram program) {
  *         IntakeMechanism intake = program.output(
  *                 new IntakeMechanism(hardwareMap, IntakeConfig.current()));
- *         Controls controls = new Controls(program.bindings(), gamepad1, intake);
+ *         Controls controls = new Controls(gamepad1);
+ *         controls.bind(program.callbackBindings(), intake);
  *         program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap));
  *         program.presenter((clock, telemetry) ->
  *                 telemetry.addData("intake.mode", intake.status().mode));

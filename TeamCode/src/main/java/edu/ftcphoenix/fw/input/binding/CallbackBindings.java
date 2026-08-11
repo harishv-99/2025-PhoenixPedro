@@ -7,43 +7,48 @@ import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 
 /**
- * Registration-only view of Phoenix input bindings.
+ * Registration-only view of Phoenix input callbacks.
+ *
+ * <p>Use this surface for short, non-blocking callbacks that run synchronously and finish during
+ * the binding phase.
+ * Use {@link edu.ftcphoenix.fw.task.TaskBindings} when an input should create and schedule a fresh
+ * single-use Task that continues over later cycles.</p>
  *
  * <p>Reusable control helpers accept this interface so the same helper can declare mappings on
  * either an always-eligible {@link Bindings} root or a conditional
  * {@link Bindings.ControlContext}. The interface deliberately does not expose the root heartbeat,
  * clearing, or context construction.</p>
  *
- * <p>For Phoenix root and context registrars, each declaration joins one parent-owned global
+ * <p>For Phoenix root and context callback surfaces, each declaration joins one parent-owned global
  * sequence at the point this method is called. After the parent snapshots all context activations,
  * it visits registrations in declaration order across binding kinds. A reusable helper's
  * declarations therefore join the order where its {@code bind(...)} method is invoked. This is
  * deterministic sequencing, not priority or arbitration between competing final commands.</p>
  *
  * <p>Finish declarations during initialization or an explicit rebuild between updates. A Phoenix
- * registrar rejects registration while its parent {@code Bindings.update(clock)} is running, and
+ * callback surface rejects registration while its parent {@code Bindings.update(clock)} is running, and
  * a context that was invalidated by {@link Bindings#clear()} also rejects registration.</p>
  */
-public interface BindingRegistrar {
+public interface CallbackBindings {
 
     /**
-     * Register an action to run once for each accepted false-to-true transition.
+     * Register a callback to run once for each accepted false-to-true transition.
      *
      * <p>A root {@link Bindings} registration uses its first sample only to establish an edge
-     * baseline, so starting with a held signal does not call {@code action}. A contextual
+     * baseline, so starting with a held signal does not call {@code callback}. A contextual
      * registration is also silent while inactive and on its effect-free activation sample; its
      * later transitions are accepted according to the context's
      * {@link Bindings.ActivationPolicy}.</p>
      *
      * @param signal boolean source to monitor; must not be {@code null}
-     * @param action action to run once per accepted rise; must not be {@code null}
+     * @param callback callback to run once per accepted rise; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
-    void onRise(BooleanSource signal, Runnable action);
+    void onRise(BooleanSource signal, Runnable callback);
 
     /**
-     * Register an action to run once for each accepted true-to-false transition.
+     * Register a callback to run once for each accepted true-to-false transition.
      *
      * <p>A root registration uses its first sample only to establish an edge baseline. A
      * contextual registration does not turn deactivation or neutral rearming into a fall; under
@@ -51,11 +56,11 @@ public interface BindingRegistrar {
      * effect-free activation sample is a real accepted fall.</p>
      *
      * @param signal boolean source to monitor; must not be {@code null}
-     * @param action action to run once per accepted fall; must not be {@code null}
+     * @param callback callback to run once per accepted fall; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
-    void onFall(BooleanSource signal, Runnable action);
+    void onFall(BooleanSource signal, Runnable callback);
 
     /**
      * Mirror the effective boolean value on its first output and whenever that output changes.
@@ -72,50 +77,50 @@ public interface BindingRegistrar {
      * @param signal boolean source to mirror; must not be {@code null}
      * @param consumer receives effective state changes; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
     void mirrorOnChange(BooleanSource signal, Consumer<Boolean> consumer);
 
     /**
-     * Register an action to run on every eligible update while the signal is true.
+     * Register a callback to run on every eligible update while the signal is true.
      *
      * <p>A root registration may run on its first update. A contextual registration is silent
      * while inactive, on activation, and on a neutral sample used only to rearm; accepted levels
      * begin on a later update according to its activation policy.</p>
      *
      * @param signal boolean source to monitor; must not be {@code null}
-     * @param action action to run on each accepted high update; must not be {@code null}
+     * @param callback callback to run on each accepted high update; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
-    void whileHigh(BooleanSource signal, Runnable action);
+    void whileHigh(BooleanSource signal, Runnable callback);
 
     /**
-     * Register an action to run on every eligible update while the signal is false.
+     * Register a callback to run on every eligible update while the signal is false.
      *
      * <p>A root registration may run on its first update. Context inactivity, deactivation, and a
-     * false sample used only to rearm do not invoke this action; accepted low levels begin on a
+     * false sample used only to rearm do not invoke this callback; accepted low levels begin on a
      * later active update.</p>
      *
      * @param signal boolean source to monitor; must not be {@code null}
-     * @param action action to run on each accepted low update; must not be {@code null}
+     * @param callback callback to run on each accepted low update; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
-    void whileLow(BooleanSource signal, Runnable action);
+    void whileLow(BooleanSource signal, Runnable callback);
 
     /**
-     * Toggle owned state on each accepted rise and run the corresponding action.
+     * Toggle owned state on each accepted rise and run the corresponding callback.
      *
      * <p>The owned toggle starts disabled ({@code false}). Its first signal sample establishes a
-     * baseline and calls neither action. Each later accepted rise flips the state and runs exactly
-     * one action. Context inactivity does not reset the owned toggle state.</p>
+     * baseline and calls neither callback. Each later accepted rise flips the state and runs
+     * exactly one callback. Context inactivity does not reset the owned toggle state.</p>
      *
      * @param signal signal whose accepted rises flip the toggle; must not be {@code null}
-     * @param onEnabled action run after a flip to enabled; must not be {@code null}
-     * @param onDisabled action run after a flip to disabled; must not be {@code null}
+     * @param onEnabled callback run after a flip to enabled; must not be {@code null}
+     * @param onDisabled callback run after a flip to disabled; must not be {@code null}
      * @throws NullPointerException if any argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
     void toggleOnRise(BooleanSource signal, Runnable onEnabled, Runnable onDisabled);
 
@@ -129,7 +134,7 @@ public interface BindingRegistrar {
      * @param signal signal whose accepted rises flip the toggle; must not be {@code null}
      * @param consumer receives the new state after each flip; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
     void toggleOnRise(BooleanSource signal, Consumer<Boolean> consumer);
 
@@ -147,7 +152,7 @@ public interface BindingRegistrar {
      * @param adjuster receives the nonzero combined adjustment; must not be {@code null}
      * @throws NullPointerException if a signal or {@code adjuster} is {@code null}
      * @throws IllegalArgumentException if {@code step} is non-finite
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
     void nudgeOnRise(BooleanSource increaseSignal,
                      BooleanSource decreaseSignal,
@@ -176,7 +181,7 @@ public interface BindingRegistrar {
      * @param consumer receives the root sample or contextual effective command; must not be
      *                 {@code null}
      * @throws NullPointerException if either argument is {@code null}
-     * @throws IllegalStateException if the registrar cannot currently accept declarations
+     * @throws IllegalStateException if the callback surface cannot currently accept declarations
      */
     void copyEachCycle(ScalarSource source, DoubleConsumer consumer);
 }

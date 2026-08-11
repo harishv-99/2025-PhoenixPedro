@@ -244,7 +244,7 @@ Construct each truthful lifecycle owner and register it immediately:
 - `program.service(...)` for upstream sensing, localization, policy computation, or a required
   vendor heartbeat;
 - `program.output(...)` for each mechanism/subsystem that privately owns its final Plants;
-- `program.bindings()` or `program.taskBindings()` for TeleOp meanings;
+- `program.callbackBindings()` or `program.taskBindings()` for TeleOp meanings;
 - `program.drive(source, sink)` for the one final source-driven drive writer;
 - `program.rootTask(...)` for one fresh Auto routine; and
 - `program.presenter(...)` for additive INIT/active telemetry rows.
@@ -342,9 +342,9 @@ receives the entry's explicit `PhoenixAlliance.RED` default, installs the visibl
 `PhoenixTeleOpPrestart`, constructs `PhoenixRobot`, passes the
 prestart's START-frozen singleton scoring-tag source to `declareTeleOp(...)`, consumes the optional
 pose-and-alliance snapshot after localization exists, and registers additive presenters.
-`PhoenixTeleOpControls` registers with the program's binding registrar, scoring is declared before
-the one final drive, and the program owns the sole TeleOp clock, lifecycle, telemetry commit, and
-fail-stop cleanup.
+`PhoenixTeleOpControls` declares callbacks through the program's callback surface, scoring is
+declared before the one final drive, and the program owns the sole TeleOp clock, lifecycle,
+telemetry commit, and fail-stop cleanup.
 
 Phoenix Auto is parallel: every Phoenix-season entry extends `PhoenixAutoOpMode` and returns one
 `PhoenixAutoSetup`. `PhoenixAutoProgram` declares one data-only prestart selector/readiness owner,

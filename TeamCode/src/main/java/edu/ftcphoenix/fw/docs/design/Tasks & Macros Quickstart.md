@@ -13,7 +13,7 @@ We assume you already have an ordinary robot owner wired like the
 [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>):
 
 * An `FtcRobotOpMode` receiving one framework-created `RobotProgram`.
-* Gamepad meanings declared through `program.bindings()` or `program.taskBindings()`.
+* Gamepad meanings declared through `program.callbackBindings()` or `program.taskBindings()`.
 * Drive and Plant-owning mechanisms declared as the program's downstream outputs.
 
 Everything here is **non-blocking**: there is no `sleep()` and no long-running `while` loop that

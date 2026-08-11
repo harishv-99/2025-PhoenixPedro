@@ -14,10 +14,13 @@ public final class MyTeleOp extends FtcRobotOpMode {
     protected void configure(RobotProgram program) {
         MyMechanism mechanism = program.output(
                 new MyMechanism(hardwareMap, MyProfile.current().mechanism));
-        GamepadDevice driver = new GamepadDevice(gamepad1);
+        MyTeleOpControls controls =
+                new MyTeleOpControls(new GamepadDevice(gamepad1));
 
-        program.bindings().onRise(driver.a(), mechanism::requestCollect);
-        program.taskBindings().onRise(driver.y(), mechanism::createScoreTask);
+        controls.bind(
+                program.callbackBindings(),
+                program.taskBindings(),
+                mechanism);
         program.presenter((clock, telemetry) ->
                 telemetry.addData("mechanism", mechanism.status()));
     }
@@ -33,7 +36,7 @@ second `LoopClock` or `TaskRunner` in ordinary robot code.
 |---|---|---|
 | `program.prestart(...)` | Data-only INIT selection and readiness | INIT, then freeze at START |
 | `program.service(...)` | Upstream sensing, localization, or vendor heartbeat | Before controls |
-| `program.bindings()` | Map current signals to robot intent | Before Tasks |
+| `program.callbackBindings()` | Map current signals to synchronous robot intent | Before Tasks |
 | `program.taskBindings()` | Construct and enqueue a fresh Task from an input event; the shared FIFO runner starts it at the queue head | Bindings phase |
 | `program.rootTask(...)` | One fresh Auto/root Task graph | START and Tasks phase |
 | `program.output(...)` | Realize and stop a mechanism's private Plants | After Tasks |
@@ -50,25 +53,30 @@ LoopClock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> tel
 ## Buttons and axes
 
 ```java
-GamepadDevice driver = new GamepadDevice(gamepad1);
-
-program.bindings().onRise(driver.a(), mechanism::requestCollect);
-program.bindings().onFall(driver.leftBumper(), mechanism::releaseManualMode);
-program.bindings().mirrorOnChange(
-        driver.rightBumper(),
-        held -> mechanism.requestSlowMode(held));
-program.bindings().copyEachCycle(
-        driver.leftTrigger(),
-        mechanism::requestManualPower);
+public void bind(CallbackBindings callbackBindings,
+                 TaskBindings taskBindings,
+                 MyMechanism mechanism) {
+    callbackBindings.onRise(driver.a(), mechanism::requestCollect);
+    callbackBindings.onFall(driver.leftBumper(), mechanism::releaseManualMode);
+    callbackBindings.mirrorOnChange(
+            driver.rightBumper(),
+            held -> mechanism.requestSlowMode(held));
+    callbackBindings.copyEachCycle(
+            driver.leftTrigger(),
+            mechanism::requestManualPower);
+    taskBindings.onRise(driver.y(), mechanism::createScoreTask);
+}
 ```
 
 Use `onRise(...)` for one action per press. Use `mirrorOnChange(...)` for a persistent held state.
 Use `copyEachCycle(...)` for a frame-valued command that must be refreshed every loop.
 
-When a button launches behavior over time, supply a fresh Task:
+The controls constructor creates and retains `driver`; it does not register behavior. Call this
+surface-first `bind(...)` method exactly once. When a button launches behavior over time, use the
+`TaskBindings` argument and supply a fresh Task:
 
 ```java
-program.taskBindings().onRise(driver.y(), mechanism::createScoreTask);
+taskBindings.onRise(driver.y(), mechanism::createScoreTask);
 ```
 
 ## Direct mecanum drive

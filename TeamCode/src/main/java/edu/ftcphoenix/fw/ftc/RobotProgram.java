@@ -17,7 +17,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskBindings;
@@ -164,8 +164,8 @@ public final class RobotProgram {
     private final LoopClock clock = new LoopClock();
     private final Bindings bindings = new Bindings();
     private final TaskRunner taskRunner = new TaskRunner();
-    private final BindingRegistrar bindingRegistrar = new ConfigurationBindingRegistrar();
-    private final TaskBindings taskBindings = TaskBindings.of(bindingRegistrar, taskRunner);
+    private final CallbackBindings callbackBindings = new ConfigurationCallbackBindings();
+    private final TaskBindings taskBindings = TaskBindings.of(callbackBindings, taskRunner);
     private final List<Service> services = new ArrayList<>();
     private final List<Output> outputs = new ArrayList<>();
     private final List<Presenter> presenters = new ArrayList<>();
@@ -186,14 +186,16 @@ public final class RobotProgram {
     }
 
     /**
-     * Return the registration-only input surface backed by this program's one binding graph.
+     * Return the callback-binding surface backed by this program's one binding graph.
      *
      * <p>Retaining this view is safe, but every declaration after
      * {@link FtcRobotOpMode#configure(RobotProgram)} returns fails with an actionable lifecycle
-     * error. The view deliberately exposes neither the binding heartbeat nor clearing.</p>
+     * error. Callbacks must be short and non-blocking because they finish in the binding phase.
+     * Use {@link #taskBindings()} when input should create work that continues over later cycles.
+     * The view deliberately exposes neither the binding heartbeat nor clearing.</p>
      */
-    public BindingRegistrar bindings() {
-        return bindingRegistrar;
+    public CallbackBindings callbackBindings() {
+        return callbackBindings;
     }
 
     /**
@@ -771,7 +773,7 @@ public final class RobotProgram {
     }
 
     /** Binding view that keeps every declaration inside the one configuration boundary. */
-    private final class ConfigurationBindingRegistrar implements BindingRegistrar {
+    private final class ConfigurationCallbackBindings implements CallbackBindings {
 
         @Override
         public void onRise(BooleanSource signal, Runnable action) {

@@ -93,24 +93,24 @@ cleanup path.
 ## 3. Follow the TeleOp declarations
 
 `StarterRobot.declareTeleOp(...)` registers the intake mechanism first, constructs the controls,
-then declares one final source-driven drivetrain:
+binds their meanings once, then declares one final source-driven drivetrain:
 
 ```java
 StarterIntakeMechanism intake = program.output(
         new StarterIntakeMechanism(hardwareMap, profile.intake));
 
-StarterTeleOpControls controls = new StarterTeleOpControls(
-        program.bindings(),
-        new GamepadDevice(gamepad1),
-        intake);
+StarterTeleOpControls controls =
+        new StarterTeleOpControls(new GamepadDevice(gamepad1));
+controls.bind(program.callbackBindings(), intake);
 
 program.drive(
         controls.driveSource(),
         FtcDrives.mecanum(hardwareMap, profile.drive));
 ```
 
-The composition root wires owners together. It does not reach into the intake Plant or manually run
-any owner.
+The controls constructor creates stable input sources only. The explicit, one-shot `bind(...)` call
+then declares what those inputs mean through the program-owned callback surface. The composition
+root wires owners together; it does not reach into the intake Plant or manually run any owner.
 
 ## 4. Read the driver meanings
 
@@ -119,12 +119,12 @@ selects a slower scale:
 
 ```java
 driveSource = new GamepadDriveSource(
-        requiredDriver.leftX(),
-        requiredDriver.leftY(),
-        requiredDriver.rightX(),
+        driver.leftX(),
+        driver.leftY(),
+        driver.rightX(),
         GamepadDriveSource.Config.defaults()
 ).scaledWhen(
-        requiredDriver.rightBumper(),
+        driver.rightBumper(),
         SLOW_TRANSLATE_SCALE,
         SLOW_OMEGA_SCALE
 );
@@ -133,14 +133,14 @@ driveSource = new GamepadDriveSource(
 The same controls owner maps button edges to the capability from the mechanism lesson:
 
 ```java
-requiredBindings.onRise(
-        requiredDriver.a(),
+requiredCallbacks.onRise(
+        driver.a(),
         () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
-requiredBindings.onRise(
-        requiredDriver.b(),
+requiredCallbacks.onRise(
+        driver.b(),
         () -> requiredIntake.setMode(StarterIntake.Mode.EJECT));
-requiredBindings.onRise(
-        requiredDriver.x(),
+requiredCallbacks.onRise(
+        driver.x(),
         () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
 ```
 
@@ -150,8 +150,8 @@ another semantic request replaces it.
 If a mechanism should run only while a button is held, use an edge for each state transition:
 
 ```java
-bindings.onRise(driver.a(), () -> intake.setMode(StarterIntake.Mode.COLLECT));
-bindings.onFall(driver.a(), () -> intake.setMode(StarterIntake.Mode.STOPPED));
+callbackBindings.onRise(driver.a(), () -> intake.setMode(StarterIntake.Mode.COLLECT));
+callbackBindings.onFall(driver.a(), () -> intake.setMode(StarterIntake.Mode.STOPPED));
 ```
 
 That is clearer for a persistent motor request than repeating the same command with `whileHigh(...)`
