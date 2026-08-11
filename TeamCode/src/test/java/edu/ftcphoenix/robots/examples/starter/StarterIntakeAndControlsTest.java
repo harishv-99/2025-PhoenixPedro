@@ -4,6 +4,8 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -15,10 +17,12 @@ import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
+import edu.ftcphoenix.fw.testing.RecordingCallbackBindings;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -30,16 +34,40 @@ import static org.junit.Assert.fail;
 public final class StarterIntakeAndControlsTest {
 
     @Test
-    public void controlsMapOnlyA_B_XToSemanticIntakeModes() {
+    public void controlsConstructionBuildsSourcesWithoutRegisteringCallbacks() throws Exception {
+        Constructor<?>[] constructors = StarterTeleOpControls.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertEquals(
+                Arrays.asList(GamepadDevice.class),
+                Arrays.asList(constructors[0].getParameterTypes()));
+
+        Method bind = StarterTeleOpControls.class.getDeclaredMethod(
+                "bind",
+                CallbackBindings.class,
+                StarterIntake.class);
+        assertEquals(Void.TYPE, bind.getReturnType());
+        assertEquals(1, declaredMethodCount(StarterTeleOpControls.class, "bind"));
+
+        StarterTeleOpControls controls =
+                new StarterTeleOpControls(new GamepadDevice(new Gamepad()));
+        RecordingCallbackBindings callbackBindings = new RecordingCallbackBindings();
+
+        assertTrue(controls.driveSource() != null);
+        assertEquals(0, callbackBindings.registrationAttempts());
+    }
+
+    @Test
+    public void bindMapsOnlyA_B_XToSemanticIntakeModes() {
         Gamepad driver = new Gamepad();
         RecordingIntake intake = new RecordingIntake();
-        Bindings bindings = new Bindings();
-        StarterTeleOpControls controls = new StarterTeleOpControls(
-                bindings,
-                new GamepadDevice(driver),
-                intake);
+        RecordingCallbackBindings callbackBindings = new RecordingCallbackBindings();
+        StarterTeleOpControls controls =
+                new StarterTeleOpControls(new GamepadDevice(driver));
+        controls.bind(callbackBindings, intake);
+        Bindings bindings = callbackBindings.root();
         ManualLoopClock time = new ManualLoopClock();
 
+        assertEquals(3, callbackBindings.successfulRegistrations());
         bindings.update(time.clock());
         pulse(driver, bindings, time, 'a');
         pulse(driver, bindings, time, 'b');
@@ -52,6 +80,57 @@ public final class StarterIntakeAndControlsTest {
                         StarterIntake.Mode.STOPPED),
                 intake.modeRequests);
         assertEquals(0, intake.taskRequests);
+    }
+
+    @Test
+    public void bindValidatesArgumentsBeforeClaimingTheOneShotAttempt() {
+        StarterTeleOpControls controls =
+                new StarterTeleOpControls(new GamepadDevice(new Gamepad()));
+        RecordingCallbackBindings callbackBindings = new RecordingCallbackBindings();
+        RecordingIntake intake = new RecordingIntake();
+
+        expectNullPointer(() -> controls.bind(null, intake));
+        expectNullPointer(() -> controls.bind(callbackBindings, null));
+        assertEquals(0, callbackBindings.registrationAttempts());
+
+        controls.bind(callbackBindings, intake);
+        assertEquals(3, callbackBindings.successfulRegistrations());
+    }
+
+    @Test
+    public void secondBindFailsBeforeMutatingAnotherCallbackSurface() {
+        StarterTeleOpControls controls =
+                new StarterTeleOpControls(new GamepadDevice(new Gamepad()));
+        RecordingIntake intake = new RecordingIntake();
+        RecordingCallbackBindings first = new RecordingCallbackBindings();
+        RecordingCallbackBindings second = new RecordingCallbackBindings();
+
+        controls.bind(first, intake);
+        expectAlreadyBound(() -> controls.bind(second, intake));
+
+        assertEquals(3, first.successfulRegistrations());
+        assertEquals(0, second.registrationAttempts());
+    }
+
+    @Test
+    public void partialRegistrationFailureConsumesBindAndRetryAddsNothing() {
+        StarterTeleOpControls controls =
+                new StarterTeleOpControls(new GamepadDevice(new Gamepad()));
+        RecordingIntake intake = new RecordingIntake();
+        RecordingCallbackBindings failing = new RecordingCallbackBindings(2);
+
+        try {
+            controls.bind(failing, intake);
+            fail("Expected injected registration failure");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("injected callback registration failure"));
+        }
+        assertEquals(2, failing.registrationAttempts());
+        assertEquals(1, failing.successfulRegistrations());
+
+        RecordingCallbackBindings retry = new RecordingCallbackBindings();
+        expectAlreadyBound(() -> controls.bind(retry, intake));
+        assertEquals(0, retry.registrationAttempts());
     }
 
     @Test
@@ -249,6 +328,35 @@ public final class StarterIntakeAndControlsTest {
             fail("Expected invalid action powers to fail");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("Power"));
+        }
+    }
+
+    private static void expectNullPointer(Runnable action) {
+        try {
+            action.run();
+            fail("Expected null argument to fail");
+        } catch (NullPointerException expected) {
+            // Expected.
+        }
+    }
+
+    private static int declaredMethodCount(Class<?> type, String name) {
+        int count = 0;
+        for (Method method : type.getDeclaredMethods()) {
+            if (method.getName().equals(name)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static void expectAlreadyBound(Runnable action) {
+        try {
+            action.run();
+            fail("Expected repeated bind to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage() != null);
+            assertTrue(expected.getMessage().toLowerCase().contains("bind"));
         }
     }
 

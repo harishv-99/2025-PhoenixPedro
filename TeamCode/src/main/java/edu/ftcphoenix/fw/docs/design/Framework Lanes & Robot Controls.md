@@ -593,11 +593,10 @@ public final class MyTeleOpControls {
     private final BooleanSource override;
     private final GamepadDevice driver;
     private final GamepadDevice operator;
+    private boolean bindAttempted;
 
-    public MyTeleOpControls(BindingRegistrar bindings,
-                            Gamepads gamepads,
-                            MyRobotProfile.ControlsConfig cfg,
-                            MyCapabilities capabilities) {
+    public MyTeleOpControls(Gamepads gamepads,
+                            MyRobotProfile.ControlsConfig cfg) {
         this.driver = gamepads.p1();
         this.operator = gamepads.p2();
         this.manualTranslateMagnitude = driver.leftStickMagnitude().memoized();
@@ -611,15 +610,33 @@ public final class MyTeleOpControls {
 
         this.assistEnabled = operator.leftBumper().memoized();
         this.override = operator.y().memoized();
-        MyCapabilities.GamePiece gamePiece = capabilities.gamePiece();
-        MyCapabilities.Lift lift = capabilities.lift();
+    }
 
-        bindings.toggleOnRise(operator.a(), gamePiece::setIntakeEnabled);
-        bindings.mirrorOnChange(operator.b(), gamePiece::setActionEnabled);
-        bindings.copyEachCycle(
+    public void bind(CallbackBindings callbackBindings,
+                     MyCapabilities capabilities) {
+        CallbackBindings requiredCallbacks =
+                Objects.requireNonNull(callbackBindings, "callbackBindings");
+        MyCapabilities requiredCapabilities =
+                Objects.requireNonNull(capabilities, "capabilities");
+        MyCapabilities.GamePiece gamePiece = Objects.requireNonNull(
+                requiredCapabilities.gamePiece(), "capabilities.gamePiece()");
+        MyCapabilities.Lift lift = Objects.requireNonNull(
+                requiredCapabilities.lift(), "capabilities.lift()");
+        claimBind();
+
+        requiredCallbacks.toggleOnRise(operator.a(), gamePiece::setIntakeEnabled);
+        requiredCallbacks.mirrorOnChange(operator.b(), gamePiece::setActionEnabled);
+        requiredCallbacks.copyEachCycle(
                 operator.leftY().deadbandNormalized(0.08, -1.0, 1.0),
                 lift::commandManualPower
         );
+    }
+
+    private void claimBind() {
+        if (bindAttempted) {
+            throw new IllegalStateException("MyTeleOpControls.bind(...) may be called only once");
+        }
+        bindAttempted = true;
     }
 
     public DriveSource manualDriveSource() {
@@ -647,6 +664,8 @@ Why this matters:
 - higher-level services can depend on input semantics through narrow sources instead of peeking at raw gamepads
 - mode clients can bind against shared capability families instead of raw internals
 - the composition root does not need to know specific button identities
+- source construction does not silently mutate the callback graph
+- the explicit one-shot `bind(callbackBindings, capabilities)` call makes that mutation visible
 - controls cannot advance or clear the program-owned binding graph
 
 The same one-grammar rule applies when a robot-owned service publishes a shared immutable snapshot:
@@ -666,12 +685,13 @@ The common service owner resets its known children and publication source once a
 lifecycle boundary. Robot services do not implement anonymous sources or duplicate `lastCycle`
 caches for this pattern.
 
-### Program bindings and advanced control contexts
+### Program callback bindings and advanced control contexts
 
-`program.bindings()` is the ordinary registration-only surface. A declaration on it is always
-eligible, although its action still follows the declared event or level—for example,
+`program.callbackBindings()` is the ordinary registration-only callback surface. A declaration on
+it is always eligible, although its action still follows the declared event or level—for example,
 `onRise(...)` runs only on a rise. Most robots need only this surface, and the program owns its one
-update/clear lifecycle.
+update/clear lifecycle. `program.taskBindings()` is the parallel surface for constructing and
+enqueueing a fresh `Task`; it is not a second spelling for a synchronous callback.
 
 A custom tester or host that deliberately owns a mutable/rebuilt binding graph may construct
 `Bindings` directly and create a `Bindings.ControlContext` when a group of mappings shares one
@@ -768,12 +788,12 @@ does not sample upstream while inactive and publishes zero while inactive, on it
 while it is unarmed, or when a sample is non-finite. A non-finite sample disarms
 `REARM_AFTER_NEUTRAL`; `ACCEPT_CURRENT` may accept a later finite sample.
 
-Reusable menu, picker, tuner, and Task-binding helpers accept `BindingRegistrar`, the declaration-
-only capability shared by root `Bindings` and `ControlContext`. Students normally pass the object
-returned by `program.bindings()`; the interface does not expose `update`, `clear`, or context
-construction. Advanced custom binding owners may pass a root or context instead. The declarations
-made inside a helper join the global order at that helper's `bind(...)` call and create no hidden
-helper phase.
+Reusable menu, picker, tuner, and callback-binding helpers accept `CallbackBindings`, the
+declaration-only capability shared by root `Bindings` and `ControlContext`. Students normally pass
+the object returned by `program.callbackBindings()`; the interface does not expose `update`,
+`clear`, or context construction. Advanced custom binding owners may pass a root or context instead.
+The declarations made inside a helper join the global order at that helper's `bind(...)` call and
+create no hidden helper phase.
 
 Build or rebuild the binding graph during initialization or between updates. A registration,
 `contextWhen(...)`, or `clear()` call made while `bindings.update(clock)` is sampling activations or
@@ -810,13 +830,14 @@ controls = new MyTeleOpControls(
         feedback,
         profile.controls
 );
+controls.bind(program.callbackBindings(), capabilities);
 ```
 
 A normal state-change cue belongs at the transition, not in code that repeats every loop. For
 example, a controls owner can bind a status edge to one fixed pulse:
 
 ```java
-bindings.onRise(
+callbackBindings.onRise(
         intakeFull,
         () -> feedback.pulseOperator(1.0, 0.50)
 );
@@ -1227,8 +1248,8 @@ public final class MyRobot {
         program.service(new MyScoringPolicyService(targeting, scoring));
         capabilities = new MyRobotCapabilities(shooter, scoring, targeting);
 
-        MyTeleOpControls controls = new MyTeleOpControls(
-                program.bindings(), gamepads, profile.controls, capabilities);
+        MyTeleOpControls controls = new MyTeleOpControls(gamepads, profile.controls);
+        controls.bind(program.callbackBindings(), capabilities);
 
         MyDriveAssistService driveAssist = new MyDriveAssistService(
                 profile.driveAssist,

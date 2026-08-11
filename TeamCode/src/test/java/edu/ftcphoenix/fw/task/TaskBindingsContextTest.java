@@ -16,11 +16,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
-/** Verifies the one TaskBindings factory against root and contextual registrars. */
+/** Verifies the one TaskBindings factory against root and contextual callback surfaces. */
 public final class TaskBindingsContextTest {
 
     @Test
-    public void rootRegistrarInvokesFreshTaskFactoryForEachAcceptedRise() {
+    public void rootCallbackBindingsInvokeFreshTaskFactoryForEachAcceptedRise() {
         ManualLoopClock manualClock = new ManualLoopClock();
         Bindings bindings = new Bindings();
         TaskRunner runner = new TaskRunner();
@@ -48,7 +48,7 @@ public final class TaskBindingsContextTest {
     }
 
     @Test
-    public void contextRegistrarSuppressesHeldActivationAndDoesNotCancelAcceptedWork() {
+    public void contextCallbackBindingsSuppressHeldActivationAndDoNotCancelAcceptedWork() {
         ManualLoopClock manualClock = new ManualLoopClock();
         Bindings bindings = new Bindings();
         TaskRunner runner = new TaskRunner();

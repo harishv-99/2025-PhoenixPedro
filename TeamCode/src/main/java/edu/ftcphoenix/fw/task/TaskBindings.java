@@ -6,19 +6,19 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
  * Convenience wrapper that binds {@link BooleanSource} events to {@link TaskRunner} enqueues.
  *
- * <p>This is a thin adapter around a {@link BindingRegistrar} and {@link TaskRunner}. It exists
+ * <p>This is a thin adapter around {@link CallbackBindings} and a {@link TaskRunner}. It exists
  * purely to make robot code more readable when most bindings just "enqueue a task". Passing a
  * {@link Bindings.ControlContext} applies that context's activation policy before a task factory is
  * invoked; context deactivation does not cancel work already accepted by the shared runner.</p>
  *
- * <p>Each method immediately adds one declaration to the supplied registrar. {@code TaskBindings}
- * creates no separate dispatch phase or priority. When the registrar is a {@link Bindings} root or
+ * <p>Each method immediately adds one declaration to the supplied callback surface. {@code TaskBindings}
+ * creates no separate dispatch phase or priority. When the callback surface is a {@link Bindings} root or
  * {@link Bindings.ControlContext}, accepted factories are invoked in the parent's declaration
  * order among ordinary root/context registrations, and their Tasks are enqueued in that order.
  * The runner's FIFO execution is a separate responsibility. If several steps form one dependent
@@ -49,7 +49,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *
  * <p>Ordinary FTC robot code gets this adapter from its framework-created
  * {@link edu.ftcphoenix.fw.ftc.RobotProgram}; that program owns the shared binding and runner
- * heartbeats. {@link #of(BindingRegistrar, TaskRunner)} remains the explicit construction seam for
+ * heartbeats. {@link #of(CallbackBindings, TaskRunner)} remains the explicit construction seam for
  * framework tools, calibration hosts, tests, and custom lifecycle integrations.</p>
  *
  * <p><b>Important:</b> Tasks are single-use. For that reason, this API takes {@link Supplier}
@@ -57,41 +57,44 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  */
 public final class TaskBindings {
 
-    private final BindingRegistrar bindings;
+    private final CallbackBindings callbackBindings;
     private final TaskRunner runner;
 
-    private TaskBindings(BindingRegistrar bindings, TaskRunner runner) {
-        this.bindings = Objects.requireNonNull(bindings, "bindings is required");
+    private TaskBindings(CallbackBindings callbackBindings, TaskRunner runner) {
+        this.callbackBindings = Objects.requireNonNull(
+                callbackBindings,
+                "callbackBindings is required"
+        );
         this.runner = Objects.requireNonNull(runner, "runner is required");
     }
 
     /**
      * Create a {@link TaskBindings} wrapper.
      */
-    public static TaskBindings of(BindingRegistrar bindings, TaskRunner runner) {
-        return new TaskBindings(bindings, runner);
+    public static TaskBindings of(CallbackBindings callbackBindings, TaskRunner runner) {
+        return new TaskBindings(callbackBindings, runner);
     }
 
     /**
-     * Enqueue a task when the registrar accepts a signal rise (false to true).
+     * Enqueue a task when the callback surface accepts a signal rise (false to true).
      */
     public void onRise(BooleanSource signal, Supplier<Task> taskFactory) {
         Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.onRise(signal, () -> runner.enqueue(taskFactory.get()));
+        callbackBindings.onRise(signal, () -> runner.enqueue(taskFactory.get()));
     }
 
     /**
-     * Enqueue a task when the registrar accepts a signal fall (true to false).
+     * Enqueue a task when the callback surface accepts a signal fall (true to false).
      */
     public void onFall(BooleanSource signal, Supplier<Task> taskFactory) {
         Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.onFall(signal, () -> runner.enqueue(taskFactory.get()));
+        callbackBindings.onFall(signal, () -> runner.enqueue(taskFactory.get()));
     }
 
     /**
-     * Enqueue a task that mirrors the registrar's effective value on its first output and whenever
+     * Enqueue a task that mirrors the callback surface's effective value on its first output and whenever
      * that output changes.
      *
      * <p>With root {@link Bindings}, the factory first receives the signal's current high/low value.
@@ -102,11 +105,11 @@ public final class TaskBindings {
     public void mirrorOnChange(BooleanSource signal, Function<Boolean, Task> taskFactory) {
         Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.mirrorOnChange(signal, high -> runner.enqueue(taskFactory.apply(high)));
+        callbackBindings.mirrorOnChange(signal, high -> runner.enqueue(taskFactory.apply(high)));
     }
 
     /**
-     * Toggle: when the registrar accepts a signal rise, enqueue {@code onEnable} if the toggle is now on,
+     * Toggle: when the callback surface accepts a signal rise, enqueue {@code onEnable} if the toggle is now on,
      * otherwise enqueue {@code onDisable}.
      */
     public void toggleOnRise(BooleanSource signal, Supplier<Task> onEnable, Supplier<Task> onDisable) {
@@ -114,11 +117,14 @@ public final class TaskBindings {
         Objects.requireNonNull(onEnable, "onEnable is required");
         Objects.requireNonNull(onDisable, "onDisable is required");
 
-        bindings.toggleOnRise(signal, isOn -> runner.enqueue(isOn ? onEnable.get() : onDisable.get()));
+        callbackBindings.toggleOnRise(
+                signal,
+                isOn -> runner.enqueue(isOn ? onEnable.get() : onDisable.get())
+        );
     }
 
     /**
-     * Enqueue a task when either nudge signal has an accepted rise.
+     * Enqueue a task when either nudge signal has an accepted rise on the callback surface.
      *
      * <p>The factory receives the signed adjustment for the loop.</p>
      */
@@ -129,7 +135,7 @@ public final class TaskBindings {
         Objects.requireNonNull(increaseSignal, "increaseSignal is required");
         Objects.requireNonNull(decreaseSignal, "decreaseSignal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.nudgeOnRise(increaseSignal, decreaseSignal, step,
+        callbackBindings.nudgeOnRise(increaseSignal, decreaseSignal, step,
                 delta -> runner.enqueue(taskFactory.apply(delta)));
     }
 }

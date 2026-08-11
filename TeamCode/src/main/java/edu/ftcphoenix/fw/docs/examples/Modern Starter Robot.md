@@ -86,10 +86,9 @@ The TeleOp root constructs and immediately transfers each lifecycle owner:
 StarterIntakeMechanism intake = program.output(
         new StarterIntakeMechanism(hardwareMap, profile.intake));
 
-StarterTeleOpControls controls = new StarterTeleOpControls(
-        program.bindings(),
-        new GamepadDevice(gamepad1),
-        intake);
+StarterTeleOpControls controls =
+        new StarterTeleOpControls(new GamepadDevice(gamepad1));
+controls.bind(program.callbackBindings(), intake);
 
 program.drive(
         controls.driveSource(),
@@ -138,15 +137,16 @@ final class StarterIntakeMechanism
 The completed-Plant constructor remains package-private and explicitly hardware-neutral for tests.
 It is not a second ordinary construction path.
 
-Controls receive only `BindingRegistrar`. They declare mappings but cannot update or clear the
-program-owned graph:
+The controls constructor creates stable input sources without changing the callback graph. Its
+explicit, one-shot `bind(...)` call receives `CallbackBindings` first and the capability second. It
+can declare mappings but cannot update or clear the program-owned graph:
 
 ```java
-requiredBindings.onRise(driver.a(),
+requiredCallbacks.onRise(driver.a(),
         () -> intake.setMode(StarterIntake.Mode.COLLECT));
-requiredBindings.onRise(driver.b(),
+requiredCallbacks.onRise(driver.b(),
         () -> intake.setMode(StarterIntake.Mode.EJECT));
-requiredBindings.onRise(driver.x(),
+requiredCallbacks.onRise(driver.x(),
         () -> intake.setMode(StarterIntake.Mode.STOPPED));
 ```
 
@@ -182,7 +182,8 @@ For a new robot:
 1. complete and review the profile's software facts and expected physical motion;
 2. rename the capability and modes to real robot meanings;
 3. keep Plant construction/update/stop in each mechanism output;
-4. pass `program.bindings()` into the controls owner;
+4. construct the controls from inputs, then bind them once with
+   `controls.bind(program.callbackBindings(), capability)`;
 5. let TeleOp and Auto call the same capabilities;
 6. declare upstream computation as services and final realization as outputs; and
 7. keep `configure(program)` declarative rather than adding FTC lifecycle methods.

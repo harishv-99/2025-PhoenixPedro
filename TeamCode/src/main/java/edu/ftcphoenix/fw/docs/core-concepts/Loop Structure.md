@@ -97,8 +97,8 @@ public final class MyTeleOp extends FtcRobotOpMode {
         IntakeMechanism intake = program.output(
                 new IntakeMechanism(hardwareMap, profile.intake));
 
-        MyControls controls = new MyControls(
-                program.bindings(), new GamepadDevice(gamepad1), shooter, intake);
+        MyControls controls = new MyControls(new GamepadDevice(gamepad1));
+        controls.bind(program.callbackBindings(), shooter, intake);
         program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, profile.drive));
 
         program.presenter((clock, telemetry) -> {
@@ -242,9 +242,9 @@ earlier child resets observable, but generic source code does not claim rollback
 estimators, and selection policies supplied through its reusable spec remain owned by their
 composition roots.
 
-For buttons, ordinary robot code registers through `program.bindings()` and `RobotProgram` performs
-the one sample/update each active loop. Only an explicit custom binding owner calls
-`Bindings.update(clock)` directly.
+For synchronous control callbacks, ordinary robot code registers through
+`program.callbackBindings()` and `RobotProgram` performs the one sample/update each active loop.
+Only an explicit custom binding owner calls `Bindings.update(clock)` directly.
 
 ### 4.2 Localization publishes one snapshot per cycle
 

@@ -44,9 +44,8 @@ public final class StarterRobot {
         StarterIntakeMechanism intake = program.output(
                 new StarterIntakeMechanism(hardwareMap, profile.intake));
         StarterTeleOpControls controls = new StarterTeleOpControls(
-                program.bindings(),
-                new GamepadDevice(requiredGamepad),
-                intake);
+                new GamepadDevice(requiredGamepad));
+        controls.bind(program.callbackBindings(), intake);
 
         program.drive(
                 controls.driveSource(),

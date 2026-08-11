@@ -37,6 +37,12 @@ parallel beginner choices.
 - Ordinary FTC robot code uses `FtcRobotOpMode` and declares one framework-created `RobotProgram` in
   `configure(program)`. The program owns lifecycle callbacks and loop phases. A custom/manual host is
   an advanced seam for a materially different lifecycle, not a second robot recipe.
+- A controls constructor establishes stable input sources without registering behavior. Ordinary
+  controls declare their meanings exactly once through an explicit
+  `bind(program.callbackBindings(), capability)` call, with the callback surface first and the
+  capability it drives second.
+- Use `program.callbackBindings()` for synchronous callbacks and `program.taskBindings()` for fresh
+  queued Tasks. Their parallel names expose the different downstream behavior.
 - Prefer one public construction layer. Remove overlapping legacy paths when a breaking change makes
   the framework clearer; update every in-repository caller, example, and guide together.
 - Put FTC hardware construction behind the FTC boundary. Ordinary mechanisms construct private

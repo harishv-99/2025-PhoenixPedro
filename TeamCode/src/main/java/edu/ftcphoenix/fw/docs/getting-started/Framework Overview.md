@@ -69,7 +69,7 @@ You will meet these methods in the course:
 
 | Declaration | Meaning |
 |---|---|
-| `program.bindings()` | Register immediate button or axis meanings. |
+| `program.callbackBindings()` | Register synchronous button or axis meanings. |
 | `program.taskBindings()` | Construct and enqueue a fresh Task from a control event. |
 | `program.output(owner)` | Register a mechanism that owns update and safe stop. |
 | `program.drive(source, sink)` | Connect the final drive intent to the drivetrain owner. |

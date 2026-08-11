@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -66,11 +67,14 @@ public final class TasksApiTest {
         assertNoPublicMethodNamed(Tasks.OutputPulseUntilStep.class, "runWindow");
 
         Set<String> taskBindingMethods = new HashSet<>();
+        int publicTaskBindingMethodCount = 0;
         for (Method method : TaskBindings.class.getDeclaredMethods()) {
             if (Modifier.isPublic(method.getModifiers()) && !method.isSynthetic()) {
+                publicTaskBindingMethodCount++;
                 taskBindingMethods.add(method.getName());
             }
         }
+        assertEquals(6, publicTaskBindingMethodCount);
         assertEquals(new HashSet<>(Arrays.asList(
                 "of",
                 "onRise",
@@ -78,6 +82,28 @@ public final class TasksApiTest {
                 "mirrorOnChange",
                 "toggleOnRise",
                 "nudgeOnRise")), taskBindingMethods);
+    }
+
+    @Test
+    public void taskBindingsFactoryConsumesOnlyTheCallbackSurfaceAndRunner() throws Exception {
+        Method factory = TaskBindings.class.getDeclaredMethod(
+                "of",
+                CallbackBindings.class,
+                TaskRunner.class);
+
+        assertTrue(Modifier.isPublic(factory.getModifiers()));
+        assertTrue(Modifier.isStatic(factory.getModifiers()));
+        assertEquals(TaskBindings.class, factory.getReturnType());
+
+        int factoryCount = 0;
+        for (Method method : TaskBindings.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers())
+                    && Modifier.isStatic(method.getModifiers())
+                    && method.getName().equals("of")) {
+                factoryCount++;
+            }
+        }
+        assertEquals(1, factoryCount);
     }
 
     @Test

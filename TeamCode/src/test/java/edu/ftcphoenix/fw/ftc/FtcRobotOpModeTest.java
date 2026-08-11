@@ -23,7 +23,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
+import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskBindings;
 import edu.ftcphoenix.fw.task.TaskOutcome;
@@ -55,7 +55,7 @@ public final class FtcRobotOpModeTest {
 
         mode.configureAction = program -> {
             program.service(service);
-            program.bindings().whileHigh(clock -> {
+            program.callbackBindings().whileHigh(clock -> {
                 bindingSamples[0]++;
                 return true;
             }, () -> bindingActions[0]++);
@@ -171,7 +171,7 @@ public final class FtcRobotOpModeTest {
         mode.configureAction = program -> {
             program.service(service1);
             program.service(service2);
-            program.bindings().whileHigh(
+            program.callbackBindings().whileHigh(
                     BooleanSource.constant(true),
                     () -> events.add("binding")
             );
@@ -466,9 +466,9 @@ public final class FtcRobotOpModeTest {
         RecordingDriveSink sink = new RecordingDriveSink(new ArrayList<String>());
 
         mode.configureAction = program -> {
-            BindingRegistrar bindings = program.bindings();
+            CallbackBindings callbackBindings = program.callbackBindings();
             TaskBindings taskBindings = program.taskBindings();
-            assertSame(bindings, program.bindings());
+            assertSame(callbackBindings, program.callbackBindings());
             assertSame(taskBindings, program.taskBindings());
             assertSame(service, program.service(service));
             assertSame(output, program.output(output));
@@ -500,7 +500,7 @@ public final class FtcRobotOpModeTest {
         assertEquals(9, publicDeclarationCount);
         assertEquals(
                 new HashSet<String>(Arrays.asList(
-                        "bindings",
+                        "callbackBindings",
                         "taskBindings",
                         "prestart",
                         "service",
@@ -512,6 +512,18 @@ public final class FtcRobotOpModeTest {
                 )),
                 publicDeclarationNames
         );
+        assertEquals(
+                CallbackBindings.class,
+                RobotProgram.class.getDeclaredMethod("callbackBindings").getReturnType());
+        assertEquals(
+                TaskBindings.class,
+                RobotProgram.class.getDeclaredMethod("taskBindings").getReturnType());
+        try {
+            RobotProgram.class.getDeclaredMethod("bindings");
+            fail("RobotProgram.bindings() must not remain as a compatibility alias");
+        } catch (NoSuchMethodException expected) {
+            // Expected.
+        }
 
         Method configure = FtcRobotOpMode.class.getDeclaredMethod(
                 "configure",
@@ -543,8 +555,8 @@ public final class FtcRobotOpModeTest {
             expectNullPointer(() -> program.drive(source, null));
             expectNullPointer(() -> program.rootTask(null));
             expectNullPointer(() -> program.presenter(null));
-            expectNullPointer(() -> program.bindings().whileHigh(null, () -> { }));
-            expectNullPointer(() -> program.bindings().whileHigh(
+            expectNullPointer(() -> program.callbackBindings().whileHigh(null, () -> { }));
+            expectNullPointer(() -> program.callbackBindings().whileHigh(
                     BooleanSource.constant(true),
                     null
             ));
@@ -647,7 +659,7 @@ public final class FtcRobotOpModeTest {
         assertLate(() -> program.drive(source, rejected));
         assertLate(() -> program.rootTask(rejectedRoot));
         assertLate(() -> program.presenter(rejected));
-        assertLate(() -> program.bindings().whileHigh(
+        assertLate(() -> program.callbackBindings().whileHigh(
                 BooleanSource.constant(true),
                 () -> rejectedBindingCalls[0]++
         ));
@@ -863,7 +875,7 @@ public final class FtcRobotOpModeTest {
                             return true;
                         }
                         : BooleanSource.constant(true);
-                program.bindings().whileHigh(firstSignal, () -> {
+                program.callbackBindings().whileHigh(firstSignal, () -> {
                     events.add("binding.action");
                     try {
                         mode.stop();
@@ -873,7 +885,7 @@ public final class FtcRobotOpModeTest {
                     }
                     events.add("binding.action.after");
                 });
-                program.bindings().whileHigh(
+                program.callbackBindings().whileHigh(
                         BooleanSource.constant(true),
                         () -> events.add("binding.later")
                 );
@@ -933,7 +945,7 @@ public final class FtcRobotOpModeTest {
 
         mode.configureAction = program -> {
             program.service(service);
-            program.bindings().whileHigh(BooleanSource.constant(true), () -> {
+            program.callbackBindings().whileHigh(BooleanSource.constant(true), () -> {
                 events.add("binding.action");
                 try {
                     mode.stop();
@@ -1328,7 +1340,7 @@ public final class FtcRobotOpModeTest {
             mode.configureAction = program -> {
                 program.service(service1);
                 program.service(service2);
-                program.bindings().whileHigh(BooleanSource.constant(true), () -> {
+                program.callbackBindings().whileHigh(BooleanSource.constant(true), () -> {
                     events.add("binding");
                     failAt(FailurePoint.LOOP_BINDING);
                 });

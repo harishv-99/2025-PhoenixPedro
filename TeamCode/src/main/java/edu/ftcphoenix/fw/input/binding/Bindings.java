@@ -19,7 +19,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * object. Use {@link #contextWhen(BooleanSource, ActivationPolicy)} when a related group of mappings
  * should be eligible only while a mode or other condition is active.</p>
  *
- * <p>Ordinary FTC robot code receives a registration-only {@link BindingRegistrar} from its
+ * <p>Ordinary FTC robot code receives a registration-only {@link CallbackBindings} from its
  * framework-created {@link edu.ftcphoenix.fw.ftc.RobotProgram}; the program owns this heartbeat
  * and clearing. Construct {@code Bindings} directly only for framework tools, tests, calibration
  * hosts, or a custom lifecycle that explicitly owns those operations.</p>
@@ -88,7 +88,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * contextual input sources intentionally remain unsampled while inactive and begin sampling only
  * under their context's activation policy.</p>
  */
-public final class Bindings implements BindingRegistrar {
+public final class Bindings implements CallbackBindings {
 
     /**
      * Select how a context treats controls that are already active when the context becomes active.
@@ -124,7 +124,7 @@ public final class Bindings implements BindingRegistrar {
      * <p>Contexts may overlap; all eligible mappings run. The framework does not infer priority,
      * consume inputs, arbitrate duplicate setters, cancel tasks, or perform subsystem cleanup.</p>
      */
-    public static final class ControlContext implements BindingRegistrar {
+    public static final class ControlContext implements CallbackBindings {
         private final Bindings owner;
         private final BooleanSource activation;
         private final ActivationPolicy policy;
