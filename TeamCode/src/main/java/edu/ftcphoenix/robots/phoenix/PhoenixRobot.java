@@ -28,6 +28,8 @@ import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.PoseResetter;
 import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixScoring;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
 
 /**
  * Phoenix composition root.
@@ -65,10 +67,10 @@ public final class PhoenixRobot {
                 PhoenixProfile profile
         );
 
-        ScoringPath createScoring(
+        PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
                 PhoenixProfile profile,
-                ScoringTargeting targeting
+                PhoenixTargeting targeting
         );
 
         DriveCommandSink createDrive(HardwareMap hardwareMap, PhoenixProfile profile);
@@ -84,10 +86,10 @@ public final class PhoenixRobot {
                 PhoenixProfile profile
         );
 
-        ScoringPath createScoring(
+        PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
                 PhoenixProfile profile,
-                ScoringTargeting targeting
+                PhoenixTargeting targeting
         );
     }
 
@@ -116,12 +118,12 @@ public final class PhoenixRobot {
                 }
 
                 @Override
-                public ScoringPath createScoring(
+                public PhoenixScoring createScoring(
                         HardwareMap hardwareMap,
                         PhoenixProfile profile,
-                        ScoringTargeting targeting
+                        PhoenixTargeting targeting
                 ) {
-                    return new ScoringPath(hardwareMap, profile.scoring, targeting);
+                    return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
                 }
 
                 @Override
@@ -158,12 +160,12 @@ public final class PhoenixRobot {
                 }
 
                 @Override
-                public ScoringPath createScoring(
+                public PhoenixScoring createScoring(
                         HardwareMap hardwareMap,
                         PhoenixProfile profile,
-                        ScoringTargeting targeting
+                        PhoenixTargeting targeting
                 ) {
-                    return new ScoringPath(hardwareMap, profile.scoring, targeting);
+                    return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
                 }
             };
 
@@ -187,8 +189,8 @@ public final class PhoenixRobot {
     private PhoenixCapabilities capabilities;
     private AprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
-    private ScoringPath scoringPath;
-    private ScoringTargeting scoringTargeting;
+    private PhoenixScoring scoring;
+    private PhoenixTargeting targeting;
 
     // Managed-TeleOp graph and read-only presentation state.
     private PhoenixTeleOpControls teleOpControls;
@@ -334,30 +336,30 @@ public final class PhoenixRobot {
         requiredProgram.service(new ManagedTeleOpLocalizationService(localization));
         teleOpPoseRestore.initialize(localization.globalEstimator());
 
-        scoringTargeting = createTargeting(
+        targeting = createTargeting(
                 requiredEligibleScoringTagIds,
                 enabledAutoAim,
                 teleOpControls.aimOverrideSource()
         );
-        requiredProgram.service(new ManagedTeleOpTargetingService(scoringTargeting));
+        requiredProgram.service(new ManagedTeleOpTargetingService(targeting));
 
-        scoringPath = Objects.requireNonNull(
+        scoring = Objects.requireNonNull(
                 teleOpHardwareAssembly.createScoring(
                         hardwareMap,
                         profile,
-                        scoringTargeting
+                        targeting
                 ),
-                "TeleOp hardware assembly returned null scoring path"
+                "TeleOp hardware assembly returned null scoring owner"
         );
         ManagedTeleOpScoringOutput scoringOutput =
-                new ManagedTeleOpScoringOutput(scoringPath);
-        registerOutputOrClean(requiredProgram, scoringOutput, scoringPath::stop);
+                new ManagedTeleOpScoringOutput(scoring);
+        registerOutputOrClean(requiredProgram, scoringOutput, scoring::stop);
 
         capabilities = createCapabilities();
         teleOpControls.bind(requiredProgram.callbackBindings(), capabilities);
 
-        Source<ScoringPath.Status> scoringStatus =
-                Source.of(ignoredClock -> scoringPath.status());
+        Source<PhoenixCapabilities.ScoringStatus> scoringStatus =
+                Source.of(ignoredClock -> scoring.status());
         driveAssists = new PhoenixDriveAssistService(
                 profile.driveAssist,
                 teleOpControls.manualDriveSource(),
@@ -366,7 +368,7 @@ public final class PhoenixRobot {
                 teleOpControls.autoAimEnabledSource(),
                 teleOpPoseAssistReadiness.isAllowed(),
                 localization.globalEstimator(),
-                scoringTargeting.aimOverlay()
+                targeting.aimOverlay()
         );
 
         DriveCommandSink drive = Objects.requireNonNull(
@@ -473,7 +475,7 @@ public final class PhoenixRobot {
         );
         autoService.attachLocalization(localization);
 
-        scoringTargeting = createTargeting(
+        targeting = createTargeting(
                 Objects.requireNonNull(
                         eligibleScoringTagIds,
                         "eligibleScoringTagIds"
@@ -487,18 +489,18 @@ public final class PhoenixRobot {
                         "aimOverrideSource"
                 )
         );
-        autoService.attachTargeting(scoringTargeting);
+        autoService.attachTargeting(targeting);
 
-        scoringPath = Objects.requireNonNull(
+        scoring = Objects.requireNonNull(
                 autoHardwareAssembly.createScoring(
                         hardwareMap,
                         profile,
-                        scoringTargeting
+                        targeting
                 ),
-                "Auto hardware assembly returned null scoring path"
+                "Auto hardware assembly returned null scoring owner"
         );
-        ManagedAutoScoringOutput scoringOutput = new ManagedAutoScoringOutput(scoringPath);
-        registerOutputOrClean(requiredProgram, scoringOutput, scoringPath::stop);
+        ManagedAutoScoringOutput scoringOutput = new ManagedAutoScoringOutput(scoring);
+        registerOutputOrClean(requiredProgram, scoringOutput, scoring::stop);
         capabilities = createCapabilities();
     }
 
@@ -533,10 +535,10 @@ public final class PhoenixRobot {
         teleOpPoseRestore.restore(fieldToRobotPose);
     }
 
-    private ScoringTargeting createTargeting(Source<Set<Integer>> eligibleScoringTagIds,
-                                              BooleanSource autoAimEnabledSource,
-                                              BooleanSource aimOverrideSource) {
-        return new ScoringTargeting(
+    private PhoenixTargeting createTargeting(Source<Set<Integer>> eligibleScoringTagIds,
+                                             BooleanSource autoAimEnabledSource,
+                                             BooleanSource aimOverrideSource) {
+        return new PhoenixTargeting(
                 profile.autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
                 vision.tagSensor(),
@@ -551,12 +553,12 @@ public final class PhoenixRobot {
     }
 
     private PhoenixCapabilities createCapabilities() {
-        if (scoringPath == null || scoringTargeting == null) {
+        if (scoring == null || targeting == null) {
             throw new IllegalStateException(
                     "Phoenix cannot create capabilities before scoring and targeting exist"
             );
         }
-        return new PhoenixCapabilities(scoringPath, scoringTargeting);
+        return new PhoenixCapabilities(scoring, targeting);
     }
 
     private void presentTeleOp(LoopClock clock,
@@ -584,8 +586,8 @@ public final class PhoenixRobot {
             return;
         }
 
-        ScoringPath.Status scoringStatus = scoringPath.status();
-        ScoringTargeting.Status targetingStatus = scoringTargeting.status();
+        PhoenixCapabilities.ScoringStatus scoringStatus = scoring.status();
+        PhoenixCapabilities.TargetingStatus targetingStatus = targeting.status();
         PhoenixDriveAssistService.Status driveAssistStatus = driveAssists.status();
         PoseEstimate globalPose = localization.globalEstimator().getEstimate();
         PoseEstimate odomPose = localization.predictor().getEstimate();
@@ -626,8 +628,8 @@ public final class PhoenixRobot {
             return;
         }
 
-        ScoringPath.Status scoringStatus = scoringPath.status();
-        ScoringTargeting.Status targetingStatus = scoringTargeting.status();
+        PhoenixCapabilities.ScoringStatus scoringStatus = scoring.status();
+        PhoenixCapabilities.TargetingStatus targetingStatus = targeting.status();
         PoseEstimate globalPose = localization.globalEstimator().getEstimate();
         PoseEstimate odomPose = localization.predictor().getEstimate();
         finishAutoProfilePhase("snapshots");
@@ -783,9 +785,9 @@ public final class PhoenixRobot {
 
     /** Managed targeting publisher and reset owner. */
     private final class ManagedTeleOpTargetingService implements RobotProgram.Service {
-        private final ScoringTargeting ownedTargeting;
+        private final PhoenixTargeting ownedTargeting;
 
-        private ManagedTeleOpTargetingService(ScoringTargeting ownedTargeting) {
+        private ManagedTeleOpTargetingService(PhoenixTargeting ownedTargeting) {
             this.ownedTargeting = ownedTargeting;
         }
 
@@ -808,9 +810,9 @@ public final class PhoenixRobot {
 
     /** Downstream scoring owner with transparent optional profiling boundaries. */
     private final class ManagedTeleOpScoringOutput implements RobotProgram.Output {
-        private final ScoringPath ownedScoring;
+        private final PhoenixScoring ownedScoring;
 
-        private ManagedTeleOpScoringOutput(ScoringPath ownedScoring) {
+        private ManagedTeleOpScoringOutput(PhoenixScoring ownedScoring) {
             this.ownedScoring = ownedScoring;
         }
 
@@ -881,7 +883,7 @@ public final class PhoenixRobot {
         private final Runnable applyStartingPose;
         private AprilTagVisionLane ownedVision;
         private FtcOdometryAprilTagLocalizationLane ownedLocalization;
-        private ScoringTargeting ownedTargeting;
+        private PhoenixTargeting ownedTargeting;
         private boolean stopped;
 
         private ManagedAutoService(DriveCommandSink autoDrive,
@@ -904,7 +906,7 @@ public final class PhoenixRobot {
             ownedLocalization = Objects.requireNonNull(localization, "localization");
         }
 
-        private void attachTargeting(ScoringTargeting targeting) {
+        private void attachTargeting(PhoenixTargeting targeting) {
             if (ownedTargeting != null) {
                 throw new IllegalStateException("Phoenix Auto targeting is already attached");
             }
@@ -945,7 +947,7 @@ public final class PhoenixRobot {
                 return;
             }
             stopped = true;
-            ScoringTargeting targetingToStop = ownedTargeting;
+            PhoenixTargeting targetingToStop = ownedTargeting;
             AprilTagVisionLane visionToStop = ownedVision;
             ownedTargeting = null;
             ownedLocalization = null;
@@ -981,9 +983,9 @@ public final class PhoenixRobot {
 
     /** Downstream managed Auto scoring owner. */
     private final class ManagedAutoScoringOutput implements RobotProgram.Output {
-        private final ScoringPath ownedScoring;
+        private final PhoenixScoring ownedScoring;
 
-        private ManagedAutoScoringOutput(ScoringPath ownedScoring) {
+        private ManagedAutoScoringOutput(PhoenixScoring ownedScoring) {
             this.ownedScoring = ownedScoring;
         }
 

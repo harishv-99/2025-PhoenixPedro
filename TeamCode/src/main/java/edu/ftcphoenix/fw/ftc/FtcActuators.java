@@ -1029,7 +1029,7 @@ public final class FtcActuators {
             Plants.BuildStep<P> sharedBuild = targetProvenance == TargetProvenance.NEW_COMMAND
                     ? sharedTarget.targetFromNewCommand(newCommandInitialValue)
                     : sharedTarget.targetFromResolver(targetResolver);
-            return sharedBuild.build();
+            return finishBuiltPlant(sharedBuild.build());
         }
 
         protected abstract void validateRecipe();
@@ -1037,6 +1037,11 @@ public final class FtcActuators {
         protected abstract ScalarRange configuredTargetRange();
 
         protected abstract Plants.TargetStep<P> createSharedTargetStep();
+
+        /** Add boundary-only metadata without changing the shared Plant engine. */
+        protected P finishBuiltPlant(P plant) {
+            return plant;
+        }
 
         private void requireOpenGuards(String operation) {
             requireMutable(operation);
@@ -1251,6 +1256,7 @@ public final class FtcActuators {
         private final RecipeLifecycle lifecycle;
         private final List<Spec> specs = new ArrayList<>();
         private int lastIndex;
+        private DcMotorEx lastSingleDeviceManagedVelocityMotor;
 
         private static final class Spec {
             private final String name;
@@ -1373,6 +1379,7 @@ public final class FtcActuators {
                 Spec spec = specs.get(0);
                 DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
                 applyDeviceManagedVelocityConfig(motor, spec.name, cfg.velocityPidf);
+                lastSingleDeviceManagedVelocityMotor = motor;
                 return FtcHardware.motorVelocity(motor, spec.direction);
             }
             ensureFeedbackScalesNonZero("device-managed motor velocity");
@@ -1580,6 +1587,7 @@ public final class FtcActuators {
         private boolean rangeAnswered;
         private boolean mappingAnswered;
         private boolean velocityToleranceAnswered;
+        private DcMotorEx singleDeviceManagedMotor;
 
         private MotorVelocityBuilder(MotorBuilder parent) {
             super(parent.lifecycle, "motor velocity Plant");
@@ -1768,6 +1776,9 @@ public final class FtcActuators {
             if (isDeviceManaged()) {
                 ScalarSource measurement = parent.groupedMotorVelocityMeasurement();
                 VelocityOutput output = parent.groupedMotorVelocity(deviceConfig);
+                if (parent.specs.size() == 1) {
+                    singleDeviceManagedMotor = parent.lastSingleDeviceManagedVelocityMotor;
+                }
                 bounds = Plants.fromOutputs().deviceManagedVelocity(output, measurement);
             } else {
                 ScalarSource measurement = feedback.get();
@@ -1782,6 +1793,22 @@ public final class FtcActuators {
                     ? mapping.nativeUnits()
                     : mapping.scaleToNative(nativePerPlantUnit);
             return tolerance.velocityTolerance(velocityTolerance);
+        }
+
+        @Override
+        protected Plant finishBuiltPlant(Plant plant) {
+            if (!isDeviceManaged() || parent.specs.size() != 1) {
+                return plant;
+            }
+            if (singleDeviceManagedMotor == null) {
+                throw new IllegalStateException(
+                        "Single-motor device-managed velocity Plant lost its FTC motor identity");
+            }
+            return new FtcDeviceManagedVelocityPlant(
+                    plant,
+                    singleDeviceManagedMotor,
+                    parent.specs.get(0).name,
+                    range);
         }
 
         private void answerControl(VelocityControlKind answer, String operation) {

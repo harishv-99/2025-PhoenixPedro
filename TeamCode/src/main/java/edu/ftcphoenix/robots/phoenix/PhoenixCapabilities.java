@@ -2,8 +2,12 @@ package edu.ftcphoenix.robots.phoenix;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.geometry.Pose2d;
+import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcphoenix.fw.task.Task;
 
 /**
@@ -13,6 +17,146 @@ import edu.ftcphoenix.fw.task.Task;
  * public scoring and targeting vocabulary, while the concrete robot objects still own the behavior.</p>
  */
 public final class PhoenixCapabilities {
+
+    /** Immutable scoring snapshot shared by TeleOp, Auto, assists, and presenters. */
+    public static final class ScoringStatus {
+        public final boolean intakeEnabled;
+        public final boolean ejectRequested;
+        public final boolean shootingRequested;
+        public final boolean flywheelRequested;
+        public final boolean shootActive;
+        public final int feedBacklog;
+        public final String mode;
+        public final boolean flywheelEnabled;
+        public final boolean pidfEnabled;
+        public final double selectedVelocityNative;
+        public final double flywheelTargetNative;
+        public final double flywheelMeasuredNative;
+        public final double flywheelErrorNative;
+        public final double flywheelErrorAbsNative;
+        public final double flywheelToleranceNative;
+        public final double flywheelToleranceBelowNative;
+        public final double flywheelToleranceAboveNative;
+        public final double flywheelAccelNativePerSec;
+        public final double flywheelAccelAbsNativePerSec;
+        public final double readyLeadSec;
+        public final double predictedFlywheelAbsNative;
+        public final double predictedFlywheelErrorNative;
+        public final boolean flywheelAtTarget;
+        public final boolean ready;
+        public final int feedQueued;
+        public final boolean feedActive;
+        public final double feedOutput;
+
+        /** Creates a complete immutable scoring snapshot. */
+        public ScoringStatus(boolean intakeEnabled,
+                             boolean ejectRequested,
+                             boolean shootingRequested,
+                             boolean flywheelRequested,
+                             boolean shootActive,
+                             int feedBacklog,
+                             String mode,
+                             boolean flywheelEnabled,
+                             boolean pidfEnabled,
+                             double selectedVelocityNative,
+                             double flywheelTargetNative,
+                             double flywheelMeasuredNative,
+                             double flywheelErrorNative,
+                             double flywheelErrorAbsNative,
+                             double flywheelToleranceNative,
+                             double flywheelToleranceBelowNative,
+                             double flywheelToleranceAboveNative,
+                             double flywheelAccelNativePerSec,
+                             double flywheelAccelAbsNativePerSec,
+                             double readyLeadSec,
+                             double predictedFlywheelAbsNative,
+                             double predictedFlywheelErrorNative,
+                             boolean flywheelAtTarget,
+                             boolean ready,
+                             int feedQueued,
+                             boolean feedActive,
+                             double feedOutput) {
+            this.intakeEnabled = intakeEnabled;
+            this.ejectRequested = ejectRequested;
+            this.shootingRequested = shootingRequested;
+            this.flywheelRequested = flywheelRequested;
+            this.shootActive = shootActive;
+            this.feedBacklog = feedBacklog;
+            this.mode = mode != null ? mode : "IDLE";
+            this.flywheelEnabled = flywheelEnabled;
+            this.pidfEnabled = pidfEnabled;
+            this.selectedVelocityNative = selectedVelocityNative;
+            this.flywheelTargetNative = flywheelTargetNative;
+            this.flywheelMeasuredNative = flywheelMeasuredNative;
+            this.flywheelErrorNative = flywheelErrorNative;
+            this.flywheelErrorAbsNative = flywheelErrorAbsNative;
+            this.flywheelToleranceNative = flywheelToleranceNative;
+            this.flywheelToleranceBelowNative = flywheelToleranceBelowNative;
+            this.flywheelToleranceAboveNative = flywheelToleranceAboveNative;
+            this.flywheelAccelNativePerSec = flywheelAccelNativePerSec;
+            this.flywheelAccelAbsNativePerSec = flywheelAccelAbsNativePerSec;
+            this.readyLeadSec = readyLeadSec;
+            this.predictedFlywheelAbsNative = predictedFlywheelAbsNative;
+            this.predictedFlywheelErrorNative = predictedFlywheelErrorNative;
+            this.flywheelAtTarget = flywheelAtTarget;
+            this.ready = ready;
+            this.feedQueued = feedQueued;
+            this.feedActive = feedActive;
+            this.feedOutput = feedOutput;
+        }
+    }
+
+    /** Immutable targeting snapshot shared by mode clients, assists, and presenters. */
+    public static final class TargetingStatus {
+        public final boolean autoAimEnabled;
+        public final boolean aimReady;
+        public final boolean aimOkToShoot;
+        public final boolean aimOverride;
+        public final double aimToleranceDeg;
+        public final double aimReadyToleranceDeg;
+        public final TagSelectionResult selection;
+        public final DriveGuidanceStatus aimStatus;
+        public final String targetLabel;
+        public final double aimOffsetForwardInches;
+        public final double aimOffsetLeftInches;
+        public final boolean hasSuggestedVelocity;
+        public final double suggestedVelocityNative;
+        public final Pose3d fieldToSelectedTag;
+        public final Pose2d fieldToAimPoint;
+
+        /** Creates a complete immutable targeting snapshot. */
+        public TargetingStatus(boolean autoAimEnabled,
+                               boolean aimReady,
+                               boolean aimOkToShoot,
+                               boolean aimOverride,
+                               double aimToleranceDeg,
+                               double aimReadyToleranceDeg,
+                               TagSelectionResult selection,
+                               DriveGuidanceStatus aimStatus,
+                               String targetLabel,
+                               double aimOffsetForwardInches,
+                               double aimOffsetLeftInches,
+                               boolean hasSuggestedVelocity,
+                               double suggestedVelocityNative,
+                               Pose3d fieldToSelectedTag,
+                               Pose2d fieldToAimPoint) {
+            this.autoAimEnabled = autoAimEnabled;
+            this.aimReady = aimReady;
+            this.aimOkToShoot = aimOkToShoot;
+            this.aimOverride = aimOverride;
+            this.aimToleranceDeg = aimToleranceDeg;
+            this.aimReadyToleranceDeg = aimReadyToleranceDeg;
+            this.selection = selection;
+            this.aimStatus = aimStatus;
+            this.targetLabel = targetLabel != null ? targetLabel : "";
+            this.aimOffsetForwardInches = aimOffsetForwardInches;
+            this.aimOffsetLeftInches = aimOffsetLeftInches;
+            this.hasSuggestedVelocity = hasSuggestedVelocity;
+            this.suggestedVelocityNative = suggestedVelocityNative;
+            this.fieldToSelectedTag = fieldToSelectedTag;
+            this.fieldToAimPoint = fieldToAimPoint;
+        }
+    }
 
     private final Scoring scoring;
     private final Targeting targeting;
@@ -40,7 +184,7 @@ public final class PhoenixCapabilities {
     }
 
     /**
-     * Capability family for scoring-path mechanism intents and status.
+     * Capability family for scoring mechanism intents and status.
      *
      * <p>Phoenix follows the framework's public-method vocabulary here:</p>
      * <ul>
@@ -107,9 +251,9 @@ public final class PhoenixCapabilities {
         boolean hasPendingShots();
 
         /**
-         * Returns the latest scoring-path status snapshot.
+         * Returns the latest scoring status snapshot.
          */
-        ScoringPath.Status status();
+        ScoringStatus status();
     }
 
     /**
@@ -123,7 +267,7 @@ public final class PhoenixCapabilities {
          * <p>Reading this snapshot never advances targeting state. The robot runtime publishes a
          * new snapshot from the shared loop heartbeat before downstream decisions and outputs run.</p>
          */
-        ScoringTargeting.Status status();
+        TargetingStatus status();
 
         /**
          * Creates an autonomous aim task using Phoenix's shared targeting service.

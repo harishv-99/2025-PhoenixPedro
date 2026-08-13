@@ -16,6 +16,7 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
 
 /**
  * Robot-specific drive-assist service for Phoenix TeleOp.
@@ -33,7 +34,7 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
  * <ul>
  *   <li>shoot-brace translation hold while the robot is actively shooting and the driver lets the
  *       translation stick settle near zero</li>
- *   <li>omega-only auto aim driven by {@link ScoringTargeting}</li>
+ *   <li>omega-only auto aim driven by {@link PhoenixTargeting}</li>
  * </ul>
  *
  * <p>
@@ -77,7 +78,7 @@ public final class PhoenixDriveAssistService {
     }
 
     private final ScalarSource manualTranslateMagnitude;
-    private final Source<ScoringPath.Status> scoringStatusSource;
+    private final Source<PhoenixCapabilities.ScoringStatus> scoringStatusSource;
     private final BooleanSource autoAimRequested;
     private final BooleanSource autoAimEnabled;
     private final boolean poseAssistsAvailable;
@@ -102,7 +103,7 @@ public final class PhoenixDriveAssistService {
     public PhoenixDriveAssistService(PhoenixProfile.DriveAssistConfig config,
                                      DriveSource manualDrive,
                                      ScalarSource manualTranslateMagnitude,
-                                     Source<ScoringPath.Status> scoringStatusSource,
+                                     Source<PhoenixCapabilities.ScoringStatus> scoringStatusSource,
                                      BooleanSource autoAimEnabled,
                                      boolean poseAssistsAvailable,
                                      AbsolutePoseEstimator globalAbsolutePoseEstimator,
@@ -208,7 +209,7 @@ public final class PhoenixDriveAssistService {
     }
 
     private Status calculateStatus(LoopClock clock) {
-        ScoringPath.Status scoringStatus = Objects.requireNonNull(
+        PhoenixCapabilities.ScoringStatus scoringStatus = Objects.requireNonNull(
                 scoringStatusSource.get(clock),
                 "scoringStatusSource returned null"
         );

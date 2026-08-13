@@ -239,14 +239,14 @@ public final class PhoenixTeleOpControlsTest {
         }
 
         @Override
-        public ScoringPath.Status status() {
+        public PhoenixCapabilities.ScoringStatus status() {
             return null;
         }
     }
 
     private static final class UnusedTargeting implements PhoenixCapabilities.Targeting {
         @Override
-        public ScoringTargeting.Status status() {
+        public PhoenixCapabilities.TargetingStatus status() {
             return null;
         }
 

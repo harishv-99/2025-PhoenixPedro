@@ -1223,6 +1223,50 @@ no empty tuned spelling of the defaults path. The separate FTC position-loop gai
 This method writes FTC device-controller coefficients under the validation contract above; it is
 distinct from Phoenix's software `PidfRegulator` and does not construct one.
 
+### Framework-owned live FTC velocity-PIDF workflow
+
+The Plant builder remains the ordinary production configuration path. The ready-made
+`FtcPanelsTuners.velocityPidf(...)` workflow owns a fresh Plant supplied by robot code plus the
+advanced configuration-only handle returned by
+`FtcMotorControllers.velocityPidf(plant)`:
+
+```java
+FtcMotorVelocityPidf pidf =
+        FtcMotorControllers.velocityPidf(flywheelPlant);
+
+pidf.setGains(candidateKP, candidateKI, candidateKD, candidateKF);
+double acceptedKP = pidf.getKP();
+double acceptedKI = pidf.getKI();
+double acceptedKD = pidf.getKD();
+double acceptedKF = pidf.getKF();
+```
+
+This is not another Plant builder. The input must be a single-motor FTC device-managed velocity
+Plant built by `FtcActuators`; deriving the handle from that Plant prevents a tuning workflow from
+commanding one Plant while silently changing another named motor. The handle reports that bound
+Plant's immutable target range but has no target, velocity, power, direction, or run-mode command;
+one Plant can supply only one handle, so one tuning session owns controller configuration. The
+mechanism's source-driven Plant remains the only actuation writer. `setGains(...)`
+validates the complete tuple through the same controller domain described above, performs one FTC
+velocity-PIDF update, and reads back the accepted values. The controller may quantize the request,
+so tuning telemetry and copyable profile assignments use these getters rather than the UI echo.
+
+The factory captures the initial `RUN_USING_ENCODER` PIDF coefficients and algorithm.
+`restoreInitial()` restores that exact captured configuration and reads it back. A setter/readback
+transport failure can leave device state uncertain; the tuning owner terminally stops its Plant,
+best-effort restores the initial configuration, and ends the session rather than claiming an
+atomic hardware rollback.
+
+Use this handle only inside a complete tuning workflow that also owns one fresh Plant built from
+the production owner's canonical recipe. Robot code should normally use
+`FtcPanelsTuners.velocityPidf(...)` instead of rebuilding candidate capture, segment evidence,
+restoration, and cleanup around the handle. It does not justify a generic raw-motor PIDF tester.
+FTC device-managed position uses an outer
+position P plus an inner velocity PIDF and therefore is not represented by this velocity-only
+handle. Follow the
+[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for complete-candidate,
+hot/cold segment, evidence, restore, and checked-in-profile rules.
+
 Use `regulated()` when Phoenix should own the velocity loop and command raw motor power. This is the
 right path for custom power-based flywheel control, including optional battery-voltage compensation:
 
@@ -1305,9 +1349,10 @@ The gain update keeps configured limits and either accepts all four finite value
 change. Reset does not itself command or stop the actuator; the robot mechanism owner still decides
 when a live tuning change is safe and whether a zero target means coast, brake, or active hold.
 
-Keep that update in a dedicated test mode rather than reading mutable tuning fields from production
-TeleOp or Auto. Follow the
-[`software PIDF tuning workflow`](<../testing-calibration/Software PIDF Tuning Workflow.md>) to
+Keep that update in a dedicated software-regulator tuning workflow rather than reading mutable
+tuning fields from production TeleOp or Auto. The ready-made FTC device-managed velocity tuner does
+not pretend to own this different controller. Follow the
+[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) to
 apply one candidate, report the accepted getters, copy them into the checked-in profile, and
 restart production.
 

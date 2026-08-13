@@ -24,10 +24,10 @@ choices must follow the [`Framework Principles`](<../../fw/Framework Principles.
 | Owner | Responsibility |
 |---|---|
 | [`PhoenixRobot.java`](<PhoenixRobot.java>) | Constructs the robot graph and declares its managed lifecycle roles. It is not a control script. |
-| [`PhoenixCapabilities.java`](<PhoenixCapabilities.java>) | Defines the mode-neutral robot actions and status shared by TeleOp and Auto. |
+| [`PhoenixCapabilities.java`](<PhoenixCapabilities.java>) | Defines the mode-neutral robot actions and capability-owned status snapshots shared by TeleOp and Auto. |
 | [`PhoenixTeleOpControls.java`](<PhoenixTeleOpControls.java>) | Maps driver and operator inputs to capability requests. |
-| [`ScoringPath.java`](<ScoringPath.java>) | Realizes scoring intent, owns its final Plant graph, feed policy, and output order. |
-| [`ScoringTargeting.java`](<ScoringTargeting.java>) | Selects an eligible scoring target and publishes targeting facts and guidance. |
+| [`PhoenixScoring.java`](<scoring/PhoenixScoring.java>) | Owns scoring requests, feed policy, all four scoring Plants, update order, status production, and stop. |
+| [`PhoenixTargeting.java`](<scoring/PhoenixTargeting.java>) | Selects an eligible scoring target and publishes targeting facts and guidance. |
 | [`PhoenixReadiness.java`](<PhoenixReadiness.java>) | Decides whether a selected mode may start from configuration and route-maturity facts. |
 
 `PhoenixRobot` wires these owners together. Controls and autonomous routines use
@@ -46,22 +46,31 @@ choices must follow the [`Framework Principles`](<../../fw/Framework Principles.
   named integration-test entry for checked-in Pedro geometry.
 - [`PhoenixTestersOpMode.java`](<opmode/PhoenixTestersOpMode.java>) exposes calibration and hardware
   tests without creating a second production robot architecture.
+- [`PhoenixPanelsTuningOpMode.java`](<opmode/PhoenixPanelsTuningOpMode.java>) is the dedicated
+  **Phoenix: Tuning (Panels)** flywheel workflow. It opens the tuner directly—there is no tester
+  menu to navigate; see the
+  [`PIDF tuning runbook`](<../../fw/docs/testing-calibration/PIDF Tuning Workflow.md#phoenix-flywheel-the-ready-made-panels-workflow>).
 
 The competition TeleOp and Auto entries use the managed `FtcRobotOpMode`/`RobotProgram` lifecycle.
 Each entry chooses a setup; the program owns the clock, lifecycle phases, Tasks, outputs, telemetry
 commit, and fail-stop cleanup. `PhoenixTestersOpMode` is the deliberate exception: it extends
 `FtcTeleOpTesterOpMode`, whose tester host owns the shared clock, tester lifecycle, and fail-stop
-cleanup without creating a `RobotProgram`.
+cleanup without creating a `RobotProgram`. The Panels tuning entry is the same kind of explicit
+tester-host exception: the framework tuner owns one fresh flywheel Plant, requires exactly one
+client, and terminally stops/restores on disconnect or failure. The Plant comes from
+`PhoenixScoring`'s canonical flywheel recipe but is never shared with production. Production TeleOp
+and Auto never read its Configurable draft values.
 
 ## Where to make a change
 
 | Goal | Change here |
 |---|---|
 | Rename hardware or enter a measured constant | [`PhoenixProfile.java`](<PhoenixProfile.java>) |
+| Tune flywheel velocity PIDF | Open **Phoenix: Tuning (Panels)**, then copy controller readback into [`PhoenixProfile.java`](<PhoenixProfile.java>) |
 | Change a button's meaning | [`PhoenixTeleOpControls.java`](<PhoenixTeleOpControls.java>) |
 | Add mode-neutral robot intent | [`PhoenixCapabilities.java`](<PhoenixCapabilities.java>) and its owning mechanism |
-| Change scoring realization or safety behavior | [`ScoringPath.java`](<ScoringPath.java>) |
-| Change target-selection or drive-assist policy | [`ScoringTargeting.java`](<ScoringTargeting.java>) or [`PhoenixDriveAssistService.java`](<PhoenixDriveAssistService.java>) |
+| Change scoring realization or safety behavior | [`PhoenixScoring.java`](<scoring/PhoenixScoring.java>) |
+| Change target-selection or drive-assist policy | [`PhoenixTargeting.java`](<scoring/PhoenixTargeting.java>) or [`PhoenixDriveAssistService.java`](<PhoenixDriveAssistService.java>) |
 | Change route geometry | [`PhoenixPedroPathFactory.java`](<autonomous/pedro/PhoenixPedroPathFactory.java>) |
 | Change autonomous strategy | [`PhoenixPedroAutoRoutineFactory.java`](<autonomous/pedro/PhoenixPedroAutoRoutineFactory.java>) |
 | Change what blocks START | [`PhoenixReadiness.java`](<PhoenixReadiness.java>) |

@@ -21,8 +21,6 @@ import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
-import edu.ftcphoenix.robots.phoenix.ScoringPath;
-import edu.ftcphoenix.robots.phoenix.ScoringTargeting;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
 
@@ -178,7 +176,7 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
 
     private static final class FactoryTargeting implements PhoenixCapabilities.Targeting {
         @Override
-        public ScoringTargeting.Status status() {
+        public PhoenixCapabilities.TargetingStatus status() {
             return null;
         }
 
@@ -235,7 +233,7 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
         }
 
         @Override
-        public ScoringPath.Status status() {
+        public PhoenixCapabilities.ScoringStatus status() {
             return null;
         }
     }

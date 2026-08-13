@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix;
+package edu.ftcphoenix.robots.phoenix.scoring;
 
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -24,6 +24,7 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
+import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -31,19 +32,19 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Robot-level regression coverage for the source-backed flywheel-ready gate. */
-public final class ScoringPathFlywheelReadySourceTest {
+public final class PhoenixScoringFlywheelReadySourceTest {
 
     @Test
     public void readinessIsDisabledDebouncedCycleStableAndStopIsTerminalIdempotent() {
         PhoenixProfile profile = PhoenixProfile.defaults();
-        PhoenixProfile.ScoringPathConfig config = profile.scoring.copy();
+        PhoenixProfile.ScoringConfig config = profile.scoring.copy();
         config.readyPredictLeadSec = 0.0;
         config.readyStableSec = 0.05;
 
         TestHardwareMap hardwareMap = TestHardwareMap.forScoring(config);
         hardwareMap.setShooterVelocity(config.velocityMin);
         LoopClock clock = new LoopClock();
-        ScoringPath scoring = new ScoringPath(
+        PhoenixScoring scoring = new PhoenixScoring(
                 hardwareMap,
                 config,
                 targetingFor(profile)
@@ -106,8 +107,8 @@ public final class ScoringPathFlywheelReadySourceTest {
         }
     }
 
-    private static ScoringTargeting targetingFor(PhoenixProfile profile) {
-        return new ScoringTargeting(
+    private static PhoenixTargeting targetingFor(PhoenixProfile profile) {
+        return new PhoenixTargeting(
                 profile.autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
                 new EmptyAprilTagSensor(),
@@ -143,7 +144,7 @@ public final class ScoringPathFlywheelReadySourceTest {
         }
     }
 
-    /** In-memory FTC boundary containing only the scoring devices constructed by ScoringPath. */
+    /** In-memory FTC boundary containing only the devices constructed by PhoenixScoring. */
     private static final class TestHardwareMap extends HardwareMap {
         private final Map<String, HardwareDevice> devices = new HashMap<String, HardwareDevice>();
         private DeviceState shooterState;
@@ -152,7 +153,7 @@ public final class ScoringPathFlywheelReadySourceTest {
             super(null, null);
         }
 
-        static TestHardwareMap forScoring(PhoenixProfile.ScoringPathConfig config) {
+        static TestHardwareMap forScoring(PhoenixProfile.ScoringConfig config) {
             TestHardwareMap map = new TestHardwareMap();
             map.devices.put(config.nameMotorIntake, deviceProxy(DcMotorEx.class, "intake", new DeviceState()));
             map.shooterState = new DeviceState();

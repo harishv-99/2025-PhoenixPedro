@@ -3,8 +3,8 @@
 Calibrate one physical fact at a time. Keep the robot clear of people, begin with conservative
 commands, know how to stop the OpMode, and do not treat a successful build as proof of safe motion.
 
-If you copied the framework into another project, choose exactly one ready-made entry for the
-whole tester run:
+If you copied the framework into another project, choose exactly one ready-made entry for a
+general-purpose tester run:
 
 | Entry | Sole input owner |
 |---|---|
@@ -51,13 +51,21 @@ This repository's production Phoenix robot has its own ordered
    drivetrain integration, encoders, camera mount, AprilTags, Pinpoint, and corrected localization.
 3. [`AprilTag Practice Setup`](<../drive-vision/AprilTag Practice Setup.md>) — a known small test
    area when a complete field is unavailable.
-4. [`Software PIDF Tuning Workflow`](<Software PIDF Tuning Workflow.md>) — a separate
-   mechanism-owned safe-candidate, apply, observe, record, and restart workflow.
+4. [`PIDF Tuning Workflow`](<PIDF Tuning Workflow.md>) — the ready-made FTC device-managed
+   velocity-PIDF workflow, plus the separate rules for software-regulated PIDF.
 
-A mechanism-specific PIDF tuning mode may reuse only the console transport concerns described
-above: fixed input ownership, lifecycle, telemetry fan-out, and Panels display facilities. It must
-still run the real robot-owned mechanism/controller graph and deliberately apply draft values; the
-tester consoles are not a generic raw-actuator PIDF tuner.
+For FTC device-managed velocity control, robot code normally calls
+`FtcPanelsTuners.velocityPidf(...)` and supplies a factory for one fresh Plant built from its
+production owner's canonical recipe. The framework owns draft capture, the controller session,
+segments, charts, restore, and cleanup. This is not a generic raw-actuator editor: the Plant remains
+the sole actuation path and robot code still declares a safe positive test range.
+
+The production Phoenix robot provides the concrete **Phoenix: Tuning (Panels)** entry. It opens the
+flywheel workflow directly with no tester menu. Powered tuning requires exactly one Panels client
+rather than the general tester entry's at-least-one rule. Panels **Update All** publishes only a
+draft; A captures and applies one complete candidate on the OpMode loop. Read the
+[`PIDF tuning runbook`](<PIDF Tuning Workflow.md#phoenix-flywheel-the-ready-made-panels-workflow>)
+before enabling it.
 
 ## Mentor and tester-author reference
 

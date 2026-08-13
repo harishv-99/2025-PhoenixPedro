@@ -4,7 +4,8 @@ Phoenix keeps FTC SDK hardware and UI details at this explicit boundary. Ordinar
 usually enter through `FtcActuators`, while the rest of their policy stays in robot-owned classes.
 
 - [`FTC Actuators & Plants`](<FTC Actuators & Plants.md>) — staged construction for motors, servos,
-  CR servos, grouped outputs, units, references, feedback, and control strategy.
+  CR servos, grouped outputs, units, references, feedback, control strategy, and the narrow advanced
+  FTC velocity-PIDF configuration handle used by the framework tuning workflow.
 - [`FTC Sensors`](<FTC Sensors.md>) — battery, encoder, distance, color, touch, digital, and analog
   sources.
 - [`FTC UI Helpers`](<FTC UI Helpers.md>) — selection menus, navigation, summaries, and hardware

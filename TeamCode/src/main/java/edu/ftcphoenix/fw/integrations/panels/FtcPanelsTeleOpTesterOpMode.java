@@ -21,10 +21,11 @@ import edu.ftcphoenix.fw.ftc.FtcTeleOpTesterOpMode;
  *
  * <p>The Panels input path reads current vendor gamepad state into two stable FTC {@link Gamepad}
  * objects immediately before tester {@code init}, {@code initLoop}, {@code start}, and {@code loop}
- * callbacks. Losing the last Panels client or failing to read a sample throws. An initial failure
- * prevents tester initialization; a later failure makes {@link FtcTeleOpTesterOpMode} terminally
- * fail-stop its retained tester. Reconnect by stopping and starting a new OpMode instance;
- * reconnecting never silently rearms a terminal instance.</p>
+ * callbacks. The default Panels policy requires at least one connected client; a concrete
+ * powered-test host may instead require exactly one client. A rejected client count or failed
+ * sample throws. An initial failure prevents tester initialization; a later failure makes
+ * {@link FtcTeleOpTesterOpMode} terminally fail-stop its retained tester. Reconnect by stopping and
+ * starting a new OpMode instance; reconnecting never silently rearms a terminal instance.</p>
  *
  * <p>This adapter intentionally keeps every {@code com.bylazar} type inside the Panels integration
  * boundary. The joined sink supports the ordinary row operations used by Phoenix testers; it is
@@ -42,7 +43,17 @@ public abstract class FtcPanelsTeleOpTesterOpMode extends FtcTeleOpTesterOpMode 
         PANELS
     }
 
+    /** Client-count evidence required before Panels virtual-gamepad input may be sampled. */
+    protected enum PanelsClientRequirement {
+        /** Accept any positive total Panels client count. This is the existing default policy. */
+        AT_LEAST_ONE,
+
+        /** Accept only a total Panels client count of exactly one. */
+        EXACTLY_ONE
+    }
+
     private final InputSource inputSource;
+    private final PanelsClientRequirement panelsClientRequirement;
     private final PanelsBackend panels;
 
     /**
@@ -51,17 +62,48 @@ public abstract class FtcPanelsTeleOpTesterOpMode extends FtcTeleOpTesterOpMode 
      * @param inputSource sole input owner for the lifetime of this OpMode
      */
     protected FtcPanelsTeleOpTesterOpMode(InputSource inputSource) {
-        this(inputSource, DefaultPanelsBackend.INSTANCE);
+        this(inputSource, PanelsClientRequirement.AT_LEAST_ONE);
     }
 
-    FtcPanelsTeleOpTesterOpMode(InputSource inputSource, PanelsBackend panels) {
+    /**
+     * Creates a Panels-capable tester host with one fixed input source and client-count policy.
+     *
+     * <p>{@link PanelsClientRequirement#EXACTLY_ONE} is available only for
+     * {@link InputSource#PANELS}; a Panels client count cannot govern physical Driver Station
+     * input. The requirement is checked both before and after each pair of remote snapshots.</p>
+     *
+     * @param inputSource sole input owner for the lifetime of this OpMode
+     * @param panelsClientRequirement accepted Panels client count
+     * @throws IllegalArgumentException if exact-one is paired with Driver Station input
+     */
+    protected FtcPanelsTeleOpTesterOpMode(
+            InputSource inputSource,
+            PanelsClientRequirement panelsClientRequirement
+    ) {
+        this(inputSource, panelsClientRequirement, DefaultPanelsBackend.INSTANCE);
+    }
+
+    FtcPanelsTeleOpTesterOpMode(
+            InputSource inputSource,
+            PanelsClientRequirement panelsClientRequirement,
+            PanelsBackend panels
+    ) {
         if (inputSource == null) {
             throw new NullPointerException("inputSource");
+        }
+        if (panelsClientRequirement == null) {
+            throw new NullPointerException("panelsClientRequirement");
         }
         if (panels == null) {
             throw new NullPointerException("panels");
         }
+        if (inputSource == InputSource.DRIVER_STATION
+                && panelsClientRequirement == PanelsClientRequirement.EXACTLY_ONE) {
+            throw new IllegalArgumentException(
+                    "PanelsClientRequirement.EXACTLY_ONE requires InputSource.PANELS");
+        }
         this.inputSource = inputSource;
+        this.panelsClientRequirement = panelsClientRequirement;
         this.panels = panels;
     }
 
@@ -79,7 +121,10 @@ public abstract class FtcPanelsTeleOpTesterOpMode extends FtcTeleOpTesterOpMode 
         if (inputSource == InputSource.DRIVER_STATION) {
             return new FixedInputConsole(mirroredTelemetry, gamepad1, gamepad2);
         }
-        return new PanelsInputConsole(mirroredTelemetry, panels);
+        return new PanelsInputConsole(
+                mirroredTelemetry,
+                panels,
+                panelsClientRequirement);
     }
 
     interface PanelsBackend {
@@ -180,16 +225,22 @@ public abstract class FtcPanelsTeleOpTesterOpMode extends FtcTeleOpTesterOpMode 
 
     private static final class PanelsInputConsole extends FixedInputConsole {
         private final PanelsBackend panels;
+        private final PanelsClientRequirement clientRequirement;
 
-        private PanelsInputConsole(Telemetry telemetry, PanelsBackend panels) {
+        private PanelsInputConsole(
+                Telemetry telemetry,
+                PanelsBackend panels,
+                PanelsClientRequirement clientRequirement
+        ) {
             super(telemetry, new Gamepad(), new Gamepad());
             this.panels = panels;
+            this.clientRequirement = clientRequirement;
         }
 
         @Override
         public void sampleInputs() {
             try {
-                requireConnectedClient();
+                requireAcceptedClientCount();
                 Gamepad first = panels.firstGamepadSnapshot();
                 Gamepad second = panels.secondGamepadSnapshot();
                 if (first == null || second == null) {
@@ -197,8 +248,9 @@ public abstract class FtcPanelsTeleOpTesterOpMode extends FtcTeleOpTesterOpMode 
                 }
                 normalizeAliases(first);
                 normalizeAliases(second);
-                // Reject a disconnect that raced either read rather than accepting stale commands.
-                requireConnectedClient();
+                // Reject a client-count change that raced either read instead of accepting stale
+                // commands or violating this host's explicit client policy.
+                requireAcceptedClientCount();
 
                 gamepad1().copy(first);
                 gamepad2().copy(second);
@@ -210,16 +262,29 @@ public abstract class FtcPanelsTeleOpTesterOpMode extends FtcTeleOpTesterOpMode 
                 }
                 throw new PanelsInputUnavailableException(
                         "Panels tester input failed; stop this OpMode, reconnect Panels, and restart "
-                                + "FW: Testers (Panels)",
+                                + "this tester OpMode",
                         failure);
             }
         }
 
-        private void requireConnectedClient() {
-            if (panels.connectedClientCount() <= 0) {
+        private void requireAcceptedClientCount() {
+            int connectedClientCount = panels.connectedClientCount();
+            if (clientRequirement == PanelsClientRequirement.AT_LEAST_ONE) {
+                if (connectedClientCount >= 1) {
+                    return;
+                }
                 throw new PanelsInputUnavailableException(
-                        "Panels tester input disconnected; reconnect Panels, stop this OpMode, and "
-                                + "restart FW: Testers (Panels)");
+                        "Panels tester input disconnected; requires at least one connected Panels "
+                                + "client but found " + connectedClientCount
+                                + "; reconnect Panels, stop this OpMode, and restart this tester "
+                                + "OpMode");
+            }
+            if (connectedClientCount != 1) {
+                throw new PanelsInputUnavailableException(
+                        "Panels tester input requires exactly one connected Panels client but found "
+                                + connectedClientCount
+                                + "; connect exactly one Panels client, stop this OpMode, and "
+                                + "restart this tester OpMode");
             }
         }
 
