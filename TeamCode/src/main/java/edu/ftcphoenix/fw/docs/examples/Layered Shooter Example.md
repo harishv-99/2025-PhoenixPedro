@@ -199,68 +199,40 @@ dependency after the Plant exists.
 
 The flywheel's simple command can be created inline with `targetFromNewCommand(0.0)`, so
 realization retains only the Plant and writes through `flywheelPlant.commandTarget()`. Its Plant can
-use either FTC device-managed velocity control or a Phoenix-regulated velocity loop. If the robot
-uses a power-based PID/PIDF
-flywheel with battery-voltage compensation, that compensation belongs in the flywheel
-`ScalarRegulator` inside realization; requests and behavior still only talk in selected velocity
-targets and readiness readback.
-
-When that complete control law needs an intentional power range, compose the regulator in the same
-inside-to-outside order in which commands are calculated:
+use either FTC device-managed velocity control or a Phoenix-regulated velocity loop. A standard
+power-based flywheel declares its setpoint, PID, typed feedforward, voltage compensation, and final
+power policy in one Plant recipe:
 
 ```java
-PidfRegulator nominalFlywheel = ScalarRegulators.pidf(kP, kI, kD, kF)
-        .setIntegralLimits(-0.15, 0.15)
-        .setPidOutputLimits(-1.0, 1.0);
-
-ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
-        ScalarRegulators.voltageCompensated(
-                nominalFlywheel,
-                batteryVoltage,
-                13.0,
-                9.0,
-                1.4),
-        0.0,
-        maximumFlywheelPower);
+flywheelPlant = FtcActuators.plant(hardwareMap)
+        .motor(config.flywheelName, config.flywheelDirection)
+        .velocity()
+        .regulated()
+            .internalEncoder()
+        .bounded(0.0, config.maximumRpm)
+        .scaleToNative(config.ticksPerRpm)
+        .velocityTolerance(config.toleranceRpm)
+        .setpointFromAccelerationLimitedProfile(config.maximumRpmPerSec)
+        .feedbackFromPid(config.kP, config.kI, config.kD)
+        .feedbackIntegralLimitedTo(-0.15, 0.15)
+        .feedforwardFromMotion(config.kS, config.kV, config.kA)
+        .voltageCompensationFrom(batteryVoltage, 13.0, 9.0, 1.4)
+        .outputPowerLimitedTo(0.0, config.maximumPower)
+        .targetFromNewCommand(0.0)
+        .build();
 ```
 
-The standard factory computes `PID(setpoint - measurement, dt) + kF * setpoint`. Its
-`setIntegralLimits(...)` and `setPidOutputLimits(...)` settings affect only the inner PID
-contribution. The outer `outputLimited(...)` policy covers PID, feedforward, and voltage
-compensation, while the Plant/output boundary remains responsible for universal actuator-command
-safety. Limits saturate finite excursions only; non-finite controller math remains a failure for
-the outer regulator or Plant to reject.
+The final policy covers PID, feedforward, and voltage compensation; target bounds remain a
+different Plant-unit fact. Standard control owns saturation-aware integral behavior and profile-
+settled completion inside the Plant lifecycle. Production TeleOp and Auto use checked-in config and
+continue to talk only in selected velocity targets and readiness.
 
-Retaining `nominalFlywheel` also gives a live tuning path without splitting the four standard gains
-between a `Pid` and a captured lambda:
-
-```java
-nominalFlywheel.setGains(newKP, newKI, newKD, newKF);
-flywheelRegulator.reset();
-```
-
-Reset the outermost composition after a live gain change so nested controller and decorator history
-is cleared together. Reset itself sends no actuator command. The generic limiter deliberately does
-not decide whether a disabled or zero-velocity request should coast, brake, or hold;
-behavior/realization owns that mechanism meaning. The outer limiter also cannot provide generic
-saturation-aware anti-windup for the inner PID.
-
-Use a dedicated software-regulator tuning workflow for that update; production TeleOp and Auto
-should use only checked-in profile snapshots. This is intentionally different from the ready-made
-FTC device-managed `FtcPanelsTuners.velocityPidf(...)` workflow. See the
-[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for
-explicit apply, safe-stop, record, and restart.
-
-This Phoenix `PidfRegulator` belongs to a software-regulated Plant. FTC
-`.deviceManaged().velocityPidf(...)` configures the motor controller and is a different path. When
-feedforward is nonlinear or table-driven, keep that choice explicit:
-
-```java
-ScalarRegulator customNominal = ScalarRegulators.setpointFeedforward(
-        ScalarRegulators.pid(customController),
-        targetVelocity -> shotModel.feedforwardFor(targetVelocity)
-);
-```
+FTC `deviceManagedWithOverrides().velocityPidf(...)` instead configures the motor controller and
+uses the ready-made `FtcPanelsTuners.velocityPidf(...)` workflow. See the
+[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for the standard software
+tuning order and the distinct FTC live workflow. A nonlinear or table-driven complete law uses the
+explicit advanced `controlFromCustomRegulator(...)` exit; it does not become a parallel ordinary
+PID/feedforward recipe.
 
 The feeder uses a richer final target resolver:
 

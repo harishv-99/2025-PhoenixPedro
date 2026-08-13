@@ -35,7 +35,8 @@ public final class FtcPositionReferenceValidationTest {
     public void deviceManagedAnswersRejectEveryNonFiniteValueBeforeSdkEffects() {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         hardwareMap.addMotor("lift", 25);
-        Plants.PositionReferenceStep reference =
+        Plants.PositionCoordinateReferenceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                reference =
                 tunedDeviceManagedReferenceStep(hardwareMap, "lift", 10.0);
 
         for (double invalid : nonFiniteValues()) {
@@ -64,13 +65,15 @@ public final class FtcPositionReferenceValidationTest {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         hardwareMap.addMotor("lift", 0);
 
-        Plants.PositionToleranceStep staticAnswer = boundedDeviceManagedReferenceStep(
+        Plants.PositionToleranceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                staticAnswer = boundedDeviceManagedReferenceStep(
                 hardwareMap, "lift", 1.0)
                 .plantPositionMapsToNative(-0.0, +0.0);
         assertRawDoubleEquals(-0.0, privateDouble(staticAnswer, "plantReference"));
         assertRawDoubleEquals(+0.0, privateDouble(staticAnswer, "nativeReference"));
 
-        Plants.PositionToleranceStep extremePlantAnswer =
+        Plants.PositionToleranceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                extremePlantAnswer =
                 deviceManagedReferenceStep(hardwareMap, "lift", 1.0)
                         .plantPositionMapsToNative(Double.MAX_VALUE, 0.0);
         assertRawDoubleEquals(Double.MAX_VALUE,
@@ -78,7 +81,8 @@ public final class FtcPositionReferenceValidationTest {
         assertRawDoubleEquals(0.0,
                 privateDouble(extremePlantAnswer, "nativeReference"));
 
-        Plants.PositionToleranceStep extremeNativeAnswer =
+        Plants.PositionToleranceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                extremeNativeAnswer =
                 deviceManagedReferenceStep(hardwareMap, "lift", 1.0)
                         .plantPositionMapsToNative(0.0, -Double.MAX_VALUE);
         assertRawDoubleEquals(0.0,
@@ -86,7 +90,8 @@ public final class FtcPositionReferenceValidationTest {
         assertRawDoubleEquals(-Double.MAX_VALUE,
                 privateDouble(extremeNativeAnswer, "nativeReference"));
 
-        Plants.PositionToleranceStep assumedAnswer = boundedDeviceManagedReferenceStep(
+        Plants.PositionToleranceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                assumedAnswer = boundedDeviceManagedReferenceStep(
                 hardwareMap, "lift", 1.0)
                 .assumeCurrentPositionIs(-0.0);
         assertRawDoubleEquals(-0.0, privateDouble(assumedAnswer, "assumePlantPosition"));
@@ -97,9 +102,11 @@ public final class FtcPositionReferenceValidationTest {
     public void invalidRetainedAliasCannotReplaceEarlierAcceptedReferenceMode() {
         TestHardwareMap staticMap = new TestHardwareMap();
         MotorProbe staticMotor = staticMap.addMotor("arm", 130);
-        Plants.PositionReferenceStep retainedStatic =
+        Plants.PositionCoordinateReferenceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                retainedStatic =
                 deviceManagedReferenceStep(staticMap, "arm", 10.0);
-        Plants.PositionToleranceStep acceptedStatic =
+        Plants.PositionToleranceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                acceptedStatic =
                 retainedStatic.plantPositionMapsToNative(2.0, 100.0);
 
         assertExactIllegalArgument(
@@ -123,9 +130,11 @@ public final class FtcPositionReferenceValidationTest {
 
         TestHardwareMap assumeMap = new TestHardwareMap();
         MotorProbe assumeMotor = assumeMap.addMotor("wrist", 200);
-        Plants.PositionReferenceStep retainedAssume =
+        Plants.PositionCoordinateReferenceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                retainedAssume =
                 deviceManagedReferenceStep(assumeMap, "wrist", 10.0);
-        Plants.PositionToleranceStep acceptedAssume =
+        Plants.PositionToleranceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                acceptedAssume =
                 retainedAssume.assumeCurrentPositionIs(7.0);
 
         assertExactIllegalArgument(
@@ -149,12 +158,12 @@ public final class FtcPositionReferenceValidationTest {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         hardwareMap.addMotor("arm", 120);
         ScalarRegulator regulator = recordingZeroRegulator(hardwareMap.effects);
-        Plants.PositionReferenceStep reference = FtcActuators.plant(hardwareMap)
+        Plants.PositionCoordinateReferenceStep<Plants.PositionControlStep> reference =
+                FtcActuators.plant(hardwareMap)
                 .motor("arm", Direction.FORWARD)
                 .position()
                 .regulated()
                 .internalEncoder()
-                .regulator(regulator)
                 .nonPeriodic()
                 .unbounded()
                 .scaleToNative(10.0);
@@ -169,6 +178,7 @@ public final class FtcPositionReferenceValidationTest {
         PositionPlant plant = reference
                 .plantPositionMapsToNative(2.0, 100.0)
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(4.0)
                 .build();
         plant.update(new ManualLoopClock().clock());
@@ -183,12 +193,12 @@ public final class FtcPositionReferenceValidationTest {
         hardwareMap.addCrServo("turret");
         hardwareMap.addMotor("turretEncoder", 75);
         ScalarRegulator regulator = recordingZeroRegulator(hardwareMap.effects);
-        Plants.PositionReferenceStep reference = FtcActuators.plant(hardwareMap)
+        Plants.PositionCoordinateReferenceStep<Plants.PositionControlStep> reference =
+                FtcActuators.plant(hardwareMap)
                 .crServo("turret", Direction.FORWARD)
                 .position()
                 .regulated()
                 .externalEncoder("turretEncoder")
-                .regulator(regulator)
                 .nonPeriodic()
                 .unbounded()
                 .scaleToNative(5.0);
@@ -203,6 +213,7 @@ public final class FtcPositionReferenceValidationTest {
         PositionPlant plant = reference
                 .assumeCurrentPositionIs(7.0)
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(8.0)
                 .build();
         plant.update(new ManualLoopClock().clock());
@@ -211,7 +222,26 @@ public final class FtcPositionReferenceValidationTest {
         assertEquals(1, hardwareMap.effects.regulatorCalls);
     }
 
-    private static Plants.PositionReferenceStep tunedDeviceManagedReferenceStep(
+    private static Plants.PositionCoordinateReferenceStep<
+            Plants.SymmetricOutputPowerPolicyStep<PositionPlant>> tunedDeviceManagedReferenceStep(
+            TestHardwareMap hardwareMap,
+            String motorName,
+            double nativePerPlantUnit) {
+        return FtcActuators.plant(hardwareMap)
+                .motor(motorName, Direction.FORWARD)
+                .position()
+                .deviceManagedWithOverrides()
+                .outerPositionP(1.25)
+                .innerVelocityPidf(2.0, 0.5, 0.25, 0.0)
+                .devicePositionToleranceTicks(3)
+                .doneOverrides()
+                .nonPeriodic()
+                .unbounded()
+                .scaleToNative(nativePerPlantUnit);
+    }
+
+    private static Plants.PositionCoordinateReferenceStep<
+            Plants.SymmetricOutputPowerPolicyStep<PositionPlant>> deviceManagedReferenceStep(
             TestHardwareMap hardwareMap,
             String motorName,
             double nativePerPlantUnit) {
@@ -219,30 +249,13 @@ public final class FtcPositionReferenceValidationTest {
                 .motor(motorName, Direction.FORWARD)
                 .position()
                 .deviceManaged()
-                .maxPower(0.5)
-                .outerPositionP(1.25)
-                .innerVelocityPidf(2.0, 0.5, 0.25, 0.0)
-                .devicePositionToleranceTicks(3)
-                .doneDeviceManaged()
                 .nonPeriodic()
                 .unbounded()
                 .scaleToNative(nativePerPlantUnit);
     }
 
-    private static Plants.PositionReferenceStep deviceManagedReferenceStep(
-            TestHardwareMap hardwareMap,
-            String motorName,
-            double nativePerPlantUnit) {
-        return FtcActuators.plant(hardwareMap)
-                .motor(motorName, Direction.FORWARD)
-                .position()
-                .deviceManagedWithDefaults()
-                .nonPeriodic()
-                .unbounded()
-                .scaleToNative(nativePerPlantUnit);
-    }
-
-    private static Plants.PositionReferenceStep boundedDeviceManagedReferenceStep(
+    private static Plants.PositionCoordinateReferenceStep<
+            Plants.SymmetricOutputPowerPolicyStep<PositionPlant>> boundedDeviceManagedReferenceStep(
             TestHardwareMap hardwareMap,
             String motorName,
             double nativePerPlantUnit) {
@@ -250,7 +263,8 @@ public final class FtcPositionReferenceValidationTest {
                 hardwareMap, motorName, -1.0, 1.0, nativePerPlantUnit);
     }
 
-    private static Plants.PositionReferenceStep boundedDeviceManagedReferenceStep(
+    private static Plants.PositionCoordinateReferenceStep<
+            Plants.SymmetricOutputPowerPolicyStep<PositionPlant>> boundedDeviceManagedReferenceStep(
             TestHardwareMap hardwareMap,
             String motorName,
             double plantMin,
@@ -259,7 +273,7 @@ public final class FtcPositionReferenceValidationTest {
         return FtcActuators.plant(hardwareMap)
                 .motor(motorName, Direction.FORWARD)
                 .position()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .nonPeriodic()
                 .bounded(plantMin, plantMax)
                 .scaleToNative(nativePerPlantUnit);
@@ -293,15 +307,22 @@ public final class FtcPositionReferenceValidationTest {
     }
 
     private static double privateDouble(Object owner, String fieldName) throws Exception {
-        Class<?> type = owner.getClass();
-        while (type != null) {
-            try {
-                Field field = type.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                return field.getDouble(owner);
-            } catch (NoSuchFieldException ignored) {
-                type = type.getSuperclass();
+        Object candidate = owner;
+        while (candidate != null) {
+            Class<?> type = candidate.getClass();
+            while (type != null) {
+                try {
+                    Field field = type.getDeclaredField(fieldName);
+                    field.setAccessible(true);
+                    return field.getDouble(candidate);
+                } catch (NoSuchFieldException ignored) {
+                    type = type.getSuperclass();
+                }
             }
+
+            Field enclosing = candidate.getClass().getDeclaredField("this$0");
+            enclosing.setAccessible(true);
+            candidate = enclosing.get(candidate);
         }
         fail("No field named " + fieldName + " on " + owner.getClass());
         return Double.NaN;

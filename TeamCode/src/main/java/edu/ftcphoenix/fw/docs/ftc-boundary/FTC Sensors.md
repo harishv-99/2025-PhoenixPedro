@@ -42,9 +42,9 @@ Notes:
   multiple hubs report voltage.
 * Invalid readings (`NaN`, infinity, zero, or negative values) are ignored. If no usable reading is
   available, the source returns `Double.NaN` instead of inventing a voltage.
-* Keep compensation policy outside the raw sensor adapter. For example,
-  `ScalarRegulators.voltageCompensated(...)` decides how to handle an invalid reading and how much
-  scaling is allowed.
+* Keep compensation policy outside the raw sensor adapter. A standard regulated Plant answers
+  `voltageCompensationFrom(...)` after PID/feedforward; an advanced custom regulator may instead
+  use the generic regulator decorator. Both keep voltage sampling out of robot-loop arithmetic.
 
 ---
 
@@ -81,10 +81,13 @@ this.flywheel = FtcActuators.plant(hardwareMap)
         .velocity()
         .regulated()
             .externalEncoder("flywheelEncoder")
-            .regulator(flywheelRegulator)
         .bounded(0.0, MAX_FLYWHEEL_RPM)
         .scaleToNative(TICKS_PER_REV / 60.0)
         .velocityTolerance(75.0)
+        .setpointFromAccelerationLimitedProfile(MAX_RPM_PER_SEC)
+        .feedbackFromPid(kP, kI, kD)
+        .feedforwardFromMotion(kS, kV, kA)
+        .outputPowerLimitedTo(0.0, MAXIMUM_POWER)
         .targetFromNewCommand(0.0)
         .build();
 ```

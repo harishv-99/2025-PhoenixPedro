@@ -17,6 +17,7 @@ import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.actuation.ScalarRange;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.hal.PowerLimitedPositionOutput;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
@@ -90,20 +91,19 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  *     .motor(cfg.liftMotorName, cfg.liftDirection)
  *     .position()
  *     .deviceManaged()
- *         .maxPower(0.8)
- *         .doneDeviceManaged()
  *     .nonPeriodic()
  *         .bounded(0.0, 4200.0)
  *         .nativeUnits()
  *         .needsReference("lift not homed")
  *     .positionTolerance(20.0)
+ *     .outputPowerLimitedTo(0.8)
  *     .targetFromNewCommand(0.0)
  *     .build();
  *
  * this.flywheel = FtcActuators.plant(hardwareMap)
  *     .motor(cfg.flywheelMotorName, cfg.flywheelDirection)
  *     .velocity()
- *     .deviceManagedWithDefaults()
+ *     .deviceManaged()
  *     .bounded(0.0, 2600.0)
  *     .nativeUnits()
  *     .velocityTolerance(50.0)
@@ -256,23 +256,24 @@ public final class FtcActuators {
      */
     public interface MotorVelocityControlStep {
         /**
-         * Use FTC device-managed velocity control with Phoenix defaults and continue to velocity
-         * target bounds. The answer first validates that every retained child has finite nonzero
-         * scale and exact zero bias, so a rejected answer can be corrected and retried without
-         * hardware resolution.
+         * Use FTC device-managed velocity control without changing the controller's then-active
+         * coefficients, then continue to velocity target bounds. Phoenix does not know or claim
+         * that those externally owned coefficients are tuned for this mechanism. The answer first
+         * validates that every retained child has finite nonzero scale and exact zero bias, so a
+         * rejected answer can be corrected and retried without hardware resolution.
          *
          * @throws IllegalStateException if a retained child mapping is incompatible
          */
-        Plants.VelocityBoundsStep deviceManagedWithDefaults();
+        Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> deviceManaged();
 
         /**
          * Enter the FTC device-managed velocity tuning branch before continuing to target bounds.
          * The answer applies the same retryable child-mapping preflight as
-         * {@link #deviceManagedWithDefaults()}.
+         * {@link #deviceManaged()}.
          *
          * @throws IllegalStateException if a retained child mapping is incompatible
          */
-        MotorDeviceManagedVelocityStep deviceManaged();
+        MotorDeviceManagedVelocityStep deviceManagedWithOverrides();
 
         /**
          * Use a Phoenix-regulated velocity loop that drives motor power from native velocity feedback.
@@ -301,9 +302,11 @@ public final class FtcActuators {
          * @throws IllegalArgumentException if any coefficient is non-finite or outside the
          * supported controller conversion domain; all four prior values remain unchanged
          * @throws IllegalStateException if this recipe did not enter through
-         * {@link MotorVelocityControlStep#deviceManaged()}, or if this answer was already supplied
+         * {@link MotorVelocityControlStep#deviceManagedWithOverrides()}, or if this answer was
+         * already supplied
          */
-        Plants.VelocityBoundsStep velocityPidf(double p, double i, double d, double f);
+        Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> velocityPidf(
+                double p, double i, double d, double f);
     }
 
     /**
@@ -313,18 +316,18 @@ public final class FtcActuators {
         /**
          * Use the selected motor's SDK-reported internal encoder velocity in native ticks/sec.
          */
-        MotorRegulatedVelocityRegulatorStep internalEncoder();
+        Plants.VelocityBoundsStep<Plants.VelocityControlStep> internalEncoder();
 
         /**
          * Use one named selected motor's SDK-reported internal encoder velocity in native ticks/sec.
          * Matching ignores surrounding whitespace like FTC lookup and remains case-sensitive.
          */
-        MotorRegulatedVelocityRegulatorStep internalEncoder(String motorName);
+        Plants.VelocityBoundsStep<Plants.VelocityControlStep> internalEncoder(String motorName);
 
         /**
          * Use the average SDK-reported internal encoder velocity of all selected motors.
          */
-        MotorRegulatedVelocityRegulatorStep averageInternalEncoders();
+        Plants.VelocityBoundsStep<Plants.VelocityControlStep> averageInternalEncoders();
 
         /**
          * Derive native velocity in ticks/sec from a named external encoder's position samples.
@@ -333,28 +336,19 @@ public final class FtcActuators {
          * rate is calculated. This avoids depending on the SDK's narrower direct-velocity result
          * for a high-count-rate external encoder.</p>
          */
-        MotorRegulatedVelocityRegulatorStep externalEncoder(String name);
+        Plants.VelocityBoundsStep<Plants.VelocityControlStep> externalEncoder(String name);
 
         /**
          * Derive native velocity in ticks/sec from a named external encoder's position samples,
          * with an explicit logical direction.
          */
-        MotorRegulatedVelocityRegulatorStep externalEncoder(String name, Direction direction);
+        Plants.VelocityBoundsStep<Plants.VelocityControlStep> externalEncoder(
+                String name, Direction direction);
 
         /**
          * Use a caller-supplied native velocity source.
          */
-        MotorRegulatedVelocityRegulatorStep nativeFeedback(ScalarSource source);
-    }
-
-    /**
-     * Required regulator question for regulated motor velocity control.
-     */
-    public interface MotorRegulatedVelocityRegulatorStep {
-        /**
-         * Select the regulator that receives plant-unit velocity setpoint and measurement.
-         */
-        Plants.VelocityBoundsStep regulator(ScalarRegulator regulator);
+        Plants.VelocityBoundsStep<Plants.VelocityControlStep> nativeFeedback(ScalarSource source);
     }
 
     /**
@@ -373,22 +367,25 @@ public final class FtcActuators {
      */
     public interface MotorPositionControlStep {
         /**
-         * Use FTC RUN_TO_POSITION with Phoenix defaults and continue to position periodicity.
-         * Finite nonzero child scales and finite position-alignment biases are validated before this
-         * answer is retained.
+         * Use FTC RUN_TO_POSITION without changing the controller's then-active coefficients, then
+         * continue to position periodicity. Omitted output-power policy uses magnitude {@code 1.0};
+         * neither that framework baseline nor the externally owned coefficients claim reviewed
+         * physical safety or tuning. Finite nonzero child scales and finite position-alignment
+         * biases are validated before this answer is retained.
          *
          * @throws IllegalStateException if a retained child mapping is incompatible
          */
-        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> deviceManagedWithDefaults();
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>> deviceManaged();
 
         /**
          * Enter the FTC RUN_TO_POSITION tuning branch before continuing to position periodicity.
          * This applies the same retryable child-mapping preflight as
-         * {@link #deviceManagedWithDefaults()}.
+         * {@link #deviceManaged()}.
          *
          * @throws IllegalStateException if a retained child mapping is incompatible
          */
-        MotorDeviceManagedPositionStep deviceManaged();
+        MotorDeviceManagedPositionStep deviceManagedWithOverrides();
 
         /**
          * Use a Phoenix-regulated loop that drives motor power from native position feedback.
@@ -400,22 +397,10 @@ public final class FtcActuators {
     }
 
     /**
-     * Nonempty tuning branch for FTC device-managed motor position control. Each individual
+     * Nonempty override branch for FTC device-managed motor position control. Each individual
      * setting is optional, but at least one must be answered before the branch is closed.
      */
     public interface MotorDeviceManagedPositionStep {
-        /**
-         * Set the finite normalized maximum-power magnitude reapplied for each RUN_TO_POSITION
-         * target. The inclusive domain is {@code [0.0, 1.0]}; configuration is rejected rather than
-         * clamped.
-         *
-         * @throws IllegalArgumentException if {@code maxPower} is non-finite or outside
-         * {@code [0.0, 1.0]}
-         * @throws IllegalStateException if this setting was already answered, the tuning section is
-         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
-         */
-        MotorDeviceManagedPositionStep maxPower(double maxPower);
-
         /**
          * Set FTC's outer position-loop proportional coefficient in the inclusive, symmetric
          * pinned controller public conversion domain
@@ -424,7 +409,8 @@ public final class FtcActuators {
          * @throws IllegalArgumentException if {@code outerPositionP} is non-finite or outside the
          * supported controller conversion domain
          * @throws IllegalStateException if this setting was already answered, the tuning section is
-         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
+         * closed, or the recipe did not enter through
+         * {@link MotorPositionControlStep#deviceManagedWithOverrides()}
          */
         MotorDeviceManagedPositionStep outerPositionP(double outerPositionP);
 
@@ -437,7 +423,8 @@ public final class FtcActuators {
          * @throws IllegalArgumentException if any coefficient is non-finite or outside the
          * supported controller conversion domain; all four prior values remain unchanged
          * @throws IllegalStateException if this setting was already answered, the tuning section is
-         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
+         * closed, or the recipe did not enter through
+         * {@link MotorPositionControlStep#deviceManagedWithOverrides()}
          */
         MotorDeviceManagedPositionStep innerVelocityPidf(double p, double i, double d, double f);
 
@@ -447,19 +434,22 @@ public final class FtcActuators {
          *
          * @throws IllegalArgumentException if {@code ticks} is outside {@code [0, 65535]}
          * @throws IllegalStateException if this setting was already answered, the tuning section is
-         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
+         * closed, or the recipe did not enter through
+         * {@link MotorPositionControlStep#deviceManagedWithOverrides()}
          */
         MotorDeviceManagedPositionStep devicePositionToleranceTicks(int ticks);
 
         /**
-         * Close a nonempty device-managed tuning section and continue to position periodicity.
-         * Use {@link MotorPositionControlStep#deviceManagedWithDefaults()} instead of opening and
-         * immediately closing an empty section.
+         * Close a nonempty device-managed override section and continue to position periodicity.
+         * Use {@link MotorPositionControlStep#deviceManaged()} instead of opening and immediately
+         * closing an empty section.
          *
          * @throws IllegalStateException if no tuning setting was accepted, this section was already
-         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
+         * closed, or the recipe did not enter through
+         * {@link MotorPositionControlStep#deviceManagedWithOverrides()}
          */
-        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> doneDeviceManaged();
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>> doneOverrides();
     }
 
     /**
@@ -469,44 +459,40 @@ public final class FtcActuators {
         /**
          * Use the selected motor's internal encoder position in native ticks.
          */
-        MotorRegulatedPositionRegulatorStep internalEncoder();
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> internalEncoder();
 
         /**
          * Use one named selected motor's internal encoder position in native ticks.
          * Matching ignores surrounding whitespace like FTC lookup and remains case-sensitive.
          */
-        MotorRegulatedPositionRegulatorStep internalEncoder(String motorName);
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> internalEncoder(String motorName);
 
         /**
          * Use the average internal encoder position of all selected motors.
          */
-        MotorRegulatedPositionRegulatorStep averageInternalEncoders();
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> averageInternalEncoders();
 
         /**
          * Use a named external encoder's position in native ticks.
          */
-        MotorRegulatedPositionRegulatorStep externalEncoder(String name);
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(String name);
 
         /**
          * Use a named external encoder's position in native ticks with an explicit logical
          * direction.
          */
-        MotorRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction);
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(String name, Direction direction);
 
         /**
          * Use a caller-supplied native position source.
          */
-        MotorRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source);
-    }
-
-    /**
-     * Required regulator question for regulated motor position control.
-     */
-    public interface MotorRegulatedPositionRegulatorStep {
-        /**
-         * Select the regulator that receives plant-unit setpoint and measurement.
-         */
-        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> regulator(ScalarRegulator regulator);
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> nativeFeedback(ScalarSource source);
     }
 
     /**
@@ -702,28 +688,21 @@ public final class FtcActuators {
         /**
          * Use a named external encoder's position in native ticks.
          */
-        CrServoRegulatedPositionRegulatorStep externalEncoder(String name);
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(String name);
 
         /**
          * Use a named external encoder's position in native ticks with an explicit logical
          * direction.
          */
-        CrServoRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction);
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(String name, Direction direction);
 
         /**
          * Use a caller-supplied native position source.
          */
-        CrServoRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source);
-    }
-
-    /**
-     * Required regulator question for regulated CR-servo position control.
-     */
-    public interface CrServoRegulatedPositionRegulatorStep {
-        /**
-         * Select the regulator that receives plant-unit setpoint and measurement.
-         */
-        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> regulator(ScalarRegulator regulator);
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> nativeFeedback(ScalarSource source);
     }
 
     private static final class StartBuilder implements StartStep {
@@ -895,8 +874,9 @@ public final class FtcActuators {
         @Override
         public final Plants.TargetGuardStep<P> maxTargetRate(double maxDeltaPerSec) {
             requireOpenGuards("maxTargetRate(...)");
-            requireFinitePositive(maxDeltaPerSec, "maxDeltaPerSec");
             requireRateUnanswered();
+            requireTargetRateCompatible("maxTargetRate(...)");
+            requireFinitePositive(maxDeltaPerSec, "maxDeltaPerSec");
             rateAnswered = true;
             guardSpecs.add(GuardSpec.rate(maxDeltaPerSec));
             return this;
@@ -906,9 +886,10 @@ public final class FtcActuators {
         public final Plants.TargetGuardStep<P> maxTargetRates(double maxUpPerSec,
                                                                double maxDownPerSec) {
             requireOpenGuards("maxTargetRates(...)");
+            requireRateUnanswered();
+            requireTargetRateCompatible("maxTargetRates(...)");
             requireFinitePositive(maxUpPerSec, "maxUpPerSec");
             requireFinitePositive(maxDownPerSec, "maxDownPerSec");
-            requireRateUnanswered();
             rateAnswered = true;
             guardSpecs.add(GuardSpec.rates(maxUpPerSec, maxDownPerSec));
             return this;
@@ -1038,6 +1019,26 @@ public final class FtcActuators {
 
         protected abstract Plants.TargetStep<P> createSharedTargetStep();
 
+        /** Reject a target-rate guard before retaining an incompatible FTC control recipe. */
+        protected void requireTargetRateCompatible(String answer) {
+            // Most FTC Plant realizations have no competing motion-profile owner.
+        }
+
+        protected final boolean hasTargetRateConfigured() {
+            return rateAnswered;
+        }
+
+        /** Return a public tail that exposes only target selection, guards, and the final build. */
+        protected final Plants.TargetStep<P> targetStepView() {
+            return new FtcTargetStepView<>(this);
+        }
+
+        /** Return the capability-specific symmetric-output answer followed by the narrow tail. */
+        protected final Plants.SymmetricOutputPowerPolicyStep<P> symmetricOutputPowerPolicyView(
+                SymmetricOutputPowerAnswer answer) {
+            return new FtcSymmetricOutputPowerPolicyView<>(this, answer);
+        }
+
         /** Add boundary-only metadata without changing the shared Plant engine. */
         protected P finishBuiltPlant(P plant) {
             return plant;
@@ -1118,6 +1119,156 @@ public final class FtcActuators {
         }
     }
 
+    /** One private callback keeps the public output-policy facade independent of a wide builder. */
+    private interface SymmetricOutputPowerAnswer {
+        void answer(double maximumMagnitude);
+    }
+
+    /** Runtime-narrow target facade for internal FTC builders that retain several staged roles. */
+    private static final class FtcTargetStepView<P extends Plant>
+            implements Plants.TargetStep<P> {
+        private final FtcTargetBuilder<P> delegate;
+
+        private FtcTargetStepView(FtcTargetBuilder<P> delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> targetGuards() {
+            delegate.targetGuards();
+            return new FtcTargetGuardStepView<>(delegate, this);
+        }
+
+        @Override
+        public Plants.BuildStep<P> targetFromNewCommand(double initialValue) {
+            delegate.targetFromNewCommand(initialValue);
+            return new FtcBuildStepView<>(delegate);
+        }
+
+        @Override
+        public Plants.BuildStep<P> targetFromResolver(PlantTargetResolver resolver) {
+            delegate.targetFromResolver(resolver);
+            return new FtcBuildStepView<>(delegate);
+        }
+    }
+
+    /** Runtime-narrow guard facade whose close operation restores only its target facade. */
+    private static final class FtcTargetGuardStepView<P extends Plant>
+            implements Plants.TargetGuardStep<P> {
+        private final FtcTargetBuilder<P> delegate;
+        private final Plants.TargetStep<P> targetStep;
+
+        private FtcTargetGuardStepView(FtcTargetBuilder<P> delegate,
+                                       Plants.TargetStep<P> targetStep) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+            this.targetStep = Objects.requireNonNull(targetStep, "targetStep");
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> maxTargetRate(double maxDeltaPerSec) {
+            delegate.maxTargetRate(maxDeltaPerSec);
+            return this;
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> maxTargetRates(
+                double maxUpPerSec,
+                double maxDownPerSec) {
+            delegate.maxTargetRates(maxUpPerSec, maxDownPerSec);
+            return this;
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> holdLastTargetUnless(
+                String name,
+                BooleanSource allowed) {
+            delegate.holdLastTargetUnless(name, allowed);
+            return this;
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> holdLastTargetUnless(
+                String name,
+                PlantTargetGate gate) {
+            delegate.holdLastTargetUnless(name, gate);
+            return this;
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> fallbackTargetUnless(
+                String name,
+                BooleanSource allowed,
+                double fallbackTarget) {
+            delegate.fallbackTargetUnless(name, allowed, fallbackTarget);
+            return this;
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> fallbackTargetUnless(
+                String name,
+                PlantTargetGate gate,
+                double fallbackTarget) {
+            delegate.fallbackTargetUnless(name, gate, fallbackTarget);
+            return this;
+        }
+
+        @Override
+        public Plants.TargetStep<P> doneTargetGuards() {
+            delegate.doneTargetGuards();
+            return targetStep;
+        }
+    }
+
+    /** Runtime-narrow final build facade. */
+    private static final class FtcBuildStepView<P extends Plant>
+            implements Plants.BuildStep<P> {
+        private final FtcTargetBuilder<P> delegate;
+
+        private FtcBuildStepView(FtcTargetBuilder<P> delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        @Override
+        public P build() {
+            return delegate.build();
+        }
+    }
+
+    /** Symmetric device-output capability without the software-only signed/control interfaces. */
+    private static final class FtcSymmetricOutputPowerPolicyView<P extends Plant>
+            implements Plants.SymmetricOutputPowerPolicyStep<P> {
+        private final FtcTargetStepView<P> targetStep;
+        private final SymmetricOutputPowerAnswer outputAnswer;
+
+        private FtcSymmetricOutputPowerPolicyView(
+                FtcTargetBuilder<P> delegate,
+                SymmetricOutputPowerAnswer outputAnswer) {
+            targetStep = new FtcTargetStepView<>(delegate);
+            this.outputAnswer = Objects.requireNonNull(outputAnswer, "outputAnswer");
+        }
+
+        @Override
+        public Plants.TargetStep<P> outputPowerLimitedTo(double maximumMagnitude) {
+            outputAnswer.answer(maximumMagnitude);
+            return targetStep;
+        }
+
+        @Override
+        public Plants.TargetGuardStep<P> targetGuards() {
+            return targetStep.targetGuards();
+        }
+
+        @Override
+        public Plants.BuildStep<P> targetFromNewCommand(double initialValue) {
+            return targetStep.targetFromNewCommand(initialValue);
+        }
+
+        @Override
+        public Plants.BuildStep<P> targetFromResolver(PlantTargetResolver resolver) {
+            return targetStep.targetFromResolver(resolver);
+        }
+    }
+
     private static final class PowerTargetBuilder extends FtcTargetBuilder<Plant> {
         private final Supplier<PowerOutput> output;
         private final Runnable recipeValidator;
@@ -1158,6 +1309,18 @@ public final class FtcActuators {
         DEVICE_MANAGED_DEFAULTS,
         DEVICE_MANAGED_TUNED,
         REGULATED
+    }
+
+    private enum VelocitySetpointKind {
+        DIRECT,
+        ACCELERATION_LIMITED,
+        CUSTOM
+    }
+
+    private enum VelocityFeedforwardKind {
+        NONE,
+        MOTION,
+        LIFT
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1413,32 +1576,30 @@ public final class FtcActuators {
             return averageInverseMappedSources(sources, scales, biases);
         }
 
-        private PositionOutput groupedMotorPosition(DeviceManagedPositionConfig cfg) {
+        private PowerLimitedPositionOutput groupedMotorPosition(DeviceManagedPositionConfig cfg) {
             if (specs.size() == 1) {
                 Spec spec = specs.get(0);
                 DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
                 applyDeviceManagedPositionConfig(motor, spec.name, cfg);
-                return FtcHardware.motorPosition(motor, spec.direction, cfg.maxPower);
+                return FtcHardware.motorPosition(motor, spec.direction);
             }
             ensureFeedbackScalesNonZero("device-managed motor position");
-            List<PositionOutput> outs = new ArrayList<>();
+            List<PowerLimitedPositionOutput> outs = new ArrayList<>();
             double[] scales = new double[specs.size()];
             double[] biases = new double[specs.size()];
             for (int i = 0; i < specs.size(); i++) {
                 Spec spec = specs.get(i);
                 DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
                 applyDeviceManagedPositionConfig(motor, spec.name, cfg);
-                outs.add(FtcHardware.motorPosition(motor, spec.direction, cfg.maxPower));
+                outs.add(FtcHardware.motorPosition(motor, spec.direction));
                 scales[i] = spec.scale;
                 biases[i] = spec.bias;
             }
-            return new GroupedPositionOutput(
+            return new GroupedPowerLimitedPositionOutput(
                     outs,
                     scales,
                     biases,
-                    childNames(specs),
-                    PositionChildDomain.MOTOR_TICKS,
-                    "motor position");
+                    childNames(specs));
         }
 
         private ScalarSource groupedMotorPositionMeasurement() {
@@ -1569,10 +1730,13 @@ public final class FtcActuators {
             implements MotorVelocityControlStep,
             MotorDeviceManagedVelocityStep,
             MotorRegulatedVelocityFeedbackStep,
-            MotorRegulatedVelocityRegulatorStep,
-            Plants.VelocityBoundsStep,
-            Plants.VelocityMappingStep,
-            Plants.VelocityToleranceStep {
+            Plants.VelocityControlStep,
+            Plants.VelocityDirectFeedbackStep,
+            Plants.VelocityProfiledFeedbackStep,
+            Plants.VelocityDirectPidStep,
+            Plants.VelocityProfiledPidStep,
+            Plants.OutputPowerPolicyStep<Plant>,
+            Plants.OutputPowerAfterVoltageStep<Plant> {
         private static final String VELOCITY_PIDF_OPERATION =
                 "FtcActuators.velocityPidf(...)";
 
@@ -1580,13 +1744,39 @@ public final class FtcActuators {
         private final DeviceManagedVelocityConfig deviceConfig = new DeviceManagedVelocityConfig();
         private VelocityControlKind controlKind;
         private Supplier<ScalarSource> feedback;
-        private ScalarRegulator regulator;
         private ScalarRange range;
         private double nativePerPlantUnit;
         private double velocityTolerance;
         private boolean rangeAnswered;
         private boolean mappingAnswered;
         private boolean velocityToleranceAnswered;
+        private VelocitySetpointKind setpointKind;
+        private double maximumAcceleration;
+        private ScalarRegulator customRegulator;
+        private double kP;
+        private double kI;
+        private double kD;
+        private boolean feedbackLawAnswered;
+        private double integralMinimum;
+        private double integralMaximum;
+        private boolean integralLimitAnswered;
+        private double feedbackMinimum;
+        private double feedbackMaximum;
+        private boolean feedbackLimitAnswered;
+        private VelocityFeedforwardKind feedforwardKind = VelocityFeedforwardKind.NONE;
+        private double kS;
+        private double kV;
+        private double kA;
+        private double kG;
+        private boolean feedforwardAnswered;
+        private ScalarSource supplyVoltage;
+        private double referenceVoltage;
+        private double minimumVoltage;
+        private double maximumVoltageScale;
+        private boolean voltageAnswered;
+        private double minimumOutputPower;
+        private double maximumOutputPower;
+        private boolean outputPowerAnswered;
         private DcMotorEx singleDeviceManagedMotor;
 
         private MotorVelocityBuilder(MotorBuilder parent) {
@@ -1595,21 +1785,31 @@ public final class FtcActuators {
         }
 
         @Override
-        public Plants.VelocityBoundsStep deviceManagedWithDefaults() {
+        public Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> deviceManaged() {
+            answerControl(VelocityControlKind.DEVICE_MANAGED_DEFAULTS, "deviceManaged()");
+            return coordinateSteps(targetStepView());
+        }
+
+        @Override
+        protected void requireTargetRateCompatible(String answer) {
+            if (setpointKind == VelocitySetpointKind.ACCELERATION_LIMITED) {
+                throw new IllegalStateException(answer + " cannot be combined with "
+                        + "setpointFromAccelerationLimitedProfile(...); choose one "
+                        + "motion-shaping owner");
+            }
+        }
+
+        @Override
+        public MotorDeviceManagedVelocityStep deviceManagedWithOverrides() {
             answerControl(
-                    VelocityControlKind.DEVICE_MANAGED_DEFAULTS,
-                    "deviceManagedWithDefaults()");
+                    VelocityControlKind.DEVICE_MANAGED_TUNED,
+                    "deviceManagedWithOverrides()");
             return this;
         }
 
         @Override
-        public MotorDeviceManagedVelocityStep deviceManaged() {
-            answerControl(VelocityControlKind.DEVICE_MANAGED_TUNED, "deviceManaged()");
-            return this;
-        }
-
-        @Override
-        public Plants.VelocityBoundsStep velocityPidf(double p, double i, double d, double f) {
+        public Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> velocityPidf(
+                double p, double i, double d, double f) {
             requireMutable("velocityPidf(...)");
             requireControl(VelocityControlKind.DEVICE_MANAGED_TUNED, "velocityPidf(...)");
             if (deviceConfig.velocityPidf != null) {
@@ -1619,7 +1819,7 @@ public final class FtcActuators {
             deviceConfig.velocityPidf =
                     FtcControllerConfigurationValidation.requireControllerPidf(
                             p, i, d, f, VELOCITY_PIDF_OPERATION);
-            return this;
+            return coordinateSteps(targetStepView());
         }
 
         @Override
@@ -1629,113 +1829,219 @@ public final class FtcActuators {
         }
 
         @Override
-        public MotorRegulatedVelocityRegulatorStep internalEncoder() {
+        public Plants.VelocityBoundsStep<Plants.VelocityControlStep> internalEncoder() {
             requireFeedbackUnanswered("internalEncoder()");
             String selectedName = requireSingleMotorFeedbackName(parent.specs, "velocity");
             feedback = () -> FtcSensors.motorVelocityTicksPerSec(parent.hw, selectedName);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedVelocityRegulatorStep internalEncoder(String motorName) {
+        public Plants.VelocityBoundsStep<Plants.VelocityControlStep> internalEncoder(
+                String motorName) {
             requireFeedbackUnanswered("internalEncoder(...)");
             String selectedName = requireSelectedMotorFeedbackName(
                     parent.specs, Objects.requireNonNull(motorName, "motorName"), "velocity");
             feedback = () -> FtcSensors.motorVelocityTicksPerSec(parent.hw, selectedName);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedVelocityRegulatorStep averageInternalEncoders() {
+        public Plants.VelocityBoundsStep<Plants.VelocityControlStep> averageInternalEncoders() {
             requireFeedbackUnanswered("averageInternalEncoders()");
             ensureMotorFeedbackAvailable(parent.specs, "velocity");
             feedback = () -> internalVelocityFeedback(parent.hw, parent.specs, null, true);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedVelocityRegulatorStep externalEncoder(String name) {
+        public Plants.VelocityBoundsStep<Plants.VelocityControlStep> externalEncoder(String name) {
             return externalEncoder(name, Direction.FORWARD);
         }
 
         @Override
-        public MotorRegulatedVelocityRegulatorStep externalEncoder(String name, Direction direction) {
+        public Plants.VelocityBoundsStep<Plants.VelocityControlStep> externalEncoder(
+                String name, Direction direction) {
             requireFeedbackUnanswered("externalEncoder(...)");
             String checkedName = requireFeedbackName(name);
             Direction checkedDirection = Objects.requireNonNull(direction, "direction");
             feedback = () -> FtcSensors.continuousMotorPositionTicks(
                     parent.hw, checkedName, checkedDirection).ratePerSecond();
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedVelocityRegulatorStep nativeFeedback(ScalarSource source) {
+        public Plants.VelocityBoundsStep<Plants.VelocityControlStep> nativeFeedback(
+                ScalarSource source) {
             requireFeedbackUnanswered("nativeFeedback(...)");
             ScalarSource checked = Objects.requireNonNull(source, "source");
             feedback = () -> checked;
+            return coordinateSteps(this);
+        }
+
+        @Override
+        public Plants.VelocityDirectFeedbackStep setpointFromAppliedTarget() {
+            answerSetpoint(VelocitySetpointKind.DIRECT, "setpointFromAppliedTarget()");
             return this;
         }
 
         @Override
-        public Plants.VelocityBoundsStep regulator(ScalarRegulator regulator) {
-            requireMutable("regulator(...)");
-            requireControl(VelocityControlKind.REGULATED, "regulator(...)");
-            if (feedback == null) {
-                throw new IllegalStateException("Choose regulated velocity feedback before regulator(...)");
+        public Plants.VelocityProfiledFeedbackStep setpointFromAccelerationLimitedProfile(
+                double maximumAcceleration) {
+            requireFinitePositive(maximumAcceleration, "maximumAcceleration");
+            answerSetpoint(
+                    VelocitySetpointKind.ACCELERATION_LIMITED,
+                    "setpointFromAccelerationLimitedProfile(...)");
+            this.maximumAcceleration = maximumAcceleration;
+            return this;
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<Plant> controlFromCustomRegulator(
+                ScalarRegulator regulator) {
+            ScalarRegulator checked = Objects.requireNonNull(regulator, "regulator");
+            answerSetpoint(VelocitySetpointKind.CUSTOM, "controlFromCustomRegulator(...)");
+            customRegulator = checked;
+            return this;
+        }
+
+        @Override
+        public MotorVelocityBuilder feedbackFromPid(double kP) {
+            return feedbackFromPid(kP, 0.0, 0.0);
+        }
+
+        @Override
+        public MotorVelocityBuilder feedbackFromPid(double kP, double kI, double kD) {
+            requireStandardSetpoint("feedbackFromPid(...)");
+            if (feedbackLawAnswered) {
+                throw new IllegalStateException(
+                        "feedbackFromPid(...) has already been answered for this motor velocity Plant");
             }
-            if (this.regulator != null) {
-                throw new IllegalStateException("regulator(...) has already been answered for this motor velocity Plant");
+            this.kP = requireFiniteControlValue(kP, "feedbackFromPid(...) kP");
+            this.kI = requireFiniteControlValue(kI, "feedbackFromPid(...) kI");
+            this.kD = requireFiniteControlValue(kD, "feedbackFromPid(...) kD");
+            feedbackLawAnswered = true;
+            return this;
+        }
+
+        @Override
+        public MotorVelocityBuilder feedbackIntegralLimitedTo(double minimum, double maximum) {
+            requirePidAnswered("feedbackIntegralLimitedTo(...)");
+            if (integralLimitAnswered) {
+                throw new IllegalStateException(
+                        "feedbackIntegralLimitedTo(...) has already been answered for this motor velocity Plant");
             }
-            this.regulator = Objects.requireNonNull(regulator, "regulator");
-            return this;
-        }
-
-        @Override
-        public Plants.VelocityMappingStep bounded(double min, double max) {
-            requireMutable("bounded(...)");
-            requireControlAnswered("bounded(...)");
-            requireRangeUnanswered();
-            range = ScalarRange.bounded(min, max);
-            rangeAnswered = true;
-            return this;
-        }
-
-        @Override
-        public Plants.VelocityMappingStep unbounded() {
-            requireMutable("unbounded()");
-            requireControlAnswered("unbounded()");
-            requireRangeUnanswered();
-            range = ScalarRange.unbounded();
-            rangeAnswered = true;
-            return this;
-        }
-
-        @Override
-        public Plants.VelocityToleranceStep nativeUnits() {
-            answerMapping(1.0, "nativeUnits()");
-            return this;
-        }
-
-        @Override
-        public Plants.VelocityToleranceStep scaleToNative(
-                double nativeUnitsPerPlantVelocityUnit) {
-            answerMapping(nativeUnitsPerPlantVelocityUnit, "scaleToNative(...)");
-            return this;
-        }
-
-        @Override
-        public Plants.TargetStep<Plant> velocityTolerance(double tolerance) {
-            requireMutable("velocityTolerance(...)");
-            if (!mappingAnswered) {
-                throw new IllegalStateException("Choose nativeUnits() or scaleToNative(...) before velocityTolerance(...)");
+            requireFiniteOrderedControlRange(
+                    minimum, maximum, "feedbackIntegralLimitedTo(...)");
+            if (minimum > 0.0 || maximum < 0.0) {
+                throw new IllegalArgumentException(
+                        "feedbackIntegralLimitedTo(...) requires minimum <= 0 <= maximum");
             }
-            if (velocityToleranceAnswered) {
-                throw new IllegalStateException("velocityTolerance(...) has already been answered for this motor velocity Plant");
-            }
-            requireFiniteTolerance(tolerance, "velocityTolerance");
-            velocityTolerance = tolerance;
-            velocityToleranceAnswered = true;
+            integralMinimum = minimum;
+            integralMaximum = maximum;
+            integralLimitAnswered = true;
             return this;
+        }
+
+        @Override
+        public MotorVelocityBuilder feedbackOutputLimitedTo(double minimum, double maximum) {
+            requirePidAnswered("feedbackOutputLimitedTo(...)");
+            if (feedbackLimitAnswered) {
+                throw new IllegalStateException(
+                        "feedbackOutputLimitedTo(...) has already been answered for this motor velocity Plant");
+            }
+            requireFiniteOrderedControlRange(minimum, maximum, "feedbackOutputLimitedTo(...)");
+            feedbackMinimum = minimum;
+            feedbackMaximum = maximum;
+            feedbackLimitAnswered = true;
+            return this;
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kV) {
+            return answerFeedforward(
+                    VelocityFeedforwardKind.MOTION, 0.0, kV, 0.0, 0.0,
+                    "feedforwardFromMotion(kV)", false);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kS, double kV) {
+            return answerFeedforward(
+                    VelocityFeedforwardKind.MOTION, kS, kV, 0.0, 0.0,
+                    "feedforwardFromMotion(kS, kV)", false);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<Plant> feedforwardFromMotion(
+                double kS, double kV, double kA) {
+            return answerFeedforward(
+                    VelocityFeedforwardKind.MOTION, kS, kV, kA, 0.0,
+                    "feedforwardFromMotion(kS, kV, kA)", true);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<Plant> feedforwardFromLift(double kG) {
+            return answerFeedforward(
+                    VelocityFeedforwardKind.LIFT, 0.0, 0.0, 0.0, kG,
+                    "feedforwardFromLift(kG)", false);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<Plant> feedforwardFromLift(
+                double kG, double kS, double kV) {
+            return answerFeedforward(
+                    VelocityFeedforwardKind.LIFT, kS, kV, 0.0, kG,
+                    "feedforwardFromLift(kG, kS, kV)", false);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<Plant> feedforwardFromLift(
+                double kG, double kS, double kV, double kA) {
+            return answerFeedforward(
+                    VelocityFeedforwardKind.LIFT, kS, kV, kA, kG,
+                    "feedforwardFromLift(kG, kS, kV, kA)", true);
+        }
+
+        @Override
+        public Plants.OutputPowerAfterVoltageStep<Plant> voltageCompensationFrom(
+                ScalarSource supplyVoltage,
+                double referenceVoltage,
+                double minimumVoltage,
+                double maximumScale) {
+            requireControlOutputPolicyOpen("voltageCompensationFrom(...)");
+            if (voltageAnswered) {
+                throw new IllegalStateException(
+                        "voltageCompensationFrom(...) has already been answered for this motor velocity Plant");
+            }
+            this.supplyVoltage = Objects.requireNonNull(supplyVoltage, "supplyVoltage");
+            requireVoltagePolicy(referenceVoltage, minimumVoltage, maximumScale);
+            this.referenceVoltage = referenceVoltage;
+            this.minimumVoltage = minimumVoltage;
+            maximumVoltageScale = maximumScale;
+            voltageAnswered = true;
+            return this;
+        }
+
+        @Override
+        public Plants.TargetStep<Plant> outputPowerLimitedTo(double maximumMagnitude) {
+            requireControlOutputPolicyOpen("outputPowerLimitedTo(...)");
+            requireFiniteControlValue(maximumMagnitude, "outputPowerLimitedTo(...) maximumMagnitude");
+            if (maximumMagnitude < 0.0 || maximumMagnitude > 1.0) {
+                throw new IllegalArgumentException(
+                        "outputPowerLimitedTo(...) maximumMagnitude must be within [0.0, 1.0]");
+            }
+            return answerOutputPower(-maximumMagnitude, maximumMagnitude);
+        }
+
+        @Override
+        public Plants.TargetStep<Plant> outputPowerLimitedTo(double minimum, double maximum) {
+            requireControlOutputPolicyOpen("outputPowerLimitedTo(...)");
+            requireFiniteOrderedControlRange(minimum, maximum, "outputPowerLimitedTo(...)");
+            if (minimum < -1.0 || maximum > 1.0 || minimum > 0.0 || maximum < 0.0) {
+                throw new IllegalArgumentException(
+                        "outputPowerLimitedTo(...) requires -1 <= minimum <= 0 <= maximum <= 1");
+            }
+            return answerOutputPower(minimum, maximum);
         }
 
         @Override
@@ -1753,11 +2059,17 @@ public final class FtcActuators {
             if (isDeviceManaged()) {
                 parent.validateDeviceManagedVelocityRecipe(range, nativePerPlantUnit);
             } else {
+                if (setpointKind == VelocitySetpointKind.ACCELERATION_LIMITED
+                        && hasTargetRateConfigured()) {
+                    throw new IllegalStateException("A profiled velocity controller cannot also use "
+                            + "maxTargetRate(...) or maxTargetRates(...); choose one "
+                            + "motion-shaping owner");
+                }
                 validateRegulatedVelocityRecipe(range, nativePerPlantUnit);
-                if (feedback == null || regulator == null) {
+                if (feedback == null || !controlRecipeAnswered()) {
                     throw new IllegalStateException("Regulated motor velocity requires a feedback answer "
                             + "(internalEncoder(), averageInternalEncoders(), externalEncoder(...), or "
-                            + "nativeFeedback(...)) and regulator(...)");
+                            + "nativeFeedback(...)), a setpoint/control answer, and PID feedback");
                 }
             }
         }
@@ -1772,27 +2084,23 @@ public final class FtcActuators {
 
         @Override
         protected Plants.TargetStep<Plant> createSharedTargetStep() {
-            Plants.VelocityBoundsStep bounds;
             if (isDeviceManaged()) {
                 ScalarSource measurement = parent.groupedMotorVelocityMeasurement();
                 VelocityOutput output = parent.groupedMotorVelocity(deviceConfig);
                 if (parent.specs.size() == 1) {
                     singleDeviceManagedMotor = parent.lastSingleDeviceManagedVelocityMotor;
                 }
-                bounds = Plants.fromOutputs().deviceManagedVelocity(output, measurement);
+                Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> deviceBounds =
+                        Plants.fromOutputs().deviceManagedVelocity(output, measurement);
+                return replayVelocityCoordinates(deviceBounds);
             } else {
                 ScalarSource measurement = feedback.get();
                 PowerOutput output = parent.groupedMotorPower();
-                bounds = Plants.fromOutputs().regulatedVelocity(output, measurement, regulator);
+                Plants.VelocityBoundsStep<Plants.VelocityControlStep> regulatedBounds =
+                        Plants.fromOutputs().regulatedVelocity(output, measurement);
+                Plants.VelocityControlStep control = replayVelocityCoordinates(regulatedBounds);
+                return replayControl(control);
             }
-
-            Plants.VelocityMappingStep mapping = range.isUnbounded()
-                    ? bounds.unbounded()
-                    : bounds.bounded(range.minValue, range.maxValue);
-            Plants.VelocityToleranceStep tolerance = nativePerPlantUnit == 1.0
-                    ? mapping.nativeUnits()
-                    : mapping.scaleToNative(nativePerPlantUnit);
-            return tolerance.velocityTolerance(velocityTolerance);
         }
 
         @Override
@@ -1828,7 +2136,7 @@ public final class FtcActuators {
             if (controlKind != required) {
                 throw new IllegalStateException(operation + " requires "
                         + (required == VelocityControlKind.DEVICE_MANAGED_TUNED
-                        ? "deviceManaged()" : "regulated()"));
+                        ? "deviceManagedWithOverrides()" : "regulated()"));
             }
         }
 
@@ -1879,18 +2187,18 @@ public final class FtcActuators {
         private void validateControlConfiguration() {
             if (controlKind == null) {
                 throw new IllegalStateException("Motor velocity builder requires "
-                        + "deviceManagedWithDefaults(), deviceManaged(), or regulated()");
+                        + "deviceManaged(), deviceManagedWithOverrides(), or regulated()");
             }
             if (controlKind == VelocityControlKind.DEVICE_MANAGED_DEFAULTS) {
                 if (deviceConfig.velocityPidf != null) {
-                    throw new IllegalStateException("deviceManagedWithDefaults() cannot retain "
+                    throw new IllegalStateException("deviceManaged() cannot retain "
                             + "device-managed velocity tuning");
                 }
                 return;
             }
             if (controlKind == VelocityControlKind.DEVICE_MANAGED_TUNED) {
                 if (deviceConfig.velocityPidf == null) {
-                    throw new IllegalStateException("deviceManaged() requires velocityPidf(...) "
+                    throw new IllegalStateException("deviceManagedWithOverrides() requires velocityPidf(...) "
                             + "before motor velocity bounds");
                 }
                 double[] c = deviceConfig.velocityPidf;
@@ -1914,11 +2222,263 @@ public final class FtcActuators {
                     targetRange.maxValue,
                     mappingScale);
         }
+
+        private <NEXT> Plants.VelocityBoundsStep<NEXT> coordinateSteps(NEXT next) {
+            return new VelocityCoordinateSteps<>(next);
+        }
+
+        private final class VelocityCoordinateSteps<NEXT>
+                implements Plants.VelocityBoundsStep<NEXT>,
+                Plants.VelocityMappingStep<NEXT>,
+                Plants.VelocityToleranceStep<NEXT> {
+            private final NEXT next;
+
+            private VelocityCoordinateSteps(NEXT next) {
+                this.next = Objects.requireNonNull(next, "next");
+            }
+
+            @Override
+            public Plants.VelocityMappingStep<NEXT> bounded(double min, double max) {
+                answerBounds(ScalarRange.bounded(min, max), "bounded(...)");
+                return this;
+            }
+
+            @Override
+            public Plants.VelocityMappingStep<NEXT> unbounded() {
+                answerBounds(ScalarRange.unbounded(), "unbounded()");
+                return this;
+            }
+
+            @Override
+            public Plants.VelocityToleranceStep<NEXT> nativeUnits() {
+                answerMapping(1.0, "nativeUnits()");
+                return this;
+            }
+
+            @Override
+            public Plants.VelocityToleranceStep<NEXT> scaleToNative(
+                    double nativeUnitsPerPlantVelocityUnit) {
+                answerMapping(nativeUnitsPerPlantVelocityUnit, "scaleToNative(...)");
+                return this;
+            }
+
+            @Override
+            public NEXT velocityTolerance(double tolerance) {
+                answerVelocityTolerance(tolerance);
+                return next;
+            }
+        }
+
+        private void answerBounds(ScalarRange answer, String operation) {
+            requireMutable(operation);
+            requireControlAnswered(operation);
+            requireRangeUnanswered();
+            range = Objects.requireNonNull(answer, "answer");
+            rangeAnswered = true;
+        }
+
+        private void answerVelocityTolerance(double tolerance) {
+            requireMutable("velocityTolerance(...)");
+            if (!mappingAnswered) {
+                throw new IllegalStateException(
+                        "Choose nativeUnits() or scaleToNative(...) before velocityTolerance(...)");
+            }
+            if (velocityToleranceAnswered) {
+                throw new IllegalStateException(
+                        "velocityTolerance(...) has already been answered for this motor velocity Plant");
+            }
+            requireFiniteTolerance(tolerance, "velocityTolerance");
+            velocityTolerance = tolerance;
+            velocityToleranceAnswered = true;
+        }
+
+        private <NEXT> NEXT replayVelocityCoordinates(Plants.VelocityBoundsStep<NEXT> bounds) {
+            Plants.VelocityMappingStep<NEXT> mapping = range.isUnbounded()
+                    ? bounds.unbounded()
+                    : bounds.bounded(range.minValue, range.maxValue);
+            Plants.VelocityToleranceStep<NEXT> tolerance = nativePerPlantUnit == 1.0
+                    ? mapping.nativeUnits()
+                    : mapping.scaleToNative(nativePerPlantUnit);
+            return tolerance.velocityTolerance(velocityTolerance);
+        }
+
+        private Plants.TargetStep<Plant> replayControl(Plants.VelocityControlStep control) {
+            if (setpointKind == VelocitySetpointKind.CUSTOM) {
+                return replayOutputPolicy(control.controlFromCustomRegulator(customRegulator));
+            }
+            if (setpointKind == VelocitySetpointKind.DIRECT) {
+                Plants.VelocityDirectFeedbackStep feedbackStep =
+                        control.setpointFromAppliedTarget();
+                Plants.VelocityDirectPidStep pid = kI == 0.0 && kD == 0.0
+                        ? feedbackStep.feedbackFromPid(kP)
+                        : feedbackStep.feedbackFromPid(kP, kI, kD);
+                if (integralLimitAnswered) {
+                    pid = pid.feedbackIntegralLimitedTo(integralMinimum, integralMaximum);
+                }
+                if (feedbackLimitAnswered) {
+                    pid = pid.feedbackOutputLimitedTo(feedbackMinimum, feedbackMaximum);
+                }
+                Plants.OutputPowerPolicyStep<Plant> output = pid;
+                if (feedforwardAnswered) {
+                    output = feedforwardKind == VelocityFeedforwardKind.MOTION
+                            ? (kS == 0.0
+                            ? pid.feedforwardFromMotion(kV)
+                            : pid.feedforwardFromMotion(kS, kV))
+                            : (kS == 0.0 && kV == 0.0
+                            ? pid.feedforwardFromLift(kG)
+                            : pid.feedforwardFromLift(kG, kS, kV));
+                }
+                return replayOutputPolicy(output);
+            }
+
+            Plants.VelocityProfiledFeedbackStep feedbackStep =
+                    control.setpointFromAccelerationLimitedProfile(maximumAcceleration);
+            Plants.VelocityProfiledPidStep pid = kI == 0.0 && kD == 0.0
+                    ? feedbackStep.feedbackFromPid(kP)
+                    : feedbackStep.feedbackFromPid(kP, kI, kD);
+            if (integralLimitAnswered) {
+                pid = pid.feedbackIntegralLimitedTo(integralMinimum, integralMaximum);
+            }
+            if (feedbackLimitAnswered) {
+                pid = pid.feedbackOutputLimitedTo(feedbackMinimum, feedbackMaximum);
+            }
+            Plants.OutputPowerPolicyStep<Plant> output = pid;
+            if (feedforwardAnswered) {
+                if (feedforwardKind == VelocityFeedforwardKind.MOTION) {
+                    output = kS == 0.0 && kA == 0.0
+                            ? pid.feedforwardFromMotion(kV)
+                            : pid.feedforwardFromMotion(kS, kV, kA);
+                } else {
+                    output = kS == 0.0 && kV == 0.0 && kA == 0.0
+                            ? pid.feedforwardFromLift(kG)
+                            : pid.feedforwardFromLift(kG, kS, kV, kA);
+                }
+            }
+            return replayOutputPolicy(output);
+        }
+
+        private Plants.TargetStep<Plant> replayOutputPolicy(
+                Plants.OutputPowerPolicyStep<Plant> output) {
+            if (voltageAnswered) {
+                Plants.OutputPowerAfterVoltageStep<Plant> afterVoltage =
+                        output.voltageCompensationFrom(
+                                supplyVoltage,
+                                referenceVoltage,
+                                minimumVoltage,
+                                maximumVoltageScale);
+                if (!outputPowerAnswered) {
+                    return afterVoltage;
+                }
+                return isSymmetricOutputPower()
+                        ? afterVoltage.outputPowerLimitedTo(maximumOutputPower)
+                        : afterVoltage.outputPowerLimitedTo(
+                        minimumOutputPower, maximumOutputPower);
+            }
+            if (!outputPowerAnswered) {
+                return output;
+            }
+            return isSymmetricOutputPower()
+                    ? output.outputPowerLimitedTo(maximumOutputPower)
+                    : output.outputPowerLimitedTo(minimumOutputPower, maximumOutputPower);
+        }
+
+        private void answerSetpoint(VelocitySetpointKind answer, String operation) {
+            requireControlReady(operation);
+            if (setpointKind != null) {
+                throw new IllegalStateException(
+                        "Velocity setpoint/control ownership has already been answered");
+            }
+            setpointKind = answer;
+        }
+
+        private MotorVelocityBuilder answerFeedforward(
+                VelocityFeedforwardKind kind,
+                double kS,
+                double kV,
+                double kA,
+                double kG,
+                String operation,
+                boolean accelerationRequired) {
+            requirePidAnswered(operation);
+            if (feedforwardAnswered) {
+                throw new IllegalStateException(
+                        "Feedforward has already been answered for this motor velocity Plant");
+            }
+            if (accelerationRequired
+                    && setpointKind != VelocitySetpointKind.ACCELERATION_LIMITED) {
+                throw new IllegalStateException(operation
+                        + " requires setpointFromAccelerationLimitedProfile(...)");
+            }
+            this.kS = requireFiniteControlValue(kS, operation + " kS");
+            this.kV = requireFiniteControlValue(kV, operation + " kV");
+            this.kA = requireFiniteControlValue(kA, operation + " kA");
+            this.kG = requireFiniteControlValue(kG, operation + " kG");
+            feedforwardKind = kind;
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        private void requireControlReady(String operation) {
+            requireMutable(operation);
+            requireControl(VelocityControlKind.REGULATED, operation);
+            if (feedback == null || !velocityToleranceAnswered) {
+                throw new IllegalStateException(operation
+                        + " requires regulated feedback, bounds, units, and velocityTolerance(...) first");
+            }
+        }
+
+        private void requireStandardSetpoint(String operation) {
+            requireMutable(operation);
+            if (setpointKind != VelocitySetpointKind.DIRECT
+                    && setpointKind != VelocitySetpointKind.ACCELERATION_LIMITED) {
+                throw new IllegalStateException(operation + " requires a standard velocity setpoint");
+            }
+        }
+
+        private void requirePidAnswered(String operation) {
+            requireMutable(operation);
+            if (!feedbackLawAnswered) {
+                throw new IllegalStateException(operation + " requires feedbackFromPid(...) first");
+            }
+            if (feedforwardAnswered || voltageAnswered || outputPowerAnswered) {
+                throw new IllegalStateException(operation + " cannot change PID/feedforward after "
+                        + "the control recipe advanced to feedforward, voltage, or output policy");
+            }
+        }
+
+        private void requireControlOutputPolicyOpen(String operation) {
+            requireMutable(operation);
+            if (!controlRecipeAnswered()) {
+                throw new IllegalStateException(operation
+                        + " requires feedbackFromPid(...) or controlFromCustomRegulator(...) first");
+            }
+            if (outputPowerAnswered) {
+                throw new IllegalStateException(
+                        "outputPowerLimitedTo(...) has already closed the output policy");
+            }
+        }
+
+        private Plants.TargetStep<Plant> answerOutputPower(double minimum, double maximum) {
+            minimumOutputPower = minimum;
+            maximumOutputPower = maximum;
+            outputPowerAnswered = true;
+            return this;
+        }
+
+        private boolean controlRecipeAnswered() {
+            return setpointKind == VelocitySetpointKind.CUSTOM
+                    ? customRegulator != null
+                    : (setpointKind == VelocitySetpointKind.DIRECT
+                    || setpointKind == VelocitySetpointKind.ACCELERATION_LIMITED)
+                    && feedbackLawAnswered;
+        }
+
+        private boolean isSymmetricOutputPower() {
+            return minimumOutputPower == -maximumOutputPower;
+        }
     }
 
     private static final class DeviceManagedPositionConfig {
-        private double maxPower = 1.0;
-        private boolean maxPowerAnswered;
         private Double outerPositionP;
         private boolean outerPositionPAnswered;
         private double[] innerVelocityPidf;
@@ -1928,8 +2488,7 @@ public final class FtcActuators {
         private boolean tuningClosed;
 
         private boolean hasAnyOverride() {
-            return maxPowerAnswered
-                    || outerPositionPAnswered
+            return outerPositionPAnswered
                     || innerVelocityPidfAnswered
                     || devicePositionToleranceTicksAnswered;
         }
@@ -1941,17 +2500,31 @@ public final class FtcActuators {
         REGULATED
     }
 
+    private enum PositionSetpointKind {
+        DIRECT,
+        TRAPEZOIDAL,
+        CUSTOM
+    }
+
+    private enum PositionFeedforwardKind {
+        NONE,
+        MOTION,
+        LIFT,
+        ARM
+    }
+
     private enum PositionMappingKind {NATIVE, SCALE, ENDPOINTS}
 
     private enum PositionReferenceKind {STATIC, ASSUME_CURRENT, NEEDS_REFERENCE}
 
     private abstract static class BasePositionBuilder extends FtcTargetBuilder<PositionPlant>
-            implements Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>,
-            Plants.FeedbackPositionBoundsStep,
-            Plants.FeedbackBoundedPositionMappingStep,
-            Plants.FeedbackUnboundedPositionMappingStep,
-            Plants.PositionReferenceStep,
-            Plants.PositionToleranceStep {
+            implements Plants.PositionControlStep,
+            Plants.PositionDirectFeedbackStep,
+            Plants.PositionProfiledFeedbackStep,
+            Plants.PositionDirectPidStep,
+            Plants.PositionProfiledPidStep,
+            Plants.OutputPowerPolicyStep<PositionPlant>,
+            Plants.OutputPowerAfterVoltageStep<PositionPlant> {
         private boolean periodicityAnswered;
         private boolean periodic;
         private double period = Double.NaN;
@@ -1971,63 +2544,168 @@ public final class FtcActuators {
         private String referenceReason;
         private double positionTolerance;
         private boolean positionToleranceAnswered;
+        private PositionSetpointKind setpointKind;
+        private double maximumVelocity;
+        private double maximumAcceleration;
+        private ScalarRegulator customRegulator;
+        private double kP;
+        private double kI;
+        private double kD;
+        private boolean feedbackLawAnswered;
+        private double integralMinimum;
+        private double integralMaximum;
+        private boolean integralLimitAnswered;
+        private double feedbackMinimum;
+        private double feedbackMaximum;
+        private boolean feedbackLimitAnswered;
+        private PositionFeedforwardKind feedforwardKind = PositionFeedforwardKind.NONE;
+        private double kS;
+        private double kV;
+        private double kA;
+        private double kG;
+        private double plantPositionAtMaximumGravity;
+        private double radiansPerPlantUnit;
+        private boolean feedforwardAnswered;
+        private ScalarSource supplyVoltage;
+        private double referenceVoltage;
+        private double minimumVoltage;
+        private double maximumVoltageScale;
+        private boolean voltageAnswered;
+        private double minimumOutputPower;
+        private double maximumOutputPower;
+        private boolean outputPowerAnswered;
 
         BasePositionBuilder(RecipeLifecycle lifecycle, String plantName) {
             super(lifecycle, plantName);
         }
 
-        @Override
-        public Plants.FeedbackPositionBoundsStep nonPeriodic() {
-            answerPeriodicity(false, Double.NaN, "nonPeriodic()");
-            return this;
+        protected final <NEXT> Plants.PositionPeriodicityStep<
+                Plants.FeedbackPositionBoundsStep<NEXT>> coordinateSteps(NEXT next) {
+            return new PositionCoordinateSteps<>(next);
         }
 
         @Override
-        public Plants.FeedbackPositionBoundsStep periodic(double period) {
-            requireFinitePositive(period, "period");
-            answerPeriodicity(true, period, "periodic(...)");
-            return this;
+        protected final void requireTargetRateCompatible(String answer) {
+            if (setpointKind == PositionSetpointKind.TRAPEZOIDAL) {
+                throw new IllegalStateException(answer + " cannot be combined with "
+                        + "setpointFromTrapezoidalProfile(...); choose one "
+                        + "motion-shaping owner");
+            }
         }
 
-        @Override
-        public Plants.FeedbackBoundedPositionMappingStep bounded(double min, double max) {
-            requireMutable("bounded(...)");
-            requirePeriodicityAnswered("bounded(...)");
+        private final class PositionCoordinateSteps<NEXT>
+                implements Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<NEXT>>,
+                Plants.FeedbackPositionBoundsStep<NEXT>,
+                Plants.FeedbackBoundedPositionMappingStep<NEXT>,
+                Plants.FeedbackUnboundedPositionMappingStep<NEXT>,
+                Plants.PositionCoordinateReferenceStep<NEXT>,
+                Plants.PositionToleranceStep<NEXT> {
+            private final NEXT next;
+
+            private PositionCoordinateSteps(NEXT next) {
+                this.next = Objects.requireNonNull(next, "next");
+            }
+
+            @Override
+            public Plants.FeedbackPositionBoundsStep<NEXT> nonPeriodic() {
+                answerPeriodicity(false, Double.NaN, "nonPeriodic()");
+                return this;
+            }
+
+            @Override
+            public Plants.FeedbackPositionBoundsStep<NEXT> periodic(double period) {
+                requireFinitePositive(period, "period");
+                answerPeriodicity(true, period, "periodic(...)");
+                return this;
+            }
+
+            @Override
+            public Plants.FeedbackBoundedPositionMappingStep<NEXT> bounded(
+                    double min, double max) {
+                answerPositionBounds(ScalarRange.bounded(min, max), true, min, max,
+                        "bounded(...)");
+                return this;
+            }
+
+            @Override
+            public Plants.FeedbackUnboundedPositionMappingStep<NEXT> unbounded() {
+                answerPositionBounds(ScalarRange.unbounded(), false, Double.NaN, Double.NaN,
+                        "unbounded()");
+                return this;
+            }
+
+            @Override
+            public Plants.PositionCoordinateReferenceStep<NEXT> nativeUnits() {
+                answerScale(PositionMappingKind.NATIVE, 1.0, "nativeUnits()");
+                return this;
+            }
+
+            @Override
+            public Plants.PositionCoordinateReferenceStep<NEXT> scaleToNative(
+                    double nativeUnitsPerPlantUnit) {
+                answerScale(PositionMappingKind.SCALE, nativeUnitsPerPlantUnit,
+                        "scaleToNative(...)");
+                return this;
+            }
+
+            @Override
+            public Plants.PositionToleranceStep<NEXT> rangeMapsToNative(
+                    double nativeAtPlantMin, double nativeAtPlantMax) {
+                answerEndpointMapping(nativeAtPlantMin, nativeAtPlantMax);
+                return this;
+            }
+
+            @Override
+            public Plants.PositionToleranceStep<NEXT> alreadyReferenced() {
+                answerStaticReference(0.0, 0.0, "alreadyReferenced()");
+                return this;
+            }
+
+            @Override
+            public Plants.PositionToleranceStep<NEXT> plantPositionMapsToNative(
+                    double plantPosition, double nativePosition) {
+                answerStaticReference(
+                        plantPosition, nativePosition, "plantPositionMapsToNative(...)");
+                return this;
+            }
+
+            @Override
+            public Plants.PositionToleranceStep<NEXT> assumeCurrentPositionIs(
+                    double plantPosition) {
+                answerAssumeCurrentPosition(plantPosition);
+                return this;
+            }
+
+            @Override
+            public Plants.PositionToleranceStep<NEXT> needsReference(String reason) {
+                answerNeedsReference(reason);
+                return this;
+            }
+
+            @Override
+            public NEXT positionTolerance(double tolerance) {
+                answerPositionTolerance(tolerance);
+                return next;
+            }
+        }
+
+        private void answerPositionBounds(ScalarRange answer,
+                                          boolean bounded,
+                                          double min,
+                                          double max,
+                                          String operation) {
+            requireMutable(operation);
+            requirePeriodicityAnswered(operation);
             requireRangeUnanswered();
-            range = ScalarRange.bounded(min, max);
+            range = Objects.requireNonNull(answer, "answer");
             plantMin = min;
             plantMax = max;
-            bounded = true;
+            this.bounded = bounded;
             rangeAnswered = true;
-            return this;
         }
 
-        @Override
-        public Plants.FeedbackUnboundedPositionMappingStep unbounded() {
-            requireMutable("unbounded()");
-            requirePeriodicityAnswered("unbounded()");
-            requireRangeUnanswered();
-            range = ScalarRange.unbounded();
-            bounded = false;
-            rangeAnswered = true;
-            return this;
-        }
-
-        @Override
-        public Plants.PositionReferenceStep nativeUnits() {
-            answerScale(PositionMappingKind.NATIVE, 1.0, "nativeUnits()");
-            return this;
-        }
-
-        @Override
-        public Plants.PositionReferenceStep scaleToNative(double nativeUnitsPerPlantUnit) {
-            answerScale(PositionMappingKind.SCALE, nativeUnitsPerPlantUnit, "scaleToNative(...)");
-            return this;
-        }
-
-        @Override
-        public Plants.PositionToleranceStep rangeMapsToNative(double nativeAtPlantMin,
-                                                               double nativeAtPlantMax) {
+        private void answerEndpointMapping(double nativeAtPlantMin,
+                                           double nativeAtPlantMax) {
             requireMutable("rangeMapsToNative(...)");
             requireRangeAnswered("rangeMapsToNative(...)");
             if (!bounded) {
@@ -2053,23 +2731,9 @@ public final class FtcActuators {
             referenceKind = PositionReferenceKind.STATIC;
             plantReference = plantMin;
             nativeReference = nativeAtPlantMin;
-            return this;
         }
 
-        @Override
-        public Plants.PositionToleranceStep alreadyReferenced() {
-            return answerStaticReference(0.0, 0.0, "alreadyReferenced()");
-        }
-
-        @Override
-        public Plants.PositionToleranceStep plantPositionMapsToNative(double plantPosition,
-                                                                       double nativePosition) {
-            return answerStaticReference(plantPosition, nativePosition,
-                    "plantPositionMapsToNative(...)");
-        }
-
-        @Override
-        public Plants.PositionToleranceStep assumeCurrentPositionIs(double plantPosition) {
+        private void answerAssumeCurrentPosition(double plantPosition) {
             requireMutable("assumeCurrentPositionIs(...)");
             double checkedPlantPosition = requireFinitePosition(
                     plantPosition,
@@ -2079,11 +2743,9 @@ public final class FtcActuators {
             requireReferencePending("assumeCurrentPositionIs(...)");
             assumePlantPosition = checkedPlantPosition;
             referenceKind = PositionReferenceKind.ASSUME_CURRENT;
-            return this;
         }
 
-        @Override
-        public Plants.PositionToleranceStep needsReference(String reason) {
+        private void answerNeedsReference(String reason) {
             requireMutable("needsReference(...)");
             requireReferencePending("needsReference(...)");
             if (reason == null || reason.trim().isEmpty()) {
@@ -2091,11 +2753,9 @@ public final class FtcActuators {
             }
             referenceReason = reason.trim();
             referenceKind = PositionReferenceKind.NEEDS_REFERENCE;
-            return this;
         }
 
-        @Override
-        public Plants.TargetStep<PositionPlant> positionTolerance(double tolerance) {
+        private void answerPositionTolerance(double tolerance) {
             requireMutable("positionTolerance(...)");
             if (referenceKind == null) {
                 throw new IllegalStateException("Answer position reference before positionTolerance(...)");
@@ -2106,7 +2766,190 @@ public final class FtcActuators {
             requireFiniteTolerance(tolerance, "positionTolerance");
             positionTolerance = tolerance;
             positionToleranceAnswered = true;
+        }
+
+        @Override
+        public Plants.PositionDirectFeedbackStep setpointFromAppliedTarget() {
+            answerSetpoint(PositionSetpointKind.DIRECT, "setpointFromAppliedTarget()");
             return this;
+        }
+
+        @Override
+        public Plants.PositionProfiledFeedbackStep setpointFromTrapezoidalProfile(
+                double maximumVelocity, double maximumAcceleration) {
+            requireFinitePositive(maximumVelocity, "maximumVelocity");
+            requireFinitePositive(maximumAcceleration, "maximumAcceleration");
+            answerSetpoint(
+                    PositionSetpointKind.TRAPEZOIDAL,
+                    "setpointFromTrapezoidalProfile(...)");
+            this.maximumVelocity = maximumVelocity;
+            this.maximumAcceleration = maximumAcceleration;
+            return this;
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<PositionPlant> controlFromCustomRegulator(
+                ScalarRegulator regulator) {
+            ScalarRegulator checked = Objects.requireNonNull(regulator, "regulator");
+            answerSetpoint(PositionSetpointKind.CUSTOM, "controlFromCustomRegulator(...)");
+            customRegulator = checked;
+            return this;
+        }
+
+        @Override
+        public BasePositionBuilder feedbackFromPid(double kP) {
+            return feedbackFromPid(kP, 0.0, 0.0);
+        }
+
+        @Override
+        public BasePositionBuilder feedbackFromPid(double kP, double kI, double kD) {
+            requireStandardSetpoint("feedbackFromPid(...)");
+            if (feedbackLawAnswered) {
+                throw new IllegalStateException(
+                        "feedbackFromPid(...) has already been answered for this position Plant");
+            }
+            this.kP = requireFiniteControlValue(kP, "feedbackFromPid(...) kP");
+            this.kI = requireFiniteControlValue(kI, "feedbackFromPid(...) kI");
+            this.kD = requireFiniteControlValue(kD, "feedbackFromPid(...) kD");
+            feedbackLawAnswered = true;
+            return this;
+        }
+
+        @Override
+        public BasePositionBuilder feedbackIntegralLimitedTo(double minimum, double maximum) {
+            requirePidAnswered("feedbackIntegralLimitedTo(...)");
+            if (integralLimitAnswered) {
+                throw new IllegalStateException(
+                        "feedbackIntegralLimitedTo(...) has already been answered for this position Plant");
+            }
+            requireFiniteOrderedControlRange(
+                    minimum, maximum, "feedbackIntegralLimitedTo(...)");
+            if (minimum > 0.0 || maximum < 0.0) {
+                throw new IllegalArgumentException(
+                        "feedbackIntegralLimitedTo(...) requires minimum <= 0 <= maximum");
+            }
+            integralMinimum = minimum;
+            integralMaximum = maximum;
+            integralLimitAnswered = true;
+            return this;
+        }
+
+        @Override
+        public BasePositionBuilder feedbackOutputLimitedTo(double minimum, double maximum) {
+            requirePidAnswered("feedbackOutputLimitedTo(...)");
+            if (feedbackLimitAnswered) {
+                throw new IllegalStateException(
+                        "feedbackOutputLimitedTo(...) has already been answered for this position Plant");
+            }
+            requireFiniteOrderedControlRange(minimum, maximum, "feedbackOutputLimitedTo(...)");
+            feedbackMinimum = minimum;
+            feedbackMaximum = maximum;
+            feedbackLimitAnswered = true;
+            return this;
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<PositionPlant> feedforwardFromMotion(double kV) {
+            return answerPositionFeedforward(
+                    PositionFeedforwardKind.MOTION,
+                    0.0, kV, 0.0, 0.0, 0.0, 0.0,
+                    "feedforwardFromMotion(kV)", true);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<PositionPlant> feedforwardFromMotion(
+                double kS, double kV, double kA) {
+            return answerPositionFeedforward(
+                    PositionFeedforwardKind.MOTION,
+                    kS, kV, kA, 0.0, 0.0, 0.0,
+                    "feedforwardFromMotion(kS, kV, kA)", true);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<PositionPlant> feedforwardFromLift(double kG) {
+            return answerPositionFeedforward(
+                    PositionFeedforwardKind.LIFT,
+                    0.0, 0.0, 0.0, kG, 0.0, 0.0,
+                    "feedforwardFromLift(kG)", false);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<PositionPlant> feedforwardFromLift(
+                double kG, double kS, double kV, double kA) {
+            return answerPositionFeedforward(
+                    PositionFeedforwardKind.LIFT,
+                    kS, kV, kA, kG, 0.0, 0.0,
+                    "feedforwardFromLift(kG, kS, kV, kA)", true);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<PositionPlant> feedforwardFromArm(
+                double kG,
+                double plantPositionAtMaximumGravity,
+                double radiansPerPlantUnit) {
+            return answerPositionFeedforward(
+                    PositionFeedforwardKind.ARM,
+                    0.0, 0.0, 0.0, kG,
+                    plantPositionAtMaximumGravity, radiansPerPlantUnit,
+                    "feedforwardFromArm(kG, position, radiansPerPlantUnit)", false);
+        }
+
+        @Override
+        public Plants.OutputPowerPolicyStep<PositionPlant> feedforwardFromArm(
+                double kG,
+                double plantPositionAtMaximumGravity,
+                double radiansPerPlantUnit,
+                double kS,
+                double kV,
+                double kA) {
+            return answerPositionFeedforward(
+                    PositionFeedforwardKind.ARM,
+                    kS, kV, kA, kG,
+                    plantPositionAtMaximumGravity, radiansPerPlantUnit,
+                    "feedforwardFromArm(kG, position, radiansPerPlantUnit, kS, kV, kA)", true);
+        }
+
+        @Override
+        public Plants.OutputPowerAfterVoltageStep<PositionPlant> voltageCompensationFrom(
+                ScalarSource supplyVoltage,
+                double referenceVoltage,
+                double minimumVoltage,
+                double maximumScale) {
+            requireControlOutputPolicyOpen("voltageCompensationFrom(...)");
+            if (voltageAnswered) {
+                throw new IllegalStateException(
+                        "voltageCompensationFrom(...) has already been answered for this position Plant");
+            }
+            this.supplyVoltage = Objects.requireNonNull(supplyVoltage, "supplyVoltage");
+            requireVoltagePolicy(referenceVoltage, minimumVoltage, maximumScale);
+            this.referenceVoltage = referenceVoltage;
+            this.minimumVoltage = minimumVoltage;
+            maximumVoltageScale = maximumScale;
+            voltageAnswered = true;
+            return this;
+        }
+
+        @Override
+        public Plants.TargetStep<PositionPlant> outputPowerLimitedTo(double maximumMagnitude) {
+            requireControlOutputPolicyOpen("outputPowerLimitedTo(...)");
+            requireFiniteControlValue(maximumMagnitude, "outputPowerLimitedTo(...) maximumMagnitude");
+            if (maximumMagnitude < 0.0 || maximumMagnitude > 1.0) {
+                throw new IllegalArgumentException(
+                        "outputPowerLimitedTo(...) maximumMagnitude must be within [0.0, 1.0]");
+            }
+            return answerOutputPower(-maximumMagnitude, maximumMagnitude);
+        }
+
+        @Override
+        public Plants.TargetStep<PositionPlant> outputPowerLimitedTo(
+                double minimum, double maximum) {
+            requireControlOutputPolicyOpen("outputPowerLimitedTo(...)");
+            requireFiniteOrderedControlRange(minimum, maximum, "outputPowerLimitedTo(...)");
+            if (minimum < -1.0 || maximum > 1.0 || minimum > 0.0 || maximum < 0.0) {
+                throw new IllegalArgumentException(
+                        "outputPowerLimitedTo(...) requires -1 <= minimum <= 0 <= maximum <= 1");
+            }
+            return answerOutputPower(minimum, maximum);
         }
 
         @Override
@@ -2124,6 +2967,12 @@ public final class FtcActuators {
             if (referenceKind == null) {
                 throw new IllegalStateException("Position builder requires a reference answer");
             }
+            if (setpointKind == PositionSetpointKind.TRAPEZOIDAL
+                    && hasTargetRateConfigured()) {
+                throw new IllegalStateException("A profiled position controller cannot also use "
+                        + "maxTargetRate(...) or maxTargetRates(...); choose one "
+                        + "motion-shaping owner");
+            }
             if (!positionToleranceAnswered) {
                 throw new IllegalStateException("Feedback position builder requires positionTolerance(...) in plant position units");
             }
@@ -2139,29 +2988,32 @@ public final class FtcActuators {
 
         @Override
         protected final Plants.TargetStep<PositionPlant> createSharedTargetStep() {
-            Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> periodicity =
-                    createSharedPositionStart();
-            Plants.FeedbackPositionBoundsStep bounds = periodic
+            return createSharedPositionTargetStep();
+        }
+
+        protected final <NEXT> NEXT replayPositionCoordinates(
+                Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<NEXT>> periodicity) {
+            Plants.FeedbackPositionBoundsStep<NEXT> bounds = periodic
                     ? periodicity.periodic(period)
                     : periodicity.nonPeriodic();
 
-            Plants.PositionToleranceStep tolerance;
+            Plants.PositionToleranceStep<NEXT> tolerance;
             if (bounded) {
-                Plants.FeedbackBoundedPositionMappingStep mapping =
+                Plants.FeedbackBoundedPositionMappingStep<NEXT> mapping =
                         bounds.bounded(plantMin, plantMax);
                 if (mappingKind == PositionMappingKind.ENDPOINTS) {
                     tolerance = mapping.rangeMapsToNative(
                             nativeAtPlantMin, nativeAtPlantMax);
                 } else {
-                    Plants.PositionReferenceStep reference =
+                    Plants.PositionCoordinateReferenceStep<NEXT> reference =
                             mappingKind == PositionMappingKind.NATIVE
                                     ? mapping.nativeUnits()
                                     : mapping.scaleToNative(nativePerPlantUnit);
                     tolerance = applyReference(reference);
                 }
             } else {
-                Plants.FeedbackUnboundedPositionMappingStep mapping = bounds.unbounded();
-                Plants.PositionReferenceStep reference =
+                Plants.FeedbackUnboundedPositionMappingStep<NEXT> mapping = bounds.unbounded();
+                Plants.PositionCoordinateReferenceStep<NEXT> reference =
                         mappingKind == PositionMappingKind.NATIVE
                                 ? mapping.nativeUnits()
                                 : mapping.scaleToNative(nativePerPlantUnit);
@@ -2172,8 +3024,9 @@ public final class FtcActuators {
 
         protected abstract void validatePositionSourceRecipe();
 
-        protected abstract Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
-        createSharedPositionStart();
+        protected abstract Plants.TargetStep<PositionPlant> createSharedPositionTargetStep();
+
+        protected abstract boolean isRegulatedControlPath();
 
         /** Validate a complete candidate child mapping before a one-shot mapping/reference answer. */
         protected abstract void preflightPositionChildMapping(double[] boundedStaticNativeEndpoints);
@@ -2216,7 +3069,8 @@ public final class FtcActuators {
                     scale, validationPlantReference, validationNativeReference);
         }
 
-        private Plants.PositionToleranceStep applyReference(Plants.PositionReferenceStep reference) {
+        private <NEXT> Plants.PositionToleranceStep<NEXT> applyReference(
+                Plants.PositionCoordinateReferenceStep<NEXT> reference) {
             switch (referenceKind) {
                 case STATIC:
                     return reference.plantPositionMapsToNative(plantReference, nativeReference);
@@ -2250,7 +3104,7 @@ public final class FtcActuators {
             mappingKind = kind;
         }
 
-        private Plants.PositionToleranceStep answerStaticReference(
+        private void answerStaticReference(
                 double plantPosition,
                 double nativePosition,
                 String operation) {
@@ -2267,7 +3121,6 @@ public final class FtcActuators {
             plantReference = checkedPlantPosition;
             nativeReference = checkedNativePosition;
             referenceKind = PositionReferenceKind.STATIC;
-            return this;
         }
 
         private double[] checkedBoundedNativeEndpoints(double nativePerPlantUnit,
@@ -2327,11 +3180,214 @@ public final class FtcActuators {
                 throw new IllegalStateException("Position reference has already been answered");
             }
         }
+
+        protected final boolean positionControlRecipeAnswered() {
+            return setpointKind == PositionSetpointKind.CUSTOM
+                    ? customRegulator != null
+                    : (setpointKind == PositionSetpointKind.DIRECT
+                    || setpointKind == PositionSetpointKind.TRAPEZOIDAL)
+                    && feedbackLawAnswered;
+        }
+
+        protected final boolean positionToleranceWasAnswered() {
+            return positionToleranceAnswered;
+        }
+
+        protected final Plants.TargetStep<PositionPlant> replayPositionControl(
+                Plants.PositionControlStep control) {
+            if (setpointKind == PositionSetpointKind.CUSTOM) {
+                return replayOutputPolicy(control.controlFromCustomRegulator(customRegulator));
+            }
+            if (setpointKind == PositionSetpointKind.DIRECT) {
+                Plants.PositionDirectFeedbackStep feedbackStep =
+                        control.setpointFromAppliedTarget();
+                Plants.PositionDirectPidStep pid = kI == 0.0 && kD == 0.0
+                        ? feedbackStep.feedbackFromPid(kP)
+                        : feedbackStep.feedbackFromPid(kP, kI, kD);
+                if (integralLimitAnswered) {
+                    pid = pid.feedbackIntegralLimitedTo(integralMinimum, integralMaximum);
+                }
+                if (feedbackLimitAnswered) {
+                    pid = pid.feedbackOutputLimitedTo(feedbackMinimum, feedbackMaximum);
+                }
+                Plants.OutputPowerPolicyStep<PositionPlant> output = pid;
+                if (feedforwardAnswered) {
+                    output = feedforwardKind == PositionFeedforwardKind.LIFT
+                            ? pid.feedforwardFromLift(kG)
+                            : pid.feedforwardFromArm(
+                            kG, plantPositionAtMaximumGravity, radiansPerPlantUnit);
+                }
+                return replayOutputPolicy(output);
+            }
+
+            Plants.PositionProfiledFeedbackStep feedbackStep =
+                    control.setpointFromTrapezoidalProfile(
+                            maximumVelocity, maximumAcceleration);
+            Plants.PositionProfiledPidStep pid = kI == 0.0 && kD == 0.0
+                    ? feedbackStep.feedbackFromPid(kP)
+                    : feedbackStep.feedbackFromPid(kP, kI, kD);
+            if (integralLimitAnswered) {
+                pid = pid.feedbackIntegralLimitedTo(integralMinimum, integralMaximum);
+            }
+            if (feedbackLimitAnswered) {
+                pid = pid.feedbackOutputLimitedTo(feedbackMinimum, feedbackMaximum);
+            }
+            Plants.OutputPowerPolicyStep<PositionPlant> output = pid;
+            if (feedforwardAnswered) {
+                switch (feedforwardKind) {
+                    case MOTION:
+                        output = kS == 0.0 && kA == 0.0
+                                ? pid.feedforwardFromMotion(kV)
+                                : pid.feedforwardFromMotion(kS, kV, kA);
+                        break;
+                    case LIFT:
+                        output = kS == 0.0 && kV == 0.0 && kA == 0.0
+                                ? pid.feedforwardFromLift(kG)
+                                : pid.feedforwardFromLift(kG, kS, kV, kA);
+                        break;
+                    case ARM:
+                        output = kS == 0.0 && kV == 0.0 && kA == 0.0
+                                ? pid.feedforwardFromArm(
+                                kG, plantPositionAtMaximumGravity, radiansPerPlantUnit)
+                                : pid.feedforwardFromArm(
+                                kG,
+                                plantPositionAtMaximumGravity,
+                                radiansPerPlantUnit,
+                                kS,
+                                kV,
+                                kA);
+                        break;
+                    default:
+                        throw new IllegalStateException(
+                                "Unsupported position feedforward: " + feedforwardKind);
+                }
+            }
+            return replayOutputPolicy(output);
+        }
+
+        private Plants.TargetStep<PositionPlant> replayOutputPolicy(
+                Plants.OutputPowerPolicyStep<PositionPlant> output) {
+            if (voltageAnswered) {
+                Plants.OutputPowerAfterVoltageStep<PositionPlant> afterVoltage =
+                        output.voltageCompensationFrom(
+                                supplyVoltage,
+                                referenceVoltage,
+                                minimumVoltage,
+                                maximumVoltageScale);
+                if (!outputPowerAnswered) {
+                    return afterVoltage;
+                }
+                return isSymmetricOutputPower()
+                        ? afterVoltage.outputPowerLimitedTo(maximumOutputPower)
+                        : afterVoltage.outputPowerLimitedTo(
+                        minimumOutputPower, maximumOutputPower);
+            }
+            if (!outputPowerAnswered) {
+                return output;
+            }
+            return isSymmetricOutputPower()
+                    ? output.outputPowerLimitedTo(maximumOutputPower)
+                    : output.outputPowerLimitedTo(minimumOutputPower, maximumOutputPower);
+        }
+
+        private void answerSetpoint(PositionSetpointKind answer, String operation) {
+            requireMutable(operation);
+            if (!isRegulatedControlPath() || !positionToleranceAnswered) {
+                throw new IllegalStateException(operation
+                        + " requires regulated feedback, position coordinates, and positionTolerance(...) first");
+            }
+            if (setpointKind != null) {
+                throw new IllegalStateException(
+                        "Position setpoint/control ownership has already been answered");
+            }
+            setpointKind = answer;
+        }
+
+        private BasePositionBuilder answerPositionFeedforward(
+                PositionFeedforwardKind kind,
+                double kS,
+                double kV,
+                double kA,
+                double kG,
+                double positionAtMaximumGravity,
+                double radiansPerPlantUnit,
+                String operation,
+                boolean profileRequired) {
+            requirePidAnswered(operation);
+            if (feedforwardAnswered) {
+                throw new IllegalStateException(
+                        "Feedforward has already been answered for this position Plant");
+            }
+            if (profileRequired && setpointKind != PositionSetpointKind.TRAPEZOIDAL) {
+                throw new IllegalStateException(operation
+                        + " requires setpointFromTrapezoidalProfile(...)");
+            }
+            this.kS = requireFiniteControlValue(kS, operation + " kS");
+            this.kV = requireFiniteControlValue(kV, operation + " kV");
+            this.kA = requireFiniteControlValue(kA, operation + " kA");
+            this.kG = requireFiniteControlValue(kG, operation + " kG");
+            if (kind == PositionFeedforwardKind.ARM) {
+                plantPositionAtMaximumGravity = requireFiniteControlValue(
+                        positionAtMaximumGravity,
+                        operation + " plantPositionAtMaximumGravity");
+                this.radiansPerPlantUnit = requireFiniteNonZero(
+                        radiansPerPlantUnit, "radiansPerPlantUnit");
+            }
+            feedforwardKind = kind;
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        private void requireStandardSetpoint(String operation) {
+            requireMutable(operation);
+            if (setpointKind != PositionSetpointKind.DIRECT
+                    && setpointKind != PositionSetpointKind.TRAPEZOIDAL) {
+                throw new IllegalStateException(operation + " requires a standard position setpoint");
+            }
+        }
+
+        private void requirePidAnswered(String operation) {
+            requireMutable(operation);
+            if (!feedbackLawAnswered) {
+                throw new IllegalStateException(operation + " requires feedbackFromPid(...) first");
+            }
+            if (feedforwardAnswered || voltageAnswered || outputPowerAnswered) {
+                throw new IllegalStateException(operation + " cannot change PID/feedforward after "
+                        + "the control recipe advanced to feedforward, voltage, or output policy");
+            }
+        }
+
+        private void requireControlOutputPolicyOpen(String operation) {
+            requireMutable(operation);
+            if (!positionControlRecipeAnswered()) {
+                throw new IllegalStateException(operation
+                        + " requires feedbackFromPid(...) or controlFromCustomRegulator(...) first");
+            }
+            if (outputPowerAnswered) {
+                throw new IllegalStateException(
+                        "outputPowerLimitedTo(...) has already closed the output policy");
+            }
+        }
+
+        private Plants.TargetStep<PositionPlant> answerOutputPower(
+                double minimum, double maximum) {
+            minimumOutputPower = minimum;
+            maximumOutputPower = maximum;
+            outputPowerAnswered = true;
+            return this;
+        }
+
+        private boolean isSymmetricOutputPower() {
+            return minimumOutputPower == -maximumOutputPower;
+        }
     }
 
-    private static final class MotorPositionBuilder extends BasePositionBuilder implements MotorPositionControlStep,
-            MotorDeviceManagedPositionStep, MotorRegulatedPositionFeedbackStep, MotorRegulatedPositionRegulatorStep {
-        private static final String MAX_POWER_OPERATION = "FtcActuators.maxPower(...)";
+    private static final class MotorPositionBuilder extends BasePositionBuilder
+            implements MotorPositionControlStep,
+            MotorDeviceManagedPositionStep,
+            MotorRegulatedPositionFeedbackStep {
+        private static final String OUTPUT_POWER_OPERATION =
+                "FtcActuators.outputPowerLimitedTo(...)";
         private static final String OUTER_POSITION_P_OPERATION =
                 "FtcActuators.outerPositionP(...)";
         private static final String INNER_VELOCITY_PIDF_OPERATION =
@@ -2343,7 +3399,8 @@ public final class FtcActuators {
         private final DeviceManagedPositionConfig deviceConfig = new DeviceManagedPositionConfig();
         private PositionControlKind controlKind;
         private Supplier<ScalarSource> feedback;
-        private ScalarRegulator regulator;
+        private double deviceMaximumOutputPower = 1.0;
+        private boolean deviceMaximumOutputPowerAnswered;
 
         private MotorPositionBuilder(MotorBuilder parent) {
             super(parent.lifecycle, "motor position Plant");
@@ -2351,37 +3408,50 @@ public final class FtcActuators {
         }
 
         @Override
-        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
-        deviceManagedWithDefaults() {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>> deviceManaged() {
+            answerControl(PositionControlKind.DEVICE_MANAGED_DEFAULTS, "deviceManaged()");
+            return coordinateSteps(symmetricOutputPowerPolicyView(
+                    this::answerDeviceManagedOutputPower));
+        }
+
+        @Override
+        public MotorDeviceManagedPositionStep deviceManagedWithOverrides() {
             answerControl(
-                    PositionControlKind.DEVICE_MANAGED_DEFAULTS,
-                    "deviceManagedWithDefaults()");
+                    PositionControlKind.DEVICE_MANAGED_TUNED,
+                    "deviceManagedWithOverrides()");
             return this;
         }
 
         @Override
-        public MotorDeviceManagedPositionStep deviceManaged() {
-            answerControl(PositionControlKind.DEVICE_MANAGED_TUNED, "deviceManaged()");
-            return this;
-        }
-
-        @Override
-        public MotorDeviceManagedPositionStep maxPower(double maxPower) {
-            requireOpenDeviceManagedTuning("maxPower(...)");
-            if (deviceConfig.maxPowerAnswered) {
-                throw new IllegalStateException(
-                        "maxPower(...) has already been answered for this motor position Plant");
+        public Plants.TargetStep<PositionPlant> outputPowerLimitedTo(double maximumMagnitude) {
+            if (!isDeviceManaged()) {
+                return super.outputPowerLimitedTo(maximumMagnitude);
             }
-            double checked = FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
-                    maxPower, MAX_POWER_OPERATION);
-            deviceConfig.maxPower = checked;
-            deviceConfig.maxPowerAnswered = true;
-            return this;
+            answerDeviceManagedOutputPower(maximumMagnitude);
+            return targetStepView();
+        }
+
+        private void answerDeviceManagedOutputPower(double maximumMagnitude) {
+            requireMutable("outputPowerLimitedTo(...)");
+            if (deviceMaximumOutputPowerAnswered) {
+                throw new IllegalStateException("outputPowerLimitedTo(...) has already been "
+                        + "answered for this device-managed motor position Plant");
+            }
+            if (!positionCoordinatesComplete()) {
+                throw new IllegalStateException("outputPowerLimitedTo(...) requires "
+                        + "positionTolerance(...) first");
+            }
+            deviceMaximumOutputPower =
+                    FtcControllerConfigurationValidation
+                            .requireRunToPositionMaximumOutputPowerMagnitude(
+                            maximumMagnitude, OUTPUT_POWER_OPERATION);
+            deviceMaximumOutputPowerAnswered = true;
         }
 
         @Override
         public MotorDeviceManagedPositionStep outerPositionP(double outerPositionP) {
-            requireOpenDeviceManagedTuning("outerPositionP(...)");
+            requireOpenDeviceManagedOverrides("outerPositionP(...)");
             if (deviceConfig.outerPositionPAnswered) {
                 throw new IllegalStateException("outerPositionP(...) has already been answered for "
                         + "this motor position Plant");
@@ -2395,7 +3465,7 @@ public final class FtcActuators {
 
         @Override
         public MotorDeviceManagedPositionStep innerVelocityPidf(double p, double i, double d, double f) {
-            requireOpenDeviceManagedTuning("innerVelocityPidf(...)");
+            requireOpenDeviceManagedOverrides("innerVelocityPidf(...)");
             if (deviceConfig.innerVelocityPidfAnswered) {
                 throw new IllegalStateException("innerVelocityPidf(...) has already been answered "
                         + "for this motor position Plant");
@@ -2409,7 +3479,7 @@ public final class FtcActuators {
 
         @Override
         public MotorDeviceManagedPositionStep devicePositionToleranceTicks(int ticks) {
-            requireOpenDeviceManagedTuning("devicePositionToleranceTicks(...)");
+            requireOpenDeviceManagedOverrides("devicePositionToleranceTicks(...)");
             if (deviceConfig.devicePositionToleranceTicksAnswered) {
                 throw new IllegalStateException("devicePositionToleranceTicks(...) has already "
                         + "been answered for this motor position Plant");
@@ -2423,16 +3493,17 @@ public final class FtcActuators {
         }
 
         @Override
-        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
-        doneDeviceManaged() {
-            requireOpenDeviceManagedTuning("doneDeviceManaged()");
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>> doneOverrides() {
+            requireOpenDeviceManagedOverrides("doneOverrides()");
             if (!deviceConfig.hasAnyOverride()) {
-                throw new IllegalStateException("deviceManaged() requires at least one controller "
-                        + "override before doneDeviceManaged(); use "
-                        + "deviceManagedWithDefaults() when no override is needed");
+                throw new IllegalStateException("deviceManagedWithOverrides() requires at least "
+                        + "one controller override before doneOverrides(); use deviceManaged() "
+                        + "when no override is needed");
             }
             deviceConfig.tuningClosed = true;
-            return this;
+            return coordinateSteps(symmetricOutputPowerPolicyView(
+                    this::answerDeviceManagedOutputPower));
         }
 
         @Override
@@ -2442,78 +3513,72 @@ public final class FtcActuators {
         }
 
         @Override
-        public MotorRegulatedPositionRegulatorStep internalEncoder() {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> internalEncoder() {
             requireFeedbackUnanswered("internalEncoder()");
             String selectedName = requireSingleMotorFeedbackName(parent.specs, "position");
             feedback = () -> FtcSensors.motorPositionTicks(parent.hw, selectedName);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedPositionRegulatorStep internalEncoder(String motorName) {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> internalEncoder(String motorName) {
             requireFeedbackUnanswered("internalEncoder(...)");
             String selectedName = requireSelectedMotorFeedbackName(
                     parent.specs, Objects.requireNonNull(motorName, "motorName"), "position");
             feedback = () -> FtcSensors.motorPositionTicks(parent.hw, selectedName);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedPositionRegulatorStep averageInternalEncoders() {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> averageInternalEncoders() {
             requireFeedbackUnanswered("averageInternalEncoders()");
             ensureMotorFeedbackAvailable(parent.specs, "position");
             feedback = () -> internalPositionFeedback(parent.hw, parent.specs, null, true);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedPositionRegulatorStep externalEncoder(String name) {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(String name) {
             return externalEncoder(name, Direction.FORWARD);
         }
 
         @Override
-        public MotorRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction) {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(
+                String name, Direction direction) {
             requireFeedbackUnanswered("externalEncoder(...)");
             String checkedName = requireFeedbackName(name);
             Direction checkedDirection = Objects.requireNonNull(direction, "direction");
             feedback = () -> FtcSensors.motorPositionTicks(
                     parent.hw, checkedName, checkedDirection);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public MotorRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source) {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> nativeFeedback(ScalarSource source) {
             requireFeedbackUnanswered("nativeFeedback(...)");
             ScalarSource checked = Objects.requireNonNull(source, "source");
             feedback = () -> checked;
-            return this;
-        }
-
-        @Override
-        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
-        regulator(ScalarRegulator regulator) {
-            requireMutable("regulator(...)");
-            if (controlKind != PositionControlKind.REGULATED || feedback == null) {
-                throw new IllegalStateException("Choose regulated position feedback before regulator(...)");
-            }
-            if (this.regulator != null) {
-                throw new IllegalStateException("regulator(...) has already been answered for this motor position Plant");
-            }
-            this.regulator = Objects.requireNonNull(regulator, "regulator");
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
         protected void validatePositionSourceRecipe() {
             if (controlKind == null) {
-                throw new IllegalStateException("Motor position builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
+                throw new IllegalStateException("Motor position builder requires deviceManaged(), "
+                        + "deviceManagedWithOverrides(), or regulated()");
             }
             if (controlKind == PositionControlKind.REGULATED) {
                 parent.requireDefaultGroupScalingForRegulated("position");
-                if (feedback == null || regulator == null) {
+                if (feedback == null || !positionControlRecipeAnswered()) {
                     throw new IllegalStateException("Regulated motor position requires a feedback answer "
                             + "(internalEncoder(), averageInternalEncoders(), externalEncoder(...), or "
-                            + "nativeFeedback(...)) and regulator(...)");
+                            + "nativeFeedback(...)), a setpoint/control answer, and PID feedback");
                 }
             } else {
                 validateDeviceManagedConfiguration();
@@ -2523,18 +3588,33 @@ public final class FtcActuators {
         }
 
         @Override
-        protected Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
-        createSharedPositionStart() {
+        protected Plants.TargetStep<PositionPlant> createSharedPositionTargetStep() {
             if (isDeviceManaged()) {
                 ScalarSource measurement = parent.groupedMotorPositionMeasurement();
-                PositionOutput output = parent.groupedMotorPosition(deviceConfig);
-                Plants.DeviceManagedPositionStep start = Plants.fromOutputs()
+                PowerLimitedPositionOutput output = parent.groupedMotorPosition(deviceConfig);
+                Plants.DeviceManagedPositionStep<
+                        Plants.SymmetricOutputPowerPolicyStep<PositionPlant>> start =
+                        Plants.fromOutputs()
                         .deviceManagedPosition(output, measurement);
-                return start.searchPowerOutput(parent.groupedMotorPower());
+                Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                        Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>> periodicity =
+                        start.searchPowerOutput(parent.groupedMotorPower());
+                Plants.SymmetricOutputPowerPolicyStep<PositionPlant> outputPolicy =
+                        replayPositionCoordinates(periodicity);
+                return deviceMaximumOutputPowerAnswered
+                        ? outputPolicy.outputPowerLimitedTo(deviceMaximumOutputPower)
+                        : outputPolicy;
             }
             ScalarSource measurement = feedback.get();
             PowerOutput power = parent.groupedMotorPower();
-            return Plants.fromOutputs().regulatedPosition(power, measurement, regulator);
+            Plants.PositionControlStep control = replayPositionCoordinates(
+                    Plants.fromOutputs().regulatedPosition(power, measurement));
+            return replayPositionControl(control);
+        }
+
+        @Override
+        protected boolean isRegulatedControlPath() {
+            return controlKind == PositionControlKind.REGULATED;
         }
 
         @Override
@@ -2559,10 +3639,11 @@ public final class FtcActuators {
             controlKind = answer;
         }
 
-        private void requireOpenDeviceManagedTuning(String operation) {
+        private void requireOpenDeviceManagedOverrides(String operation) {
             requireMutable(operation);
             if (controlKind != PositionControlKind.DEVICE_MANAGED_TUNED) {
-                throw new IllegalStateException(operation + " requires deviceManaged()");
+                throw new IllegalStateException(
+                        operation + " requires deviceManagedWithOverrides()");
             }
             if (deviceConfig.tuningClosed) {
                 throw new IllegalStateException(operation
@@ -2578,23 +3659,24 @@ public final class FtcActuators {
         private void validateDeviceManagedConfiguration() {
             if (controlKind == PositionControlKind.DEVICE_MANAGED_DEFAULTS) {
                 if (deviceConfig.hasAnyOverride() || deviceConfig.tuningClosed) {
-                    throw new IllegalStateException("deviceManagedWithDefaults() cannot retain "
+                    throw new IllegalStateException("deviceManaged() cannot retain "
                             + "device-managed position tuning");
                 }
             } else if (controlKind == PositionControlKind.DEVICE_MANAGED_TUNED) {
                 if (!deviceConfig.hasAnyOverride()) {
-                    throw new IllegalStateException("deviceManaged() requires at least one "
-                            + "controller override before doneDeviceManaged(); use "
-                            + "deviceManagedWithDefaults() when no override is needed");
+                    throw new IllegalStateException("deviceManagedWithOverrides() requires at "
+                            + "least one controller override before doneOverrides(); use "
+                            + "deviceManaged() when no override is needed");
                 }
                 if (!deviceConfig.tuningClosed) {
-                    throw new IllegalStateException("Call doneDeviceManaged() after the "
+                    throw new IllegalStateException("Call doneOverrides() after the "
                             + "device-managed position controller overrides");
                 }
             }
 
-            FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
-                    deviceConfig.maxPower, MAX_POWER_OPERATION);
+            FtcControllerConfigurationValidation
+                    .requireRunToPositionMaximumOutputPowerMagnitude(
+                    deviceMaximumOutputPower, OUTPUT_POWER_OPERATION);
             if (deviceConfig.outerPositionP != null) {
                 FtcControllerConfigurationValidation.requireControllerCoefficient(
                         deviceConfig.outerPositionP,
@@ -2621,6 +3703,10 @@ public final class FtcActuators {
             if (feedback != null) {
                 throw new IllegalStateException("Regulated motor position feedback has already been answered");
             }
+        }
+
+        private boolean positionCoordinatesComplete() {
+            return positionToleranceWasAnswered();
         }
     }
 
@@ -3024,11 +4110,11 @@ public final class FtcActuators {
         }
     }
 
-    private static final class CrServoPositionBuilder extends BasePositionBuilder implements CrServoPositionControlStep,
-            CrServoRegulatedPositionFeedbackStep, CrServoRegulatedPositionRegulatorStep {
+    private static final class CrServoPositionBuilder extends BasePositionBuilder
+            implements CrServoPositionControlStep,
+            CrServoRegulatedPositionFeedbackStep {
         private final CrServoBuilder parent;
         private Supplier<ScalarSource> feedback;
-        private ScalarRegulator regulator;
         private boolean regulatedAnswered;
 
         private CrServoPositionBuilder(CrServoBuilder parent) {
@@ -3048,40 +4134,30 @@ public final class FtcActuators {
         }
 
         @Override
-        public CrServoRegulatedPositionRegulatorStep externalEncoder(String name) {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(String name) {
             return externalEncoder(name, Direction.FORWARD);
         }
 
         @Override
-        public CrServoRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction) {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> externalEncoder(
+                String name, Direction direction) {
             requireFeedbackUnanswered("externalEncoder(...)");
             String checkedName = requireFeedbackName(name);
             Direction checkedDirection = Objects.requireNonNull(direction, "direction");
             feedback = () -> FtcSensors.motorPositionTicks(
                     parent.hw, checkedName, checkedDirection);
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
-        public CrServoRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source) {
+        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.PositionControlStep>> nativeFeedback(ScalarSource source) {
             requireFeedbackUnanswered("nativeFeedback(...)");
             ScalarSource checked = Objects.requireNonNull(source, "source");
             feedback = () -> checked;
-            return this;
-        }
-
-        @Override
-        public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
-        regulator(ScalarRegulator regulator) {
-            requireMutable("regulator(...)");
-            if (!regulatedAnswered || feedback == null) {
-                throw new IllegalStateException("Choose regulated CR-servo position feedback before regulator(...)");
-            }
-            if (this.regulator != null) {
-                throw new IllegalStateException("regulator(...) has already been answered for this CR-servo position Plant");
-            }
-            this.regulator = Objects.requireNonNull(regulator, "regulator");
-            return this;
+            return coordinateSteps(this);
         }
 
         @Override
@@ -3090,18 +4166,24 @@ public final class FtcActuators {
                 throw new IllegalStateException("CR-servo position builder requires regulated()");
             }
             parent.requireDefaultGroupScalingForRegulated();
-            if (feedback == null || regulator == null) {
+            if (feedback == null || !positionControlRecipeAnswered()) {
                 throw new IllegalStateException("Regulated CR-servo position requires externalEncoder(...) "
-                        + "or nativeFeedback(...), followed by regulator(...)");
+                        + "or nativeFeedback(...), followed by a setpoint/control answer and PID feedback");
             }
         }
 
         @Override
-        protected Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
-        createSharedPositionStart() {
+        protected Plants.TargetStep<PositionPlant> createSharedPositionTargetStep() {
             ScalarSource measurement = feedback.get();
             PowerOutput power = parent.groupedCrServoPower();
-            return Plants.fromOutputs().regulatedPosition(power, measurement, regulator);
+            Plants.PositionControlStep control = replayPositionCoordinates(
+                    Plants.fromOutputs().regulatedPosition(power, measurement));
+            return replayPositionControl(control);
+        }
+
+        @Override
+        protected boolean isRegulatedControlPath() {
+            return regulatedAnswered;
         }
 
         @Override
@@ -3287,6 +4369,79 @@ public final class FtcActuators {
         @Override
         public void stop() {
             attemptAllStops(outputs, PositionOutput::stop);
+        }
+    }
+
+    /** Motor-only fan-out that preserves the single-call paired target-plus-power capability. */
+    private static final class GroupedPowerLimitedPositionOutput
+            implements PowerLimitedPositionOutput {
+        private final List<PowerLimitedPositionOutput> outputs;
+        private final double[] scales;
+        private final double[] biases;
+        private final List<String> names;
+        private double lastPosition = Double.NaN;
+        private double lastMaximumOutputPowerMagnitude = Double.NaN;
+
+        private GroupedPowerLimitedPositionOutput(
+                List<PowerLimitedPositionOutput> outputs,
+                double[] scales,
+                double[] biases,
+                List<String> names) {
+            this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
+            this.scales = Objects.requireNonNull(scales, "scales").clone();
+            this.biases = Objects.requireNonNull(biases, "biases").clone();
+            this.names = new ArrayList<>(Objects.requireNonNull(names, "names"));
+            requireMatchingChildShape(
+                    this.outputs.size(), this.scales, this.biases, this.names);
+        }
+
+        @Override
+        public void setPosition(double position, double maximumOutputPowerMagnitude) {
+            double[] childPositions = new double[outputs.size()];
+            for (int i = 0; i < outputs.size(); i++) {
+                String childDescription = "motor position runtime child " + (i + 1)
+                        + " ('" + names.get(i) + "')";
+                childPositions[i] = mappedChildCommand(
+                        "motor position runtime command",
+                        i,
+                        names.get(i),
+                        scales[i],
+                        biases[i],
+                        position);
+                checkedMotorPositionTicks(childPositions[i], childDescription);
+            }
+            double checkedMagnitude =
+                    FtcControllerConfigurationValidation
+                            .requireRunToPositionMaximumOutputPowerMagnitude(
+                            maximumOutputPowerMagnitude,
+                            "FtcActuators motor position outputPowerLimitedTo(...)");
+
+            try {
+                for (int i = 0; i < outputs.size(); i++) {
+                    outputs.get(i).setPosition(childPositions[i], checkedMagnitude);
+                }
+            } catch (RuntimeException failure) {
+                lastPosition = Double.NaN;
+                lastMaximumOutputPowerMagnitude = Double.NaN;
+                throw failure;
+            }
+            lastPosition = position;
+            lastMaximumOutputPowerMagnitude = checkedMagnitude;
+        }
+
+        @Override
+        public double getCommandedPosition() {
+            return lastPosition;
+        }
+
+        @Override
+        public double getCommandedMaximumOutputPowerMagnitude() {
+            return lastMaximumOutputPowerMagnitude;
+        }
+
+        @Override
+        public void stop() {
+            attemptAllStops(outputs, PowerLimitedPositionOutput::stop);
         }
     }
 
@@ -3665,6 +4820,41 @@ public final class FtcActuators {
     private static void requireFiniteTolerance(double value, String name) {
         if (!Double.isFinite(value) || value < 0.0) {
             throw new IllegalArgumentException(name + " must be finite and >= 0, got " + value);
+        }
+    }
+
+    private static double requireFiniteControlValue(double value, String name) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(name + " must be finite, got " + value);
+        }
+        return value;
+    }
+
+    private static void requireFiniteOrderedControlRange(double minimum,
+                                                         double maximum,
+                                                         String operation) {
+        requireFiniteControlValue(minimum, operation + " minimum");
+        requireFiniteControlValue(maximum, operation + " maximum");
+        if (minimum > maximum) {
+            throw new IllegalArgumentException(operation
+                    + " requires minimum <= maximum, got minimum=" + minimum
+                    + ", maximum=" + maximum);
+        }
+    }
+
+    private static void requireVoltagePolicy(double referenceVoltage,
+                                             double minimumVoltage,
+                                             double maximumScale) {
+        requireFinitePositive(referenceVoltage, "referenceVoltage");
+        requireFinitePositive(minimumVoltage, "minimumVoltage");
+        requireFiniteControlValue(maximumScale, "maximumScale");
+        if (minimumVoltage > referenceVoltage) {
+            throw new IllegalArgumentException("voltageCompensationFrom(...) requires "
+                    + "minimumVoltage <= referenceVoltage");
+        }
+        if (maximumScale < 1.0) {
+            throw new IllegalArgumentException("voltageCompensationFrom(...) requires "
+                    + "maximumScale >= 1.0");
         }
     }
 

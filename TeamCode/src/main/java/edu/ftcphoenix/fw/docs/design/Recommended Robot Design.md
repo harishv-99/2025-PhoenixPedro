@@ -693,16 +693,15 @@ public final class Lift {
                 .position()
                 .regulated()
                     .nativeFeedback(measuredHeightIn)
-                    .regulator(ScalarRegulators.pid(
-                            Pid.withGains(snapshot.kP, snapshot.kI, snapshot.kD)
-                                    .setOutputLimits(
-                                            -snapshot.maximumPower,
-                                            snapshot.maximumPower)))
                 .nonPeriodic()
                     .bounded(minimumHeightIn, maximumHeightIn)
                     .nativeUnits()
                     .alreadyReferenced()
                 .positionTolerance(snapshot.positionToleranceIn)
+                .setpointFromAppliedTarget()
+                .feedbackFromPid(snapshot.kP, snapshot.kI, snapshot.kD)
+                .feedforwardFromLift(snapshot.kG)
+                .outputPowerLimitedTo(snapshot.maximumPower)
                 .targetFromNewCommand(targetHeightIn)
                 .build();
     }
@@ -1093,52 +1092,40 @@ owner of a larger routine must still release any persistent shooter request that
 - Auto does not need to mimic a driver's hold semantics
 - status snapshots provide clean, inspectable wait conditions
 
-### Keep software PIDF inside realization
+### Keep standard software control inside realization
 
-When a power-based flywheel uses the standard Phoenix software PIDF law, realization can retain its
-tunable handle without exposing controller pieces through `ShooterApi`:
-
-```java
-private final PidfRegulator flywheelPidf;
-private final ScalarRegulator flywheelRegulator;
-
-ShooterRealization(double kP,
-                   double kI,
-                   double kD,
-                   double kF,
-                   double maximumFlywheelPower) {
-    flywheelPidf = ScalarRegulators.pidf(kP, kI, kD, kF)
-            .setIntegralLimits(-0.15, 0.15)
-            .setPidOutputLimits(-1.0, 1.0);
-    flywheelRegulator =
-            ScalarRegulators.outputLimited(flywheelPidf, 0.0, maximumFlywheelPower);
-}
-```
-
-The standard law adds `kF * setpoint` after P+I+D. The two limits on `flywheelPidf` apply only
-inside that PID calculation; the outer `outputLimited(...)` covers the complete command. A
-limit saturates finite excursions but does not convert invalid controller math into a boundary
-command. A deliberate live-tuning method can update the four gains together, then reset the
-outermost composition:
+A power-based flywheel declares one complete control model inside its private Plant recipe. Robot
+capabilities expose shooter intent and status, never controller pieces:
 
 ```java
-void applyFlywheelGains(double kP, double kI, double kD, double kF) {
-    flywheelPidf.setGains(kP, kI, kD, kF);
-    flywheelRegulator.reset();
-}
+flywheel = FtcActuators.plant(hardwareMap)
+        .motor(config.motorName, config.direction)
+        .velocity()
+        .regulated()
+            .internalEncoder()
+        .bounded(0.0, config.maximumRpm)
+        .scaleToNative(config.ticksPerRpm)
+        .velocityTolerance(config.toleranceRpm)
+        .setpointFromAccelerationLimitedProfile(config.maximumRpmPerSec)
+        .feedbackFromPid(config.kP, config.kI, config.kD)
+        .feedbackIntegralLimitedTo(-0.15, 0.15)
+        .feedforwardFromMotion(config.kS, config.kV, config.kA)
+        .outputPowerLimitedTo(0.0, config.maximumPower)
+        .targetFromNewCommand(0.0)
+        .build();
 ```
 
-Match TeleOp and Auto still request shooter intent and read status; they do not manipulate this
-retained handle. A dedicated software-regulator tuning workflow may call the local apply method,
-but production modes should load only checked-in profile values. The ready-made
-`FtcPanelsTuners.velocityPidf(...)` workflow is deliberately for FTC device-managed velocity
-controllers, not this software regulator. See the
-[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for
-safe apply, record, and restart. FTC `.deviceManaged().velocityPidf(...)` is a separate
-hardware-controller configuration.
-For a nonlinear or table-driven feedforward, realization uses the explicit advanced composition
-`ScalarRegulators.setpointFeedforward(ScalarRegulators.pid(customController), function)` instead of
-pretending it is the standard four-gain law.
+The Plant owns the setpoint profile, PID, feedforward, final output policy, state reset, completion,
+and one hardware write. Match TeleOp and Auto still request shooter intent and read status. The
+ready-made `FtcPanelsTuners.velocityPidf(...)` workflow remains specific to FTC device-managed
+velocity control; software-control candidates live in checked-in config and are evaluated through
+fresh Plants built by this same canonical recipe. See the
+[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for the tuning order and
+evidence contract.
+
+For a genuinely nonlinear or table-driven complete law, realization may use the explicit advanced
+`controlFromCustomRegulator(...)` seam. Deprecated scalar-regulator factories are compatibility for
+that seam, not a parallel ordinary PID/feedforward design.
 
 ---
 

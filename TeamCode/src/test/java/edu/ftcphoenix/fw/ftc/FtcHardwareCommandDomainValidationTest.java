@@ -4,6 +4,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
+import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
 import org.junit.Test;
@@ -12,10 +13,12 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.hal.PowerLimitedPositionOutput;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -25,10 +28,34 @@ public final class FtcHardwareCommandDomainValidationTest {
     private static final double EPSILON = 1.0e-12;
 
     @Test
+    public void motorPositionFactoriesReturnPairedCapabilityWithoutFactoryPowerOverloads()
+            throws Exception {
+        Method named = FtcHardware.class.getDeclaredMethod(
+                "motorPosition", HardwareMap.class, String.class, Direction.class);
+        Method direct = FtcHardware.class.getDeclaredMethod(
+                "motorPosition", DcMotorEx.class, Direction.class);
+
+        assertEquals(PowerLimitedPositionOutput.class, named.getReturnType());
+        assertEquals(PowerLimitedPositionOutput.class, direct.getReturnType());
+        assertNoDeclaredMethod(FtcHardware.class,
+                "motorPosition", HardwareMap.class, String.class, Direction.class, double.class);
+        assertNoDeclaredMethod(FtcHardware.class,
+                "motorPosition", DcMotorEx.class, Direction.class, double.class);
+
+        Method namedServo = FtcHardware.class.getDeclaredMethod(
+                "servoPosition", HardwareMap.class, String.class, Direction.class);
+        Method directServo = FtcHardware.class.getDeclaredMethod(
+                "servoPosition", Servo.class, Direction.class);
+        assertEquals(PositionOutput.class, namedServo.getReturnType());
+        assertEquals(PositionOutput.class, directServo.getReturnType());
+    }
+
+    @Test
     public void servoStopWaitsForFirstSuccessfulCommandThenReassertsIt() {
         ServoProbe probe = new ServoProbe();
         PositionOutput output = FtcHardware.servoPosition(probe.servo, Direction.FORWARD);
 
+        assertFalse(output instanceof PowerLimitedPositionOutput);
         assertTrue(Double.isNaN(output.getCommandedPosition()));
         output.stop();
         assertEquals(0, probe.positionWrites);
@@ -103,16 +130,43 @@ public final class FtcHardwareCommandDomainValidationTest {
     }
 
     @Test
-    public void motorPositionChecksRoundedLongDomainBeforeEveryEffectAndCachesRoundedTick() {
+    public void motorPositionPairsRoundedTargetAndPowerMagnitudeInOneCall() {
         MotorProbe probe = new MotorProbe();
-        PositionOutput output = FtcHardware.motorPosition(probe.motor, Direction.REVERSE, 0.5);
+        PowerLimitedPositionOutput output =
+                FtcHardware.motorPosition(probe.motor, Direction.REVERSE);
 
-        output.setPosition(10.6);
+        assertTrue(Double.isNaN(output.getCommandedPosition()));
+        assertTrue(Double.isNaN(output.getCommandedMaximumOutputPowerMagnitude()));
+
+        output.setPosition(10.6, 0.5);
         assertEquals(11.0, output.getCommandedPosition(), EPSILON);
+        assertEquals(0.5, output.getCommandedMaximumOutputPowerMagnitude(), EPSILON);
         assertEquals(11, probe.targetPosition);
+        assertEquals(0.5, probe.power, EPSILON);
         assertEquals(1, probe.targetWrites);
         assertEquals(1, probe.modeWrites);
         assertEquals(1, probe.powerWrites);
+
+        output.setPosition(12.0);
+        assertEquals(12.0, output.getCommandedPosition(), EPSILON);
+        assertEquals(1.0, output.getCommandedMaximumOutputPowerMagnitude(), EPSILON);
+        assertEquals(1.0, probe.power, EPSILON);
+
+        output.setPosition(13.0, -0.0);
+        assertEquals(13.0, output.getCommandedPosition(), EPSILON);
+        assertRawDoubleEquals(-0.0, output.getCommandedMaximumOutputPowerMagnitude());
+        assertRawDoubleEquals(-0.0, probe.power);
+    }
+
+    @Test
+    public void motorPositionValidatesCompletePairBeforeEveryEffectAndPreservesCache() {
+        MotorProbe probe = new MotorProbe();
+        PowerLimitedPositionOutput output =
+                FtcHardware.motorPosition(probe.motor, Direction.REVERSE);
+
+        output.setPosition(10.6, 0.5);
+        assertEquals(11.0, output.getCommandedPosition(), EPSILON);
+        assertEquals(0.5, output.getCommandedMaximumOutputPowerMagnitude(), EPSILON);
 
         int targetWrites = probe.targetWrites;
         int modeWrites = probe.modeWrites;
@@ -127,26 +181,67 @@ public final class FtcHardwareCommandDomainValidationTest {
                 -Double.MAX_VALUE
         };
         for (double value : invalid) {
-            expect(IllegalArgumentException.class, () -> output.setPosition(value));
+            expect(IllegalArgumentException.class, () -> output.setPosition(value, 0.25));
             assertEquals(11.0, output.getCommandedPosition(), EPSILON);
+            assertEquals(0.5, output.getCommandedMaximumOutputPowerMagnitude(), EPSILON);
             assertEquals(targetWrites, probe.targetWrites);
             assertEquals(modeWrites, probe.modeWrites);
             assertEquals(powerWrites, probe.powerWrites);
         }
 
-        output.setPosition(Integer.MAX_VALUE);
+        double[] invalidMagnitudes = {
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY,
+                Math.nextDown(0.0),
+                Math.nextUp(1.0)
+        };
+        for (double value : invalidMagnitudes) {
+            expect(IllegalArgumentException.class, () -> output.setPosition(20.0, value));
+            assertEquals(11.0, output.getCommandedPosition(), EPSILON);
+            assertEquals(0.5, output.getCommandedMaximumOutputPowerMagnitude(), EPSILON);
+            assertEquals(targetWrites, probe.targetWrites);
+            assertEquals(modeWrites, probe.modeWrites);
+            assertEquals(powerWrites, probe.powerWrites);
+        }
+
+        output.setPosition(Integer.MAX_VALUE, 0.75);
         assertEquals((double) Integer.MAX_VALUE, output.getCommandedPosition(), 0.0);
+        assertEquals(0.75, output.getCommandedMaximumOutputPowerMagnitude(), 0.0);
         assertEquals(Integer.MAX_VALUE, probe.targetPosition);
 
         // Math.round(-2147483648.5) is exactly Integer.MIN_VALUE and remains in-domain.
-        output.setPosition((double) Integer.MIN_VALUE - 0.5);
+        output.setPosition((double) Integer.MIN_VALUE - 0.5, 0.25);
         assertEquals((double) Integer.MIN_VALUE, output.getCommandedPosition(), 0.0);
+        assertEquals(0.25, output.getCommandedMaximumOutputPowerMagnitude(), 0.0);
         assertEquals(Integer.MIN_VALUE, probe.targetPosition);
 
         output.stop();
         assertEquals(0.0, probe.power, EPSILON);
         assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, probe.mode);
         assertEquals((double) Integer.MIN_VALUE, output.getCommandedPosition(), 0.0);
+        assertEquals(0.25, output.getCommandedMaximumOutputPowerMagnitude(), 0.0);
+    }
+
+    @Test
+    public void motorPositionInvalidatesPairCacheWhenPairedSubmissionFails() {
+        MotorProbe probe = new MotorProbe();
+        PowerLimitedPositionOutput output =
+                FtcHardware.motorPosition(probe.motor, Direction.FORWARD);
+        output.setPosition(10.0, 0.5);
+
+        probe.powerFailure = new IllegalStateException("simulated power write failure");
+        expect(IllegalStateException.class, () -> output.setPosition(20.0, 0.25));
+
+        assertTrue(Double.isNaN(output.getCommandedPosition()));
+        assertTrue(Double.isNaN(output.getCommandedMaximumOutputPowerMagnitude()));
+        assertEquals(20, probe.targetPosition);
+        assertEquals(DcMotor.RunMode.RUN_TO_POSITION, probe.mode);
+
+        probe.powerFailure = null;
+        output.stop();
+        assertEquals(0.0, probe.power, EPSILON);
+        assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, probe.mode);
     }
 
     private static double[] nonFiniteValues() {
@@ -164,6 +259,21 @@ public final class FtcHardwareCommandDomainValidationTest {
         fail("Expected " + expected.getSimpleName());
     }
 
+    private static void assertRawDoubleEquals(double expected, double actual) {
+        assertEquals(Double.doubleToRawLongBits(expected), Double.doubleToRawLongBits(actual));
+    }
+
+    private static void assertNoDeclaredMethod(Class<?> owner,
+                                               String name,
+                                               Class<?>... parameterTypes) {
+        try {
+            owner.getDeclaredMethod(name, parameterTypes);
+            fail(owner.getSimpleName() + " must not declare legacy " + name + " overload");
+        } catch (NoSuchMethodException expected) {
+            // Expected.
+        }
+    }
+
     private static final class MotorProbe {
         private final DcMotorEx motor;
         private int targetPosition;
@@ -173,6 +283,7 @@ public final class FtcHardwareCommandDomainValidationTest {
         private int powerWrites;
         private double velocity;
         private double power;
+        private RuntimeException powerFailure;
         private DcMotor.RunMode mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER;
         private DcMotorSimple.Direction direction = DcMotorSimple.Direction.FORWARD;
 
@@ -212,6 +323,7 @@ public final class FtcHardwareCommandDomainValidationTest {
             }
             if ("getVelocity".equals(name)) return velocity;
             if ("setPower".equals(name)) {
+                if (powerFailure != null) throw powerFailure;
                 power = (double) args[0];
                 powerWrites++;
                 return null;

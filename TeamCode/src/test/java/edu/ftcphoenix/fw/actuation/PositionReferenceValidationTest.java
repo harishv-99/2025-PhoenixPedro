@@ -258,7 +258,8 @@ public final class PositionReferenceValidationTest {
 
         RecordingPositionOutput feedbackOutput = new RecordingPositionOutput();
         MutableScalarSource feedbackSource = new MutableScalarSource(112.0);
-        Plants.PositionReferenceStep feedback = Plants.fromOutputs()
+        Plants.PositionCoordinateReferenceStep<Plants.TargetStep<PositionPlant>> feedback =
+                Plants.fromOutputs()
                 .deviceManagedPosition(feedbackOutput, feedbackSource)
                 .nonPeriodic()
                 .unbounded()
@@ -279,8 +280,9 @@ public final class PositionReferenceValidationTest {
         RecordingPowerOutput regulatedOutput = new RecordingPowerOutput();
         MutableScalarSource regulatedSource = new MutableScalarSource(112.0);
         RecordingRegulator regulator = new RecordingRegulator(0.25);
-        Plants.PositionReferenceStep regulated = Plants.fromOutputs()
-                .regulatedPosition(regulatedOutput, regulatedSource, regulator)
+        Plants.PositionCoordinateReferenceStep<Plants.PositionControlStep> regulated =
+                Plants.fromOutputs()
+                .regulatedPosition(regulatedOutput, regulatedSource)
                 .nonPeriodic()
                 .unbounded()
                 .scaleToNative(4.0);
@@ -293,6 +295,7 @@ public final class PositionReferenceValidationTest {
         PositionPlant regulatedPlant = regulated
                 .plantPositionMapsToNative(2.0, 100.0)
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(5.0)
                 .build();
         regulatedPlant.update(new ManualLoopClock().clock());
@@ -351,7 +354,8 @@ public final class PositionReferenceValidationTest {
     public void outputFeedbackFactoriesRejectNonFiniteAssumedReferencesBeforeEffects() {
         RecordingPositionOutput feedbackOutput = new RecordingPositionOutput();
         MutableScalarSource feedbackSource = new MutableScalarSource(200.0);
-        Plants.PositionReferenceStep feedback = Plants.fromOutputs()
+        Plants.PositionCoordinateReferenceStep<Plants.TargetStep<PositionPlant>> feedback =
+                Plants.fromOutputs()
                 .deviceManagedPosition(feedbackOutput, feedbackSource)
                 .nonPeriodic()
                 .unbounded()
@@ -371,8 +375,9 @@ public final class PositionReferenceValidationTest {
         RecordingPowerOutput regulatedOutput = new RecordingPowerOutput();
         MutableScalarSource regulatedSource = new MutableScalarSource(200.0);
         RecordingRegulator regulator = new RecordingRegulator(0.25);
-        Plants.PositionReferenceStep regulated = Plants.fromOutputs()
-                .regulatedPosition(regulatedOutput, regulatedSource, regulator)
+        Plants.PositionCoordinateReferenceStep<Plants.PositionControlStep> regulated =
+                Plants.fromOutputs()
+                .regulatedPosition(regulatedOutput, regulatedSource)
                 .nonPeriodic()
                 .unbounded()
                 .scaleToNative(5.0);
@@ -384,6 +389,7 @@ public final class PositionReferenceValidationTest {
         assertEquals(0, regulatedOutput.stopCalls);
         PositionPlant regulatedPlant = regulated.assumeCurrentPositionIs(7.0)
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(8.0)
                 .build();
         regulatedPlant.update(new ManualLoopClock().clock());
@@ -434,12 +440,13 @@ public final class PositionReferenceValidationTest {
     public void retainedOutputAliasesDoNotOverwriteAcceptedReferenceAnswers() {
         RecordingPositionOutput staticOutput = new RecordingPositionOutput();
         MutableScalarSource staticSource = new MutableScalarSource(112.0);
-        Plants.PositionReferenceStep retainedStatic = Plants.fromOutputs()
+        Plants.PositionCoordinateReferenceStep<Plants.TargetStep<PositionPlant>> retainedStatic =
+                Plants.fromOutputs()
                 .deviceManagedPosition(staticOutput, staticSource)
                 .nonPeriodic()
                 .unbounded()
                 .scaleToNative(4.0);
-        Plants.PositionToleranceStep acceptedStatic =
+        Plants.PositionToleranceStep<Plants.TargetStep<PositionPlant>> acceptedStatic =
                 retainedStatic.plantPositionMapsToNative(2.0, 100.0);
 
         assertFiniteDiagnostic(
@@ -465,12 +472,13 @@ public final class PositionReferenceValidationTest {
 
         RecordingPositionOutput assumeOutput = new RecordingPositionOutput();
         MutableScalarSource assumeSource = new MutableScalarSource(200.0);
-        Plants.PositionReferenceStep retainedAssume = Plants.fromOutputs()
+        Plants.PositionCoordinateReferenceStep<Plants.TargetStep<PositionPlant>> retainedAssume =
+                Plants.fromOutputs()
                 .deviceManagedPosition(assumeOutput, assumeSource)
                 .nonPeriodic()
                 .unbounded()
                 .scaleToNative(5.0);
-        Plants.PositionToleranceStep acceptedAssume =
+        Plants.PositionToleranceStep<Plants.TargetStep<PositionPlant>> acceptedAssume =
                 retainedAssume.assumeCurrentPositionIs(7.0);
         for (double invalid : nonFiniteValues()) {
             assertFiniteDiagnostic(
@@ -742,7 +750,7 @@ public final class PositionReferenceValidationTest {
     }
 
     private static void assertStaticReferenceRejections(
-            Plants.PositionReferenceStep step) {
+            Plants.PositionCoordinateReferenceStep<?> step) {
         for (double invalid : nonFiniteValues()) {
             assertFiniteDiagnostic(expectRuntime(
                             () -> step.plantPositionMapsToNative(invalid, Double.NaN)),
@@ -760,7 +768,7 @@ public final class PositionReferenceValidationTest {
     }
 
     private static void assertAssumeReferenceRejections(
-            Plants.PositionReferenceStep step) {
+            Plants.PositionCoordinateReferenceStep<?> step) {
         for (double invalid : nonFiniteValues()) {
             assertFiniteDiagnostic(expectRuntime(() -> step.assumeCurrentPositionIs(invalid)),
                     "Plants.assumeCurrentPositionIs(...)",
@@ -857,12 +865,13 @@ public final class PositionReferenceValidationTest {
         private final CountingTarget command = new CountingTarget(5.0);
         private final CountingCue cue = new CountingCue(true);
         private final PositionPlant plant = Plants.fromOutputs()
-                .regulatedPosition(normalOutput, source, regulator)
+                .regulatedPosition(normalOutput, source)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .needsReference("not homed")
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromResolver(PlantTargets.exact(command))
                 .build();
         private final ManualLoopClock clock = new ManualLoopClock();

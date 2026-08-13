@@ -298,7 +298,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(0.0, 250.0)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)

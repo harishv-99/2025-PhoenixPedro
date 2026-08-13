@@ -233,8 +233,8 @@ public final class FtcActuatorGroupIdentityValidationTest {
         velocityMap.addMotor("left");
         FtcActuators.MotorSingleStep retainedVelocity = FtcActuators.plant(velocityMap)
                 .motor("left", Direction.FORWARD);
-        Plants.VelocityBoundsStep velocity = retainedVelocity.velocity()
-                .deviceManaged()
+        Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> velocity = retainedVelocity.velocity()
+                .deviceManagedWithOverrides()
                 .velocityPidf(1.0, 2.0, 3.0, 4.0);
 
         assertThrows(IllegalArgumentException.class,
@@ -251,13 +251,14 @@ public final class FtcActuatorGroupIdentityValidationTest {
         positionMap.addMotor("lift");
         FtcActuators.MotorSingleStep retainedPosition = FtcActuators.plant(positionMap)
                 .motor("lift", Direction.FORWARD);
-        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> position =
+        Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
+                Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>> position =
                 retainedPosition.position()
-                .deviceManaged()
+                .deviceManagedWithOverrides()
                 .outerPositionP(7.0)
                 .innerVelocityPidf(1.0, 2.0, 3.0, 4.0)
                 .devicePositionToleranceTicks(12)
-                .doneDeviceManaged();
+                .doneOverrides();
 
         assertThrows(IllegalArgumentException.class,
                 () -> retainedPosition.andMotor("lift", Direction.REVERSE));
@@ -362,10 +363,10 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .velocity()
                 .regulated()
                 .externalEncoder(" \tflywheel ")
-                .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -386,12 +387,12 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .position()
                 .regulated()
                 .externalEncoder(" \tlift ")
-                .regulator(ZERO_REGULATOR)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -415,10 +416,10 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .velocity()
                 .regulated()
                 .internalEncoder("left")
-                .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -442,12 +443,12 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .position()
                 .regulated()
                 .internalEncoder("right")
-                .regulator(ZERO_REGULATOR)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -675,7 +676,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                         .build();
             case VELOCITY:
                 return step.velocity()
-                        .deviceManagedWithDefaults()
+                        .deviceManaged()
                         .unbounded()
                         .nativeUnits()
                         .velocityTolerance(0.0)
@@ -683,7 +684,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                         .build();
             case POSITION:
                 return step.position()
-                        .deviceManagedWithDefaults()
+                        .deviceManaged()
                         .nonPeriodic()
                         .unbounded()
                         .nativeUnits()
@@ -719,12 +720,12 @@ public final class FtcActuatorGroupIdentityValidationTest {
         return step.position()
                 .regulated()
                 .externalEncoder("encoder")
-                .regulator(ZERO_REGULATOR)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
     }

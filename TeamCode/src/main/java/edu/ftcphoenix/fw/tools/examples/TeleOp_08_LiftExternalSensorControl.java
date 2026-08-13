@@ -5,8 +5,6 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import edu.ftcphoenix.fw.actuation.PositionPlant;
-import edu.ftcphoenix.fw.core.control.Pid;
-import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -76,20 +74,19 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
             }
         }.memoized();
 
-        Pid liftPid = Pid.withGains(0.12, 0.0, 0.0)
-                .setOutputLimits(-0.55, 0.55);
-
         liftPlant = FtcActuators.plant(hardwareMap)
                 .motor(HW_LIFT_MOTOR, Direction.FORWARD)
                 .position()
                 .regulated()
                 .nativeFeedback(liftHeightIn)
-                .regulator(ScalarRegulators.pid(liftPid))
                 .nonPeriodic()
                 .bounded(HEIGHT_MIN_IN, HEIGHT_MAX_IN)
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.50)
+                .setpointFromAppliedTarget()
+                .feedbackFromPid(0.12)
+                .outputPowerLimitedTo(0.55)
                 .targetFromNewCommand(0.0)
                 .build();
 

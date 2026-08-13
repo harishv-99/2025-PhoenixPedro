@@ -54,7 +54,8 @@ public final class FtcMotorControllers {
             throw new IllegalArgumentException(
                     FACTORY_OPERATION + " requires a single-motor FTC device-managed velocity "
                             + "Plant built by FtcActuators.plant(...).motor(...).velocity()."
-                            + "deviceManagedWithDefaults() or deviceManaged(). Multi-motor, "
+                            + "deviceManaged(), or by deviceManagedWithOverrides().velocityPidf(...). "
+                            + "Multi-motor, "
                             + "regulated, position, power, and hardware-neutral Plants are not "
                             + "eligible.");
         }

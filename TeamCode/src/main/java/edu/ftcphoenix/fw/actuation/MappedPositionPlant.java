@@ -85,6 +85,7 @@ final class MappedPositionPlant implements PositionPlant {
     private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
     private final PlantLifecycle lifecycle = new PlantLifecycle();
+    private final PlantUpdateCycle updateCycle = new PlantUpdateCycle("PositionPlant");
     private final Periodicity periodicity;
     private final double period;
     private final ScalarRange configuredRange;
@@ -484,6 +485,18 @@ final class MappedPositionPlant implements PositionPlant {
     @Override
     public void update(LoopClock clock) {
         if (!lifecycle.isActive()) return;
+        if (!updateCycle.begin(clock)) return;
+        try {
+            updateOnce(clock);
+            updateCycle.succeed();
+        } catch (RuntimeException failure) {
+            updateCycle.fail(failure);
+            throw failure;
+        }
+    }
+
+    private void updateOnce(LoopClock clock) {
+        if (!lifecycle.isActive()) return;
         if (pendingAssume) {
             double nativeNow = sampleNative(clock);
             if (!lifecycle.isActive()) return;
@@ -745,6 +758,8 @@ final class MappedPositionPlant implements PositionPlant {
     @Override
     public boolean atTarget(double target) {
         return (regulatedPowerChannel == null || regulatedActuationCompleted)
+                && (regulatedPowerChannel == null
+                        || regulatedPowerChannel.setpointSettledAt(appliedTarget))
                 && hasFeedback()
                 && Double.isFinite(target)
                 && Double.isFinite(lastMeasurement)

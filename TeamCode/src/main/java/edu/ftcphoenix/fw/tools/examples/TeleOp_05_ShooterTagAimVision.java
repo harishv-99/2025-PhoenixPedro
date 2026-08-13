@@ -242,7 +242,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(0.0, 4200.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)

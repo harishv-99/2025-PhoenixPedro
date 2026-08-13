@@ -3,7 +3,9 @@ package edu.ftcphoenix.fw.actuation;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
+import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.hal.PowerLimitedPositionOutput;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
@@ -91,8 +93,30 @@ public final class Plants {
          * @throws NullPointerException if either argument is null
          * @throws IllegalStateException if this root step already selected an output path
          */
-        DeviceManagedPositionStep deviceManagedPosition(PositionOutput out,
-                                                        ScalarSource nativeMeasurement);
+        DeviceManagedPositionStep<TargetStep<PositionPlant>> deviceManagedPosition(
+                PositionOutput out,
+                ScalarSource nativeMeasurement);
+
+        /**
+         * Select device-managed position output whose command port accepts one paired logical
+         * native-position and normalized maximum-output-power command.
+         *
+         * <p>This overload has the same coordinate grammar as
+         * {@link #deviceManagedPosition(PositionOutput, ScalarSource)}, then exposes the optional
+         * {@link SymmetricOutputPowerPolicyStep#outputPowerLimitedTo(double)} answer after
+         * position tolerance. Omission means magnitude {@code 1.0}. The richer capability is not
+         * inferred from an arbitrary {@link PositionOutput}; callers must retain its truthful
+         * compile-time type.</p>
+         *
+         * @param out paired native-position plus normalized-power-magnitude output
+         * @param nativeMeasurement position feedback in the output adapter's native units
+         * @return the optional search-output and required position-periodicity step
+         * @throws NullPointerException if either argument is null
+         * @throws IllegalStateException if this root step already selected an output path
+         */
+        DeviceManagedPositionStep<SymmetricOutputPowerPolicyStep<PositionPlant>>
+        deviceManagedPosition(PowerLimitedPositionOutput out,
+                              ScalarSource nativeMeasurement);
 
         /**
          * Select device-managed velocity output with explicit native-velocity feedback.
@@ -103,8 +127,9 @@ public final class Plants {
          * @throws NullPointerException if either argument is null
          * @throws IllegalStateException if this root step already selected an output path
          */
-        VelocityBoundsStep deviceManagedVelocity(VelocityOutput out,
-                                                 ScalarSource nativeMeasurement);
+        VelocityBoundsStep<TargetStep<Plant>> deviceManagedVelocity(
+                VelocityOutput out,
+                ScalarSource nativeMeasurement);
 
         /**
          * Select framework-regulated position over normalized power and native-position feedback.
@@ -116,29 +141,26 @@ public final class Plants {
          *
          * @param out normalized power output
          * @param nativeMeasurement position feedback in native units
-         * @param regulator regulator that converts Plant-unit position error to normalized power
          * @return the required position-periodicity step
          * @throws NullPointerException if any argument is null
          * @throws IllegalStateException if this root step already selected an output path
          */
-        PositionPeriodicityStep<FeedbackPositionBoundsStep> regulatedPosition(
+        PositionPeriodicityStep<FeedbackPositionBoundsStep<PositionControlStep>> regulatedPosition(
                 PowerOutput out,
-                ScalarSource nativeMeasurement,
-                ScalarRegulator regulator);
+                ScalarSource nativeMeasurement);
 
         /**
          * Select framework-regulated velocity over normalized power and native-velocity feedback.
          *
          * @param out normalized power output
          * @param nativeMeasurement velocity feedback in native units per second
-         * @param regulator regulator that converts Plant-unit velocity error to normalized power
          * @return the required Plant-unit velocity-bounds step
          * @throws NullPointerException if any argument is null
          * @throws IllegalStateException if this root step already selected an output path
          */
-        VelocityBoundsStep regulatedVelocity(PowerOutput out,
-                                             ScalarSource nativeMeasurement,
-                                             ScalarRegulator regulator);
+        VelocityBoundsStep<VelocityControlStep> regulatedVelocity(
+                PowerOutput out,
+                ScalarSource nativeMeasurement);
     }
 
     /** Shared periodicity question for every position construction path. */
@@ -271,8 +293,8 @@ public final class Plants {
     }
 
     /** Optional search capability followed by the shared feedback-position periodicity question. */
-    public interface DeviceManagedPositionStep
-            extends PositionPeriodicityStep<FeedbackPositionBoundsStep> {
+    public interface DeviceManagedPositionStep<NEXT>
+            extends PositionPeriodicityStep<FeedbackPositionBoundsStep<NEXT>> {
         /**
          * Add a distinct normalized-power output for owner-updated calibration searches.
          *
@@ -286,11 +308,11 @@ public final class Plants {
          * @throws IllegalStateException if search output was already answered, this is a regulated
          *                               path, or configuration froze
          */
-        PositionPeriodicityStep<FeedbackPositionBoundsStep> searchPowerOutput(PowerOutput out);
+        PositionPeriodicityStep<FeedbackPositionBoundsStep<NEXT>> searchPowerOutput(PowerOutput out);
     }
 
     /** Feedback-position range question. */
-    public interface FeedbackPositionBoundsStep {
+    public interface FeedbackPositionBoundsStep<NEXT> {
         /**
          * Declare a finite closed legal target range in caller-facing Plant position units.
          *
@@ -300,7 +322,7 @@ public final class Plants {
          * @throws IllegalArgumentException if either bound is non-finite or {@code min > max}
          * @throws IllegalStateException if bounds were already answered or configuration froze
          */
-        FeedbackBoundedPositionMappingStep bounded(double min, double max);
+        FeedbackBoundedPositionMappingStep<NEXT> bounded(double min, double max);
 
         /**
          * Declare no finite numeric bounds beyond the requirement that every target remain finite.
@@ -308,11 +330,11 @@ public final class Plants {
          * @return the unbounded feedback-position mapping step
          * @throws IllegalStateException if bounds were already answered or configuration froze
          */
-        FeedbackUnboundedPositionMappingStep unbounded();
+        FeedbackUnboundedPositionMappingStep<NEXT> unbounded();
     }
 
     /** Mapping answers for a bounded feedback position coordinate. */
-    public interface FeedbackBoundedPositionMappingStep {
+    public interface FeedbackBoundedPositionMappingStep<NEXT> {
         /**
          * Use an identity scale between Plant and native position units, then choose reference
          * ownership explicitly.
@@ -320,7 +342,7 @@ public final class Plants {
          * @return the required position-reference step
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
-        PositionReferenceStep nativeUnits();
+        PositionCoordinateReferenceStep<NEXT> nativeUnits();
 
         /**
          * Set the Plant-to-native position scale, then choose reference ownership explicitly.
@@ -331,7 +353,7 @@ public final class Plants {
          * @throws IllegalArgumentException if the scale is non-finite or zero
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
-        PositionReferenceStep scaleToNative(double nativeUnitsPerPlantUnit);
+        PositionCoordinateReferenceStep<NEXT> scaleToNative(double nativeUnitsPerPlantUnit);
 
         /**
          * Affinely map the declared Plant-range endpoints to two native feedback/output positions.
@@ -347,12 +369,12 @@ public final class Plants {
          *                                  either exact runtime endpoint image is non-finite
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
-        PositionToleranceStep rangeMapsToNative(double nativeAtPlantMin,
-                                                double nativeAtPlantMax);
+        PositionToleranceStep<NEXT> rangeMapsToNative(double nativeAtPlantMin,
+                                                      double nativeAtPlantMax);
     }
 
     /** Mapping answers for an unbounded feedback position coordinate. */
-    public interface FeedbackUnboundedPositionMappingStep {
+    public interface FeedbackUnboundedPositionMappingStep<NEXT> {
         /**
          * Use an identity scale between Plant and native position units, then choose reference
          * ownership explicitly.
@@ -360,7 +382,7 @@ public final class Plants {
          * @return the required position-reference step
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
-        PositionReferenceStep nativeUnits();
+        PositionCoordinateReferenceStep<NEXT> nativeUnits();
 
         /**
          * Set the Plant-to-native position scale, then choose reference ownership explicitly.
@@ -371,18 +393,18 @@ public final class Plants {
          * @throws IllegalArgumentException if the scale is non-finite or zero
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
-        PositionReferenceStep scaleToNative(double nativeUnitsPerPlantUnit);
+        PositionCoordinateReferenceStep<NEXT> scaleToNative(double nativeUnitsPerPlantUnit);
     }
 
-    /** Physical-reference question for a feedback position coordinate. */
-    public interface PositionReferenceStep {
+    /** Coordinate-reference question for a feedback position coordinate. */
+    public interface PositionCoordinateReferenceStep<NEXT> {
         /**
          * Declare that the selected map is already aligned with Plant zero at native zero.
          *
          * @return the required Plant-unit position-tolerance step
          * @throws IllegalStateException if reference was already answered or configuration froze
          */
-        PositionToleranceStep alreadyReferenced();
+        PositionToleranceStep<NEXT> alreadyReferenced();
 
         /**
          * Supply a static affine-map anchor between Plant and native position coordinates.
@@ -396,8 +418,8 @@ public final class Plants {
          *                                  exact bounded-range endpoint image non-finite
          * @throws IllegalStateException if reference was already answered or configuration froze
          */
-        PositionToleranceStep plantPositionMapsToNative(double plantPosition,
-                                                        double nativePosition);
+        PositionToleranceStep<NEXT> plantPositionMapsToNative(double plantPosition,
+                                                              double nativePosition);
 
         /**
          * Align the first finite native feedback sample with a supplied Plant position.
@@ -409,7 +431,7 @@ public final class Plants {
          * @throws IllegalArgumentException if {@code plantPosition} is non-finite
          * @throws IllegalStateException if reference was already answered or configuration froze
          */
-        PositionToleranceStep assumeCurrentPositionIs(double plantPosition);
+        PositionToleranceStep<NEXT> assumeCurrentPositionIs(double plantPosition);
 
         /**
          * Leave the Plant unreferenced until an explicit calibration/reference operation succeeds.
@@ -419,11 +441,11 @@ public final class Plants {
          * @throws IllegalArgumentException if {@code reason} is null or blank
          * @throws IllegalStateException if reference was already answered or configuration froze
          */
-        PositionToleranceStep needsReference(String reason);
+        PositionToleranceStep<NEXT> needsReference(String reason);
     }
 
     /** Required feedback-position completion tolerance. */
-    public interface PositionToleranceStep {
+    public interface PositionToleranceStep<NEXT> {
         /**
          * Set the inclusive completion tolerance in caller-facing Plant position units.
          *
@@ -432,11 +454,11 @@ public final class Plants {
          * @throws IllegalArgumentException if {@code tolerance} is non-finite or negative
          * @throws IllegalStateException if tolerance was already answered or configuration froze
          */
-        TargetStep<PositionPlant> positionTolerance(double tolerance);
+        NEXT positionTolerance(double tolerance);
     }
 
     /** Velocity target-range question. */
-    public interface VelocityBoundsStep {
+    public interface VelocityBoundsStep<NEXT> {
         /**
          * Declare a finite closed legal target range in caller-facing Plant velocity units.
          *
@@ -446,7 +468,7 @@ public final class Plants {
          * @throws IllegalArgumentException if either bound is non-finite or {@code min > max}
          * @throws IllegalStateException if bounds were already answered or configuration froze
          */
-        VelocityMappingStep bounded(double min, double max);
+        VelocityMappingStep<NEXT> bounded(double min, double max);
 
         /**
          * Declare no numeric velocity bounds beyond the requirement that every target remain finite.
@@ -454,18 +476,18 @@ public final class Plants {
          * @return the required velocity-mapping step
          * @throws IllegalStateException if bounds were already answered or configuration froze
          */
-        VelocityMappingStep unbounded();
+        VelocityMappingStep<NEXT> unbounded();
     }
 
     /** Zero-preserving velocity mapping question. */
-    public interface VelocityMappingStep {
+    public interface VelocityMappingStep<NEXT> {
         /**
          * Use an identity map between Plant and native velocity units.
          *
          * @return the required Plant-unit velocity-tolerance step
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
-        VelocityToleranceStep nativeUnits();
+        VelocityToleranceStep<NEXT> nativeUnits();
 
         /**
          * Set the zero-preserving Plant-to-native velocity scale.
@@ -477,11 +499,11 @@ public final class Plants {
          *                                  bounded range has a non-finite exact native endpoint image
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
-        VelocityToleranceStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
+        VelocityToleranceStep<NEXT> scaleToNative(double nativeUnitsPerPlantVelocityUnit);
     }
 
     /** Required velocity completion tolerance. */
-    public interface VelocityToleranceStep {
+    public interface VelocityToleranceStep<NEXT> {
         /**
          * Set the inclusive completion tolerance in caller-facing Plant velocity units.
          *
@@ -490,7 +512,580 @@ public final class Plants {
          * @throws IllegalArgumentException if {@code tolerance} is non-finite or negative
          * @throws IllegalStateException if tolerance was already answered or configuration froze
          */
-        TargetStep<Plant> velocityTolerance(double tolerance);
+        NEXT velocityTolerance(double tolerance);
+    }
+
+    /**
+     * Optional symmetric normal-output policy supported by an evidence-bearing command path.
+     * Omitting this stage leaves the full normalized output-power domain available.
+     */
+    public interface SymmetricOutputPowerPolicyStep<P extends Plant> extends TargetStep<P> {
+        /**
+         * Limit normal control to the symmetric normalized interval
+         * {@code [-maximumMagnitude, +maximumMagnitude]}.
+         *
+         * <p>Omitting this answer retains the full normalized magnitude {@code 1.0}. This policy
+         * does not constrain a position Plant's separately authorized calibration-search power.</p>
+         *
+         * @param maximumMagnitude finite magnitude in {@code [0.0, 1.0]}
+         * @return target selection with the output-power question closed
+         * @throws IllegalArgumentException if {@code maximumMagnitude} is non-finite or outside
+         *                                  {@code [0.0, 1.0]}
+         * @throws IllegalStateException if output power was already answered or configuration froze
+         */
+        TargetStep<P> outputPowerLimitedTo(double maximumMagnitude);
+    }
+
+    /** Optional signed normal-output policy for Phoenix-regulated {@link PowerOutput} paths. */
+    public interface OutputPowerPolicyStep<P extends Plant>
+            extends SymmetricOutputPowerPolicyStep<P> {
+        /**
+         * Limit normal control to one inclusive normalized output-power interval.
+         *
+         * @param minimum finite lower endpoint in {@code [-1.0, 1.0]}
+         * @param maximum finite upper endpoint in {@code [-1.0, 1.0]}
+         * @return target selection with the output-power question closed
+         * @throws IllegalArgumentException if the interval is invalid or excludes zero
+         * @throws IllegalStateException if output power was already answered or configuration froze
+         */
+        TargetStep<P> outputPowerLimitedTo(double minimum, double maximum);
+
+        /**
+         * Apply bounded supply-voltage compensation after feedback plus feedforward and before the
+         * optional output-power policy.
+         *
+         * <p>A positive finite sample uses
+         * {@code min(referenceVoltage / max(sample, minimumVoltage), maximumScale)}. A non-finite
+         * or non-positive runtime sample uses scale {@code 1.0}. The source is sampled at most once
+         * per Plant update through its memoized view. Omitting this answer applies no voltage
+         * compensation.</p>
+         *
+         * @param supplyVoltage current supply voltage in volts
+         * @param referenceVoltage finite positive voltage at which the control law was tuned
+         * @param minimumVoltage finite positive denominator floor, no greater than
+         *                       {@code referenceVoltage}
+         * @param maximumScale finite upper compensation multiplier, at least {@code 1.0}
+         * @return the post-compensation output-policy step; compensation cannot be answered again
+         * @throws NullPointerException if {@code supplyVoltage} is null
+         * @throws IllegalArgumentException if the numeric voltage policy is invalid
+         * @throws IllegalStateException if control is incomplete, compensation was already
+         *                               answered, output power was already answered, or
+         *                               configuration froze
+         */
+        OutputPowerAfterVoltageStep<P> voltageCompensationFrom(
+                ScalarSource supplyVoltage,
+                double referenceVoltage,
+                double minimumVoltage,
+                double maximumScale);
+    }
+
+    /** Output policy after voltage compensation has been selected once. */
+    public interface OutputPowerAfterVoltageStep<P extends Plant>
+            extends SymmetricOutputPowerPolicyStep<P> {
+        /**
+         * Limit the voltage-compensated command to one inclusive normalized output-power interval.
+         *
+         * @param minimum finite lower endpoint satisfying {@code -1 <= minimum <= 0}
+         * @param maximum finite upper endpoint satisfying {@code 0 <= maximum <= 1}
+         * @return target selection with the output-power question closed
+         * @throws IllegalArgumentException if the endpoints are non-finite, unordered, outside
+         *                                  {@code [-1.0, 1.0]}, or exclude zero
+         * @throws IllegalStateException if output power was already answered or configuration froze
+         */
+        TargetStep<P> outputPowerLimitedTo(double minimum, double maximum);
+    }
+
+    /**
+     * Standard or explicitly custom controller choice after position units and tolerance exist.
+     * The ordinary standard branch owns one setpoint model and PID law; omitting a typed
+     * feedforward answer means exact zero feedforward.
+     */
+    public interface PositionControlStep {
+        /**
+         * Use the final guarded Plant target directly as each cycle's position setpoint.
+         * Setpoint velocity and acceleration are exactly zero and the setpoint is immediately
+         * settled.
+         *
+         * @return the required position-PID step
+         * @throws IllegalStateException if control was already selected or configuration froze
+         */
+        PositionDirectFeedbackStep setpointFromAppliedTarget();
+
+        /**
+         * Generate one trapezoidal, or short-move triangular, position setpoint.
+         * The first update seeds position from the finite Plant measurement with zero velocity and
+         * acceleration; later goal changes replan from retained setpoint state.
+         *
+         * @param maximumVelocity finite positive Plant position units per second
+         * @param maximumAcceleration finite positive Plant position units per second squared
+         * @return the required profiled-position PID step
+         * @throws IllegalArgumentException if either limit is non-finite or not positive
+         * @throws IllegalStateException if control was already selected or configuration froze
+         */
+        PositionProfiledFeedbackStep setpointFromTrapezoidalProfile(
+                double maximumVelocity,
+                double maximumAcceleration);
+
+        /**
+         * Use one advanced complete regulator receiving applied target and Plant-unit measurement
+         * directly, without claiming typed setpoint velocity or acceleration evidence.
+         *
+         * <p>The completed Plant becomes the sole update/reset owner of this stateful instance; do
+         * not share one regulator instance across Plants. This compatibility exit is for control
+         * laws that cannot use the standard typed branch.</p>
+         *
+         * @param regulator fresh complete regulator for this Plant
+         * @return the optional voltage/output-power policy step
+         * @throws NullPointerException if {@code regulator} is null
+         * @throws IllegalStateException if control was already selected or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> controlFromCustomRegulator(
+                ScalarRegulator regulator);
+    }
+
+    /** PID choice for a direct position setpoint. */
+    public interface PositionDirectFeedbackStep {
+        /**
+         * Select P-only feedback; integral and derivative gains are exactly zero.
+         *
+         * @param kP finite normalized output power per Plant position-error unit
+         * @return direct-position PID policy and optional feedforward
+         * @throws IllegalArgumentException if {@code kP} is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        PositionDirectPidStep feedbackFromPid(double kP);
+
+        /**
+         * Select PID feedback over position error.
+         *
+         * @param kP finite normalized output power per Plant position-error unit
+         * @param kI finite normalized output power per Plant position-error-unit second
+         * @param kD finite normalized output power-seconds per Plant position-error unit
+         * @return direct-position PID policy and optional feedforward
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        PositionDirectPidStep feedbackFromPid(double kP, double kI, double kD);
+    }
+
+    /** PID choice for a profiled position setpoint. */
+    public interface PositionProfiledFeedbackStep {
+        /**
+         * Select P-only feedback; integral and derivative gains are exactly zero.
+         *
+         * @param kP finite normalized output power per Plant position-error unit
+         * @return profiled-position PID policy and optional typed feedforward
+         * @throws IllegalArgumentException if {@code kP} is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        PositionProfiledPidStep feedbackFromPid(double kP);
+
+        /**
+         * Select PID feedback over profiled position error.
+         *
+         * @param kP finite normalized output power per Plant position-error unit
+         * @param kI finite normalized output power per Plant position-error-unit second
+         * @param kD finite normalized output power-seconds per Plant position-error unit
+         * @return profiled-position PID policy and optional typed feedforward
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        PositionProfiledPidStep feedbackFromPid(double kP, double kI, double kD);
+    }
+
+    /** Direct-position PID policies and evidence-compatible optional gravity models. */
+    public interface PositionDirectPidStep extends OutputPowerPolicyStep<PositionPlant> {
+        /**
+         * Limit the retained integral contribution in normalized output-power units.
+         *
+         * @param minimum finite lower endpoint, no greater than zero
+         * @param maximum finite upper endpoint, no less than zero
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the interval is invalid or excludes zero
+         * @throws IllegalStateException if already answered, a later control stage was selected,
+         *                               or configuration froze
+         */
+        PositionDirectPidStep feedbackIntegralLimitedTo(double minimum, double maximum);
+
+        /**
+         * Limit the complete PID feedback contribution before feedforward is added.
+         *
+         * @param minimum finite inclusive normalized-output contribution minimum
+         * @param maximum finite inclusive normalized-output contribution maximum
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the endpoints are unordered or non-finite
+         * @throws IllegalStateException if already answered, a later control stage was selected,
+         *                               or configuration froze
+         */
+        PositionDirectPidStep feedbackOutputLimitedTo(double minimum, double maximum);
+
+        /**
+         * Add constant lift gravity feedforward {@code kG}; direct position has no motion term.
+         *
+         * @param kG finite signed normalized output power opposing gravity
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if {@code kG} is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromLift(double kG);
+
+        /**
+         * Add arm gravity feedforward
+         * {@code kG*cos((pSetpoint-plantPositionAtMaximumGravity)*radiansPerPlantUnit)}.
+         *
+         * @param kG finite signed maximum normalized gravity-compensation power
+         * @param plantPositionAtMaximumGravity finite Plant position where cosine is {@code 1}
+         * @param radiansPerPlantUnit finite nonzero coordinate conversion
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if an argument is non-finite or the conversion is zero
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromArm(
+                double kG,
+                double plantPositionAtMaximumGravity,
+                double radiansPerPlantUnit);
+    }
+
+    /** Profiled-position PID policies and p/v/a-compatible optional feedforward models. */
+    public interface PositionProfiledPidStep extends OutputPowerPolicyStep<PositionPlant> {
+        /**
+         * Limit the retained integral contribution in normalized output-power units.
+         * The finite ordered interval must contain zero.
+         *
+         * @param minimum finite lower endpoint, no greater than zero
+         * @param maximum finite upper endpoint, no less than zero
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the interval is invalid or excludes zero
+         * @throws IllegalStateException if already answered, a later stage was selected, or frozen
+         */
+        PositionProfiledPidStep feedbackIntegralLimitedTo(double minimum, double maximum);
+
+        /**
+         * Limit the complete PID feedback contribution before feedforward is added.
+         *
+         * @param minimum finite inclusive contribution minimum
+         * @param maximum finite inclusive contribution maximum
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the endpoints are unordered or non-finite
+         * @throws IllegalStateException if already answered, a later stage was selected, or frozen
+         */
+        PositionProfiledPidStep feedbackOutputLimitedTo(double minimum, double maximum);
+
+        /**
+         * Add motion feedforward {@code kV*vSetpoint}; {@code kS} and {@code kA} are zero.
+         *
+         * @param kV finite normalized power divided by Plant position units per second
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if {@code kV} is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromMotion(double kV);
+
+        /**
+         * Add motion feedforward
+         * {@code kS*sign(vSetpoint)+kV*vSetpoint+kA*aSetpoint}; {@code sign(0)} is zero.
+         *
+         * @param kS finite signed normalized static power
+         * @param kV finite normalized power divided by Plant position units per second
+         * @param kA finite normalized power divided by Plant position units per second squared
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromMotion(
+                double kS, double kV, double kA);
+
+        /**
+         * Add constant lift gravity feedforward {@code kG}; motion gains are exactly zero.
+         *
+         * @param kG finite signed normalized output power opposing gravity
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if {@code kG} is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromLift(double kG);
+
+        /**
+         * Add lift feedforward
+         * {@code kG+kS*sign(vSetpoint)+kV*vSetpoint+kA*aSetpoint}.
+         *
+         * @param kG finite signed normalized gravity-compensation power
+         * @param kS finite signed normalized static power
+         * @param kV finite normalized power divided by Plant position units per second
+         * @param kA finite normalized power divided by Plant position units per second squared
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromLift(
+                double kG, double kS, double kV, double kA);
+
+        /**
+         * Add arm gravity feedforward
+         * {@code kG*cos((pSetpoint-plantPositionAtMaximumGravity)*radiansPerPlantUnit)}.
+         *
+         * @param kG finite signed maximum normalized gravity-compensation power
+         * @param plantPositionAtMaximumGravity finite Plant position where cosine is {@code 1}
+         * @param radiansPerPlantUnit finite nonzero coordinate conversion
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if a value is non-finite or the conversion is zero
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromArm(
+                double kG,
+                double plantPositionAtMaximumGravity,
+                double radiansPerPlantUnit);
+
+        /**
+         * Add the full motion term plus the arm-gravity cosine term. Arguments are ordered as
+         * gravity geometry first, then {@code kS}, {@code kV}, and {@code kA} motion gains.
+         *
+         * @param kG finite signed maximum normalized gravity-compensation power
+         * @param plantPositionAtMaximumGravity finite Plant position where cosine is {@code 1}
+         * @param radiansPerPlantUnit finite nonzero coordinate conversion
+         * @param kS finite signed normalized static power
+         * @param kV finite normalized power divided by Plant position units per second
+         * @param kA finite normalized power divided by Plant position units per second squared
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if a value is non-finite or the conversion is zero
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<PositionPlant> feedforwardFromArm(
+                double kG,
+                double plantPositionAtMaximumGravity,
+                double radiansPerPlantUnit,
+                double kS,
+                double kV,
+                double kA);
+    }
+
+    /**
+     * Standard or explicitly custom controller choice after velocity units and tolerance exist.
+     * Omitting a typed feedforward answer means exact zero feedforward.
+     */
+    public interface VelocityControlStep {
+        /**
+         * Use the final guarded Plant velocity target directly as each cycle's setpoint.
+         * Acceleration evidence is unavailable and the setpoint is immediately settled.
+         *
+         * @return the required direct-velocity PID step
+         * @throws IllegalStateException if control was already selected or configuration froze
+         */
+        VelocityDirectFeedbackStep setpointFromAppliedTarget();
+
+        /**
+         * Generate an acceleration-limited velocity setpoint, seeding the first update from the
+         * finite measured velocity with zero acceleration.
+         *
+         * @param maximumAcceleration finite positive Plant velocity units per second
+         * @return the required profiled-velocity PID step
+         * @throws IllegalArgumentException if the limit is non-finite or not positive
+         * @throws IllegalStateException if control was already selected or configuration froze
+         */
+        VelocityProfiledFeedbackStep setpointFromAccelerationLimitedProfile(
+                double maximumAcceleration);
+
+        /**
+         * Use one advanced complete regulator receiving applied target and Plant-unit measurement
+         * directly. The completed Plant solely owns updates and reset; do not share this stateful
+         * instance across Plants.
+         *
+         * @param regulator fresh complete regulator for this Plant
+         * @return the optional voltage/output-power policy step
+         * @throws NullPointerException if {@code regulator} is null
+         * @throws IllegalStateException if control was already selected or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> controlFromCustomRegulator(ScalarRegulator regulator);
+    }
+
+    /** PID choice for a direct velocity setpoint. */
+    public interface VelocityDirectFeedbackStep {
+        /**
+         * Select P-only feedback; integral and derivative gains are exactly zero.
+         *
+         * @param kP finite normalized output power per Plant velocity-error unit
+         * @return direct-velocity PID policy and optional typed feedforward
+         * @throws IllegalArgumentException if {@code kP} is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        VelocityDirectPidStep feedbackFromPid(double kP);
+
+        /**
+         * Select PID feedback over Plant velocity error.
+         *
+         * @param kP finite normalized output power per Plant velocity-error unit
+         * @param kI finite normalized output power per Plant velocity-error-unit second
+         * @param kD finite normalized output power-seconds per Plant velocity-error unit
+         * @return direct-velocity PID policy and optional typed feedforward
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        VelocityDirectPidStep feedbackFromPid(double kP, double kI, double kD);
+    }
+
+    /** PID choice for an acceleration-limited velocity setpoint. */
+    public interface VelocityProfiledFeedbackStep {
+        /**
+         * Select P-only feedback; integral and derivative gains are exactly zero.
+         *
+         * @param kP finite normalized output power per Plant velocity-error unit
+         * @return profiled-velocity PID policy and optional typed feedforward
+         * @throws IllegalArgumentException if {@code kP} is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        VelocityProfiledPidStep feedbackFromPid(double kP);
+
+        /**
+         * Select PID feedback over the acceleration-limited velocity error.
+         *
+         * @param kP finite normalized output power per Plant velocity-error unit
+         * @param kI finite normalized output power per Plant velocity-error-unit second
+         * @param kD finite normalized output power-seconds per Plant velocity-error unit
+         * @return profiled-velocity PID policy and optional typed feedforward
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedback was already answered or configuration froze
+         */
+        VelocityProfiledPidStep feedbackFromPid(double kP, double kI, double kD);
+    }
+
+    /** Direct-velocity PID policies and v-compatible optional feedforward models. */
+    public interface VelocityDirectPidStep extends OutputPowerPolicyStep<Plant> {
+        /**
+         * Limit the retained integral contribution in normalized output-power units.
+         *
+         * @param minimum finite lower endpoint, no greater than zero
+         * @param maximum finite upper endpoint, no less than zero
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the interval is invalid or excludes zero
+         * @throws IllegalStateException if already answered, a later stage was selected, or frozen
+         */
+        VelocityDirectPidStep feedbackIntegralLimitedTo(double minimum, double maximum);
+
+        /**
+         * Limit the complete PID feedback contribution before feedforward is added.
+         *
+         * @param minimum finite inclusive contribution minimum
+         * @param maximum finite inclusive contribution maximum
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the endpoints are unordered or non-finite
+         * @throws IllegalStateException if already answered, a later stage was selected, or frozen
+         */
+        VelocityDirectPidStep feedbackOutputLimitedTo(double minimum, double maximum);
+
+        /**
+         * Add {@code kV*vSetpoint}; {@code kS} is zero.
+         *
+         * @param kV finite normalized power divided by one Plant velocity unit
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if {@code kV} is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kV);
+
+        /**
+         * Add {@code kS*sign(vSetpoint)+kV*vSetpoint}; {@code sign(0)} is zero.
+         *
+         * @param kS finite signed normalized static power
+         * @param kV finite normalized power divided by one Plant velocity unit
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if either gain is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kS, double kV);
+
+        /**
+         * Add constant lift gravity feedforward {@code kG}; motion gains are exactly zero.
+         *
+         * @param kG finite signed normalized output power opposing gravity
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if {@code kG} is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromLift(double kG);
+
+        /**
+         * Add {@code kG+kS*sign(vSetpoint)+kV*vSetpoint}.
+         *
+         * @param kG finite signed normalized gravity-compensation power
+         * @param kS finite signed normalized static power
+         * @param kV finite normalized power divided by one Plant velocity unit
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromLift(double kG, double kS, double kV);
+    }
+
+    /** Acceleration-limited velocity PID policies and v/a-compatible feedforward models. */
+    public interface VelocityProfiledPidStep extends OutputPowerPolicyStep<Plant> {
+        /**
+         * Limit the retained integral contribution in normalized output-power units.
+         *
+         * @param minimum finite lower endpoint, no greater than zero
+         * @param maximum finite upper endpoint, no less than zero
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the interval is invalid or excludes zero
+         * @throws IllegalStateException if already answered, a later stage was selected, or frozen
+         */
+        VelocityProfiledPidStep feedbackIntegralLimitedTo(double minimum, double maximum);
+
+        /**
+         * Limit the complete PID feedback contribution before feedforward is added.
+         *
+         * @param minimum finite inclusive contribution minimum
+         * @param maximum finite inclusive contribution maximum
+         * @return this PID stage for another optional PID policy or feedforward answer
+         * @throws IllegalArgumentException if the endpoints are unordered or non-finite
+         * @throws IllegalStateException if already answered, a later stage was selected, or frozen
+         */
+        VelocityProfiledPidStep feedbackOutputLimitedTo(double minimum, double maximum);
+
+        /**
+         * Add {@code kV*vSetpoint}; {@code kS} and {@code kA} are zero.
+         *
+         * @param kV finite normalized power divided by one Plant velocity unit
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if {@code kV} is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kV);
+
+        /**
+         * Add {@code kS*sign(vSetpoint)+kV*vSetpoint+kA*aSetpoint}.
+         *
+         * @param kS finite signed normalized static power
+         * @param kV finite normalized power divided by one Plant velocity unit
+         * @param kA finite normalized power divided by Plant velocity units per second
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromMotion(
+                double kS, double kV, double kA);
+
+        /**
+         * Add constant lift gravity feedforward {@code kG}; motion gains are exactly zero.
+         *
+         * @param kG finite signed normalized output power opposing gravity
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if {@code kG} is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromLift(double kG);
+
+        /**
+         * Add {@code kG+kS*sign(vSetpoint)+kV*vSetpoint+kA*aSetpoint}.
+         *
+         * @param kG finite signed normalized gravity-compensation power
+         * @param kS finite signed normalized static power
+         * @param kV finite normalized power divided by one Plant velocity unit
+         * @param kA finite normalized power divided by Plant velocity units per second
+         * @return optional voltage/output-power policy with feedforward closed
+         * @throws IllegalArgumentException if any gain is non-finite
+         * @throws IllegalStateException if feedforward was already answered or configuration froze
+         */
+        OutputPowerPolicyStep<Plant> feedforwardFromLift(
+                double kG, double kS, double kV, double kA);
     }
 
     /** Shared optional-guards and target-selection step. */
@@ -664,7 +1259,7 @@ public final class Plants {
         }
 
         @Override
-        public DeviceManagedPositionStep deviceManagedPosition(
+        public DeviceManagedPositionStep<TargetStep<PositionPlant>> deviceManagedPosition(
                 PositionOutput out,
                 ScalarSource nativeMeasurement) {
             requireUnused();
@@ -676,7 +1271,22 @@ public final class Plants {
         }
 
         @Override
-        public VelocityBoundsStep deviceManagedVelocity(
+        public DeviceManagedPositionStep<SymmetricOutputPowerPolicyStep<PositionPlant>>
+        deviceManagedPosition(
+                PowerLimitedPositionOutput out,
+                ScalarSource nativeMeasurement) {
+            requireUnused();
+            PowerLimitedPositionOutput checkedOut = Objects.requireNonNull(
+                    out, "power-limited position output");
+            ScalarSource checkedMeasurement = Objects.requireNonNull(
+                    nativeMeasurement, "native position measurement");
+            selected = true;
+            return FeedbackPositionBuilder.powerLimitedDeviceManaged(
+                    checkedOut, checkedMeasurement);
+        }
+
+        @Override
+        public VelocityBoundsStep<TargetStep<Plant>> deviceManagedVelocity(
                 VelocityOutput out,
                 ScalarSource nativeMeasurement) {
             requireUnused();
@@ -688,32 +1298,28 @@ public final class Plants {
         }
 
         @Override
-        public PositionPeriodicityStep<FeedbackPositionBoundsStep> regulatedPosition(
+        public PositionPeriodicityStep<FeedbackPositionBoundsStep<PositionControlStep>>
+        regulatedPosition(
                 PowerOutput out,
-                ScalarSource nativeMeasurement,
-                ScalarRegulator regulator) {
+                ScalarSource nativeMeasurement) {
             requireUnused();
             PowerOutput checkedOut = Objects.requireNonNull(out, "regulated power output");
             ScalarSource checkedMeasurement = Objects.requireNonNull(
                     nativeMeasurement, "native position measurement");
-            ScalarRegulator checkedRegulator = Objects.requireNonNull(regulator, "position regulator");
             selected = true;
-            return FeedbackPositionBuilder.regulated(
-                    checkedOut, checkedMeasurement, checkedRegulator);
+            return FeedbackPositionBuilder.regulated(checkedOut, checkedMeasurement);
         }
 
         @Override
-        public VelocityBoundsStep regulatedVelocity(
+        public VelocityBoundsStep<VelocityControlStep> regulatedVelocity(
                 PowerOutput out,
-                ScalarSource nativeMeasurement,
-                ScalarRegulator regulator) {
+                ScalarSource nativeMeasurement) {
             requireUnused();
             PowerOutput checkedOut = Objects.requireNonNull(out, "regulated power output");
             ScalarSource checkedMeasurement = Objects.requireNonNull(
                     nativeMeasurement, "native velocity measurement");
-            ScalarRegulator checkedRegulator = Objects.requireNonNull(regulator, "velocity regulator");
             selected = true;
-            return VelocityBuilder.regulated(checkedOut, checkedMeasurement, checkedRegulator);
+            return VelocityBuilder.regulated(checkedOut, checkedMeasurement);
         }
 
         private void requireUnused() {
@@ -752,6 +1358,7 @@ public final class Plants {
         public final TargetGuardStep<P> maxTargetRate(double maxDeltaPerSec) {
             requireGuardBranch("maxTargetRate(...)");
             requireTargetRateUnanswered();
+            requireTargetRateCompatible("maxTargetRate(...)");
             guardBuilder.maxTargetRate(maxDeltaPerSec);
             targetRateConfigured = true;
             return this;
@@ -761,6 +1368,7 @@ public final class Plants {
         public final TargetGuardStep<P> maxTargetRates(double maxUpPerSec, double maxDownPerSec) {
             requireGuardBranch("maxTargetRates(...)");
             requireTargetRateUnanswered();
+            requireTargetRateCompatible("maxTargetRates(...)");
             guardBuilder.maxTargetRates(maxUpPerSec, maxDownPerSec);
             targetRateConfigured = true;
             return this;
@@ -875,6 +1483,11 @@ public final class Plants {
 
         protected abstract P buildPlant(PlantTargetResolver resolver, PlantTargetGuards guards);
 
+        /** Reject a target-rate guard before it can mutate a recipe with another motion owner. */
+        protected void requireTargetRateCompatible(String answer) {
+            // Most Plant realizations have no competing motion-profile owner.
+        }
+
         private void requireTargetUnanswered(String answer) {
             requireConfigurationMutable(answer);
             if (targetAnswered) {
@@ -914,6 +1527,10 @@ public final class Plants {
                         + ", " + range.maxValue + "]");
             }
         }
+
+        protected final boolean hasTargetRateConfigured() {
+            return targetRateConfigured;
+        }
     }
 
     private static final class PowerBuilder extends TargetBuilder<Plant> {
@@ -939,41 +1556,67 @@ public final class Plants {
         }
     }
 
-    private static final class VelocityBuilder extends TargetBuilder<Plant>
-            implements VelocityBoundsStep, VelocityMappingStep, VelocityToleranceStep {
+    private static final class VelocityBuilder<NEXT> extends TargetBuilder<Plant>
+            implements VelocityBoundsStep<NEXT>, VelocityMappingStep<NEXT>,
+            VelocityToleranceStep<NEXT>, VelocityControlStep,
+            VelocityDirectFeedbackStep, VelocityProfiledFeedbackStep,
+            VelocityDirectPidStep, VelocityProfiledPidStep,
+            OutputPowerPolicyStep<Plant>, OutputPowerAfterVoltageStep<Plant> {
         private final VelocityOutput velocityOut;
         private final PowerOutput regulatedPowerOut;
         private final ScalarSource nativeMeasurement;
-        private final ScalarRegulator regulator;
+        private ScalarRegulator customRegulator;
+        private StandardControl.Config standardControl;
         private ScalarRange range;
         private double nativePerPlantUnit;
         private double tolerance;
+        private ScalarSource supplyVoltage;
+        private double referenceVoltage;
+        private double minimumVoltage;
+        private double maximumVoltageScale;
+        private double minimumOutputPower = -1.0;
+        private double maximumOutputPower = 1.0;
         private boolean rangeAnswered;
         private boolean mappingAnswered;
         private boolean toleranceAnswered;
+        private boolean controlAnswered;
+        private boolean feedbackAnswered;
+        private boolean feedforwardAnswered;
+        private boolean voltageAnswered;
+        private boolean outputPolicyAnswered;
+        private boolean profiledSetpoint;
 
         private VelocityBuilder(VelocityOutput velocityOut,
                                 PowerOutput regulatedPowerOut,
-                                ScalarSource nativeMeasurement,
-                                ScalarRegulator regulator) {
+                                ScalarSource nativeMeasurement) {
             this.velocityOut = velocityOut;
             this.regulatedPowerOut = regulatedPowerOut;
             this.nativeMeasurement = nativeMeasurement;
-            this.regulator = regulator;
-        }
-
-        static VelocityBuilder deviceManaged(VelocityOutput out, ScalarSource nativeMeasurement) {
-            return new VelocityBuilder(out, null, nativeMeasurement, null);
-        }
-
-        static VelocityBuilder regulated(PowerOutput out,
-                                         ScalarSource nativeMeasurement,
-                                         ScalarRegulator regulator) {
-            return new VelocityBuilder(null, out, nativeMeasurement, regulator);
         }
 
         @Override
-        public VelocityMappingStep bounded(double min, double max) {
+        protected void requireTargetRateCompatible(String answer) {
+            if (profiledSetpoint) {
+                throw new IllegalStateException(answer + " cannot be combined with "
+                        + "setpointFromAccelerationLimitedProfile(...); choose one "
+                        + "motion-shaping owner");
+            }
+        }
+
+        static VelocityBuilder<TargetStep<Plant>> deviceManaged(
+                VelocityOutput out,
+                ScalarSource nativeMeasurement) {
+            return new VelocityBuilder<>(out, null, nativeMeasurement);
+        }
+
+        static VelocityBuilder<VelocityControlStep> regulated(
+                PowerOutput out,
+                ScalarSource nativeMeasurement) {
+            return new VelocityBuilder<>(null, out, nativeMeasurement);
+        }
+
+        @Override
+        public VelocityMappingStep<NEXT> bounded(double min, double max) {
             requireConfigurationMutable("bounded(...)");
             requireRangeUnanswered();
             range = ScalarRange.bounded(min, max);
@@ -982,7 +1625,7 @@ public final class Plants {
         }
 
         @Override
-        public VelocityMappingStep unbounded() {
+        public VelocityMappingStep<NEXT> unbounded() {
             requireConfigurationMutable("unbounded()");
             requireRangeUnanswered();
             range = ScalarRange.unbounded();
@@ -991,17 +1634,19 @@ public final class Plants {
         }
 
         @Override
-        public VelocityToleranceStep nativeUnits() {
+        public VelocityToleranceStep<NEXT> nativeUnits() {
             return answerMapping(1.0, "nativeUnits()");
         }
 
         @Override
-        public VelocityToleranceStep scaleToNative(double nativeUnitsPerPlantVelocityUnit) {
+        public VelocityToleranceStep<NEXT> scaleToNative(
+                double nativeUnitsPerPlantVelocityUnit) {
             return answerMapping(nativeUnitsPerPlantVelocityUnit, "scaleToNative(...)");
         }
 
         @Override
-        public TargetStep<Plant> velocityTolerance(double tolerance) {
+        @SuppressWarnings("unchecked")
+        public NEXT velocityTolerance(double tolerance) {
             requireConfigurationMutable("velocityTolerance(...)");
             if (!mappingAnswered) {
                 throw new IllegalStateException("Choose nativeUnits() or scaleToNative(...) before "
@@ -1013,6 +1658,183 @@ public final class Plants {
             requireTolerance(tolerance, "velocityTolerance");
             this.tolerance = tolerance;
             toleranceAnswered = true;
+            return (NEXT) this;
+        }
+
+        @Override
+        public VelocityDirectFeedbackStep setpointFromAppliedTarget() {
+            requireRegulatedControlPending("setpointFromAppliedTarget()");
+            standardControl = StandardControl.velocityFromAppliedTarget();
+            controlAnswered = true;
+            profiledSetpoint = false;
+            return this;
+        }
+
+        @Override
+        public VelocityProfiledFeedbackStep setpointFromAccelerationLimitedProfile(
+                double maximumAcceleration) {
+            requireRegulatedControlPending("setpointFromAccelerationLimitedProfile(...)");
+            standardControl = StandardControl.velocityFromAccelerationLimitedProfile(
+                    maximumAcceleration);
+            controlAnswered = true;
+            profiledSetpoint = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<Plant> controlFromCustomRegulator(
+                ScalarRegulator regulator) {
+            requireRegulatedControlPending("controlFromCustomRegulator(...)");
+            customRegulator = Objects.requireNonNull(regulator, "custom regulator");
+            controlAnswered = true;
+            return this;
+        }
+
+        @Override
+        public VelocityBuilder<NEXT> feedbackFromPid(double kP) {
+            requireStandardFeedbackPending("feedbackFromPid(...)");
+            standardControl.feedbackFromPid(kP);
+            feedbackAnswered = true;
+            return this;
+        }
+
+        @Override
+        public VelocityBuilder<NEXT> feedbackFromPid(double kP, double kI, double kD) {
+            requireStandardFeedbackPending("feedbackFromPid(...)");
+            standardControl.feedbackFromPid(kP, kI, kD);
+            feedbackAnswered = true;
+            return this;
+        }
+
+        @Override
+        public VelocityBuilder<NEXT> feedbackIntegralLimitedTo(
+                double minimum,
+                double maximum) {
+            requireStandardFeedbackAnswered("feedbackIntegralLimitedTo(...)");
+            standardControl.feedbackIntegralLimitedTo(minimum, maximum);
+            return this;
+        }
+
+        @Override
+        public VelocityBuilder<NEXT> feedbackOutputLimitedTo(
+                double minimum,
+                double maximum) {
+            requireStandardFeedbackAnswered("feedbackOutputLimitedTo(...)");
+            standardControl.feedbackOutputLimitedTo(minimum, maximum);
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kV) {
+            requireStandardFeedbackAnswered("feedforwardFromMotion(...)");
+            if (profiledSetpoint) standardControl.feedforwardForMotion(0.0, kV, 0.0);
+            else standardControl.feedforwardForMotion(0.0, kV);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kS, double kV) {
+            requireDirectVelocity("feedforwardFromMotion(kS, kV)");
+            standardControl.feedforwardForMotion(kS, kV);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<Plant> feedforwardFromMotion(
+                double kS,
+                double kV,
+                double kA) {
+            requireProfiledVelocity("feedforwardFromMotion(kS, kV, kA)");
+            standardControl.feedforwardForMotion(kS, kV, kA);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<Plant> feedforwardFromLift(double kG) {
+            requireStandardFeedbackAnswered("feedforwardFromLift(...)");
+            standardControl.feedforwardForLift(kG);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<Plant> feedforwardFromLift(
+                double kG,
+                double kS,
+                double kV) {
+            requireDirectVelocity("feedforwardFromLift(kG, kS, kV)");
+            standardControl.feedforwardForLift(kS, kV, kG);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<Plant> feedforwardFromLift(
+                double kG,
+                double kS,
+                double kV,
+                double kA) {
+            requireProfiledVelocity("feedforwardFromLift(kG, kS, kV, kA)");
+            standardControl.feedforwardForLift(kS, kV, kA, kG);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerAfterVoltageStep<Plant> voltageCompensationFrom(
+                ScalarSource supplyVoltage,
+                double referenceVoltage,
+                double minimumVoltage,
+                double maximumScale) {
+            requireOutputPolicyAvailable("voltageCompensationFrom(...)");
+            if (outputPolicyAnswered) {
+                throw new IllegalStateException(
+                        "voltageCompensationFrom(...) must be answered before "
+                                + "outputPowerLimitedTo(...)");
+            }
+            if (voltageAnswered) {
+                throw new IllegalStateException(
+                        "voltageCompensationFrom(...) has already been answered");
+            }
+            if (standardControl != null) {
+                standardControl.voltageCompensatedBy(
+                        supplyVoltage, referenceVoltage, minimumVoltage, maximumScale);
+            } else {
+                this.supplyVoltage = Objects.requireNonNull(supplyVoltage, "supplyVoltage");
+                this.referenceVoltage = referenceVoltage;
+                this.minimumVoltage = minimumVoltage;
+                this.maximumVoltageScale = maximumScale;
+                // Validate through the existing advanced decorator without retaining it yet.
+                ScalarRegulators.voltageCompensated(
+                        customRegulator, supplyVoltage, referenceVoltage,
+                        minimumVoltage, maximumScale);
+            }
+            voltageAnswered = true;
+            return this;
+        }
+
+        @Override
+        public TargetStep<Plant> outputPowerLimitedTo(double maximumMagnitude) {
+            requireOutputPolicyUnanswered();
+            requireSymmetricOutputMagnitude(maximumMagnitude);
+            minimumOutputPower = -maximumMagnitude;
+            maximumOutputPower = maximumMagnitude;
+            if (standardControl != null) standardControl.outputPowerLimitedTo(maximumMagnitude);
+            outputPolicyAnswered = true;
+            return this;
+        }
+
+        @Override
+        public TargetStep<Plant> outputPowerLimitedTo(double minimum, double maximum) {
+            requireOutputPolicyUnanswered();
+            requireOutputPowerRange(minimum, maximum);
+            minimumOutputPower = minimum;
+            maximumOutputPower = maximum;
+            if (standardControl != null) standardControl.outputPowerLimitedTo(minimum, maximum);
+            outputPolicyAnswered = true;
             return this;
         }
 
@@ -1034,13 +1856,28 @@ public final class Plants {
             }
             MappedVelocityPlant.requireFiniteBoundedMap(
                     range, nativePerPlantUnit, "Plants velocity configuration");
+            if (regulatedPowerOut != null && !controlAnswered) {
+                throw new IllegalStateException("Regulated velocity construction requires "
+                        + "setpointFromAppliedTarget(), "
+                        + "setpointFromAccelerationLimitedProfile(...), or "
+                        + "controlFromCustomRegulator(...)");
+            }
+            if (standardControl != null && !feedbackAnswered) {
+                throw new IllegalStateException("Standard regulated velocity construction requires "
+                        + "feedbackFromPid(...)");
+            }
+            if (profiledSetpoint && hasTargetRateConfigured()) {
+                throw new IllegalStateException("A profiled velocity controller cannot also use "
+                        + "maxTargetRate(...) or maxTargetRates(...); choose one motion-shaping owner");
+            }
         }
 
         @Override
         protected Plant buildPlant(PlantTargetResolver resolver, PlantTargetGuards guards) {
             MappedVelocityPlant.FeedbackConfigurationStep configured = velocityOut != null
                     ? MappedVelocityPlant.velocityOutput(velocityOut, nativeMeasurement)
-                    : MappedVelocityPlant.regulated(regulatedPowerOut, nativeMeasurement, regulator);
+                    : MappedVelocityPlant.regulated(
+                            regulatedPowerOut, nativeMeasurement, resolvedRegulator());
             return configured.range(range)
                     .nativePerPlantUnit(nativePerPlantUnit)
                     .velocityTolerance(tolerance)
@@ -1049,7 +1886,7 @@ public final class Plants {
                     .build();
         }
 
-        private VelocityToleranceStep answerMapping(double scale, String answer) {
+        private VelocityToleranceStep<NEXT> answerMapping(double scale, String answer) {
             requireConfigurationMutable(answer);
             if (!rangeAnswered) {
                 throw new IllegalStateException("Choose bounded(...) or unbounded() before " + answer);
@@ -1068,6 +1905,86 @@ public final class Plants {
         private void requireRangeUnanswered() {
             if (rangeAnswered) {
                 throw new IllegalStateException("Velocity bounds have already been answered");
+            }
+        }
+
+        private ScalarRegulator resolvedRegulator() {
+            if (standardControl != null) return standardControl.build();
+            ScalarRegulator resolved = customRegulator;
+            if (voltageAnswered) {
+                resolved = ScalarRegulators.voltageCompensated(
+                        resolved, supplyVoltage, referenceVoltage,
+                        minimumVoltage, maximumVoltageScale);
+            }
+            if (outputPolicyAnswered) {
+                resolved = ScalarRegulators.outputLimited(
+                        resolved, minimumOutputPower, maximumOutputPower);
+            }
+            return resolved;
+        }
+
+        private void requireRegulatedControlPending(String operation) {
+            requireConfigurationMutable(operation);
+            if (!toleranceAnswered) {
+                throw new IllegalStateException(operation + " requires velocityTolerance(...) first");
+            }
+            if (regulatedPowerOut == null) {
+                throw new IllegalStateException(operation
+                        + " is available only for a framework-regulated velocity Plant");
+            }
+            if (controlAnswered) {
+                throw new IllegalStateException("Velocity control has already been answered");
+            }
+        }
+
+        private void requireStandardFeedbackPending(String operation) {
+            requireConfigurationMutable(operation);
+            if (standardControl == null || !controlAnswered || feedbackAnswered) {
+                throw new IllegalStateException(operation
+                        + " requires one unanswered standard velocity setpoint selection");
+            }
+        }
+
+        private void requireStandardFeedbackAnswered(String operation) {
+            requireConfigurationMutable(operation);
+            if (standardControl == null || !feedbackAnswered) {
+                throw new IllegalStateException(operation + " requires feedbackFromPid(...) first");
+            }
+            if (feedforwardAnswered || voltageAnswered || outputPolicyAnswered) {
+                throw new IllegalStateException(operation + " cannot change PID/feedforward after "
+                        + "the control recipe advanced to feedforward, voltage, or output policy");
+            }
+        }
+
+        private void requireDirectVelocity(String operation) {
+            requireStandardFeedbackAnswered(operation);
+            if (profiledSetpoint) {
+                throw new IllegalStateException(operation
+                        + " is available only for setpointFromAppliedTarget()");
+            }
+        }
+
+        private void requireProfiledVelocity(String operation) {
+            requireStandardFeedbackAnswered(operation);
+            if (!profiledSetpoint) {
+                throw new IllegalStateException(operation
+                        + " requires setpointFromAccelerationLimitedProfile(...)");
+            }
+        }
+
+        private void requireOutputPolicyAvailable(String operation) {
+            requireConfigurationMutable(operation);
+            if (!controlAnswered || (standardControl != null && !feedbackAnswered)) {
+                throw new IllegalStateException(operation
+                        + " requires completed standard feedback or controlFromCustomRegulator(...)");
+            }
+        }
+
+        private void requireOutputPolicyUnanswered() {
+            requireOutputPolicyAvailable("outputPowerLimitedTo(...)");
+            if (outputPolicyAnswered) {
+                throw new IllegalStateException(
+                        "outputPowerLimitedTo(...) has already been answered");
             }
         }
     }
@@ -1337,55 +2254,91 @@ public final class Plants {
         }
     }
 
-    private static final class FeedbackPositionBuilder extends PositionBuilderBase<PositionPlant>
-            implements DeviceManagedPositionStep,
-            PositionPeriodicityStep<FeedbackPositionBoundsStep>,
-            FeedbackPositionBoundsStep,
-            FeedbackBoundedPositionMappingStep,
-            FeedbackUnboundedPositionMappingStep,
-            PositionReferenceStep,
-            PositionToleranceStep {
+    private static final class FeedbackPositionBuilder<NEXT>
+            extends PositionBuilderBase<PositionPlant>
+            implements DeviceManagedPositionStep<NEXT>,
+            PositionPeriodicityStep<FeedbackPositionBoundsStep<NEXT>>,
+            FeedbackPositionBoundsStep<NEXT>,
+            FeedbackBoundedPositionMappingStep<NEXT>,
+            FeedbackUnboundedPositionMappingStep<NEXT>,
+            PositionCoordinateReferenceStep<NEXT>,
+            PositionToleranceStep<NEXT>, PositionControlStep,
+            PositionDirectFeedbackStep, PositionProfiledFeedbackStep,
+            PositionDirectPidStep, PositionProfiledPidStep,
+            OutputPowerPolicyStep<PositionPlant>,
+            OutputPowerAfterVoltageStep<PositionPlant> {
         private final PositionOutput positionOut;
+        private final PowerLimitedPositionOutput powerLimitedPositionOut;
         private final PowerOutput regulatedPowerOut;
         private final ScalarSource nativeMeasurement;
-        private final ScalarRegulator regulator;
+        private ScalarRegulator customRegulator;
+        private StandardControl.Config standardControl;
         private PowerOutput searchPowerOut;
         private MappedPositionPlant.ReferenceMode referenceMode;
         private double assumedPlantPosition;
         private String referenceReason;
         private double tolerance;
+        private double maximumDeviceOutputPower = 1.0;
+        private ScalarSource supplyVoltage;
+        private double referenceVoltage;
+        private double minimumVoltage;
+        private double maximumVoltageScale;
+        private double minimumOutputPower = -1.0;
+        private double maximumOutputPower = 1.0;
         private boolean searchAnswered;
         private boolean toleranceAnswered;
+        private boolean controlAnswered;
+        private boolean feedbackAnswered;
+        private boolean feedforwardAnswered;
+        private boolean voltageAnswered;
+        private boolean outputPolicyAnswered;
+        private boolean profiledSetpoint;
 
         private FeedbackPositionBuilder(PositionOutput positionOut,
+                                        PowerLimitedPositionOutput powerLimitedPositionOut,
                                         PowerOutput regulatedPowerOut,
-                                        ScalarSource nativeMeasurement,
-                                        ScalarRegulator regulator) {
+                                        ScalarSource nativeMeasurement) {
             this.positionOut = positionOut;
+            this.powerLimitedPositionOut = powerLimitedPositionOut;
             this.regulatedPowerOut = regulatedPowerOut;
             this.nativeMeasurement = nativeMeasurement;
-            this.regulator = regulator;
             if (regulatedPowerOut != null) {
                 searchPowerOut = regulatedPowerOut;
                 searchAnswered = true;
             }
         }
 
-        static FeedbackPositionBuilder deviceManaged(
-                PositionOutput out,
-                ScalarSource nativeMeasurement) {
-            return new FeedbackPositionBuilder(out, null, nativeMeasurement, null);
+        @Override
+        protected void requireTargetRateCompatible(String answer) {
+            if (profiledSetpoint) {
+                throw new IllegalStateException(answer + " cannot be combined with "
+                        + "setpointFromTrapezoidalProfile(...); choose one "
+                        + "motion-shaping owner");
+            }
         }
 
-        static FeedbackPositionBuilder regulated(
+        static FeedbackPositionBuilder<TargetStep<PositionPlant>> deviceManaged(
+                PositionOutput out,
+                ScalarSource nativeMeasurement) {
+            return new FeedbackPositionBuilder<>(out, null, null, nativeMeasurement);
+        }
+
+        static FeedbackPositionBuilder<SymmetricOutputPowerPolicyStep<PositionPlant>>
+        powerLimitedDeviceManaged(
+                PowerLimitedPositionOutput out,
+                ScalarSource nativeMeasurement) {
+            return new FeedbackPositionBuilder<>(out, out, null, nativeMeasurement);
+        }
+
+        static FeedbackPositionBuilder<PositionControlStep> regulated(
                 PowerOutput out,
-                ScalarSource nativeMeasurement,
-                ScalarRegulator regulator) {
-            return new FeedbackPositionBuilder(null, out, nativeMeasurement, regulator);
+                ScalarSource nativeMeasurement) {
+            return new FeedbackPositionBuilder<>(null, null, out, nativeMeasurement);
         }
 
         @Override
-        public PositionPeriodicityStep<FeedbackPositionBoundsStep> searchPowerOutput(PowerOutput out) {
+        public PositionPeriodicityStep<FeedbackPositionBoundsStep<NEXT>> searchPowerOutput(
+                PowerOutput out) {
             requireConfigurationMutable("searchPowerOutput(...)");
             if (regulatedPowerOut != null) {
                 throw new IllegalStateException("regulatedPosition(...) already uses its PowerOutput "
@@ -1403,43 +2356,44 @@ public final class Plants {
         }
 
         @Override
-        public FeedbackPositionBoundsStep nonPeriodic() {
+        public FeedbackPositionBoundsStep<NEXT> nonPeriodic() {
             answerNonPeriodic();
             return this;
         }
 
         @Override
-        public FeedbackPositionBoundsStep periodic(double period) {
+        public FeedbackPositionBoundsStep<NEXT> periodic(double period) {
             answerPeriodic(period);
             return this;
         }
 
         @Override
-        public FeedbackBoundedPositionMappingStep bounded(double min, double max) {
+        public FeedbackBoundedPositionMappingStep<NEXT> bounded(double min, double max) {
             answerBounded(min, max);
             return this;
         }
 
         @Override
-        public FeedbackUnboundedPositionMappingStep unbounded() {
+        public FeedbackUnboundedPositionMappingStep<NEXT> unbounded() {
             answerUnbounded();
             return this;
         }
 
         @Override
-        public PositionReferenceStep nativeUnits() {
+        public PositionCoordinateReferenceStep<NEXT> nativeUnits() {
             answerScale(1.0, "nativeUnits()");
             return this;
         }
 
         @Override
-        public PositionReferenceStep scaleToNative(double nativeUnitsPerPlantUnit) {
+        public PositionCoordinateReferenceStep<NEXT> scaleToNative(
+                double nativeUnitsPerPlantUnit) {
             answerScale(nativeUnitsPerPlantUnit, "scaleToNative(...)");
             return this;
         }
 
         @Override
-        public PositionToleranceStep rangeMapsToNative(
+        public PositionToleranceStep<NEXT> rangeMapsToNative(
                 double nativeAtPlantMin,
                 double nativeAtPlantMax) {
             answerEndpointMap(nativeAtPlantMin, nativeAtPlantMax);
@@ -1448,12 +2402,12 @@ public final class Plants {
         }
 
         @Override
-        public PositionToleranceStep alreadyReferenced() {
+        public PositionToleranceStep<NEXT> alreadyReferenced() {
             return answerFeedbackStaticReference(0.0, 0.0, "Plants.alreadyReferenced()");
         }
 
         @Override
-        public PositionToleranceStep plantPositionMapsToNative(
+        public PositionToleranceStep<NEXT> plantPositionMapsToNative(
                 double plantPosition,
                 double nativePosition) {
             return answerFeedbackStaticReference(
@@ -1463,7 +2417,7 @@ public final class Plants {
         }
 
         @Override
-        public PositionToleranceStep assumeCurrentPositionIs(double plantPosition) {
+        public PositionToleranceStep<NEXT> assumeCurrentPositionIs(double plantPosition) {
             requireConfigurationMutable("assumeCurrentPositionIs(...)");
             if (!mappingAnswered) {
                 throw new IllegalStateException("Choose nativeUnits() or scaleToNative(...) before "
@@ -1484,7 +2438,7 @@ public final class Plants {
         }
 
         @Override
-        public PositionToleranceStep needsReference(String reason) {
+        public PositionToleranceStep<NEXT> needsReference(String reason) {
             requireConfigurationMutable("needsReference(...)");
             requireReferencePending("needsReference(...)");
             if (reason == null || reason.trim().isEmpty()) {
@@ -1497,7 +2451,8 @@ public final class Plants {
         }
 
         @Override
-        public TargetStep<PositionPlant> positionTolerance(double tolerance) {
+        @SuppressWarnings("unchecked")
+        public NEXT positionTolerance(double tolerance) {
             requireConfigurationMutable("positionTolerance(...)");
             if (!referenceAnswered) {
                 throw new IllegalStateException("Answer position reference before positionTolerance(...)");
@@ -1508,6 +2463,208 @@ public final class Plants {
             requireTolerance(tolerance, "positionTolerance");
             this.tolerance = tolerance;
             toleranceAnswered = true;
+            return (NEXT) this;
+        }
+
+        @Override
+        public PositionDirectFeedbackStep setpointFromAppliedTarget() {
+            requireRegulatedControlPending("setpointFromAppliedTarget()");
+            standardControl = StandardControl.positionFromAppliedTarget();
+            controlAnswered = true;
+            profiledSetpoint = false;
+            return this;
+        }
+
+        @Override
+        public PositionProfiledFeedbackStep setpointFromTrapezoidalProfile(
+                double maximumVelocity,
+                double maximumAcceleration) {
+            requireRegulatedControlPending("setpointFromTrapezoidalProfile(...)");
+            standardControl = StandardControl.positionFromTrapezoidalProfile(
+                    maximumVelocity, maximumAcceleration);
+            controlAnswered = true;
+            profiledSetpoint = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<PositionPlant> controlFromCustomRegulator(
+                ScalarRegulator regulator) {
+            requireRegulatedControlPending("controlFromCustomRegulator(...)");
+            customRegulator = Objects.requireNonNull(regulator, "custom regulator");
+            controlAnswered = true;
+            return this;
+        }
+
+        @Override
+        public FeedbackPositionBuilder<NEXT> feedbackFromPid(double kP) {
+            requireStandardFeedbackPending("feedbackFromPid(...)");
+            standardControl.feedbackFromPid(kP);
+            feedbackAnswered = true;
+            return this;
+        }
+
+        @Override
+        public FeedbackPositionBuilder<NEXT> feedbackFromPid(
+                double kP,
+                double kI,
+                double kD) {
+            requireStandardFeedbackPending("feedbackFromPid(...)");
+            standardControl.feedbackFromPid(kP, kI, kD);
+            feedbackAnswered = true;
+            return this;
+        }
+
+        @Override
+        public FeedbackPositionBuilder<NEXT> feedbackIntegralLimitedTo(
+                double minimum,
+                double maximum) {
+            requireStandardFeedbackAnswered("feedbackIntegralLimitedTo(...)");
+            standardControl.feedbackIntegralLimitedTo(minimum, maximum);
+            return this;
+        }
+
+        @Override
+        public FeedbackPositionBuilder<NEXT> feedbackOutputLimitedTo(
+                double minimum,
+                double maximum) {
+            requireStandardFeedbackAnswered("feedbackOutputLimitedTo(...)");
+            standardControl.feedbackOutputLimitedTo(minimum, maximum);
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<PositionPlant> feedforwardFromMotion(double kV) {
+            requireProfiledPosition("feedforwardFromMotion(kV)");
+            standardControl.feedforwardForMotion(0.0, kV, 0.0);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<PositionPlant> feedforwardFromMotion(
+                double kS,
+                double kV,
+                double kA) {
+            requireProfiledPosition("feedforwardFromMotion(kS, kV, kA)");
+            standardControl.feedforwardForMotion(kS, kV, kA);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<PositionPlant> feedforwardFromLift(double kG) {
+            requireStandardFeedbackAnswered("feedforwardFromLift(...)");
+            standardControl.feedforwardForLift(kG);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<PositionPlant> feedforwardFromLift(
+                double kG,
+                double kS,
+                double kV,
+                double kA) {
+            requireProfiledPosition("feedforwardFromLift(kG, kS, kV, kA)");
+            standardControl.feedforwardForLift(kS, kV, kA, kG);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<PositionPlant> feedforwardFromArm(
+                double kG,
+                double plantPositionAtMaximumGravity,
+                double radiansPerPlantUnit) {
+            requireStandardFeedbackAnswered("feedforwardFromArm(...)");
+            standardControl.feedforwardForArm(
+                    kG, plantPositionAtMaximumGravity, radiansPerPlantUnit);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerPolicyStep<PositionPlant> feedforwardFromArm(
+                double kG,
+                double plantPositionAtMaximumGravity,
+                double radiansPerPlantUnit,
+                double kS,
+                double kV,
+                double kA) {
+            requireProfiledPosition("feedforwardFromArm(...)");
+            standardControl.feedforwardForArm(
+                    kS, kV, kA, kG,
+                    plantPositionAtMaximumGravity, radiansPerPlantUnit);
+            feedforwardAnswered = true;
+            return this;
+        }
+
+        @Override
+        public OutputPowerAfterVoltageStep<PositionPlant> voltageCompensationFrom(
+                ScalarSource supplyVoltage,
+                double referenceVoltage,
+                double minimumVoltage,
+                double maximumScale) {
+            requireOutputPolicyAvailable("voltageCompensationFrom(...)");
+            if (outputPolicyAnswered) {
+                throw new IllegalStateException(
+                        "voltageCompensationFrom(...) must be answered before "
+                                + "outputPowerLimitedTo(...)");
+            }
+            if (voltageAnswered) {
+                throw new IllegalStateException(
+                        "voltageCompensationFrom(...) has already been answered");
+            }
+            if (standardControl != null) {
+                standardControl.voltageCompensatedBy(
+                        supplyVoltage, referenceVoltage, minimumVoltage, maximumScale);
+            } else {
+                this.supplyVoltage = Objects.requireNonNull(supplyVoltage, "supplyVoltage");
+                this.referenceVoltage = referenceVoltage;
+                this.minimumVoltage = minimumVoltage;
+                this.maximumVoltageScale = maximumScale;
+                ScalarRegulators.voltageCompensated(
+                        customRegulator, supplyVoltage, referenceVoltage,
+                        minimumVoltage, maximumScale);
+            }
+            voltageAnswered = true;
+            return this;
+        }
+
+        @Override
+        public TargetStep<PositionPlant> outputPowerLimitedTo(double maximumMagnitude) {
+            requireOutputPolicyUnanswered();
+            requireSymmetricOutputMagnitude(maximumMagnitude);
+            if (powerLimitedPositionOut != null) {
+                maximumDeviceOutputPower = maximumMagnitude;
+            } else {
+                minimumOutputPower = -maximumMagnitude;
+                maximumOutputPower = maximumMagnitude;
+                if (standardControl != null) {
+                    standardControl.outputPowerLimitedTo(maximumMagnitude);
+                }
+            }
+            outputPolicyAnswered = true;
+            return this;
+        }
+
+        @Override
+        public TargetStep<PositionPlant> outputPowerLimitedTo(
+                double minimum,
+                double maximum) {
+            requireOutputPolicyUnanswered();
+            if (regulatedPowerOut == null) {
+                throw new IllegalStateException("The signed outputPowerLimitedTo(min,max) answer "
+                        + "requires a Phoenix-regulated PowerOutput path");
+            }
+            requireOutputPowerRange(minimum, maximum);
+            minimumOutputPower = minimum;
+            maximumOutputPower = maximum;
+            if (standardControl != null) {
+                standardControl.outputPowerLimitedTo(minimum, maximum);
+            }
+            outputPolicyAnswered = true;
             return this;
         }
 
@@ -1526,15 +2683,31 @@ public final class Plants {
                         nativeReference,
                         "Plants feedback-position configuration");
             }
+            if (regulatedPowerOut != null && !controlAnswered) {
+                throw new IllegalStateException("Regulated position construction requires "
+                        + "setpointFromAppliedTarget(), "
+                        + "setpointFromTrapezoidalProfile(...), or "
+                        + "controlFromCustomRegulator(...)");
+            }
+            if (standardControl != null && !feedbackAnswered) {
+                throw new IllegalStateException("Standard regulated position construction requires "
+                        + "feedbackFromPid(...)");
+            }
+            if (profiledSetpoint && hasTargetRateConfigured()) {
+                throw new IllegalStateException("A profiled position controller cannot also use "
+                        + "maxTargetRate(...) or maxTargetRates(...); choose one motion-shaping owner");
+            }
         }
 
         @Override
         protected PositionPlant buildPlant(
                 PlantTargetResolver resolver,
                 PlantTargetGuards guards) {
-            MappedPositionPlant.FeedbackConfigurationStep configured = positionOut != null
-                    ? MappedPositionPlant.positionOutput(positionOut, nativeMeasurement)
-                    : MappedPositionPlant.regulated(regulatedPowerOut, nativeMeasurement, regulator);
+            PositionOutput selectedPositionOut = configuredDevicePositionOutput();
+            MappedPositionPlant.FeedbackConfigurationStep configured = selectedPositionOut != null
+                    ? MappedPositionPlant.positionOutput(selectedPositionOut, nativeMeasurement)
+                    : MappedPositionPlant.regulated(
+                            regulatedPowerOut, nativeMeasurement, resolvedRegulator());
             if (searchPowerOut != null) {
                 configured = configured.searchPowerOutput(searchPowerOut);
             }
@@ -1554,7 +2727,7 @@ public final class Plants {
                     .build();
         }
 
-        private PositionToleranceStep answerFeedbackStaticReference(
+        private PositionToleranceStep<NEXT> answerFeedbackStaticReference(
                 double plantPosition,
                 double nativePosition,
                 String answer) {
@@ -1569,6 +2742,108 @@ public final class Plants {
             }
             if (referenceAnswered) {
                 throw new IllegalStateException("Position reference has already been answered");
+            }
+        }
+
+        private PositionOutput configuredDevicePositionOutput() {
+            if (positionOut == null) return null;
+            if (powerLimitedPositionOut == null) return positionOut;
+            final double selectedMaximum = maximumDeviceOutputPower;
+            return new PositionOutput() {
+                @Override
+                public void setPosition(double position) {
+                    powerLimitedPositionOut.setPosition(position, selectedMaximum);
+                }
+
+                @Override
+                public double getCommandedPosition() {
+                    return powerLimitedPositionOut.getCommandedPosition();
+                }
+
+                @Override
+                public void stop() {
+                    powerLimitedPositionOut.stop();
+                }
+            };
+        }
+
+        private ScalarRegulator resolvedRegulator() {
+            if (standardControl != null) return standardControl.build();
+            ScalarRegulator resolved = customRegulator;
+            if (voltageAnswered) {
+                resolved = ScalarRegulators.voltageCompensated(
+                        resolved, supplyVoltage, referenceVoltage,
+                        minimumVoltage, maximumVoltageScale);
+            }
+            if (outputPolicyAnswered) {
+                resolved = ScalarRegulators.outputLimited(
+                        resolved, minimumOutputPower, maximumOutputPower);
+            }
+            return resolved;
+        }
+
+        private void requireRegulatedControlPending(String operation) {
+            requireConfigurationMutable(operation);
+            if (!toleranceAnswered) {
+                throw new IllegalStateException(operation + " requires positionTolerance(...) first");
+            }
+            if (regulatedPowerOut == null) {
+                throw new IllegalStateException(operation
+                        + " is available only for a framework-regulated position Plant");
+            }
+            if (controlAnswered) {
+                throw new IllegalStateException("Position control has already been answered");
+            }
+        }
+
+        private void requireStandardFeedbackPending(String operation) {
+            requireConfigurationMutable(operation);
+            if (standardControl == null || !controlAnswered || feedbackAnswered) {
+                throw new IllegalStateException(operation
+                        + " requires one unanswered standard position setpoint selection");
+            }
+        }
+
+        private void requireStandardFeedbackAnswered(String operation) {
+            requireConfigurationMutable(operation);
+            if (standardControl == null || !feedbackAnswered) {
+                throw new IllegalStateException(operation + " requires feedbackFromPid(...) first");
+            }
+            if (feedforwardAnswered || voltageAnswered || outputPolicyAnswered) {
+                throw new IllegalStateException(operation + " cannot change PID/feedforward after "
+                        + "the control recipe advanced to feedforward, voltage, or output policy");
+            }
+        }
+
+        private void requireProfiledPosition(String operation) {
+            requireStandardFeedbackAnswered(operation);
+            if (!profiledSetpoint) {
+                throw new IllegalStateException(operation
+                        + " requires setpointFromTrapezoidalProfile(...)");
+            }
+        }
+
+        private void requireOutputPolicyAvailable(String operation) {
+            requireConfigurationMutable(operation);
+            if (regulatedPowerOut != null) {
+                if (!controlAnswered || (standardControl != null && !feedbackAnswered)) {
+                    throw new IllegalStateException(operation
+                            + " requires completed standard feedback or "
+                            + "controlFromCustomRegulator(...)");
+                }
+                return;
+            }
+            if (powerLimitedPositionOut == null) {
+                throw new IllegalStateException(operation
+                        + " is unsupported by a plain PositionOutput");
+            }
+        }
+
+        private void requireOutputPolicyUnanswered() {
+            requireOutputPolicyAvailable("outputPowerLimitedTo(...)");
+            if (outputPolicyAnswered) {
+                throw new IllegalStateException(
+                        "outputPowerLimitedTo(...) has already been answered");
             }
         }
     }
@@ -1586,6 +2861,25 @@ public final class Plants {
         }
     }
 
+    private static void requireSymmetricOutputMagnitude(double maximumMagnitude) {
+        if (!Double.isFinite(maximumMagnitude)
+                || maximumMagnitude < 0.0
+                || maximumMagnitude > 1.0) {
+            throw new IllegalArgumentException("outputPowerLimitedTo(maximumMagnitude) requires a "
+                    + "finite value in [0.0, 1.0], got " + maximumMagnitude);
+        }
+    }
+
+    private static void requireOutputPowerRange(double minimum, double maximum) {
+        if (!Double.isFinite(minimum) || !Double.isFinite(maximum)
+                || minimum < -1.0 || maximum > 1.0
+                || minimum > maximum || minimum > 0.0 || maximum < 0.0) {
+            throw new IllegalArgumentException("outputPowerLimitedTo(minimum, maximum) requires "
+                    + "finite -1 <= minimum <= 0 <= maximum <= 1; got minimum="
+                    + minimum + ", maximum=" + maximum);
+        }
+    }
+
     private static String guardDisplayName(String name) {
         return name == null || name.trim().isEmpty() ? "interlock" : name.trim();
     }
@@ -1595,6 +2889,7 @@ public final class Plants {
         private final ScalarTarget commandTarget;
         private final PlantTargetGuards guards;
         private final PlantLifecycle lifecycle = new PlantLifecycle();
+        private final PlantUpdateCycle updateCycle = new PlantUpdateCycle("PowerPlant");
 
         private double requestedTarget = Double.NaN;
         private double appliedTarget;
@@ -1609,6 +2904,18 @@ public final class Plants {
 
         @Override
         public final void update(LoopClock clock) {
+            if (!lifecycle.isActive()) return;
+            if (!updateCycle.begin(clock)) return;
+            try {
+                updateOnce(clock);
+                updateCycle.succeed();
+            } catch (RuntimeException failure) {
+                updateCycle.fail(failure);
+                throw failure;
+            }
+        }
+
+        private void updateOnce(LoopClock clock) {
             if (!lifecycle.isActive()) return;
             double priorAppliedTarget = appliedTarget;
             PlantTargetStatus priorTargetStatus = targetStatus;

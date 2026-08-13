@@ -22,7 +22,7 @@ public final class MappedPlantAffineValidationTest {
     @Test
     public void boundedVelocityMapRejectsBeforeMutationAndAllowsRetry() {
         RecordingVelocityOutput output = new RecordingVelocityOutput();
-        Plants.VelocityMappingStep mapping = Plants.fromOutputs()
+        Plants.VelocityMappingStep<Plants.TargetStep<Plant>> mapping = Plants.fromOutputs()
                 .deviceManagedVelocity(output, clock -> 0.0)
                 .bounded(0.0, Double.MAX_VALUE);
 
@@ -237,12 +237,13 @@ public final class MappedPlantAffineValidationTest {
         MutableScalarSource source = new MutableScalarSource(0.0);
         ThrowingResetRegulator regulator = new ThrowingResetRegulator();
         PositionPlant plant = Plants.fromOutputs()
-                .regulatedPosition(output, source, regulator)
+                .regulatedPosition(output, source)
                 .nonPeriodic()
                 .bounded(0.0, Double.MAX_VALUE)
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(0.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();

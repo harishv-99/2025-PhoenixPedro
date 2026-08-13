@@ -52,16 +52,26 @@ final class RegulatedPowerChannel {
         terminalStopReassertRequired = false;
 
         final double raw;
+        boolean alreadySubmittedThisCycle = regulator instanceof StandardControl
+                && ((StandardControl) regulator).hasSuccessfulResultForCycle(clock);
+        boolean alreadyFailedThisCycle = regulator instanceof StandardControl
+                && ((StandardControl) regulator).hasRetainedFailureForCycle(clock);
         try {
             raw = regulator.update(setpoint, measurement, clock);
         } catch (RuntimeException failure) {
             if (!lifecycle.isActive()) throw failure;
+            if (alreadyFailedThisCycle) throw failure;
             regulatorOutput = Double.NaN;
             failStop("REGULATOR_FAILED", failure, lifecycle);
             return; // failStop always throws
         }
         if (!lifecycle.isActive()) return;
         regulatorOutput = raw;
+
+        if (alreadySubmittedThisCycle) {
+            status = "SAME_CYCLE_RETAINED_WITHOUT_WRITE";
+            return;
+        }
 
         if (!Double.isFinite(raw)) {
             IllegalStateException failure = new IllegalStateException(
@@ -84,6 +94,9 @@ final class RegulatedPowerChannel {
             if (!lifecycle.isActive()) {
                 terminalStopReassertRequired = true;
                 throw failure;
+            }
+            if (regulator instanceof StandardControl) {
+                ((StandardControl) regulator).retainExternalFailureForCycle(clock, failure);
             }
             failStop("OUTPUT_WRITE_FAILED", failure, lifecycle);
             return; // failStop always throws
@@ -265,6 +278,12 @@ final class RegulatedPowerChannel {
         return terminalStopReassertRequired;
     }
 
+    /** Whether the Plant-owned standard setpoint has reached this exact applied goal. */
+    boolean setpointSettledAt(double goal) {
+        return !(regulator instanceof StandardControl)
+                || ((StandardControl) regulator).setpointSettledAt(goal);
+    }
+
     void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;
         String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
@@ -292,7 +311,11 @@ final class RegulatedPowerChannel {
 
         boolean resetSucceeded = false;
         try {
-            regulator.reset();
+            if (regulator instanceof StandardControl) {
+                ((StandardControl) regulator).resetAfterFailurePreservingCycle();
+            } else {
+                regulator.reset();
+            }
             resetSucceeded = true;
         } catch (RuntimeException cleanupFailure) {
             suppress(primary, cleanupFailure);

@@ -302,10 +302,11 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(25.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, feedback, regulator)
+                .regulatedVelocity(output, feedback)
                 .bounded(-100.0, 100.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(40.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -331,10 +332,11 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(0.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, feedback, regulator)
+                .regulatedVelocity(output, feedback)
                 .bounded(-1.0, 1.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(0.5)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -363,10 +365,11 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(0.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, feedback, regulator)
+                .regulatedVelocity(output, feedback)
                 .bounded(-1.0, 1.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(0.5)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -402,10 +405,11 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(0.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, feedback, regulator)
+                .regulatedVelocity(output, feedback)
                 .bounded(-1.0, 1.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(0.5)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -439,10 +443,11 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(0.5);
         CountingRegulator regulator = new CountingRegulator(0.25);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, feedback, regulator)
+                .regulatedVelocity(output, feedback)
                 .bounded(-1.0, 1.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(0.5)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -532,12 +537,13 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(3.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         PositionPlant plant = Plants.fromOutputs()
-                .regulatedPosition(output, feedback, regulator)
+                .regulatedPosition(output, feedback)
                 .nonPeriodic()
                 .bounded(0.0, 10.0)
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(3.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -563,12 +569,13 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(3.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         PositionPlant plant = Plants.fromOutputs()
-                .regulatedPosition(output, feedback, regulator)
+                .regulatedPosition(output, feedback)
                 .nonPeriodic()
                 .bounded(0.0, 10.0)
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(3.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -599,12 +606,13 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(3.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         PositionPlant plant = Plants.fromOutputs()
-                .regulatedPosition(output, feedback, regulator)
+                .regulatedPosition(output, feedback)
                 .nonPeriodic()
                 .bounded(0.0, 10.0)
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(3.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -636,12 +644,13 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(3.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         PositionPlant plant = Plants.fromOutputs()
-                .regulatedPosition(output, feedback, regulator)
+                .regulatedPosition(output, feedback)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .needsReference("lift not homed")
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(3.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -865,10 +874,11 @@ public final class PlantTerminalLifecycleTest {
         CountingScalarSource feedback = new CountingScalarSource(0.0);
         CountingRegulator regulator = new CountingRegulator(0.5);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, feedback, regulator)
+                .regulatedVelocity(output, feedback)
                 .bounded(-1.0, 1.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(0.5)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();

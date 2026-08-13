@@ -101,6 +101,27 @@ with `plant.commandTarget()` instead of retaining a duplicate peer target.
 The units spoken by robot intent, Plant bounds, references, targets, and tolerances—for example,
 inches or degrees.
 
+### Coordinate reference
+
+The affine anchor that aligns a Plant position coordinate with native position. Answers such as
+`alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, and
+`needsReference(...)` establish or defer this alignment; they do not create a target or motion
+setpoint.
+
+### Control setpoint
+
+The Plant-owned per-cycle position, velocity, and—when the selected model provides it—acceleration
+used by feedback and feedforward. A target is the final mechanism goal; a profiled setpoint moves
+toward that goal over time. Profiled `atTarget()` requires this setpoint to settle at the applied
+target as well as the ordinary Plant completion evidence.
+
+### Output-power policy
+
+An optional final normalized-effort constraint applied after standard feedback, typed feedforward,
+and voltage compensation. `outputPowerLimitedTo(maximumMagnitude)` is symmetric; regulated power
+paths also support `outputPowerLimitedTo(minimum, maximum)`. This is not a Plant target bound and
+does not constrain separately authorized position-calibration search power.
+
 ### Native units
 
 The device/controller representation, such as encoder ticks, ticks per second, or servo fraction.

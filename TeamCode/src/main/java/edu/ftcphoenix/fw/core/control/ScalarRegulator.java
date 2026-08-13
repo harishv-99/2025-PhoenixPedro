@@ -34,19 +34,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * inner controller. Controller-specific integral limits remain explicit, and the robot mechanism
  * owner still decides enable, coast/hold, and reset policy.</p>
  *
- * <h2>Typical usage</h2>
- *
- * <pre>{@code
- * ScalarRegulator regulator = ScalarRegulators.outputLimited(
- *     ScalarRegulators.pidf(0.006, 0.0, 0.0002, 0.0004)
- *         .setIntegralLimits(-0.15, 0.15)
- *         .setPidOutputLimits(-1.0, 1.0),
- *     0.0,
- *     0.8
- * );
- *
- * double command = regulator.update(setpointTicks, measuredTicks, clock);
- * }</pre>
+ * <p>Ordinary regulated Plants construct Phoenix's standard setpoint, PID, feedforward, voltage,
+ * and output policy inline through the Plant builder after Plant units and tolerance are known.
+ * Implement this interface directly, or compose the advanced factories in
+ * {@link ScalarRegulators}, only for a genuinely custom complete control law.</p>
  */
 public interface ScalarRegulator {
 
