@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix;
+package edu.ftcphoenix.robots.phoenix.scoring;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -37,17 +37,20 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.spatial.References;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
+import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
+import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Shared targeting service for Phoenix scoring.
  *
  * <p>This class owns selected-tag policy, the auto-aim guidance query, and range-based shot
- * suggestions. Higher-level code reads one cached {@link Status} snapshot per loop instead
+ * suggestions. Higher-level code reads one cached {@link PhoenixCapabilities.TargetingStatus}
+ * snapshot per loop instead
  * of re-sampling the stateful guidance query in multiple places. The robot supplies which
  * configured scoring tags are eligible; that set is sampled and frozen before this service's
  * first detection selection.</p>
  */
-public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
+public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
 
     /** One session's exact eligible selector and guidance graph. */
     private static final class AimRuntime {
@@ -67,67 +70,12 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     }
 
     /**
-     * Immutable status snapshot for Phoenix scoring-target selection and auto-aim.
-     */
-    public static final class Status {
-        public final boolean autoAimEnabled;
-        public final boolean aimReady;
-        public final boolean aimOkToShoot;
-        public final boolean aimOverride;
-        public final double aimToleranceDeg;
-        public final double aimReadyToleranceDeg;
-        public final TagSelectionResult selection;
-        public final DriveGuidanceStatus aimStatus;
-        public final String targetLabel;
-        public final double aimOffsetForwardInches;
-        public final double aimOffsetLeftInches;
-        public final boolean hasSuggestedVelocity;
-        public final double suggestedVelocityNative;
-        public final Pose3d fieldToSelectedTag;
-        public final Pose2d fieldToAimPoint;
-
-        /**
-         * Creates an immutable targeting snapshot.
-         */
-        public Status(boolean autoAimEnabled,
-                      boolean aimReady,
-                      boolean aimOkToShoot,
-                      boolean aimOverride,
-                      double aimToleranceDeg,
-                      double aimReadyToleranceDeg,
-                      TagSelectionResult selection,
-                      DriveGuidanceStatus aimStatus,
-                      String targetLabel,
-                      double aimOffsetForwardInches,
-                      double aimOffsetLeftInches,
-                      boolean hasSuggestedVelocity,
-                      double suggestedVelocityNative,
-                      Pose3d fieldToSelectedTag,
-                      Pose2d fieldToAimPoint) {
-            this.autoAimEnabled = autoAimEnabled;
-            this.aimReady = aimReady;
-            this.aimOkToShoot = aimOkToShoot;
-            this.aimOverride = aimOverride;
-            this.aimToleranceDeg = aimToleranceDeg;
-            this.aimReadyToleranceDeg = aimReadyToleranceDeg;
-            this.selection = selection;
-            this.aimStatus = aimStatus;
-            this.targetLabel = targetLabel != null ? targetLabel : "";
-            this.aimOffsetForwardInches = aimOffsetForwardInches;
-            this.aimOffsetLeftInches = aimOffsetLeftInches;
-            this.hasSuggestedVelocity = hasSuggestedVelocity;
-            this.suggestedVelocityNative = suggestedVelocityNative;
-            this.fieldToSelectedTag = fieldToSelectedTag;
-            this.fieldToAimPoint = fieldToAimPoint;
-        }
-    }
-
-    /**
      * Complete immutable result of the fallible targeting calculation for one loop.
      *
      * <p>Keeping this separate from readiness debounce means every query, lookup, interpolation,
      * and pose calculation succeeds before readiness state advances or this service publishes a
-     * new {@link Status}. Upstream children still own their independently completed
+     * new {@link PhoenixCapabilities.TargetingStatus}. Upstream children still own their
+     * independently completed
      * observations.</p>
      */
     private static final class TargetingCalculation {
@@ -170,10 +118,10 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
             this.fieldToAimPoint = fieldToAimPoint;
         }
 
-        Status toStatus(double aimToleranceDeg,
-                        double aimReadyToleranceDeg,
-                        boolean aimReady) {
-            return new Status(
+        PhoenixCapabilities.TargetingStatus toStatus(double aimToleranceDeg,
+                                                     double aimReadyToleranceDeg,
+                                                     boolean aimReady) {
+            return new PhoenixCapabilities.TargetingStatus(
                     autoAimEnabled,
                     aimReady,
                     aimReady || aimOverride,
@@ -206,13 +154,13 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     private final double aimReadyToleranceRad;
     private final Source<TargetingCalculation> targetingCalculation;
     private final BooleanSource stableAimReady;
-    private final Source<Status> statusSource;
+    private final Source<PhoenixCapabilities.TargetingStatus> statusSource;
     private final BooleanSource aimOkToShootSource;
     private final BooleanSource aimOverrideSource;
     private AimRuntime aimRuntime;
     private long aimRuntimeGeneration;
     private boolean targetingCalculationInProgress;
-    private Status latestStatus;
+    private PhoenixCapabilities.TargetingStatus latestStatus;
 
     /**
      * Creates the shared Phoenix scoring-targeting service.
@@ -230,7 +178,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
      * @param aimOverrideInput            driver override source that bypasses aim readiness gates when held
      * @param shotVelocityTable           range-to-velocity table used for fresh target-based shot suggestions
      */
-    public ScoringTargeting(PhoenixProfile.AutoAimConfig config,
+    public PhoenixTargeting(PhoenixProfile.AutoAimConfig config,
                             FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig,
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMountConfig,
@@ -244,7 +192,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         this.fieldPoseCfg =
                 FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
                         Objects.requireNonNull(aprilTagFieldPoseConfig, "aprilTagFieldPoseConfig"),
-                        "ScoringTargeting.aprilTagFieldPoseConfig"
+                        "PhoenixTargeting.aprilTagFieldPoseConfig"
                 );
         this.tagSensor = Objects.requireNonNull(tagSensor, "tagSensor");
         this.cameraMountConfig = Objects.requireNonNull(cameraMountConfig, "cameraMountConfig");
@@ -255,7 +203,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         this.fieldTagLayout = Objects.requireNonNull(fieldTagLayout, "fieldTagLayout");
         this.eligibleScoringTagIds = Objects.requireNonNull(
                 eligibleScoringTagIds,
-                "ScoringTargeting eligibleScoringTagIds source is required"
+                "PhoenixTargeting eligibleScoringTagIds source is required"
         );
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled").memoized();
         this.aimOverrideInput = Objects.requireNonNull(aimOverrideInput, "aimOverrideInput").memoized();
@@ -342,7 +290,8 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
      * @param clock shared loop clock for the active OpMode cycle
      */
     public void update(LoopClock clock) {
-        Status nextStatus = statusSource.get(Objects.requireNonNull(clock, "clock"));
+        PhoenixCapabilities.TargetingStatus nextStatus =
+                statusSource.get(Objects.requireNonNull(clock, "clock"));
         latestStatus = nextStatus;
     }
 
@@ -357,14 +306,14 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
      * snapshot before the first successful update
      */
     @Override
-    public Status status() {
+    public PhoenixCapabilities.TargetingStatus status() {
         return latestStatus;
     }
 
     private TargetingCalculation calculateTargeting(LoopClock clock) {
         if (targetingCalculationInProgress) {
             throw new IllegalStateException(
-                    "ScoringTargeting cannot calculate or reset reentrantly while its eligibility, "
+                    "PhoenixTargeting cannot calculate or reset reentrantly while its eligibility, "
                             + "selection, or guidance graph is being evaluated."
             );
         }
@@ -465,7 +414,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     public void reset() {
         if (targetingCalculationInProgress) {
             throw new IllegalStateException(
-                    "ScoringTargeting cannot reset while its eligibility, selection, or guidance "
+                    "PhoenixTargeting cannot reset while its eligibility, selection, or guidance "
                             + "graph is being evaluated. Detach the complete drive/targeting graph "
                             + "before shutdown reset."
             );
@@ -488,9 +437,9 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         latestStatus = initialStatus();
     }
 
-    private Status initialStatus() {
+    private PhoenixCapabilities.TargetingStatus initialStatus() {
         PhoenixProfile.AutoAimConfig.ScoringTarget target = cfg.defaultTargetProfile(-1);
-        return new Status(
+        return new PhoenixCapabilities.TargetingStatus(
                 false,
                 false,
                 false,
@@ -530,13 +479,13 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         Set<Integer> suppliedEligibleTagIds = eligibleScoringTagIds.get(clock);
         if (suppliedEligibleTagIds == null) {
             throw new IllegalArgumentException(
-                    "ScoringTargeting eligibleScoringTagIds source returned null; return the "
+                    "PhoenixTargeting eligibleScoringTagIds source returned null; return the "
                             + "non-empty selected-mode subset of PhoenixProfile.autoAim.scoringTargets."
             );
         }
         if (suppliedEligibleTagIds.isEmpty()) {
             throw new IllegalArgumentException(
-                    "ScoringTargeting eligibleScoringTagIds must contain at least one configured "
+                    "PhoenixTargeting eligibleScoringTagIds must contain at least one configured "
                             + "scoring tag."
             );
         }
@@ -545,13 +494,13 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         for (Integer tagId : suppliedEligibleTagIds) {
             if (tagId == null) {
                 throw new IllegalArgumentException(
-                        "ScoringTargeting eligibleScoringTagIds must not contain null."
+                        "PhoenixTargeting eligibleScoringTagIds must not contain null."
                 );
             }
             if (!configuredTagIds.contains(tagId)
                     || cfg.scoringTargets.get(tagId) == null) {
                 throw new IllegalArgumentException(
-                        "ScoringTargeting eligibleScoringTagIds contains tag id " + tagId
+                        "PhoenixTargeting eligibleScoringTagIds contains tag id " + tagId
                                 + " that is not a usable entry in "
                                 + "PhoenixProfile.autoAim.scoringTargets. Configured tag ids: "
                                 + configuredTagIds + "."
@@ -559,7 +508,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
             }
             if (!fieldTagLayout.has(tagId)) {
                 throw new IllegalArgumentException(
-                        "ScoringTargeting eligibleScoringTagIds contains tag id " + tagId
+                        "PhoenixTargeting eligibleScoringTagIds contains tag id " + tagId
                                 + " that is not in PhoenixProfile.field.fixedAprilTagLayout. "
                                 + "Managed TeleOp/Auto readiness must block START until the "
                                 + "selected alliance scoring tag has a fixed field pose."
@@ -616,7 +565,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         AimRuntime runtime = aimRuntime;
         if (runtime == null) {
             throw new IllegalStateException(
-                    "Cannot " + operation + " before ScoringTargeting.update(clock) freezes the "
+                    "Cannot " + operation + " before PhoenixTargeting.update(clock) freezes the "
                             + "selected alliance's eligible scoring target. Managed TeleOp/Auto "
                             + "starts targeting before drive overlays and Tasks; custom hosts must "
                             + "preserve that lifecycle order."
@@ -698,7 +647,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
                     || installedGeneration != aimRuntimeGeneration) {
                 throw new IllegalStateException(
                         "A Phoenix scoring aim overlay cannot be reused after "
-                                + "ScoringTargeting.reset(). Detach the old drive graph and obtain "
+                                + "PhoenixTargeting.reset(). Detach the old drive graph and obtain "
                                 + "a fresh aimOverlay() for the next managed session."
                 );
             }

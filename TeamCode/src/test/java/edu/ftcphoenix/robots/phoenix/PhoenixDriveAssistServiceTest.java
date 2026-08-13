@@ -78,8 +78,8 @@ public final class PhoenixDriveAssistServiceTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingAimOverlay aimOverlay = new RecordingAimOverlay();
         final int[] scoringReads = {0};
-        final ScoringPath.Status[] currentScoring = {scoringStatus(true)};
-        Source<ScoringPath.Status> scoringSource = Source.of(clock -> {
+        final PhoenixCapabilities.ScoringStatus[] currentScoring = {scoringStatus(true)};
+        Source<PhoenixCapabilities.ScoringStatus> scoringSource = Source.of(clock -> {
             scoringReads[0]++;
             return currentScoring[0];
         });
@@ -118,7 +118,7 @@ public final class PhoenixDriveAssistServiceTest {
             LoopClock clock,
             boolean poseAssistsAvailable,
             DriveOverlay aimOverlay,
-            Source<ScoringPath.Status> scoringStatusSource
+            Source<PhoenixCapabilities.ScoringStatus> scoringStatusSource
     ) {
         DriveSource manualDrive = new DriveSource() {
             @Override
@@ -162,8 +162,8 @@ public final class PhoenixDriveAssistServiceTest {
         );
     }
 
-    private static ScoringPath.Status scoringStatus(boolean shootActive) {
-        return new ScoringPath.Status(
+    private static PhoenixCapabilities.ScoringStatus scoringStatus(boolean shootActive) {
+        return new PhoenixCapabilities.ScoringStatus(
                 false,
                 false,
                 shootActive,
@@ -173,7 +173,6 @@ public final class PhoenixDriveAssistServiceTest {
                 null,
                 shootActive,
                 false,
-                null,
                 0.0,
                 0.0,
                 0.0,

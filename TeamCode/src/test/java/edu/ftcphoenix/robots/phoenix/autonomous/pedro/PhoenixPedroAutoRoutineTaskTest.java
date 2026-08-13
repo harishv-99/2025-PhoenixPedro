@@ -22,7 +22,6 @@ import edu.ftcphoenix.fw.task.TaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.ScoringPath;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -1122,7 +1121,7 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         }
 
         @Override
-        public ScoringPath.Status status() {
+        public PhoenixCapabilities.ScoringStatus status() {
             return null;
         }
     }

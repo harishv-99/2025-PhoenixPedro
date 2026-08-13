@@ -168,6 +168,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 81 | TESTER-02 | Canonical actuator bring-up | Done | The reviewed device-first workflow, truthful type-specific evidence, advanced-only diagnostics, synchronized course/docs, and verification are approved for publication. |
 | 82 | TESTER-03 | Driver Station and Panels tester consoles | Done | The reviewed fixed-owner consoles, mirrored telemetry, fail-closed Panels input, synchronized guidance, automated verification, and publication authorization are complete. |
 | 83 | API-07 | Explicit callback and Task binding grammar | Done | The reviewed breaking grammar, source-only controls construction, one-shot binding, synchronized callers/docs, automated verification, and publication authorization are complete. |
+| 84 | TUNE-02 | Continuous framework-owned Panels velocity-PIDF tuning | Done | The reviewed exact velocity-PIDF workflow, canonical fresh-Plant seam, scoring consolidation, synchronized evidence/docs, and publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -15751,6 +15752,223 @@ writer, and explicit lifecycle ownership.
   `codex/api-07-explicit-callback-bindings`, pushing that branch to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
   `master`. This approval completes Gate 3 for API-07 only and does not start another tracker item.
+
+### TUNE-02 - Continuous framework-owned Panels velocity-PIDF tuning
+
+- **Gate 2 approval (2026-08-10):** after auditing Phoenix's device-managed flywheel realization,
+  the pinned FTC SDK 11.1 controller implementation, the pinned Panels Configurables/virtual-gamepad/
+  graph facilities, TESTER-03's lifecycle host, and the TUNE-01 software-only workflow, the user
+  directed **`Implement the plan.`** TUNE-02 alone is now **In progress** on
+  `codex/tune-02-continuous-panels-tuning`, based exactly on fetched
+  `origin/master@cc7cb441c9ed1f363057693be78fc1cf4a6032a9`. Publication is not authorized.
+- **Confirmed behavior and gap:** Phoenix's production flywheel is a device-managed velocity Plant
+  whose checked-in PIDF tuple is applied only at construction. `PidfRegulator.setGains(...)`
+  supports the software-regulated case documented by TUNE-01, but there was no narrow FTC
+  controller handle, ready-made Panels velocity-PIDF workflow, or charted segment evidence.
+  Students would otherwise need a custom OpMode that duplicates the production Plant recipe or
+  bypasses it with direct motor writes. Panels Configurables writes
+  public static fields one by one on its socket thread: **Update All changes only a browser draft**
+  and is neither an atomic candidate nor permission to touch hardware.
+- **FTC boundary evidence:** in the pinned SDK, the velocity-PIDF setter delegates to one
+  `RUN_USING_ENCODER` PIDF-coefficient command and does not intentionally change motor target,
+  run mode, power, or direction. The SDK does not document whether firmware controller history is
+  retained, reset, or physically bumpless, and a transport failure may leave software and hardware
+  state uncertain. Therefore a running candidate may be updated without an intentional zero, but
+  software must not promise a bumpless physical transition or automatic rollback.
+- **Current callers and public construction-path audit:** the staged
+  `FtcActuators.plant(hardwareMap)...velocity().deviceManaged().velocityPidf(...)` path remains the
+  only ordinary FTC Plant construction grammar. Phoenix's flywheel is the only modern production
+  device-managed velocity caller with explicit gains. The new advanced
+  `FtcMotorControllers.velocityPidf(plant)` factory derives one configuration-only
+  `FtcMotorVelocityPidf` handle from a single-motor FTC device-managed velocity Plant; it is not
+  another Plant builder and exposes no target, power, mode, velocity, or direction command. No
+  independent motor-name selector, position sibling, or generic controller registry is added.
+  Device-managed position has a distinct outer position-P plus inner velocity-PIDF shape.
+- **Alternatives considered:** keep documentation-only/manual source edits; use the software PIDF
+  tuner against a different controller; write the motor directly in a raw actuator tuner; duplicate
+  the production Plant recipe; construct the complete scoring mechanism in a tuner; retain
+  `Inputs`/`Execution`/`Realization` plus a separate flywheel owner; make every mechanism define a
+  tuning-session class and tester suite; read Configurables continuously; apply individual fields
+  as they arrive; require zero before every gain or target edit; add a generic parameter registry;
+  or build a custom Panels plugin. These choices respectively leave the actual controller
+  untunable, test the wrong graph, create a second hardware writer or recipe, multiply student
+  ceremony, race partial UI state, slow shot-condition exploration, or introduce unproven public
+  concepts and another UI source.
+- **Chosen FTC handle:** `FtcMotorVelocityPidf` captures the exact initial
+  `RUN_USING_ENCODER` `PIDFCoefficients`, including its algorithm, from the motor identity privately
+  retained by the completed Plant.
+  `setGains(kP, kI, kD, kF)` validates the complete tuple through the existing FTC controller-domain
+  validation, submits one supported SDK call, reads back the accepted tuple, and exposes parallel
+  `getKP/KI/KD/KF` values. `restoreInitial()` restores the exact captured tuple/algorithm and reads
+  it back. Errors name the motor and state when controller state may be uncertain. The handle owns
+  configuration only; the mechanism's Plant remains the sole actuation writer. `FtcActuators`
+  privately marks only single-motor FTC device-managed velocity Plants with the exact motor and
+  Plant-unit range. The factory rejects every other Plant shape and permits one handle claim per
+  Plant, so commanding one Plant while tuning another named motor is not representable.
+- **Chosen production ownership and package layout:** `.scoring.PhoenixScoring` is the one scoring
+  owner. It receives `HardwareMap` plus a defensively copied `PhoenixProfile.ScoringConfig`, owns
+  requests, feed policy, the queue, all four private Plants, flywheel evidence, update order,
+  capability-status production, and terminal stop. Request/policy/realization remain private
+  sections, not separate input, execution, realization, or flywheel-owner objects.
+  `.scoring.PhoenixTargeting` is the parallel targeting service. Public `ScoringStatus` and
+  `TargetingStatus` belong to `PhoenixCapabilities`, so clients depend on capability vocabulary
+  rather than implementation-owned snapshot types.
+- **Chosen canonical tuning seam:** production and tuning share one private flywheel **recipe**, not
+  a flywheel-owner object or Plant instance. `PhoenixScoring.createFlywheelPlantForTuning(...)` is
+  an explicitly advanced diagnostic seam that defensively copies config and returns a fresh Plant
+  from the same private recipe production uses. The framework tuner becomes that Plant's sole
+  heartbeat/lifecycle owner. It neither constructs all of scoring nor shares production hardware
+  ownership, and production never reads Panels fields.
+- **Chosen student workflow:** add one direct **`Phoenix: Tuning (Panels)`** OpMode in `.opmode` that
+  returns `FtcPanelsTuners.velocityPidf(...)`; no intermediate suite/menu, robot-specific tuning
+  session, draft class, or registry is required. The robot declaration supplies only a tester name,
+  finite positive `ScalarRange`, and fresh-Plant factory; the motor name is answered once inside
+  that canonical Plant recipe. The framework Configurables
+  facade supplies draft `kP`, `kI`, `kD`, `kF`, `testTarget`, and `autoStopAfterSec`; Graph consumes
+  ordinary finite telemetry. The normal loop is **edit -> Panels Update All -> A**, repeat while running,
+  then **B** when finished. `BACK` terminally stops and restores. There is no X/Y or separate
+  hardware-apply button. After Update All finishes and the student verifies the displayed values,
+  A reads all six draft fields on the OpMode thread after a short best-effort quiescence interval
+  and validates the resulting complete tuple before any effect. Configurables exposes no atomic
+  batch marker, so the delay filters ordinary in-flight writes but is not claimed as transport
+  atomicity. Invalid or still-changing drafts reject the complete candidate and leave an active
+  segment and its timer unchanged.
+- **Hot/cold segment semantics:** A while running ends the previous numbered segment and starts a
+  `HOT_UPDATE` segment without deliberately commanding zero: apply/read back the complete PIDF
+  tuple first, then commit the new target and automatic-stop duration through the same Plant graph.
+  A while idle starts a `COLD_START` only after feedback is finite and the supplied Plant truthfully
+  reports `atTarget(0.0)`; pressing B requests zero but does not pretend inertia has stopped, so an
+  immediate later A waits non-blockingly for the Plant's own arrival rule. Every segment owns its
+  own start-time boundary.
+  A finite `autoStopAfterSec > 0` requests zero after that many seconds; exactly `0` disables the
+  automatic stop until B, BACK, disconnect, failure, or OpMode stop. Negative or non-finite values
+  reject the complete candidate, no hard maximum is invented, and a hot update restarts the timer
+  with the newly captured value. This special zero meaning is local to this named configuration and
+  does not change framework Task duration semantics.
+- **Evidence and failure contract:** telemetry distinguishes browser draft, captured request,
+  exact controller readback, current segment, and last completed segment. Each segment has an
+  immutable ID and `HOT_UPDATE`/`COLD_START` type; display names all changed fields and prints
+  copyable controller-readback values rather than UI echo. Stable `tune.velocityPidf.*` numeric
+  graph keys publish segment ID, requested target, absolute measured velocity, error, and the
+  signed rate of absolute measured speed; controller power and internal PIDF terms are not claimed
+  because the device does not expose them. An SDK
+  apply/readback failure immediately terminally stops the Plant, best-effort restores the initial
+  controller tuple, and terminally fails the tuning session. Disconnect, BACK, and OpMode stop also
+  stop and restore. A general tester either accepts and validates a complete hot candidate or
+  rejects the whole candidate while active and tells the student to press B first; partial hot
+  application is not a supported pattern.
+- **Simplicity and principle comparison:** the student learns one production Plant grammar, one
+  framework tuner factory, one direct OpMode, one draft-to-A apply event, and one B zero action. The
+  added FTC handle is a narrow truthful boundary capability rather than a competing realization
+  path. `PhoenixScoring` is the one production scoring owner; a single canonical private recipe
+  prevents production/tuner drift; the framework owns the otherwise repetitive session objects and
+  state machine; one OpMode heartbeat performs every capture and hardware effect; Configurables
+  remains a draft transport; and the Plant remains the only target writer.
+- **Bounded scope and verification plan:** implement the FTC velocity-PIDF handle and focused tests;
+  add an opt-in exactly-one-client policy to the Panels tester host without changing existing
+  at-least-one/Driver Station behavior; consolidate and parity-test Phoenix scoring's canonical
+  flywheel recipe; implement the generic framework velocity-PIDF tuner, Configurables draft,
+  segment state, telemetry, and tests; add the thin direct Phoenix OpMode; replace
+  the software-only tuning guide with one current PIDF tuning workflow and update navigation,
+  Javadocs, Phoenix calibration/architecture, and Panels tester guidance. Verify validation-before-
+  write, readback/restoration, no target/mode/power methods, hot ordering/no zero, complete-candidate
+  rejection, cold wait, timer boundaries including zero, disconnect/failure cleanup, graph keys,
+  production parity, focused/full unit tests, TeamCode compilation, Javadocs, documentation checks,
+  stale-name/import scans, and whitespace. Hardware validation remains necessary for exact-one
+  browser behavior, graph cadence, `Plant.atTarget(0.0)` behavior, physical hot-transition dips
+  or spikes, and controller-history effects; software makes no bumpless claim.
+- **Implemented (2026-08-10; simplified 2026-08-11):** added the factory-created final
+  `FtcMotorVelocityPidf` configuration handle and its sole public
+  `FtcMotorControllers.velocityPidf(...)` factory; added the opt-in exactly-one-client policy to the
+  Panels tester host while preserving its default at-least-one and Driver Station paths; added
+  `FtcPanelsTuners.velocityPidf(...)` as the one complete framework workflow; consolidated scoring
+  into `.scoring.PhoenixScoring`; moved targeting to parallel `.scoring.PhoenixTargeting`; placed
+  capability snapshots in `PhoenixCapabilities`; and reduced the sole public
+  `.opmode.PhoenixPanelsTuningOpMode` to a direct generic-tuner declaration. The tuner implements
+  recoverable B zero, finite-feedback-gated cold starts, no-intentional-zero hot updates, segment-local timers,
+  controller readback/copy lines, finite Graph keys, and terminal stop/restore cleanup.
+- **Documentation structure:** replaced the software-only guide with one canonical
+  `PIDF Tuning Workflow.md`, updated Zensical/navigation/boundary/Phoenix guides, and added a
+  progressive-disclosure **Declare one framework tuner** section. It keeps live tuning optional:
+  the production mechanism remains ordinary, robot code exposes only one named fresh-Plant recipe
+  seam, and the framework owns Panels drafts, complete-candidate policy, evidence, the narrow
+  controller handle, restoration, and cleanup. It explicitly forbids making `PhoenixProfile` or
+  production mechanisms Panels Configurables.
+- **Adversarial review corrections:** independent reviews found and the implementation fixed
+  non-finite feedback being able to masquerade as stopped evidence; adjacent-sample capture being
+  overstated as atomic; derived-acceleration overflow; a public suite path that could bypass the
+  exact-one-client host; physical `STOPPED` wording for an active-zero request; an unproven public
+  controller implementation seam; configuration-handle ownership wording; stale moved-OpMode
+  links; too many Phoenix scoring/tuning owner objects; and missing parity/API/cleanup/evidence
+  tests; the initially independent Plant factory and motor name; misleading absolute-acceleration
+  wording; a terminal INIT-BACK presentation overwrite; and missing zero-duration/range/scoring-
+  policy coverage. The final design derives a single-claim FTC handle from the exact completed
+  Plant, validates zero plus both safe-test-range endpoints before the first command, uses a
+  truthful signed absolute-speed-rate graph key, and uses a generic framework workflow, a
+  canonical fresh-Plant recipe, one Phoenix scoring owner, a direct no-menu OpMode, console-neutral
+  START wording, availability facts plus finite graph fallbacks, and truthful best-effort
+  quiescence wording.
+- **Post-implementation generalization and naming reassessment (2026-08-12):** at the user's
+  request, the profile boundary, pinned Panels Configurables implementation, current public call,
+  and likely future tuning/calibration families were audited again before publication. Panels
+  discovers mutable static fields, applies field changes sequentially, and provides no supported
+  instance-registration, atomic-candidate, schema, application-policy, or restoration callback.
+  `PhoenixProfile` therefore remains the data-only checked-in baseline and destination rather than
+  live Panels state; no `@Tunable` convention, generic parameter registry, public `TuningSchema`,
+  or custom Panels plugin is added. The complete workflow factory identifies its editable
+  candidate and continues to own stable capture, validation, apply/readback/restore, safe stimulus,
+  evidence, and cleanup. The exact public name remains `velocityPidf(...)`, not the broader
+  `velocityControl(...)` or generic `pidf(...)`: the implemented candidate is specifically the FTC
+  device-managed velocity PIDF tuple, while position control combines materially different outer
+  position P, inner velocity PIDF, power, tolerance, reference, travel, and evidence concerns.
+  Future factories must name the exact candidate they change and require their own proven caller
+  and decision gate; common session machinery should be extracted package-privately only after a
+  second workflow proves the repetition. The user selected safe live domain workflows, retained
+  the exact `velocityPidf(...)` name after the category audit, and approved this no-runtime-change
+  clarification with **`Implement the plan.`** After this tracker-only edit,
+  `DocumentationLinksTest` passes all **5 tests** with zero failures, errors, or skips, and
+  `git diff --check` passes. This reassessment changed no implementation, public API, Javadoc, or
+  maintained guide, so the final corrected full run below remains the behavioral verification
+  evidence.
+- **Pre-correction verification baseline (2026-08-10):** with Android Studio's JBR, `:TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs` completed successfully. The final
+  XML aggregate is **1,380 tests, 0 failures, 0 errors, 0 skipped** across 147 suites, including 17
+  tuner state/failure tests, 11 FTC handle tests, 15 Panels-host tests, 2 production-builder parity
+  tests, 3 public/draft shape tests, and 5 documentation-link tests. `git diff --check`, untracked-
+  file trailing-whitespace checks, old-guide/old-OpMode reference scans, Panels boundary-import
+  audit, blocking-loop scan, branch/base audit, and the Javadocs pass are clean. The only emitted
+  messages are the repository's existing Java 8 source/target warnings under JDK 21 and existing
+  FTC sample deprecation notes. The 2026-08-11 consolidation requires a refreshed final count and
+  stale-name/link scan before Gate 3; this baseline is not claimed as verification of the corrected
+  object graph.
+- **Final corrected verification (2026-08-11):** with Android Studio's JBR,
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs
+  --no-daemon` completed successfully. The XML aggregate is **1,391 tests, 0 failures, 0 errors,
+  0 skipped** across 146 suites. Focused evidence includes 17 Plant-bound FTC controller tests,
+  19 generic tuner lifecycle/range/failure tests, 9 real-owner scoring policy/cleanup tests,
+  15 Panels-host policy tests, 2 thin Phoenix tuning-OpMode tests, 12 targeting tests, and 5
+  documentation-link tests. The corrected tests prove both FTC device-managed velocity builder
+  branches, reject null/hardware-neutral/power/regulated/grouped Plants before controller readback,
+  reject a second configuration owner, retain exact Plant-unit range provenance, enforce zero and
+  safe test-range containment, keep zero-duration segments active, keep terminal INIT-BACK state
+  inert, and cover queue, continuous-shot, cancellation, intake/eject priority, and same-cycle
+  readiness-to-feed behavior through the consolidated `PhoenixScoring` owner. `git diff --check`,
+  untracked trailing-whitespace, stale-name/old-signature/old-guide, modern Panels-import-boundary,
+  changed blocking-loop, branch/base, and documentation-link checks are clean. The only build
+  output is the repository's existing JDK 21/Java 8 source-target and FTC sample deprecation
+  warnings.
+- **Hardware/Android Studio review boundary:** software cannot verify the real exactly-one browser
+  count, Configurables refresh and graph cadence, REV controller quantization/readback/restoration,
+  physical `Plant.atTarget(0.0)` behavior, controller-history retention, hot-update dips/spikes, motor
+  response, or emergency-stop practice. Review the diff in Android Studio on
+  `codex/tune-02-continuous-panels-tuning`, based at
+  `origin/master@cc7cb441c9ed1f363057693be78fc1cf4a6032a9`, before Gate 3. Before the authorization below,
+  no files were staged and publication was not authorized.
+- **Manual verification and publication authorization (2026-08-12):** the user reviewed TUNE-02
+  and authorized committing the reviewed diff on `codex/tune-02-continuous-panels-tuning`, pushing
+  that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
+  merging it into `master`. This approval completes Gate 3 for TUNE-02 only and does not start
+  another tracker item.
 
 ## Explicitly deferred architectural ideas
 

@@ -76,6 +76,12 @@ profile and calls `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism
 that data-only configuration, constructs and privately owns its Plants and local sensors, and owns
 their update and stop lifecycle. A constructor that accepts a completed `Plant` is useful as a
 hardware-neutral test or custom-adapter seam, but it is not the normal robot-code constructor.
+If a proven FTC device-managed velocity Plant also needs live tuning, keep this exact production
+owner and declare the framework workflow described in
+[`Declare one framework tuner`](<../testing-calibration/PIDF Tuning Workflow.md#declare-one-framework-tuner-mentor-or-author>).
+The tuner receives a fresh Plant from the production owner's canonical recipe; it does not require
+a second robot-specific mechanism or tuning-session object.
+Do not make live-tuning ceremony mandatory for ordinary checked-in configuration.
 
 The illustrative `WristConfig`, `LiftConfig`, and `IntakeConfig` types below are data-only profile
 slices with a `copy()` method. A real profile should also validate their names, directions, finite
@@ -1123,9 +1129,11 @@ void applyFlywheelGains(double kP, double kI, double kD, double kF) {
 ```
 
 Match TeleOp and Auto still request shooter intent and read status; they do not manipulate this
-retained handle. A dedicated test mode may call the local apply method, but production modes should
-load only checked-in profile values. See the
-[`software PIDF tuning workflow`](<../testing-calibration/Software PIDF Tuning Workflow.md>) for
+retained handle. A dedicated software-regulator tuning workflow may call the local apply method,
+but production modes should load only checked-in profile values. The ready-made
+`FtcPanelsTuners.velocityPidf(...)` workflow is deliberately for FTC device-managed velocity
+controllers, not this software regulator. See the
+[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for
 safe apply, record, and restart. FTC `.deviceManaged().velocityPidf(...)` is a separate
 hardware-controller configuration.
 For a nonlinear or table-driven feedforward, realization uses the explicit advanced composition

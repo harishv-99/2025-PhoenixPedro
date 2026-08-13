@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix;
+package edu.ftcphoenix.robots.phoenix.scoring;
 
 import org.junit.Test;
 
@@ -24,6 +24,8 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
+import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -33,7 +35,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Verifies Phoenix's ordinary Source graph and successful-only targeting publication. */
-public final class ScoringTargetingSourceTest {
+public final class PhoenixTargetingSourceTest {
 
     @Test
     public void lateCalculationFailureDoesNotAdvanceAimReadinessAndCanRetrySameCycle() {
@@ -50,7 +52,7 @@ public final class ScoringTargetingSourceTest {
         if (!fieldLayout.ids().equals(autoAim.scoringTagIds())) {
             runtimeSetupHasCalls += autoAim.scoringTagIds().size();
         }
-        ScoringTargeting targeting = new ScoringTargeting(
+        PhoenixTargeting targeting = new PhoenixTargeting(
                 autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
                 tagSensor,
@@ -65,7 +67,7 @@ public final class ScoringTargetingSourceTest {
 
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
-        ScoringTargeting.Status initial = targeting.status();
+        PhoenixCapabilities.TargetingStatus initial = targeting.status();
         assertFalse(initial.selection.hasSelection);
         clock.update(0.25);
         RuntimeException injectedFailure =
@@ -86,7 +88,7 @@ public final class ScoringTargetingSourceTest {
 
         clock.update(0.5);
         targeting.update(clock);
-        ScoringTargeting.Status recovered = targeting.status();
+        PhoenixCapabilities.TargetingStatus recovered = targeting.status();
         assertTrue(recovered.selection.hasSelection);
         assertTrue(recovered.aimStatus.hasOmegaError);
         assertTrue(recovered.aimStatus.omegaWithin(Math.toRadians(autoAim.aimReadyToleranceDeg)));
@@ -99,7 +101,7 @@ public final class ScoringTargetingSourceTest {
                 targeting.status().aimReady);
 
         targeting.reset();
-        ScoringTargeting.Status resetStatus = targeting.status();
+        PhoenixCapabilities.TargetingStatus resetStatus = targeting.status();
         assertFalse(resetStatus.selection.hasSelection);
         clock.update(1.0);
         RuntimeException sameCycleFailure =
@@ -117,7 +119,7 @@ public final class ScoringTargetingSourceTest {
         assertSame(resetStatus, targeting.status());
 
         targeting.update(clock);
-        ScoringTargeting.Status sameCycleRecovered = targeting.status();
+        PhoenixCapabilities.TargetingStatus sameCycleRecovered = targeting.status();
         assertTrue(sameCycleRecovered.selection.hasSelection);
         assertTrue(sameCycleRecovered.aimStatus.hasOmegaError);
         assertFalse(sameCycleRecovered.aimReady);
@@ -137,7 +139,7 @@ public final class ScoringTargetingSourceTest {
             return false;
         });
 
-        ScoringTargeting targeting = new ScoringTargeting(
+        PhoenixTargeting targeting = new PhoenixTargeting(
                 profile.autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
                 new EmptyAprilTagSensor(),
@@ -151,7 +153,7 @@ public final class ScoringTargetingSourceTest {
         );
         LoopClock clock = new LoopClock();
         clock.update(1.0);
-        ScoringTargeting.Status initial = targeting.status();
+        PhoenixCapabilities.TargetingStatus initial = targeting.status();
 
         try {
             targeting.update(clock);
@@ -162,7 +164,7 @@ public final class ScoringTargetingSourceTest {
         assertSame(initial, targeting.status());
 
         targeting.update(clock);
-        ScoringTargeting.Status recovered = targeting.status();
+        PhoenixCapabilities.TargetingStatus recovered = targeting.status();
         assertTrue(recovered.autoAimEnabled);
         assertFalse(recovered.aimOverride);
         assertEquals(2, overrideReads[0]);
@@ -173,13 +175,13 @@ public final class ScoringTargetingSourceTest {
         assertEquals(2, overrideReads[0]);
 
         targeting.reset();
-        ScoringTargeting.Status afterOwnerReset = targeting.status();
+        PhoenixCapabilities.TargetingStatus afterOwnerReset = targeting.status();
         assertNotSame(recovered, afterOwnerReset);
         assertFalse(afterOwnerReset.autoAimEnabled);
         assertEquals(2, overrideReads[0]);
 
         targeting.update(clock);
-        ScoringTargeting.Status republished = targeting.status();
+        PhoenixCapabilities.TargetingStatus republished = targeting.status();
         assertNotSame(afterOwnerReset, republished);
         assertTrue(republished.autoAimEnabled);
         assertEquals(3, overrideReads[0]);
@@ -199,7 +201,7 @@ public final class ScoringTargetingSourceTest {
         int[] eligibilityReads = {0};
         CurrentFrameMultipleAprilTagSensor tagSensor =
                 new CurrentFrameMultipleAprilTagSensor(firstTagId, secondTagId);
-        ScoringTargeting targeting = targetingFor(
+        PhoenixTargeting targeting = targetingFor(
                 profile,
                 tagSensor,
                 Source.of(clock -> {
@@ -269,7 +271,7 @@ public final class ScoringTargetingSourceTest {
         CountingCurrentFrameMultipleAprilTagSensor tagSensor =
                 new CountingCurrentFrameMultipleAprilTagSensor(eligibleTagId, inactiveTagId);
         int[] eligibilityReads = {0};
-        ScoringTargeting targeting = targetingFor(
+        PhoenixTargeting targeting = targetingFor(
                 profile,
                 tagSensor,
                 new OmittingTagLayout(profile.field.fixedAprilTagLayout, inactiveTagId),
@@ -303,7 +305,7 @@ public final class ScoringTargetingSourceTest {
         int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
         CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
         int[] eligibilityReads = {0};
-        ScoringTargeting targeting = targetingFor(
+        PhoenixTargeting targeting = targetingFor(
                 profile,
                 tagSensor,
                 new OmittingTagLayout(profile.field.fixedAprilTagLayout, selectedTagId),
@@ -338,7 +340,7 @@ public final class ScoringTargetingSourceTest {
         CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
         int[] eligibilityReads = {0};
 
-        ScoringTargeting targeting = new ScoringTargeting(
+        PhoenixTargeting targeting = new PhoenixTargeting(
                 autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
                 tagSensor,
@@ -394,7 +396,7 @@ public final class ScoringTargetingSourceTest {
                         firstTagId,
                         secondTagId
                 );
-        ScoringTargeting targeting = targetingFor(
+        PhoenixTargeting targeting = targetingFor(
                 profile,
                 tagSensor,
                 Source.of(clock -> {
@@ -404,7 +406,7 @@ public final class ScoringTargetingSourceTest {
         );
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
-        ScoringTargeting.Status initial = targeting.status();
+        PhoenixCapabilities.TargetingStatus initial = targeting.status();
 
         try {
             targeting.update(clock);
@@ -443,7 +445,7 @@ public final class ScoringTargetingSourceTest {
         int[] eligibilityReads = {0};
         RuntimeException injectedFailure = new RuntimeException("injected first query failure");
         FailOncePoseEstimator poseEstimator = new FailOncePoseEstimator(injectedFailure);
-        ScoringTargeting targeting = new ScoringTargeting(
+        PhoenixTargeting targeting = new PhoenixTargeting(
                 profile.autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
                 new CurrentFrameMultipleAprilTagSensor(firstTagId, secondTagId),
@@ -460,7 +462,7 @@ public final class ScoringTargetingSourceTest {
         );
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
-        ScoringTargeting.Status initial = targeting.status();
+        PhoenixCapabilities.TargetingStatus initial = targeting.status();
 
         try {
             targeting.update(clock);
@@ -488,7 +490,7 @@ public final class ScoringTargetingSourceTest {
     @Test
     public void aimConsumersFailActionablyUntilTargetingPublishesItsRuntime() {
         PhoenixProfile profile = PhoenixProfile.current();
-        ScoringTargeting targeting = targetingFor(
+        PhoenixTargeting targeting = targetingFor(
                 profile,
                 new EmptyAprilTagSensor(),
                 Source.constant(Collections.singleton(
@@ -526,7 +528,7 @@ public final class ScoringTargetingSourceTest {
     public void resetRequiresFreshOverlayWithoutPoisoningTheNextSession() {
         PhoenixProfile profile = PhoenixProfile.current();
         int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
-        ScoringTargeting targeting = targetingFor(
+        PhoenixTargeting targeting = targetingFor(
                 profile,
                 new CurrentFrameAprilTagSensor(selectedTagId),
                 Source.constant(Collections.singleton(selectedTagId))
@@ -562,7 +564,7 @@ public final class ScoringTargetingSourceTest {
         PhoenixProfile profile = PhoenixProfile.current();
         CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
         int unknownTagId = Integer.MAX_VALUE;
-        ScoringTargeting targeting = targetingFor(
+        PhoenixTargeting targeting = targetingFor(
                 profile,
                 tagSensor,
                 Source.constant(Collections.singleton(unknownTagId))
@@ -611,7 +613,7 @@ public final class ScoringTargetingSourceTest {
                                                  Source<Set<Integer>> eligibleTagIds,
                                                  String expectedMessage) {
         CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
-        ScoringTargeting targeting = targetingFor(profile, tagSensor, eligibleTagIds);
+        PhoenixTargeting targeting = targetingFor(profile, tagSensor, eligibleTagIds);
         LoopClock clock = new LoopClock();
         clock.update(1.0);
 
@@ -625,7 +627,7 @@ public final class ScoringTargetingSourceTest {
         assertEquals("eligibility must be validated before reading detections", 0, tagSensor.reads);
     }
 
-    private static ScoringTargeting targetingFor(PhoenixProfile profile,
+    private static PhoenixTargeting targetingFor(PhoenixProfile profile,
                                                   AprilTagSensor tagSensor,
                                                   Source<Set<Integer>> eligibleTagIds) {
         return targetingFor(
@@ -636,11 +638,11 @@ public final class ScoringTargetingSourceTest {
         );
     }
 
-    private static ScoringTargeting targetingFor(PhoenixProfile profile,
+    private static PhoenixTargeting targetingFor(PhoenixProfile profile,
                                                   AprilTagSensor tagSensor,
                                                   TagLayout fieldTagLayout,
                                                   Source<Set<Integer>> eligibleTagIds) {
-        return new ScoringTargeting(
+        return new PhoenixTargeting(
                 profile.autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
                 tagSensor,
@@ -655,7 +657,7 @@ public final class ScoringTargetingSourceTest {
     }
 
     private static void assertActionableTargetingUpdateMessage(IllegalStateException failure) {
-        assertTrue(failure.getMessage().contains("ScoringTargeting"));
+        assertTrue(failure.getMessage().contains("PhoenixTargeting"));
         assertTrue(failure.getMessage().contains("update"));
     }
 

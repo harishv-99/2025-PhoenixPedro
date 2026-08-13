@@ -22,7 +22,8 @@ This package is FTC-facing because it renders to `Telemetry` and some helpers en
 
 ## Tester console ownership
 
-Phoenix exposes exactly two ready tester entries: **FW: Testers (Driver Station)** and
+The framework exposes exactly two ready general-purpose tester entries:
+**FW: Testers (Driver Station)** and
 **FW: Testers (Panels)**. Both use these same menu helpers, tester suite, and controls, and both mirror
 their row-oriented telemetry to Driver Station and Panels. The named entry is the sole input owner
 for its lifetime: the Driver Station entry reads only physical gamepads, while the Panels entry
@@ -34,6 +35,20 @@ cannot sample input. Reconnection does not rearm that OpMode instance; reconnect
 run. Browser STOP is not a physical emergency stop, so powered tests still require immediate access
 to robot power. These UI helpers remain console-independent; tester code does not create a second
 Panels-specific menu or control grammar.
+
+The production robot's separate **Phoenix: Tuning (Panels)** OpMode reuses this fixed-owner
+lifecycle, mirrored telemetry, and virtual-gamepad grammar. It opens one framework-created
+flywheel tuner directly; there is no intermediate menu. Powered tuning tightens the connection
+policy to exactly one Panels client because another unattended client would make input ownership
+ambiguous; zero or multiple clients fail the run closed.
+
+Panels Configurables and Graph are presentation/transport facilities, not a second controller.
+**Update All** publishes mutable draft fields only. `FtcPanelsTuners.velocityPidf(...)` captures one
+stable complete candidate and applies it deliberately on the OpMode loop; Graph consumes ordinary
+numeric telemetry from that retained segment. The workflow owns a fresh Plant from the robot's
+canonical recipe, while UI callbacks never write Plants or FTC devices. See the
+[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for the concrete
+edit/Update All/A contract and cleanup behavior.
 
 ## `SelectionMenu<T>`
 

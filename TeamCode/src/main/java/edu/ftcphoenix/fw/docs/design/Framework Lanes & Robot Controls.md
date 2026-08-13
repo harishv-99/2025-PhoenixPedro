@@ -235,7 +235,7 @@ It usually does not own a mechanism's target resolvers or Plant update order, an
 
 Examples:
 
-- `ScoringTargeting`
+- `PhoenixTargeting`
 - `PhoenixDriveAssistService`
 - a shot planner
 - a target selector
@@ -377,7 +377,7 @@ Good:
 - `MecanumDrivebase`
 - `ShooterSupervisor`
 - `PhoenixTeleOpControls`
-- `ScoringTargeting`
+- `PhoenixTargeting`
 - `PhoenixTelemetryPresenter`
 
 Bad:
@@ -1156,12 +1156,12 @@ A supervisor should usually not be the final Plant target owner.
 A service is ideal for targeting, shot planning, or pose-based decisions.
 
 ```java
-public final class ScoringTargeting {
+public final class TargetingService {
 
     private TargetingStatus lastStatus =
             new TargetingStatus(/* initial snapshot fields */);
 
-    public ScoringTargeting(MyRobotProfile.StrategyConfig cfg,
+    public TargetingService(MyRobotProfile.StrategyConfig cfg,
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMount,
                             AbsolutePoseEstimator globalPose,
@@ -1239,7 +1239,7 @@ public final class MyRobot {
         IntakeShooterSubsystem shooter = program.output(
                 new IntakeShooterSubsystem(hardwareMap, profile.mechanism));
         IntakeShooterSupervisor scoring = new IntakeShooterSupervisor(shooter);
-        ScoringTargeting targeting = new ScoringTargeting(
+        TargetingService targeting = new TargetingService(
                 profile.strategy,
                 sensing.tagSensor(),
                 sensing.cameraMountConfig(),
@@ -1431,8 +1431,11 @@ Phoenix is the reference example for this split:
 - field facts: `PhoenixProfile.field.fixedAprilTagLayout`
 - capability family: `PhoenixCapabilities.scoring()` / `PhoenixCapabilities.targeting()`
 - controls owner: `PhoenixTeleOpControls`
-- scoring mechanism and execution-policy owner: `ScoringPath`, internally split into `Inputs` → `Execution` → `Realization`
-- targeting service: `ScoringTargeting`
+- scoring mechanism and execution-policy owner: `.scoring.PhoenixScoring`, with request, policy,
+  and realization sections inside one owner rather than separate layer objects
+- targeting service: `.scoring.PhoenixTargeting`
+- public scoring/targeting snapshots: `PhoenixCapabilities.ScoringStatus` and
+  `PhoenixCapabilities.TargetingStatus`
 - drive-assist policy service: `PhoenixDriveAssistService`
 - presenter: `PhoenixTelemetryPresenter`
 - composition root: `PhoenixRobot`

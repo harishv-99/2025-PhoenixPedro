@@ -212,6 +212,6 @@ Do not use this generic wizard to discover limits by collision or stall, coordin
 actuators, hold an unsafe gravity load, combine a CR servo with a separately owned sensor, calibrate
 a periodic mechanism, define mechanism-specific homing, or tune PIDF. Those jobs require the real
 mechanism owner and its safety policy. PIDF tuning is covered separately in
-[`Software PIDF Tuning Workflow`](<Software PIDF Tuning Workflow.md>).
+[`PIDF Tuning Workflow`](<PIDF Tuning Workflow.md>).
 
 [Testing and calibration](<README.md>) · [FTC actuators and Plants](<../ftc-boundary/FTC Actuators & Plants.md>) · [Common problems](<../troubleshooting/Common Problems.md>)

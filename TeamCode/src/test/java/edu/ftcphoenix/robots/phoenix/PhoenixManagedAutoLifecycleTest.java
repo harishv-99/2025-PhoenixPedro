@@ -43,6 +43,8 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixScoring;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.robots.phoenix.opmode.PhoenixAutoOpMode;
 import edu.ftcphoenix.robots.phoenix.opmode.PhoenixBlueAudienceSafeAuto;
@@ -140,7 +142,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         assertEquals(1, eligibleTags.sampleCalls);
         assertEquals(1, autoAimEnabled.sampleCalls);
         assertEquals(1, aimOverride.sampleCalls);
-        ScoringTargeting.Status targetingStatus =
+        PhoenixCapabilities.TargetingStatus targetingStatus =
                 host.robot.capabilities().targeting().status();
         assertEquals(false, targetingStatus.autoAimEnabled);
         assertEquals(true, targetingStatus.aimOverride);
@@ -321,10 +323,10 @@ public final class PhoenixManagedAutoLifecycleTest {
                 }
 
                 @Override
-                public ScoringPath createScoring(
+                public PhoenixScoring createScoring(
                         HardwareMap hardwareMap,
                         PhoenixProfile profile,
-                        ScoringTargeting targeting
+                        PhoenixTargeting targeting
                 ) {
                     throw new AssertionError("TeleOp scoring must not be created for Auto");
                 }
@@ -375,12 +377,12 @@ public final class PhoenixManagedAutoLifecycleTest {
         }
 
         @Override
-        public ScoringPath createScoring(
+        public PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
                 PhoenixProfile profile,
-                ScoringTargeting targeting
+                PhoenixTargeting targeting
         ) {
-            return new ScoringPath(hardwareMap, profile.scoring, targeting);
+            return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
         }
     }
 
@@ -600,7 +602,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         }
 
         private static TestHardwareMap forScoring(
-                PhoenixProfile.ScoringPathConfig config,
+                PhoenixProfile.ScoringConfig config,
                 List<String> events
         ) {
             TestHardwareMap map = new TestHardwareMap(events);

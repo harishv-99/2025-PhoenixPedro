@@ -14,10 +14,10 @@ Phoenix keeps calibration ownership intentionally clean:
 - `PhoenixProfile.vision` -> active vision backend plus backend-specific rig config
 - `PhoenixProfile.localization` -> predictor, AprilTag-localization tuning, correction-source choice, and corrected-global estimator tuning
 - `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
-- `PhoenixCapabilities` -> shared mode-neutral robot API used by TeleOp and Auto
+- `PhoenixCapabilities` -> shared mode-neutral robot API and public status snapshots used by TeleOp and Auto
 - `PhoenixTeleOpControls` -> TeleOp stick/button semantics
-- `ScoringPath` -> scoring policy, requests, mechanism actuation, and status
-- `ScoringTargeting` -> selected-tag policy, aim status, and shot suggestions
+- `.scoring.PhoenixScoring` -> scoring requests, policy, all scoring Plants, update order, and status production
+- `.scoring.PhoenixTargeting` -> selected-tag policy, aim status, and shot suggestions
 - `PhoenixReadiness` -> immutable mode-specific calibration/field/route warnings and blockers
 - `PhoenixRobot` -> composition root; declares managed TeleOp or Auto roles
 - `RobotProgram` -> managed mode clock, phase order, prestart policy, telemetry commit, and cleanup
@@ -225,7 +225,67 @@ controls, mecanum mixing, configured drivetrain, and output path together.
 
 ---
 
-### Step 3: camera mount
+### Step 3: flywheel velocity PIDF
+
+OpMode:
+
+- **Phoenix: Tuning (Panels)**
+
+This OpMode opens the flywheel tuner directly; there is no tester menu or second selection.
+
+Goal:
+
+- tune the FTC device-managed velocity controller through a fresh flywheel Plant built from
+  `PhoenixScoring`'s canonical production recipe, with the same bounds, mapping, feedback, and
+  update path but a separate exclusive lifetime
+
+Before INIT, confirm the shooter motor's direction and encoder sign, secure the robot, clear the
+firing path, and connect exactly one Panels client. Keep physical access to robot power; browser
+STOP is not an emergency stop. Zero or multiple clients, a disconnect, or an input failure ends the
+run closed, and reconnecting does not rearm it.
+
+The ordinary test loop is:
+
+```text
+edit kP/kI/kD/kF, testTarget, and autoStopAfterSec
+-> Panels Update All
+-> A
+-> observe the numbered segment and charts
+```
+
+Repeat that loop while the wheel is running to start a `HOT_UPDATE` without deliberately
+requesting zero. Press B when you want zero and a cold baseline. A after B waits until measured
+speed is finite and the Plant truthfully reports `atTarget(0.0)` before starting a `COLD_START`;
+zero command is not proof that inertia has stopped the wheel. For Phoenix, that Plant arrival check
+uses the checked-in `velocityToleranceNative`. `autoStopAfterSec > 0` requests zero after that
+segment's duration, while exactly `0` runs until B, BACK, disconnect, failure, or OpMode stop.
+
+Panels Update All changes only the browser draft. Wait for it to finish and verify all six displayed
+Draft values before pressing A. The OpMode loop then reads the fields after a short best-effort
+quiescence interval; Configurables has no atomic batch marker, so that delay is a filter rather than
+an atomicity guarantee. Invalid or still-changing values reject the whole candidate and leave a
+running segment unchanged. Read telemetry as separate facts: browser draft, captured request, exact controller
+readback, current/last segment, and graph data for target, measurement, error, and acceleration.
+The FTC controller may quantize gains, so copy the displayed **readback values** into:
+
+```java
+PhoenixProfile.current().scoring.applyFlywheelVelocityPIDF = true;
+PhoenixProfile.current().scoring.flywheelVelKp = /* displayed readback */;
+PhoenixProfile.current().scoring.flywheelVelKi = /* displayed readback */;
+PhoenixProfile.current().scoring.flywheelVelKd = /* displayed readback */;
+PhoenixProfile.current().scoring.flywheelVelKf = /* displayed readback */;
+```
+
+Then stop the tuner, review and commit those profile edits, rebuild, and start a fresh production
+TeleOp or Auto. Production never reads Configurables. BACK, STOP, disconnect, or failure
+terminally stops the flywheel Plant and best-effort restores the controller configuration captured
+for the tuning session, but no software restore can undo physical motion or prove controller
+history. Validate hot-transition dips, spikes, oscillation, shot behavior, and safe targets on the
+robot. See the complete [`PIDF tuning workflow`](<../../fw/docs/testing-calibration/PIDF Tuning Workflow.md>).
+
+---
+
+### Step 4: camera mount
 
 Menu entry:
 
@@ -293,7 +353,7 @@ Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2
 
 ---
 
-### Step 4: AprilTag-only localization sanity check
+### Step 5: AprilTag-only localization sanity check
 
 Menu entry:
 
@@ -323,7 +383,7 @@ So the practice tool should match production AprilTag-solving math closely.
 
 ---
 
-### Step 5: Pinpoint axis directions
+### Step 6: Pinpoint axis directions
 
 Menu entry:
 
@@ -353,7 +413,7 @@ mechanisms remain available, with the required tester named in Driver Station te
 
 ---
 
-### Step 6: Pinpoint pod offsets
+### Step 7: Pinpoint pod offsets
 
 Menu entry:
 
@@ -403,7 +463,7 @@ where the chassis is on the field. Place the robot at the displayed pose before 
 
 ---
 
-### Step 7: default corrected-global localization validation
+### Step 8: default corrected-global localization validation
 
 Menu entry:
 
@@ -459,7 +519,7 @@ intend to use.
 
 ---
 
-### Step 8: optional EKF comparison
+### Step 9: optional EKF comparison
 
 Menu entry:
 
@@ -510,14 +570,15 @@ Other additions that fit this model include:
 1. establish raw drivetrain motor direction with `HW: Actuator Bring-up`
 2. run Phoenix configured-drivetrain verification with all wheels raised
 3. run the production TeleOp raised-wheel forward/strafe/turn integration check
-4. camera mount
-5. raw AprilTag localization check
-6. Pinpoint axis directions
-7. Pinpoint pod offsets
-8. default corrected-global localization validation
-9. confirm TeleOp reports pose assists `READY`
-10. confirm the intended Auto has calibrated field facts and `MATCH_READY` geometry
-11. optional EKF comparison
+4. tune the installed flywheel through `Phoenix: Tuning (Panels)` and copy controller readback
+5. camera mount
+6. raw AprilTag localization check
+7. Pinpoint axis directions
+8. Pinpoint pod offsets
+9. default corrected-global localization validation
+10. confirm TeleOp reports pose assists `READY`
+11. confirm the intended Auto has calibrated field facts and `MATCH_READY` geometry
+12. optional EKF comparison
 
 ---
 

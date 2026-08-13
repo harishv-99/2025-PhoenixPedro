@@ -116,7 +116,7 @@ the framework API.
 - Keep drivetrain, AprilTag vision, localization, and field-layout ownership distinct. Phoenix may
   select a concrete vision backend, while consumers depend on the backend-neutral lane interface.
 - TeleOp must map gamepads in `PhoenixTeleOpControls` and call robot-owned capability families rather
-  than reaching into `ScoringPath`, `ScoringTargeting`, or raw Plants.
+  than reaching into `PhoenixScoring`, `PhoenixTargeting`, or raw Plants.
 - Auto and TeleOp are parallel clients of the same `PhoenixCapabilities` vocabulary. Keep alliance,
   route selection, Pedro paths, and routine composition outside `PhoenixRobot`.
 - Keep scoring's intent, execution policy, and hardware realization separated. Preserve the single

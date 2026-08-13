@@ -37,6 +37,8 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixScoring;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -231,12 +233,12 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         }
 
         @Override
-        public ScoringPath createScoring(
+        public PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
                 PhoenixProfile profile,
-                ScoringTargeting targeting
+                PhoenixTargeting targeting
         ) {
-            return new ScoringPath(hardwareMap, profile.scoring, targeting);
+            return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
         }
 
         @Override
@@ -360,7 +362,7 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         }
 
         private static TestHardwareMap forScoring(
-                PhoenixProfile.ScoringPathConfig config,
+                PhoenixProfile.ScoringConfig config,
                 List<String> events
         ) {
             TestHardwareMap map = new TestHardwareMap(events);

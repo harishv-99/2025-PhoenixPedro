@@ -28,9 +28,10 @@ mode client
 - `PhoenixAlliance` is the mode-neutral match-alliance fact shared by TeleOp and Auto.
 - `PhoenixAutoSpec`, path factories, and routine factories own the remaining autonomous selection
   and strategy.
-- `ScoringTargeting` publishes targeting facts and guidance.
-- `ScoringPath` owns scoring policy, requests, feed queues, final Plant resolvers, Plant update
-  order, and stop.
+- `.scoring.PhoenixTargeting` publishes targeting facts and guidance.
+- `.scoring.PhoenixScoring` is the one scoring mechanism owner. It owns requests, feed policy, the
+  shot queue, all four private scoring Plants, readiness evidence, update order, status production,
+  and terminal stop.
 - `RobotProgram` owns FTC lifecycle forwarding, one `LoopClock`, bindings, Tasks, outputs,
   presenters, telemetry commit, and fail-stop cleanup.
 
@@ -203,7 +204,7 @@ does not merely stage zero for a future follower update.
 Phoenix keeps the complete configured scoring-target catalog and fixed tag layout. This allows all
 appropriate fixed tags to support pose solving and field localization.
 
-`ScoringTargeting` additionally receives one robot-owned
+`PhoenixTargeting` additionally receives one robot-owned
 `Source<Set<Integer>> eligibleScoringTagIds`:
 
 - TeleOp supplies the singleton mapped from its START-frozen alliance.
@@ -224,21 +225,83 @@ explicit return/park fallback. No pre-reset INIT timestamp crosses the START clo
 ## Capabilities and scoring
 
 `PhoenixCapabilities` contains the common vocabulary used by both mode clients. Controls and Auto
-routines request intent through capability families; neither reaches into `ScoringPath`,
-`ScoringTargeting`, or raw Plants.
+routines request intent through capability families; neither reaches into `PhoenixScoring`,
+`PhoenixTargeting`, or raw Plants. `PhoenixCapabilities.ScoringStatus` and
+`PhoenixCapabilities.TargetingStatus` belong to that public vocabulary, so clients do not depend
+on status types owned by either implementation class.
 
-`ScoringPath` is the single owner for:
+`PhoenixScoring` is the single owner for:
 
 - intake/eject/flywheel/shoot intent;
 - the feed queue and active feed pulse;
 - target overlays and flywheel target selection;
 - flywheel readiness prediction;
-- final scoring Plant resolvers and update order;
+- all four final Plant resolvers and their update order;
 - transient rollback and terminal stop.
+
+Requests, execution policy, and realization remain visible as private field/method sections inside
+that one class; they are not separate layer or flywheel-owner objects.
+This keeps the conceptual layers without making a student assemble or navigate an object per layer.
+`PhoenixScoring` receives `HardwareMap` plus a defensively copied `ScoringConfig`, builds its private
+Plants, and exposes only the `PhoenixCapabilities.Scoring` vocabulary.
 
 Feedback-aware Tasks name both command target and Plant because they write the target while the
 Plant supplies completion feedback/provenance. Ordinary exact mechanisms retain only their Plant
 and use its stable `commandTarget()` when constructing a command.
+
+## Dedicated Panels tuning
+
+**Phoenix: Tuning (Panels)** is a dedicated direct tester host, not another production mode,
+scoring owner, or tester menu. Its `createTester()` method returns the framework workflow
+`FtcPanelsTuners.velocityPidf(...)`. Robot code declares only the tester name, bounded positive
+test-target range, and a function that creates a fresh flywheel Plant. The motor name is answered
+only inside that canonical Plant recipe; the framework derives the controller handle from the
+completed Plant and cannot independently select another motor.
+
+That Plant comes from `PhoenixScoring.createFlywheelPlantForTuning(...)`, an explicitly advanced
+assembly seam that calls the same canonical private flywheel recipe as production. The tuner owns
+the returned Plant, its heartbeat, the narrow FTC controller-configuration handle, candidate
+capture, evidence, and cleanup for that exclusive OpMode. It does not construct all of scoring,
+share a production Plant, or write the raw motor beside a Plant. The shared item is the **recipe**,
+not another flywheel owner object.
+
+This is the opt-in pattern for another device-managed velocity Plant: keep the ordinary production
+owner unchanged, expose one clearly named fresh-Plant recipe seam only for an exclusive diagnostic,
+and declare the generic framework workflow in a thin OpMode. There is no generic tunable-mechanism
+interface or registry, and mechanisms without a proven live-tuning need add no tuning API.
+
+Production TeleOp and Auto copy `PhoenixProfile` and never read Configurables. The tuning entry
+starts from the checked-in scoring configuration, then captures the motor controller's resulting
+session baseline. Panels **Update All** changes only mutable draft fields. After Update All finishes
+and the operator verifies the displayed values, an A press causes the single OpMode heartbeat to
+read all fields after a short best-effort quiescence interval and validate the resulting complete
+tuple before any effect. Configurables provides no atomic batch marker, so the interval filters
+ordinary in-flight changes but is not described as transport atomicity.
+
+Each accepted attempt becomes an immutable numbered segment:
+
+- a `COLD_START` waits non-blockingly for finite feedback and the Plant to truthfully report
+  `atTarget(0.0)`, applies and
+  reads back the complete FTC velocity-PIDF tuple, then starts the target;
+- a `HOT_UPDATE` applies and reads back the complete tuple first, then changes target and duration
+  through the same Plant graph without deliberately requesting zero; and
+- B requests zero through that graph but leaves the Plant available for a later cold start.
+
+Exactly zero `autoStopAfterSec` disables automatic stop; a positive finite value starts at the new
+segment boundary. Invalid or unstable drafts leave a running segment and its timer unchanged.
+Telemetry keeps draft, captured request, controller readback, and current/last segment distinct;
+the displayed readback values are what students copy into checked-in configuration. Graph receives
+finite numeric segment ID, requested target, absolute measured velocity, error, and the signed rate
+of absolute measured speed under `tune.velocityPidf.*`; it does not claim unavailable controller
+power or internal term values. Unavailable feedback or an overflowing derived rate is labeled unavailable and
+published to Graph as a finite zero presentation fallback; it is never accepted as stopped evidence.
+
+Powered tuning requires exactly one Panels client. BACK, OpMode stop, disconnect, controller
+failure, or another terminal failure stops the Plant and best-effort restores the captured session
+baseline. The pinned FTC setter does not intentionally change target, mode, power, or direction,
+but firmware controller-history behavior and physically bumpless hot transitions are not promised.
+The complete student runbook is the
+[`PIDF tuning workflow`](<../../fw/docs/testing-calibration/PIDF Tuning Workflow.md#phoenix-flywheel-the-ready-made-panels-workflow>).
 
 ## Loop and telemetry order
 
@@ -321,6 +384,9 @@ Do not:
 - infer route success from a vendor idle flag;
 - let presenters advance state;
 - let Auto or TeleOp reach raw Plants or vendor Followers.
+- read Panels Configurables from production TeleOp or Auto;
+- duplicate the flywheel Plant recipe or write its raw motor from a tuning entry; or
+- claim that a requested PIDF tuple, controller restore, or hot transition proves physical truth.
 
 ## Coordinate contract
 

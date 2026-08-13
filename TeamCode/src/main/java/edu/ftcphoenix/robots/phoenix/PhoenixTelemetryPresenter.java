@@ -41,8 +41,8 @@ public final class PhoenixTelemetryPresenter {
      * @param telemetry FTC telemetry sink to write into; when {@code null}, emission is a no-op
      */
     public void emitTeleOp(Telemetry telemetry,
-                           ScoringPath.Status scoring,
-                           ScoringTargeting.Status targeting,
+                           PhoenixCapabilities.ScoringStatus scoring,
+                           PhoenixCapabilities.TargetingStatus targeting,
                            PhoenixDriveAssistService.Status driveAssist,
                            PhoenixReadiness.Result poseAssistReadiness,
                            VisionReadiness visionReadiness,
@@ -96,8 +96,8 @@ public final class PhoenixTelemetryPresenter {
      * @param telemetry FTC telemetry sink to write into; when {@code null}, emission is a no-op
      */
     public void emitAuto(Telemetry telemetry,
-                         ScoringPath.Status scoring,
-                         ScoringTargeting.Status targeting,
+                         PhoenixCapabilities.ScoringStatus scoring,
+                         PhoenixCapabilities.TargetingStatus targeting,
                          Task installedAutoRoutine,
                          VisionReadiness visionReadiness,
                          PoseEstimate globalPose,
@@ -136,7 +136,7 @@ public final class PhoenixTelemetryPresenter {
     }
 
     private void emitScoringTelemetry(Telemetry telemetry,
-                                      ScoringPath.Status scoring,
+                                      PhoenixCapabilities.ScoringStatus scoring,
                                       String prefix) {
         if (scoring == null) {
             return;
@@ -144,9 +144,6 @@ public final class PhoenixTelemetryPresenter {
         String p = (prefix == null || prefix.isEmpty()) ? "scoring" : prefix;
         telemetry.addData(p + ".flywheelEnabled", scoring.flywheelEnabled);
         telemetry.addData(p + ".pidfEnabled", scoring.pidfEnabled);
-        if (scoring.pidfWarning != null && !scoring.pidfWarning.isEmpty()) {
-            telemetry.addData(p + ".pidfWarning", scoring.pidfWarning);
-        }
         telemetry.addData(p + ".selectedVel", scoring.selectedVelocityNative);
         telemetry.addData(p + ".flywheelTarget", scoring.flywheelTargetNative);
         telemetry.addData(p + ".flywheelMeasured", scoring.flywheelMeasuredNative);
@@ -168,7 +165,9 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData(p + ".feedOut", scoring.feedOutput);
     }
 
-    private void emitScoringIntentTelemetry(Telemetry telemetry, ScoringPath.Status scoring) {
+    private void emitScoringIntentTelemetry(
+            Telemetry telemetry,
+            PhoenixCapabilities.ScoringStatus scoring) {
         if (scoring == null) {
             return;
         }
@@ -181,7 +180,9 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("shoot.active", scoring.shootActive);
     }
 
-    private void emitAimSummary(Telemetry telemetry, ScoringTargeting.Status targeting) {
+    private void emitAimSummary(
+            Telemetry telemetry,
+            PhoenixCapabilities.TargetingStatus targeting) {
         if (targeting == null) {
             return;
         }
@@ -225,7 +226,9 @@ public final class PhoenixTelemetryPresenter {
         }
     }
 
-    private void emitTargetTelemetry(Telemetry telemetry, ScoringTargeting.Status targeting) {
+    private void emitTargetTelemetry(
+            Telemetry telemetry,
+            PhoenixCapabilities.TargetingStatus targeting) {
         if (targeting == null) {
             return;
         }

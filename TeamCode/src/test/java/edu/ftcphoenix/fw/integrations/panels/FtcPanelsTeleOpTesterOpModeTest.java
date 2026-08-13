@@ -67,6 +67,22 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
     }
 
     @Test
+    public void exactOneClientRequirementRejectsDriverStationInput() {
+        RecordingTelemetry panelsTelemetry = new RecordingTelemetry();
+        FakePanelsBackend backend = new FakePanelsBackend(panelsTelemetry.proxy());
+
+        RuntimeException thrown = expectRuntimeException(() -> new TestOpMode(
+                FtcPanelsTeleOpTesterOpMode.InputSource.DRIVER_STATION,
+                FtcPanelsTeleOpTesterOpMode.PanelsClientRequirement.EXACTLY_ONE,
+                backend,
+                new RecordingTester()));
+
+        assertTrue(thrown.getMessage().contains("EXACTLY_ONE"));
+        assertTrue(thrown.getMessage().contains("InputSource.PANELS"));
+        assertEquals(0, backend.clientCountCalls);
+    }
+
+    @Test
     public void panelsSourceUsesStableSyntheticIdentitiesAndSamplesBeforeEveryCallback() {
         RecordingTelemetry driverTelemetry = new RecordingTelemetry();
         RecordingTelemetry panelsTelemetry = new RecordingTelemetry();
@@ -125,6 +141,50 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
         for (Gamepad identity : tester.secondIdentities) {
             assertSame(stableTwo, identity);
         }
+        mode.stop();
+    }
+
+    @Test
+    public void defaultAtLeastOnePolicyAcceptsMultiplePanelsClients() {
+        RecordingTelemetry driverTelemetry = new RecordingTelemetry();
+        RecordingTelemetry panelsTelemetry = new RecordingTelemetry();
+        FakePanelsBackend backend = new FakePanelsBackend(panelsTelemetry.proxy());
+        backend.connectedClientCount = 2;
+        RecordingTester tester = new RecordingTester();
+        TestOpMode mode = configuredMode(
+                FtcPanelsTeleOpTesterOpMode.InputSource.PANELS,
+                backend,
+                driverTelemetry,
+                tester);
+
+        mode.init();
+
+        assertEquals(1, tester.initCalls);
+        assertEquals(2, backend.clientCountCalls);
+        assertEquals(1, backend.firstSnapshotCalls);
+        assertEquals(1, backend.secondSnapshotCalls);
+        mode.stop();
+    }
+
+    @Test
+    public void exactOnePolicyAcceptsExactlyOnePanelsClient() {
+        RecordingTelemetry driverTelemetry = new RecordingTelemetry();
+        RecordingTelemetry panelsTelemetry = new RecordingTelemetry();
+        FakePanelsBackend backend = new FakePanelsBackend(panelsTelemetry.proxy());
+        RecordingTester tester = new RecordingTester();
+        TestOpMode mode = configuredMode(
+                FtcPanelsTeleOpTesterOpMode.InputSource.PANELS,
+                FtcPanelsTeleOpTesterOpMode.PanelsClientRequirement.EXACTLY_ONE,
+                backend,
+                driverTelemetry,
+                tester);
+
+        mode.init();
+
+        assertEquals(1, tester.initCalls);
+        assertEquals(2, backend.clientCountCalls);
+        assertEquals(1, backend.firstSnapshotCalls);
+        assertEquals(1, backend.secondSnapshotCalls);
         mode.stop();
     }
 
@@ -219,7 +279,8 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
         RuntimeException thrown = expectRuntimeException(mode::init);
 
         assertTrue(thrown.getMessage().contains("Panels tester input disconnected"));
-        assertTrue(thrown.getMessage().contains("restart FW: Testers (Panels)"));
+        assertTrue(thrown.getMessage().contains("restart this tester OpMode"));
+        assertFalse(thrown.getMessage().contains("FW: Testers (Panels)"));
         assertEquals(0, tester.initCalls);
         assertEquals(0, tester.stopCalls);
         assertEquals(1, backend.clientCountCalls);
@@ -233,6 +294,63 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
         mode.stop();
         assertEquals(0, tester.stopCalls);
         assertEquals(1, backend.clientCountCalls);
+    }
+
+    @Test
+    public void exactOnePolicyRejectsZeroOrTwoClientsBeforeTesterInit() {
+        assertExactOneInitialClientCountRejected(0);
+        assertExactOneInitialClientCountRejected(2);
+    }
+
+    private static void assertExactOneInitialClientCountRejected(int clientCount) {
+        RecordingTelemetry driverTelemetry = new RecordingTelemetry();
+        RecordingTelemetry panelsTelemetry = new RecordingTelemetry();
+        FakePanelsBackend backend = new FakePanelsBackend(panelsTelemetry.proxy());
+        backend.connectedClientCount = clientCount;
+        RecordingTester tester = new RecordingTester();
+        TestOpMode mode = configuredMode(
+                FtcPanelsTeleOpTesterOpMode.InputSource.PANELS,
+                FtcPanelsTeleOpTesterOpMode.PanelsClientRequirement.EXACTLY_ONE,
+                backend,
+                driverTelemetry,
+                tester);
+
+        RuntimeException thrown = expectRuntimeException(mode::init);
+
+        assertTrue(thrown.getMessage().contains("requires exactly one connected Panels client"));
+        assertTrue(thrown.getMessage().contains("found " + clientCount));
+        assertTrue(thrown.getMessage().contains("restart this tester OpMode"));
+        assertEquals(0, tester.initCalls);
+        assertEquals(0, tester.stopCalls);
+        assertEquals(1, backend.clientCountCalls);
+        assertEquals(0, backend.firstSnapshotCalls);
+        assertEquals(0, backend.secondSnapshotCalls);
+        mode.stop();
+        assertEquals(0, tester.stopCalls);
+    }
+
+    @Test
+    public void exactOnePolicyRejectsClientCountThatChangesDuringInitialSnapshot() {
+        RecordingTelemetry driverTelemetry = new RecordingTelemetry();
+        RecordingTelemetry panelsTelemetry = new RecordingTelemetry();
+        FakePanelsBackend backend = new FakePanelsBackend(panelsTelemetry.proxy());
+        backend.connectedClientCountSequence = new int[]{1, 2};
+        RecordingTester tester = new RecordingTester();
+        TestOpMode mode = configuredMode(
+                FtcPanelsTeleOpTesterOpMode.InputSource.PANELS,
+                FtcPanelsTeleOpTesterOpMode.PanelsClientRequirement.EXACTLY_ONE,
+                backend,
+                driverTelemetry,
+                tester);
+
+        RuntimeException thrown = expectRuntimeException(mode::init);
+
+        assertTrue(thrown.getMessage().contains("found 2"));
+        assertEquals(0, tester.initCalls);
+        assertEquals(0, tester.stopCalls);
+        assertEquals(2, backend.clientCountCalls);
+        assertEquals(1, backend.firstSnapshotCalls);
+        assertEquals(1, backend.secondSnapshotCalls);
     }
 
     @Test
@@ -269,6 +387,52 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
         assertEquals(0, tester.startCalls);
         assertEquals(0, tester.loopCalls);
         assertEquals(1, tester.stopCalls);
+        assertEquals(clientCallsAfterFailure, backend.clientCountCalls);
+        assertEquals(firstCallsAfterFailure, backend.firstSnapshotCalls);
+        assertEquals(secondCallsAfterFailure, backend.secondSnapshotCalls);
+    }
+
+    @Test
+    public void exactOnePolicyLaterZeroOrTwoClientsFailStopsExactlyOnce() {
+        assertExactOneLaterClientCountFailStops(0);
+        assertExactOneLaterClientCountFailStops(2);
+    }
+
+    private static void assertExactOneLaterClientCountFailStops(int clientCount) {
+        RecordingTelemetry driverTelemetry = new RecordingTelemetry();
+        RecordingTelemetry panelsTelemetry = new RecordingTelemetry();
+        FakePanelsBackend backend = new FakePanelsBackend(panelsTelemetry.proxy());
+        RecordingTester tester = new RecordingTester();
+        TestOpMode mode = configuredMode(
+                FtcPanelsTeleOpTesterOpMode.InputSource.PANELS,
+                FtcPanelsTeleOpTesterOpMode.PanelsClientRequirement.EXACTLY_ONE,
+                backend,
+                driverTelemetry,
+                tester);
+        mode.init();
+        assertEquals(1, tester.initCalls);
+
+        backend.connectedClientCount = clientCount;
+        RuntimeException thrown = expectRuntimeException(mode::init_loop);
+
+        assertTrue(thrown.getMessage().contains("requires exactly one connected Panels client"));
+        assertTrue(thrown.getMessage().contains("found " + clientCount));
+        assertEquals(1, tester.stopCalls);
+        assertEquals(0, tester.initLoopCalls);
+        int clientCallsAfterFailure = backend.clientCountCalls;
+        int firstCallsAfterFailure = backend.firstSnapshotCalls;
+        int secondCallsAfterFailure = backend.secondSnapshotCalls;
+
+        backend.connectedClientCount = 1;
+        mode.init_loop();
+        mode.start();
+        mode.loop();
+        mode.stop();
+
+        assertEquals(1, tester.stopCalls);
+        assertEquals(0, tester.initLoopCalls);
+        assertEquals(0, tester.startCalls);
+        assertEquals(0, tester.loopCalls);
         assertEquals(clientCallsAfterFailure, backend.clientCountCalls);
         assertEquals(firstCallsAfterFailure, backend.firstSnapshotCalls);
         assertEquals(secondCallsAfterFailure, backend.secondSnapshotCalls);
@@ -343,7 +507,22 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
             RecordingTelemetry driverTelemetry,
             RecordingTester tester
     ) {
-        TestOpMode mode = new TestOpMode(inputSource, backend, tester);
+        return configuredMode(
+                inputSource,
+                FtcPanelsTeleOpTesterOpMode.PanelsClientRequirement.AT_LEAST_ONE,
+                backend,
+                driverTelemetry,
+                tester);
+    }
+
+    private static TestOpMode configuredMode(
+            FtcPanelsTeleOpTesterOpMode.InputSource inputSource,
+            FtcPanelsTeleOpTesterOpMode.PanelsClientRequirement clientRequirement,
+            FakePanelsBackend backend,
+            RecordingTelemetry driverTelemetry,
+            RecordingTester tester
+    ) {
+        TestOpMode mode = new TestOpMode(inputSource, clientRequirement, backend, tester);
         mode.telemetry = driverTelemetry.proxy();
         mode.hardwareMap = new HardwareMap(null, null);
         mode.gamepad1 = new Gamepad();
@@ -380,10 +559,11 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
 
         private TestOpMode(
                 InputSource inputSource,
+                PanelsClientRequirement clientRequirement,
                 PanelsBackend backend,
                 TeleOpTester tester
         ) {
-            super(inputSource, backend);
+            super(inputSource, clientRequirement, backend);
             this.tester = tester;
         }
 
@@ -402,6 +582,8 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
             FtcPanelsTeleOpTesterOpMode.PanelsBackend {
         private final Telemetry telemetry;
         private int connectedClientCount = 1;
+        private int[] connectedClientCountSequence;
+        private int connectedClientCountIndex;
         private Gamepad firstSnapshot = new Gamepad();
         private Gamepad secondSnapshot = new Gamepad();
         private RuntimeException firstSnapshotFailure;
@@ -424,6 +606,10 @@ public final class FtcPanelsTeleOpTesterOpModeTest {
         public int connectedClientCount() {
             clientCountCalls++;
             failIfInputRead("connectedClientCount");
+            if (connectedClientCountSequence != null
+                    && connectedClientCountIndex < connectedClientCountSequence.length) {
+                return connectedClientCountSequence[connectedClientCountIndex++];
+            }
             return connectedClientCount;
         }
 

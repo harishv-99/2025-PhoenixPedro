@@ -10,6 +10,7 @@ message first: it normally names the invalid value, expected domain, or owner th
 | Project does not build | Android Studio Gradle/JDK setup and the first compiler error |
 | OpMode is missing on Driver Station | `@Disabled`, annotation, build, and deployment |
 | Panels tester stops after losing its client | Reconnect Panels, then start a fresh Panels tester OpMode |
+| Phoenix tuning rejects the Panels connection or an edit does not apply | Use exactly one client; Update All, then press A |
 | Hardware name error during INIT | Robot Configuration spelling, case, and duplicate group names |
 | START remains blocked | Always-on readiness telemetry and the named calibration/config fact |
 | Motor or servo moves the wrong way | Configured `Direction`, then `HW: Actuator Bring-up` |
@@ -82,6 +83,17 @@ powered tester run, and validate disconnect and stop behavior on the actual robo
 the Panels workflow. Phoenix sees only Panels' total client count. If another client remains after
 the input view closes, the host relies on the pinned Panels transport aging unattended controls to
 neutral; a stalled OpMode loop still cannot apply a new neutral command.
+
+**Phoenix: Tuning (Panels)** has a deliberately stricter rule: it requires exactly one connected
+client. Close extra Panels tabs/devices before INIT. If the count is zero or greater than one, or
+changes while running, the tuning session ends closed; correct the connection count and start a
+fresh OpMode instance.
+
+Panels **Update All** changes only Configurables draft fields. It never applies hardware. In
+the direct flywheel workflow, finish editing every field, press Update All, then press A on the
+virtual gamepad to capture one stable complete candidate. If telemetry reports an invalid or
+unstable draft, correct the whole candidate and repeat; a running segment intentionally remains
+unchanged. See the [`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>).
 
 ## FTC START remains blocked
 

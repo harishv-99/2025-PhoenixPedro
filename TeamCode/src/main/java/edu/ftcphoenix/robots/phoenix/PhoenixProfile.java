@@ -35,7 +35,7 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  *   <li>shared field facts: fixed AprilTag layout for the current game</li>
  *   <li>robot-owned controls: TeleOp stick shaping and slow-mode tuning</li>
  *   <li>robot-owned drive assists: scoring-related drive overlays and brace tuning</li>
- *   <li>robot-owned mechanisms and strategy: scoring path, targeting, Auto timing, and calibration acknowledgements</li>
+ *   <li>robot-owned mechanisms and strategy: scoring, targeting, Auto timing, and calibration acknowledgements</li>
  * </ul>
  */
 public final class PhoenixProfile {
@@ -75,7 +75,7 @@ public final class PhoenixProfile {
     /**
      * Scoring-path hardware and policy tuning.
      */
-    public ScoringPathConfig scoring = new ScoringPathConfig();
+    public ScoringConfig scoring = new ScoringConfig();
 
     /**
      * Human-acknowledged calibration checkpoints.
@@ -574,7 +574,7 @@ public final class PhoenixProfile {
     /**
      * Scoring-path hardware mapping, feed tuning, and flywheel calibration values.
      */
-    public static final class ScoringPathConfig {
+    public static final class ScoringConfig {
         public String nameMotorIntake = "intakeMotor";
         public Direction directionMotorIntake = Direction.FORWARD;
 
@@ -624,18 +624,18 @@ public final class PhoenixProfile {
 
 
         /**
-         * Creates a scoring-path config initialized with Phoenix defaults.
+         * Creates a scoring config initialized with Phoenix defaults.
          */
-        public ScoringPathConfig() {
+        public ScoringConfig() {
         }
 
         /**
-         * Creates a deep copy of this scoring-path config.
+         * Creates a deep copy of this scoring config.
          *
-         * @return copied scoring-path config
+         * @return copied scoring config
          */
-        public ScoringPathConfig copy() {
-            ScoringPathConfig c = new ScoringPathConfig();
+        public ScoringConfig copy() {
+            ScoringConfig c = new ScoringConfig();
             c.nameMotorIntake = this.nameMotorIntake;
             c.directionMotorIntake = this.directionMotorIntake;
             c.nameCrServoIntakeTransfer = this.nameCrServoIntakeTransfer;

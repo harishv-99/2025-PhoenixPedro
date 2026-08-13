@@ -14,8 +14,6 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.fw.task.TaskRunner;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
-import edu.ftcphoenix.robots.phoenix.ScoringPath;
-import edu.ftcphoenix.robots.phoenix.ScoringTargeting;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -625,7 +623,7 @@ public final class PhoenixAutoTasksTest {
         assertEquals(0, scoring.ejectSetCount);
     }
 
-    private static ScoringTargeting.Status targetingStatus(boolean hasSelection) {
+    private static PhoenixCapabilities.TargetingStatus targetingStatus(boolean hasSelection) {
         TagSelectionResult selection = hasSelection
                 ? new TagSelectionResult(
                         false,
@@ -642,7 +640,7 @@ public final class PhoenixAutoTasksTest {
                         0.0
                 )
                 : TagSelectionResult.none(Collections.<Integer>emptySet());
-        return new ScoringTargeting.Status(
+        return new PhoenixCapabilities.TargetingStatus(
                 false,
                 false,
                 false,
@@ -671,7 +669,7 @@ public final class PhoenixAutoTasksTest {
         }
 
         @Override
-        public ScoringTargeting.Status status() {
+        public PhoenixCapabilities.TargetingStatus status() {
             return targetingStatus(hasSelection);
         }
 
@@ -770,7 +768,7 @@ public final class PhoenixAutoTasksTest {
         }
 
         @Override
-        public ScoringPath.Status status() {
+        public PhoenixCapabilities.ScoringStatus status() {
             return null;
         }
     }
