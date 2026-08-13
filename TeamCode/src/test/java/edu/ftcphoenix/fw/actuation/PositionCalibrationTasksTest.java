@@ -182,12 +182,13 @@ public final class PositionCalibrationTasksTest {
         MutableScalarSource measurement = new MutableScalarSource(5.0);
         RecordingRegulator regulator = new RecordingRegulator(0.3);
         PositionPlant plant = Plants.fromOutputs()
-                .regulatedPosition(normalOutput, measurement, regulator)
+                .regulatedPosition(normalOutput, measurement)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(5.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();

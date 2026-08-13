@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.hal.PowerLimitedPositionOutput;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
@@ -468,100 +469,95 @@ public final class FtcHardware {
     }
 
     /**
-     * Create a Phoenix {@link PositionOutput} for a named FTC motor using
+     * Create a Phoenix {@link PowerLimitedPositionOutput} for a named FTC motor using
      * {@link DcMotor.RunMode#RUN_TO_POSITION}.
      *
      * <p>The framework does <b>not</b> reset the encoder automatically. The motor's existing encoder
      * frame is preserved and the caller's target is interpreted directly in native encoder ticks.
-     * The default command power is {@code 1.0}; use the overload with {@code maxPower} when you want
-     * a different power applied after each new target command.</p>
+     * The returned output pairs each target with its maximum normalized output-power magnitude.
+     * Its inherited one-argument position command uses the full magnitude {@code 1.0}; use
+     * {@link PowerLimitedPositionOutput#setPosition(double, double)} for a smaller per-command
+     * limit.</p>
      *
      * @param hw FTC hardware map used to look up the motor
      * @param name configured hardware name of the {@link DcMotorEx}
      * @param direction logical forward direction for Phoenix commands
-     * @return command-only position output backed by {@code RUN_TO_POSITION}
+     * @return power-limited position output backed by {@code RUN_TO_POSITION}
      */
-    public static PositionOutput motorPosition(HardwareMap hw,
-                                               String name,
-                                               Direction direction) {
-        return motorPosition(hw, name, direction, 1.0);
-    }
-
-    /**
-     * Create a Phoenix {@link PositionOutput} for a named FTC motor using
-     * {@link DcMotor.RunMode#RUN_TO_POSITION} and an explicit command power.
-     *
-     * @param hw        FTC hardware map used to look up the motor
-     * @param name      configured hardware name of the {@link DcMotorEx}
-     * @param direction logical forward direction for Phoenix commands
-     * @param maxPower  finite normalized power Phoenix reapplies after each new target command;
-     *                  must be in the inclusive {@code [0.0, 1.0]} domain
-     * @return command-only position output backed by {@code RUN_TO_POSITION}
-     * @throws IllegalArgumentException if {@code maxPower} is non-finite or outside
-     * {@code [0.0, 1.0]}; validation finishes before hardware lookup or direction configuration
-     */
-    public static PositionOutput motorPosition(HardwareMap hw,
-                                               String name,
-                                               Direction direction,
-                                               double maxPower) {
+    public static PowerLimitedPositionOutput motorPosition(HardwareMap hw,
+                                                           String name,
+                                                           Direction direction) {
         requireHardwareMap(hw);
         requireName(name);
         requireDirection(direction);
-        FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
-                maxPower, "FtcHardware.motorPosition(...)");
-        return motorPosition(hw.get(DcMotorEx.class, name), direction, maxPower);
+        return motorPosition(hw.get(DcMotorEx.class, name), direction);
     }
 
     /**
-     * Create a Phoenix {@link PositionOutput} for an FTC motor instance using
+     * Create a Phoenix {@link PowerLimitedPositionOutput} for an FTC motor instance using
      * {@link DcMotor.RunMode#RUN_TO_POSITION}.
      *
-     * <p>Each call to {@link PositionOutput#setPosition(double)} requires a finite native-tick
-     * target, rounds it with {@link Math#round(double)}, and requires that rounded {@code long} to
-     * fit the FTC signed 32-bit target domain. Validation finishes before the cached command,
-     * target, mode, or power is changed. The accepted rounded tick is then cached and written,
-     * the motor is switched into {@code RUN_TO_POSITION}, and the configured drive power is
-     * reapplied. Calling {@link PositionOutput#stop()} powers the motor down and returns it to
-     * {@link DcMotor.RunMode#RUN_USING_ENCODER}.</p>
+     * <p>Each paired logical command requires a finite native-tick target and a finite normalized
+     * maximum-output power magnitude in {@code [0.0, 1.0]}. The target is rounded with
+     * {@link Math#round(double)}, and the rounded {@code long} must fit the FTC signed 32-bit target
+     * domain. The complete pair is validated before the cached command, target, mode, or power is
+     * changed. The motor target and {@code RUN_TO_POSITION} mode are then selected before the
+     * paired power magnitude is applied. Those SDK effects are sequential, not transactional: a
+     * later failure may leave an earlier target or mode change installed, and the adapter then
+     * invalidates both cached command values rather than claiming a successfully submitted pair.
+     * Calling {@link PowerLimitedPositionOutput#stop()} powers
+     * the motor down and returns it to {@link DcMotor.RunMode#RUN_USING_ENCODER}.</p>
      *
-     * @param motor     FTC motor instance to command
+     * @param motor FTC motor instance to command
      * @param direction logical forward direction for Phoenix commands
-     * @param maxPower  finite normalized power Phoenix reapplies after each new target command;
-     *                  must be in the inclusive {@code [0.0, 1.0]} domain
-     * @return command-only position output backed by {@code RUN_TO_POSITION}
-     * @throws IllegalArgumentException if {@code maxPower} is non-finite or outside
-     * {@code [0.0, 1.0]}, or if a commanded position is non-finite or rounds outside the FTC signed
-     * 32-bit target-position domain; construction validates power before direction configuration
+     * @return power-limited position output backed by {@code RUN_TO_POSITION}
+     * @throws IllegalArgumentException if a commanded position is non-finite or rounds outside the
+     * FTC signed 32-bit target-position domain, or if its paired maximum-output power magnitude is
+     * non-finite or outside {@code [0.0, 1.0]}
      */
-    public static PositionOutput motorPosition(DcMotorEx motor,
-                                               Direction direction,
-                                               double maxPower) {
+    public static PowerLimitedPositionOutput motorPosition(DcMotorEx motor,
+                                                           Direction direction) {
         if (motor == null) {
             throw new IllegalArgumentException("motor is required");
         }
         requireDirection(direction);
-        final double power =
-                FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
-                        maxPower, "FtcHardware.motorPosition(...)");
         motor.setDirection(direction == Direction.REVERSE
                 ? DcMotorSimple.Direction.REVERSE
                 : DcMotorSimple.Direction.FORWARD);
 
-        return new PositionOutput() {
-            private double last;
+        return new PowerLimitedPositionOutput() {
+            private double lastPosition = Double.NaN;
+            private double lastMaximumOutputPowerMagnitude = Double.NaN;
 
             @Override
-            public void setPosition(double position) {
+            public void setPosition(double position, double maximumOutputPowerMagnitude) {
                 int targetTicks = checkedMotorTargetTicks(position);
-                last = targetTicks;
-                motor.setTargetPosition(targetTicks);
-                motor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-                motor.setPower(power);
+                double checkedMagnitude =
+                        FtcControllerConfigurationValidation
+                                .requireRunToPositionMaximumOutputPowerMagnitude(
+                                maximumOutputPowerMagnitude,
+                                "FtcHardware.motorPosition(...).setPosition(...)");
+                try {
+                    motor.setTargetPosition(targetTicks);
+                    motor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                    motor.setPower(checkedMagnitude);
+                } catch (RuntimeException failure) {
+                    lastPosition = Double.NaN;
+                    lastMaximumOutputPowerMagnitude = Double.NaN;
+                    throw failure;
+                }
+                lastPosition = targetTicks;
+                lastMaximumOutputPowerMagnitude = checkedMagnitude;
             }
 
             @Override
             public double getCommandedPosition() {
-                return last;
+                return lastPosition;
+            }
+
+            @Override
+            public double getCommandedMaximumOutputPowerMagnitude() {
+                return lastMaximumOutputPowerMagnitude;
             }
 
             @Override

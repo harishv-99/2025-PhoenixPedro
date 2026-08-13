@@ -43,7 +43,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * this.lift = FtcActuators.plant(hardwareMap)
  *     .motor(cfg.motorName, cfg.direction)
  *     .position()
- *     .deviceManagedWithDefaults()
+ *     .deviceManaged()
  *     .nonPeriodic()
  *     .bounded(0.0, 4200.0)
  *     .nativeUnits()

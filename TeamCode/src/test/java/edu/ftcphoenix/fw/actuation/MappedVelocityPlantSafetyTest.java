@@ -246,10 +246,11 @@ public final class MappedVelocityPlantSafetyTest {
                 0.0,
                 0.65);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, clock -> 2000.0, constrained)
+                .regulatedVelocity(output, clock -> 2000.0)
                 .bounded(0.0, 6000.0)
                 .scaleToNative(2.0)
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(constrained)
                 .targetFromResolver(PlantTargets.exact(targetRpm))
                 .build();
 

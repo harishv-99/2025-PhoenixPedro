@@ -49,11 +49,14 @@ final class FtcControllerConfigurationValidation {
         return new double[]{checkedP, checkedI, checkedD, checkedF};
     }
 
-    /** Return one unchanged RUN_TO_POSITION maximum-power magnitude in normalized power units. */
-    static double requireRunToPositionMaxPower(double value, String operation) {
+    /** Return one unchanged RUN_TO_POSITION maximum-output-power magnitude. */
+    static double requireRunToPositionMaximumOutputPowerMagnitude(
+            double value,
+            String operation) {
         if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
             throw new IllegalArgumentException(operation
-                    + ": maxPower must be finite normalized RUN_TO_POSITION maximum power within "
+                    + ": maximum output-power magnitude must be finite normalized "
+                    + "RUN_TO_POSITION power within "
                     + "the inclusive [0.0, 1.0] domain, got " + value);
         }
         return value;

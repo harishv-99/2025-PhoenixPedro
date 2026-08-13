@@ -145,6 +145,21 @@ public final class ScalarRegulatorsTest {
     }
 
     @Test
+    public void voltageCompensationResetDoesNotResetBorrowedVoltageSource() {
+        RecordingRegulator inner = new RecordingRegulator();
+        RecordingScalarSource voltage = new RecordingScalarSource(12.0);
+        ScalarRegulator compensated = ScalarRegulators.voltageCompensated(
+                inner, voltage, 12.0, 9.0, 1.5);
+
+        compensated.update(2.0, 1.0, new ManualLoopClock().clock());
+        compensated.reset();
+
+        assertEquals(1, inner.resetCount);
+        assertEquals("a regulator borrows but does not own its voltage source lifecycle",
+                0, voltage.resetCount);
+    }
+
+    @Test
     public void outputLimitedRejectsEveryNonFiniteInnerResult() {
         assertNonFiniteResultRejected(Double.NaN);
         assertNonFiniteResultRejected(Double.NEGATIVE_INFINITY);
@@ -318,6 +333,25 @@ public final class ScalarRegulatorsTest {
             lastMeasurement = measurement;
             lastClock = clock;
             return updateCount;
+        }
+
+        @Override
+        public void reset() {
+            resetCount++;
+        }
+    }
+
+    private static final class RecordingScalarSource implements ScalarSource {
+        private final double value;
+        private int resetCount;
+
+        private RecordingScalarSource(double value) {
+            this.value = value;
+        }
+
+        @Override
+        public double getAsDouble(LoopClock clock) {
+            return value;
         }
 
         @Override

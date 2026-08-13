@@ -589,7 +589,7 @@ public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotP
             return FtcActuators.plant(hardwareMap)
                     .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
                     .velocity()
-                    .deviceManaged()
+                    .deviceManagedWithOverrides()
                     .velocityPidf(
                             cfg.flywheelVelKp,
                             cfg.flywheelVelKi,
@@ -605,7 +605,7 @@ public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotP
         return FtcActuators.plant(hardwareMap)
                 .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(0.0, cfg.velocityMax)
                 .nativeUnits()
                 .velocityTolerance(cfg.velocityToleranceNative)

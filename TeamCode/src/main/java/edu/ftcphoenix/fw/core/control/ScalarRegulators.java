@@ -24,12 +24,17 @@ public final class ScalarRegulators {
     /**
      * Adapt an error-centric {@link PidController} into a setpoint/measurement-based regulator.
      *
+     * @deprecated Advanced compatibility for custom Plant control only. Ordinary regulated Plants
+     * use the inline {@code setpointFrom... -> feedbackFromPid(...)} grammar; this path will be
+     * removed when the software tuning workflow migrates to that standard control capability.
+     *
      * <pre>{@code
      * ScalarRegulator regulator = ScalarRegulators.pid(
      *     Pid.withGains(0.01, 0.0, 0.0005).setOutputLimits(-1.0, 1.0)
      * );
      * }</pre>
      */
+    @Deprecated
     public static ScalarRegulator pid(PidController controller) {
         return new PidScalarRegulator(controller);
     }
@@ -60,7 +65,11 @@ public final class ScalarRegulators {
      * @param kF finite linear setpoint-feedforward gain
      * @return retained standard PIDF regulator
      * @throws IllegalArgumentException if any gain is not finite
+     * @deprecated Advanced compatibility for the existing software-tuning seam. Ordinary Plant
+     * control uses typed PID plus feedforward in the Plant builder; this factory will be removed
+     * when that tuner is migrated.
      */
+    @Deprecated
     public static PidfRegulator pidf(double kP, double kI, double kD, double kF) {
         return new PidfRegulator(kP, kI, kD, kF);
     }
@@ -73,7 +82,11 @@ public final class ScalarRegulators {
      * independent of whether the feedback controller is PID, bang-bang, asymmetric, or custom.
      * Use {@link #pidf(double, double, double, double)} for ordinary linear PIDF so all four gains
      * share one validated retained owner.</p>
+     *
+     * @deprecated Advanced compatibility for opaque custom control laws. Ordinary Plant
+     * feedforward uses the typed motion, lift, or arm model selected by the Plant builder.
      */
+    @Deprecated
     public static ScalarRegulator setpointFeedforward(ScalarRegulator inner,
                                                       DoubleUnaryOperator feedforwardFromSetpoint) {
         return new SetpointFeedforwardScalarRegulator(inner, feedforwardFromSetpoint);
@@ -93,7 +106,9 @@ public final class ScalarRegulators {
      * disabled for that sample and the scale is {@code 1.0}. The wrapper does not constrain its
      * output. Wrap the complete composition with {@link #outputLimited(ScalarRegulator, double,
      * double)} when it needs an intentional policy range; the enclosing Plant/output boundary still
-     * owns its separate defensive command invariant.</p>
+     * owns its separate defensive command invariant. The wrapper borrows {@code supplyVoltage}:
+     * resetting the regulator resets its inner control and local diagnostics, but does not reset a
+     * potentially shared source graph.</p>
      *
      * <pre>{@code
      * ScalarRegulator compensated = ScalarRegulators.voltageCompensated(
@@ -331,7 +346,6 @@ public final class ScalarRegulators {
         @Override
         public void reset() {
             inner.reset();
-            supplyVoltage.reset();
             lastSetpoint = Double.NaN;
             lastMeasurement = Double.NaN;
             lastMeasuredVoltage = Double.NaN;

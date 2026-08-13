@@ -396,7 +396,7 @@ public final class PidfRegulatorTest {
     }
 
     @Test
-    public void outerDecoratorResetPropagatesAndRetainedPidfHandleUpdatesLiveComposition() {
+    public void outerDecoratorResetPropagatesWithoutResettingBorrowedVoltageSource() {
         PidfRegulator pidf = ScalarRegulators.pidf(0.1, 0.0, 0.0, 0.0);
         RecordingVoltageSource voltage = new RecordingVoltageSource();
         ScalarRegulator composed = ScalarRegulators.outputLimited(
@@ -416,7 +416,8 @@ public final class PidfRegulatorTest {
 
         composed.reset();
 
-        assertEquals(1, voltage.resetCount);
+        assertEquals("the regulator composition borrows the voltage source lifecycle",
+                0, voltage.resetCount);
         assertEquals(0.2, pidf.getKP(), 0.0);
         CapturingDebugSink debug = new CapturingDebugSink();
         composed.debugDump(debug, "outer");

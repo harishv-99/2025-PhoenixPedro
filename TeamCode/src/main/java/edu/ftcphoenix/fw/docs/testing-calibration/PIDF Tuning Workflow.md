@@ -1,7 +1,8 @@
 # PIDF Tuning Workflow
 
-PIDF tuning changes a controller while real hardware is moving. Phoenix gives FTC
-device-managed velocity tuning one ready-made workflow:
+PID and feedforward tuning changes a controller while real hardware is moving. Phoenix uses one
+systematic vocabulary for standard software control and provides one ready-made live Panels
+workflow for FTC device-managed velocity PIDF:
 
 ```text
 robot declaration
@@ -10,7 +11,8 @@ robot declaration
   -> one framework-owned tuning session
 ```
 
-The framework owns Panels drafts, complete-candidate validation, hot/cold segments, controller
+For that FTC workflow, the framework owns Panels drafts, complete-candidate validation, hot/cold
+segments, controller
 readback, charts, restoration, and Plant cleanup. Robot code declares only a safe positive
 test-target range and how to build a fresh Plant; the motor name is answered once inside that Plant
 recipe. Production TeleOp and Auto never read
@@ -22,8 +24,9 @@ Panels Configurables.
   [Phoenix flywheel: the ready-made Panels workflow](#phoenix-flywheel-the-ready-made-panels-workflow).
 - **Adding FTC device-managed velocity tuning to another robot?** Read
   [Declare one framework tuner](#declare-one-framework-tuner-mentor-or-author).
-- **Using a Phoenix software regulator?** Read
-  [Phoenix software-regulated PIDF](#phoenix-software-regulated-pidf) after the shared workflow.
+- **Using Phoenix standard software control?** Read
+  [Phoenix software-regulated control](#phoenix-software-regulated-control) after the shared
+  workflow.
 
 Ordinary mechanisms need none of this structure merely because they use checked-in PIDF values.
 
@@ -34,8 +37,9 @@ production Plant; do not substitute one merely because its API looks familiar.
 
 | Production Plant | Controller owner | Tuning path |
 | --- | --- | --- |
-| `.velocity().deviceManaged()` | FTC motor controller | `FtcPanelsTuners.velocityPidf(...)` |
-| `.velocity().regulated()` with `ScalarRegulators.pidf(...)` | Phoenix software regulator | A mechanism-specific workflow that retains and resets the complete regulator composition |
+| `.velocity().deviceManaged()` or `.deviceManagedWithOverrides()` | FTC motor controller | `FtcPanelsTuners.velocityPidf(...)` |
+| `.position().regulated()` or `.velocity().regulated()` with inline `setpointFrom...` / `feedbackFromPid(...)` | Plant-owned Phoenix standard control | Checked-in Plant recipe and controlled fresh-Plant experiments; no ready-made live Panels editor yet |
+| `.regulated()` with `controlFromCustomRegulator(...)` | Caller-supplied advanced regulator | Its owner must define the complete candidate, reset, evidence, and restoration contract |
 
 The staged Plant builder remains the one ordinary FTC construction grammar. The FTC tuning
 workflow's controller handle changes configuration only; the Plant remains the sole target and
@@ -121,8 +125,9 @@ Production classes must not import or read them. The one active tuner seeds thos
 controller readback and captures them only after the operator presses A.
 
 The generic factory is intentionally limited to FTC device-managed **velocity** PIDF. Device-managed
-position has an outer position P plus an inner velocity PIDF, and software-regulated mechanisms own
-different reset and restore semantics. Do not force those controllers through this factory.
+position has an outer position P plus an inner velocity PIDF, while standard software control owns
+typed setpoint/profile and feedforward state inside its Plant. Do not force those controllers
+through this factory.
 
 ## The shared workflow
 
@@ -266,7 +271,7 @@ Production constructs a device-managed velocity Plant through the staged grammar
 this.flywheel = FtcActuators.plant(hardwareMap)
         .motor(motorName, direction)
         .velocity()
-        .deviceManaged()
+        .deviceManagedWithOverrides()
             .velocityPidf(kP, kI, kD, kF)
         .bounded(0.0, maxTicksPerSec)
         .nativeUnits()
@@ -290,40 +295,64 @@ the complete `FtcPanelsTuners` workflow instead of rebuilding its controller ses
 capture, segment logic, or cleanup. Position control has a different controller shape and is not
 represented by this velocity-only factory.
 
-## Phoenix software-regulated PIDF
+## Phoenix software-regulated control
 
-For a power-driven Plant built with `ScalarRegulators.pidf(...)`, retain both the inner standard
-PIDF handle and the outermost regulator composition inside the production realization:
-
-```java
-private final PidfRegulator flywheelPidf;
-private final ScalarRegulator flywheelRegulator;
-
-flywheelPidf = ScalarRegulators.pidf(kP, kI, kD, kF)
-        .setIntegralLimits(-0.15, 0.15)
-        .setPidOutputLimits(-1.0, 1.0);
-
-flywheelRegulator = ScalarRegulators.outputLimited(
-        flywheelPidf,
-        0.0,
-        maximumPower);
-```
-
-Apply a complete candidate and reset the complete composition:
+Ordinary software-regulated Plants declare the complete standard model inline after units and
+tolerance. There is no peer PIDF object for robot code to retain or mutate:
 
 ```java
-void applyPidfCandidate(double kP, double kI, double kD, double kF) {
-    flywheelPidf.setGains(kP, kI, kD, kF);
-    flywheelRegulator.reset();
-}
+this.flywheel = FtcActuators.plant(hardwareMap)
+        .motor(motorName, direction)
+        .velocity()
+        .regulated()
+            .internalEncoder()
+        .bounded(0.0, maximumRpm)
+        .scaleToNative(TICKS_PER_RPM)
+        .velocityTolerance(toleranceRpm)
+        .setpointFromAccelerationLimitedProfile(maximumRpmPerSec)
+        .feedbackFromPid(kP, kI, kD)
+        .feedbackIntegralLimitedTo(-0.15, 0.15)
+        .feedforwardFromMotion(kS, kV, kA)
+        .outputPowerLimitedTo(0.0, maximumPower)
+        .targetFromNewCommand(0.0)
+        .build();
 ```
 
-`setGains(...)` validates every finite gain before changing any of them. Resetting the outermost
-composition clears built-in nested controller/decorator history while preserving configured gains
-and limits; reset itself sends no hardware command. This controller has different live-update and
-restore behavior, so the FTC device-managed `FtcPanelsTuners.velocityPidf(...)` factory does not
-pretend to support it. A robot-specific software-regulator tuner must define and test its complete
-candidate, reset, active-transition, evidence, and cleanup contract before use.
+Configuration values belong in the mechanism's checked-in data-only config, and production and
+diagnostic construction call the same private Plant recipe. The current framework does not expose
+a live-mutable standard-controller handle or a ready-made Panels workflow for this branch. Compare
+software candidates with fresh exclusive Plant lifetimes; do not read Configurables continuously in
+TeleOp/Auto or rebuild a live Plant in place. A later tuning capability can make the same model
+editable without changing this robot-facing construction grammar.
+
+### Tune the model in a stable order
+
+1. **Prove the mechanism facts first.** Verify feedback sign, Plant/native scaling, coordinate
+   reference, target bounds, safe output range, and stop behavior. Choose conservative profile
+   velocity/acceleration limits.
+2. **Characterize feedforward in its physical units.** For a flywheel or moving mechanism, estimate
+   `kS`, then `kV`, then `kA` only when the chosen setpoint provides acceleration. For a lift,
+   estimate signed constant `kG` at a safe stationary height before motion terms. For an arm, verify
+   `positionAtMaximumGravity` and `radiansPerPlantUnit`, then tune `kG` across several angles before
+   adding motion terms.
+3. **Tune feedback around the model.** Start with `kP`, add `kD` only when damping is needed, and add
+   `kI` last for persistent residual error. Use `feedbackIntegralLimitedTo(...)` deliberately;
+   standard control prevents further integral growth into final saturation but cannot make an
+   unsafe output range safe.
+4. **Validate the complete path.** Exercise cold starts, target changes, reversals where legal,
+   steady hold, voltage range, profile-settled `atTarget()`, failure cleanup, and terminal stop.
+
+The equations and coefficient units are documented in
+[`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md#framework-regulated-position-the-standard-control-model>).
+Copy only reviewed values into the checked-in configuration and confirm them in a fresh production
+mode.
+
+`controlFromCustomRegulator(...)` remains the advanced exit for a complete nonlinear or otherwise
+custom law. Its owner must define how a candidate is applied, how all nested state is reset, what a
+hot transition means, what telemetry proves, and what restoration can truthfully claim. Deprecated
+`PidfRegulator` and `ScalarRegulators.pid(...)`, `pidf(...)`, and
+`setpointFeedforward(...)` exist only for current custom/tuning compatibility; do not use them as a
+parallel ordinary recipe.
 
 ## Failure and restoration truth
 
@@ -360,5 +389,5 @@ to an earlier state. Only a controlled hardware test can validate the resulting 
 - [`Actuator bring-up`](<Actuator Bring-up.md>)
 - [`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md#13-velocity-bounds-mapping-and-tuning>)
 - [`FTC UI Helpers`](<../ftc-boundary/FTC UI Helpers.md>)
-- [`Recommended Robot Design`](<../design/Recommended Robot Design.md#keep-software-pidf-inside-realization>)
+- [`Recommended Robot Design`](<../design/Recommended Robot Design.md#keep-standard-software-control-inside-realization>)
 - [`Phoenix calibration guide`](<../../../robots/phoenix/Phoenix Calibration Guide.md>)

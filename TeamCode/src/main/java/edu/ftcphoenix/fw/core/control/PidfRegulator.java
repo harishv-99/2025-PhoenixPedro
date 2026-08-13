@@ -43,6 +43,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * starting a fresh production mode. The robot realization retains the outer composition because
  * this inner PIDF object cannot discover wrappers that also need reset.</p>
  *
+ * @deprecated Advanced compatibility for the current software-tuning seam. Ordinary regulated
+ * Plants use the inline typed PID/feedforward grammar; this retained type will be removed when the
+ * tuning workflow migrates to that standard capability.
+ *
  * <p>The optional PID-output limits apply to the combined {@code P + I + D} contribution before
  * feedforward is added. Use
  * {@link ScalarRegulators#outputLimited(ScalarRegulator, double, double)} outside the complete
@@ -52,6 +56,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * {@link #update(double, double, LoopClock)} invocation advances the internal PID state, matching
  * the {@link ScalarRegulator} invocation contract.</p>
  */
+@Deprecated
 public final class PidfRegulator implements ScalarRegulator {
 
     private final Pid pid;

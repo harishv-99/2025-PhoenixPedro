@@ -5,7 +5,7 @@ import org.junit.Test;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
-import edu.ftcphoenix.fw.core.control.ScalarRegulator;
+import edu.ftcphoenix.fw.core.hal.PowerLimitedPositionOutput;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
@@ -39,7 +39,7 @@ public final class MappedPlantToleranceTest {
             }
         }
         assertEquals(1, publicStarts);
-        assertEquals(6, Plants.FromOutputsStep.class.getDeclaredMethods().length);
+        assertEquals(7, Plants.FromOutputsStep.class.getDeclaredMethods().length);
         assertSame(Plants.TargetStep.class, Plants.FromOutputsStep.class
                 .getDeclaredMethod("power", PowerOutput.class).getReturnType());
         assertSame(Plants.PositionPeriodicityStep.class, Plants.FromOutputsStep.class
@@ -47,15 +47,19 @@ public final class MappedPlantToleranceTest {
         assertSame(Plants.DeviceManagedPositionStep.class, Plants.FromOutputsStep.class
                 .getDeclaredMethod("deviceManagedPosition", PositionOutput.class, ScalarSource.class)
                 .getReturnType());
+        assertSame(Plants.DeviceManagedPositionStep.class, Plants.FromOutputsStep.class
+                .getDeclaredMethod("deviceManagedPosition", PowerLimitedPositionOutput.class,
+                        ScalarSource.class)
+                .getReturnType());
         assertSame(Plants.VelocityBoundsStep.class, Plants.FromOutputsStep.class
                 .getDeclaredMethod("deviceManagedVelocity", VelocityOutput.class, ScalarSource.class)
                 .getReturnType());
         assertSame(Plants.PositionPeriodicityStep.class, Plants.FromOutputsStep.class
-                .getDeclaredMethod("regulatedPosition", PowerOutput.class, ScalarSource.class,
-                        ScalarRegulator.class).getReturnType());
+                .getDeclaredMethod("regulatedPosition", PowerOutput.class, ScalarSource.class)
+                .getReturnType());
         assertSame(Plants.VelocityBoundsStep.class, Plants.FromOutputsStep.class
-                .getDeclaredMethod("regulatedVelocity", PowerOutput.class, ScalarSource.class,
-                        ScalarRegulator.class).getReturnType());
+                .getDeclaredMethod("regulatedVelocity", PowerOutput.class, ScalarSource.class)
+                .getReturnType());
     }
 
     @Test
@@ -133,23 +137,23 @@ public final class MappedPlantToleranceTest {
 
         RecordingPowerOutput regulatedPositionOutput = new RecordingPowerOutput();
         PositionPlant regulatedPosition = Plants.fromOutputs()
-                .regulatedPosition(regulatedPositionOutput, clock -> 0.0,
-                        (setpoint, measurement, clock) -> 0.0)
+                .regulatedPosition(regulatedPositionOutput, clock -> 0.0)
                 .periodic(360.0)
                 .bounded(0.0, 720.0)
                 .nativeUnits()
                 .needsReference("index required")
                 .positionTolerance(1.0)
+                .controlFromCustomRegulator((setpoint, measurement, clock) -> 0.0)
                 .targetFromNewCommand(0.0)
                 .build();
 
         RecordingPowerOutput regulatedVelocityOutput = new RecordingPowerOutput();
         Plant regulatedVelocity = Plants.fromOutputs()
-                .regulatedVelocity(regulatedVelocityOutput, clock -> 0.0,
-                        (setpoint, measurement, clock) -> 0.0)
+                .regulatedVelocity(regulatedVelocityOutput, clock -> 0.0)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator((setpoint, measurement, clock) -> 0.0)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -163,6 +167,61 @@ public final class MappedPlantToleranceTest {
         assertTrue(regulatedVelocity.hasFeedback());
         assertEquals(PositionPlant.Periodicity.PERIODIC, commanded.periodicity());
         assertEquals(PositionPlant.Periodicity.PERIODIC, regulatedPosition.periodicity());
+    }
+
+    @Test
+    public void powerLimitedPositionCapabilityAddsOnlyItsTruthfulPostTolerancePolicy() {
+        RecordingPositionOutput plainOutput = new RecordingPositionOutput();
+        Plants.TargetStep<PositionPlant> plainTarget = Plants.fromOutputs()
+                .deviceManagedPosition(plainOutput, clock -> 0.0)
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.0);
+        PositionPlant plain = plainTarget.targetFromNewCommand(4.0).build();
+
+        RecordingPowerLimitedPositionOutput limitedOutput =
+                new RecordingPowerLimitedPositionOutput();
+        Plants.SymmetricOutputPowerPolicyStep<PositionPlant> outputPolicy = Plants.fromOutputs()
+                .deviceManagedPosition(limitedOutput, clock -> 0.0)
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.0);
+        for (double invalid : new double[]{
+                Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY,
+                Math.nextDown(0.0), Math.nextUp(1.0)}) {
+            assertIllegalArgumentContains(
+                    () -> outputPolicy.outputPowerLimitedTo(invalid),
+                    "maximumMagnitude", "[0.0, 1.0]");
+        }
+        PositionPlant limited = outputPolicy.outputPowerLimitedTo(0.35)
+                .targetFromNewCommand(5.0)
+                .build();
+
+        ManualLoopClock clock = new ManualLoopClock();
+        plain.update(clock.clock());
+        limited.update(clock.clock());
+
+        assertEquals(4.0, plainOutput.commandedPosition, 0.0);
+        assertEquals(5.0, limitedOutput.commandedPosition, 0.0);
+        assertEquals(0.35, limitedOutput.commandedMaximumMagnitude, 0.0);
+
+        RecordingPowerLimitedPositionOutput defaultOutput =
+                new RecordingPowerLimitedPositionOutput();
+        PositionPlant defaultPolicy = Plants.fromOutputs()
+                .deviceManagedPosition(defaultOutput, ignored -> 0.0)
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.0)
+                .targetFromNewCommand(6.0)
+                .build();
+        defaultPolicy.update(new ManualLoopClock().clock());
+        assertEquals(1.0, defaultOutput.commandedMaximumMagnitude, 0.0);
     }
 
     @Test
@@ -247,7 +306,8 @@ public final class MappedPlantToleranceTest {
     @Test
     public void incompleteRetainedStageCanRecoverButTargetFreezeAndBuildAreSingleUse() {
         Plants.FromOutputsStep root = Plants.fromOutputs();
-        Plants.VelocityBoundsStep velocityBounds = root.deviceManagedVelocity(
+        Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> velocityBounds =
+                root.deviceManagedVelocity(
                 new RecordingVelocityOutput(), clock -> 0.0);
 
         @SuppressWarnings("unchecked")
@@ -345,6 +405,33 @@ public final class MappedPlantToleranceTest {
         @Override
         public double getCommandedPosition() {
             return commandedPosition;
+        }
+    }
+
+    private static final class RecordingPowerLimitedPositionOutput
+            implements PowerLimitedPositionOutput {
+        private double commandedPosition = Double.NaN;
+        private double commandedMaximumMagnitude = Double.NaN;
+
+        @Override
+        public void setPosition(double position, double maximumOutputPowerMagnitude) {
+            commandedPosition = position;
+            commandedMaximumMagnitude = maximumOutputPowerMagnitude;
+        }
+
+        @Override
+        public double getCommandedPosition() {
+            return commandedPosition;
+        }
+
+        @Override
+        public double getCommandedMaximumOutputPowerMagnitude() {
+            return commandedMaximumMagnitude;
+        }
+
+        @Override
+        public void stop() {
+            // Explicit natural stop; no hardware exists in this recording seam.
         }
     }
 

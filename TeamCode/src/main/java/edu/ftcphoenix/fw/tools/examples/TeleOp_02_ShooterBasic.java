@@ -48,7 +48,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *   <li><b>How to wire mechanisms using beginner helpers</b>:
  *     <ul>
  *       <li>{@link FtcActuators#plant} to turn hardware into {@link Plant}s.</li>
- *       <li>{@code motor(...).andMotor(...).velocity().deviceManagedWithDefaults()}
+ *       <li>{@code motor(...).andMotor(...).velocity().deviceManaged()}
  *           {@code .bounded(...).nativeUnits().velocityTolerance(...)}
  *           {@code .targetFromNewCommand(0.0).build()} for the shooter.</li>
  *       <li>{@code crServo(...).andCrServo(...).power()}
@@ -279,7 +279,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)

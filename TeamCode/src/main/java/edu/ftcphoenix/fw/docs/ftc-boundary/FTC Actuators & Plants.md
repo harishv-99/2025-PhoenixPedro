@@ -6,6 +6,7 @@ This page covers the FTC boundary for Phoenix mechanism wiring:
 * `FtcHardware` — low-level command channels
 * `FtcSensors` — low-level measurement sources
 * device-managed vs regulated control
+* target, coordinate-reference, setpoint, PID, typed feedforward, and output-power vocabulary
 * position plant geometry, plant/native unit mapping, and reference policy
 * how tolerances and FTC motor tuning interact
 
@@ -37,7 +38,7 @@ device names, and FTC controller choices:
 this.flywheel = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
-        .deviceManagedWithDefaults()
+        .deviceManaged()
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
@@ -55,7 +56,7 @@ this.pusher = FtcActuators.plant(hardwareMap)
 ```
 
 Use `Plants.fromOutputs()` only when a custom adapter, hardware-neutral test, or portable host
-already owns Phoenix output ports, feedback sources, and any regulator:
+already owns Phoenix output ports and feedback sources:
 
 ```java
 Plant roller = Plants.fromOutputs()
@@ -86,30 +87,41 @@ For example, motor position wiring asks:
 
 1. Which hardware? `motor(...)`
 2. Which target domain? `position()`
-3. Who manages the position loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
+3. Who manages the position loop? Ordinary FTC `deviceManaged()`, advanced FTC
+   `deviceManagedWithOverrides()...doneOverrides()`, or `regulated()` followed by one feedback
+   answer
 4. Is the public coordinate `nonPeriodic()` or `periodic(period)`?
 5. What bounds in public Plant units are legal? `bounded(min, max)` with two finite endpoints, or
    `unbounded()`
 6. How do Plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
 8. What public position error counts as complete? The required `positionTolerance(...)` answer
-9. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-10. Target binding: `targetFromNewCommand(initialValue)` for an ordinary exact command or
+9. For regulated control only: where does the per-cycle setpoint come from, what PID and optional
+   typed feedforward produce normalized power, and what final output-power policy applies?
+10. Optional normal-control output limit, when the selected output truthfully supports it:
+    `outputPowerLimitedTo(...)`
+11. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`,
+    `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
+12. Target binding: `targetFromNewCommand(initialValue)` for an ordinary exact command or
     `targetFromResolver(finalResolver)` for a caller-supplied final resolver, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
 
 1. Which hardware? `motor(...)`
 2. Which target domain? `velocity()`
-3. Who manages the velocity loop? `deviceManagedWithDefaults()`, the one-answer
-   `deviceManaged().velocityPidf(...)` tuning branch, or `regulated()` followed by one direct
-   feedback answer and `regulator(...)`
+3. Who manages the velocity loop? Ordinary FTC `deviceManaged()`, the one-answer advanced
+   `deviceManagedWithOverrides().velocityPidf(...)` branch, or `regulated()` followed by one
+   feedback answer
 4. What target bounds in Plant units are legal? `bounded(min, max)` with two finite endpoints, or
    `unbounded()`
 5. How do Plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
 6. What public velocity error counts as complete? The required `velocityTolerance(...)` answer
-7. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-8. Target binding: `targetFromNewCommand(initialValue)` or `targetFromResolver(finalResolver)`, then `build()`
+7. For regulated control only: choose direct or acceleration-limited setpoint behavior, PID,
+   optional typed feedforward, and optional output-power policy
+8. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`,
+   `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
+9. Target binding: `targetFromNewCommand(initialValue)` or `targetFromResolver(finalResolver)`, then
+   `build()`
 
 The neutral gateway exposes the same control choices without FTC acquisition: `power(...)`,
 `commandedPosition(...)`, `deviceManagedPosition(...)`, `deviceManagedVelocity(...)`,
@@ -117,6 +129,20 @@ The neutral gateway exposes the same control choices without FTC acquisition: `p
 inputs cannot prove. The tolerance question appears exactly once and only after the public
 coordinate is known. Command-only position skips feedback-only reference, calibration-search, and
 tolerance questions.
+
+The control vocabulary is deliberately precise:
+
+```text
+coordinate reference -> aligns Plant position with native position
+target               -> final mechanism goal selected by the resolver and guards
+setpoint             -> one cycle's position / velocity / acceleration control state
+output               -> normalized actuator effort after feedback, feedforward, and policy
+```
+
+`alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, and
+`needsReference(...)` answer only the coordinate question. They do not create a target or a motion
+setpoint. Likewise, `setpointFromAppliedTarget()` does not establish zero or alter the coordinate
+map: it says that the current guarded target is used directly as the controller setpoint.
 
 For an ordinary exact Plant, keep one mechanism variable. `targetFromNewCommand(initialValue)` is the concise
 spelling of creating one fresh `ScalarTarget` and binding `PlantTargets.exact(...)`; the Plant's
@@ -271,7 +297,7 @@ requested the target:
 this.lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
-        .deviceManagedWithDefaults()
+        .deviceManaged()
         .nonPeriodic()
         .bounded(0.0, 4200.0)
         .nativeUnits()
@@ -368,154 +394,302 @@ This convention keeps common robot code readable while making boundary-crossing 
 
 ## 4. Motor position control: device-managed or regulated
 
-After `motor(...).position()`, Phoenix asks who manages the position loop.
+After `motor(...).position()`, Phoenix asks who manages the position loop. The two answers share
+the same coordinate, reference, tolerance, target, lifecycle, and completion vocabulary. They differ
+only where the controller owner provides different evidence.
 
-### Device-managed with defaults
+### Device-managed position: the ordinary FTC path
 
-Use this when FTC `RUN_TO_POSITION` is good enough and you do not need controller-specific tuning:
-
-```java
-this.lift = FtcActuators.plant(hardwareMap)
-        .motor("liftMotor", Direction.FORWARD)
-        .position()
-        .deviceManagedWithDefaults()
-        .nonPeriodic()
-        .bounded(0.0, 4200.0)
-        .nativeUnits()
-        .needsReference("lift not homed")
-        .positionTolerance(20.0)
-        .targetFromNewCommand(0.0)
-        .build();
-```
-
-The public lift coordinate is in plant units. In this example, plant units are also native encoder
-ticks because the builder chose `nativeUnits()`.
-
-### Device-managed with FTC tuning
-
-Enter `deviceManaged()` only when you want optional FTC motor-controller tuning. While in this
-branch, autocomplete shows only device-managed tuning knobs. `doneDeviceManaged()` returns to the
-main position questions. The branch must contain at least one accepted override, each knob may be
-answered only once, and closing it prevents later changes even through a retained tuning-stage
-reference. Use `deviceManagedWithDefaults()` instead of opening an empty tuning section.
+Use `deviceManaged()` when FTC `RUN_TO_POSITION` owns the control loop:
 
 ```java
 this.lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
         .deviceManaged()
-            .maxPower(0.8)
+        .nonPeriodic()
+        .bounded(0.0, 18.0)                 // Plant position: inches
+        .scaleToNative(TICKS_PER_INCH)
+        .needsReference("lift not homed")
+        .positionTolerance(0.10)            // Plant position: inches
+        .outputPowerLimitedTo(0.70)         // optional normal RUN_TO_POSITION magnitude
+        .targetFromNewCommand(0.0)
+        .build();
+```
+
+Omitting `outputPowerLimitedTo(...)` uses the full normalized magnitude `1.0`. That is a valid
+software default, not a claim that full power is physically safe. The answer lives after
+`positionTolerance(...)`, beside the same normal-output policy on regulated control; it is not an
+FTC controller-coefficient override.
+
+This capability is truthful because the FTC motor-position adapter implements
+`PowerLimitedPositionOutput`: every command carries a native target and its maximum normalized
+output-power magnitude together through one paired logical call. This is not a hardware
+transaction: the FTC adapter prevalidates both values, then performs sequential target, mode, and
+power SDK effects. If a later effect fails, an earlier effect may remain installed and the cached
+submitted pair becomes unavailable. A plain hardware-neutral `PositionOutput` and a standard Servo
+do not promise effort control and therefore do not expose this answer.
+
+At the advanced hardware-neutral gateway, the compile-time capability determines the staged tail:
+
+```java
+PowerLimitedPositionOutput motorOut =
+        FtcHardware.motorPosition(hardwareMap, "liftMotor", Direction.FORWARD);
+
+PositionPlant lift = Plants.fromOutputs()
+        .deviceManagedPosition(motorOut, nativePositionSource)
+        .nonPeriodic()
+        .bounded(0.0, 4200.0)
+        .nativeUnits()
+        .alreadyReferenced()
+        .positionTolerance(20.0)
+        .outputPowerLimitedTo(0.70)
+        .targetFromNewCommand(0.0)
+        .build();
+```
+
+Passing a plain `PositionOutput` to the parallel overload reaches target selection immediately
+after `positionTolerance(...)`; no runtime type probe or unsupported power method appears.
+
+### Device-managed position with FTC overrides
+
+Use `deviceManagedWithOverrides()` only when the recipe deliberately changes FTC controller
+configuration. The branch must accept at least one override before `doneOverrides()`; use ordinary
+`deviceManaged()` when there is nothing to override.
+
+```java
+this.lift = FtcActuators.plant(hardwareMap)
+        .motor("liftMotor", Direction.FORWARD)
+        .position()
+        .deviceManagedWithOverrides()
             .outerPositionP(5.0)
+            .innerVelocityPidf(innerP, innerI, innerD, innerF)
             .devicePositionToleranceTicks(12)
-            .doneDeviceManaged()
+            .doneOverrides()
         .nonPeriodic()
         .bounded(0.0, 4200.0)
         .nativeUnits()
         .needsReference("lift not homed")
         .positionTolerance(20.0)
+        .outputPowerLimitedTo(0.70)
         .targetFromNewCommand(0.0)
         .build();
 ```
 
-Device-managed tuning options:
+The override branch contains only FTC-controller facts:
 
-* `maxPower(...)` — power Phoenix reapplies after each FTC `RUN_TO_POSITION` target.
-* `outerPositionP(...)` — FTC outer position-loop proportional gain.
-* `innerVelocityPidf(...)` — FTC inner velocity-loop PIDF used under position mode.
-* `devicePositionToleranceTicks(...)` — FTC motor-controller target tolerance in native ticks.
+* `outerPositionP(...)` — FTC outer position-loop proportional gain;
+* `innerVelocityPidf(...)` — FTC inner velocity-loop PIDF used under position mode; and
+* `devicePositionToleranceTicks(...)` — FTC controller target tolerance in native ticks.
 
-These are configuration answers, so Phoenix rejects invalid values instead of clamping them and
-checks them again before hardware lookup or controller effects. See
-[Controller-configuration domains](#controller-configuration-domains) for the exact contracts.
+`outputPowerLimitedTo(...)` remains after Plant-unit tolerance for both ordinary and overridden
+device-managed recipes. Keeping it out of the override branch makes the normal-output policy
+parallel with regulated Plants and leaves calibration-search power independent.
 
-Notice that plant-level `positionTolerance(...)` lives after coordinate mapping and reference policy
-because it is in plant units. It is a required one-time answer for this feedback Plant. Device-level
-methods that use native/controller units say so in their names.
+### Framework-regulated position: the standard control model
 
-### Framework-regulated motor position
-
-Use `regulated()` when Phoenix should drive raw motor power from an explicit feedback source and a
-regulator:
+Use `regulated()` when Phoenix should command normalized motor power from position feedback. After
+feedback, coordinate mapping, reference, and tolerance, choose one setpoint model and PID directly
+in the Plant recipe. A simple lift that applies its target immediately looks like this:
 
 ```java
-this.arm = FtcActuators.plant(hardwareMap)
-        .motor("armMotor", Direction.FORWARD)
+this.lift = FtcActuators.plant(hardwareMap)
+        .motor("liftMotor", Direction.FORWARD)
         .position()
         .regulated()
-            .externalEncoder("armEncoder")
-            .regulator(ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002)))
+            .externalEncoder("liftEncoder")
         .nonPeriodic()
-        .bounded(-300.0, 1200.0)
-        .nativeUnits()
-        .alreadyReferenced()
-        .positionTolerance(20.0)
+        .bounded(0.0, 18.0)
+        .scaleToNative(TICKS_PER_INCH)
+        .needsReference("lift not homed")
+        .positionTolerance(0.10)
+        .setpointFromAppliedTarget()
+        .feedbackFromPid(kP, kI, kD)
+        .feedforwardFromLift(kG)
+        .outputPowerLimitedTo(maximumPower)
         .targetFromNewCommand(0.0)
         .build();
 ```
 
-The regulator sees plant-unit error. If the plant uses `nativeUnits()`, plant units and native units
-are the same. If the plant uses `scaleToNative(...)`, the feedback is converted into plant units
-before the regulator runs.
+`feedbackFromPid(kP)` is the shorter P-only answer and means exactly `kI = 0` and `kD = 0`.
+Feedforward is optional; omitting it means exact zero feedforward. There is no hidden PID gain,
+gravity term, profile limit, tolerance, or safe-power assumption.
 
-### Controller limits, complete-regulator limits, and output safety
+For controlled acceleration and complete motion evidence, use a trapezoidal position setpoint:
 
-These protections answer different questions:
+```java
+this.lift = FtcActuators.plant(hardwareMap)
+        .motor("liftMotor", Direction.FORWARD)
+        .position()
+        .regulated()
+            .internalEncoder()
+        .nonPeriodic()
+        .bounded(0.0, 18.0)
+        .scaleToNative(TICKS_PER_INCH)
+        .needsReference("lift not homed")
+        .positionTolerance(0.10)
+        .setpointFromTrapezoidalProfile(maxVelocityInPerSec,
+                                       maxAccelerationInPerSec2)
+        .feedbackFromPid(kP, kI, kD)
+        .feedforwardFromLift(kG, kS, kV, kA)
+        .outputPowerLimitedTo(maximumPower)
+        .targetFromNewCommand(0.0)
+        .build();
+```
 
-| Layer | Question it answers |
-|---|---|
-| `Pid.setOutputLimits(...)` | How large may a plain PID controller's complete P+I+D output be? |
-| `PidfRegulator.setPidOutputLimits(...)` | How large may a standard PIDF regulator's P+I+D contribution be before `kF * setpoint` is added? |
-| `ScalarRegulators.outputLimited(...)` | How large may this complete inner regulator composition be? |
-| Plant/output command safety | What finite command may the actuator channel ultimately accept? |
+An arm uses the same grammar but a position-dependent gravity model:
 
-`PidfRegulator.setIntegralLimits(...)` limits its integral contribution, and
-`setPidOutputLimits(...)` limits its combined P+I+D contribution. Neither limits the later
-`kF * setpoint` term. These inner limits also run before another outer decorator. For example,
-voltage compensation can legitimately scale a previously limited PIDF command above the inner
-PID-output limit. When the robot intentionally wants a narrower command range around everything,
-make the limiter the outermost output-changing decorator. The complete regulated-velocity example in
-[Velocity bounds, mapping, and tuning](#13-velocity-bounds-mapping-and-tuning) shows that composition
-around PIDF and battery-voltage compensation.
+```java
+.setpointFromTrapezoidalProfile(maxDegreesPerSec, maxDegreesPerSec2)
+.feedbackFromPid(kP, kI, kD)
+.feedforwardFromArm(kG,
+                    degreesAtMaximumGravity,
+                    Math.PI / 180.0,
+                    kS, kV, kA)
+.outputPowerLimitedTo(maximumPower)
+```
 
-Every controller or regulator limit above saturates finite excursions only. It never turns
-`NaN`, infinity, or arithmetic overflow into a plausible boundary command; invalid math remains
-visible so `outputLimited(...)` or the regulated Plant can reject it and fail closed.
+The standard controller evaluates one immutable setpoint snapshot per Plant cycle:
 
-`outputLimited(...)` constrains exactly the regulator passed to it. Another output-changing
-decorator placed outside it is not covered. Its bounds are generic regulator-command units; they
-are not Plant target units and are not a replacement for `bounded(...)` or `targetGuards()`.
-Likewise, optional narrower policy does not replace the Plant/output path's universal responsibility
-to keep normalized actuator commands finite and inside their semantic range.
+```text
+error    = controlledSetpoint - measurement
+feedback = kP*error + integral(kI*error*dt) + kD*delta(error)/dt
+motionFF = kS*sign(vSetpoint) + kV*vSetpoint + kA*aSetpoint
+liftFF   = motionFF + kG
+armFF    = motionFF
+           + kG*cos((pSetpoint - positionAtMaximumGravity)*radiansPerPlantUnit)
+output   = outputPolicy(voltageScale * (feedback + feedforward))
+```
+
+`sign(0)` is exactly zero. Every gain and geometry value must be finite. `kS` and `kG` are normalized
+power; `kV` is normalized power per setpoint-velocity unit; `kA` is normalized power per
+setpoint-acceleration unit. `positionAtMaximumGravity` uses Plant position units, and
+`radiansPerPlantUnit` converts those units to radians. If the controlled coordinate unit is `U`,
+PID gain units are normalized power / `U` for `kP`, normalized power / (`U * second`) for `kI`, and
+normalized power / (`U / second`) for `kD`.
+
+The staged types expose only models supported by the chosen evidence:
+
+| Setpoint choice | Available feedforward evidence |
+| --- | --- |
+| Direct position | no motion term; optional lift or arm gravity |
+| Trapezoidal position | position, velocity, acceleration; motion, lift, or arm |
+| Direct velocity | velocity but no acceleration; motion or lift without `kA` |
+| Acceleration-limited velocity | velocity and acceleration; motion or lift with optional `kA` |
+
+Profile limits must be positive and finite. Position maximum velocity uses Plant position units per
+second and maximum acceleration uses Plant position units per second squared. The velocity-profile
+maximum acceleration uses Plant velocity units per second. A standard profile and
+`targetGuards().maxTargetRate(...)` are two competing motion shapers, so one recipe cannot select
+both; use the profile for ordinary regulated motion. Hold/fallback interlocks remain compatible
+because they answer whether a target may be applied, not how the setpoint approaches it.
+
+On the first update, after reset, and after calibration changes the coordinate reference, standard
+control seeds position from the finite measured position with zero velocity/acceleration, or seeds
+velocity from the finite measured velocity. It never charges the `dtSec()` interval from before
+that boundary. A changed target replans from the retained setpoint state rather than jumping a
+profile back to the old goal. One successful update advances the profile/PID and writes at most once
+per `LoopClock.cycle()`; a same-cycle failure is retained and rethrown.
+
+For standard profiled control, `Plant.atTarget()` becomes true only when all ordinary Plant evidence
+agrees **and** the setpoint has settled at the current applied target. Measurement entering the
+tolerance band while the profile is still moving is not completion. Direct setpoints are settled
+immediately by definition. The advanced custom-regulator seam supplies no separate profile-settled
+claim, so completion follows its existing Plant measurement/status evidence.
+
+Use `feedbackIntegralLimitedTo(minimum, maximum)` to limit the retained integral contribution and
+`feedbackOutputLimitedTo(minimum, maximum)` to limit the complete P+I+D contribution before
+feedforward. The final `outputPowerLimitedTo(...)` policy covers feedback, feedforward, and any
+voltage compensation. All limits saturate finite excursions only; non-finite math remains a
+fail-closed error. The standard controller also prevents integral growth farther into final
+saturation while still allowing integral unwind.
+
+### Output-power policy and voltage compensation
+
+The one-argument policy is a symmetric normalized magnitude:
+
+```java
+.outputPowerLimitedTo(0.65)       // [-0.65, +0.65]
+```
+
+Software-regulated power paths additionally support an asymmetric interval that contains zero:
+
+```java
+.outputPowerLimitedTo(0.0, 0.65)  // flywheel may drive forward or stop
+```
+
+Both overloads reject invalid or non-finite configuration rather than clamping it. Omission means
+the full normal-control domain `[-1.0, +1.0]`. This policy constrains normalized actuator output,
+not Plant targets, and never replaces `bounded(...)` or `targetGuards()`. It applies only to normal
+control. Position calibration search uses its separately validated explicit normalized search power
+and bypasses the normal setpoint, PID, feedforward, voltage, and output-policy chain.
+
+When voltage compensation is needed, answer it before the final limit:
+
+```java
+.voltageCompensationFrom(batteryVoltage,
+                         13.0,  // tuning/reference voltage
+                         9.0,   // denominator floor
+                         1.4)   // maximum multiplier
+.outputPowerLimitedTo(0.0, maximumFlywheelPower)
+```
+
+The final limit therefore covers the compensated result. An unavailable/non-positive voltage uses
+scale `1.0`; finite low voltage is bounded by the denominator floor and maximum multiplier.
+
+### Advanced custom-regulator seam
+
+Use `controlFromCustomRegulator(regulator)` only for a genuinely custom complete control law. It
+appears after units and tolerance, receives the guarded applied target and Plant-unit measurement,
+and returns to the same output-power policy:
+
+```java
+.positionTolerance(0.10)
+.controlFromCustomRegulator(customRegulator)
+.outputPowerLimitedTo(maximumPower)
+.targetFromNewCommand(0.0)
+```
+
+This seam does not create a typed trajectory snapshot or claim velocity/acceleration evidence;
+custom code owns its own semantics and reset behavior. `ScalarRegulators.pid(...)`,
+`ScalarRegulators.pidf(...)`, `ScalarRegulators.setpointFeedforward(...)`, and `PidfRegulator` are
+deprecated compatibility for existing custom/tuning integrations. New ordinary Plants use the
+inline `setpointFrom... -> feedbackFromPid(...) -> feedforwardFrom...` grammar. Generic regulator
+voltage/output decorators remain useful only when assembling a custom regulator passed through
+this advanced seam.
 
 ### Regulated command truth and fail-stop behavior
 
-For a framework-regulated position or velocity Plant, the regulator result passes through one final
+For a framework-regulated position or velocity Plant, the complete control result passes through one final
 normalized-power boundary immediately before the configured `PowerOutput`:
 
 For regulated **position**, that same `PowerOutput` channel also realizes calibration search. This
-does not reuse the regulator's numeric result: normal control submits each regulator result, while
+does not reuse the normal controller's numeric result: normal control submits each complete result, while
 search mode bypasses the regulator and submits the independent power selected by
 `PositionCalibrationTasks.search(...).withPower(...)`. The modes are mutually exclusive. A
 device-managed position Plant needs an additional raw-power adapter only because its normal
 `PositionOutput` cannot express open-loop power; `FtcActuators` derives both adapters from the same
 named motor group for ordinary robot code.
 
-| Regulator/output event | Plant behavior |
+| Control/output event | Plant behavior |
 |---|---|
 | Finite result inside `[-1.0, +1.0]` | Submit it unchanged, including exact boundaries and signed zero. |
 | Finite result outside `[-1.0, +1.0]` | Saturate it to the nearest boundary and submit the normalized value. |
-| `NaN` or either infinity | Do not submit it; best-effort stop the output, reset the regulator, and throw an actionable failure. |
-| Regulator or output write throws | Best-effort stop and reset, then rethrow the original failure with cleanup failures suppressed. |
+| `NaN` or either infinity | Do not submit it; best-effort stop the output, reset control state, and throw an actionable failure. |
+| Control evaluation or output write throws | Best-effort stop and reset, then rethrow the original failure with cleanup failures suppressed. |
 
-Finite saturation at this universal boundary is normal actuator-domain behavior. It neither resets
-the regulator nor supplies generic anti-windup. Use an outermost `outputLimited(...)` when the robot
-intentionally needs a narrower or asymmetric policy such as `[0.0, maximumFlywheelPower]`.
+Finite saturation at this universal boundary is normal actuator-domain behavior. It does not reset
+control state. Standard control uses post-control `outputPowerLimitedTo(...)` for an intentional
+narrower/asymmetric policy and prevents integral growth farther into that final saturation. A custom
+regulator owns its own anti-windup; the generic `outputLimited(...)` decorator remains an advanced
+way to bound a composition before it is passed through `controlFromCustomRegulator(...)`.
 
-The public Plant has no reset or restart method. A tuning owner may reset its retained regulator
-directly while it separately owns a safe actuator policy, but that regulator reset does not send a
-hardware command. Terminal `Plant.stop()` attempts to submit zero before resetting the regulator and
+The public Plant has no reset or restart method. Standard profile/PID/feedforward state is private
+to the Plant and resets at its owned lifecycle boundaries. An advanced custom-regulator owner may
+reset its retained regulator while it separately owns a safe actuator policy, but that reset does
+not send a hardware command. Terminal `Plant.stop()` attempts to submit zero before resetting control and
 attempts both operations even when one fails. If the output-zero submission succeeds but the later
-regulator reset fails, the stop throws while retaining the truthful seam-level "zero submitted"
+control reset fails, the stop throws while retaining the truthful seam-level "zero submitted"
 fact. If the output stop itself throws, cleanup cannot invent that fact. Either way the Plant remains
 terminal, and `atTarget()` and `atTarget(value)` cannot become true from a later update.
 
@@ -539,6 +713,10 @@ The debug fields deliberately keep different kinds of truth separate:
 * `.regulatedPowerStatus` explains whether the last operation submitted, saturated and submitted,
   reset without writing, stopped, or failed, including fail-stop and reset outcomes.
 * `.regulator` remains the nested regulator-specific diagnostic prefix.
+  Standard control reports its retained setpoint position/velocity/acceleration and availability,
+  profile-settled state, feedback error/integral/output and limiting, typed feedforward output,
+  voltage sample/scale, and final output/limit facts beneath that prefix. Diagnostics read cached
+  state only; they do not advance control or resample voltage.
 
 For a regulated Plant, `getAppliedTarget()` remains the final mechanism target in plant units; it is
 not either of the power-command fields above. A custom or grouped `PowerOutput` may transform one
@@ -546,12 +724,10 @@ top-level command into several child commands, so these diagnostics do not claim
 physical actuator truth. Standard FTC adapter saturation remains defense in depth. Open-loop
 position-calibration search power is a separate configuration path and is not a regulator result.
 
-The decorator reports its unconstrained and applied results through standard regulator debug data,
-delegates `reset()` to its inner regulator, and rejects a non-finite inner result instead of hiding
-broken control math behind a bound. It does not provide generic saturation-aware anti-windup;
-controller-specific integral limits remain explicit. Robot behavior or realization still decides
-whether disabled means coast or hold and when an enable/disable transition should reset controller
-history.
+An advanced output-limit decorator reports its unconstrained and applied results through regulator
+debug data, delegates `reset()` to its inner regulator, and rejects a non-finite inner result rather
+than hiding broken custom math behind a bound. Robot behavior or realization still decides whether
+disabled means coast or hold; terminal Plant lifecycle remains owned by the Plant.
 
 ---
 
@@ -955,7 +1131,7 @@ calibration facts.
 ## 9. Regulated CR-servo position Plants
 
 CR servos do not have a device-managed position mode. Position control requires native feedback and
-a regulator:
+a standard or explicitly custom control model:
 
 ```java
 this.turret = FtcActuators.plant(hardwareMap)
@@ -963,12 +1139,14 @@ this.turret = FtcActuators.plant(hardwareMap)
         .position()
         .regulated()
             .externalEncoder("turretEncoder")
-            .regulator(ScalarRegulators.pid(Pid.withGains(0.01, 0.0, 0.0005)))
         .periodic(TURRET_TICKS_PER_TURN)
             .bounded(-900.0, 1100.0)
             .nativeUnits()
             .needsReference("turret not homed")
         .positionTolerance(8.0)
+        .setpointFromTrapezoidalProfile(MAX_TICKS_PER_SEC, MAX_TICKS_PER_SEC2)
+        .feedbackFromPid(0.01, 0.0, 0.0005)
+        .outputPowerLimitedTo(0.45)
         .targetFromNewCommand(0.0)
         .build();
 ```
@@ -978,16 +1156,19 @@ mechanism-owned Plant update can submit temporary open-loop power while looking 
 The Task manages the search lifecycle without becoming another Plant writer.
 
 The hardware-neutral gateway expresses the same rotating-plate design when a custom adapter already
-owns the CR-servo power channel, continuous position feedback, and regulator:
+owns the CR-servo power channel and continuous position feedback:
 
 ```java
 PositionPlant plate = Plants.fromOutputs()
-        .regulatedPosition(crServoPowerOut, unwrappedAngle, regulator)
+        .regulatedPosition(crServoPowerOut, unwrappedAngle)
         .periodic(2.0 * Math.PI)
         .bounded(-4.0 * Math.PI, 4.0 * Math.PI)
         .nativeUnits()
         .needsReference("plate not indexed")
         .positionTolerance(Math.toRadians(2.0))
+        .setpointFromAppliedTarget()
+        .feedbackFromPid(kP, kI, kD)
+        .outputPowerLimitedTo(0.45)
         .targetFromResolver(plateFinalTarget)
         .build();
 ```
@@ -1074,11 +1255,19 @@ Phoenix separates **commands** from **measurements**.
 
 * `PowerOutput`
 * `PositionOutput`
+* `PowerLimitedPositionOutput`
 * `VelocityOutput`
 
 These answer “what command should we send?” — not “what did the mechanism measure?” The interfaces
 remain hardware-neutral; FTC run-mode ownership belongs to the concrete motor adapters described
-above.
+above. `PowerLimitedPositionOutput` is the narrow evidence-bearing subtype for one paired logical
+native-position plus normalized maximum-output-power command. Its inherited one-argument
+`setPosition(...)` means magnitude `1.0`; `getCommandedMaximumOutputPowerMagnitude()` reports the
+cached submitted limit, not applied power or feedback. The pair is prevalidated before effects, but
+the interface does not claim transactional rollback across sequential device writes.
+Implementations must provide an explicit natural `stop()`.
+`FtcHardware.motorPosition(...)` returns this capability; `FtcHardware.servoPosition(...)` remains
+the smaller `PositionOutput`.
 
 ### Measurement sources
 
@@ -1143,8 +1332,9 @@ measurement, target status, and required Plant tolerance. It does not use `DcMot
 that decision. The public FTC SDK contract also does not establish that the configured device
 tolerance is the controller's complete correction deadband, so do not infer that the motor stops
 correcting at that boundary. Ordinary robot code should normally use
-`deviceManagedWithDefaults()` and choose only the required Plant tolerance; enter
-`deviceManaged()...doneDeviceManaged()` when an FTC controller override is deliberately needed.
+`deviceManaged()` and choose only the required Plant tolerance; enter
+`deviceManagedWithOverrides()...doneOverrides()` when an FTC controller override is deliberately
+needed.
 
 ### Controller-configuration domains
 
@@ -1162,25 +1352,26 @@ and not a recommendation that every representable gain is useful or safe. Phoeni
 nonnegative-gain rule: negative values and both signed zeros remain valid. The controller still
 applies its ordinary 1/65536 coefficient quantization.
 
-The other explicit position-controller settings have their own domains:
+The other explicit position settings have their own domains:
 
-* `maxPower(...)` is a magnitude and must be finite and inside `[0.0, 1.0]`. Both signed zeros are
-  accepted. Negative values, overshoot, `NaN`, and infinities are rejected rather than saturated.
 * `devicePositionToleranceTicks(...)` must be inside the pinned FTC/REV native unsigned 16-bit
-  target-command range `[0, 65535]`.
+  target-command range `[0, 65535]`; and
+* post-tolerance `outputPowerLimitedTo(maximumMagnitude)` must be finite and inside `[0.0, 1.0]`.
+  Both signed zeros are accepted. Negative values, overshoot, `NaN`, and infinities are rejected
+  rather than saturated.
 
 Every tuning answer is validated before it changes the recipe. A complete PIDF tuple is accepted
 all-or-nothing, a rejected first answer can be corrected through the same retained stage, and a
 second answer to the same knob is rejected without replacing the first. Position
-`doneDeviceManaged()` requires at least one accepted setting, closes the multi-setting section, and
+`doneOverrides()` requires at least one accepted setting, closes the multi-setting section, and
 prevents repeated close or later setters. Phoenix revalidates the complete branch before hardware
 lookup or configuration so a retained-stage cast cannot bypass the staged grammar.
 
-The common defaults path remains deliberately smaller. `deviceManagedWithDefaults()` calls no
-optional controller P, PIDF, or target-tolerance setter and leaves position maximum power at `1.0`;
-it cannot later be turned into the explicit tuning branch. An explicit position branch also retains
-maximum power `1.0` unless it answers `maxPower(...)`. Those optional controller settings therefore
-remain unchanged unless the recipe deliberately supplies an override.
+The ordinary path remains deliberately smaller. `deviceManaged()` calls no optional controller P,
+PIDF, or target-tolerance setter. Both ordinary and overridden position paths use maximum magnitude
+`1.0` unless the post-tolerance recipe answers `outputPowerLimitedTo(...)`. FTC device-managed
+velocity and a prebuilt plain `PositionOutput` expose no corresponding effort answer because those
+boundaries provide no truthful normalized-power capability.
 
 ## 13. Velocity bounds, mapping, and tuning
 
@@ -1192,7 +1383,7 @@ controller tuning appears only after entering a tuning branch.
 this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
-        .deviceManagedWithDefaults()
+        .deviceManaged()
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
@@ -1207,7 +1398,7 @@ branch:
 this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
-        .deviceManaged()
+        .deviceManagedWithOverrides()
             .velocityPidf(kP, kI, kD, kF)
         .bounded(0.0, 2600.0)
         .nativeUnits()
@@ -1216,12 +1407,12 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-The velocity tuning branch intentionally exposes only the complete `velocityPidf(...)` answer, so
-that answer advances directly to bounds; there is no administrative `doneDeviceManaged()` step and
-no empty tuned spelling of the defaults path. The separate FTC position-loop gain
+The velocity override branch intentionally exposes only the complete `velocityPidf(...)` answer,
+so that answer advances directly to bounds; there is no administrative `doneOverrides()` step and
+no empty override spelling of the ordinary path. The separate FTC position-loop gain
 (`outerPositionP(...)`) belongs to device-managed motor **position** mode, not pure velocity mode.
 This method writes FTC device-controller coefficients under the validation contract above; it is
-distinct from Phoenix's software `PidfRegulator` and does not construct one.
+distinct from Phoenix's standard software-control grammar.
 
 ### Framework-owned live FTC velocity-PIDF workflow
 
@@ -1267,106 +1458,43 @@ handle. Follow the
 [`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for complete-candidate,
 hot/cold segment, evidence, restore, and checked-in-profile rules.
 
-Use `regulated()` when Phoenix should own the velocity loop and command raw motor power. This is the
-right path for custom power-based flywheel control, including optional battery-voltage compensation:
+Use `regulated()` when Phoenix should own the velocity loop and command raw motor power. A flywheel
+can use an acceleration-limited setpoint, typed velocity/acceleration feedforward, voltage
+compensation, and a forward-only final power range without assembling peer controller objects:
 
 ```java
-import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.core.control.PidfRegulator;
-import edu.ftcphoenix.fw.core.control.ScalarRegulator;
-import edu.ftcphoenix.fw.core.control.ScalarRegulators;
-import edu.ftcphoenix.fw.core.hal.Direction;
-import edu.ftcphoenix.fw.core.source.ScalarSource;
-import edu.ftcphoenix.fw.ftc.FtcActuators;
-import edu.ftcphoenix.fw.ftc.FtcSensors;
-
 static final double TICKS_PER_FLYWHEEL_REV = 28.0;
 static final double TICKS_PER_RPM = TICKS_PER_FLYWHEEL_REV / 60.0;
 
 ScalarSource batteryVoltage = FtcSensors.batteryVoltage(hardwareMap);
-
-PidfRegulator nominalFlywheel = ScalarRegulators.pidf(kP, kI, kD, kF)
-        .setIntegralLimits(-0.15, 0.15)
-        .setPidOutputLimits(-1.0, 1.0);
-
-ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
-        ScalarRegulators.voltageCompensated(
-                nominalFlywheel,
-                batteryVoltage,
-                13.0,  // reference voltage used while tuning
-                9.0,   // denominator floor for low/noisy readings
-                1.4),  // maximum multiplier
-        0.0,
-        maximumFlywheelPower
-);
 
 this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .regulated()
             .internalEncoder()
-            .regulator(flywheelRegulator)
-        .bounded(0.0, 5000.0)          // plant units: RPM
+        .bounded(0.0, 5000.0)          // Plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
-        .velocityTolerance(75.0)       // plant units: RPM
+        .velocityTolerance(75.0)       // Plant units: RPM
+        .setpointFromAccelerationLimitedProfile(maxRpmPerSec)
+        .feedbackFromPid(kP, kI, kD)
+        .feedbackIntegralLimitedTo(-0.15, 0.15)
+        .feedforwardFromMotion(kS, kV, kA)
+        .voltageCompensationFrom(batteryVoltage, 13.0, 9.0, 1.4)
+        .outputPowerLimitedTo(0.0, maximumFlywheelPower)
         .targetFromNewCommand(0.0)
         .build();
 ```
 
-`ScalarRegulators.pidf(kP, kI, kD, kF)` is the one public construction path for the standard
-software law:
+Here the PID error, setpoint velocity, and setpoint acceleration are in Plant units: RPM and
+RPM/second. The builder converts native feedback into RPM before control. The final power policy is
+outside feedforward and voltage compensation, so it covers the complete normalized command. Use
+`setpointFromAppliedTarget()` instead when no acceleration limiting is desired; that direct branch
+offers `kS`/`kV` motion feedforward but cannot expose `kA` because it has no acceleration evidence.
 
-```text
-PID(setpoint - measurement, dt) + kF * setpoint
-```
-
-The `kF` units are regulator-command units per plant-setpoint unit. It is not a static-friction,
-acceleration, gravity, or FTC device PIDF term, and plain `Pid` does not own a `kF` gain.
-
-The old-style formula
-`(referenceVoltage / measuredVoltage) * controllerOutput` belongs in the regulator decorator, not in
-the OpMode loop. The Plant still owns target sampling, target bounds, unit conversion, feedback
-measurement, and final hardware output. The regulator receives setpoint and measurement in plant
-units, so in the example above both values are RPM even though the native encoder reports ticks/sec.
-
-`ScalarRegulators.voltageCompensated(...)` is intentionally a generic core decorator rather than a
-flywheel-only builder method. It can wrap PID, PIDF, or a custom `ScalarRegulator`, and regulated
-Plants automatically include its debug fields under `plantPrefix.regulator`. In the example,
-`outputLimited(...)` is deliberately outside voltage compensation so the requested
-`[0.0, maximumFlywheelPower]` policy covers the fully compensated command.
-`nominalFlywheel.setPidOutputLimits(...)` covers only P+I+D before feedforward and compensation.
-
-Retain both handles when a tuning tool may change gains while the robot is running. Apply the four
-standard gains together, then reset the **outermost** composition so every nested stateful
-controller or decorator clears its history:
-
-```java
-nominalFlywheel.setGains(newKP, newKI, newKD, newKF);
-flywheelRegulator.reset();
-```
-
-The gain update keeps configured limits and either accepts all four finite values or rejects the
-change. Reset does not itself command or stop the actuator; the robot mechanism owner still decides
-when a live tuning change is safe and whether a zero target means coast, brake, or active hold.
-
-Keep that update in a dedicated software-regulator tuning workflow rather than reading mutable
-tuning fields from production TeleOp or Auto. The ready-made FTC device-managed velocity tuner does
-not pretend to own this different controller. Follow the
-[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) to
-apply one candidate, report the accepted getters, copy them into the checked-in profile, and
-restart production.
-
-When feedforward is nonlinear, table-driven, or otherwise custom, keep that difference explicit:
-
-```java
-ScalarRegulator customNominal = ScalarRegulators.setpointFeedforward(
-        ScalarRegulators.pid(customController),
-        targetRpm -> shotModel.feedforwardForRpm(targetRpm)
-);
-```
-
-That advanced composition remains available without turning the standard four-gain PIDF factory
-into a second custom-feedforward API.
+For nonlinear or table-driven control, pass one complete custom regulator through
+`controlFromCustomRegulator(...)`. That is the explicitly advanced compatibility seam, not a second
+ordinary PID/feedforward recipe.
 
 If robot code wants nicer plant velocity units, keep the controller native units explicit:
 
@@ -1374,7 +1502,7 @@ If robot code wants nicer plant velocity units, keep the controller native units
 this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
-        .deviceManagedWithDefaults()
+        .deviceManaged()
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
@@ -1448,7 +1576,7 @@ this.flywheels = FtcActuators.plant(hardwareMap)
         .andMotor("rightFlywheel", Direction.REVERSE) // opposed mounting
         .scale(0.96)                                   // positive speed ratio
         .velocity()
-        .deviceManagedWithDefaults()
+        .deviceManaged()
         .bounded(0.0, MAX_VELOCITY_NATIVE)
         .nativeUnits()
         .velocityTolerance(VELOCITY_TOLERANCE_NATIVE)
@@ -1498,9 +1626,10 @@ source inside a custom scalar output: that would give one scalar Plant a second 
 
 For a genuinely custom grouped **regulated** actuator with one truthful scalar target, an advanced
 adapter may still enter the neutral grammar through
-`Plants.fromOutputs().regulatedPosition(groupOutput, feedback, regulator)` or
-`Plants.fromOutputs().regulatedVelocity(groupOutput, feedback, regulator)`. That adapter owns its
-complete group lifecycle and failure contract. Independently combining public
+`Plants.fromOutputs().regulatedPosition(groupOutput, feedback)` or
+`Plants.fromOutputs().regulatedVelocity(groupOutput, feedback)`, then answer the ordinary typed
+control stages or the advanced `controlFromCustomRegulator(...)` stage after tolerance. That adapter
+owns its complete group lifecycle and failure contract. Independently combining public
 `FtcHardware.motorPower(...)` outputs does not receive the standard builder's all-child preflight,
 so sequential child writes are not an equivalent safe construction path.
 

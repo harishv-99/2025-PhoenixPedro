@@ -67,7 +67,7 @@ calibration stages remain visible.
 this.lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
-        .deviceManagedWithDefaults()
+        .deviceManaged()
         .nonPeriodic()
             .bounded(0.0, 18.0)              // plant units: inches
             .scaleToNative(TICKS_PER_INCH)   // native units: encoder ticks

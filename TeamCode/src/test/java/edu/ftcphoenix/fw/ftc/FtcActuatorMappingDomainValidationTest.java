@@ -200,7 +200,7 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .motor("first", Direction.FORWARD)
                 .andMotor("second", Direction.FORWARD)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(-10.0, 10.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
@@ -351,14 +351,14 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .scale(0.0);
         FtcActuators.MotorVelocityControlStep velocity = group.velocity();
 
-        expect(IllegalStateException.class, velocity::deviceManagedWithDefaults);
+        expect(IllegalStateException.class, velocity::deviceManaged);
         hardwareMap.assertNoLookup();
         group.scale(1.0).bias(1.0);
-        expect(IllegalStateException.class, velocity::deviceManagedWithDefaults);
+        expect(IllegalStateException.class, velocity::deviceManaged);
         hardwareMap.assertNoLookup();
 
         group.bias(-0.0);
-        Plants.VelocityMappingStep mapping = velocity.deviceManagedWithDefaults()
+        Plants.VelocityMappingStep<Plants.TargetStep<Plant>> mapping = velocity.deviceManaged()
                 .bounded(Double.MAX_VALUE / 2.0, Double.MAX_VALUE);
         expect(IllegalArgumentException.class, () -> mapping.scaleToNative(2.0));
         hardwareMap.assertNoLookup();
@@ -375,12 +375,12 @@ public final class FtcActuatorMappingDomainValidationTest {
     public void regulatedVelocityPreflightsBoundedSharedMapBeforeLookupAndAllowsRetry() {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         hardwareMap.addMotor("flywheel");
-        Plants.VelocityMappingStep mapping = FtcActuators.plant(hardwareMap)
+        Plants.VelocityMappingStep<Plants.VelocityControlStep> mapping =
+                FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
                 .velocity()
                 .regulated()
                 .nativeFeedback(clock -> 0.0)
-                .regulator((setpoint, measurement, clock) -> 0.0)
                 .bounded(1.0, 2.0);
 
         expect(IllegalArgumentException.class,
@@ -389,6 +389,7 @@ public final class FtcActuatorMappingDomainValidationTest {
 
         Plant recovered = mapping.scaleToNative(1.0)
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator((setpoint, measurement, clock) -> 0.0)
                 .targetFromNewCommand(1.0)
                 .build();
         assertEquals(1, hardwareMap.lookupCount);
@@ -403,7 +404,7 @@ public final class FtcActuatorMappingDomainValidationTest {
         Plant velocity = FtcActuators.plant(velocityMap)
                 .motor("motor", Direction.FORWARD)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(0.0, 1.0)
                 .scaleToNative(Double.MIN_VALUE)
                 .velocityTolerance(0.0)
@@ -438,7 +439,7 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .andMotor("right", Direction.REVERSE)
                 .scale(0.96)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(-2600.0, 2600.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)
@@ -511,7 +512,7 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .andMotor("second", Direction.FORWARD)
                 .scale(2.0)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
@@ -611,8 +612,9 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .motor("left", Direction.FORWARD)
                 .andMotor("right", Direction.FORWARD)
                 .bias((double) Integer.MAX_VALUE + 1.0);
-        Plants.PositionReferenceStep reference = boundedGroup.position()
-                .deviceManagedWithDefaults()
+        Plants.PositionCoordinateReferenceStep<Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>
+                reference = boundedGroup.position()
+                .deviceManaged()
                 .nonPeriodic()
                 .bounded(0.0, 1.0)
                 .nativeUnits();
@@ -636,7 +638,7 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .andMotor("second", Direction.FORWARD)
                 .scale(2.0)
                 .position()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
@@ -713,7 +715,7 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .scale(2.0)
                 .bias(0.75)
                 .position()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .nonPeriodic()
                 .bounded(0.0, 10.0)
                 .nativeUnits()
@@ -792,7 +794,7 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .andMotor(second, Direction.FORWARD)
                 .scale(secondScale)
                 .velocity()
-                .deviceManagedWithDefaults()
+                .deviceManaged()
                 .bounded(0.0, 0.0)
                 .nativeUnits()
                 .velocityTolerance(0.0)

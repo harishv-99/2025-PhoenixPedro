@@ -42,6 +42,7 @@ final class MappedVelocityPlant implements Plant {
     private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
     private final PlantLifecycle lifecycle = new PlantLifecycle();
+    private final PlantUpdateCycle updateCycle = new PlantUpdateCycle("VelocityPlant");
     private final ScalarRange configuredRange;
     private final double nativePerPlantUnit;
     private final double tolerance;
@@ -257,6 +258,18 @@ final class MappedVelocityPlant implements Plant {
     @Override
     public void update(LoopClock clock) {
         if (!lifecycle.isActive()) return;
+        if (!updateCycle.begin(clock)) return;
+        try {
+            updateOnce(clock);
+            updateCycle.succeed();
+        } catch (RuntimeException failure) {
+            updateCycle.fail(failure);
+            throw failure;
+        }
+    }
+
+    private void updateOnce(LoopClock clock) {
+        if (!lifecycle.isActive()) return;
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
         PlantTargetResolution priorTargetResolution = targetResolution;
@@ -463,6 +476,8 @@ final class MappedVelocityPlant implements Plant {
     @Override
     public boolean atTarget(double target) {
         return (regulatedPowerChannel == null || regulatedActuationCompleted)
+                && (regulatedPowerChannel == null
+                        || regulatedPowerChannel.setpointSettledAt(appliedTarget))
                 && Double.isFinite(target)
                 && Double.isFinite(lastMeasurement)
                 && Math.abs(requestedTarget - target) <= tolerance

@@ -164,6 +164,19 @@ still chooses meaningful Plant units, bounds, mapping, reference, and production
 Ordinary FTC mechanisms begin with `FtcActuators.plant(hardwareMap)`. `Plants.fromOutputs()` is the
 advanced hardware-neutral/custom-adapter gateway, not a second ordinary FTC recipe.
 
+For FTC motor control:
+
+| Need | Answer |
+| --- | --- |
+| Ordinary FTC controller | `deviceManaged()` |
+| Deliberate FTC coefficient override | `deviceManagedWithOverrides()` then its required answer / `doneOverrides()` |
+| Phoenix standard software control | `regulated()` → feedback → units/tolerance → `setpointFrom...` → `feedbackFromPid(...)` → optional typed feedforward → optional `outputPowerLimitedTo(...)` |
+| Custom complete law | the advanced `controlFromCustomRegulator(...)` exit after units/tolerance |
+
+Keep the nouns distinct: the coordinate reference aligns Plant and native position, the target is
+the final mechanism goal, the setpoint is the per-cycle control state, and output power is normalized
+actuator effort.
+
 Detailed staged examples: [`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md>).
 
 ## Tasks

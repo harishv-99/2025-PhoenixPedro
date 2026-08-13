@@ -42,7 +42,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * this.flywheel = FtcActuators.plant(hardwareMap)
  *     .motor(cfg.motorName, cfg.direction)
  *     .velocity()
- *     .deviceManagedWithDefaults()
+ *     .deviceManaged()
  *     .bounded(cfg.minVelocity, cfg.maxVelocity)
  *     .nativeUnits()
  *     .velocityTolerance(cfg.velocityTolerance)

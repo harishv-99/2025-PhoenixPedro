@@ -87,6 +87,84 @@ public final class RegulatedPowerChannelTest {
     }
 
     @Test
+    public void standardControlFailureAndFailStopAreRetainedOncePerCycle() {
+        List<String> events = new ArrayList<>();
+        ProbePowerOutput output = new ProbePowerOutput(events);
+        StandardControl control = StandardControl.velocityFromAppliedTarget()
+                .feedbackFromPid(Double.MAX_VALUE)
+                .build();
+        RegulatedPowerChannel channel = new RegulatedPowerChannel(
+                output, control, "test.standardControl");
+        PlantLifecycle lifecycle = new PlantLifecycle();
+        LoopClock sameCycle = new ManualLoopClock().clock();
+
+        RuntimeException first = expectRuntime(() -> channel.update(
+                Double.MAX_VALUE,
+                -Double.MAX_VALUE,
+                sameCycle,
+                lifecycle));
+
+        assertTrue(control.hasRetainedFailureForCycle(sameCycle));
+        assertEquals(1, output.stopCount);
+        assertEquals(0, output.setPowerCount);
+        assertEquals(Arrays.asList("output.stop"), events);
+        String retainedStatus = channel.status();
+
+        RuntimeException repeated = expectRuntime(() -> channel.update(
+                Double.MAX_VALUE,
+                -Double.MAX_VALUE,
+                sameCycle,
+                lifecycle));
+
+        assertSame(first, repeated);
+        assertEquals("same-cycle failure must not repeat physical cleanup", 1, output.stopCount);
+        assertEquals(0, output.setPowerCount);
+        assertEquals(Arrays.asList("output.stop"), events);
+        assertEquals(retainedStatus, channel.status());
+    }
+
+    @Test
+    public void standardControlOutputFailureAndFailStopAreRetainedOncePerCycle() {
+        List<String> events = new ArrayList<>();
+        ProbePowerOutput output = new ProbePowerOutput(events);
+        RuntimeException outputFailure = new IllegalStateException("write failed");
+        output.writeFailure = outputFailure;
+        StandardControl control = StandardControl.velocityFromAppliedTarget()
+                .feedbackFromPid(0.25)
+                .build();
+        RegulatedPowerChannel channel = new RegulatedPowerChannel(
+                output, control, "test.standardOutputFailure");
+        PlantLifecycle lifecycle = new PlantLifecycle();
+        LoopClock sameCycle = new ManualLoopClock().clock();
+
+        RuntimeException first = expectRuntime(() -> channel.update(
+                1.0,
+                0.0,
+                sameCycle,
+                lifecycle));
+
+        assertSame(outputFailure, first);
+        assertTrue(control.hasRetainedFailureForCycle(sameCycle));
+        assertEquals(Arrays.asList(0.25), output.attemptedPowers);
+        assertEquals(1, output.stopCount);
+        assertEquals(Arrays.asList("output.setPower", "output.stop"), events);
+        String retainedStatus = channel.status();
+
+        RuntimeException repeated = expectRuntime(() -> channel.update(
+                1.0,
+                0.0,
+                sameCycle,
+                lifecycle));
+
+        assertSame(first, repeated);
+        assertEquals("same-cycle output failure must not retry the write",
+                Arrays.asList(0.25), output.attemptedPowers);
+        assertEquals("same-cycle output failure must not repeat cleanup", 1, output.stopCount);
+        assertEquals(Arrays.asList("output.setPower", "output.stop"), events);
+        assertEquals(retainedStatus, channel.status());
+    }
+
+    @Test
     public void nonFiniteResultsAreRejectedAndFailStopped() {
         double[] invalidResults = {
                 Double.NaN,

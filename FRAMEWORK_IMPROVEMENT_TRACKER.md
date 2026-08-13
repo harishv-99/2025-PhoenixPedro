@@ -169,6 +169,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 82 | TESTER-03 | Driver Station and Panels tester consoles | Done | The reviewed fixed-owner consoles, mirrored telemetry, fail-closed Panels input, synchronized guidance, automated verification, and publication authorization are complete. |
 | 83 | API-07 | Explicit callback and Task binding grammar | Done | The reviewed breaking grammar, source-only controls construction, one-shot binding, synchronized callers/docs, automated verification, and publication authorization are complete. |
 | 84 | TUNE-02 | Continuous framework-owned Panels velocity-PIDF tuning | Done | The reviewed exact velocity-PIDF workflow, canonical fresh-Plant seam, scoring consolidation, synchronized evidence/docs, and publication authorization are complete. |
+| 85 | CTRL-02 | Systematic targets, setpoints, and output control | Done | The reviewed systematic motion-control grammar, truthful vocabulary and capabilities, synchronized callers/docs, automated verification, and publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -15969,6 +15970,182 @@ writer, and explicit lifecycle ownership.
   that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
   merging it into `master`. This approval completes Gate 3 for TUNE-02 only and does not start
   another tracker item.
+
+### CTRL-02 - Systematic targets, setpoints, and output control
+
+- **Gate 2 approval (2026-08-13):** after comparing Phoenix's current regulator, target-guard,
+  position-reference, hardware-neutral output, FTC device-controller, and tuning APIs with the
+  NextFTC/NextControl control-model structure, the user approved the decision-complete design and
+  directed **`Implement the plan.`** CTRL-02 alone entered **In progress** on
+  `codex/ctrl-02-systematic-motion-control`, based exactly on fetched
+  `origin/master@3c888faf132594f8511154a86780877f8faa1b6d`. Publication is not authorized.
+- **Confirmed behavior and gap:** framework-regulated Plants currently receive one opaque
+  `ScalarRegulator` before Plant units, coordinate reference, and tolerance are known. The standard
+  software path exposes error-centric PID, linear setpoint PIDF, opaque setpoint feedforward, and
+  outer decorators as separate construction objects. It has no typed position/velocity motion
+  setpoint, no reference velocity/acceleration evidence, no systematic motor/lift/arm feedforward,
+  and no profile-settled completion fact. FTC device-managed position answers maximum power inside
+  its controller-override branch, while software output limiting uses a separate regulator
+  decorator. The generic `PositionOutput` also represents standard servos and arbitrary position
+  sinks, so it cannot truthfully promise normalized effort control even though FTC
+  `RUN_TO_POSITION` can.
+- **Current callers and construction paths:** ordinary FTC robot code constructs private Plants
+  through `FtcActuators.plant(hardwareMap)`. The advanced hardware-neutral entry is solely
+  `Plants.fromOutputs()`, with distinct power, commanded-position, device-managed position and
+  velocity, and regulated position and velocity roots. Modern production has no software PIDF
+  Plant caller; the only compiling teaching caller is the disabled lift-control example. TUNE-02
+  consumes the FTC device-managed velocity metadata/handle and must remain behaviorally intact.
+  `PositionOutput` is used by FTC servos, FTC motor-position adapters, grouped adapters, portable
+  fakes, and tests; `PowerOutput` is the truthful normalized-effort seam for software regulation.
+- **Chosen conceptual model:** keep the Plant as sole target, heartbeat, lifecycle, and hardware
+  writer. One update resolves `requested target -> guarded applied target -> one immutable control
+  setpoint -> PID feedback + typed feedforward -> optional voltage compensation -> output-power
+  policy -> universal finite/[-1,+1] defense -> hardware`. A coordinate reference establishes the
+  Plant/native affine anchor; a target guard selects which goal may be applied; a control setpoint
+  is the per-cycle position/velocity/acceleration state consumed by feedback/feedforward; output
+  policy constrains normalized actuator effort without rewriting target state.
+- **Chosen ordinary grammar:** after units, coordinate reference, and tolerance, standard regulated
+  Plants explicitly select `setpointFromAppliedTarget()`, position
+  `setpointFromTrapezoidalProfile(maxVelocity,maxAcceleration)`, or velocity
+  `setpointFromAccelerationLimitedProfile(maxAcceleration)`, then
+  `feedbackFromPid(kP)` or `feedbackFromPid(kP,kI,kD)`, optionally select one evidence-compatible
+  typed feedforward model, optionally select voltage/output policy, and finally bind one target.
+  Omitted feedforward is exact zero; no `feedforwardFromNone()`, zero-argument PID, hidden motion
+  limits, peer controller object, public profile object, or second `ControlSystem` lifecycle is
+  added. The advanced `controlFromCustomRegulator(...)` exit receives applied target and Plant-unit
+  measurement directly and does not claim typed setpoint/feedforward evidence.
+- **Chosen feedforward model:** the motion term is
+  `kS*sign(vSetpoint)+kV*vSetpoint+kA*aSetpoint`; lift adds signed constant `kG`; arm adds
+  `kG*cos((pSetpoint-positionAtMaximumGravity)*radiansPerPlantUnit)`. Direct position exposes only
+  lift/arm gravity or no feedforward; profiled position exposes motion/lift/arm; direct velocity
+  exposes motion/lift without `kA`; acceleration-limited velocity additionally exposes `kA`.
+  `sign(0)` is exactly zero. Geometry and motion constraints remain checked-in construction facts;
+  gains are finite and retain signed coordinate semantics.
+- **Chosen coordinate and setpoint vocabulary:** retain mature coordinate methods
+  `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`,
+  `needsReference(...)`, `establishReferenceAt(...)`, `isReferenced()`, and `referenceStatus()`,
+  while renaming their staged type to `PositionCoordinateReferenceStep`. Homing/indexing is a
+  workflow that discovers a physical cue and then establishes this coordinate reference. The new
+  controller state is consistently named **setpoint**, never a second bare reference;
+  `setpointFromAppliedTarget()` does not establish zero or mutate the coordinate map.
+- **Chosen target-guard boundary:** guards remain Plant-unit goal protection and report changes via
+  applied target/status. Interlock hold/fallback guards compose with every realization. The legacy
+  `maxTargetRate(...)` remains for device-managed or direct/unprofiled paths, but standard profiled
+  control rejects a simultaneous target-rate limiter so one ordinary owner shapes motion.
+  Setpoint/profile state and output saturation have separate diagnostics and never masquerade as a
+  target rewrite.
+- **Chosen hardware-neutral effort capability:** keep minimal `PositionOutput` for servos and
+  arbitrary position sinks. Add `PowerLimitedPositionOutput extends PositionOutput` with one
+  paired logical `setPosition(nativePosition, maximumOutputPowerMagnitude)` command and truthful
+  cached limit. Inputs are prevalidated together, but sequential device effects are not a
+  transaction and a later failure may leave earlier device state changed. Its one-argument
+  inherited command means magnitude `1.0`, and implementations must provide
+  an explicit natural stop. `FtcHardware.motorPosition(...)` returns this subtype; standard servo
+  output does not. `Plants.fromOutputs().deviceManagedPosition(...)` overloads on the compile-time
+  capability and exposes the output-power answer only for the richer subtype. No runtime
+  capability probe, dummy servo method, or unsupported-operation path is added.
+- **Chosen output-power grammar:** use one overloaded `outputPowerLimitedTo(...)` family. One finite
+  `[0,1]` argument means a symmetric magnitude and is available for FTC/power-limited
+  device-managed position plus every software-regulated power path. Two finite ordered endpoints
+  inside `[-1,1]` and containing zero express a software-only asymmetric range. Omission means the
+  full `[-1,+1]` normal-control domain. The choice occurs after complete normal control and voltage
+  compensation, is single-use, and does not constrain calibration-search power. FTC
+  device-managed velocity and plain prebuilt `PositionOutput` expose no effort knob because their
+  boundaries provide no such evidence.
+- **Defaults and safety:** `feedbackFromPid(kP)` means exact `I=D=0`; no nonzero controller gain,
+  profile constraint, gravity model, coordinate reference, tolerance, or target is guessed.
+  Explicit zero gains remain legal for characterization but do not claim useful holding. Output
+  policy omission means the framework-valid full normalized range, not reviewed physical safety.
+  PID integral/output sub-policy remains available, and the standard controller prevents integral
+  growth farther into final saturation while allowing unwind. Calibration search retains its
+  separately validated explicit power and bypasses normal target/control/output policy.
+- **Lifecycle contract:** one Plant update claims the cycle before sampling, profile/PID state, or
+  effects; one setpoint snapshot feeds feedback, feedforward, and telemetry. Same-cycle success
+  does not advance or write twice; same-cycle failure is retained; a different `LoopClock` is
+  rejected until reset. First update, reset, and post-calibration resume seed position at finite
+  measured position with zero velocity/acceleration or velocity at finite measured velocity and do
+  not charge preceding `dt`. Goal changes replan from retained setpoint state at the current
+  boundary. Profile completion augments existing requested/applied/measurement/status tolerance
+  truth. Stop/fail-stop resets the complete control composition without changing configuration.
+- **Alternatives rejected:** documentation-only examples leave the fragmented model; direct
+  `PositionOutput` widening invents power support for servos; a separate mutable maximum-power
+  setter creates partial command state; a generic parameter registry or reflection loses typed
+  model/evidence semantics; peer Plant/controller/profile objects permit mismatched owners; a
+  second NextFTC-style `ControlSystem` duplicates Plant goal and lifecycle; gravity-only decorators
+  leave feedforward unsystematic; a broad `positionControl`/`velocityControl` name hides actual
+  candidates; and putting output power under `targetGuards()` mixes Plant target units/provenance
+  with post-controller normalized effort.
+- **Simplicity and principle comparison:** the ordinary device-managed lift remains the shortest
+  path and answers only physical coordinate/tolerance/target facts plus an optional power limit.
+  Software control adds exactly the truths Phoenix now owns: setpoint behavior, PID, optional
+  physical feedforward, and optional output policy. FTC and portable builders share the same
+  conceptual order; compile-time capabilities expose truthful differences. The result uses no
+  public profile object, coefficient DTO, generic registry, or additional robot lifecycle owner.
+- **Bounded scope and cleanup gate:** implement the typed standard position/velocity control model,
+  capability-specific output interface, shared staged grammar, lifecycle/completion/diagnostics,
+  caller migration, principles implication, and synchronized documentation. Retain the current
+  `ScalarRegulator` custom seam and generic output/voltage decorators. Existing standard
+  `PidfRegulator`, `ScalarRegulators.pidf(...)`, `pid(PidController)`, and opaque
+  `setpointFeedforward(...)` remain only as deprecated advanced compatibility until the next
+  software-tuning item adapts TUNE-02's workflow to the new typed capability; that item is the
+  mandatory removal/migration gate, not permission for indefinite parallel ordinary paths.
+- **Verification plan:** add reflection tests for exact staged methods/overloads/return types and
+  legacy disposition; control-law/profile tests for direct, triangular/trapezoidal, acceleration-
+  limited, changed-goal, reset/reseed, same-cycle, domain mismatch, and finite failure behavior;
+  feedforward equation/geometry/evidence tests; PID saturation/anti-windup tests; HAL/FTC paired
+  target-plus-power prevalidation, sequential-failure, grouping, stop, and cache tests; Plant
+  update/completion/guard/calibration
+  ordering tests; all caller/example/docs migrations; focused and full unit tests; TeamCode compile;
+  Javadocs; documentation links; stale-name/import scans; and whitespace checks. Robot hardware
+  remains adoption validation for gravity sign, profile/load response, safe power, FTC firmware
+  behavior, and calibration-search mechanics.
+- **Implemented result (2026-08-13):** CTRL-02 is now **Verifying**. `Plants` and `FtcActuators`
+  expose the same late, unit-aware `setpointFrom... -> feedbackFromPid(...) -> optional
+  feedforward/voltage/output policy -> target` grammar, while compile-time continuation types retain
+  the truthful differences between FTC device control, software-regulated power, plain
+  `PositionOutput`, and `PowerLimitedPositionOutput`. The package-private standard controller owns
+  one immutable per-cycle setpoint/PID/feedforward snapshot but no goal, hardware, or public
+  lifecycle. Every concrete Plant realization now owns one cycle gate before sampling or effects.
+  The FTC motor-position output accepts target plus maximum-output-power magnitude as one validated
+  paired logical command; its SDK operations remain sequential and explicitly make no transactional
+  rollback claim. Existing software PIDF/factory paths remain deprecated advanced compatibility
+  until the approved software-tuning migration gate.
+- **Adversarial review resolved (2026-08-13):** independent runtime and public-API reviews caught
+  and fixed same-cycle replay outside the standard controller, reentrant Plant updates, downstream
+  output-failure replay, continuously changing goals that could freeze a profile, discrete
+  trapezoidal overshoot at a legal boundary, resets leaking into borrowed voltage sources,
+  profiled-control plus target-rate rejection occurring after FTC hardware resolution, null custom
+  regulators poisoning a retained stage, runtime objects implementing capabilities their declared
+  device path did not support, incomplete staged-signature reflection coverage, stale maximum-power
+  vocabulary, and an overclaim that paired FTC SDK calls were atomic. Focused runtime verification
+  passed 55 tests; focused API/capability verification passed 40 tests, followed by the completed
+  exact FTC-feedback reflection suite.
+- **Automated verification (2026-08-13):** with Android Studio's JBR,
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs`
+  completed **BUILD SUCCESSFUL**. The XML result set contains 152 suites / 1,438 tests / 0 failures /
+  0 errors / 0 skipped, including `DocumentationLinksTest` 5/5. Strict Javadocs generated under
+  `build/docs-site/api`. The only build messages were the repository's existing JDK 21 / Java 8
+  source-target and deprecation warnings. The stricter Zensical site build could not run because
+  this host exposes only the Windows Store Python launcher, not a Python runtime. The CTRL-02 stale-
+  vocabulary scan found zero results; trailing-whitespace scanning covered all 63 changed/untracked
+  files with zero findings; `git diff --check` passed with only informational LF-to-CRLF notices.
+- **Review and publication boundary (2026-08-13):** Android Studio inspection should verify the
+  ordinary device-managed and regulated builder chains, coordinate-reference versus control-
+  setpoint vocabulary, typed lift/arm equations and units, output-policy placement outside target
+  guards, narrow runtime capability facades, Plant cycle/fail-stop behavior, calibration-search
+  bypass, and synchronized guide/examples. Robot hardware remains required to validate gravity
+  sign, profile response under load, reviewed output magnitudes, REV `RUN_TO_POSITION` behavior,
+  voltage compensation, and calibration-search mechanics. The unstaged working tree remains on
+  `codex/ctrl-02-systematic-motion-control` at
+  `3c888faf132594f8511154a86780877f8faa1b6d`, whose merge base is the same fetched
+  `origin/master`; the resolved push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` and the target branch is `master`.
+  Gate 3 publication is not authorized.
+- **Manual verification and publication authorization (2026-08-13):** the user reviewed CTRL-02
+  and authorized committing the reviewed diff on `codex/ctrl-02-systematic-motion-control`, pushing
+  that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
+  merging it into `master`. This approval completes Gate 3 for CTRL-02 only, does not claim the
+  deferred robot-hardware validation, and does not start another tracker item.
 
 ## Explicitly deferred architectural ideas
 

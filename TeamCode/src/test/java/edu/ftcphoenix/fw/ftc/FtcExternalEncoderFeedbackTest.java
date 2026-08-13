@@ -18,6 +18,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -39,7 +40,7 @@ public final class FtcExternalEncoderFeedbackTest {
     @Test
     public void regulatedMotorStagesExposeDirectParallelFeedbackAnswers() throws Exception {
         Class<?> velocity = FtcActuators.MotorRegulatedVelocityFeedbackStep.class;
-        Class<?> velocityNext = FtcActuators.MotorRegulatedVelocityRegulatorStep.class;
+        Class<?> velocityNext = Plants.VelocityBoundsStep.class;
         assertReturns(velocity, "internalEncoder", velocityNext);
         assertReturns(velocity, "internalEncoder", velocityNext, String.class);
         assertReturns(velocity, "averageInternalEncoders", velocityNext);
@@ -48,7 +49,7 @@ public final class FtcExternalEncoderFeedbackTest {
         assertReturns(velocity, "nativeFeedback", velocityNext, ScalarSource.class);
 
         Class<?> position = FtcActuators.MotorRegulatedPositionFeedbackStep.class;
-        Class<?> positionNext = FtcActuators.MotorRegulatedPositionRegulatorStep.class;
+        Class<?> positionNext = Plants.PositionPeriodicityStep.class;
         assertReturns(position, "internalEncoder", positionNext);
         assertReturns(position, "internalEncoder", positionNext, String.class);
         assertReturns(position, "averageInternalEncoders", positionNext);
@@ -57,7 +58,7 @@ public final class FtcExternalEncoderFeedbackTest {
         assertReturns(position, "nativeFeedback", positionNext, ScalarSource.class);
 
         Class<?> crPosition = FtcActuators.CrServoRegulatedPositionFeedbackStep.class;
-        Class<?> crPositionNext = FtcActuators.CrServoRegulatedPositionRegulatorStep.class;
+        Class<?> crPositionNext = Plants.PositionPeriodicityStep.class;
         assertReturns(crPosition, "externalEncoder", crPositionNext, String.class);
         assertReturns(crPosition, "externalEncoder", crPositionNext, String.class, Direction.class);
         assertReturns(crPosition, "nativeFeedback", crPositionNext, ScalarSource.class);
@@ -110,10 +111,10 @@ public final class FtcExternalEncoderFeedbackTest {
                 .velocity()
                 .regulated()
                 .internalEncoder()
-                .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -141,10 +142,10 @@ public final class FtcExternalEncoderFeedbackTest {
                 .velocity()
                 .regulated()
                 .externalEncoder("bore")
-                .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -176,12 +177,12 @@ public final class FtcExternalEncoderFeedbackTest {
                 .position()
                 .regulated()
                 .externalEncoder("liftEncoder")
-                .regulator(ZERO_REGULATOR)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -206,12 +207,12 @@ public final class FtcExternalEncoderFeedbackTest {
                 .position()
                 .regulated()
                 .externalEncoder("turretEncoder")
-                .regulator(ZERO_REGULATOR)
                 .periodic(2.0 * Math.PI)
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(ZERO_REGULATOR)
                 .targetFromNewCommand(0.0)
                 .build();
 
@@ -234,10 +235,14 @@ public final class FtcExternalEncoderFeedbackTest {
                         .velocity()
                         .regulated();
 
-        FtcActuators.MotorRegulatedVelocityRegulatorStep bypassedFeedback =
-                (FtcActuators.MotorRegulatedVelocityRegulatorStep) feedbackStep;
-        assertIllegalStateContains(() -> bypassedFeedback.regulator(ZERO_REGULATOR),
-                "Choose regulated velocity feedback before regulator(...)");
+        try {
+            @SuppressWarnings("unchecked")
+            Plants.VelocityBoundsStep<Plants.VelocityControlStep> ignored =
+                    (Plants.VelocityBoundsStep<Plants.VelocityControlStep>) (Object) feedbackStep;
+            fail("Expected the feedback stage wrapper to reject a bounds-stage cast");
+        } catch (ClassCastException expected) {
+            // The staged wrapper makes the invalid grammar unrepresentable at runtime as well.
+        }
 
         assertThrowsContains(NullPointerException.class,
                 () -> feedbackStep.nativeFeedback(null),

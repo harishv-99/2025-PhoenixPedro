@@ -62,6 +62,9 @@ parallel beginner choices.
   tuning must never conceal a required safety or cancellation decision.
 - Parallel concepts use parallel nouns, verbs, prefixes, and argument order. A reader should infer a
   relationship from names without memorizing exceptions.
+- Model one domain as one coherent family: use the same ordered vocabulary, units, equations,
+  construction order, and lifecycle semantics; name a difference only when ownership or available
+  evidence truly differs.
 - Configuration follows one vocabulary:
   - `Owner.Config.defaults()` is a valid software baseline, never a claim of reviewed physical safety.
   - `identity()` names an identity transform; `zero()` names zero geometry or value.

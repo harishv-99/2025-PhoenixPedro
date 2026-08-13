@@ -30,12 +30,13 @@ public final class RegulatedPlantSafetyTest {
         ScalarTarget positionTarget = ScalarTarget.create(10.0);
         RecordingPowerOutput positionOut = new RecordingPowerOutput();
         PositionPlant position = Plants.fromOutputs()
-                .regulatedPosition(positionOut, clock -> 10.0, new FixedRegulator(1.25))
+                .regulatedPosition(positionOut, clock -> 10.0)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(new FixedRegulator(1.25))
                 .targetFromResolver(PlantTargets.exact(positionTarget))
                 .build();
 
@@ -55,10 +56,11 @@ public final class RegulatedPlantSafetyTest {
         ScalarTarget velocityTarget = ScalarTarget.create(20.0);
         RecordingPowerOutput velocityOut = new RecordingPowerOutput();
         Plant velocity = Plants.fromOutputs()
-                .regulatedVelocity(velocityOut, clock -> 20.0, new FixedRegulator(-1.25))
+                .regulatedVelocity(velocityOut, clock -> 20.0)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(new FixedRegulator(-1.25))
                 .targetFromResolver(PlantTargets.exact(velocityTarget))
                 .build();
 
@@ -79,21 +81,21 @@ public final class RegulatedPlantSafetyTest {
         };
         Plant[] plants = {
                 Plants.fromOutputs()
-                        .regulatedPosition(outputs[0], clock -> 10.0,
-                                new FixedRegulator(Double.NaN))
+                        .regulatedPosition(outputs[0], clock -> 10.0)
                         .nonPeriodic()
                         .unbounded()
                         .nativeUnits()
                         .alreadyReferenced()
                         .positionTolerance(0.0)
+                        .controlFromCustomRegulator(new FixedRegulator(Double.NaN))
                         .targetFromNewCommand(10.0)
                         .build(),
                 Plants.fromOutputs()
-                        .regulatedVelocity(outputs[1], clock -> 10.0,
-                                new FixedRegulator(Double.NaN))
+                        .regulatedVelocity(outputs[1], clock -> 10.0)
                         .unbounded()
                         .nativeUnits()
                         .velocityTolerance(0.0)
+                        .controlFromCustomRegulator(new FixedRegulator(Double.NaN))
                         .targetFromNewCommand(10.0)
                         .build()
         };
@@ -121,10 +123,11 @@ public final class RegulatedPlantSafetyTest {
         RecordingPowerOutput output = new RecordingPowerOutput();
         ScalarTarget target = ScalarTarget.create(20.0);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, clock -> 20.0, regulator)
+                .regulatedVelocity(output, clock -> 20.0)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -158,10 +161,11 @@ public final class RegulatedPlantSafetyTest {
         output.stopFailure = stopFailure;
         ScalarTarget target = ScalarTarget.create(20.0);
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, clock -> 20.0, regulator)
+                .regulatedVelocity(output, clock -> 20.0)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -195,10 +199,11 @@ public final class RegulatedPlantSafetyTest {
         FixedRegulator regulator = new FixedRegulator(0.25);
         RecordingPowerOutput output = new RecordingPowerOutput();
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, clock -> 20.0, regulator)
+                .regulatedVelocity(output, clock -> 20.0)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(regulator)
                 .targetFromNewCommand(20.0)
                 .build();
         plant.update(new ManualLoopClock().clock());
@@ -234,10 +239,11 @@ public final class RegulatedPlantSafetyTest {
                 0.65);
         RecordingPowerOutput output = new RecordingPowerOutput();
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, clock -> 20.0, constrained)
+                .regulatedVelocity(output, clock -> 20.0)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(constrained)
                 .targetFromNewCommand(20.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -266,10 +272,11 @@ public final class RegulatedPlantSafetyTest {
         ScalarRegulator constrained = ScalarRegulators.outputLimited(pidf, 0.0, 0.65);
         RecordingPowerOutput output = new RecordingPowerOutput();
         Plant plant = Plants.fromOutputs()
-                .regulatedVelocity(output, clock -> Double.NEGATIVE_INFINITY, constrained)
+                .regulatedVelocity(output, clock -> Double.NEGATIVE_INFINITY)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
+                .controlFromCustomRegulator(constrained)
                 .targetFromNewCommand(100.0)
                 .build();
 
@@ -297,12 +304,13 @@ public final class RegulatedPlantSafetyTest {
     public void regulatedPositionStopUsesItsOwnedPowerOutputOnce() {
         RecordingPowerOutput shared = new RecordingPowerOutput();
         PositionPlant sharedPlant = Plants.fromOutputs()
-                .regulatedPosition(shared, clock -> 0.0, new FixedRegulator(0.0))
+                .regulatedPosition(shared, clock -> 0.0)
                 .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
+                .controlFromCustomRegulator(new FixedRegulator(0.0))
                 .targetFromNewCommand(0.0)
                 .build();
 
