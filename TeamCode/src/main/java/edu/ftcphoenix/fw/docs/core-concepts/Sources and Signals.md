@@ -300,11 +300,14 @@ Each contextual registration rearms independently. A held button does not preven
 neutral stick from arming. `ACCEPT_CURRENT` is the explicit alternative when the current held or
 finite scalar value should become eligible after the effect-free activation frame.
 
-`GamepadDevice` intentionally recenters sticks and triggers when it is constructed and whenever
-`calibrate()` is called, then applies its configured deadband. This compensates for controller
-center drift and gives contextual controls an exact zero. The operator must leave every stick and
-trigger at its intended physical neutral during construction or recalibration; software cannot
-distinguish controller drift from an intentionally displaced control at that instant.
+The FTC adapter `edu.ftcphoenix.fw.ftc.input.GamepadDevice` intentionally recenters sticks and
+triggers when it is constructed and whenever `calibrate()` is called, then applies its configured
+deadband. Robot code constructs it directly with `new GamepadDevice(gamepad1)`. Its boundary
+location is what keeps the raw SDK `Gamepad` out of the reusable source and binding packages; the
+values it exposes are ordinary Phoenix `ScalarSource` and `BooleanSource` objects. The operator
+must leave every stick and trigger at its intended physical neutral during construction or
+recalibration; software cannot distinguish controller drift from an intentionally displaced
+control at that instant.
 
 For complete context ownership, scalar-output limits, and mode examples, see
 [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>).

@@ -13,7 +13,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenu;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenus;
-import edu.ftcphoenix.fw.input.GamepadDevice;
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;

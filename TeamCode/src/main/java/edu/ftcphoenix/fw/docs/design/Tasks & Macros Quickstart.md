@@ -36,6 +36,8 @@ You describe *what* should happen as a graph of tasks, and the framework figures
 Typical ordinary TeleOp declaration:
 
 ```java
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
+
 public class MyTeleOp extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
@@ -48,6 +50,10 @@ public class MyTeleOp extends FtcRobotOpMode {
     }
 }
 ```
+
+`GamepadDevice` belongs to the FTC input boundary because its constructor accepts the SDK gamepad.
+The Task and binding APIs see ordinary Phoenix sources, and robot code uses the direct
+`new GamepadDevice(gamepad1)` construction call.
 
 This is a complete FTC lifecycle shape: the framework starts and advances its private runner after
 bindings, then updates declared outputs and commits presenters. STOP and runtime failure actively

@@ -15,7 +15,7 @@ import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
-import edu.ftcphoenix.fw.input.GamepadDevice;
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 import edu.ftcphoenix.fw.task.Task;

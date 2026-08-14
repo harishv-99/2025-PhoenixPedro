@@ -83,6 +83,8 @@ owns all later callbacks.
 The TeleOp root constructs and immediately transfers each lifecycle owner:
 
 ```java
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
+
 StarterIntakeMechanism intake = program.output(
         new StarterIntakeMechanism(hardwareMap, profile.intake));
 
@@ -96,6 +98,9 @@ program.drive(
 
 program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
 ```
+
+The import identifies `GamepadDevice` as the FTC input edge. It converts the SDK gamepad into
+Phoenix sources through the starter's ordinary direct construction.
 
 Registration retains the same object immediately. If a later construction or declaration fails,
 the program still stops every already registered sibling. The source-driven drive joins output

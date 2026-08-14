@@ -1,8 +1,8 @@
 package edu.ftcphoenix.fw.ftc.ui;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.input.GamepadDevice;
-import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
+import edu.ftcphoenix.fw.ftc.input.Gamepads;
 
 /**
  * Standard high-level controls for FTC telemetry UI screens.

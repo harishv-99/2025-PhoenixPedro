@@ -43,6 +43,10 @@ import edu.ftcphoenix.fw.drive.DriveSource;
  *
  * <h2>Recommended usage</h2>
  *
+ * <p>The {@code GamepadDevice} below is the FTC-boundary
+ * {@link edu.ftcphoenix.fw.ftc.input.GamepadDevice GamepadDevice} adapter. This source itself
+ * receives only Phoenix scalar and boolean sources.</p>
+ *
  * <pre>{@code
  * GamepadDevice driver = gamepads.p1();
  * GamepadDriveSource.Config cfg = GamepadDriveSource.Config.defaults();

@@ -8,6 +8,8 @@ This is a reminder, not a first lesson. Follow the
 Extend `FtcRobotOpMode` and override only `configure(RobotProgram)`:
 
 ```java
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
+
 @TeleOp(name = "My TeleOp")
 public final class MyTeleOp extends FtcRobotOpMode {
     @Override
@@ -26,6 +28,10 @@ public final class MyTeleOp extends FtcRobotOpMode {
     }
 }
 ```
+
+`GamepadDevice` and the optional two-controller `Gamepads` aggregate live in
+`edu.ftcphoenix.fw.ftc.input` because they accept raw FTC SDK gamepads. Their ordinary construction
+calls are `new GamepadDevice(gamepad1)` and `Gamepads.create(gamepad1, gamepad2)`.
 
 Do not override FTC `init`, `start`, `loop`, or `stop`; those callbacks are final. Do not create a
 second `LoopClock` or `TaskRunner` in ordinary robot code.

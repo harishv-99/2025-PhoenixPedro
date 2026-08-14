@@ -1,4 +1,4 @@
-package edu.ftcphoenix.fw.input;
+package edu.ftcphoenix.fw.ftc.input;
 
 import com.qualcomm.robotcore.hardware.Gamepad;
 

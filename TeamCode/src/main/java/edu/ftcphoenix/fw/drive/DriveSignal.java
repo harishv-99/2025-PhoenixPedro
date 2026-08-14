@@ -46,6 +46,10 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  * {@link edu.ftcphoenix.fw.drive.source.GamepadDriveSource}) and feed its output into
  * a drivebase (such as {@link edu.ftcphoenix.fw.drive.MecanumDrivebase}):</p>
  *
+ * <p>The example obtains its input sources through the FTC-boundary
+ * {@link edu.ftcphoenix.fw.ftc.input.GamepadDevice GamepadDevice} and
+ * {@link edu.ftcphoenix.fw.ftc.input.Gamepads Gamepads} adapters.</p>
+ *
  * <pre>{@code
  * public final class ExampleTeleOp extends FtcRobotOpMode {
  *     @Override

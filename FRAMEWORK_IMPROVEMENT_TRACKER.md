@@ -157,7 +157,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 70 | RUNTIME-01 | Managed robot-program lifecycle | Done | Let ordinary FTC robot code declare services, bindings, Tasks, outputs, drive, and presenters once while one framework host owns the fixed lifecycle and fail-stop ceremony. |
 | 71 | RUNTIME-02 | Production Phoenix managed-runtime migration | Done | Managed Auto/TeleOp lifecycle, shared-alliance targeting, truthful prestart UI, legacy cleanup, synchronized documentation, automated verification, Android Studio review, and publication authorization are complete. |
 | 72 | INPUT-02 | Binding update failure retention | Done | Retain exact same-cycle binding failures without replay, reject reentry, preserve explicit next-cycle and clear ownership, and keep robot code unchanged. |
-| 73 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 73 | BOUNDARY-01 | FTC boundary enforcement | Done | Relocated the FTC gamepad adapters without changing robot expressions and enforced the protected reusable core with one focused production-source rule. |
 | 74 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
 | 75 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
 | 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
@@ -9290,15 +9290,189 @@ writer, and explicit lifecycle ownership.
 
 ### BOUNDARY-01 - FTC boundary enforcement
 
-- **Problem to confirm:** FTC SDK imports exist outside the documented `fw.ftc`/tools boundary, and
-  module layout does not enforce the distinction.
-- **Alternatives to compare:** move the few leaks and add a static import rule; Gradle source sets;
-  separate core/FTC modules; or tolerate documented exceptions.
-- **Leading hypothesis:** fix imports and add a focused check first. Split modules only if testability
-  or dependency isolation provides enough benefit to offset student/maintainer complexity.
-- **Completion:** every exception is removed or explicitly justified, and CI prevents accidental new
-  core-to-SDK dependencies.
-- **Decision record:** _Pending._
+- **Research start (2026-08-14):** BOUNDARY-01 is the sole active item on
+  `codex/boundary-01-ftc-boundary-enforcement`, based exactly on merged
+  `origin/master@accde6f8f46cd30938500c30ae41d3d0acbbe07f`. Gate 1 is read-only apart from this
+  tracker record. It will inventory every maintained FTC/vendor import, public construction path,
+  caller, documented exception, and practical enforcement layer before choosing a migration. No
+  Java, test, Javadoc, guide, example, Phoenix behavior, Gradle configuration, CI workflow, or
+  other tracker item has started.
+- **Decision record (2026-08-14):** **Ready; public package-relocation approval is required before
+  implementation.** The audit confirms a narrow production defect and selects a package move plus a
+  dependency-free source rule. This item does not alter input behavior, controller calibration,
+  button/axis names, robot lifecycle, or any gamepad construction expression.
+  - **Gate 2 approval (2026-08-14):** after asking what module work remains deferred, the user sent
+    the exact required reply, **`Approve BOUNDARY-01 FTC gamepad relocation and protected-core
+    import enforcement design`**. The deferred alternative was clarified as a separate pure-Java
+    Gradle module that would physically move roughly 198 SDK-free framework classes and rewire
+    dependencies, tests, Javadocs, source paths, and verification commands. That larger build-layout
+    migration remains unjustified and out of scope. `origin/master` was fetched and still resolves
+    to `accde6f8f46cd30938500c30ae41d3d0acbbe07f`; the existing item branch
+    `codex/boundary-01-ftc-boundary-enforcement` starts exactly there. BOUNDARY-01 is now
+    **In progress** and implementation is limited to the approved package move, enforcement,
+    synchronized documentation/tests, and tracker record.
+  - **Confirmed production boundary:** maintained production under
+    `TeamCode/src/main/java/edu/ftcphoenix/fw` contains 233 non-JDK/Phoenix imports in the audited
+    boundary families. The explicit edges account for all but two: `fw.ftc` has 115 imports in 34
+    files, `fw.integrations` has 39 in nine files, and `fw.tools` has 77 in 26 files. The only
+    external imports in the protected reusable core are
+    `fw/input/GamepadDevice.java` and `fw/input/Gamepads.java`, each importing FTC SDK
+    `com.qualcomm.robotcore.hardware.Gamepad`. A separate token/FQN census found no hidden protected-
+    core dependency on FTC, Android/AndroidX, Pedro, Panels, or OpenCV. These two classes retain and
+    sample an FTC object, translate FTC axis signs, and expose Phoenix Sources, so they are adapters
+    rather than hardware-neutral input primitives.
+  - **Boundary matrix:** protected reusable core means `edu.ftcphoenix.fw` excluding the explicit
+    `fw.ftc`, `fw.integrations`, and `fw.tools` roots. Protected core may depend on the JDK and other
+    protected Phoenix capabilities; it must not depend back on those edge roots, robot application
+    packages, FTC/Android, or third-party vendor APIs. `fw.ftc` owns FTC/Android adapters;
+    `fw.integrations.<vendor>` owns named vendor bridges; and `fw.tools` owns diagnostic, calibration,
+    tester, and example hosts that are explicitly not ordinary robot templates. Modern
+    `edu.ftcphoenix.robots` code remains an application edge: OpModes, composition/mechanism owners,
+    presenters, and named vendor-path owners may receive SDK resources while capability and policy
+    code still prefer Phoenix abstractions. Legacy/sample/vendor-owned code remains outside this
+    reusable-framework rule.
+  - **Chosen public migration:** move `GamepadDevice` and `Gamepads`, unchanged in class names and
+    behavior, to `edu.ftcphoenix.fw.ftc.input`. The subpackage is parallel to the existing explicit
+    FTC UI/vision/localization boundaries and makes hardware ownership visible without lengthening
+    student nouns. Calls remain exactly `new GamepadDevice(gamepad1)`,
+    `Gamepads.create(gamepad1, gamepad2)`, `gamepads.p1()`, and `gamepads.p2()` after an import
+    change. Do not rename them to `FtcGamepadDevice`/`FtcGamepads`, add a raw-gamepad DTO or broad
+    interface, or add deprecated forwarding types in `fw.input`; those choices would add vocabulary
+    or preserve a second/leaking path without a portable adopter.
+  - **Construction-path disposition:** retain the one-device `GamepadDevice(Gamepad)` constructor,
+    the two-device `Gamepads.create(Gamepad, Gamepad)` factory, and the previously audited advanced
+    `Gamepads(GamepadDevice, GamepadDevice)` assembly/test seam. One-device and paired-device callers
+    have distinct cardinality needs, and CLEAN-01 deliberately locked the current `create` name,
+    full button vocabulary, and completed-device constructor. BOUNDARY-01 will not reopen those API
+    decisions, remove `UiControls` conveniences, or introduce aliases merely because the package is
+    moving.
+  - **Caller and documentation impact:** migrate the two production files and `GamepadsApiTest`;
+    update 21 explicit Java imports across 20 maintained main/test files, while leaving the 12
+    `Gamepads.create(...)` expressions and two external direct-constructor expressions unchanged.
+    Synchronize four drive Javadoc snippets across three files and the seven maintained guides that
+    name the wrappers. Add concise `fw.ftc.input` package documentation. Correct the boundary direction in
+    `AGENTS.md`, Framework Principles, Maintainer Notes, the FTC-boundary docs hub, and Phoenix
+    Architecture; relabel Phoenix assembly seams that currently claim to be hardware-neutral while
+    accepting `HardwareMap`, `Gamepad`, `Telemetry`, or FTC concrete types. This is wording truth,
+    not a Phoenix behavior or composition change.
+  - **Test-source exception:** production-package purity is the enforced claim. SDK fakes and
+    cross-layer contract tests in `src/test` may depend on FTC APIs. Move `GamepadsApiTest` with the
+    relocated implementation, but keep `FtcActuatorsRangeValidationTest` and
+    `DirectMecanumDriveApiTest` in their current conceptual test packages: each deliberately compares
+    a core contract with an FTC gateway, and cosmetically moving it would not strengthen production
+    isolation.
+  - **Focused enforcement:** add one JUnit 4 architecture test over production Java in
+    `TeamCode/src/main/java/edu/ftcphoenix/fw`. Determine protection from the declared package and
+    fail closed for every future `fw` package except the three explicit edge roots above. In a
+    protected source, allow only JDK imports and protected Phoenix-core imports; reject normal/static
+    imports of edge, robot, platform, or vendor packages. Also reject code FQNs and string/reflection
+    references for the known FTC, Android/AndroidX, Pedro, Panels, OpenCV, edge, and robot prefixes.
+    Mask comments and Javadocs before matching so documentation does not create false failures.
+    Every forbidden-dependency failure reports repository-relative `path:line`, the forbidden
+    prefix, and the permitted boundary roots. Synthetic fixtures must prove allowed JDK/core
+    imports, normal/static imports, code FQNs, reflection strings, comment masking, each allowed
+    edge root, and a future unknown protected package.
+  - **CI boundary:** no workflow change is needed in this item. The existing docs-site workflow runs
+    the full TeamCode unit suite and compilation for changes under
+    `TeamCode/src/main/java/edu/ftcphoenix/**`, so a future production leak executes this test in PR
+    verification. General CI trigger coverage, branch protection, and a broader verification
+    workflow remain CI-01; BOUNDARY-01 does not silently start them.
+  - **Alternatives rejected:** documenting the two current exceptions leaves the architecture false
+    and unenforced. A neutral raw-gamepad interface/DTO would expose roughly 20 leaves solely to
+    reconstruct an FTC adapter when existing `ScalarSource`/`BooleanSource` are already the portable
+    seams. A Gradle source set still shares the Android/FTC classpath unless a second isolated compile
+    is invented. A separate pure-Java module would move roughly 198 production files and many tests,
+    rewire Javadocs and build commands, and add a student/maintainer concept without a standalone-
+    artifact or measured dependency-isolation need. ArchUnit, Checkstyle ImportControl, custom lint,
+    or an OS script adds a plugin/tooling path for one rule and is less direct than the existing test
+    lane. Revisit a real module only when a portable artifact or measured Android-test friction
+    supplies that evidence.
+  - **Principles and simplicity check:** the result restores edge-to-core dependency direction,
+    keeps FTC types at an explicit boundary, preserves the narrow Source capabilities consumed by
+    controls, and leaves one obvious construction grammar for each real cardinality. Ordinary robot
+    code learns no new method, wrapper, builder, lifecycle, or configuration object; only its import
+    becomes truthful. The package break is intentional and all repository callers/docs move in the
+    same item, with no compatibility shim.
+  - **Bounded implementation and verification:** change only the relocation/imports, synchronized
+    Javadocs/guides/principles, one architecture test with fixtures, affected API tests, and this
+    tracker. Run the focused boundary/Gamepads/UI/starter/Phoenix/tester suites,
+    `DocumentationLinksTest`, strict Phoenix Javadocs, full
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`, exhaustive old-package and
+    forbidden-dependency scans, XML count inspection, `git diff --check`, and a trailing-whitespace
+    audit. No robot run can establish additional truth for package/import ownership; physical
+    controller calibration and response remain unchanged adopting-robot evidence, not completion
+    evidence.
+  - **Explicit approval required:** implementation may begin only after the user replies exactly
+    **`Approve BOUNDARY-01 FTC gamepad relocation and protected-core import enforcement design`**.
+    Approval authorizes only the bounded package migration, enforcement, synchronized docs/tests,
+    and tracker work above; it does not start CI-01, EXAMPLE-03, or another item.
+- **Gate 2 implementation (2026-08-14):** BOUNDARY-01 is **Verifying** on
+  `codex/boundary-01-ftc-boundary-enforcement`. `GamepadDevice`, `Gamepads`, and their API-shape test
+  now live under `edu.ftcphoenix.fw.ftc.input`; normalized comparisons against
+  `origin/master` prove that all three bodies are identical after changing only their package
+  declarations. All maintained Java imports and documentation links moved together, while the
+  constructor/factory expressions, axis/button behavior, calibration, debug behavior,
+  `UiControls` helpers, CLEAN-01 construction grammar, and Phoenix lifecycle remain unchanged. No
+  forwarding alias, second wrapper, Gradle module/source set, workflow, or CI-01 change was added.
+- **Boundary enforcement implemented:** `FrameworkBoundaryTest` walks every TeamCode production
+  Java source. It validates any file physically inside the framework tree or declaring an
+  `edu.ftcphoenix.fw` package, protects every unknown future core package, and exempts only the
+  declared `fw.ftc`, `fw.integrations`, and `fw.tools` edge roots. It rejects non-JDK/non-protected-
+  core imports, known code FQNs, and reflection/class-name strings with path/line diagnostics while
+  masking comments and Javadocs. Focused fixtures cover normal/static imports, whitespace- or
+  comment-separated names, Unicode Java identifiers, FQNs, reflection strings, comment masking,
+  exact edge roots, future packages, off-path protected declarations, physical-path/package
+  mismatch, and unrelated application sources. Tests remain intentionally outside the production
+  purity claim; the two existing cross-layer contract tests stay in their conceptual packages.
+- **Documentation synchronized:** AGENTS, Framework Principles, Maintainer Notes, the documentation
+  and FTC-boundary hubs, seven maintained gamepad guides, four drive Javadoc snippets across three
+  files, Phoenix Architecture, and inaccurate Phoenix assembly-seam labels now distinguish
+  protected core, explicit framework edges, and robot application edges. They preserve the direct
+  beginner calls and state the enforced edge-to-core dependency direction. A concise
+  `fw.ftc.input` package description names gamepad input conversion without merging it with haptic
+  output ownership.
+- **Adversarial review (2026-08-14):** three independent reviews repeated the public construction-
+  path/caller audit, source-rule failure analysis, and docs/principles/scope audit. They confirmed
+  all three gamepad construction paths and `UiControls` helpers are unchanged, all old-package
+  references are gone, and no redundant public layer exists. Review found and fixed a reversed
+  test Javadoc, an overbroad tracker diagnostic sentence, whitespace/comment and Unicode parser
+  false negatives, and the scanner's initial physical-directory-only selection. The final reviews
+  report no material API, enforcement, lifecycle, documentation, or scope blocker.
+- **Automated verification (2026-08-14):** the final
+  `$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'; .\gradlew.bat --console=plain
+  :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run is **BUILD SUCCESSFUL**.
+  Generated XML records 155 suites and 1,494 tests with zero failures, errors, or skips; the final
+  boundary suite is 14/14. `DocumentationLinksTest` is 5/5, and a separate
+  `:TeamCode:phoenixJavadocs` run is **BUILD SUCCESSFUL**. Java 21 emits the repository's existing
+  source/target-8 and deprecated-API warnings only. `git diff --check`, the untracked-file trailing-
+  whitespace audit, exact old-package scan, moved-body comparison, and protected-core forbidden-
+  import scan are clean. The strict narrative-site build could not run locally because neither
+  `python` nor `py` exists on this workstation; the maintained GitHub workflow has pinned Python
+  setup and runs that build. Its broader atypical off-path PR-trigger coverage remains CI-01 rather
+  than expanding this item.
+- **Hardware verification boundary:** no robot run can add evidence for package ownership, import
+  direction, or unchanged source-level construction. Because the adapter bodies are unchanged,
+  BOUNDARY-01 makes no new claim about physical controller centering, deadband, axes, buttons, or
+  response; those remain existing adopting-robot behavior.
+- **Android Studio audit point (2026-08-14):** inspect the three package-only moves, unchanged public
+  constructors/factory/returns and `UiControls` helpers, all migrated imports, the 14-case
+  `FrameworkBoundaryTest`, protected-core/edge wording, Phoenix seam labels, and absence of Gradle,
+  workflow, compatibility-alias, or other-item changes. Confirm ordinary calls remain
+  `new GamepadDevice(gamepad1)` and `Gamepads.create(gamepad1, gamepad2)`, and that the working tree
+  is unstaged on `codex/boundary-01-ftc-boundary-enforcement`.
+- **Required combined manual-review/publication reply:** after reviewing the unstaged diff in
+  Android Studio, use exactly:
+  **`BOUNDARY-01 looks good. Authorize committing the reviewed BOUNDARY-01 diff on
+  codex/boundary-01-ftc-boundary-enforcement, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+- **Manual verification and publication authorization (2026-08-14):** the user reviewed BOUNDARY-01
+  and sent the exact combined authorization above, then explicitly directed the workflow to proceed
+  to the next task. BOUNDARY-01 is now **Done**; Gate 3 may stage only this reviewed diff, create its
+  single item commit, push `codex/boundary-01-ftc-boundary-enforcement` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open its pull request, and merge that pull
+  request into `master`. The next item may enter Gate 1 only after the merge is fetched and verified;
+  this authorization does not preapprove that item's design or implementation.
 
 ### DOC-01 - Stale and non-compiling documentation
 

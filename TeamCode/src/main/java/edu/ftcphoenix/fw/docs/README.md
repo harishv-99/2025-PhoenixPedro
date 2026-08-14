@@ -39,6 +39,7 @@ for the ordinary TeleOp-and-Auto structure.
 | Look up a Phoenix term | [`Glossary`](<reference/Glossary.md>) |
 | Fix something that is not working | [`Common Problems`](<troubleshooting/Common Problems.md>) |
 | Build a mechanism or choose a Plant recipe | [`FTC Actuators & Plants`](<ftc-boundary/FTC Actuators & Plants.md>) |
+| Adapt FTC gamepads into Phoenix input sources | [`FTC boundary`](<ftc-boundary/README.md>) |
 | Build a macro or Auto routine | [`Tasks and Macros`](<design/Tasks & Macros Quickstart.md>) |
 | Understand sources, edges, or signal shaping | [`Sources & Signals`](<core-concepts/Sources and Signals.md>) |
 | Structure a larger robot | [`Architecture Roles, Framework Lanes, and Robot Controls`](<design/Framework Lanes & Robot Controls.md>) |
@@ -63,7 +64,7 @@ for the ordinary TeleOp-and-Auto structure.
 
 - [`Core concepts`](<core-concepts/README.md>) — loop and source semantics
 - [`Design`](<design/README.md>) — Tasks, capability families, supervisors, and output queues
-- [`FTC boundary`](<ftc-boundary/README.md>) — actuator, sensor, UI, and handoff APIs
+- [`FTC boundary`](<ftc-boundary/README.md>) — gamepad, actuator, sensor, UI, and handoff APIs
 - [`Drive & vision`](<drive-vision/README.md>) — spatial queries, guidance, and localization
 - [`Pedro Pathing integration`](<../integrations/pedro/README.md>) — the narrow vendor boundary
 

@@ -9,7 +9,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
-import edu.ftcphoenix.fw.input.GamepadDevice;
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
 import edu.ftcphoenix.fw.task.Task;
 
 /**

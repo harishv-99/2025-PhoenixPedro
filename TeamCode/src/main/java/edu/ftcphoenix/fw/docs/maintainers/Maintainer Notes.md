@@ -57,14 +57,34 @@ It lets Phoenix:
 Season-specific fixed/non-fixed tag policy belongs in `FtcGameTagLayout`, so robot code does not
 rediscover which IDs are safe to trust.
 
-### 1.4 FTC boundary rule (for maintainers)
+### 1.4 Production framework boundary rule
 
-As a best practice, keep FTC SDK types (`com.qualcomm.*`) inside:
+Treat the reusable framework core as every production package under `edu.ftcphoenix.fw` except the
+three explicit edge families below:
 
-- `edu.ftcphoenix.fw.ftc.*` (the adapter/boundary layer)
-- `edu.ftcphoenix.fw.tools.*` (testers/examples that necessarily depend on OpModes)
+- `edu.ftcphoenix.fw.ftc.*` owns FTC SDK and Android adapters, including the gamepad adapters in
+  `edu.ftcphoenix.fw.ftc.input`;
+- `edu.ftcphoenix.fw.integrations.*` owns narrow third-party bridges, and may touch FTC types only
+  when that particular bridge must join the two boundaries; and
+- `edu.ftcphoenix.fw.tools.*` owns FTC-bound examples, testers, and calibration hosts.
 
-This keeps the student-facing building blocks (`actuation/drive/input/task/...`) easier to reason about and easier to test in isolation.
+`edu.ftcphoenix.robots.*` is the application edge. It may construct SDK resources and the explicit
+framework edges, then pass their small Phoenix capabilities into robot policy. It is not reusable
+framework core.
+
+Dependency direction is **edge → core**. Protected core packages such as
+`actuation`, `core`, `drive`, `input`, `localization`, `sensing`, `spatial`, and `task` must not
+reach back into `fw.ftc`, `fw.integrations`, `fw.tools`, or `edu.ftcphoenix.robots`. A protected
+production source may import only `java.*`, `javax.*`, or another protected `edu.ftcphoenix.fw`
+package. Known fully qualified FTC, Android, vendor, edge, tool, and robot references are rejected
+as well. Do not broaden an allowlist because one new import is convenient; either move the adapter
+to the truthful edge or introduce the smallest Phoenix contract that the core can own.
+
+`FrameworkBoundaryTest` scans production Java sources and enforces this direction. It deliberately
+does not scan `src/test`: a unit test may use an SDK stub or fake to prove an edge adapter, or span
+layers to verify a cross-edge contract. That exception never permits the corresponding production
+core class to acquire the dependency, and boundary-facing tests should still live with the edge
+they exercise when practical.
 
 ### 1.5 Documentation topology
 
