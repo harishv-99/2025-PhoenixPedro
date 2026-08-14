@@ -224,7 +224,8 @@ These examples use Phoenix's one-loop heartbeat model.
 
 Important consequence:
 
-- `Bindings.update(clock)` is cycle-idempotent
+- a successful `Bindings.update(clock)` is cycle-idempotent; a failed effectful attempt rethrows
+  the same `RuntimeException` in that cycle without replay
 - `TaskRunner.update(clock)` is cycle-idempotent
 - `AprilTagSensor.get(clock)` is cycle-idempotent
 - `TagSelectionSource.get(clock)` is cycle-idempotent

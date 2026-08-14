@@ -26,9 +26,21 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <h2>Update order</h2>
  * <p>Each {@code initLoop()} / {@code loop()} call executes in this order:</p>
  * <ol>
- *   <li>{@code bindings.update(clock)} – fires binding actions (idempotent per Bindings instance)</li>
+ *   <li>{@code bindings.update(clock)} – performs the binding root's one effectful cycle attempt</li>
  *   <li>{@code onInitLoop(dtSec)} or {@code onLoop(dtSec)} – tester-specific logic</li>
  * </ol>
+ *
+ * <h2>Binding failures</h2>
+ * <p>After a successful binding update, another call in the same cycle is a no-op. If an
+ * activation, source, or callback throws a {@link RuntimeException}, {@link Bindings} retains that
+ * exact failure and rethrows it on a same-cycle call without replaying callbacks. Recursive update
+ * is rejected before a second traversal begins.</p>
+ *
+ * <p>This base class propagates the failure, so the corresponding tester-specific loop hook is not
+ * called. The runner owns stop/cleanup and any decision to permit a fresh attempt in a later cycle.
+ * A deliberate {@link Bindings#clear()} rebuild resets binding attempt state but does not roll back
+ * source state or external effects. Ordinary robot programs instead use the terminal fail-stop
+ * cleanup owned by {@link edu.ftcphoenix.fw.ftc.FtcRobotOpMode}.</p>
  *
  */
 public abstract class BaseTeleOpTester implements TeleOpTester {

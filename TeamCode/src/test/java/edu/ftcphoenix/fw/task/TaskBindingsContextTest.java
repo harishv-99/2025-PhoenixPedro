@@ -150,9 +150,64 @@ public final class TaskBindingsContextTest {
         assertTrue(runner.isIdle());
     }
 
+    @Test
+    public void taskFactoryFailureDoesNotReplayAnEarlierEnqueueInTheSameCycle() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        Bindings bindings = new Bindings();
+        TaskRunner runner = new TaskRunner();
+        TaskBindings taskBindings = TaskBindings.of(bindings, runner);
+        boolean[] button = {false};
+        int[] firstFactoryCalls = {0};
+        int[] failingFactoryCalls = {0};
+        RuntimeException primary = new IllegalStateException("controlled task factory failure");
+        BooleanSource signal = BooleanSource.of(() -> button[0]);
+
+        taskBindings.onRise(signal, () -> {
+            firstFactoryCalls[0]++;
+            return new HoldingTask();
+        });
+        taskBindings.onRise(signal, () -> {
+            failingFactoryCalls[0]++;
+            throw primary;
+        });
+
+        update(bindings, manualClock); // Establish the false edge baseline.
+        button[0] = true;
+        manualClock.nextCycle(0.02);
+
+        RuntimeException firstThrown = expectRuntimeException(
+                () -> bindings.update(manualClock.clock()));
+        assertSame(primary, firstThrown);
+        assertEquals(1, firstFactoryCalls[0]);
+        assertEquals(1, failingFactoryCalls[0]);
+        assertEquals(1, runner.queuedCount());
+
+        RuntimeException repeated = expectRuntimeException(
+                () -> bindings.update(manualClock.clock()));
+        assertSame(primary, repeated);
+        assertEquals(1, firstFactoryCalls[0]);
+        assertEquals(1, failingFactoryCalls[0]);
+        assertEquals(1, runner.queuedCount());
+
+        manualClock.nextCycle(0.02);
+        bindings.update(manualClock.clock()); // Held high must not manufacture either rise again.
+        assertEquals(1, firstFactoryCalls[0]);
+        assertEquals(1, failingFactoryCalls[0]);
+        assertEquals(1, runner.queuedCount());
+    }
+
     private static void update(Bindings bindings, ManualLoopClock manualClock) {
         manualClock.nextCycle(0.02);
         bindings.update(manualClock.clock());
+    }
+
+    private static RuntimeException expectRuntimeException(Runnable operation) {
+        try {
+            operation.run();
+            throw new AssertionError("Expected RuntimeException");
+        } catch (RuntimeException expected) {
+            return expected;
+        }
     }
 
     private static final class HoldingTask implements Task {
