@@ -693,6 +693,11 @@ it is always eligible, although its action still follows the declared event or l
 update/clear lifecycle. `program.taskBindings()` is the parallel surface for constructing and
 enqueueing a fresh `Task`; it is not a second spelling for a synchronous callback.
 
+The managed host also owns binding failure policy. If a binding activation, source, or callback
+throws a `RuntimeException`, `FtcRobotOpMode` becomes terminal, cancels Tasks, clears bindings,
+stops outputs and services, and rethrows the original failure. Ordinary robot code does not add a
+binding retry path or cleanup ceremony.
+
 A custom tester or host that deliberately owns a mutable/rebuilt binding graph may construct
 `Bindings` directly and create a `Bindings.ControlContext` when a group of mappings shares one
 changing eligibility rule, such as normal versus calibration controls. The context offers the same
@@ -744,6 +749,13 @@ public final class MyTeleOpControls {
     }
 }
 ```
+
+The custom root claims one effectful attempt before it samples activations or visits registrations.
+A successful same-cycle repeat is a no-op, while a same-cycle repeat after a `RuntimeException`
+rethrows that exact exception without replaying earlier source samples or callbacks. Recursive
+update is rejected before a second traversal begins. A later cycle may attempt the existing graph
+again from the state it actually reached, so the custom owner must decide whether continuing is
+safe or whether to stop and clean up instead.
 
 The activation policy is required because accepting a control that is already held or displaced is
 a motion-relevant decision:
@@ -799,6 +811,9 @@ Build or rebuild the binding graph during initialization or between updates. A r
 `contextWhen(...)`, or `clear()` call made while `bindings.update(clock)` is sampling activations or
 visiting registrations fails before changing the graph. Callbacks may still change ordinary robot
 intent and mode state; those are the purpose of bindings and are not structural graph mutations.
+After an update, `clear()` invalidates old contexts, removes registrations, and resets the retained
+cycle attempt or failure so a deliberately rebuilt graph is fresh. It is not a transaction
+rollback: source state and callback effects already produced remain real.
 
 A context is not a lifecycle owner. Deactivation suppresses its event/level actions, neutralizes
 its Boolean mirror, and keeps its contextual scalar copy at zero, but it does not cancel queued or

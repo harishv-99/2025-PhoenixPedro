@@ -46,9 +46,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * }</pre>
  *
  * <h2>Per-cycle idempotency</h2>
- * <p>{@link #update(LoopClock)} is <b>idempotent by {@link LoopClock#cycle()}</b>.
- * If called twice in the same loop cycle, the second call is a no-op. This prevents nested
- * code (for example, a tester suite calling into a tester) from double-firing actions.</p>
+ * <p>{@link #update(LoopClock)} claims a {@link LoopClock#cycle()} before sampling a source or
+ * running a callback. A repeat after success is a no-op. If a {@link RuntimeException} escapes,
+ * a repeat in that same cycle rethrows the exact failure without replaying any part of the
+ * traversal. A new cycle makes a fresh attempt from the binding state already reached. Recursive
+ * updates always fail instead of being mistaken for a same-cycle repeat.</p>
  *
  * <h2>Declaration order</h2>
  * <p>Each root or contextual registration joins one declaration-ordered traversal. On every
@@ -580,6 +582,7 @@ public final class Bindings implements CallbackBindings {
     private int scalarCopyBindingCount;
 
     private long lastUpdatedCycle = Long.MIN_VALUE;
+    private RuntimeException lastUpdateFailure;
     private boolean updating;
 
     /**
@@ -761,22 +764,40 @@ public final class Bindings implements CallbackBindings {
      * <p>All context activation predicates are sampled once in context-creation order before any
      * binding source or callback. Root and contextual registrations are then visited once in
      * global declaration order across binding kinds. Any source samples, neutral outputs, or
-     * callbacks they produce follow that order. This method is safe to call repeatedly in the same
-     * cycle; only the first call does work.</p>
+     * callbacks they produce follow that order.</p>
+     *
+     * <p>The first call claims the current cycle before sampling or dispatch. After a successful
+     * traversal, another call in that cycle is a no-op. If a {@link RuntimeException} escapes from
+     * a source or callback, another call in that cycle rethrows the same exception object without
+     * replaying context samples, sources, callbacks, or other partial effects. The next cycle may
+     * make a fresh attempt from whatever binding state the failed traversal reached. {@link Error}
+     * values are not retained, although the already-claimed cycle still is not replayed. Calling
+     * this method recursively is always rejected before same-cycle deduplication.</p>
      *
      * @param clock current shared loop clock; must not be {@code null}
      * @throws NullPointerException if {@code clock} is {@code null}
+     * @throws IllegalStateException if called recursively while an update is already running
+     * @throws RuntimeException the exact retained failure when an earlier call in this cycle let a
+     *                          runtime exception escape
      */
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock is required");
+        if (updating) {
+            throw new IllegalStateException(
+                    "Bindings.update(clock) cannot run recursively; "
+                            + "call it once from the owning loop heartbeat");
+        }
 
         long cycle = clock.cycle();
         if (cycle == lastUpdatedCycle) {
+            if (lastUpdateFailure != null) {
+                throw lastUpdateFailure;
+            }
             return;
         }
         lastUpdatedCycle = cycle;
+        lastUpdateFailure = null;
 
-        boolean previousUpdating = updating;
         updating = true;
         try {
             int contextCount = contexts.size();
@@ -788,8 +809,11 @@ public final class Bindings implements CallbackBindings {
             for (int i = 0; i < registrationCount; i++) {
                 registrations.get(i).dispatch(clock);
             }
+        } catch (RuntimeException failure) {
+            lastUpdateFailure = failure;
+            throw failure;
         } finally {
-            updating = previousUpdating;
+            updating = false;
         }
     }
 
@@ -815,7 +839,10 @@ public final class Bindings implements CallbackBindings {
      *
      * <p>This is mainly useful in testing utilities that rebuild bindings dynamically. A caller
      * must create new contexts after clearing; declaring through an old context fails fast. Finish
-     * the current {@link #update(LoopClock)} before rebuilding the graph.</p>
+     * the current {@link #update(LoopClock)} before rebuilding the graph. Clearing also resets the
+     * remembered cycle attempt and retained failure, so the rebuilt graph may be updated without
+     * first advancing the clock. Clearing does not undo callbacks, neutralize destinations, cancel
+     * Tasks, or stop hardware.</p>
      *
      * @throws IllegalStateException if called while {@link #update(LoopClock)} is running
      */
@@ -834,6 +861,7 @@ public final class Bindings implements CallbackBindings {
         nudgeOnRiseBindingCount = 0;
         scalarCopyBindingCount = 0;
         lastUpdatedCycle = Long.MIN_VALUE;
+        lastUpdateFailure = null;
     }
 
     /** Reject structural graph changes while sources or callbacks are being traversed. */

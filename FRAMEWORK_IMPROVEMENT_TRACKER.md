@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-10
+Last updated: 2026-08-14
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -156,7 +156,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 69 | SOURCE-04 | Successful source-cache commit semantics | Done | Commit value observations only after success, retain non-rollback controller failures, require value-style reducers, and make `Source.of(...)` the one ordinary robot-code adapter. |
 | 70 | RUNTIME-01 | Managed robot-program lifecycle | Done | Let ordinary FTC robot code declare services, bindings, Tasks, outputs, drive, and presenters once while one framework host owns the fixed lifecycle and fail-stop ceremony. |
 | 71 | RUNTIME-02 | Production Phoenix managed-runtime migration | Done | Managed Auto/TeleOp lifecycle, shared-alliance targeting, truthful prestart UI, legacy cleanup, synchronized documentation, automated verification, Android Studio review, and publication authorization are complete. |
-| 72 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
+| 72 | INPUT-02 | Binding update failure retention | Done | Retain exact same-cycle binding failures without replay, reject reentry, preserve explicit next-cycle and clear ownership, and keep robot code unchanged. |
 | 73 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
 | 74 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
 | 75 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
@@ -14845,22 +14845,157 @@ writer, and explicit lifecycle ownership.
 
 ### INPUT-02 - Binding update failure retention
 
-- **Problem to confirm:** `Bindings.update(clock)` claims the cycle before activation sampling and
-  registered callbacks. A callback failure may occur after earlier user effects, but a repeated
-  same-cycle call currently returns as if the traversal succeeded. Re-running everything could
-  duplicate effects, while silently returning hides the failure.
-- **Alternatives to compare:** retain/rethrow the original same-cycle failure; disable or clear the
-  binding graph after failure; continue later bindings while aggregating failures; allow retry; or
-  leave recovery entirely to the OpMode. Trace root/context registrations, tester handoffs, and
-  lifecycle cleanup before selecting fail-stop scope.
-- **Leading hypothesis:** treat `Bindings.update(clock)` as an effectful attempt owner: claim before
-  callbacks, reject reentry, retain the first `RuntimeException`, and rethrow it on a same-cycle
-  repeat without replaying callbacks. The composition root still owns broader mode abort/cleanup.
-- **Completion:** focused tests cover failures during context activation and first/middle/last
-  callbacks, partial-effect non-replay, same-cycle failure retention, next-cycle/lifecycle policy,
-  reentry, context switching, and unchanged successful declaration order.
-- **Decision record:** _Pending; split from the SOURCE-01 audit on 2026-07-24. Do not combine this
-  with API-04's separate question of successful binding execution order._
+- **Research start (2026-08-14):** Gate 1 audited traversal state, root/context/Task registration,
+  managed and custom owners, public construction paths, documentation, and focused tests without
+  editing production code. INPUT-02 remained the sole active implementation-track item.
+- **Decision record (2026-08-14):** **Approved and In progress.** The audit confirmed the original
+  defect and one adjacent reentry defect. The selected correction changes no public signature or
+  robot declaration: the `Bindings` root owns one effectful traversal attempt, while its managed or
+  custom host continues to own terminal cleanup and any later lifecycle policy.
+  - **Confirmed failure trace:** `Bindings.update(clock)` compares the numeric `clock.cycle()`,
+    returns on equality, and otherwise stores `lastUpdatedCycle` before context activation or
+    registration work. If an activation, binding source, Task factory/enqueue, callback, or consumer
+    throws a `RuntimeException`, later registrations do not run but the cycle remains claimed. A
+    repeated same-cycle update then returns normally as though traversal succeeded. The existing
+    `finally` releases only the graph-mutation guard and retains no outcome or exception.
+  - **Confirmed reentry trace:** recursive same-clock update silently returns because deduplication
+    precedes any reentry check. Recursive update with a different numeric cycle can instead run a
+    complete nested traversal, letting later registrations execute both inside it and after the
+    outer traversal resumes. Recursive entry is invalid regardless of the clock supplied. INPUT-02
+    rejects it before sampling, without adding a new lifetime clock-identity contract; every
+    maintained owner already uses the framework's one shared `LoopClock`.
+  - **Non-rollback boundary:** context snapshots, prior callback effects, Task enqueues, command
+    writes, and partial work in the failing callback remain observable. Edge, mirror, toggle,
+    nudge, and contextual rearm/copy state is also commonly committed before the external callback.
+    An edge callback that throws is not promised another delivery, while a held level may run again
+    on a later cycle. The root therefore owns non-replay and exact failure truth, not transactional
+    rollback or guaranteed event delivery.
+  - **Public construction and distinct-value audit:** keep every existing layer. Implicit
+    `new Bindings()` is the sole root owning contexts/update/debug/clear for explicit tool, test,
+    Prestart, or custom lifecycles. `CallbackBindings` is the exact nine-method registration-only
+    capability used by ordinary controls and reusable helpers. `Bindings.contextWhen(...)` alone
+    creates a parent-owned `ControlContext` with no second heartbeat. `TaskBindings.of(...)` is the
+    distinct advanced event-to-fresh-Task adapter; `RobotProgram.callbackBindings()` and
+    `taskBindings()` are the stable ordinary managed views. There is no peer facade, constructor,
+    staged builder, or redundant public layer to remove, and INPUT-02 adds no result, listener,
+    recovery method, overload, or caller parameter.
+  - **Caller and lifecycle audit:** Starter and Phoenix active controls receive only the managed
+    callback view. Phoenix Auto/TeleOp prestart policies own bounded INIT-only roots and clear them
+    at freeze. `BaseTeleOpTester` owns the root used by the tester family; menus, pickers, tuners,
+    and Task bindings only register through its narrow capability. Disabled `TeleOp_02` through
+    `TeleOp_09` retain direct roots but remain EXAMPLE-04 scope. `RobotProgram` already stops later
+    phases after a binding failure; `FtcRobotOpMode` preserves the exact primary exception, cancels
+    Tasks, clears bindings, and best-effort stops outputs/services. Tester sessions likewise
+    fail-stop their child. No host or robot-code migration is needed.
+  - **Selected attempt contract:** null-check the clock, then reject any recursive `update(...)`
+    before same-cycle deduplication. The first nonrecursive call in a new cycle claims that cycle
+    before activation/source/callback work and clears the prior cycle's failure. After success,
+    same-cycle repeats remain no-ops. If a `RuntimeException` escapes, retain that exact instance;
+    every later nonrecursive call in the same cycle rethrows it without resampling or callback
+    replay. Do not wrap, classify, or suppress it. An uncaught recursive rejection becomes the
+    outer attempt's retained failure; if a participant deliberately catches it, the original
+    traversal may continue because the rejected nested call performed no work.
+  - **Next-cycle and clear policy:** retention is cycle-local, not a terminal root latch. A new
+    cycle may attempt the current graph from the source/binding/destination state actually reached;
+    it does not manufacture or replay a consumed edge. Managed hosts normally terminate on the
+    first failure; an explicit custom host owns any broader recovery. Preserve `clear()` as the
+    graph-rebuild reset after traversal unwinds: invalidate contexts, remove registrations/counts,
+    and clear claimed-cycle/failure state so a fresh graph can run even in the same numeric cycle.
+    Clear does not undo callbacks, neutralize destinations, cancel Tasks, or stop hardware.
+    `LoopClock.reset()` only creates a new cycle and does not reset binding-local state. Retain only
+    `RuntimeException`; repository hosts intentionally leave `Error` uncaught.
+  - **Alternatives rejected:** documentation-only leaves false success. Same-cycle retry or resume
+    duplicates uncertain callback effects and observes changed input state. Continuing and
+    aggregating performs more user work after a known fault; aggregation belongs in cleanup.
+    Permanent disable, automatic clear, or neutralization invents host policy without being able to
+    cancel Tasks or stop hardware. Forever-retention plus a public reset would add a second terminal
+    lifecycle and student ceremony without a caller. The existing cycle and clear boundaries are
+    sufficient.
+  - **Principles and ordinary simplicity:** the root claims before effectful work, never presents
+    partial success, rejects reentry, and never repeats an uncertain attempt in one heartbeat. One
+    parent still updates all contexts; the managed host still owns cleanup. Ordinary code remains:
+
+    ```java
+    controls.bind(program.callbackBindings(), capabilities);
+    ```
+
+    This applies the existing effectful-owner principle and does not reopen SOURCE-04's
+    transactional value-cache contract or API-04's completed declaration-order decision.
+  - **Bounded implementation:** change private attempt/update/clear behavior in `Bindings`; update
+    its Javadocs, Loop Structure section 4.3, Framework Lanes & Robot Controls, the tester-base
+    idempotency wording, and any maintained walkthrough wording found by the final scan. Add focused
+    binding/context/TaskBindings regressions and preserve managed-host behavior. Do not change
+    callback signatures, activation policy, registration order, Task scheduling, RobotProgram or
+    tester lifecycle, Phoenix controls, examples, or hardware code.
+  - **Verification plan:** inject activation/source and first/middle/last root/context callback
+    failures; prove one visited prefix, skipped suffix, exact exception identity, and no same-cycle
+    resampling. Cover representative edge/mirror/toggle-or-nudge/level/scalar state, Task-factory
+    partial effects, successful dedupe, next-cycle behavior without manufactured edges, same- and
+    second-clock reentry, caught/escaping reentry, clear/rebuild/context invalidation, and structural
+    guard release. Preserve context/declaration order, cooperative reentrant STOP, and managed
+    cleanup/suppression. Run focused binding/context/Task/UI/controls/managed-host tests, then full
+    TeamCode tests and compilation, docs checks, API/caller scans, and whitespace checks.
+  - **Baseline (2026-08-14):** before implementation, four focused suites report **46 tests / 0
+    failures / 0 errors / 0 skipped**: `BindingsRootRegressionTest`,
+    `BindingsControlContextTest`, `TaskBindingsContextTest`, and `FtcRobotOpModeTest`. They preserve
+    the current success/order/host-cleanup baseline but do not cover retained failure or true
+    reentry. Gradle emits only the existing Java 8/JDK 21 and FTC sample warnings. No robot hardware
+    is needed to prove this software lifecycle contract, and INPUT-02 does not claim rollback of a
+    callback's physical effects.
+- **Implementation approval (2026-08-14):** the user replied
+  **`Approve INPUT-02 binding failure-retention design`**. Gate 2 is authorized on branch
+  `codex/input-02-binding-failure-retention`, based on the freshly fetched
+  `origin/master@1073c0519bce458f80642b4f47fc5ad90a4b9d9d`. This approval does not authorize
+  publication, another tracker item, or changes from the separately preserved tracker intake.
+- **Implementation result (2026-08-14):** **Verifying.** `Bindings.update(clock)` now rejects
+  recursive entry before same-cycle deduplication, claims a new numeric cycle before activation or
+  registration work, leaves successful same-cycle repeats as no-ops, and retains the exact escaping
+  `RuntimeException` for every later call in that cycle without replay. A later cycle remains a
+  fresh attempt from the state actually reached. `clear()` invalidates and removes the graph and
+  resets both attempt and retained-failure state, while explicitly making no rollback,
+  neutralization, Task-cancellation, or hardware-stop claim. `Error` remains outside the retained
+  failure contract. No public constructor, method, callback surface, activation policy, caller, or
+  managed-host lifecycle changed.
+- **Adversarial review and corrections (2026-08-14):** independent runtime, API/caller, and
+  documentation/Principles reviews found no production or architecture defect. They did catch a
+  test-evidence shortfall and one Javadoc handoff omission before final verification. The completed
+  regression matrix now covers activation and binding-source failures; first/middle/last root and
+  contextual callback failures; exact exception identity and visited-prefix/skipped-suffix truth;
+  same-cycle activation/source/callback non-replay; root and contextual consumed rises; committed
+  mirror and toggle state; contextual scalar initialization/arming; caught and escaping same- and
+  second-clock reentry; next-cycle attempts; clear/rebuild/context invalidation; structural-guard
+  release; Task-factory partial enqueue behavior; and existing managed fail-stop plus cooperative
+  reentrant STOP behavior. `Bindings.clear()` Javadoc now states its full non-rollback boundary.
+- **Automated verification (2026-08-14):** with Android Studio's JBR, a forced clean execution of
+  `./gradlew.bat --no-daemon --console=plain --rerun-tasks :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs` completed **BUILD SUCCESSFUL**.
+  The XML result set contains **154 suites / 1,480 tests / 0 failures / 0 errors / 0 skipped**.
+  Focused results include `BindingsFailureRetentionTest` 13/13,
+  `BindingsControlContextTest` 14/14, `BindingsRootRegressionTest` 6/6,
+  `TaskBindingsContextTest` 5/5, `CallbackBindingsApiTest` 3/3,
+  `FtcRobotOpModeTest` 22/22, and `DocumentationLinksTest` 5/5. Production compilation and strict
+  Javadocs both succeeded; the only build output was the repository's existing JDK 21 / Java 8
+  source-target and deprecation warnings. `git diff --check`, changed-file trailing-whitespace,
+  Markdown-fence, final-newline, public-surface, and stale-wording scans are clean. The stricter
+  Zensical site build could not run because this host exposes only the Windows Store Python
+  launcher, not a Python runtime; the executable documentation-link suite is green. No robot
+  hardware is required to prove this software lifecycle contract, and no physical rollback is
+  claimed.
+- **Review and publication boundary (2026-08-14):** Android Studio inspection should review the
+  attempt-state ordering and exact failure identity in `Bindings`, the partial-state and reentry
+  regressions, the Task-factory non-replay regression, and synchronized failure/clear ownership in
+  Loop Structure, Framework Lanes & Robot Controls, BaseTeleOpTester, and the shooter walkthrough.
+  The unstaged working tree remains on `codex/input-02-binding-failure-retention` at
+  `1073c0519bce458f80642b4f47fc5ad90a4b9d9d`, whose merge base is the same fetched
+  `origin/master`; the resolved push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` and the target branch is `master`. Gate 3
+  publication is not authorized.
+- **Manual verification and publication authorization (2026-08-14):** the user completed the
+  Android Studio review and sent the exact combined authorization above. INPUT-02 is now **Done**;
+  Gate 3 may create one reviewed commit on `codex/input-02-binding-failure-retention`, push it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge that pull
+  request into `master`. This authorization applies only to the reviewed INPUT-02 diff. The
+  separately committed tracker-intake branch and every other improvement item remain out of scope.
 
 ### TIME-01 - Epoch-safe LoopClock timestamps
 

@@ -270,9 +270,18 @@ PoseEstimate pose = localization.globalEstimator().getEstimate();
 Use the one non-null shared `LoopClock`. Complete camera processor/pipeline transitions before the
 localization phase; a change after this cycle's snapshot was published is reflected next cycle.
 
-### 4.3 Bindings are idempotent
+### 4.3 Bindings own one effectful attempt per cycle
 
-`Bindings.update(clock)` is guarded so it will not fire actions twice in a cycle.
+`Bindings.update(clock)` claims the cycle before sampling a context activation, binding source, or
+callback. After a successful traversal, another call in the same cycle is a no-op. A recursive
+update is rejected before it can start another traversal.
+
+If an activation, source, or callback throws a `RuntimeException`, the traversal stops. Bindings do
+not roll back already sampled source state or callback effects. Another call in that same cycle
+rethrows the exact same exception without sampling or dispatching again. A different cycle may
+attempt the existing graph again from the state it actually reached; only an explicit custom owner
+should choose that recovery policy. The ordinary `FtcRobotOpMode` path instead becomes terminal,
+cancels Tasks, clears bindings, stops outputs and services, and rethrows the original failure.
 
 Optional `Bindings.ControlContext` objects are declaration groups, not additional heartbeat owners.
 Do not update them separately; the parent `bindings.update(clock)` samples every context's
@@ -287,6 +296,9 @@ produced by those visits follow that order; ordinary binding sources are not pre
 Declaration order is sequencing only, not priority or final-output arbitration. Register controls,
 create contexts, and clear/rebuild the graph during initialization or between updates—attempting a
 structural change while `Bindings.update(clock)` is running fails before changing the graph.
+`Bindings.clear()` is an explicit rebuild boundary: it invalidates old contexts, removes
+registrations, and resets the retained cycle attempt or failure. It cannot undo source state or
+external effects produced before a failed traversal stopped.
 
 ### 4.4 TaskRunner is idempotent
 
