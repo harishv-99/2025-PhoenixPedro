@@ -366,8 +366,8 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .velocityTolerance(0.0)
                 .targetFromNewCommand(Double.MAX_VALUE / 2.0)
                 .build();
-        // Two feedback sources plus two command outputs resolve at build.
-        assertEquals(4, hardwareMap.lookupCount);
+        // Each child resolves once; the Plant and tuning evidence share those exact devices.
+        assertEquals(2, hardwareMap.lookupCount);
         assertTrue(plant.hasFeedback());
     }
 
@@ -520,8 +520,9 @@ public final class FtcActuatorMappingDomainValidationTest {
                 .build();
         ManualLoopClock time = new ManualLoopClock();
         plant.update(time.clock());
+        Object binding = privateField(plant, "binding", Object.class);
         VelocityOutput groupOutput = privateField(
-                plant, "velocityOut", VelocityOutput.class);
+                binding, "output", VelocityOutput.class);
         assertEquals(1.0, groupOutput.getCommandedVelocity(), 0.0);
         assertEquals(1.0, first.lastVelocity, 0.0);
         assertEquals(2.0, second.lastVelocity, 0.0);

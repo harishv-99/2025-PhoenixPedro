@@ -211,7 +211,7 @@ Then verify the production owner:
 Do not use this generic wizard to discover limits by collision or stall, coordinate coupled
 actuators, hold an unsafe gravity load, combine a CR servo with a separately owned sensor, calibrate
 a periodic mechanism, define mechanism-specific homing, or tune PIDF. Those jobs require the real
-mechanism owner and its safety policy. PIDF tuning is covered separately in
-[`PIDF Tuning Workflow`](<PIDF Tuning Workflow.md>).
+mechanism owner and its safety policy. Closed-loop control tuning is covered separately in
+[`Control Tuning Workflow`](<Control Tuning Workflow.md>).
 
 [Testing and calibration](<README.md>) · [FTC actuators and Plants](<../ftc-boundary/FTC Actuators & Plants.md>) · [Common problems](<../troubleshooting/Common Problems.md>)

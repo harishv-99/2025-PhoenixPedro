@@ -36,9 +36,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * toward a setpoint. It is intentionally separate from event-driven supervision and from spatial
  * guidance.</p>
  *
- * <p>Framework-regulated Plants instead consume {@link ScalarRegulator}. Use
- * {@link ScalarRegulators#pidf(double, double, double, double)} at that seam for the standard
- * setpoint-aware software PIDF law; this source helper deliberately does not duplicate that
+ * <p>Framework-regulated Plants construct their standard PID and typed feedforward law through
+ * the Plant builder's control stages. They accept a {@link ScalarRegulator} only through the
+ * explicitly custom-regulator branch; this source helper deliberately does not duplicate either
  * construction API.</p>
  */
 public final class ScalarControllers {

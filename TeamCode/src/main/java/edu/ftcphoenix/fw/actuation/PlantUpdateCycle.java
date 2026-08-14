@@ -81,4 +81,17 @@ final class PlantUpdateCycle {
             state = State.FAILED;
         }
     }
+
+    /**
+     * Whether this Plant already began an update in the supplied cycle.
+     * This observation does not claim or bind an otherwise unused gate.
+     */
+    boolean wasAttemptedIn(LoopClock clock) {
+        Objects.requireNonNull(clock, "clock");
+        if (boundClock != null && boundClock != clock) {
+            throw new IllegalStateException(owner
+                    + " is bound to one LoopClock for its lifecycle; received a different clock identity");
+        }
+        return state != State.IDLE && claimedCycle == clock.cycle();
+    }
 }

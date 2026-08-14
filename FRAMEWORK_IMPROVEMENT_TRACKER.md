@@ -170,6 +170,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 83 | API-07 | Explicit callback and Task binding grammar | Done | The reviewed breaking grammar, source-only controls construction, one-shot binding, synchronized callers/docs, automated verification, and publication authorization are complete. |
 | 84 | TUNE-02 | Continuous framework-owned Panels velocity-PIDF tuning | Done | The reviewed exact velocity-PIDF workflow, canonical fresh-Plant seam, scoring consolidation, synchronized evidence/docs, and publication authorization are complete. |
 | 85 | CTRL-02 | Systematic targets, setpoints, and output control | Done | The reviewed systematic motion-control grammar, truthful vocabulary and capabilities, synchronized callers/docs, automated verification, and publication authorization are complete. |
+| 86 | TUNE-03 | Unified standard-control experiments and tuning | Done | Adapt TUNE-02's fresh-Plant Panels workflow to CTRL-02's typed software controls and FTC controller shapes, add truthful velocity/position experiment metrics, and complete the mandatory legacy PIDF removal gate. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -16145,6 +16146,191 @@ writer, and explicit lifecycle ownership.
   and authorized committing the reviewed diff on `codex/ctrl-02-systematic-motion-control`, pushing
   that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
   merging it into `master`. This approval completes Gate 3 for CTRL-02 only, does not claim the
+  deferred robot-hardware validation, and does not start another tracker item.
+
+### TUNE-03 - Unified standard-control experiments and tuning
+
+- **Status and approval (2026-08-13):** **In progress** on
+  `codex/tune-03-standard-control-tuning`, based on fetched `origin/master` at
+  `4ba99f649cf3577d8d21c821714f8e3271c9a95d`. The user approved the decision-complete plan after
+  reviewing grouped FTC velocity, periodic position, lift feedforward, target-range meaning,
+  manual-versus-automatic gain selection, disturbance recovery, session history, and external
+  experiment metadata. TUNE-03 alone owns this implementation.
+- **Confirmed current behavior and gap:** TUNE-02 supplies one complete, framework-owned Panels
+  workflow only for a fresh single-motor FTC device-managed velocity Plant. Its finite positive
+  `testTargetRange` permits one operator-selected target; it does not generate gain candidates,
+  mutate PID from error, sweep the range, score a winner, or persist experiment data. A captures
+  one complete PIDF/target/timer draft, cold start waits at zero, hot A reapplies all four gains,
+  and B/timeout requests zero. CTRL-02 replaced the ordinary software PIDF object with a typed
+  inline setpoint/PID/feedforward model, but deliberately left no Plant-derived live configuration
+  handle. The deprecated `PidfRegulator`, `ScalarRegulators.pidf(...)`,
+  `pid(PidController)`, and `setpointFeedforward(...)` remain solely until this mandatory tuning
+  migration gate.
+- **Caller and construction-path audit:** ordinary FTC mechanisms construct one private Plant
+  through `FtcActuators.plant(HardwareMap)`; the hardware-neutral `Plants.fromOutputs()` root is the
+  distinct portable/test/custom-adapter seam. Both converge on the same late, unit-aware standard
+  control grammar. `FtcPanelsTuners.velocityPidf(name, range, freshPlantFactory)` is the sole
+  ready-made tuner facade; `FtcMotorControllers.velocityPidf(Plant)` is a distinct advanced,
+  configuration-only FTC handle. The only production workflow caller is Phoenix's thin Panels
+  tuning OpMode backed by the canonical scoring Plant recipe. The only compiling standard
+  software-control example is the disabled external-sensor lift example. No production caller uses
+  the deprecated software PIDF factories. `ScalarRegulator` and
+  `controlFromCustomRegulator(...)` remain a real advanced complete-law seam and are not tuning
+  SPI candidates.
+- **Chosen ordinary API:** replace the implementation-specific `velocityPidf(...)` name without an
+  alias with
+  `velocityControl(String, ScalarRange, Function<HardwareMap, Plant>)`. Add parallel
+  `positionControl(String, ScalarRange, Function<HardwareMap, PositionPlant>)` and a four-argument
+  position overload whose `BiFunction<HardwareMap, PositionPlant, Task>` creates a fresh
+  reference/homing Task for each attempt. Robot code still supplies exactly a human name, an
+  allowed finite test envelope, and the canonical fresh-Plant recipe; only position Plants that
+  genuinely require coordinate evidence add the task factory. No motor/controller name, gain DTO,
+  schema registry, or peer target is supplied again.
+- **Chosen capability boundary:** derive one narrow, single-claim controller-configuration handle
+  from the exact completed Plant. Standard control remains package-private and owns an immutable
+  typed parameter snapshot plus cached evidence; the public advanced handle exposes only fixed
+  topology, complete validate/apply/reseed snapshots, and already-published evidence. FTC metadata
+  retains exact resolved controller identities and per-member configuration facts without adding
+  FTC types to core. Universal `Plant` and `ScalarRegulator` do not acquire dummy tuning methods,
+  reflection, a parameter registry, or Panels dependencies. Custom regulators remain ineligible
+  because their owner must define candidate, reset, evidence, and restoration truth.
+- **Chosen velocity experiment:** the allowed range may be signed and may include zero; it permits
+  one editable test target and is not a motion schedule or PID range. A captures controller fields
+  and experiment fields once, compares them with the last accepted snapshot, and changes only what
+  differs. A target-only change starts a new segment without controller write/reset/zero, enabling
+  operating-point experiments such as 2200 to 2300 to 2400 with fixed gains. A controller change
+  applies the complete tuple; software deliberately resets/reseeds, while an FTC change preserves
+  only the evidence its SDK exposes. B/timeout requests zero. Candidate choice remains manual;
+  Phoenix does not mutate or rank gains.
+- **Chosen grouped FTC velocity scope:** one grouped Plant already owns one shared logical PIDF
+  tuple and one shared velocity request, so grouped tuning applies that same candidate to every
+  ordered child. Capture and restore each child's exact initial tuple/algorithm, publish per-child
+  native target/measurement/error and accepted readback, and never average divergent controller
+  readbacks. FTC writes remain sequential and non-transactional. A target-only change remains hot;
+  a gain change first requests zero and requires every child to prove its mapped zero tolerance,
+  then applies all members before restarting. Any partial apply/readback failure terminally stops
+  and best-effort restores every captured member. Generic moving grouped FTC position tuning is
+  deferred because there is no universal quiescent reconfiguration state and mixed sequential loop
+  changes can rack or drop a coupled mechanism.
+- **Chosen position experiment:** support standard software position control and single-motor FTC
+  device-managed position. The FTC candidate is exactly outer position `kP` plus inner velocity
+  `kP/kI/kD/kF`; output power, device/Plant tolerances, bounds, reference policy, profile limits,
+  and geometry stay checked-in recipe facts. Panels presents two exact unwrapped endpoints. One A
+  authorizes one leg, later A presses alternate endpoints, and controller changes apply only while
+  holding or settled. B/timeout requests a hold at the latest finite measurement through the Plant
+  graph. An integrated reference Task runs on the same Plant lifetime; a separate prior OpMode
+  cannot establish Plant-local coordinate state. Periodic Plants are eligible with exact unwrapped
+  commands; automatic equivalent-position reselection is deferred rather than silently wrapped.
+- **Chosen metrics and history:** every accepted segment is a complete immutable record, not a
+  delta: session/segment ID, full controller candidate/readbacks, experiment request, target facts,
+  response/recovery metrics, and termination reason. Retain every accepted record in memory for
+  the OpMode lifetime; rejected or unstable drafts create no record. Velocity records first
+  truthful `Plant.atTarget(...)`, settling, post-settled directional droop, overshoot, observable
+  limiting, and after-settlement target-exit disturbance peak/recovery. Position records concrete
+  travel, direction, first truthful `Plant.atTarget(...)`, settling, error, overshoot, measured
+  peak rate, hold drift, observable limiting, and displacement-from-settled/recovery. Device-hidden
+  setpoints/components stay unavailable.
+- **External experiment metadata:** distance-to-basket, load, make/miss, and acceptance criteria
+  are application/operator facts, not controller evidence. Keep them in an external spreadsheet
+  keyed by the displayed session and segment IDs. Do not add a generic metadata map, success
+  button, arbitrary annotations, on-device CSV writer, or persistence service. Documentation will
+  show the minimal columns `distanceIn, sessionId, segmentId, targetVelocity, shots, makes,
+  accepted, notes`. A later explicit analysis/optimizer item may consume exported data after a
+  real repeated need proves the storage/schema contract.
+- **Alternatives rejected:** documentation-only software experiments leave the promised cleanup
+  gate incomplete; separate device/software public workflows repeat controller ownership;
+  controller/regulator-owned Panels workflows reverse dependencies; a generic tunable-regulator
+  SPI invents methods for opaque laws; one superset fixed-field UI exposes inactive gains; automatic
+  gain mutation/ranking hides a heuristic and physical tradeoffs; range sweeps conflate manual
+  tuning with characterization; per-motor group candidates contradict the one-scalar grouped Plant
+  policy; automatic periodic wrapping can change physical travel; and framework-owned distance or
+  shot-success metadata claims application evidence the Plant does not possess.
+- **Principles comparison:** the result keeps one fresh Plant, one heartbeat, one command graph,
+  and one final hardware writer. The ordinary call remains three answers and implementation-neutral;
+  truthful runtime capability discovery exposes only the active typed model. Controller changes and
+  target experiments are distinct facts even though A captures one coherent snapshot. Full records
+  preserve evidence without becoming production configuration. This is the smallest systematic
+  family that supports both controller tuning and fixed-gain operating-point experiments.
+- **Bounded implementation and cleanup:** implement the Plant-derived standard capability, FTC
+  single/group velocity capability, single-motor FTC position cascade capability, shared Panels
+  session machinery, velocity and position workflows, active-topology draft transport, metrics and
+  session history, Phoenix caller migration, synchronized Javadocs/guides/examples, and removal of
+  the deprecated software PIDF construction layer. Retain `Pid`, `PidController`,
+  `ScalarControllers`, `ScalarRegulator`, `controlFromCustomRegulator(...)`, and the advanced
+  generic voltage/output decorators. Defer automatic optimization, persistent export, equivalent-
+  position tuning, and generic grouped FTC position motion experiments.
+- **Verification plan:** lock exact facade/advanced-handle API shape and absence of the legacy
+  factories; test typed model eligibility/inactive fields, atomic software validate/apply/reseed,
+  target-only no-reset behavior, signed/zero ranges, full immutable history, transition labels,
+  settling/disturbance metrics, grouped per-member evidence/sequential failure/restoration, FTC
+  position two-loop capture/apply/restore, reference Task lifecycle, exact periodic endpoints,
+  one-leg/hold/timeout behavior, dynamic Panels draft coherence, terminal cleanup, documentation
+  links, stale symbols, full unit tests, TeamCode compile, Javadocs, and whitespace. Robot hardware
+  remains adoption validation for gain safety, group agreement, FTC quantization/partial transport,
+  Panels refresh, recovery metrics, homing mechanics, position hold/fall behavior, and physical
+  experiment outcomes.
+- **Implementation result (2026-08-14):** **Verifying.** Added exact completed-Plant-derived
+  standard-control handles for velocity and position without widening `Plant` or
+  `ScalarRegulator`; added ordered single/group FTC velocity and single-motor FTC position
+  controller handles with exact configuration capture, typed candidates, per-member evidence,
+  sequential-failure uncertainty, and best-effort restoration. Replaced the implementation-named
+  Panels entry with `velocityControl(...)` and parallel `positionControl(...)` entries, all backed
+  by one fresh canonical Plant. The active topology alone defines the synchronized Panels draft.
+  Accepted attempts retain complete immutable session records and truthful response, settling,
+  disturbance, limiting, setpoint, controller-component, and grouped-member evidence. Position
+  workflows own reference-Task authorization, exact periodic endpoints, no-output initial hold,
+  and same-cycle bounded recovery hold. Phoenix's tuning OpMode and every affected guide/example
+  now use the new family.
+- **Mandatory cleanup result (2026-08-14):** deleted `PidfRegulator`,
+  `FtcMotorVelocityPidf`, the old Panels PIDF tester, and the overlapping
+  `ScalarRegulators.pid(...)`, `pidf(...)`, and `setpointFeedforward(...)` factories, together with
+  their obsolete tests and guide. Retained `Pid`, `PidController`, `ScalarControllers`,
+  `ScalarRegulator`, `controlFromCustomRegulator(...)`, and the advanced generic voltage/output
+  decorators because they retain distinct error-source or complete-custom-law value. Exact API
+  reflection tests lock the one current construction/tuning story and the absence of aliases.
+- **Adversarial lifecycle and evidence audit (2026-08-14):** resolved reentrant claim/update and
+  nested hold-preparation windows before the first position output; active calibration search owns
+  output until released; failed hold callbacks roll back and remain retryable. Software apply is a
+  complete validate-then-reseed transition. Grouped FTC changes require every member's same-cycle
+  cold-zero evidence and publish every member rather than trusting aggregate cancellation. Panels
+  validation precedes target/controller effects; any post-validation apply failure is terminal.
+  Positive-duration segments reach one Plant realization before timeout, reference Task success is
+  retained as explicit authorization, unavailable evidence is never presented as a real zero, and
+  output-limit/disturbance intervals are attributed to the samples that owned them. Prior segments
+  remain active until the next controller/target mutation succeeds, so failure records end as
+  `TERMINAL_FAILURE` and successful history retains the pre-mutation target facts. Cleanup stops the
+  Plant first, aggregates later failures, and rewrites FTC controller configuration only after an
+  apply may have changed it. A final independent read-only audit of the stable full diff confirmed
+  the transition ordering and found no remaining material API, lifecycle, evidence, cleanup,
+  Principles, decision-record, or guide contradiction.
+- **Automated verification (2026-08-14):** with Android Studio's JBR,
+  `./gradlew.bat --console=plain :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs` completed **BUILD SUCCESSFUL**.
+  The XML result set contains 153 suites / 1,466 tests / 0 failures / 0 errors / 0 skipped,
+  including `DocumentationLinksTest` 5/5. Strict Javadocs generated successfully. The integrated
+  pass found and closed two stale-boundary issues before succeeding: one removed-factory Javadoc
+  link and one Phoenix FTC test probe that did not implement the now-required exact controller
+  readback used for construction rollback. `git diff --check` passed with only informational
+  LF-to-CRLF notices. Stale-symbol scanning found only intentional removal assertions and the new
+  guide's explicit migration note. The stricter Zensical site build could not run because this
+  host exposes only the Windows Store Python launcher, not a Python runtime; the repository's
+  executable documentation-link suite is green.
+- **Review and publication boundary (2026-08-14):** Android Studio inspection should review the
+  three-answer fresh-Plant facade, active-topology draft rebuild, standard/FTC claim boundaries,
+  grouped cold-zero and per-member evidence, position reference/hold lifecycle, immutable history,
+  metric availability keys, and synchronized control-tuning guide. On-robot validation remains
+  required for REV coefficient quantization/transport failures, grouped motor agreement, Panels
+  browser schema refresh and graph presentation, safe gain/output ranges, homing/reference
+  mechanics, gravity-loaded hold/recovery, and physical experiment outcomes. The unstaged working
+  tree remains on `codex/tune-03-standard-control-tuning` at
+  `4ba99f649cf3577d8d21c821714f8e3271c9a95d`, whose merge base is the same fetched
+  `origin/master`; the resolved push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` and the target branch is `master`.
+  Gate 3 publication is not authorized.
+- **Manual verification and publication authorization (2026-08-14):** the user reviewed TUNE-03
+  and authorized committing the reviewed diff on `codex/tune-03-standard-control-tuning`, pushing
+  that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
+  merging it into `master`. This approval completes Gate 3 for TUNE-03 only, does not claim the
   deferred robot-hardware validation, and does not start another tracker item.
 
 ## Explicitly deferred architectural ideas

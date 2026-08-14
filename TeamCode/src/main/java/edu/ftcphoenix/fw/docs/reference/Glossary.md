@@ -122,6 +122,21 @@ and voltage compensation. `outputPowerLimitedTo(maximumMagnitude)` is symmetric;
 paths also support `outputPowerLimitedTo(minimum, maximum)`. This is not a Plant target bound and
 does not constrain separately authorized position-calibration search power.
 
+### Tuning segment
+
+One immutable experiment accepted by A in a framework tuning OpMode. It retains a session/segment
+ID, complete controller candidate and readbacks, target request, response metrics, timing, and end
+reason for that OpMode lifetime. Its transition label compares controller and target changes with
+the previous accepted segment; it is not a substitute for the full record or persisted robot
+configuration.
+
+### Allowed experiment range
+
+The finite physical target values an operator may manually select in a tuning session. Velocity
+uses one chosen target per segment and keeps zero as a separate recovery target. Position uses two
+exact endpoints inside the range and treats the range as a physical safety envelope. It is neither
+a gain range nor an automatic sweep.
+
 ### Native units
 
 The device/controller representation, such as encoder ticks, ticks per second, or servo fraction.

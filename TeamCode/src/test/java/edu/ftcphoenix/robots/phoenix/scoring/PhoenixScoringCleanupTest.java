@@ -6,6 +6,8 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.MotorControlAlgorithm;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.junit.Test;
 
@@ -588,7 +590,8 @@ public final class PhoenixScoringCleanupTest {
         double commandedPower;
         double commandedVelocity;
         double measuredVelocity;
-        double[] velocityPidf;
+        double[] velocityPidf = new double[]{0.0, 0.0, 0.0, 0.0};
+        MotorControlAlgorithm velocityPidfAlgorithm = MotorControlAlgorithm.PIDF;
         int velocityPidfWrites;
         RuntimeException zeroPowerFailure;
         RuntimeException zeroVelocityFailure;
@@ -648,6 +651,22 @@ public final class PhoenixScoringCleanupTest {
                             (Double) args[2],
                             (Double) args[3]
                     };
+                    state.velocityPidfAlgorithm = MotorControlAlgorithm.PIDF;
+                    state.velocityPidfWrites++;
+                    return null;
+                }
+                if ("getPIDFCoefficients".equals(name)) {
+                    return new PIDFCoefficients(
+                            state.velocityPidf[0],
+                            state.velocityPidf[1],
+                            state.velocityPidf[2],
+                            state.velocityPidf[3],
+                            state.velocityPidfAlgorithm);
+                }
+                if ("setPIDFCoefficients".equals(name)) {
+                    PIDFCoefficients value = (PIDFCoefficients) args[1];
+                    state.velocityPidf = new double[]{value.p, value.i, value.d, value.f};
+                    state.velocityPidfAlgorithm = value.algorithm;
                     state.velocityPidfWrites++;
                     return null;
                 }

@@ -39,7 +39,7 @@ The generic wizard can report direction alone, or direction plus two human-appro
 bounded DC motor or standard servo. It cannot automatically discover hard stops, infer CR-servo
 position, choose meaningful Plant units, establish an incremental encoder's durable zero, or tune
 PIDF. After direction, feedback, bounds, and stop behavior are established, use the separate
-[`PIDF tuning workflow`](<PIDF Tuning Workflow.md>).
+[`control tuning workflow`](<Control Tuning Workflow.md>).
 
 ## Mechanism position references
 

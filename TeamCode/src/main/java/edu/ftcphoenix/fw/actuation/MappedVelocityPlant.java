@@ -53,6 +53,8 @@ final class MappedVelocityPlant implements Plant {
     private double lastNativeMeasurement = Double.NaN;
     private boolean lastAtTarget;
     private boolean regulatedActuationCompleted;
+    private boolean heartbeatAttempted;
+    private boolean standardControlTuningClaimed;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
     private PlantTargetResolution targetResolution = PlantTargetResolution.unavailable("not sampled");
 
@@ -258,6 +260,7 @@ final class MappedVelocityPlant implements Plant {
     @Override
     public void update(LoopClock clock) {
         if (!lifecycle.isActive()) return;
+        heartbeatAttempted = true;
         if (!updateCycle.begin(clock)) return;
         try {
             updateOnce(clock);
@@ -456,6 +459,44 @@ final class MappedVelocityPlant implements Plant {
     public ScalarTarget commandTarget() {
         if (commandTarget == null) return Plant.super.commandTarget();
         return commandTarget;
+    }
+
+    StandardControlTuning claimStandardControlTuning() {
+        if (!lifecycle.isActive()) {
+            throw new IllegalStateException(
+                    "Cannot claim standard velocity tuning after the Plant has stopped");
+        }
+        if (heartbeatAttempted) {
+            throw new IllegalStateException("Claim standard velocity tuning before the Plant's "
+                    + "first update so the tuning workflow owns the complete controller lifetime");
+        }
+        if (standardControlTuningClaimed) {
+            throw new IllegalStateException(
+                    "This velocity Plant already supplied its one standard-control tuning handle");
+        }
+        if (!(regulator instanceof StandardControl)) {
+            String path = regulatedPowerChannel == null
+                    ? "device-managed/direct velocity output"
+                    : "custom ScalarRegulator";
+            throw new IllegalStateException("This Plant uses " + path + ", not the Plant-owned "
+                    + "Phoenix standard velocity controller. Tune it through its owning boundary.");
+        }
+        StandardControlTuning handle = new StandardControlTuning(
+                this, (StandardControl) regulator);
+        standardControlTuningClaimed = true;
+        return handle;
+    }
+
+    ScalarRange tuningTargetRange() {
+        return configuredRange;
+    }
+
+    boolean hasExactTuningCommandTarget() {
+        return PlantTargets.isExactCommand(targetResolver);
+    }
+
+    void requireActiveForTuning(String operation) {
+        lifecycle.requireActive(operation);
     }
 
     @Override

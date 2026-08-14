@@ -105,6 +105,13 @@ final class MappedPositionPlant implements PositionPlant {
     private double lastNativeMeasurement = Double.NaN;
     private boolean lastAtTarget;
     private boolean regulatedActuationCompleted;
+    private boolean heartbeatAttempted;
+    private boolean standardControlTuningClaimed;
+    private boolean positionPlantTuningClaimed;
+    private boolean normalRealizationInProgress;
+    private boolean normalRealizationAttempted;
+    private boolean tuningHoldPrepared;
+    private boolean tuningHoldPreparationInProgress;
     private SearchState searchState = SearchState.IDLE;
     private double searchPower;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
@@ -485,6 +492,11 @@ final class MappedPositionPlant implements PositionPlant {
     @Override
     public void update(LoopClock clock) {
         if (!lifecycle.isActive()) return;
+        if (tuningHoldPreparationInProgress) {
+            throw new IllegalStateException("PositionPlant.update(...) is unavailable while "
+                    + "position tuning hold preparation is in progress");
+        }
+        heartbeatAttempted = true;
         if (!updateCycle.begin(clock)) return;
         try {
             updateOnce(clock);
@@ -492,11 +504,21 @@ final class MappedPositionPlant implements PositionPlant {
         } catch (RuntimeException failure) {
             updateCycle.fail(failure);
             throw failure;
+        } finally {
+            normalRealizationInProgress = false;
         }
     }
 
     private void updateOnce(LoopClock clock) {
         if (!lifecycle.isActive()) return;
+        // ASSUME_CURRENT can establish the reference and continue into normal output in this same
+        // heartbeat. Reserve that possible normal realization before sampling the external source
+        // so a reentrant callback cannot claim a pre-output preparation handle midway through it.
+        // A search heartbeat remains eligible, and a non-finite sample leaves
+        // normalRealizationAttempted false so a later claim/retry is still allowed.
+        if (pendingAssume && searchState == SearchState.IDLE) {
+            normalRealizationInProgress = true;
+        }
         if (pendingAssume) {
             double nativeNow = sampleNative(clock);
             if (!lifecycle.isActive()) return;
@@ -554,6 +576,11 @@ final class MappedPositionPlant implements PositionPlant {
             targetStatus = PlantTargetStatus.holdingLast("calibration search active");
             return;
         }
+
+        normalRealizationInProgress = true;
+        // Reserve the normal realization before sampling resolver/guard callbacks so a reentrant
+        // tuning claim cannot stage a hold after this referenced update has already begun.
+        if (isReferenced()) normalRealizationAttempted = true;
 
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
@@ -626,6 +653,9 @@ final class MappedPositionPlant implements PositionPlant {
             lastAtTarget = false;
             return;
         }
+        // A callback may have established the reference after the initial reservation above.
+        // Permanently close tuning preparation before this newly referenced update can actuate.
+        normalRealizationAttempted = true;
         if (positionOut != null) {
             RuntimeException effectFailure = null;
             try {
@@ -738,6 +768,243 @@ final class MappedPositionPlant implements PositionPlant {
     public ScalarTarget commandTarget() {
         if (commandTarget == null) return PositionPlant.super.commandTarget();
         return commandTarget;
+    }
+
+    StandardControlTuning claimStandardControlTuning() {
+        if (!lifecycle.isActive()) {
+            throw new IllegalStateException(
+                    "Cannot claim standard position tuning after the Plant has stopped");
+        }
+        if (heartbeatAttempted) {
+            throw new IllegalStateException("Claim standard position tuning before the Plant's "
+                    + "first update so the tuning workflow owns the complete controller lifetime");
+        }
+        if (standardControlTuningClaimed) {
+            throw new IllegalStateException(
+                    "This position Plant already supplied its one standard-control tuning handle");
+        }
+        if (!(regulator instanceof StandardControl)) {
+            String path;
+            if (regulatedPowerChannel == null) {
+                path = positionOut == null
+                        ? "a non-regulated position path"
+                        : "a direct/device-managed position output";
+            } else {
+                path = "a custom ScalarRegulator";
+            }
+            throw new IllegalStateException("This Plant uses " + path + ", not the Plant-owned "
+                    + "Phoenix standard position controller. Tune it through its owning boundary.");
+        }
+        StandardControlTuning handle = new StandardControlTuning(
+                this, (StandardControl) regulator);
+        standardControlTuningClaimed = true;
+        return handle;
+    }
+
+    PositionPlantTuning claimPositionPlantTuning() {
+        if (!lifecycle.isActive()) {
+            throw new IllegalStateException(
+                    "Cannot claim position tuning after the Plant has stopped");
+        }
+        if (normalRealizationInProgress || normalRealizationAttempted) {
+            throw new IllegalStateException("Claim position tuning before the Plant's first normal "
+                    + "position realization and never from inside one. Calibration-search and "
+                    + "still-unreferenced heartbeats may run first.");
+        }
+        if (positionPlantTuningClaimed) {
+            throw new IllegalStateException(
+                    "This position Plant already supplied its one position-tuning handle");
+        }
+        PositionPlantTuning handle = new PositionPlantTuning(this);
+        positionPlantTuningClaimed = true;
+        return handle;
+    }
+
+    boolean hasExactTuningCommandTarget() {
+        return PlantTargets.isExactCommand(targetResolver);
+    }
+
+    void requireActiveForTuning(String operation) {
+        lifecycle.requireActive(operation);
+    }
+
+    double prepareTuningHoldAtCurrent(LoopClock clock) {
+        Objects.requireNonNull(clock, "clock");
+        lifecycle.requireActive("Position tuning hold preparation");
+        if (tuningHoldPreparationInProgress) {
+            throw new IllegalStateException(
+                    "Position tuning hold preparation is already in progress");
+        }
+        if (!positionPlantTuningClaimed) {
+            throw new IllegalStateException(
+                    "Position hold preparation requires PositionPlantTunings.claim(...) first");
+        }
+        if (normalRealizationInProgress || normalRealizationAttempted) {
+            throw new IllegalStateException("Prepare the initial position hold before the Plant's "
+                    + "first normal realization and never from inside one; calibration-search "
+                    + "and still-unreferenced heartbeats may run first");
+        }
+        if (searchState != SearchState.IDLE) {
+            throw new IllegalStateException("Position tuning hold preparation is unavailable while "
+                    + "calibration search owns output; end the search before sampling its hold");
+        }
+        if (tuningHoldPrepared) {
+            throw new IllegalStateException(
+                    "This position Plant already prepared its one pre-realization tuning hold");
+        }
+        if (!PlantTargets.isExactCommand(targetResolver) || commandTarget == null) {
+            throw new IllegalStateException("Position tuning hold preparation requires one exact "
+                    + "graph-owned command. Equivalent-position, overlay, planned, and read-only "
+                    + "target graphs are not eligible.");
+        }
+        if (referenceMode == ReferenceMode.NEEDS_REFERENCE && !referenced) {
+            throw new IllegalStateException("This PositionPlant needs a physical reference. Run "
+                    + "the tuning workflow's reference Task before preparing its normal hold.");
+        }
+
+        tuningHoldPreparationInProgress = true;
+        try {
+            double nativeNow = sampleNative(clock);
+            lifecycle.requireActive("Position tuning hold preparation");
+            if (!Double.isFinite(nativeNow)) {
+                throw new IllegalStateException("Position tuning hold preparation requires a "
+                        + "finite native position sample; received " + nativeNow);
+            }
+            final boolean establishAssumedReference = pendingAssume;
+            final double candidateMeasurement;
+            if (establishAssumedReference) {
+                try {
+                    requireFiniteBoundedMap(
+                            configuredRange,
+                            nativePerPlantUnit,
+                            assumedPlantPosition,
+                            nativeNow,
+                            "Position tuning hold preparation");
+                } catch (IllegalArgumentException invalidMap) {
+                    throw new IllegalStateException(invalidMap.getMessage(), invalidMap);
+                }
+                candidateMeasurement = assumedPlantPosition;
+            } else {
+                candidateMeasurement = toPlant(nativeNow);
+            }
+            if (!Double.isFinite(candidateMeasurement)) {
+                throw new IllegalStateException("Position tuning hold preparation could not "
+                        + "convert native position " + nativeNow
+                        + " to a finite Plant position");
+            }
+            if (!configuredRange.contains(candidateMeasurement)) {
+                throw new IllegalStateException("Position tuning hold preparation measured Plant "
+                        + "position " + candidateMeasurement
+                        + " outside the declared target range " + configuredRange
+                        + "; Phoenix will not silently clamp an initial hold");
+            }
+
+            double priorCommand = commandTarget.get();
+            try {
+                commandTarget.set(candidateMeasurement);
+                lifecycle.requireActive("Position tuning hold preparation");
+            } catch (RuntimeException failure) {
+                try {
+                    commandTarget.set(priorCommand);
+                } catch (RuntimeException restoreFailure) {
+                    if (restoreFailure != failure) failure.addSuppressed(restoreFailure);
+                }
+                throw failure;
+            }
+            if (establishAssumedReference) {
+                // Complete map validation above makes this assignment-only reference commit safe.
+                establishReferenceFromNative(assumedPlantPosition, nativeNow);
+            } else {
+                lastNativeMeasurement = nativeNow;
+                lastMeasurement = candidateMeasurement;
+            }
+            tuningHoldPrepared = true;
+            return candidateMeasurement;
+        } finally {
+            tuningHoldPreparationInProgress = false;
+        }
+    }
+
+    PositionPlantTuning.RecoveryHold prepareTuningRecoveryHoldWithin(
+            ScalarRange allowedPhysicalRange,
+            LoopClock clock) {
+        Objects.requireNonNull(allowedPhysicalRange, "allowedPhysicalRange");
+        Objects.requireNonNull(clock, "clock");
+        lifecycle.requireActive("Position tuning recovery-hold preparation");
+        if (tuningHoldPreparationInProgress) {
+            throw new IllegalStateException(
+                    "Position tuning hold preparation is already in progress");
+        }
+        if (!positionPlantTuningClaimed || !tuningHoldPrepared) {
+            throw new IllegalStateException("Prepare the initial position tuning hold before "
+                    + "requesting a recovery hold");
+        }
+        if (updateCycle.wasAttemptedIn(clock)) {
+            throw new IllegalStateException("Prepare a position recovery hold before the Plant's "
+                    + "normal update in that LoopClock cycle");
+        }
+        if (searchState != SearchState.IDLE) {
+            throw new IllegalStateException(
+                    "Position recovery hold is unavailable while calibration search owns output");
+        }
+        if (!referenced) {
+            throw new IllegalStateException(
+                    "Position recovery hold requires an established coordinate reference");
+        }
+        if (!PlantTargets.isExactCommand(targetResolver) || commandTarget == null) {
+            throw new IllegalStateException("Position recovery hold requires one exact "
+                    + "graph-owned command");
+        }
+        if (!allowedPhysicalRange.valid
+                || !Double.isFinite(allowedPhysicalRange.minValue)
+                || !Double.isFinite(allowedPhysicalRange.maxValue)) {
+            throw new IllegalArgumentException(
+                    "Position recovery-hold range must be finite and bounded; got "
+                            + allowedPhysicalRange);
+        }
+        if (!configuredRange.contains(allowedPhysicalRange.minValue)
+                || !configuredRange.contains(allowedPhysicalRange.maxValue)) {
+            throw new IllegalArgumentException("Position recovery-hold range "
+                    + allowedPhysicalRange + " must lie inside the Plant target range "
+                    + configuredRange);
+        }
+
+        tuningHoldPreparationInProgress = true;
+        try {
+            double nativeNow = sampleNative(clock);
+            lifecycle.requireActive("Position tuning recovery-hold preparation");
+            double measurement = Double.isFinite(nativeNow) ? toPlant(nativeNow) : Double.NaN;
+            if (!Double.isFinite(measurement)) {
+                throw new IllegalStateException("Position recovery hold requires a finite "
+                        + "same-cycle measurement; native=" + nativeNow
+                        + ", plant=" + measurement);
+            }
+            double holdTarget = allowedPhysicalRange.clamp(measurement);
+            if (!Double.isFinite(holdTarget) || !configuredRange.contains(holdTarget)) {
+                throw new IllegalStateException("Position recovery hold could not choose a finite "
+                        + "legal target from measurement " + measurement + " and range "
+                        + allowedPhysicalRange);
+            }
+
+            double priorCommand = commandTarget.get();
+            try {
+                commandTarget.set(holdTarget);
+                lifecycle.requireActive("Position tuning recovery-hold preparation");
+            } catch (RuntimeException failure) {
+                try {
+                    commandTarget.set(priorCommand);
+                } catch (RuntimeException restoreFailure) {
+                    if (restoreFailure != failure) failure.addSuppressed(restoreFailure);
+                }
+                throw failure;
+            }
+            lastNativeMeasurement = nativeNow;
+            lastMeasurement = measurement;
+            lastAtTarget = false;
+            return new PositionPlantTuning.RecoveryHold(measurement, holdTarget);
+        } finally {
+            tuningHoldPreparationInProgress = false;
+        }
     }
 
     @Override

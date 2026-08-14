@@ -93,7 +93,7 @@ Panels **Update All** changes only Configurables draft fields. It never applies 
 the direct flywheel workflow, finish editing every field, press Update All, then press A on the
 virtual gamepad to capture one stable complete candidate. If telemetry reports an invalid or
 unstable draft, correct the whole candidate and repeat; a running segment intentionally remains
-unchanged. See the [`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>).
+unchanged. See the [`control tuning workflow`](<../testing-calibration/Control Tuning Workflow.md>).
 
 ## FTC START remains blocked
 

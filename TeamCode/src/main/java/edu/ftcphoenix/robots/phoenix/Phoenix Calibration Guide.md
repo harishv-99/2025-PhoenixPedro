@@ -225,7 +225,7 @@ controls, mecanum mixing, configured drivetrain, and output path together.
 
 ---
 
-### Step 3: flywheel velocity PIDF
+### Step 3: flywheel velocity control
 
 OpMode:
 
@@ -247,25 +247,38 @@ run closed, and reconnecting does not rearm it.
 The ordinary test loop is:
 
 ```text
-edit kP/kI/kD/kF, testTarget, and autoStopAfterSec
+edit controller.* plus experiment.targetVelocity and experiment.autoStopAfterSec
 -> Panels Update All
 -> A
 -> observe the numbered segment and charts
 ```
 
-Repeat that loop while the wheel is running to start a `HOT_UPDATE` without deliberately
-requesting zero. Press B when you want zero and a cold baseline. A after B waits until measured
-speed is finite and the Plant truthfully reports `atTarget(0.0)` before starting a `COLD_START`;
-zero command is not proof that inertia has stopped the wheel. For Phoenix, that Plant arrival check
-uses the checked-in `velocityToleranceNative`. `autoStopAfterSec > 0` requests zero after that
-segment's duration, while exactly `0` runs until B, BACK, disconnect, failure, or OpMode stop.
+Repeat that loop while the wheel is running for a hot target/controller comparison without
+deliberately requesting zero. Press B when you want zero and a cold baseline. The first A and every
+A after B wait until measured speed is finite and the Plant truthfully reports `atTarget(0.0)`;
+zero command is not proof that inertia has stopped the wheel. For Phoenix, that arrival check uses
+the checked-in `velocityToleranceNative`. `autoStopAfterSec > 0` requests zero after that segment's
+duration, while exactly `0` runs until B, BACK, disconnect, failure, or OpMode stop.
 
-Panels Update All changes only the browser draft. Wait for it to finish and verify all six displayed
-Draft values before pressing A. The OpMode loop then reads the fields after a short best-effort
+Panels Update All changes only the browser draft. Wait for it to finish and verify every displayed
+active field before pressing A. The OpMode loop then snapshots the ordered map after a short
 quiescence interval; Configurables has no atomic batch marker, so that delay is a filter rather than
 an atomicity guarantee. Invalid or still-changing values reject the whole candidate and leave a
-running segment unchanged. Read telemetry as separate facts: browser draft, captured request, exact controller
-readback, current/last segment, and graph data for target, measurement, error, and acceleration.
+running segment unchanged. Read telemetry as separate facts: browser draft, captured request, exact
+controller readback, immutable segment history, target/measurement/error graphs, and response
+metrics. Transition labels say whether controller, target, both, or neither changed; each history
+record still retains the complete accepted request.
+
+For distance-to-basket trials, use the displayed short session ID and segment ID in a lab sheet:
+
+```text
+distanceIn | sessionId | segmentId | targetVelocity | shots | makes | accepted | notes
+```
+
+Phoenix does not infer a made shot from controller error and does not store robot-specific metadata
+inside the tuner. Record several shots for one segment, then press A for a new segment when target
+or gains change.
+
 The FTC controller may quantize gains, so copy the displayed **readback values** into:
 
 ```java
@@ -281,7 +294,7 @@ TeleOp or Auto. Production never reads Configurables. BACK, STOP, disconnect, or
 terminally stops the flywheel Plant and best-effort restores the controller configuration captured
 for the tuning session, but no software restore can undo physical motion or prove controller
 history. Validate hot-transition dips, spikes, oscillation, shot behavior, and safe targets on the
-robot. See the complete [`PIDF tuning workflow`](<../../fw/docs/testing-calibration/PIDF Tuning Workflow.md>).
+robot. See the complete [`control tuning workflow`](<../../fw/docs/testing-calibration/Control Tuning Workflow.md>).
 
 ---
 

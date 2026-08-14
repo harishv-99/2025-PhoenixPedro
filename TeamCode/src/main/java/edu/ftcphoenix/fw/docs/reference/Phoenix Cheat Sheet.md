@@ -173,6 +173,12 @@ For FTC motor control:
 | Phoenix standard software control | `regulated()` → feedback → units/tolerance → `setpointFrom...` → `feedbackFromPid(...)` → optional typed feedforward → optional `outputPowerLimitedTo(...)` |
 | Custom complete law | the advanced `controlFromCustomRegulator(...)` exit after units/tolerance |
 
+For an exclusive live experiment, pass one fresh canonical Plant recipe to
+`FtcPanelsTuners.velocityControl(...)` or `positionControl(...)`. The finite range is permission for
+manually selected physical targets, not an automatic sweep. Panels Update All edits a draft; A
+accepts one complete immutable segment. See the
+[`Control Tuning Workflow`](<../testing-calibration/Control Tuning Workflow.md>).
+
 Keep the nouns distinct: the coordinate reference aligns Plant and native position, the target is
 the final mechanism goal, the setpoint is the per-cycle control state, and output power is normalized
 actuator effort.

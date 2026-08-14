@@ -51,20 +51,21 @@ This repository's production Phoenix robot has its own ordered
    drivetrain integration, encoders, camera mount, AprilTags, Pinpoint, and corrected localization.
 3. [`AprilTag Practice Setup`](<../drive-vision/AprilTag Practice Setup.md>) — a known small test
    area when a complete field is unavailable.
-4. [`PIDF Tuning Workflow`](<PIDF Tuning Workflow.md>) — the ready-made FTC device-managed
-   velocity-PIDF workflow, plus the separate rules for software-regulated PIDF.
+4. [`Control Tuning Workflow`](<Control Tuning Workflow.md>) — ready-made velocity and position
+   experiments for supported FTC device-managed and Phoenix standard controllers.
 
-For FTC device-managed velocity control, robot code normally calls
-`FtcPanelsTuners.velocityPidf(...)` and supplies a factory for one fresh Plant built from its
-production owner's canonical recipe. The framework owns draft capture, the controller session,
-segments, charts, restore, and cleanup. This is not a generic raw-actuator editor: the Plant remains
-the sole actuation path and robot code still declares a safe positive test range.
+Robot code calls `FtcPanelsTuners.velocityControl(...)` or `positionControl(...)` and supplies a
+factory for one fresh Plant built from its production owner's canonical recipe. The completed
+Plant selects the supported controller topology. The framework owns draft capture, the controller
+session, segments, metrics, history, restoration, and cleanup. This is not a generic raw-actuator
+editor: the Plant remains the sole actuation path and robot code declares the finite physical
+experiment envelope.
 
 The production Phoenix robot provides the concrete **Phoenix: Tuning (Panels)** entry. It opens the
 flywheel workflow directly with no tester menu. Powered tuning requires exactly one Panels client
 rather than the general tester entry's at-least-one rule. Panels **Update All** publishes only a
 draft; A captures and applies one complete candidate on the OpMode loop. Read the
-[`PIDF tuning runbook`](<PIDF Tuning Workflow.md#phoenix-flywheel-the-ready-made-panels-workflow>)
+[`control tuning runbook`](<Control Tuning Workflow.md>)
 before enabling it.
 
 ## Mentor and tester-author reference

@@ -66,6 +66,10 @@ final class StandardControl implements ScalarRegulator {
         private double kG;
         private double positionAtMaximumGravity;
         private double radiansPerPlantUnit;
+        private boolean kSActive;
+        private boolean kVActive;
+        private boolean kAActive;
+        private boolean kGActive;
         private boolean feedforwardAnswered;
 
         private ScalarSource supplyVoltage;
@@ -142,38 +146,51 @@ final class StandardControl implements ScalarRegulator {
             return this;
         }
 
+        /** Add velocity-only motion feedforward when velocity evidence exists. */
+        Config feedforwardForMotion(double kV) {
+            requireVelocityEvidence("feedforwardForMotion(kV)");
+            return answerFeedforward(FeedforwardMode.MOTION, 0.0, kV, 0.0, 0.0,
+                    0.0, 0.0, false, true, false, false,
+                    "feedforwardForMotion(kV)");
+        }
+
         /** Add static and velocity motion feedforward when velocity evidence exists. */
         Config feedforwardForMotion(double kS, double kV) {
             requireVelocityEvidence("feedforwardForMotion(kS, kV)");
             return answerFeedforward(FeedforwardMode.MOTION, kS, kV, 0.0, 0.0,
-                    0.0, 0.0, "feedforwardForMotion(kS, kV)");
+                    0.0, 0.0, true, true, false, false,
+                    "feedforwardForMotion(kS, kV)");
         }
 
         /** Add the full static/velocity/acceleration motion model when acceleration is known. */
         Config feedforwardForMotion(double kS, double kV, double kA) {
             requireAccelerationEvidence("feedforwardForMotion(kS, kV, kA)");
             return answerFeedforward(FeedforwardMode.MOTION, kS, kV, kA, 0.0,
-                    0.0, 0.0, "feedforwardForMotion(kS, kV, kA)");
+                    0.0, 0.0, true, true, true, false,
+                    "feedforwardForMotion(kS, kV, kA)");
         }
 
         /** Add constant signed gravity compensation with all optional motion gains exactly zero. */
         Config feedforwardForLift(double kG) {
             return answerFeedforward(FeedforwardMode.LIFT, 0.0, 0.0, 0.0, kG,
-                    0.0, 0.0, "feedforwardForLift(kG)");
+                    0.0, 0.0, false, false, false, true,
+                    "feedforwardForLift(kG)");
         }
 
         /** Add lift gravity plus static/velocity motion terms when velocity is known. */
         Config feedforwardForLift(double kS, double kV, double kG) {
             requireVelocityEvidence("feedforwardForLift(kS, kV, kG)");
             return answerFeedforward(FeedforwardMode.LIFT, kS, kV, 0.0, kG,
-                    0.0, 0.0, "feedforwardForLift(kS, kV, kG)");
+                    0.0, 0.0, true, true, false, true,
+                    "feedforwardForLift(kS, kV, kG)");
         }
 
         /** Add lift gravity plus the full motion model when acceleration is known. */
         Config feedforwardForLift(double kS, double kV, double kA, double kG) {
             requireAccelerationEvidence("feedforwardForLift(kS, kV, kA, kG)");
             return answerFeedforward(FeedforwardMode.LIFT, kS, kV, kA, kG,
-                    0.0, 0.0, "feedforwardForLift(kS, kV, kA, kG)");
+                    0.0, 0.0, true, true, true, true,
+                    "feedforwardForLift(kS, kV, kA, kG)");
         }
 
         /**
@@ -185,20 +202,8 @@ final class StandardControl implements ScalarRegulator {
             requirePositionEvidence("feedforwardForArm(kG, position, radiansPerPlantUnit)");
             return answerFeedforward(FeedforwardMode.ARM, 0.0, 0.0, 0.0, kG,
                     positionAtMaximumGravity, radiansPerPlantUnit,
+                    false, false, false, true,
                     "feedforwardForArm(kG, position, radiansPerPlantUnit)");
-        }
-
-        /** Add arm gravity plus static/velocity motion terms for a profiled position setpoint. */
-        Config feedforwardForArm(double kS,
-                                 double kV,
-                                 double kG,
-                                 double positionAtMaximumGravity,
-                                 double radiansPerPlantUnit) {
-            requireProfiledPositionEvidence(
-                    "feedforwardForArm(kS, kV, kG, position, radiansPerPlantUnit)");
-            return answerFeedforward(FeedforwardMode.ARM, kS, kV, 0.0, kG,
-                    positionAtMaximumGravity, radiansPerPlantUnit,
-                    "feedforwardForArm(kS, kV, kG, position, radiansPerPlantUnit)");
         }
 
         /** Add arm gravity plus the full motion model for a profiled position setpoint. */
@@ -212,6 +217,7 @@ final class StandardControl implements ScalarRegulator {
                     "feedforwardForArm(kS, kV, kA, kG, position, radiansPerPlantUnit)");
             return answerFeedforward(FeedforwardMode.ARM, kS, kV, kA, kG,
                     positionAtMaximumGravity, radiansPerPlantUnit,
+                    true, true, true, true,
                     "feedforwardForArm(kS, kV, kA, kG, position, radiansPerPlantUnit)");
         }
 
@@ -292,6 +298,10 @@ final class StandardControl implements ScalarRegulator {
                                          double kG,
                                          double positionAtMaximumGravity,
                                          double radiansPerPlantUnit,
+                                         boolean kSActive,
+                                         boolean kVActive,
+                                         boolean kAActive,
+                                         boolean kGActive,
                                          String operation) {
             requireFeedbackAnswered(operation);
             if (feedforwardAnswered) {
@@ -316,6 +326,10 @@ final class StandardControl implements ScalarRegulator {
             this.kG = kG;
             this.positionAtMaximumGravity = positionAtMaximumGravity;
             this.radiansPerPlantUnit = radiansPerPlantUnit;
+            this.kSActive = kSActive;
+            this.kVActive = kVActive;
+            this.kAActive = kAActive;
+            this.kGActive = kGActive;
             feedforwardAnswered = true;
             return this;
         }
@@ -438,18 +452,10 @@ final class StandardControl implements ScalarRegulator {
     private final SetpointMode setpointMode;
     private final double maximumVelocity;
     private final double maximumAcceleration;
-    private final double kP;
-    private final double kI;
-    private final double kD;
     private final double integralMin;
     private final double integralMax;
     private final double feedbackMin;
     private final double feedbackMax;
-    private final FeedforwardMode feedforwardMode;
-    private final double kS;
-    private final double kV;
-    private final double kA;
-    private final double kG;
     private final double positionAtMaximumGravity;
     private final double radiansPerPlantUnit;
     private final ScalarSource supplyVoltage;
@@ -458,6 +464,8 @@ final class StandardControl implements ScalarRegulator {
     private final double maximumVoltageScale;
     private final double minimumOutput;
     private final double maximumOutput;
+    private final StandardControlTuning.Topology tuningTopology;
+    private volatile StandardControlTuning.Parameters tuningParameters;
 
     private LoopClock boundClock;
     private boolean initialized;
@@ -524,18 +532,10 @@ final class StandardControl implements ScalarRegulator {
         setpointMode = config.setpointMode;
         maximumVelocity = config.maximumVelocity;
         maximumAcceleration = config.maximumAcceleration;
-        kP = config.kP;
-        kI = config.kI;
-        kD = config.kD;
         integralMin = config.integralMin;
         integralMax = config.integralMax;
         feedbackMin = config.feedbackMin;
         feedbackMax = config.feedbackMax;
-        feedforwardMode = config.feedforwardMode;
-        kS = config.kS;
-        kV = config.kV;
-        kA = config.kA;
-        kG = config.kG;
         positionAtMaximumGravity = config.positionAtMaximumGravity;
         radiansPerPlantUnit = config.radiansPerPlantUnit;
         supplyVoltage = config.supplyVoltage;
@@ -544,13 +544,46 @@ final class StandardControl implements ScalarRegulator {
         maximumVoltageScale = config.maximumVoltageScale;
         minimumOutput = config.minimumOutput;
         maximumOutput = config.maximumOutput;
+        tuningTopology = new StandardControlTuning.Topology(
+                domainOf(config.setpointMode),
+                publicSetpointModel(config.setpointMode),
+                publicFeedforwardModel(config.feedforwardMode),
+                config.maximumVelocity,
+                config.maximumAcceleration,
+                config.feedforwardMode == FeedforwardMode.ARM
+                        ? config.positionAtMaximumGravity : Double.NaN,
+                config.feedforwardMode == FeedforwardMode.ARM
+                        ? config.radiansPerPlantUnit : Double.NaN,
+                config.integralMin,
+                config.integralMax,
+                config.feedbackMin,
+                config.feedbackMax,
+                config.minimumOutput,
+                config.maximumOutput,
+                config.supplyVoltage != null,
+                config.supplyVoltage != null ? config.referenceVoltage : Double.NaN,
+                config.supplyVoltage != null ? config.minimumVoltage : Double.NaN,
+                config.supplyVoltage != null ? config.maximumVoltageScale : Double.NaN,
+                config.kSActive,
+                config.kVActive,
+                config.kAActive,
+                config.kGActive);
+        tuningParameters = new StandardControlTuning.Parameters(
+                tuningTopology,
+                config.kP,
+                config.kI,
+                config.kD,
+                config.kS,
+                config.kV,
+                config.kA,
+                config.kG);
     }
 
     /**
      * Compute one retained setpoint/PID/feedforward/output snapshot for this Plant cycle.
      */
     @Override
-    public double update(double goal, double measurement, LoopClock clock) {
+    public synchronized double update(double goal, double measurement, LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
         requireClockIdentity(clock);
         if (hasAttemptedCycle && attemptedCycle == clock.cycle()) {
@@ -581,7 +614,7 @@ final class StandardControl implements ScalarRegulator {
 
     /** Clear every transient fact and release this runtime's clock binding. */
     @Override
-    public void reset() {
+    public synchronized void reset() {
         boundClock = null;
         initialized = false;
         skipNextDt = true;
@@ -594,13 +627,90 @@ final class StandardControl implements ScalarRegulator {
      * Explicitly reseed after calibration or another coordinate discontinuity without advancing a
      * profile, PID, source, or output. The next update consumes zero elapsed time.
      */
-    void reseed(double measurement, LoopClock clock) {
+    synchronized void reseed(double measurement, LoopClock clock) {
         requireFinite("reseed(...) measurement", measurement);
         Objects.requireNonNull(clock, "clock");
         reset();
         boundClock = clock;
         seedFromMeasurement(measurement);
         skipNextDt = true;
+    }
+
+    StandardControlTuning.Topology tuningTopology() {
+        return tuningTopology;
+    }
+
+    StandardControlTuning.Parameters tuningParameters() {
+        return tuningParameters;
+    }
+
+    /**
+     * Validate every input before replacing the one immutable gain state and clearing transients.
+     * No source, Plant resolver, or output is sampled by this operation.
+     */
+    synchronized void applyTuningParametersAndReseed(
+            StandardControlTuning.Parameters candidate,
+            StandardControlTuning.Topology expectedTopology,
+            double measurement,
+            LoopClock clock) {
+        Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(expectedTopology, "expectedTopology");
+        Objects.requireNonNull(clock, "clock");
+        requireFinite("apply tuning measurement", measurement);
+        if (expectedTopology != tuningTopology) {
+            throw new IllegalArgumentException(
+                    "Tuning candidate belongs to a different standard-controller topology");
+        }
+        // A candidate can only be obtained from a topology-owned immutable snapshot. Comparing
+        // its public tags provides an actionable guard before the private identity check below.
+        if (candidate.domain() != tuningTopology.domain()
+                || candidate.setpointModel() != tuningTopology.setpointModel()
+                || candidate.feedforwardModel() != tuningTopology.feedforwardModel()) {
+            throw new IllegalArgumentException(
+                    "Tuning candidate does not match the bound standard-controller topology");
+        }
+        if (!candidate.belongsTo(tuningTopology)) {
+            throw new IllegalArgumentException(
+                    "Tuning candidate was created for a different standard-controller instance");
+        }
+
+        // Everything below is assignment-only and cannot call user code. The volatile replacement
+        // publishes the complete tuple as one state; synchronized update cannot observe a partial
+        // reset/reseed boundary.
+        tuningParameters = candidate;
+        boundClock = clock;
+        initialized = false;
+        skipNextDt = true;
+        hasAttemptedCycle = false;
+        retainedCycleFailure = null;
+        clearRuntimeState();
+        seedFromMeasurement(measurement);
+        skipNextDt = true;
+    }
+
+    synchronized StandardControlTuning.Evidence tuningEvidence() {
+        return new StandardControlTuning.Evidence(
+                hasAttemptedCycle && retainedCycleFailure == null,
+                hasAttemptedCycle ? attemptedCycle : -1L,
+                lastGoal,
+                lastMeasurement,
+                setpointPositionAvailable,
+                setpointPosition,
+                setpointVelocity,
+                setpointAccelerationAvailable,
+                setpointAcceleration,
+                setpointSettled,
+                lastError,
+                integralContribution,
+                lastFeedback,
+                lastFeedforward,
+                supplyVoltage != null,
+                lastVoltageScale,
+                lastBeforeOutputLimit,
+                lastOutput,
+                lastFeedbackLimited,
+                lastOutputLimited,
+                lastIntegralGrowthBlocked);
     }
 
     /** True only when the retained setpoint is settled at exactly this Plant-supplied goal. */
@@ -718,7 +828,7 @@ final class StandardControl implements ScalarRegulator {
         String p = (prefix == null || prefix.isEmpty()) ? "standardControl" : prefix;
         dbg.addData(p + ".class", "StandardControl")
                 .addData(p + ".setpointMode", setpointMode.name())
-                .addData(p + ".feedforwardMode", feedforwardMode.name())
+                .addData(p + ".feedforwardMode", tuningTopology.feedforwardModel().name())
                 .addData(p + ".goal", lastGoal)
                 .addData(p + ".measurement", lastMeasurement)
                 .addData(p + ".setpoint.position", setpointPosition)
@@ -753,6 +863,7 @@ final class StandardControl implements ScalarRegulator {
                             + clock.dtSec());
         }
 
+        StandardControlTuning.Parameters parameters = tuningParameters;
         boolean seedBoundary = !initialized || skipNextDt;
         boolean goalChanged = !Double.isFinite(lastGoal) || Double.compare(goal, lastGoal) != 0;
         double elapsedDtSec = seedBoundary ? 0.0 : clock.dtSec();
@@ -776,18 +887,18 @@ final class StandardControl implements ScalarRegulator {
                 ? candidateSetpoint.position
                 : candidateSetpoint.velocity;
         double error = finiteResult("control error", controlledSetpoint - measurement);
-        double pTerm = finiteResult("proportional feedback", kP * error);
+        double pTerm = finiteResult("proportional feedback", parameters.kP() * error);
         double dTerm = 0.0;
-        if (previousErrorAvailable && kD != 0.0 && feedbackDtSec > 0.0) {
+        if (previousErrorAvailable && parameters.kD() != 0.0 && feedbackDtSec > 0.0) {
             double errorDelta = finiteResult("feedback error delta", error - previousError);
             dTerm = finiteResult(
-                    "derivative feedback", kD * (errorDelta / feedbackDtSec));
+                    "derivative feedback", parameters.kD() * (errorDelta / feedbackDtSec));
         }
 
         double candidateIntegral = integralContribution;
-        if (kI != 0.0 && feedbackDtSec > 0.0) {
+        if (parameters.kI() != 0.0 && feedbackDtSec > 0.0) {
             double increment = finiteResult(
-                    "integral feedback increment", kI * error * feedbackDtSec);
+                    "integral feedback increment", parameters.kI() * error * feedbackDtSec);
             candidateIntegral = finiteResult(
                     "integral feedback contribution", integralContribution + increment);
             candidateIntegral = MathUtil.clamp(candidateIntegral, integralMin, integralMax);
@@ -805,6 +916,7 @@ final class StandardControl implements ScalarRegulator {
         }
 
         double antiWindupIntegral = antiWindupIntegral(
+                parameters,
                 candidateSetpoint,
                 pTerm,
                 dTerm,
@@ -812,7 +924,7 @@ final class StandardControl implements ScalarRegulator {
                 candidateIntegral,
                 voltageScale);
         boolean blocked = Double.compare(antiWindupIntegral, candidateIntegral) != 0;
-        Evaluation evaluation = evaluate(candidateSetpoint, pTerm, dTerm,
+        Evaluation evaluation = evaluate(parameters, candidateSetpoint, pTerm, dTerm,
                 antiWindupIntegral, voltageScale);
 
         // Commit the complete state only after every calculation and dynamic source succeeds.
@@ -842,7 +954,8 @@ final class StandardControl implements ScalarRegulator {
         return evaluation.output;
     }
 
-    private Evaluation evaluate(SetpointSnapshot setpoint,
+    private Evaluation evaluate(StandardControlTuning.Parameters parameters,
+                                SetpointSnapshot setpoint,
                                 double pTerm,
                                 double dTerm,
                                 double integral,
@@ -850,7 +963,7 @@ final class StandardControl implements ScalarRegulator {
         double feedbackUnbounded = finiteResult(
                 "combined PID feedback", pTerm + integral + dTerm);
         double feedback = MathUtil.clamp(feedbackUnbounded, feedbackMin, feedbackMax);
-        double feedforward = feedforward(setpoint);
+        double feedforward = feedforward(parameters, setpoint);
         double nominal = finiteResult(
                 "combined feedback and feedforward", feedback + feedforward);
         double beforeLimit = finiteResult(
@@ -872,7 +985,8 @@ final class StandardControl implements ScalarRegulator {
      * Clamp a proposed integral advance at the first feedback/final-output saturation boundary.
      * Existing integral may unwind away from a saturated side, but it cannot grow farther into it.
      */
-    private double antiWindupIntegral(SetpointSnapshot setpoint,
+    private double antiWindupIntegral(StandardControlTuning.Parameters parameters,
+                                      SetpointSnapshot setpoint,
                                       double pTerm,
                                       double dTerm,
                                       double retainedIntegral,
@@ -882,7 +996,7 @@ final class StandardControl implements ScalarRegulator {
             return candidateIntegral;
         }
 
-        double feedforward = feedforward(setpoint);
+        double feedforward = feedforward(parameters, setpoint);
         double feedbackBase = finiteResult("non-integral feedback", pTerm + dTerm);
         if (candidateIntegral > retainedIntegral) {
             double outputFeedbackCeiling = finiteResult(
@@ -912,22 +1026,28 @@ final class StandardControl implements ScalarRegulator {
         return candidateIntegral;
     }
 
-    private double feedforward(SetpointSnapshot setpoint) {
-        if (feedforwardMode == FeedforwardMode.NONE) return 0.0;
+    private double feedforward(StandardControlTuning.Parameters parameters,
+                               SetpointSnapshot setpoint) {
+        StandardControlTuning.FeedforwardModel mode = parameters.feedforwardModel();
+        if (mode == StandardControlTuning.FeedforwardModel.NONE) return 0.0;
 
         double velocity = setpoint.velocity;
         double acceleration = setpoint.accelerationAvailable ? setpoint.acceleration : 0.0;
         double sign = velocity == 0.0 ? 0.0 : Math.copySign(1.0, velocity);
+        double kS = parameters.hasKS() ? parameters.kS() : 0.0;
+        double kV = parameters.hasKV() ? parameters.kV() : 0.0;
+        double kA = parameters.hasKA() ? parameters.kA() : 0.0;
         double motion = finiteResult("motion feedforward",
                 kS * sign + kV * velocity + kA * acceleration);
-        if (feedforwardMode == FeedforwardMode.MOTION) return motion;
-        if (feedforwardMode == FeedforwardMode.LIFT) {
-            return finiteResult("lift feedforward", motion + kG);
+        if (mode == StandardControlTuning.FeedforwardModel.MOTION) return motion;
+        if (mode == StandardControlTuning.FeedforwardModel.LIFT) {
+            return finiteResult("lift feedforward", motion + parameters.kG());
         }
 
         double angle = finiteResult("arm feedforward angle",
                 (setpoint.position - positionAtMaximumGravity) * radiansPerPlantUnit);
-        double gravity = finiteResult("arm gravity feedforward", kG * Math.cos(angle));
+        double gravity = finiteResult(
+                "arm gravity feedforward", parameters.kG() * Math.cos(angle));
         return finiteResult("arm feedforward", motion + gravity);
     }
 
@@ -1171,6 +1291,33 @@ final class StandardControl implements ScalarRegulator {
     private static boolean isProfiledMode(SetpointMode mode) {
         return mode == SetpointMode.POSITION_TRAPEZOIDAL
                 || mode == SetpointMode.VELOCITY_ACCELERATION_LIMITED;
+    }
+
+    private static StandardControlTuning.Domain domainOf(SetpointMode mode) {
+        return isPositionMode(mode)
+                ? StandardControlTuning.Domain.POSITION
+                : StandardControlTuning.Domain.VELOCITY;
+    }
+
+    private static StandardControlTuning.SetpointModel publicSetpointModel(SetpointMode mode) {
+        if (mode == SetpointMode.POSITION_DIRECT) {
+            return StandardControlTuning.SetpointModel.POSITION_DIRECT;
+        }
+        if (mode == SetpointMode.POSITION_TRAPEZOIDAL) {
+            return StandardControlTuning.SetpointModel.POSITION_TRAPEZOIDAL;
+        }
+        if (mode == SetpointMode.VELOCITY_DIRECT) {
+            return StandardControlTuning.SetpointModel.VELOCITY_DIRECT;
+        }
+        return StandardControlTuning.SetpointModel.VELOCITY_ACCELERATION_LIMITED;
+    }
+
+    private static StandardControlTuning.FeedforwardModel publicFeedforwardModel(
+            FeedforwardMode mode) {
+        if (mode == FeedforwardMode.NONE) return StandardControlTuning.FeedforwardModel.NONE;
+        if (mode == FeedforwardMode.MOTION) return StandardControlTuning.FeedforwardModel.MOTION;
+        if (mode == FeedforwardMode.LIFT) return StandardControlTuning.FeedforwardModel.LIFT;
+        return StandardControlTuning.FeedforwardModel.ARM;
     }
 
     private static void requirePositiveFinite(String name, double value) {

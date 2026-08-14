@@ -43,12 +43,12 @@ policy to exactly one Panels client because another unattended client would make
 ambiguous; zero or multiple clients fail the run closed.
 
 Panels Configurables and Graph are presentation/transport facilities, not a second controller.
-**Update All** publishes mutable draft fields only. `FtcPanelsTuners.velocityPidf(...)` captures one
-stable complete candidate and applies it deliberately on the OpMode loop; Graph consumes ordinary
-numeric telemetry from that retained segment. The workflow owns a fresh Plant from the robot's
-canonical recipe, while UI callbacks never write Plants or FTC devices. See the
-[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for the concrete
-edit/Update All/A contract and cleanup behavior.
+**Update All** edits only the active synchronized draft map. `FtcPanelsTuners.velocityControl(...)`
+and `positionControl(...)` capture one stable complete candidate and apply it deliberately on the
+OpMode loop; Graph consumes numeric telemetry from the retained segment. The workflow owns a fresh
+Plant from the robot's canonical recipe, while UI callbacks never write Plants or FTC devices. See
+the [`control tuning workflow`](<../testing-calibration/Control Tuning Workflow.md>) for the concrete
+edit/Update All/A contract, experiment history, and cleanup behavior.
 
 ## `SelectionMenu<T>`
 

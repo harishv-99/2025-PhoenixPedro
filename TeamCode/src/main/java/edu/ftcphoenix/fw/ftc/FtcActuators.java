@@ -1,9 +1,12 @@
 package edu.ftcphoenix.fw.ftc;
 
+import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.MotorControlAlgorithm;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -967,50 +970,57 @@ public final class FtcActuators {
         @Override
         public final P build() {
             lifecycle.beginBuild(plantName);
-            if (targetProvenance == null) {
-                throw new IllegalStateException(plantName
-                        + " requires targetFromNewCommand(...) or targetFromResolver(...) before "
-                        + "build()");
-            }
-            requireGuardsClosed();
-            validateRecipe();
-            validateStoredTargets();
-
-            Plants.TargetStep<P> sharedTarget = createSharedTargetStep();
-            if (!guardSpecs.isEmpty()) {
-                Plants.TargetGuardStep<P> sharedGuards = sharedTarget.targetGuards();
-                for (GuardSpec spec : guardSpecs) {
-                    switch (spec.kind) {
-                        case RATE:
-                            sharedGuards.maxTargetRate(spec.first);
-                            break;
-                        case RATES:
-                            sharedGuards.maxTargetRates(spec.first, spec.second);
-                            break;
-                        case HOLD_BOOLEAN:
-                            sharedGuards.holdLastTargetUnless(spec.name, spec.allowed);
-                            break;
-                        case HOLD_TARGET:
-                            sharedGuards.holdLastTargetUnless(spec.name, spec.gate);
-                            break;
-                        case FALLBACK_BOOLEAN:
-                            sharedGuards.fallbackTargetUnless(spec.name, spec.allowed, spec.first);
-                            break;
-                        case FALLBACK_TARGET:
-                            sharedGuards.fallbackTargetUnless(spec.name, spec.gate, spec.first);
-                            break;
-                        default:
-                            throw new IllegalStateException("Unsupported target guard recipe: "
-                                    + spec.kind);
-                    }
+            try {
+                if (targetProvenance == null) {
+                    throw new IllegalStateException(plantName
+                            + " requires targetFromNewCommand(...) or targetFromResolver(...) before "
+                            + "build()");
                 }
-                sharedTarget = sharedGuards.doneTargetGuards();
-            }
+                requireGuardsClosed();
+                validateRecipe();
+                validateStoredTargets();
 
-            Plants.BuildStep<P> sharedBuild = targetProvenance == TargetProvenance.NEW_COMMAND
-                    ? sharedTarget.targetFromNewCommand(newCommandInitialValue)
-                    : sharedTarget.targetFromResolver(targetResolver);
-            return finishBuiltPlant(sharedBuild.build());
+                Plants.TargetStep<P> sharedTarget = createSharedTargetStep();
+                if (!guardSpecs.isEmpty()) {
+                    Plants.TargetGuardStep<P> sharedGuards = sharedTarget.targetGuards();
+                    for (GuardSpec spec : guardSpecs) {
+                        switch (spec.kind) {
+                            case RATE:
+                                sharedGuards.maxTargetRate(spec.first);
+                                break;
+                            case RATES:
+                                sharedGuards.maxTargetRates(spec.first, spec.second);
+                                break;
+                            case HOLD_BOOLEAN:
+                                sharedGuards.holdLastTargetUnless(spec.name, spec.allowed);
+                                break;
+                            case HOLD_TARGET:
+                                sharedGuards.holdLastTargetUnless(spec.name, spec.gate);
+                                break;
+                            case FALLBACK_BOOLEAN:
+                                sharedGuards.fallbackTargetUnless(
+                                        spec.name, spec.allowed, spec.first);
+                                break;
+                            case FALLBACK_TARGET:
+                                sharedGuards.fallbackTargetUnless(
+                                        spec.name, spec.gate, spec.first);
+                                break;
+                            default:
+                                throw new IllegalStateException("Unsupported target guard recipe: "
+                                        + spec.kind);
+                        }
+                    }
+                    sharedTarget = sharedGuards.doneTargetGuards();
+                }
+
+                Plants.BuildStep<P> sharedBuild = targetProvenance == TargetProvenance.NEW_COMMAND
+                        ? sharedTarget.targetFromNewCommand(newCommandInitialValue)
+                        : sharedTarget.targetFromResolver(targetResolver);
+                return finishBuiltPlant(sharedBuild.build());
+            } catch (RuntimeException failure) {
+                onBuildFailure(failure);
+                throw failure;
+            }
         }
 
         protected abstract void validateRecipe();
@@ -1042,6 +1052,11 @@ public final class FtcActuators {
         /** Add boundary-only metadata without changing the shared Plant engine. */
         protected P finishBuiltPlant(P plant) {
             return plant;
+        }
+
+        /** Best-effort boundary cleanup after a construction failure. */
+        protected void onBuildFailure(RuntimeException failure) {
+            // Most FTC Plant recipes have no construction-time hardware configuration to restore.
         }
 
         private void requireOpenGuards(String operation) {
@@ -1419,7 +1434,12 @@ public final class FtcActuators {
         private final RecipeLifecycle lifecycle;
         private final List<Spec> specs = new ArrayList<>();
         private int lastIndex;
-        private DcMotorEx lastSingleDeviceManagedVelocityMotor;
+        private DcMotorEx lastSingleDeviceManagedPositionMotor;
+        private List<DcMotorEx> lastDeviceManagedPositionMotors;
+        private List<DcMotorEx> pendingOverrideMotors;
+        private List<String> pendingOverrideNames;
+        private List<FtcMotorPidfConfiguration> pendingVelocityBaselines;
+        private List<PositionControllerBaseline> pendingPositionBaselines;
 
         private static final class Spec {
             private final String name;
@@ -1537,63 +1557,85 @@ public final class FtcActuators {
             return FtcHardware.motorPowerGroup(hw, names, directions);
         }
 
-        private VelocityOutput groupedMotorVelocity(DeviceManagedVelocityConfig cfg) {
-            if (specs.size() == 1) {
-                Spec spec = specs.get(0);
-                DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
-                applyDeviceManagedVelocityConfig(motor, spec.name, cfg.velocityPidf);
-                lastSingleDeviceManagedVelocityMotor = motor;
-                return FtcHardware.motorVelocity(motor, spec.direction);
-            }
+        private FtcDeviceManagedVelocityBinding deviceManagedVelocityBinding(
+                DeviceManagedVelocityConfig cfg,
+                double nativePerPlantUnit,
+                double plantTolerance) {
             ensureFeedbackScalesNonZero("device-managed motor velocity");
-            List<VelocityOutput> outs = new ArrayList<>();
-            double[] scales = new double[specs.size()];
-            double[] biases = new double[specs.size()];
-            for (int i = 0; i < specs.size(); i++) {
-                Spec spec = specs.get(i);
-                DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
-                applyDeviceManagedVelocityConfig(motor, spec.name, cfg.velocityPidf);
-                outs.add(FtcHardware.motorVelocity(motor, spec.direction));
-                scales[i] = spec.scale;
-                biases[i] = spec.bias;
+            List<DcMotorEx> motors = resolveDistinctMotors("device-managed velocity");
+            List<String> names = childNames(specs);
+            List<Direction> directions = childDirections(specs);
+            List<FtcMotorPidfConfiguration> before = null;
+            if (cfg.velocityPidf != null) {
+                before = captureVelocityConfigurations(motors, names,
+                        "FtcActuators device-managed velocity pre-override capture");
+                rememberVelocityOverride(motors, names, before);
+                try {
+                    applyVelocityOverride(motors, names, cfg.velocityPidf);
+                } catch (RuntimeException failure) {
+                    rollbackPendingOverride(failure);
+                    throw controllerOverrideFailure(
+                            "Failed to apply the device-managed velocity override group: "
+                                    + failure.getMessage()
+                                    + "; every captured controller restoration was attempted",
+                            failure);
+                }
             }
-            return new GroupedVelocityOutput(
-                    outs, scales, biases, childNames(specs), "motor velocity");
-        }
 
-        private ScalarSource groupedMotorVelocityMeasurement() {
-            if (specs.size() == 1)
-                return FtcSensors.motorVelocityTicksPerSec(hw, specs.get(0).name);
-            List<ScalarSource> sources = new ArrayList<>();
-            double[] scales = new double[specs.size()];
-            double[] biases = new double[specs.size()];
-            for (int i = 0; i < specs.size(); i++) {
-                Spec spec = specs.get(i);
-                sources.add(FtcSensors.motorVelocityTicksPerSec(hw, spec.name));
-                scales[i] = spec.scale;
-                biases[i] = spec.bias;
+            try {
+                return new FtcDeviceManagedVelocityBinding(
+                        motors,
+                        names,
+                        directions,
+                        childScales(specs),
+                        nativePerPlantUnit,
+                        plantTolerance,
+                        cfg.velocityPidf);
+            } catch (RuntimeException failure) {
+                if (before != null) rollbackPendingOverride(failure);
+                throw failure;
             }
-            return averageInverseMappedSources(sources, scales, biases);
         }
 
         private PowerLimitedPositionOutput groupedMotorPosition(DeviceManagedPositionConfig cfg) {
-            if (specs.size() == 1) {
-                Spec spec = specs.get(0);
-                DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
-                applyDeviceManagedPositionConfig(motor, spec.name, cfg);
-                return FtcHardware.motorPosition(motor, spec.direction);
-            }
             ensureFeedbackScalesNonZero("device-managed motor position");
+            List<DcMotorEx> motors = resolveDistinctMotors("device-managed position");
+            lastDeviceManagedPositionMotors = new ArrayList<>(motors);
+            List<String> names = childNames(specs);
+            List<PositionControllerBaseline> before = null;
+            if (cfg.hasAnyOverride()) {
+                before = capturePositionConfigurations(motors, names,
+                        "FtcActuators device-managed position pre-override capture");
+                rememberPositionOverride(motors, names, before);
+                try {
+                    applyPositionOverrides(motors, names, cfg);
+                } catch (RuntimeException failure) {
+                    rollbackPendingOverride(failure);
+                    throw controllerOverrideFailure(
+                            "Failed to apply the device-managed position override group: "
+                                    + failure.getMessage()
+                                    + "; every captured controller restoration was attempted",
+                            failure);
+                }
+            }
+
             List<PowerLimitedPositionOutput> outs = new ArrayList<>();
             double[] scales = new double[specs.size()];
             double[] biases = new double[specs.size()];
-            for (int i = 0; i < specs.size(); i++) {
-                Spec spec = specs.get(i);
-                DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
-                applyDeviceManagedPositionConfig(motor, spec.name, cfg);
-                outs.add(FtcHardware.motorPosition(motor, spec.direction));
-                scales[i] = spec.scale;
-                biases[i] = spec.bias;
+            try {
+                for (int i = 0; i < specs.size(); i++) {
+                    Spec spec = specs.get(i);
+                    outs.add(FtcHardware.motorPosition(motors.get(i), spec.direction));
+                    scales[i] = spec.scale;
+                    biases[i] = spec.bias;
+                }
+            } catch (RuntimeException failure) {
+                if (before != null) rollbackPendingOverride(failure);
+                throw failure;
+            }
+            if (specs.size() == 1) {
+                lastSingleDeviceManagedPositionMotor = motors.get(0);
+                return outs.get(0);
             }
             return new GroupedPowerLimitedPositionOutput(
                     outs,
@@ -1602,18 +1644,115 @@ public final class FtcActuators {
                     childNames(specs));
         }
 
-        private ScalarSource groupedMotorPositionMeasurement() {
-            if (specs.size() == 1) return FtcSensors.motorPositionTicks(hw, specs.get(0).name);
+        private List<DcMotorEx> resolveDistinctMotors(String purpose) {
+            List<DcMotorEx> motors = new ArrayList<>(specs.size());
+            IdentityHashMap<DcMotorEx, String> seen = new IdentityHashMap<>();
+            for (Spec spec : specs) {
+                DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
+                String earlierName = seen.put(motor, spec.name);
+                if (earlierName != null) {
+                    throw new IllegalStateException("FTC " + purpose + " motors '" + earlierName
+                            + "' and '" + spec.name + "' resolve to the same DcMotorEx object; "
+                            + "each group member must be a distinct configured device");
+                }
+                motors.add(motor);
+            }
+            return motors;
+        }
+
+        private void rememberVelocityOverride(
+                List<DcMotorEx> motors,
+                List<String> names,
+                List<FtcMotorPidfConfiguration> baselines) {
+            requireNoPendingOverride();
+            pendingOverrideMotors = new ArrayList<>(motors);
+            pendingOverrideNames = new ArrayList<>(names);
+            pendingVelocityBaselines = new ArrayList<>(baselines);
+        }
+
+        private void rememberPositionOverride(
+                List<DcMotorEx> motors,
+                List<String> names,
+                List<PositionControllerBaseline> baselines) {
+            requireNoPendingOverride();
+            pendingOverrideMotors = new ArrayList<>(motors);
+            pendingOverrideNames = new ArrayList<>(names);
+            pendingPositionBaselines = new ArrayList<>(baselines);
+        }
+
+        private void requireNoPendingOverride() {
+            if (pendingOverrideMotors != null) {
+                throw new IllegalStateException(
+                        "Internal FTC builder already has a pending controller override");
+            }
+        }
+
+        private void rollbackPendingOverride(RuntimeException primaryFailure) {
+            if (pendingOverrideMotors == null) return;
+            List<DcMotorEx> motors = pendingOverrideMotors;
+            List<String> names = pendingOverrideNames;
+            List<FtcMotorPidfConfiguration> velocity = pendingVelocityBaselines;
+            List<PositionControllerBaseline> position = pendingPositionBaselines;
+            clearPendingOverride();
+            if (velocity != null) {
+                restoreVelocityConfigurationsAfterBuildFailure(
+                        motors, names, velocity, primaryFailure);
+            } else if (position != null) {
+                restorePositionConfigurationsAfterBuildFailure(
+                        motors, names, position, primaryFailure);
+            }
+        }
+
+        private void commitPendingOverride() {
+            clearPendingOverride();
+        }
+
+        private void clearPendingOverride() {
+            pendingOverrideMotors = null;
+            pendingOverrideNames = null;
+            pendingVelocityBaselines = null;
+            pendingPositionBaselines = null;
+        }
+
+        private ScalarSource deviceManagedPositionMeasurement() {
+            if (lastDeviceManagedPositionMotors == null
+                    || lastDeviceManagedPositionMotors.size() != specs.size()) {
+                throw new IllegalStateException("Device-managed position feedback lost the exact "
+                        + "resolved motor identities owned by its output");
+            }
+            if (specs.size() == 1) {
+                return FtcSensors.motorPositionTicks(lastDeviceManagedPositionMotors.get(0));
+            }
             List<ScalarSource> sources = new ArrayList<>();
             double[] scales = new double[specs.size()];
             double[] biases = new double[specs.size()];
             for (int i = 0; i < specs.size(); i++) {
                 Spec spec = specs.get(i);
-                sources.add(FtcSensors.motorPositionTicks(hw, spec.name));
+                sources.add(FtcSensors.motorPositionTicks(
+                        lastDeviceManagedPositionMotors.get(i)));
                 scales[i] = spec.scale;
                 biases[i] = spec.bias;
             }
             return averageInverseMappedSources(sources, scales, biases);
+        }
+
+        private PowerOutput deviceManagedPositionSearchPower() {
+            if (lastDeviceManagedPositionMotors == null
+                    || lastDeviceManagedPositionMotors.size() != specs.size()) {
+                throw new IllegalStateException("Device-managed position search power lost the "
+                        + "exact resolved motor identities owned by its output");
+            }
+            List<PowerOutput> outputs = new ArrayList<>(specs.size());
+            for (int index = 0; index < specs.size(); index++) {
+                outputs.add(FtcHardware.motorPower(
+                        lastDeviceManagedPositionMotors.get(index),
+                        specs.get(index).direction));
+            }
+            if (outputs.size() == 1) return outputs.get(0);
+            return new IdentityGroupedPowerOutput(
+                    outputs,
+                    childNames(specs),
+                    "device-managed motor position search power");
         }
 
         private void requireDefaultGroupScalingForRegulated(String mode) {
@@ -1777,7 +1916,7 @@ public final class FtcActuators {
         private double minimumOutputPower;
         private double maximumOutputPower;
         private boolean outputPowerAnswered;
-        private DcMotorEx singleDeviceManagedMotor;
+        private FtcDeviceManagedVelocityBinding deviceManagedBinding;
 
         private MotorVelocityBuilder(MotorBuilder parent) {
             super(parent.lifecycle, "motor velocity Plant");
@@ -2085,11 +2224,10 @@ public final class FtcActuators {
         @Override
         protected Plants.TargetStep<Plant> createSharedTargetStep() {
             if (isDeviceManaged()) {
-                ScalarSource measurement = parent.groupedMotorVelocityMeasurement();
-                VelocityOutput output = parent.groupedMotorVelocity(deviceConfig);
-                if (parent.specs.size() == 1) {
-                    singleDeviceManagedMotor = parent.lastSingleDeviceManagedVelocityMotor;
-                }
+                deviceManagedBinding = parent.deviceManagedVelocityBinding(
+                        deviceConfig, nativePerPlantUnit, velocityTolerance);
+                ScalarSource measurement = deviceManagedBinding.sharedNativeMeasurement();
+                VelocityOutput output = deviceManagedBinding.output();
                 Plants.VelocityBoundsStep<Plants.TargetStep<Plant>> deviceBounds =
                         Plants.fromOutputs().deviceManagedVelocity(output, measurement);
                 return replayVelocityCoordinates(deviceBounds);
@@ -2105,18 +2243,24 @@ public final class FtcActuators {
 
         @Override
         protected Plant finishBuiltPlant(Plant plant) {
-            if (!isDeviceManaged() || parent.specs.size() != 1) {
+            if (!isDeviceManaged()) {
                 return plant;
             }
-            if (singleDeviceManagedMotor == null) {
+            if (deviceManagedBinding == null) {
                 throw new IllegalStateException(
-                        "Single-motor device-managed velocity Plant lost its FTC motor identity");
+                        "Device-managed velocity Plant lost its FTC motor-group identity");
             }
-            return new FtcDeviceManagedVelocityPlant(
+            Plant result = new FtcDeviceManagedVelocityPlant(
                     plant,
-                    singleDeviceManagedMotor,
-                    parent.specs.get(0).name,
+                    deviceManagedBinding,
                     range);
+            parent.commitPendingOverride();
+            return result;
+        }
+
+        @Override
+        protected void onBuildFailure(RuntimeException failure) {
+            parent.rollbackPendingOverride(failure);
         }
 
         private void answerControl(VelocityControlKind answer, String operation) {
@@ -3590,15 +3734,15 @@ public final class FtcActuators {
         @Override
         protected Plants.TargetStep<PositionPlant> createSharedPositionTargetStep() {
             if (isDeviceManaged()) {
-                ScalarSource measurement = parent.groupedMotorPositionMeasurement();
                 PowerLimitedPositionOutput output = parent.groupedMotorPosition(deviceConfig);
+                ScalarSource measurement = parent.deviceManagedPositionMeasurement();
                 Plants.DeviceManagedPositionStep<
                         Plants.SymmetricOutputPowerPolicyStep<PositionPlant>> start =
                         Plants.fromOutputs()
                         .deviceManagedPosition(output, measurement);
                 Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep<
                         Plants.SymmetricOutputPowerPolicyStep<PositionPlant>>> periodicity =
-                        start.searchPowerOutput(parent.groupedMotorPower());
+                        start.searchPowerOutput(parent.deviceManagedPositionSearchPower());
                 Plants.SymmetricOutputPowerPolicyStep<PositionPlant> outputPolicy =
                         replayPositionCoordinates(periodicity);
                 return deviceMaximumOutputPowerAnswered
@@ -3610,6 +3754,32 @@ public final class FtcActuators {
             Plants.PositionControlStep control = replayPositionCoordinates(
                     Plants.fromOutputs().regulatedPosition(power, measurement));
             return replayPositionControl(control);
+        }
+
+        @Override
+        protected PositionPlant finishBuiltPlant(PositionPlant plant) {
+            if (!isDeviceManaged()) {
+                return plant;
+            }
+            PositionPlant result = plant;
+            if (parent.specs.size() == 1) {
+                if (parent.lastSingleDeviceManagedPositionMotor == null) {
+                    throw new IllegalStateException(
+                            "Single-motor device-managed position Plant lost its FTC motor identity");
+                }
+                result = new FtcDeviceManagedPositionPlant(
+                        plant,
+                        parent.lastSingleDeviceManagedPositionMotor,
+                        parent.specs.get(0).name,
+                        configuredTargetRange());
+            }
+            parent.commitPendingOverride();
+            return result;
+        }
+
+        @Override
+        protected void onBuildFailure(RuntimeException failure) {
+            parent.rollbackPendingOverride(failure);
         }
 
         @Override
@@ -4445,58 +4615,6 @@ public final class FtcActuators {
         }
     }
 
-    private static final class GroupedVelocityOutput implements VelocityOutput {
-        private final List<VelocityOutput> outputs;
-        private final double[] scales;
-        private final double[] biases;
-        private final List<String> names;
-        private final String family;
-        private double last;
-
-        private GroupedVelocityOutput(List<VelocityOutput> outputs,
-                                      double[] scales,
-                                      double[] biases,
-                                      List<String> names,
-                                      String family) {
-            this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
-            this.scales = Objects.requireNonNull(scales, "scales").clone();
-            this.biases = Objects.requireNonNull(biases, "biases").clone();
-            this.names = new ArrayList<>(Objects.requireNonNull(names, "names"));
-            this.family = Objects.requireNonNull(family, "family");
-            requireMatchingChildShape(
-                    this.outputs.size(), this.scales, this.biases, this.names);
-        }
-
-        @Override
-        public void setVelocity(double velocity) {
-            double[] childVelocities = new double[outputs.size()];
-            for (int i = 0; i < outputs.size(); i++) {
-                childVelocities[i] = mappedChildCommand(
-                        family + " runtime command",
-                        i,
-                        names.get(i),
-                        scales[i],
-                        biases[i],
-                        velocity);
-            }
-            last = velocity;
-            for (int i = 0; i < outputs.size(); i++) {
-                outputs.get(i).setVelocity(childVelocities[i]);
-            }
-        }
-
-        @Override
-        public double getCommandedVelocity() {
-            return last;
-        }
-
-        @Override
-        public void stop() {
-            attemptAllStops(outputs, VelocityOutput::stop);
-            last = 0.0;
-        }
-    }
-
     // ---------------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------------
@@ -4663,6 +4781,14 @@ public final class FtcActuators {
         List<String> values = new ArrayList<>(specs.size());
         for (MotorBuilder.Spec spec : specs) {
             values.add(spec.name);
+        }
+        return values;
+    }
+
+    private static List<Direction> childDirections(List<MotorBuilder.Spec> specs) {
+        List<Direction> values = new ArrayList<>(specs.size());
+        for (MotorBuilder.Spec spec : specs) {
+            values.add(spec.direction);
         }
         return values;
     }
@@ -4878,26 +5004,209 @@ public final class FtcActuators {
         return value;
     }
 
-    private static void applyDeviceManagedPositionConfig(DcMotorEx motor, String motorName, DeviceManagedPositionConfig cfg) {
-        try {
-            if (cfg.outerPositionP != null) motor.setPositionPIDFCoefficients(cfg.outerPositionP);
-            if (cfg.innerVelocityPidf != null) {
-                double[] c = cfg.innerVelocityPidf;
-                motor.setVelocityPIDFCoefficients(c[0], c[1], c[2], c[3]);
+    private static List<FtcMotorPidfConfiguration> captureVelocityConfigurations(
+            List<DcMotorEx> motors,
+            List<String> names,
+            String operation) {
+        List<FtcMotorPidfConfiguration> captured = new ArrayList<>(motors.size());
+        for (int index = 0; index < motors.size(); index++) {
+            captured.add(FtcMotorControllers.readConfiguration(
+                    motors.get(index),
+                    names.get(index),
+                    DcMotor.RunMode.RUN_USING_ENCODER,
+                    operation));
+        }
+        return captured;
+    }
+
+    private static void applyVelocityOverride(List<DcMotorEx> motors,
+                                              List<String> names,
+                                              double[] velocityPidf) {
+        for (int index = 0; index < motors.size(); index++) {
+            DcMotorEx motor = motors.get(index);
+            try {
+                motor.setVelocityPIDFCoefficients(
+                        velocityPidf[0], velocityPidf[1], velocityPidf[2], velocityPidf[3]);
+                FtcMotorPidfConfiguration readback = FtcMotorControllers.readConfiguration(
+                        motor,
+                        names.get(index),
+                        DcMotor.RunMode.RUN_USING_ENCODER,
+                        "FtcActuators device-managed velocity override readback");
+                if (readback.algorithm() != MotorControlAlgorithm.PIDF) {
+                    throw new IllegalStateException("readback reported algorithm "
+                            + readback.algorithm() + " instead of PIDF");
+                }
+            } catch (RuntimeException failure) {
+                throw new IllegalStateException("FTC SDK device-managed velocity override failed "
+                        + "for motor '" + names.get(index) + "'", failure);
             }
-            if (cfg.devicePositionToleranceTicks != null)
-                motor.setTargetPositionTolerance(cfg.devicePositionToleranceTicks);
-        } catch (RuntimeException ex) {
-            throw new IllegalStateException("Failed to apply device-managed position config for motor '" + motorName + "'. Check that the motor supports the requested FTC SDK APIs.", ex);
         }
     }
 
-    private static void applyDeviceManagedVelocityConfig(DcMotorEx motor, String motorName, double[] velocityPidf) {
+    private static void restoreVelocityConfigurationsAfterBuildFailure(
+            List<DcMotorEx> motors,
+            List<String> names,
+            List<FtcMotorPidfConfiguration> captured,
+            RuntimeException primaryFailure) {
+        Runnable[] restorations = new Runnable[motors.size()];
+        for (int index = 0; index < motors.size(); index++) {
+            final int memberIndex = index;
+            restorations[index] = () -> {
+                FtcMotorPidfConfiguration expected = captured.get(memberIndex);
+                motors.get(memberIndex).setPIDFCoefficients(
+                        DcMotor.RunMode.RUN_USING_ENCODER,
+                        expected.toSdkCoefficients());
+                FtcMotorPidfConfiguration actual = FtcMotorControllers.readConfiguration(
+                        motors.get(memberIndex),
+                        names.get(memberIndex),
+                        DcMotor.RunMode.RUN_USING_ENCODER,
+                        "FtcActuators velocity build-failure restore readback");
+                if (!expected.equals(actual)) {
+                    throw new IllegalStateException("Velocity build-failure restoration for motor '"
+                            + names.get(memberIndex) + "' did not exactly match the captured "
+                            + "tuple and algorithm");
+                }
+            };
+        }
         try {
-            if (velocityPidf != null)
-                motor.setVelocityPIDFCoefficients(velocityPidf[0], velocityPidf[1], velocityPidf[2], velocityPidf[3]);
-        } catch (RuntimeException ex) {
-            throw new IllegalStateException("Failed to apply device-managed velocity config for motor '" + motorName + "'. Check that the motor supports the requested FTC SDK APIs.", ex);
+            CleanupActions.attemptAll(restorations);
+        } catch (RuntimeException restorationFailure) {
+            primaryFailure.addSuppressed(restorationFailure);
+        }
+    }
+
+    private static final class PositionControllerBaseline {
+        private final FtcMotorPidfConfiguration outer;
+        private final FtcMotorPidfConfiguration inner;
+        private final int targetToleranceTicks;
+
+        private PositionControllerBaseline(FtcMotorPidfConfiguration outer,
+                                           FtcMotorPidfConfiguration inner,
+                                           int targetToleranceTicks) {
+            this.outer = outer;
+            this.inner = inner;
+            this.targetToleranceTicks = targetToleranceTicks;
+        }
+    }
+
+    private static List<PositionControllerBaseline> capturePositionConfigurations(
+            List<DcMotorEx> motors,
+            List<String> names,
+            String operation) {
+        List<PositionControllerBaseline> captured = new ArrayList<>(motors.size());
+        for (int index = 0; index < motors.size(); index++) {
+            captured.add(new PositionControllerBaseline(
+                    FtcMotorControllers.readConfiguration(
+                            motors.get(index), names.get(index),
+                            DcMotor.RunMode.RUN_TO_POSITION, operation),
+                    FtcMotorControllers.readConfiguration(
+                            motors.get(index), names.get(index),
+                            DcMotor.RunMode.RUN_USING_ENCODER, operation),
+                    motors.get(index).getTargetPositionTolerance()));
+        }
+        return captured;
+    }
+
+    private static void applyPositionOverrides(List<DcMotorEx> motors,
+                                               List<String> names,
+                                               DeviceManagedPositionConfig cfg) {
+        for (int index = 0; index < motors.size(); index++) {
+            DcMotorEx motor = motors.get(index);
+            String name = names.get(index);
+            try {
+                if (cfg.outerPositionP != null) {
+                    motor.setPositionPIDFCoefficients(cfg.outerPositionP);
+                    FtcMotorPidfConfiguration outer = FtcMotorControllers.readConfiguration(
+                            motor,
+                            name,
+                            DcMotor.RunMode.RUN_TO_POSITION,
+                            "FtcActuators outer-position override readback");
+                    if (outer.algorithm() != MotorControlAlgorithm.PIDF) {
+                        throw new IllegalStateException("outer readback reported algorithm "
+                                + outer.algorithm() + " instead of PIDF");
+                    }
+                }
+                if (cfg.innerVelocityPidf != null) {
+                    double[] inner = cfg.innerVelocityPidf;
+                    motor.setVelocityPIDFCoefficients(
+                            inner[0], inner[1], inner[2], inner[3]);
+                    FtcMotorPidfConfiguration readback = FtcMotorControllers.readConfiguration(
+                            motor,
+                            name,
+                            DcMotor.RunMode.RUN_USING_ENCODER,
+                            "FtcActuators inner-velocity override readback");
+                    if (readback.algorithm() != MotorControlAlgorithm.PIDF) {
+                        throw new IllegalStateException("inner readback reported algorithm "
+                                + readback.algorithm() + " instead of PIDF");
+                    }
+                }
+                if (cfg.devicePositionToleranceTicks != null) {
+                    motor.setTargetPositionTolerance(cfg.devicePositionToleranceTicks);
+                    int readback = motor.getTargetPositionTolerance();
+                    if (readback != cfg.devicePositionToleranceTicks) {
+                        throw new IllegalStateException("tolerance read back " + readback
+                                + " instead of " + cfg.devicePositionToleranceTicks);
+                    }
+                }
+            } catch (RuntimeException failure) {
+                throw new IllegalStateException("FTC SDK device-managed position override failed "
+                        + "for motor '" + name + "'", failure);
+            }
+        }
+    }
+
+    private static IllegalStateException controllerOverrideFailure(
+            String message,
+            RuntimeException failure) {
+        RuntimeException directCause = failure.getCause() instanceof RuntimeException
+                ? (RuntimeException) failure.getCause()
+                : failure;
+        IllegalStateException result = new IllegalStateException(message, directCause);
+        for (Throwable suppressed : failure.getSuppressed()) {
+            result.addSuppressed(suppressed);
+        }
+        return result;
+    }
+
+    private static void restorePositionConfigurationsAfterBuildFailure(
+            List<DcMotorEx> motors,
+            List<String> names,
+            List<PositionControllerBaseline> captured,
+            RuntimeException primaryFailure) {
+        Runnable[] restorations = new Runnable[motors.size() * 3];
+        for (int index = 0; index < motors.size(); index++) {
+            final int memberIndex = index;
+            int base = index * 3;
+            restorations[base] = () -> motors.get(memberIndex).setPIDFCoefficients(
+                    DcMotor.RunMode.RUN_TO_POSITION,
+                    captured.get(memberIndex).outer.toSdkCoefficients());
+            restorations[base + 1] = () -> motors.get(memberIndex).setPIDFCoefficients(
+                    DcMotor.RunMode.RUN_USING_ENCODER,
+                    captured.get(memberIndex).inner.toSdkCoefficients());
+            restorations[base + 2] = () -> motors.get(memberIndex).setTargetPositionTolerance(
+                    captured.get(memberIndex).targetToleranceTicks);
+        }
+        try {
+            CleanupActions.attemptAll(restorations);
+            for (int index = 0; index < motors.size(); index++) {
+                PositionControllerBaseline expected = captured.get(index);
+                FtcMotorPidfConfiguration outer = FtcMotorControllers.readConfiguration(
+                        motors.get(index), names.get(index), DcMotor.RunMode.RUN_TO_POSITION,
+                        "FtcActuators position build-failure restore readback");
+                FtcMotorPidfConfiguration inner = FtcMotorControllers.readConfiguration(
+                        motors.get(index), names.get(index), DcMotor.RunMode.RUN_USING_ENCODER,
+                        "FtcActuators position build-failure restore readback");
+                int tolerance = motors.get(index).getTargetPositionTolerance();
+                if (!expected.outer.equals(outer)
+                        || !expected.inner.equals(inner)
+                        || expected.targetToleranceTicks != tolerance) {
+                    throw new IllegalStateException("Position build-failure restoration for motor '"
+                            + names.get(index) + "' did not exactly match all captured controller "
+                            + "configurations");
+                }
+            }
+        } catch (RuntimeException restorationFailure) {
+            primaryFailure.addSuppressed(restorationFailure);
         }
     }
 }
