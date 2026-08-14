@@ -89,6 +89,8 @@ The compiling [`StarterTeleOp`](<../../../robots/examples/starter/StarterTeleOp.
 ordinary complete host. It overrides one configuration method, not five FTC lifecycle methods:
 
 ```java
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
+
 public final class MyTeleOp extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
@@ -108,6 +110,10 @@ public final class MyTeleOp extends FtcRobotOpMode {
     }
 }
 ```
+
+`GamepadDevice` is the FTC input adapter; after construction, controls and drive code consume only
+its Phoenix sources. Its `fw.ftc.input` boundary location adds no construction ceremony: ordinary
+robot code uses `new GamepadDevice(gamepad1)`.
 
 The program owns one private `LoopClock`, `Bindings`, and `TaskRunner`. It may also own one
 aggregated, data-only `RobotProgram.Prestart`. INIT advances the clock, updates that prestart role,

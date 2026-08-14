@@ -19,7 +19,7 @@ import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.ftc.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**

@@ -35,8 +35,13 @@ mode client
 - `RobotProgram` owns FTC lifecycle forwarding, one `LoopClock`, bindings, Tasks, outputs,
   presenters, telemetry commit, and fail-stop cleanup.
 
-FTC SDK details stay in `edu.ftcphoenix.fw.ftc`. Pedro types stay in the narrow integration and
-Phoenix path edge. Capability and strategy code do not depend on raw FTC devices or Followers.
+Reusable FTC and Android adapters stay in `edu.ftcphoenix.fw.ftc`; vendor bridges stay in the
+narrow `edu.ftcphoenix.fw.integrations` edge; FTC-bound examples and diagnostics stay in
+`edu.ftcphoenix.fw.tools`. Phoenix is the robot application edge: its composition and hardware
+owners may construct those adapters from FTC resources, and its explicit path edge may build Pedro
+geometry. Capability code and policy outside those construction edges depend on Phoenix contracts
+rather than raw FTC devices or Pedro Followers. Dependencies point from these explicit edges into
+the protected framework core, never from the core back into an edge.
 
 ## One managed OpMode grammar
 

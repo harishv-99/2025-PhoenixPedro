@@ -13,7 +13,7 @@ import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.ftc.input.Gamepads;
 
 /**
  * <h2>Example 01: Basic Mecanum TeleOp</h2>

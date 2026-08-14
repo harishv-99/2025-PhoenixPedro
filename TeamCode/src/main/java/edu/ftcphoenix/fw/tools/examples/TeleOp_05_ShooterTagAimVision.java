@@ -27,7 +27,7 @@ import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
-import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.ftc.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountLogic;

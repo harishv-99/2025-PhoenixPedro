@@ -4,7 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
-import edu.ftcphoenix.fw.input.GamepadDevice;
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.binding.CallbackBindings;
 
 /** Owns every gamepad meaning used by the starter TeleOp. */

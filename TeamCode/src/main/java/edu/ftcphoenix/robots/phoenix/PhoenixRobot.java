@@ -23,7 +23,7 @@ import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
-import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.ftc.input.Gamepads;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.PoseResetter;
@@ -52,9 +52,9 @@ public final class PhoenixRobot {
     private static final boolean ENABLE_LOOP_PHASE_PROFILING = false;
 
     /**
-     * Package-private construction seam for a hardware-neutral managed-TeleOp host test.
+     * Package-private FTC assembly seam for a managed-TeleOp lifecycle test.
      *
-     * <p>Ordinary robot code has only the public {@link HardwareMap} constructors. This seam is
+     * <p>Ordinary robot code uses the public FTC-resource constructors. This seam is
      * instance-scoped, changes no lifecycle grammar, and still makes {@link PhoenixRobot} construct
      * and privately retain its complete mechanism graph.</p>
      */
@@ -76,7 +76,7 @@ public final class PhoenixRobot {
         DriveCommandSink createDrive(HardwareMap hardwareMap, PhoenixProfile profile);
     }
 
-    /** Package-private hardware-neutral seam for managed-Auto lifecycle tests. */
+    /** Package-private FTC assembly seam for managed-Auto lifecycle tests. */
     interface AutoHardwareAssembly {
         AprilTagVisionLane createVision(HardwareMap hardwareMap, PhoenixProfile profile);
 
@@ -235,7 +235,7 @@ public final class PhoenixRobot {
         );
     }
 
-    /** Hardware-neutral host-test construction; not a robot-code construction path. */
+    /** FTC-resource host-test construction with replaceable hardware assembly; not robot code. */
     PhoenixRobot(HardwareMap hardwareMap,
                  Telemetry telemetry,
                  Gamepad gamepad1,
@@ -253,7 +253,10 @@ public final class PhoenixRobot {
         );
     }
 
-    /** Hardware-neutral lifecycle-test construction; not an ordinary robot-code path. */
+    /**
+     * FTC-resource lifecycle-test construction with replaceable assemblies; not ordinary robot
+     * code.
+     */
     PhoenixRobot(HardwareMap hardwareMap,
                  Telemetry telemetry,
                  Gamepad gamepad1,

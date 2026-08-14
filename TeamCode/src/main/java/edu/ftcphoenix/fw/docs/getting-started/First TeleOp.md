@@ -96,6 +96,8 @@ cleanup path.
 binds their meanings once, then declares one final source-driven drivetrain:
 
 ```java
+import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
+
 StarterIntakeMechanism intake = program.output(
         new StarterIntakeMechanism(hardwareMap, profile.intake));
 
@@ -107,6 +109,10 @@ program.drive(
         controls.driveSource(),
         FtcDrives.mecanum(hardwareMap, profile.drive));
 ```
+
+`GamepadDevice` is the FTC boundary adapter: it accepts the SDK gamepad and gives controls ordinary
+Phoenix axis and button sources. Its package keeps SDK details out of reusable input and drive
+code; the beginner-facing `new GamepadDevice(gamepad1)` call stays direct.
 
 The controls constructor creates stable input sources only. The explicit, one-shot `bind(...)` call
 then declares what those inputs mean through the program-owned callback surface. The composition

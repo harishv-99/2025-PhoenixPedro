@@ -123,8 +123,16 @@ and do not manufacture a command target that the graph does not own.
 
 ### Boundary ownership
 
-- FTC SDK and vendor types remain at explicit boundary packages. Core logic depends on Phoenix
-  capabilities, not `com.qualcomm.*` or route-library types.
+- The reusable framework core is the part of `edu.ftcphoenix.fw` outside the explicit
+  `fw.ftc`, `fw.integrations`, and `fw.tools` edges. It depends only on core Phoenix contracts; it
+  does not import FTC/Android/vendor types, those edge packages, or robot application packages.
+- FTC SDK and Android adapters live under `edu.ftcphoenix.fw.ftc`; narrow third-party bridges live
+  under `edu.ftcphoenix.fw.integrations`; FTC-bound examples, testers, and calibration hosts live
+  under `edu.ftcphoenix.fw.tools`. `edu.ftcphoenix.robots` is the application edge that composes
+  those adapters with core capabilities and season-specific policy.
+- Dependencies point from an explicit edge into the reusable core, never from the core back out to
+  an edge. A production-source boundary test enforces that direction. Test sources may use SDK
+  stubs or fakes to prove an edge adapter without making those types a production core dependency.
 - An abstraction exposes the smallest capability it can truthfully promise. Do not invent a
   universal interface for devices whose lifecycle or evidence is fundamentally different.
 - Introduce a framework lane only when a recurring, stable multi-object resource graph has a shared

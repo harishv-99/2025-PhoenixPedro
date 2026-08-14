@@ -330,14 +330,20 @@ A clean dependency graph matters as much as the object names.
 A good top-level shape looks like this:
 
 ```text
-framework primitives
+protected framework core
+  (primitives, contracts, and SDK-neutral lane interfaces/implementations)
     ↑
-framework lanes
+explicit framework edges
+  (fw.ftc, fw.integrations, and fw.tools)
     ↑
 robot services / subsystems / supervisors / controls / presenters
     ↑
 composition root
 ```
+
+The arrows mean “may depend on.” Edge implementations translate an FTC or vendor API into a core
+Phoenix capability. The protected core never imports back out to an edge, and the robot
+application remains the final place that chooses and assembles concrete edges.
 
 Field facts sit beside the lanes and can be shared by lanes and robot services:
 
@@ -350,8 +356,10 @@ vision lane ───────────────┤
 
 ### Allowed dependency direction
 
-- primitives may depend on other small framework utilities
-- lanes may depend on primitives and FTC-boundary adapters
+- protected primitives, contracts, and SDK-neutral lane implementations may depend on other
+  protected framework core types
+- a concrete FTC or vendor lane implementation may depend inward on protected core primitives and
+  contracts because that implementation itself lives at an explicit edge
 - robot services may depend on lanes, field facts, and other narrow robot APIs
 - supervisors may depend on subsystems and services
 - presenters may depend on status snapshots
@@ -359,6 +367,7 @@ vision lane ───────────────┤
 
 ### Dependency direction to avoid
 
+- protected framework core importing an FTC, integration, tool, or robot package
 - a primitive depending on robot controls
 - a lane depending on game-specific scoring strategy
 - a subsystem depending on button choices
@@ -583,6 +592,12 @@ Do not push all three into one giant lane unless they truly have the same reason
 ## Step 3: create one controls owner
 
 All TeleOp input semantics should live in one robot-owned controls object.
+
+`GamepadDevice` and `Gamepads` are FTC adapters in `edu.ftcphoenix.fw.ftc.input`; they are the small
+edge that accepts SDK `Gamepad` objects and publishes Phoenix sources. Robot code keeps the simple
+`new GamepadDevice(gamepad1)` or `Gamepads.create(gamepad1, gamepad2)` construction. The controls
+owner then retains those adapters, while reusable input/binding and `GamepadDriveSource` code stay
+SDK-independent.
 
 ```java
 public final class MyTeleOpControls {
@@ -830,9 +845,10 @@ screen is not a new controls mode. See
 ### Keep driver haptics separate from gamepad input
 
 Although the FTC SDK exposes input and rumble through the same gamepad object, they have different
-roles in robot code. `GamepadDevice` remains an input source. The composition root creates one
-recipient-specific output sink for each controller that needs feedback, immediately transfers both
-sinks to one registered driver-feedback output, then gives controls only that semantic owner:
+roles in robot code. `fw.ftc.input.GamepadDevice` is the input adapter. The composition root
+creates one recipient-specific output sink for each controller that needs feedback, immediately
+transfers both sinks to one registered driver-feedback output, then gives controls only that
+semantic owner:
 
 ```java
 DriverFeedbackOutput feedback = program.output(

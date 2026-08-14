@@ -15,7 +15,7 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
-import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.ftc.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.supervisor.FrameValue;
 import edu.ftcphoenix.fw.supervisor.HeldValue;

@@ -17,7 +17,7 @@ import edu.ftcphoenix.fw.ftc.ui.SelectionMenu;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenus;
 import edu.ftcphoenix.fw.ftc.ui.SummaryScreen;
 import edu.ftcphoenix.fw.ftc.ui.UiControls;
-import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.ftc.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;

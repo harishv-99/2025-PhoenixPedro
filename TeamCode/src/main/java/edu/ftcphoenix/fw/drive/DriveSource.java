@@ -108,7 +108,8 @@ public interface DriveSource extends Source<DriveSignal> {
      * output range, call {@link DriveSignal#clamped()} at the point you send the command to a
      * drivebase.</p>
      *
-     * <p>Example:</p>
+     * <p>Example (using the FTC-boundary
+     * {@link edu.ftcphoenix.fw.ftc.input.GamepadDevice GamepadDevice} adapter):</p>
      * <pre>{@code
      * GamepadDevice driver = gamepads.p1();
      * DriveSource manual = new GamepadDriveSource(
@@ -356,7 +357,9 @@ public interface DriveSource extends Source<DriveSignal> {
      *       controls everything else).</li>
      * </ul>
      *
-     * <p>Example: auto-aim overrides rotation while holding a button:</p>
+     * <p>Example: auto-aim overrides rotation while holding a button. The
+     * {@code GamepadDevice} is the FTC-boundary
+     * {@link edu.ftcphoenix.fw.ftc.input.GamepadDevice GamepadDevice} adapter.</p>
      * <pre>{@code
      * GamepadDevice driver = pads.p1();
      * DriveSource manual = new GamepadDriveSource(
