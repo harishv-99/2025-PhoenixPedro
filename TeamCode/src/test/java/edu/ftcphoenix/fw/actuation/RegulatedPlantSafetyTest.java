@@ -5,7 +5,6 @@ import org.junit.Test;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import edu.ftcphoenix.fw.core.control.PidfRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
@@ -265,26 +264,27 @@ public final class RegulatedPlantSafetyTest {
     }
 
     @Test
-    public void pidfLimitsPreserveNonFiniteMeasurementForPlantFailStop() {
-        PidfRegulator pidf = ScalarRegulators.pidf(1.0, 0.0, 0.0, 0.1)
-                .setIntegralLimits(-0.5, 0.5)
-                .setPidOutputLimits(-1.0, 1.0);
-        ScalarRegulator constrained = ScalarRegulators.outputLimited(pidf, 0.0, 0.65);
+    public void standardControlLimitsPreserveNonFiniteMeasurementForPlantFailStop() {
         RecordingPowerOutput output = new RecordingPowerOutput();
         Plant plant = Plants.fromOutputs()
                 .regulatedVelocity(output, clock -> Double.NEGATIVE_INFINITY)
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .controlFromCustomRegulator(constrained)
+                .setpointFromAppliedTarget()
+                .feedbackFromPid(1.0, 0.0, 0.0)
+                .feedbackIntegralLimitedTo(-0.5, 0.5)
+                .feedbackOutputLimitedTo(-1.0, 1.0)
+                .feedforwardFromMotion(0.0, 0.1)
+                .outputPowerLimitedTo(0.0, 0.65)
                 .targetFromNewCommand(100.0)
                 .build();
 
         try {
             plant.update(new ManualLoopClock().clock());
-            fail("Expected non-finite PIDF measurement math to fail closed");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("non-finite"));
+            fail("Expected non-finite standard-control measurement math to fail closed");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("must be finite"));
         }
 
         assertEquals(0, output.setCalls);
@@ -294,10 +294,6 @@ public final class RegulatedPlantSafetyTest {
         assertFalse(plant.atTarget());
         assertFalse(plant.atTarget(100.0));
 
-        CapturingDebugSink pidfDebug = new CapturingDebugSink();
-        pidf.debugDump(pidfDebug, "pidf");
-        assertTrue(Double.isNaN(number(pidfDebug, "pidf.lastSetpoint")));
-        assertTrue(Double.isNaN(number(pidfDebug, "pidf.lastOutput")));
     }
 
     @Test

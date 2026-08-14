@@ -7,6 +7,8 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.MotorControlAlgorithm;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.junit.Test;
 
@@ -720,6 +722,10 @@ public final class FtcDeviceManagedControllerConfigurationValidationTest {
         private DcMotor.RunMode mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER;
         private DcMotorSimple.Direction direction = DcMotorSimple.Direction.FORWARD;
         private RuntimeException velocityPidfFailure;
+        private PIDFCoefficients positionPidf = new PIDFCoefficients(
+                0.0, 0.0, 0.0, 0.0, MotorControlAlgorithm.PIDF);
+        private PIDFCoefficients velocityPidf = new PIDFCoefficients(
+                0.0, 0.0, 0.0, 0.0, MotorControlAlgorithm.PIDF);
 
         private MotorProbe() {
             motor = (DcMotorEx) Proxy.newProxyInstance(
@@ -746,12 +752,29 @@ public final class FtcDeviceManagedControllerConfigurationValidationTest {
                         (double) args[0], (double) args[1],
                         (double) args[2], (double) args[3]
                 };
+                velocityPidf = new PIDFCoefficients(
+                        lastVelocityPidf[0], lastVelocityPidf[1],
+                        lastVelocityPidf[2], lastVelocityPidf[3],
+                        MotorControlAlgorithm.PIDF);
                 velocityPidfWrites++;
                 return null;
             }
             if ("setPositionPIDFCoefficients".equals(name)) {
                 lastPositionP = (double) args[0];
+                positionPidf = new PIDFCoefficients(
+                        lastPositionP, 0.0, 0.0, 0.0, MotorControlAlgorithm.PIDF);
                 positionPWrites++;
+                return null;
+            }
+            if ("getPIDFCoefficients".equals(name)) {
+                return new PIDFCoefficients(
+                        args[0] == DcMotor.RunMode.RUN_TO_POSITION
+                                ? positionPidf : velocityPidf);
+            }
+            if ("setPIDFCoefficients".equals(name)) {
+                PIDFCoefficients value = new PIDFCoefficients((PIDFCoefficients) args[1]);
+                if (args[0] == DcMotor.RunMode.RUN_TO_POSITION) positionPidf = value;
+                else velocityPidf = value;
                 return null;
             }
             if ("setTargetPositionTolerance".equals(name)) {
@@ -759,6 +782,7 @@ public final class FtcDeviceManagedControllerConfigurationValidationTest {
                 toleranceWrites++;
                 return null;
             }
+            if ("getTargetPositionTolerance".equals(name)) return lastToleranceTicks;
             if ("setTargetPosition".equals(name)) {
                 lastTargetPosition = (int) args[0];
                 targetWrites++;

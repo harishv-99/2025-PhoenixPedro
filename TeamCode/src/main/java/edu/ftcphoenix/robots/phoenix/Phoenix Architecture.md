@@ -253,10 +253,11 @@ and use its stable `commandTarget()` when constructing a command.
 
 **Phoenix: Tuning (Panels)** is a dedicated direct tester host, not another production mode,
 scoring owner, or tester menu. Its `createTester()` method returns the framework workflow
-`FtcPanelsTuners.velocityPidf(...)`. Robot code declares only the tester name, bounded positive
-test-target range, and a function that creates a fresh flywheel Plant. The motor name is answered
-only inside that canonical Plant recipe; the framework derives the controller handle from the
-completed Plant and cannot independently select another motor.
+`FtcPanelsTuners.velocityControl(...)`. Robot code declares only the tester name, finite allowed
+test-target range, and a function that creates a fresh flywheel Plant. The motor name and FTC
+device-managed controller are answered only inside that canonical Plant recipe; the framework
+derives the exact controller handle from the completed Plant and cannot independently select
+another motor.
 
 That Plant comes from `PhoenixScoring.createFlywheelPlantForTuning(...)`, an explicitly advanced
 assembly seam that calls the same canonical private flywheel recipe as production. The tuner owns
@@ -265,10 +266,11 @@ capture, evidence, and cleanup for that exclusive OpMode. It does not construct 
 share a production Plant, or write the raw motor beside a Plant. The shared item is the **recipe**,
 not another flywheel owner object.
 
-This is the opt-in pattern for another device-managed velocity Plant: keep the ordinary production
-owner unchanged, expose one clearly named fresh-Plant recipe seam only for an exclusive diagnostic,
-and declare the generic framework workflow in a thin OpMode. There is no generic tunable-mechanism
-interface or registry, and mechanisms without a proven live-tuning need add no tuning API.
+This is the opt-in pattern for another supported standard or FTC controller: keep the ordinary
+production owner unchanged, expose one clearly named fresh-Plant recipe seam only for an exclusive
+diagnostic, and declare the generic velocity or position workflow in a thin OpMode. There is no
+generic tunable-regulator interface or registry, and mechanisms without a proven live-tuning need
+add no tuning API.
 
 Production TeleOp and Auto copy `PhoenixProfile` and never read Configurables. The tuning entry
 starts from the checked-in scoring configuration, then captures the motor controller's resulting
@@ -278,30 +280,28 @@ read all fields after a short best-effort quiescence interval and validate the r
 tuple before any effect. Configurables provides no atomic batch marker, so the interval filters
 ordinary in-flight changes but is not described as transport atomicity.
 
-Each accepted attempt becomes an immutable numbered segment:
-
-- a `COLD_START` waits non-blockingly for finite feedback and the Plant to truthfully report
-  `atTarget(0.0)`, applies and
-  reads back the complete FTC velocity-PIDF tuple, then starts the target;
-- a `HOT_UPDATE` applies and reads back the complete tuple first, then changes target and duration
-  through the same Plant graph without deliberately requesting zero; and
-- B requests zero through that graph but leaves the Plant available for a later cold start.
+Each accepted A becomes an immutable numbered segment. Its transition label states whether the
+controller, target, both, or neither changed from the prior accepted request. A first or post-B
+velocity segment waits non-blockingly for finite feedback and truthful `atTarget(0.0)` before it
+starts. A target-only hot change does not rewrite the controller. A controller change applies and
+reads back the complete tuple before the new target is committed; B requests zero through the Plant
+graph but leaves the Plant available for another cold start.
 
 Exactly zero `autoStopAfterSec` disables automatic stop; a positive finite value starts at the new
 segment boundary. Invalid or unstable drafts leave a running segment and its timer unchanged.
-Telemetry keeps draft, captured request, controller readback, and current/last segment distinct;
-the displayed readback values are what students copy into checked-in configuration. Graph receives
-finite numeric segment ID, requested target, absolute measured velocity, error, and the signed rate
-of absolute measured speed under `tune.velocityPidf.*`; it does not claim unavailable controller
-power or internal term values. Unavailable feedback or an overflowing derived rate is labeled unavailable and
-published to Graph as a finite zero presentation fallback; it is never accepted as stopped evidence.
+Telemetry keeps draft, captured request, controller readback, current segment, full session-local
+history, and response metrics distinct. The displayed accepted readback values are what students
+copy into checked-in configuration. Graph uses stable `tune.velocityControl.*` keys for segment,
+target, measurement, error, settling, overshoot, droop, and disturbance facts. It does not invent
+FTC controller output or internal terms that the SDK does not expose. Shot distance and make/miss
+outcomes remain an external lab-sheet concern correlated by the displayed session and segment IDs.
 
 Powered tuning requires exactly one Panels client. BACK, OpMode stop, disconnect, controller
 failure, or another terminal failure stops the Plant and best-effort restores the captured session
 baseline. The pinned FTC setter does not intentionally change target, mode, power, or direction,
 but firmware controller-history behavior and physically bumpless hot transitions are not promised.
 The complete student runbook is the
-[`PIDF tuning workflow`](<../../fw/docs/testing-calibration/PIDF Tuning Workflow.md#phoenix-flywheel-the-ready-made-panels-workflow>).
+[`control tuning workflow`](<../../fw/docs/testing-calibration/Control Tuning Workflow.md>).
 
 ## Loop and telemetry order
 

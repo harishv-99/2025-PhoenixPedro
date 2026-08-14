@@ -49,7 +49,7 @@ choices must follow the [`Framework Principles`](<../../fw/Framework Principles.
 - [`PhoenixPanelsTuningOpMode.java`](<opmode/PhoenixPanelsTuningOpMode.java>) is the dedicated
   **Phoenix: Tuning (Panels)** flywheel workflow. It opens the tuner directly—there is no tester
   menu to navigate; see the
-  [`PIDF tuning runbook`](<../../fw/docs/testing-calibration/PIDF Tuning Workflow.md#phoenix-flywheel-the-ready-made-panels-workflow>).
+  [`control tuning runbook`](<../../fw/docs/testing-calibration/Control Tuning Workflow.md>).
 
 The competition TeleOp and Auto entries use the managed `FtcRobotOpMode`/`RobotProgram` lifecycle.
 Each entry chooses a setup; the program owns the clock, lifecycle phases, Tasks, outputs, telemetry
@@ -66,7 +66,7 @@ and Auto never read its Configurable draft values.
 | Goal | Change here |
 |---|---|
 | Rename hardware or enter a measured constant | [`PhoenixProfile.java`](<PhoenixProfile.java>) |
-| Tune flywheel velocity PIDF | Open **Phoenix: Tuning (Panels)**, then copy controller readback into [`PhoenixProfile.java`](<PhoenixProfile.java>) |
+| Tune flywheel velocity control | Open **Phoenix: Tuning (Panels)**, correlate trials by session/segment ID, then copy accepted controller readback into [`PhoenixProfile.java`](<PhoenixProfile.java>) |
 | Change a button's meaning | [`PhoenixTeleOpControls.java`](<PhoenixTeleOpControls.java>) |
 | Add mode-neutral robot intent | [`PhoenixCapabilities.java`](<PhoenixCapabilities.java>) and its owning mechanism |
 | Change scoring realization or safety behavior | [`PhoenixScoring.java`](<scoring/PhoenixScoring.java>) |

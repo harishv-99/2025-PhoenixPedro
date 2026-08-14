@@ -3,12 +3,10 @@ package edu.ftcphoenix.fw.actuation;
 import org.junit.Test;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.function.DoubleUnaryOperator;
 
-import edu.ftcphoenix.fw.core.control.PidController;
-import edu.ftcphoenix.fw.core.control.PidfRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -23,6 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Locks the public staged grammar chosen by CTRL-02. */
 public final class SystematicControlApiShapeTest {
@@ -219,17 +218,16 @@ public final class SystematicControlApiShapeTest {
     }
 
     @Test
-    public void onlyTheApprovedLegacyControllerFactoriesAreDeprecated() throws Exception {
-        assertTrue(PidfRegulator.class.isAnnotationPresent(Deprecated.class));
-        assertTrue(declared(ScalarRegulators.class, "pid", PidController.class)
-                .isAnnotationPresent(Deprecated.class));
-        assertTrue(declared(ScalarRegulators.class, "pidf",
-                double.class, double.class, double.class, double.class)
-                .isAnnotationPresent(Deprecated.class));
-        assertTrue(declared(ScalarRegulators.class, "setpointFeedforward",
-                ScalarRegulator.class, DoubleUnaryOperator.class)
-                .isAnnotationPresent(Deprecated.class));
-
+    public void legacyControllerFactoriesAreRemovedAndAdvancedDecoratorsRemain() throws Exception {
+        try {
+            Class.forName("edu.ftcphoenix.fw.core.control.PidfRegulator");
+            fail("PidfRegulator should be removed with the redundant legacy control path");
+        } catch (ClassNotFoundException expected) {
+            // Expected: checked-in standard control is configured through the Plant grammar.
+        }
+        assertNoDeclaredMethod(ScalarRegulators.class, "pid");
+        assertNoDeclaredMethod(ScalarRegulators.class, "pidf");
+        assertNoDeclaredMethod(ScalarRegulators.class, "setpointFeedforward");
         assertFalse(ScalarRegulator.class.isAnnotationPresent(Deprecated.class));
         assertFalse(declared(ScalarRegulators.class, "voltageCompensated",
                 ScalarRegulator.class, ScalarSource.class,
@@ -238,6 +236,45 @@ public final class SystematicControlApiShapeTest {
         assertFalse(declared(ScalarRegulators.class, "outputLimited",
                 ScalarRegulator.class, double.class, double.class)
                 .isAnnotationPresent(Deprecated.class));
+    }
+
+    @Test
+    public void standardTuningParametersExposeOnlyConstructibleGainShapes() throws Exception {
+        int publicMutatorCount = 0;
+        for (Method method : StandardControlTuning.Parameters.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers()) && method.getName().startsWith("with")) {
+                publicMutatorCount++;
+            }
+        }
+        assertEquals(9, publicMutatorCount);
+
+        Class<?> parameters = StandardControlTuning.Parameters.class;
+        assertPublicInstanceRawReturn(parameters, "withFeedbackPid", parameters,
+                double.class, double.class, double.class);
+        assertPublicInstanceRawReturn(parameters, "withMotionFeedforward", parameters,
+                double.class);
+        assertPublicInstanceRawReturn(parameters, "withMotionFeedforward", parameters,
+                double.class, double.class);
+        assertPublicInstanceRawReturn(parameters, "withMotionFeedforward", parameters,
+                double.class, double.class, double.class);
+        assertPublicInstanceRawReturn(parameters, "withLiftFeedforward", parameters,
+                double.class);
+        assertPublicInstanceRawReturn(parameters, "withLiftFeedforward", parameters,
+                double.class, double.class, double.class);
+        assertPublicInstanceRawReturn(parameters, "withLiftFeedforward", parameters,
+                double.class, double.class, double.class, double.class);
+        assertPublicInstanceRawReturn(parameters, "withArmFeedforward", parameters,
+                double.class);
+        assertPublicInstanceRawReturn(parameters, "withArmFeedforward", parameters,
+                double.class, double.class, double.class, double.class);
+    }
+
+    private static void assertNoDeclaredMethod(Class<?> owner, String name) {
+        for (Method method : owner.getDeclaredMethods()) {
+            if (method.getName().equals(name)) {
+                fail(owner.getSimpleName() + "." + name + " should be removed");
+            }
+        }
     }
 
     private static void assertPositionDirectPidStage() throws Exception {
@@ -326,6 +363,16 @@ public final class SystematicControlApiShapeTest {
                                         Class<?> expectedReturn,
                                         Class<?>... parameterTypes) throws Exception {
         assertSame(expectedReturn, declared(owner, name, parameterTypes).getReturnType());
+    }
+
+    private static void assertPublicInstanceRawReturn(Class<?> owner,
+                                                      String name,
+                                                      Class<?> expectedReturn,
+                                                      Class<?>... parameterTypes) throws Exception {
+        Method method = declared(owner, name, parameterTypes);
+        assertTrue(method.toString(), Modifier.isPublic(method.getModifiers()));
+        assertFalse(method.toString(), Modifier.isStatic(method.getModifiers()));
+        assertSame(expectedReturn, method.getReturnType());
     }
 
     private static Method declared(Class<?> owner,

@@ -1727,8 +1727,7 @@ public final class Plants {
         @Override
         public OutputPowerPolicyStep<Plant> feedforwardFromMotion(double kV) {
             requireStandardFeedbackAnswered("feedforwardFromMotion(...)");
-            if (profiledSetpoint) standardControl.feedforwardForMotion(0.0, kV, 0.0);
-            else standardControl.feedforwardForMotion(0.0, kV);
+            standardControl.feedforwardForMotion(kV);
             feedforwardAnswered = true;
             return this;
         }
@@ -2536,7 +2535,7 @@ public final class Plants {
         @Override
         public OutputPowerPolicyStep<PositionPlant> feedforwardFromMotion(double kV) {
             requireProfiledPosition("feedforwardFromMotion(kV)");
-            standardControl.feedforwardForMotion(0.0, kV, 0.0);
+            standardControl.feedforwardForMotion(kV);
             feedforwardAnswered = true;
             return this;
         }

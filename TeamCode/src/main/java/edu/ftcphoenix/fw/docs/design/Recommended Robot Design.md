@@ -78,7 +78,7 @@ their update and stop lifecycle. A constructor that accepts a completed `Plant` 
 hardware-neutral test or custom-adapter seam, but it is not the normal robot-code constructor.
 If a proven FTC device-managed velocity Plant also needs live tuning, keep this exact production
 owner and declare the framework workflow described in
-[`Declare one framework tuner`](<../testing-calibration/PIDF Tuning Workflow.md#declare-one-framework-tuner-mentor-or-author>).
+[`Declare one framework tuner`](<../testing-calibration/Control Tuning Workflow.md#choose-the-workflow-that-matches-production>).
 The tuner receives a fresh Plant from the production owner's canonical recipe; it does not require
 a second robot-specific mechanism or tuning-session object.
 Do not make live-tuning ceremony mandatory for ordinary checked-in configuration.
@@ -1117,15 +1117,14 @@ flywheel = FtcActuators.plant(hardwareMap)
 
 The Plant owns the setpoint profile, PID, feedforward, final output policy, state reset, completion,
 and one hardware write. Match TeleOp and Auto still request shooter intent and read status. The
-ready-made `FtcPanelsTuners.velocityPidf(...)` workflow remains specific to FTC device-managed
-velocity control; software-control candidates live in checked-in config and are evaluated through
-fresh Plants built by this same canonical recipe. See the
-[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for the tuning order and
-evidence contract.
+ready-made `FtcPanelsTuners.velocityControl(...)` workflow derives either this exact standard
+controller or an FTC device-managed controller from a fresh Plant built by the same canonical
+recipe. See the [`control tuning workflow`](<../testing-calibration/Control Tuning Workflow.md>) for
+the tuning order, experiment range, metrics, and evidence contract.
 
 For a genuinely nonlinear or table-driven complete law, realization may use the explicit advanced
-`controlFromCustomRegulator(...)` seam. Deprecated scalar-regulator factories are compatibility for
-that seam, not a parallel ordinary PID/feedforward design.
+`controlFromCustomRegulator(...)` seam. That custom owner must provide its own typed tuning contract;
+the obsolete peer PIDF/setpoint-feedforward factories are not a parallel construction path.
 
 ---
 

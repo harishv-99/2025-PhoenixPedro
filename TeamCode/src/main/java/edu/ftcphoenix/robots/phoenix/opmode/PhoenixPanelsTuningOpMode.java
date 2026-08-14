@@ -24,8 +24,8 @@ public final class PhoenixPanelsTuningOpMode extends FtcPanelsTeleOpTesterOpMode
         PhoenixMatchHandoff.clear();
         final PhoenixProfile.ScoringConfig scoring =
                 PhoenixProfile.current().scoring.copy();
-        return FtcPanelsTuners.velocityPidf(
-                "Phoenix Flywheel Velocity PIDF",
+        return FtcPanelsTuners.velocityControl(
+                "Phoenix Flywheel Velocity Control",
                 ScalarRange.bounded(scoring.velocityMin, scoring.velocityMax),
                 hardwareMap -> PhoenixScoring.createFlywheelPlantForTuning(
                         hardwareMap,

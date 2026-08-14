@@ -10,15 +10,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * the control-law seam used by framework-regulated plants such as position-from-power or
  * velocity-from-power plants.</p>
  *
- * <p>This interface is intentionally broader than plain PID. A PID controller or the standard
- * {@link PidfRegulator} is one possible implementation, but so are nonlinear
- * feedforward-plus-feedback blends, asymmetric up/down regulators, voltage compensation
- * decorators, or other custom scalar control laws.</p>
+ * <p>This interface is intentionally broader than plain PID. Nonlinear feedback/feedforward
+ * blends, asymmetric up/down laws, and other complete custom scalar controls can implement it.
+ * Ordinary Plants use the typed standard-control grammar instead of constructing a peer mutable
+ * regulator object.</p>
  *
- * <p>A {@link Pid#setOutputLimits(double, double) PID output limit} or
- * {@link PidfRegulator#setPidOutputLimits(double, double) PIDF's PID-contribution limit} bounds only
- * a finite {@code P + I + D} result; neither turns non-finite controller math into a boundary
- * value. If feedforward or later decorators add or scale output, put
+ * <p>A {@link Pid#setOutputLimits(double, double) PID output limit} bounds only a finite
+ * {@code P + I + D} result; it does not turn non-finite controller math into a boundary value. If
+ * later custom decorators add or scale output, put
  * {@link ScalarRegulators#outputLimited(ScalarRegulator, double, double)} outermost when the complete
  * composed result needs an intentional narrower range. That policy limit is distinct from Plant
  * target bounds and from the enclosing output boundary's universal command safety.</p>
@@ -36,7 +35,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Ordinary regulated Plants construct Phoenix's standard setpoint, PID, feedforward, voltage,
  * and output policy inline through the Plant builder after Plant units and tolerance are known.
- * Implement this interface directly, or compose the advanced factories in
+ * Implement this interface directly, or compose the advanced decorators in
  * {@link ScalarRegulators}, only for a genuinely custom complete control law.</p>
  */
 public interface ScalarRegulator {

@@ -329,13 +329,8 @@ public final class Pid implements PidController {
         return settings.isEmpty() ? entry : settings + ", " + entry;
     }
 
-    /**
-     * Validate finite ordered integral limits that include zero.
-     *
-     * <p>Package-private so {@link PidfRegulator} can reuse the exact internal-PID invariant while
-     * retaining its own caller-facing API name in diagnostics.</p>
-     */
-    static void validateIntegralLimits(String api, double min, double max) {
+    /** Validate finite ordered integral limits that include zero. */
+    private static void validateIntegralLimits(String api, double min, double max) {
         validateOrderedFiniteBounds(api, min, max);
         if (min > 0.0 || max < 0.0) {
             throw new IllegalArgumentException(
@@ -344,12 +339,8 @@ public final class Pid implements PidController {
         }
     }
 
-    /**
-     * Validate finite inclusive bounds without silently reordering them.
-     *
-     * <p>Package-private for the built-in PIDF regulator's internal PID-limit configuration.</p>
-     */
-    static void validateOrderedFiniteBounds(String api, double min, double max) {
+    /** Validate finite inclusive bounds without silently reordering them. */
+    private static void validateOrderedFiniteBounds(String api, double min, double max) {
         String invalid = "";
         if (!Double.isFinite(min)) {
             invalid = appendSetting(invalid, "min", min);

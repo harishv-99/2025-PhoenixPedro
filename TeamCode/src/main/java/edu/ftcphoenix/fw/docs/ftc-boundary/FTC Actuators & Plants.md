@@ -651,12 +651,12 @@ and returns to the same output-power policy:
 ```
 
 This seam does not create a typed trajectory snapshot or claim velocity/acceleration evidence;
-custom code owns its own semantics and reset behavior. `ScalarRegulators.pid(...)`,
-`ScalarRegulators.pidf(...)`, `ScalarRegulators.setpointFeedforward(...)`, and `PidfRegulator` are
-deprecated compatibility for existing custom/tuning integrations. New ordinary Plants use the
-inline `setpointFrom... -> feedbackFromPid(...) -> feedforwardFrom...` grammar. Generic regulator
-voltage/output decorators remain useful only when assembling a custom regulator passed through
-this advanced seam.
+custom code owns its complete law, semantics, and reset behavior. New ordinary Plants use the
+inline `setpointFrom... -> feedbackFromPid(...) -> feedforwardFrom...` grammar. A genuinely custom
+law implements `ScalarRegulator` directly; the remaining generic voltage/output decorators are
+advanced composition tools for that custom regulator. `Pid` and `PidController` remain the
+separate error-centric controller family for guidance and other non-Plant calculations; Phoenix no
+longer exposes the obsolete peer software-PIDF construction layer.
 
 ### Regulated command truth and fail-stop behavior
 
@@ -1414,49 +1414,44 @@ no empty override spelling of the ordinary path. The separate FTC position-loop 
 This method writes FTC device-controller coefficients under the validation contract above; it is
 distinct from Phoenix's standard software-control grammar.
 
-### Framework-owned live FTC velocity-PIDF workflow
+### Framework-owned live FTC control workflow
 
 The Plant builder remains the ordinary production configuration path. The ready-made
-`FtcPanelsTuners.velocityPidf(...)` workflow owns a fresh Plant supplied by robot code plus the
-advanced configuration-only handle returned by
-`FtcMotorControllers.velocityPidf(plant)`:
+`FtcPanelsTuners.velocityControl(...)` and `positionControl(...)` workflows own a fresh Plant
+supplied by robot code and derive a configuration-only handle from that exact completed Plant:
 
 ```java
-FtcMotorVelocityPidf pidf =
-        FtcMotorControllers.velocityPidf(flywheelPlant);
+FtcMotorVelocityControl velocity =
+        FtcMotorControllers.velocityControl(flywheelPlant);
 
-pidf.setGains(candidateKP, candidateKI, candidateKD, candidateKF);
-double acceptedKP = pidf.getKP();
-double acceptedKI = pidf.getKI();
-double acceptedKD = pidf.getKD();
-double acceptedKF = pidf.getKF();
+FtcMotorPositionControl position =
+        FtcMotorControllers.positionControl(armPlant);
 ```
 
-This is not another Plant builder. The input must be a single-motor FTC device-managed velocity
-Plant built by `FtcActuators`; deriving the handle from that Plant prevents a tuning workflow from
-commanding one Plant while silently changing another named motor. The handle reports that bound
-Plant's immutable target range but has no target, velocity, power, direction, or run-mode command;
-one Plant can supply only one handle, so one tuning session owns controller configuration. The
-mechanism's source-driven Plant remains the only actuation writer. `setGains(...)`
-validates the complete tuple through the same controller domain described above, performs one FTC
-velocity-PIDF update, and reads back the accepted values. The controller may quantize the request,
-so tuning telemetry and copyable profile assignments use these getters rather than the UI echo.
+These handles are advanced framework-integration seams, not another Plant builder or the ordinary
+robot tuning API. They expose no target, power, direction, or run-mode command. A permanent claim
+binds one handle to the completed Plant, so a workflow cannot command one Plant while changing a
+second named motor. Robot code should normally call `FtcPanelsTuners`; that workflow already owns
+coherent draft capture, segment history, response metrics, failure handling, and cleanup.
 
-The factory captures the initial `RUN_USING_ENCODER` PIDF coefficients and algorithm.
-`restoreInitial()` restores that exact captured configuration and reads it back. A setter/readback
-transport failure can leave device state uncertain; the tuning owner terminally stops its Plant,
-best-effort restores the initial configuration, and ends the session rather than claiming an
-atomic hardware rollback.
+Velocity accepts one immutable complete PIDF candidate. A single-motor handle may apply it while
+running. A grouped handle uses the exact ordered motor group already owned by the Plant and applies
+one logical candidate to every member. Because FTC SDK writes are sequential, a grouped gain change
+requires same-cycle cold-zero evidence for every member. Each member retains its own initial and
+accepted configuration, native target, native measurement, native error, and mapped tolerance;
+Phoenix never substitutes an average as proof that every child agreed.
 
-Use this handle only inside a complete tuning workflow that also owns one fresh Plant built from
-the production owner's canonical recipe. Robot code should normally use
-`FtcPanelsTuners.velocityPidf(...)` instead of rebuilding candidate capture, segment evidence,
-restoration, and cleanup around the handle. It does not justify a generic raw-motor PIDF tester.
-FTC device-managed position uses an outer
-position P plus an inner velocity PIDF and therefore is not represented by this velocity-only
-handle. Follow the
-[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for complete-candidate,
-hot/cold segment, evidence, restore, and checked-in-profile rules.
+Position is limited to one FTC motor. Its complete candidate contains the outer
+`RUN_TO_POSITION` P and the inner `RUN_USING_ENCODER` P/I/D/F tuple. Output-power limit and target
+tolerance remain immutable Plant policy. The position handle also forwards the exact same Plant's
+coordinate-reference and pre-output hold-preparation capability so a tuning workflow never homes
+one object and controls another.
+
+Both handles capture exact initial configuration and algorithms. A setter/readback failure may
+leave hardware partially changed; it latches terminal uncertainty. The workflow stops the Plant
+and best-effort restores every captured field/member without claiming transactional rollback.
+Follow the [`control tuning workflow`](<../testing-calibration/Control Tuning Workflow.md>) for target
+range semantics, group cold boundaries, position reference/hold behavior, evidence, and adoption.
 
 Use `regulated()` when Phoenix should own the velocity loop and command raw motor power. A flywheel
 can use an acceleration-limited setpoint, typed velocity/acceleration feedforward, voltage

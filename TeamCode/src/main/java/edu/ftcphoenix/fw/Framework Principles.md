@@ -403,7 +403,7 @@ If an answer is unclear, simplify ownership or naming before introducing another
 | Pedro route lifecycle | [`Pedro integration`](<integrations/pedro/README.md>) |
 | Production route example | [`Pedro Autonomous Reference`](<docs/examples/Pedro Autonomous Reference.md>) |
 | Actuator facts and safe endpoints | [`Actuator Bring-up`](<docs/testing-calibration/Actuator Bring-up.md>) |
-| Tuning and calibration evidence | [`PIDF Tuning Workflow`](<docs/testing-calibration/PIDF Tuning Workflow.md>) |
+| Tuning and calibration evidence | [`Control Tuning Workflow`](<docs/testing-calibration/Control Tuning Workflow.md>) |
 | Documentation and maintainer practices | [`Maintainer Notes`](<docs/maintainers/Maintainer Notes.md>) |
 
 Javadocs on the referenced types are authoritative for exact signatures, argument contracts, and

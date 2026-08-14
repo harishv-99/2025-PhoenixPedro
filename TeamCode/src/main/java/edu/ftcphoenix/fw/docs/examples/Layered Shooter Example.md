@@ -227,12 +227,13 @@ different Plant-unit fact. Standard control owns saturation-aware integral behav
 settled completion inside the Plant lifecycle. Production TeleOp and Auto use checked-in config and
 continue to talk only in selected velocity targets and readiness.
 
-FTC `deviceManagedWithOverrides().velocityPidf(...)` instead configures the motor controller and
-uses the ready-made `FtcPanelsTuners.velocityPidf(...)` workflow. See the
-[`PIDF tuning workflow`](<../testing-calibration/PIDF Tuning Workflow.md>) for the standard software
-tuning order and the distinct FTC live workflow. A nonlinear or table-driven complete law uses the
-explicit advanced `controlFromCustomRegulator(...)` exit; it does not become a parallel ordinary
-PID/feedforward recipe.
+FTC `deviceManagedWithOverrides().velocityPidf(...)` instead configures the motor controller. Both
+owners use the ready-made `FtcPanelsTuners.velocityControl(...)` experiment, which discovers the
+actual completed-Plant controller without another robot-code selection. See the
+[`control tuning workflow`](<../testing-calibration/Control Tuning Workflow.md>) for manual target
+experiments, grouped-controller rules, and the standard/FTC evidence difference. A nonlinear or
+table-driven complete law uses the explicit advanced `controlFromCustomRegulator(...)` exit; it
+does not become a parallel ordinary PID/feedforward recipe.
 
 The feeder uses a richer final target resolver:
 

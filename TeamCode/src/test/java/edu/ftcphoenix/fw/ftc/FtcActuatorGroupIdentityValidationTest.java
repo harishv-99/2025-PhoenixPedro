@@ -6,6 +6,8 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.MotorControlAlgorithm;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 
 import org.junit.Test;
@@ -898,6 +900,11 @@ public final class FtcActuatorGroupIdentityValidationTest {
         private int positionReads;
         private int velocityReads;
         private DcMotor.RunMode mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER;
+        private PIDFCoefficients positionPidf = new PIDFCoefficients(
+                0.0, 0.0, 0.0, 0.0, MotorControlAlgorithm.PIDF);
+        private PIDFCoefficients velocityPidf = new PIDFCoefficients(
+                0.0, 0.0, 0.0, 0.0, MotorControlAlgorithm.PIDF);
+        private int targetTolerance;
 
         private MotorProbe(Effects effects) {
             this.effects = effects;
@@ -962,16 +969,34 @@ public final class FtcActuatorGroupIdentityValidationTest {
             }
             if ("setPositionPIDFCoefficients".equals(name)) {
                 effects.positionPidfWrites++;
+                positionPidf = new PIDFCoefficients(
+                        (double) args[0], 0.0, 0.0, 0.0, MotorControlAlgorithm.PIDF);
                 return null;
             }
             if ("setVelocityPIDFCoefficients".equals(name)) {
                 effects.velocityPidfWrites++;
+                velocityPidf = new PIDFCoefficients(
+                        (double) args[0], (double) args[1], (double) args[2], (double) args[3],
+                        MotorControlAlgorithm.PIDF);
+                return null;
+            }
+            if ("getPIDFCoefficients".equals(name)) {
+                return new PIDFCoefficients(
+                        args[0] == DcMotor.RunMode.RUN_TO_POSITION
+                                ? positionPidf : velocityPidf);
+            }
+            if ("setPIDFCoefficients".equals(name)) {
+                PIDFCoefficients value = new PIDFCoefficients((PIDFCoefficients) args[1]);
+                if (args[0] == DcMotor.RunMode.RUN_TO_POSITION) positionPidf = value;
+                else velocityPidf = value;
                 return null;
             }
             if ("setTargetPositionTolerance".equals(name)) {
                 effects.targetToleranceWrites++;
+                targetTolerance = (int) args[0];
                 return null;
             }
+            if ("getTargetPositionTolerance".equals(name)) return targetTolerance;
             if ("setZeroPowerBehavior".equals(name)) {
                 effects.zeroPowerBehaviorWrites++;
                 return null;

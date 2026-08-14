@@ -5,103 +5,181 @@ import com.bylazar.configurables.annotations.Configurable;
 import com.bylazar.configurables.annotations.Sorter;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.actuation.ScalarRange;
+import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.tools.tester.TeleOpTester;
 
 /**
- * Concrete Panels-backed tuning workflows for FTC mechanisms.
+ * Panels-backed controller-neutral experiments for fresh, exclusive supported Plants.
  *
- * <p>Robot code selects one complete workflow from this facade. It does not build a controller
- * session, mutable parameter registry, Panels transport, segment recorder, or custom tester state
- * machine. The supplied Plant factory is an explicitly advanced tester seam: it must return a
- * fresh Plant built from the same canonical recipe as production, and the tester becomes that
- * Plant's sole heartbeat and lifecycle owner.</p>
+ * <p>Robot code names the experiment, supplies its finite physical test envelope, and supplies the
+ * same canonical fresh-Plant recipe used by production. The workflow derives the actual controller
+ * implementation and its fixed tuning topology from that completed Plant; it does not ask robot
+ * code to name the motor, regulator, parameter schema, or command target again.</p>
+ *
+ * <p>The public {@link #draft} map is Panels transport state, not robot configuration. On tester
+ * initialization it is replaced atomically with a synchronized map containing exactly the active
+ * controller fields and the selected workflow's experiment fields, then the pinned Configurables
+ * integration is explicitly refreshed. A captures one quiescent snapshot; merely editing or
+ * publishing this map never changes a controller or Plant target.</p>
  */
 @Configurable
 public final class FtcPanelsTuners {
 
     private static final FtcPanelsTuners DRAFT_REFRESH_TOKEN = new FtcPanelsTuners();
 
-    /** Draft proportional coefficient for the active velocity-PIDF tester. */
+    /**
+     * Active topology-specific Panels draft. Its keys are replaced when the exclusive tester
+     * acquires its Plant during INIT.
+     */
     @Sorter(sort = 10)
-    public static volatile double kP;
-
-    /** Draft integral coefficient for the active velocity-PIDF tester. */
-    @Sorter(sort = 20)
-    public static volatile double kI;
-
-    /** Draft derivative coefficient for the active velocity-PIDF tester. */
-    @Sorter(sort = 30)
-    public static volatile double kD;
-
-    /** Draft feed-forward coefficient for the active velocity-PIDF tester. */
-    @Sorter(sort = 40)
-    public static volatile double kF;
-
-    /** Draft Plant velocity target in that Plant's units. */
-    @Sorter(sort = 50)
-    public static volatile double testTarget;
-
-    /** Draft automatic-stop delay in seconds; zero keeps the segment active. */
-    @Sorter(sort = 60)
-    public static volatile double autoStopAfterSec;
+    public static volatile Map<String, Double> draft = emptySynchronizedMap();
 
     private FtcPanelsTuners() {
-        // utility/configurable facade
     }
 
     /**
-     * Creates one device-managed velocity-PIDF tuning tester.
-     *
-     * <p>The inactive tester acquires the Plant and FTC controller only from its
-     * {@code init(TesterContext)} callback. A changes no hardware until the complete Panels draft
-     * has remained unchanged for the best-effort capture interval. A first/cold candidate waits
-     * for finite feedback and {@code plant.atTarget(0.0)}. A later candidate is applied as a hot
-     * segment without deliberately requesting zero. B requests zero but leaves the session ready
-     * for another cold segment. BACK, OpMode stop, disconnect, or a terminal failure stops the
-     * Plant and best-effort restores the controller configuration captured at tester init.</p>
+     * Creates one controller-neutral velocity experiment for a fresh feedback Plant.
      *
      * @param testerName human-facing tester title
-     * @param testTargetRange inclusive finite positive range accepted for test targets; its lower
-     *                        endpoint seeds the initial Panels draft; it must lie within the
-     *                        completed Plant's target range
-     * @param plantFactory creates a fresh inactive single-motor FTC device-managed velocity Plant
-     *                     with a command target
-     * @return an inactive tester ready for an FTC/Panels tester host
+     * @param allowedTestTargetRange finite bounded permission for one manually selected velocity
+     *                               target; it may be signed and may include zero, and the workflow
+     *                               never interprets it as an automatic sweep
+     * @param plantFactory creates a fresh inactive command-target feedback Plant from the canonical
+     *                     production recipe
      */
-    public static TeleOpTester velocityPidf(
+    public static TeleOpTester velocityControl(
             String testerName,
-            ScalarRange testTargetRange,
+            ScalarRange allowedTestTargetRange,
             Function<HardwareMap, Plant> plantFactory
     ) {
-        return new FtcVelocityPidfPanelsTester(
+        return new FtcVelocityControlPanelsTester(
                 testerName,
-                testTargetRange,
+                allowedTestTargetRange,
                 plantFactory);
     }
 
-    static FtcVelocityPidfPanelsTester.Candidate readVelocityDraft() {
-        return new FtcVelocityPidfPanelsTester.Candidate(
-                kP,
-                kI,
-                kD,
-                kF,
-                testTarget,
-                autoStopAfterSec);
+    /**
+     * Creates one exact-position endpoint experiment for a Plant whose coordinate is already
+     * referenced, or whose claimed controller can safely prepare an assume-current hold.
+     *
+     * <p>The finite bounded range is the physical experiment and recovery envelope. Its endpoints
+     * seed the two editable exact, unwrapped leg targets; it is never interpreted as an automatic
+     * sweep. B and automatic timeout sample the current position before that cycle's normal output,
+     * then hold it or recover to the nearest envelope boundary.</p>
+     *
+     * <p>An unreferenced ASSUME_CURRENT Plant establishes that reference from one START-loop sample
+     * before its first normal output. A Plant that needs a physical homing/indexing task rejects at
+     * that preparation boundary; use the overload with {@code referenceTaskFactory} for it.</p>
+     *
+     * @param testerName human-facing tester title
+     * @param allowedPhysicalTargetRange finite bounded experiment/recovery envelope in Plant units
+     * @param plantFactory creates a fresh inactive exact-command position Plant from the canonical
+     *                     production recipe
+     */
+    public static TeleOpTester positionControl(
+            String testerName,
+            ScalarRange allowedPhysicalTargetRange,
+            Function<HardwareMap, PositionPlant> plantFactory
+    ) {
+        return new FtcPositionControlPanelsTester(
+                testerName,
+                allowedPhysicalTargetRange,
+                plantFactory,
+                null);
     }
 
-    static void seedVelocityDraft(FtcVelocityPidfPanelsTester.Gains gains,
-                                  double target,
-                                  double autoStopAfterSec) {
-        kP = gains.kP;
-        kI = gains.kI;
-        kD = gains.kD;
-        kF = gains.kF;
-        testTarget = target;
-        FtcPanelsTuners.autoStopAfterSec = autoStopAfterSec;
-        PanelsConfigurables.INSTANCE.refreshClass(DRAFT_REFRESH_TOKEN);
+    /**
+     * Creates one exact-position endpoint experiment with an integrated reference Task.
+     *
+     * <p>The task factory is invoked for each A-authorized reference attempt and receives the same
+     * fresh Plant owned by the tester. Cancelling an attempt never reuses that single-use Task.</p>
+     *
+     * @param testerName human-facing tester title
+     * @param allowedPhysicalTargetRange finite bounded experiment/recovery envelope in Plant units
+     * @param plantFactory creates a fresh inactive exact-command position Plant from the canonical
+     *                     production recipe
+     * @param referenceTaskFactory creates one fresh non-blocking reference Task per A-authorized
+     *                             attempt, using the tester-owned Plant
+     */
+    public static TeleOpTester positionControl(
+            String testerName,
+            ScalarRange allowedPhysicalTargetRange,
+            Function<HardwareMap, PositionPlant> plantFactory,
+            BiFunction<HardwareMap, PositionPlant, Task> referenceTaskFactory
+    ) {
+        return new FtcPositionControlPanelsTester(
+                testerName,
+                allowedPhysicalTargetRange,
+                plantFactory,
+                Objects.requireNonNull(referenceTaskFactory, "referenceTaskFactory"));
+    }
+
+    static void seedActiveDraft(ControlTuningModel.Parameters parameters,
+                                Map<String, Double> experimentFields) {
+        seedActiveDraft(parameters, experimentFields,
+                () -> PanelsConfigurables.INSTANCE.refreshClass(DRAFT_REFRESH_TOKEN));
+    }
+
+    /** Package-local seam for proving schema replacement independently of the robot server. */
+    static void seedActiveDraft(ControlTuningModel.Parameters parameters,
+                                Map<String, Double> experimentFields,
+                                Runnable refreshAction) {
+        LinkedHashMap<String, Double> seeded = new LinkedHashMap<String, Double>();
+        for (Map.Entry<String, Double> entry : parameters.values().entrySet()) {
+            seeded.put(controllerKey(entry.getKey()), entry.getValue());
+        }
+        for (Map.Entry<String, Double> entry : experimentFields.entrySet()) {
+            String key = experimentKey(entry.getKey());
+            if (seeded.put(key, entry.getValue()) != null) {
+                throw new IllegalArgumentException("Duplicate Panels draft field: " + key);
+            }
+        }
+        draft = Collections.synchronizedMap(seeded);
+        Objects.requireNonNull(refreshAction, "refreshAction").run();
+    }
+
+    static Map<String, Double> readActiveDraft() {
+        Map<String, Double> active = draft;
+        synchronized (active) {
+            return new LinkedHashMap<String, Double>(active);
+        }
+    }
+
+    static ControlTuningModel.Parameters readControllerFields(
+            Map<String, Double> snapshot,
+            ControlTuningModel.Parameters schema) {
+        LinkedHashMap<String, Double> values = new LinkedHashMap<String, Double>();
+        for (String name : schema.values().keySet()) {
+            Double value = snapshot.get(controllerKey(name));
+            values.put(name, value == null ? Double.NaN : value);
+        }
+        return new ControlTuningModel.Parameters(values);
+    }
+
+    static double readExperimentField(Map<String, Double> snapshot, String name) {
+        Double value = snapshot.get(experimentKey(name));
+        return value == null ? Double.NaN : value;
+    }
+
+    static String controllerKey(String field) {
+        return "controller." + field;
+    }
+
+    static String experimentKey(String field) {
+        return "experiment." + field;
+    }
+
+    private static Map<String, Double> emptySynchronizedMap() {
+        return Collections.synchronizedMap(new LinkedHashMap<String, Double>());
     }
 }

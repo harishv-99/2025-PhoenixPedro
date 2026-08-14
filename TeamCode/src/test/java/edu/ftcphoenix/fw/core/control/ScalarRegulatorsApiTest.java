@@ -5,12 +5,9 @@ import org.junit.Test;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.function.DoubleUnaryOperator;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -19,7 +16,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Locks down API-03's one-layer PID and standard-PIDF construction surface. */
+/** Locks down the retained PID value API and advanced custom-regulator decorators. */
 public final class ScalarRegulatorsApiTest {
 
     @Test
@@ -69,107 +66,18 @@ public final class ScalarRegulatorsApiTest {
     }
 
     @Test
-    public void pidfRegulatorIsPublicFinalRetainedCapabilityWithoutPublicFactory()
-            throws Exception {
-        int modifiers = PidfRegulator.class.getModifiers();
-        assertTrue(Modifier.isPublic(modifiers));
-        assertTrue(Modifier.isFinal(modifiers));
-        assertTrue(ScalarRegulator.class.isAssignableFrom(PidfRegulator.class));
+    public void scalarRegulatorsRetainsOnlyDistinctAdvancedCustomDecorators() {
+        assertOnlyPublicDeclaredMethods(ScalarRegulators.class,
+                "static voltageCompensated(ScalarRegulator,ScalarSource,double,double,double):ScalarRegulator",
+                "static outputLimited(ScalarRegulator,double,double):ScalarRegulator");
 
-        assertEquals(0, PidfRegulator.class.getConstructors().length);
-        Constructor<?>[] declaredConstructors =
-                PidfRegulator.class.getDeclaredConstructors();
-        assertEquals(1, declaredConstructors.length);
-        int constructorModifiers = declaredConstructors[0].getModifiers();
-        assertFalse(Modifier.isPublic(constructorModifiers));
-        assertFalse(Modifier.isProtected(constructorModifiers));
-        assertFalse(Modifier.isPrivate(constructorModifiers));
-        assertArrayEquals(
-                new Class<?>[]{double.class, double.class, double.class, double.class},
-                declaredConstructors[0].getParameterTypes());
-
-        for (Method method : PidfRegulator.class.getDeclaredMethods()) {
-            boolean publicStaticFactory = Modifier.isPublic(method.getModifiers())
-                    && Modifier.isStatic(method.getModifiers())
-                    && method.getReturnType() == PidfRegulator.class;
-            assertFalse("PidfRegulator must not expose class-local factory "
-                    + method, publicStaticFactory);
-        }
-
-        assertPublicInstanceMethod(PidfRegulator.class, "setGains",
-                PidfRegulator.class,
-                double.class, double.class, double.class, double.class);
-        assertPublicInstanceMethod(PidfRegulator.class, "setIntegralLimits",
-                PidfRegulator.class, double.class, double.class);
-        assertPublicInstanceMethod(PidfRegulator.class, "setPidOutputLimits",
-                PidfRegulator.class, double.class, double.class);
-        assertPublicInstanceMethod(PidfRegulator.class, "getKP", double.class);
-        assertPublicInstanceMethod(PidfRegulator.class, "getKI", double.class);
-        assertPublicInstanceMethod(PidfRegulator.class, "getKD", double.class);
-        assertPublicInstanceMethod(PidfRegulator.class, "getKF", double.class);
-
-        assertDeclaredMethodAbsent(PidfRegulator.class, "withGains",
-                double.class, double.class, double.class, double.class);
-        assertDeclaredMethodAbsent(PidfRegulator.class, "of",
-                double.class, double.class, double.class, double.class);
-
-        assertOnlyPublicDeclaredMethods(PidfRegulator.class,
-                "instance setGains(double,double,double,double):PidfRegulator",
-                "instance setIntegralLimits(double,double):PidfRegulator",
-                "instance setPidOutputLimits(double,double):PidfRegulator",
-                "instance getKP():double",
-                "instance getKI():double",
-                "instance getKD():double",
-                "instance getKF():double",
-                "instance update(double,double,LoopClock):double",
-                "instance reset():void",
-                "instance debugDump(DebugSink,String):void");
-    }
-
-    @Test
-    public void scalarRegulatorsHasExactlyOnePublicPidfFactoryWithApprovedSignature()
-            throws Exception {
-        List<Method> publicPidfMethods = new ArrayList<>();
-        for (Method method : ScalarRegulators.class.getDeclaredMethods()) {
-            if (method.getName().equals("pidf")
-                    && Modifier.isPublic(method.getModifiers())) {
-                publicPidfMethods.add(method);
-            }
-        }
-
-        assertEquals(1, publicPidfMethods.size());
-        Method pidf = publicPidfMethods.get(0);
-        assertTrue(Modifier.isStatic(pidf.getModifiers()));
-        assertEquals(PidfRegulator.class, pidf.getReturnType());
-        assertArrayEquals(
-                new Class<?>[]{double.class, double.class, double.class, double.class},
-                pidf.getParameterTypes());
-
+        assertDeclaredMethodAbsent(ScalarRegulators.class, "pid", PidController.class);
         assertDeclaredMethodAbsent(ScalarRegulators.class, "pidf",
-                PidController.class, double.class);
-        assertDeclaredMethodAbsent(ScalarRegulators.class, "pidf",
-                PidController.class, DoubleUnaryOperator.class);
-    }
-
-    @Test
-    public void customControllerAndAdvancedFeedforwardRemainExplicitDistinctCapabilities()
-            throws Exception {
-        Method pid = ScalarRegulators.class.getDeclaredMethod(
-                "pid", PidController.class);
-        assertTrue(Modifier.isPublic(pid.getModifiers()));
-        assertTrue(Modifier.isStatic(pid.getModifiers()));
-        assertEquals(ScalarRegulator.class, pid.getReturnType());
-
-        Method feedforward = ScalarRegulators.class.getDeclaredMethod(
-                "setpointFeedforward",
-                ScalarRegulator.class,
-                DoubleUnaryOperator.class);
-        assertTrue(Modifier.isPublic(feedforward.getModifiers()));
-        assertTrue(Modifier.isStatic(feedforward.getModifiers()));
-        assertEquals(ScalarRegulator.class, feedforward.getReturnType());
+                double.class, double.class, double.class, double.class);
+        assertDeclaredMethodAbsent(ScalarRegulators.class, "setpointFeedforward");
 
         for (Method method : ScalarControllers.class.getDeclaredMethods()) {
-            assertFalse("ScalarControllers must not add a duplicate pidf construction layer",
+            assertFalse("ScalarControllers must not add a duplicate Plant regulator layer",
                     method.getName().equals("pidf") && Modifier.isPublic(method.getModifiers()));
         }
     }
@@ -193,7 +101,7 @@ public final class ScalarRegulatorsApiTest {
             owner.getDeclaredMethod(name, parameterTypes);
             fail(owner.getSimpleName() + "." + name + " must be absent");
         } catch (NoSuchMethodException expected) {
-            // Expected: API-03 deliberately removes this public construction/getter path.
+            // Expected: TUNE-03 removes the obsolete peer standard-control construction path.
         }
     }
 

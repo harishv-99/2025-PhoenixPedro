@@ -43,7 +43,7 @@ for the ordinary TeleOp-and-Auto structure.
 | Understand sources, edges, or signal shaping | [`Sources & Signals`](<core-concepts/Sources and Signals.md>) |
 | Structure a larger robot | [`Architecture Roles, Framework Lanes, and Robot Controls`](<design/Framework Lanes & Robot Controls.md>) |
 | Bring up or calibrate hardware | [`Testing & calibration`](<testing-calibration/README.md>) |
-| Tune a PIDF controller | [`PIDF Tuning Workflow`](<testing-calibration/PIDF Tuning Workflow.md>) |
+| Tune a supported velocity or position controller | [`Control Tuning Workflow`](<testing-calibration/Control Tuning Workflow.md>) |
 | Add drive guidance or localization | [`Drive & vision`](<drive-vision/README.md>) |
 | Build a Pedro autonomous | [`Pedro autonomous reference`](<examples/Pedro Autonomous Reference.md>) |
 | Understand the production Phoenix robot | [`Phoenix production reference`](<../../robots/phoenix/README.md>) |

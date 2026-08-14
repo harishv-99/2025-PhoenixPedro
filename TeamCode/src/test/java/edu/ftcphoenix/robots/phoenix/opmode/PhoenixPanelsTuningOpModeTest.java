@@ -26,10 +26,10 @@ public final class PhoenixPanelsTuningOpModeTest {
     }
 
     @Test
-    public void factoryReturnsTheVelocityTunerDirectlyWithoutAOneItemSuite() {
+    public void factoryReturnsTheVelocityControlTunerDirectlyWithoutAOneItemSuite() {
         TeleOpTester tester = new PhoenixPanelsTuningOpMode().createTester();
 
-        assertEquals("Phoenix Flywheel Velocity PIDF", tester.name());
+        assertEquals("Phoenix Flywheel Velocity Control", tester.name());
         assertFalse(tester instanceof TesterSuite);
     }
 }

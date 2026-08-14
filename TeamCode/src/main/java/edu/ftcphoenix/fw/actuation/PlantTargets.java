@@ -170,6 +170,12 @@ public final class PlantTargets {
                 : null;
     }
 
+    /** Whether this resolver is one literal exact graph-owned command, without overlays/planning. */
+    static boolean isExactCommand(PlantTargetResolver resolver) {
+        return resolver instanceof ExactPlantTargetResolver
+                && ((ExactPlantTargetResolver) resolver).commandTarget() != null;
+    }
+
     /**
      * Return the previous requested target when available, otherwise {@code initialTarget}.
      */
