@@ -159,7 +159,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 72 | INPUT-02 | Binding update failure retention | Done | Retain exact same-cycle binding failures without replay, reject reentry, preserve explicit next-cycle and clear ownership, and keep robot code unchanged. |
 | 73 | BOUNDARY-01 | FTC boundary enforcement | Done | Relocated the FTC gamepad adapters without changing robot expressions and enforced the protected reusable core with one focused production-source rule. |
 | 74 | CI-01 | Framework verification in CI | Done | Split the existing hosted pipeline into truthful framework and documentation checks, run them for every pull request targeting master, and require both before merging. |
-| 75 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
+| 75 | EXAMPLE-03 | Advanced moving-target reference | Deferred | Reactivate only when an in-repository robot supplies coherent owned timestamped pose and motion facts plus a measured moving-shot/flight model, or another real periodic mechanism exposes a missing planner-composition contract. |
 | 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
 | 77 | CONFIG-01 | Drive-guidance task configuration snapshot | Done | Validate and snapshot the existing five-answer task config without changing ordinary caller syntax or adding a parallel construction layer. |
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
@@ -181,7 +181,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 94 | CONFIG-07 | Starter profile simplification | Proposed | Replace the starter's aggregate copy-and-validation boilerplate with small owner configs and mode-specific composition checks. |
 | 95 | CONFIG-08 | Basic Pedro profile independence | Proposed | Give the Pedro reference its own small reviewed profile and remove its dependency on Phoenix configuration and project constants. |
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Proposed | Move Phoenix configuration sections beside their owning services and mechanisms while retaining one small data-only aggregate. |
-| 97 | EXAMPLE-04 | Curated managed concept examples | Proposed | Audit the nine manual-loop concept labs, migrate only distinct lessons to the managed robot grammar, and delete or absorb redundant examples. |
+| 97 | EXAMPLE-04 | Curated managed concept examples | Proposed | Rationalize the manual-loop examples into a smaller managed progression while preserving EXAMPLE-03's evidence-gated deferral. |
 | 98 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
 | 99 | DRIVE-03 | Field-centric TeleOp drive intent | Proposed | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
 
@@ -223,9 +223,10 @@ PLANT-01 therefore records and implements the already-approved one-variable ordi
 first. CAL-03 follows because `PositionCalibrationTasks` currently advances a Plant inside a Task
 even though the documented composition root also owns that Plant phase; CAL-01 and CAL-02 then
 address the adjacent calibration inputs. DOC-01 and a deliberately narrowed CLEAN-01 follow before
-the remaining validation, boundary, and CI work. EXAMPLE-03 is now the last actionable proposed
-item in this cluster rather than the default next item. Deferred hardware/evidence items remain
-deferred regardless of their table position.
+the remaining validation, boundary, and CI work. At that point EXAMPLE-03 remained the last
+actionable proposed item in this cluster rather than the default next item. The combined
+EXAMPLE-03/EXAMPLE-04 audit on 2026-08-14 later deferred it for real-caller and physical-model
+evidence. Deferred hardware/evidence items remain deferred regardless of their table position.
 
 On 2026-08-14, a tracker-only intake added EXAMPLE-04, RUNTIME-03, and DRIVE-03 without starting
 their decision gates or implementation. EXAMPLE-04 comes first because the nine disabled manual
@@ -251,6 +252,9 @@ generic Config base, reflection copier, universal validation DSL, or units-syste
 ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, then EXAMPLE-04. Each
 row remains **Proposed** and requires its own source/caller/construction-path decision gate; recording
 the program neither approves ten implementations nor permits compatibility shims or mixed-item PRs.
+EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
+after its curriculum scope was reopened, and its eventual rationalization must preserve the
+EXAMPLE-03 evidence gate recorded below.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -283,7 +287,7 @@ behaviors with fewer lifecycle hazards and a smaller student-facing programming 
 | A PTO reuses drivetrain motors and encoders for the lift/endgame, with explicit mode changes and TeleOp drive suppression ([RobotActions](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/RobotActions.java), [Endgame](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Endgame.java)). | The standard Phoenix drive lane hides the shared actuator/readback seam, so a robot can do this only by bypassing normal ownership. This is distinct from timed drive Tasks. | Add DRIVE-02; do not broaden DRIVE-01 into resource arbitration. |
 | Layered controls suppress held-button edges on activation and add rate-limited gamepad rumble ([TeleOp](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/tele/Tele.java), [LayeredGamepad](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/input/LayeredGamepad.java)). | Flat Phoenix controls remain the beginner default, but advanced robots need optional safe contextual activation and a separate driver-feedback output boundary. | Add INPUT-01 and HAPTIC-01. |
 | Custom vision processors, manual bulk-cache clearing, output write caching, phase profiling, Dashboard tuning, and a staged whole-robot check are all used in normal development ([ClusterDetectionProcessor](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/vision/ClusterDetectionProcessor.java), [WriteCache](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/hardware/WriteCache.java), [LoopProfiler](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/LoopProfiler.java), [SystemCheck](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/test/SystemCheck.java)). | Phoenix has useful device testers and stable profile snapshots, but lacks reusable ownership for custom VisionPortal lifecycles, measured loop diagnostics, a safe live-to-checked-in tuning path, and a staged robot check. | Add VISION-01, PERF-01, PERF-02, PERF-03, TUNE-01, and CHECK-01 as separate decision gates. |
-| Moving-target turret lead and magazine sorting combine pose/velocity/sensor facts with bounded hardware realization ([Context](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/Context.java), [Turret](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Turret.java)). | Existing Phoenix spatial queries, timestamped sources, robot-owned services/supervisors, capabilities, and bounded Plants can express these behaviors cleanly. The missing piece is a compact compiling proof. | Add EXAMPLE-03; do not add projectile physics, game-piece sorting, or scoring vocabulary to the framework. |
+| Moving-target turret lead and magazine sorting combine pose/velocity/sensor facts with bounded hardware realization ([Context](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/Context.java), [Turret](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Turret.java)). | Existing Phoenix spatial queries, timestamped sources, robot-owned services/supervisors, capabilities, and bounded Plants can express these behaviors cleanly. The missing piece is a compact compiling proof. | Originally added EXAMPLE-03; it is now deferred under the 2026-08-14 combined audit. Do not add projectile physics, game-piece sorting, or scoring vocabulary to the framework. |
 
 Cuttlefish's asynchronous action helper runs robot behavior on background coroutines. Phoenix should
 not copy that execution model: cooperative Tasks on the OpMode heartbeat preserve FTC hardware
@@ -9300,31 +9304,73 @@ writer, and explicit lifecycle ownership.
 
 ### EXAMPLE-03 - Advanced moving-target reference
 
-- **Problem to confirm:** Phoenix architecture documents describe spatial targeting and bounded
-  realization, but there is no small compiling reference proving that a competition-style moving
-  turret/shot-on-the-move service and route-progress scoring event fit the existing source, Plant,
-  capability, and Task vocabulary. Without that proof, students may copy mutable global calculations
-  or conclude the framework needs season-specific shooter APIs.
-- **External evidence:** Cuttlefish computes lead from robot pose, translational/angular motion, and
-  target geometry in
-  [`Context`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/Context.java),
-  applies a bounded turret realization in
-  [`Turret`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Turret.java),
-  and uses Pedro parametric callbacks to request mechanism actions while routes continue.
-- **Alternatives to compare:** rely on architecture prose; put generic projectile/lead equations in
-  the framework; create shooter/turret capability interfaces; add a standalone tested cookbook; or
-  extend the compiling Pedro example with one advanced robot-owned service and fake-HAL realization.
-- **Leading hypothesis:** add a bounded compiling/tested advanced example, not new game vocabulary.
-  A robot-owned service combines timestamped field/motion facts into a desired target; a periodic
-  source and `PlantTargets.plan(...)` feed one bounded PositionPlant; readiness/status stays in a
-  robot capability; and a Pedro progress callback only requests that capability. Physics policy,
-  target choice, and fallback remain in the example robot.
-- **Completion:** fake-HAL tests cover motion compensation inputs, stale/unavailable localization,
-  reachable/unreachable target range, bounded output, fallback, readiness, route callback
-  idempotency, cancellation, and safe stop. The guide identifies the few student edit points and
-  explains why no direct writer, background coroutine, projectile framework, or scoring API is
-  required.
-- **Decision record:** _Pending._
+- **Combined disposition audit (2026-08-14):** EXAMPLE-04 audited this proposal as part of the one
+  example-surface rationalization. EXAMPLE-03 did not become a second active item, and no moving-
+  target source, API, example, guide implementation, or Phoenix behavior was started.
+- **Original problem and external benchmark:** the proposal sought a small compiling reference in
+  which a robot-owned service combines timestamped field and motion facts, publishes an observed
+  periodic `PlantTargetRequest`, lets `PlantTargets.plan(...)` select a bounded PositionPlant
+  target, reports truthful capability/readiness status, and accepts a mechanism request from a
+  Pedro route-progress callback. The pinned Cuttlefish
+  [`Context`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/Context.java)
+  and
+  [`Turret`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Turret.java)
+  sources were the original evidence that competition robots compute moving-shot lead and bound
+  turret realization; they were not evidence that Phoenix should own universal projectile physics
+  or shooter nouns.
+- **Current construction and caller audit:** `PlantTargetRequest` remains factory-only and exposes
+  named timeless versus observed shapes crossed with exact/equivalent/periodic and
+  absolute/relative semantics. `PlantTargets.plan(...)` has one fixed-request and one live-
+  `Source<PlantTargetRequest>` entry, followed by typed preference, unreachable, acceptance, and
+  unavailable-policy stages. Planner, periodicity, freshness, quality, and timestamp behavior have
+  extensive focused tests, but there is still no maintained compiling ordinary caller composing a
+  live request source through `PlantTargets.plan(...)` into a privately owned bounded periodic
+  PositionPlant. Ordinary FTC realization would use `FtcActuators.plant(hardwareMap)` inside that
+  owner; `Plants.fromOutputs()` remains only a hardware-neutral test, custom-adapter, portable-host,
+  or explicitly advanced-assembly seam.
+- **What is already proven elsewhere:** the managed Basic Pedro example already proves follower
+  ownership, one service heartbeat, route Task lifetime, outcome branching, and cleanup.
+  `PhoenixPedroPathFactory` already calls Pedro's `PathBuilder.addParametricCallback(...)` to
+  demonstrate that route progress requests a robot capability without directly updating hardware.
+  Tested `PhoenixTargeting` and
+  `PhoenixScoring` already prove robot-owned target selection, range-derived intent, readiness,
+  capability/status publication, and one bounded realization owner. A second Pedro host or generic
+  route-callback layer would duplicate those current authorities.
+- **Remaining distinct ideas and missing evidence:** there is still no compiling managed integration
+  from a live observed request source through the planner into one bounded periodic mechanism, and
+  a physically meaningful moving-shot lead policy also remains unique. Component tests and prose
+  do not replace that source-level proof. The current localization boundary exposes coherent
+  timestamped pose and `MotionDelta` through `MotionPredictor`, not a calibrated field-
+  velocity/flight solution. A reference would have to choose coordinate conversion, zero-duration
+  and unavailable behavior, filtering, latency, projectile timing, mechanism geometry, and
+  readiness policy. Fake inputs can prove arithmetic and lifecycle but cannot establish competition
+  shot correctness. Without an adopter, the integration alone does not justify another public
+  example family, and no measured trace/model justifies adding a Pinpoint-specific seam.
+- **Documentation defect retained for EXAMPLE-04:** `Mechanism Target Planning.md` currently calls
+  nonexistent `SpatialQueryResult.hasSolution()`, `solution()`, `reason()`, `sourceId()`,
+  `quality()`, and `timestamp()` methods. Current code selects a nullable
+  `SpatialFacingSelection` through `SpatialQuerySelectors.firstValidFacing(...)`. Its facing error
+  is relative to the configured facing frame at the observation timestamp; robot-owned kinematic
+  policy must therefore declare frame and time semantics, then map to the appropriate observed
+  absolute or relative Plant request. It must not blindly add a delayed error to a current turret
+  measurement. `Spatial Queries.md` also ends with a direct turret-motor quick path that does not
+  prove cable bounds, target-loss policy, or the one Plant realization path. EXAMPLE-04 must
+  correct those current-state guides without inventing a moving-target robot.
+- **Alternatives rejected:** keeping the original standalone design would combine a new host,
+  targeting service, capability/status, periodic mechanism, Pedro route, physics policy, and
+  presenter in one kitchen-sink lesson. Extending Basic Pedro would obscure its deliberately small
+  route-lifecycle story. A generic lead/shooter framework API has neither repeated callers nor
+  stable season-independent semantics. A narrowed fake-only observed-turret example is credible
+  after adoption, but today it would add a public example family chiefly to demonstrate APIs whose
+  components are already covered by focused tests and guidance that EXAMPLE-04 must correct, not a
+  real integrated use case.
+- **Pause record (2026-08-14; recovered 2026-08-15):** **Deferred for real caller and physical-model
+  evidence.** Resume when an in-repository robot supplies coherent owned timestamped pose and motion
+  facts plus a measured moving-shot/flight model, or when another real periodic mechanism exposes a
+  missing planner-composition contract that prose and focused tests cannot explain. At that point
+  prefer a narrow managed observed-periodic mechanism example; keep projectile physics, target
+  choice, capability vocabulary, and fallback robot-owned. Do not add another Pedro reference or
+  direct motor writer merely to reactivate this row.
 
 ### BOUNDARY-01 - FTC boundary enforcement
 
@@ -14248,10 +14294,11 @@ writer, and explicit lifecycle ownership.
   confirm one public no-argument Config construction path with the same five mutable fields and no
   new copy/default/builder/withers/overloads. The sole checkout is now on
   `codex/config-01-guidance-config-snapshot` with these 12 CONFIG-01 paths unstaged. The separate
-  EXAMPLE-03/04 tracker draft remains preserved in local commit
+  EXAMPLE-03/04 tracker draft remained preserved at that review boundary in local commit
   `0d94a3c158c96216e4904c71db33d6c468ba693b` on
-  `codex/example-04-curated-managed-examples`; CONFIG-01 does not implement that draft,
-  SPATIAL-01, or EXAMPLE-04.
+  `codex/example-04-curated-managed-examples`. Its durable EXAMPLE-03 deferral was forward-ported
+  into the current record on 2026-08-15 and the obsolete local draft branch was then retired;
+  CONFIG-01 did not implement that draft, SPATIAL-01, or EXAMPLE-04.
 - **Subsequent configuration-program boundary (2026-08-15):** after reviewing the wider config
   inventory, the user selected a broad owner-configuration overhaul using one shared ownership
   contract, owner-specific types, full caller replacement without compatibility shims, small named
@@ -17412,6 +17459,19 @@ writer, and explicit lifecycle ownership.
 - **Status and intake boundary (2026-08-14):** **Proposed.** This record comes from a read-only
   source, caller, test, and documentation audit. It does not approve a survivor list, migrate an
   example, delete a file, or begin implementation.
+- **Preserved cross-item disposition (2026-08-14; recovered 2026-08-15):** the combined
+  EXAMPLE-03/EXAMPLE-04 audit deferred the separate advanced moving-target reference for the real-
+  caller and physical-model evidence recorded under EXAMPLE-03. EXAMPLE-04 must preserve that
+  evidence gate and must not add another Pedro/shooter/moving-target example merely while curating
+  the ordinary progression. This recovered decision does not approve an EXAMPLE-04 survivor robot,
+  checkpoint, public API, or implementation; those questions remain in this Proposed item's gate.
+- **Curriculum scope reopened (2026-08-15):** after the first curation draft, the user required a
+  progressive robot curriculum rather than one unexplained all-concepts robot, simple student-facing
+  code with framework/configuration prerequisites completed first, explicit AprilTag-center versus
+  offset-point and localization-fusion progression, and season-relevant pickup, ground/elevated
+  deposit, and parking capabilities. Those requirements reopen EXAMPLE-04's survivor families and
+  checkpoint design. They do not reopen EXAMPLE-03's evidence-gated deferral or approve any of the
+  candidate Starter, delivery, targeting, or field-skills shapes discussed during research.
 - **Confirmed current split:** `edu.ftcphoenix.fw.tools.examples` contains ten Java files and 3,531
   physical lines. Nine numbered, disabled TeleOps account for 3,255 of those lines. Every
   `TeleOp_01` through `TeleOp_09` directly extends FTC `OpMode`, owns a private `LoopClock`, commits
@@ -17426,15 +17486,17 @@ writer, and explicit lifecycle ownership.
   presenters through the managed program, and six focused test files exercise the starter and
   Pedro example packages. These remain the current copyable authorities.
 - **Concrete drift, not only old style:** the flat labs duplicate drive/shooter/vision setup and
-  lifecycle ceremony, but some also miss current safety or API rules. `TeleOp_07` owns a
-  Plant-backed mechanism without any STOP path. `TeleOp_08` directly implements an anonymous
-  `ScalarSource` instead of using the ordinary `ScalarSource.of(...)` adapter. `TeleOp_09` injects
-  prebuilt Plants as ordinary peer dependencies and stops multiple Plants sequentially rather than
-  through best-effort cleanup. Examples 01 through 06 can also acquire later resources after drive
-  construction without the managed host's partial-INIT cleanup boundary. Their disabled state does
-  not remove their teaching effect: the examples hub, progression guide, loop guide, Tasks guide,
-  actuator guide, drive-guidance guide, shooter walkthrough, and layered-shooter guide link to one
-  or more of them.
+  lifecycle ceremony, but some also miss current safety or API rules. `TeleOp_03` and `TeleOp_06`
+  put a timeout-bearing spin-up Task first in `Tasks.sequence(...)`; sequence advances after any
+  terminal child and only aggregates `TIMEOUT` afterward, so both feed after failed spin-up.
+  `TeleOp_07` owns a Plant-backed mechanism without any STOP path. `TeleOp_08` hand-writes a
+  clock-aware analog-voltage transform instead of using the existing `mapToDouble(...)` source
+  combinator. `TeleOp_09` injects prebuilt Plants as ordinary peer dependencies and stops multiple
+  Plants sequentially rather than through best-effort cleanup. Examples 01 through 06 can also
+  acquire later resources after drive construction without the managed host's partial-INIT cleanup
+  boundary. Their disabled state does not remove their teaching effect: the examples hub,
+  progression guide, loop guide, Tasks guide, actuator guide, drive-guidance guide, shooter
+  walkthrough, and layered-shooter guide link to one or more of them.
 - **Distinct concepts to classify at Gate 1:** the audit found potentially useful lessons in fresh
   macro construction (03), shared tag selection plus omega-only guidance (05), external analog
   feedback for a regulated Plant (08), and request/behavior/realization separation (09). Basic
@@ -17451,13 +17513,13 @@ writer, and explicit lifecycle ownership.
   helpers. The comparison must include complete student navigation and concept count, source/config
   size, failure and cleanup behavior, discoverability, and documentation burden—not merely the
   number of lines in the outer OpMode.
-- **Leading hypothesis:** keep the tested starter and Pedro references unchanged; migrate only
-  distinct, current lessons into compact `robots.examples` owners with thin managed entries; delete
-  examples that merely repeat or combine earlier lessons; and remove raw lifecycle ceremony from
-  the ordinary concept progression. Do not add a lifecycle facade merely to preserve old file
-  shapes. Preserve a manual host only if the decision gate identifies a lifecycle that
-  `RobotProgram` cannot truthfully express; seeing FTC phases explicitly is documentation/test
-  material, not by itself a second robot architecture.
+- **Leading hypothesis:** retain the tested starter and Pedro teaching families in their
+  post-prerequisite forms; migrate only distinct, current lessons into compact `robots.examples`
+  owners with thin managed entries; delete examples that merely repeat or combine earlier lessons;
+  and remove raw lifecycle ceremony from the ordinary concept progression. Do not add a lifecycle
+  facade merely to preserve old file shapes. Preserve a manual host only if the decision gate
+  identifies a lifecycle that `RobotProgram` cannot truthfully express; seeing FTC phases
+  explicitly is documentation/test material, not by itself a second robot architecture.
 - **Configuration prerequisite update (2026-08-15):** do not begin EXAMPLE-04's implementation
   gate until CONFIG-02, SPATIAL-01, MATH-01, and CONFIG-03 through CONFIG-09 are complete. The
   curated examples must consume the final owner-config, finite-geometry/table, FTC vision/
@@ -17466,7 +17528,7 @@ writer, and explicit lifecycle ownership.
   approve any survivor robot, checkpoint, or example API.
 - **Dependencies and scope questions:** use the already-approved one-managed-host principle for
   example ownership, but leave deprecation or visibility of reusable `LoopClock`, `Bindings`, and
-  `TaskRunner` to RUNTIME-03. Coordinate with EXAMPLE-03 so Phoenix does not add a new advanced
+  `TaskRunner` to RUNTIME-03. Preserve EXAMPLE-03's evidence gate rather than adding a new advanced
   reference into a collection being retired. Decide whether example 09 needs a real frame-valued
   source/API change or should use an existing continuous source; do not expose the managed
   program's clock to preserve one lesson. Resolve vision cleanup through a truthful service or
