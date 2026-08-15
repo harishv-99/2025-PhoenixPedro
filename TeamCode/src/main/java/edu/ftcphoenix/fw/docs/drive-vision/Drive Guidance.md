@@ -133,6 +133,34 @@ query memory; it does not reset frame providers, solve lanes, sensors, estimator
 policies borrowed through the plan's reusable spatial spec. Those collaborators remain owned by
 the robot services that supplied them.
 
+## Controller tuning
+
+`DriveGuidancePlan.Tuning` is an immutable, reusable description of how spatial error becomes a
+normalized drive command. Start from `Tuning.defaults()` when robot code stores or shares the
+complete value. Use the `driveTuning()` branch, as in the example above, when the answers belong
+only to one plan. Both paths construct the same validated value; neither is live tuning.
+
+| Setting | Default | Meaning | Required software domain |
+| --- | ---: | --- | --- |
+| `kPTranslate` | `0.05` | normalized command per inch of translation error | finite and `>= 0` |
+| `maxTranslateCmd` | `0.60` | maximum normalized translation-command magnitude | finite in `[0, 1]` |
+| `kPAim` | `2.50` | normalized omega command per radian of aim error | finite and `>= 0` |
+| `maxOmegaCmd` | `0.80` | maximum normalized omega-command magnitude | finite in `[0, 1]` |
+| `minOmegaCmd` | `0.00` | minimum normalized omega command outside the deadband | finite in `[0, maxOmegaCmd]`; a positive value also requires positive `kPAim` |
+| `aimDeadbandRad` | `Math.toRadians(1.0)` | wrapped aim error that produces zero omega | finite in `[0, Math.PI]` |
+
+Zero gains or command caps can deliberately disable their channel. Zero minimum omega disables the
+stiction assist, while a deadband of pi suppresses every canonical wrapped aim error. Every immutable
+intermediate must be coherent, so when reducing both nonzero omega limits, reduce `minOmegaCmd`
+before reducing `maxOmegaCmd` below the old minimum.
+
+For a positive cap, the translation controller preserves the direction of a finite error vector.
+It enforces every accepted normalized cap, including zero and very small positive values, and
+recovers that finite-error direction when multiplication by a very large finite gain would otherwise
+overflow. This software bound does not prove that the defaults—or any other accepted values—are
+physically safe or well tuned for a drivetrain. Validate direction, response, and safe limits on the
+actual robot before relying on an assist.
+
 ## Autonomous Task configuration
 
 `DriveGuidanceTask.Config` is a mutable construction input, not a live-tuning handle. A direct

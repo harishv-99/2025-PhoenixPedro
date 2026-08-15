@@ -309,6 +309,28 @@ must leave every stick and trigger at its intended physical neutral during const
 recalibration; software cannot distinguish controller drift from an intentionally displaced
 control at that instant.
 
+### Gamepad drive shaping
+
+`GamepadDriveSource` turns three normalized axis sources into robot-centric drive intent. Its
+mutable `Config` is setup data, not a live-tuning handle: construction makes an independent copy,
+validates that snapshot before sampling an axis, and retains only the snapshot.
+
+| Setting | Required software domain | Boundary meaning |
+| --- | --- | --- |
+| `deadband` | finite in `[0, 1]` | zero removes the dead zone; one suppresses the complete normalized axis |
+| `translateExpo` | finite and `>= 1` | one is linear after deadband normalization; larger values soften center translation |
+| `rotateExpo` | finite and `>= 1` | one is linear after deadband normalization; larger values soften center rotation |
+| `translateScale` | finite in `[0, 1]` | zero disables translation; one retains full normalized translation scale |
+| `rotateScale` | finite in `[0, 1]` | zero disables rotation; one retains full normalized rotation scale |
+
+The framework rejects an invalid authored value at `GamepadDriveSource` construction instead of
+silently taking its absolute value, reversing a command, or carrying a non-finite signal toward a
+drive sink. `Config.copy()` remains an independent data copy so a profile may copy an unused draft;
+the source that understands and retains the shaping answers owns their semantic validation.
+Construction validates software coherence only. `GamepadDevice` neutral calibration, safe response,
+and drivetrain direction still require the operator and robot checks described in
+[`Your first TeleOp`](<../getting-started/First TeleOp.md>).
+
 For complete context ownership, scalar-output limits, and mode examples, see
 [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>).
 

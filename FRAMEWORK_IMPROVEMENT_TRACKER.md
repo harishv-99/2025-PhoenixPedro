@@ -171,7 +171,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 84 | TUNE-02 | Continuous framework-owned Panels velocity-PIDF tuning | Done | The reviewed exact velocity-PIDF workflow, canonical fresh-Plant seam, scoring consolidation, synchronized evidence/docs, and publication authorization are complete. |
 | 85 | CTRL-02 | Systematic targets, setpoints, and output control | Done | The reviewed systematic motion-control grammar, truthful vocabulary and capabilities, synchronized callers/docs, automated verification, and publication authorization are complete. |
 | 86 | TUNE-03 | Unified standard-control experiments and tuning | Done | Adapt TUNE-02's fresh-Plant Panels workflow to CTRL-02's typed software controls and FTC controller shapes, add truthful velocity/position experiment metrics, and complete the mandatory legacy PIDF removal gate. |
-| 87 | CONFIG-02 | Core configuration ownership contract | Proposed | Make retaining core owners validate and snapshot their cohesive configuration answers without adding a common Config base or a second setup grammar. |
+| 87 | CONFIG-02 | Core configuration ownership contract | Done | The reviewed owner-local validation, bounded controller math, synchronized guidance, automated verification, and destination-specific publication authorization are complete. |
 | 88 | SPATIAL-01 | Finite authored spatial geometry | Proposed | Reject non-finite authored mounts, frames, references, targets, and field layouts at their semantic construction boundaries. |
 | 89 | MATH-01 | Finite interpolation calibration tables | Proposed | Require every authored interpolation knot and value to be finite across the supported table construction paths. |
 | 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Proposed | Give each FTC vision and AprilTag owner one validated defensive configuration boundary before deferred open or resource acquisition. |
@@ -249,9 +249,11 @@ than an example lesson: `StarterProfile` is 231 lines for drive and intake, `Pho
 1,033 lines across unrelated owners, and the Pedro reference reaches through Phoenix configuration.
 The user selected a full maintained-code configuration program before EXAMPLE-04, while rejecting a
 generic Config base, reflection copier, universal validation DSL, or units-system migration. The
-ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, then EXAMPLE-04. Each
-row remains **Proposed** and requires its own source/caller/construction-path decision gate; recording
-the program neither approves ten implementations nor permits compatibility shims or mixed-item PRs.
+ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, then EXAMPLE-04. At
+intake, each row was **Proposed** and required its own source/caller/construction-path decision gate;
+CONFIG-02 has since advanced through its separately approved implementation to **Verifying**, while
+the remaining rows stay **Proposed**. Recording the program neither approves the later implementations
+nor permits compatibility shims or mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
 after its curriculum scope was reopened, and its eventual rationalization must preserve the
 EXAMPLE-03 evidence gate recorded below.
@@ -17051,53 +17053,201 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-02 - Core configuration ownership contract
 
-- **Status and intake boundary (2026-08-15):** **Proposed.** CONFIG-01 fixed one proven retained-
-  alias defect without creating a general framework rule. This follow-up audits the maintained core
-  drive/configuration family and establishes a consistent ownership contract only where concrete
-  callers and failure paths justify it. No public construction path or config type is changed by
-  this intake.
-- **Confirmed current landscape:** owner-specific configurations already provide useful grouping.
-  `MecanumDrivebase.Config` and the fusion/EKF configs validate and copy before retention;
-  `StandardControl.Config` is an internal staged recipe; immutable semantic values need no copy.
-  `DriveGuidanceTask.Config` now snapshots and validates inside its retaining Task while preserving
-  its historical public no-argument setup. Treat that reviewed compatibility shape as a deliberate
-  exception unless Gate 1 finds a concrete caller problem; do not immediately churn CONFIG-01 for
-  visual consistency. These distinct shapes show that one shared Java base type is not the missing
-  capability.
-- **Confirmed remaining core defects:** `GamepadDriveSource.Config` is copied but not validated, so
-  non-finite deadband, exponent, or scale values can create non-finite drive intent and negative
-  shaping values are silently normalized. Immutable `DriveGuidancePlan.Tuning` accepts non-finite,
-  negative, out-of-range, and cross-field-incompatible gains, caps, stiction command, and deadband.
-  The broader drive family also includes `FtcDrives.MecanumWiringConfig`/`MecanumConfig`; Gate 1 must
-  distinguish already-correct ownership from real changes rather than mechanically rewriting every
-  class named Config.
-- **Program-level contract to test:** use an owner-specific Config only when two or more cohesive
-  answers travel together, have reusable defaults, or would be error-prone positional arguments.
-  A mutable Config is setup data, never live tuning: the first long-lived/effectful owner validates
-  captured answers and retains an independent snapshot before its first effect. Immutable authored/
-  configuration values validate at their semantic construction boundary; runtime evidence carriers
-  retain their documented unavailable/fail-closed policy. A single immediately consumed answer
-  stays a direct argument.
-  Software-valid defaults do not claim physical wiring, calibration, or safety review.
-- **Gate-1 construction-path requirement:** enumerate every public constructor, `defaults()`,
-  `copy()`, `of(...)`, staged builder, facade factory, and declared return type for the affected
-  drive family. Decide explicitly whether CONFIG-01's compatibility-preserved constructor/null
-  behavior remains a justified exception or is replaced; do not churn it merely for visual
-  symmetry. Preserve one ordinary call shape and remove any redundant layer only with complete
-  caller/docs migration.
-- **Leading hypothesis:** add owner-local validated snapshot paths for the two proven gaps and
-  document the shared ownership rule, while leaving already-safe configs structurally unchanged.
-  Reject `ConfigBase`, `CopyableConfig`, marker interfaces, reflection/annotation copiers, a generic
-  numeric validator, and a universal Units/Measure migration: none can encode deadband, gain, motor-
-  identity, timeout, frame, or cross-field policy and each would add a student concept.
-- **Bounded future scope and completion evidence:** limit production changes to protected-core and
-  FTC drive configuration directly selected by the caller audit, plus synchronized drive guidance,
-  TeleOp/source Javadocs, guides, and API tests. Prove every invalid field fails before source/sink
-  effects, every retained nested value is mutation-isolated, valid defaults and boundary values are
-  unchanged, public construction layers have distinct value, and ordinary robot setup stays short.
-  Run focused drive/source tests, full TeamCode compile/tests, strict Javadocs/docs, reflection/caller
-  scans, and whitespace checks. Robot hardware is not evidence for this data-ownership contract.
-- **Decision record:** _Pending. No implementation started._
+- **Gate 1 decision record (2026-08-15):** at that stop, CONFIG-02 was **Ready** and explicit
+  approval of the fail-fast behavior and bounded-translation correction was required before
+  implementation. It was the sole active item on `codex/config-02-core-config-ownership`, based
+  exactly on merged `origin/master@5b2ce48747baf420281e7ea3bfa2dd9ed5e34676`. The complete API, caller,
+  documentation, failure-path, and simplicity audit selects two owner-local corrections without a
+  new public type, method, constructor, overload, builder, facade, or call-site migration. At that
+  gate, no Java, test, Javadoc, or guide implementation had started; SPATIAL-01 and later items
+  remained untouched.
+- **Approval and implementation start (2026-08-15):** the user approved the exact design with,
+  **“Approve CONFIG-02 owner-local configuration validation and bounded-translation design.”**
+  CONFIG-02 was moved to **In progress** on the same branch and base. This authorizes only the selected
+  no-new-public-API validation, bounded controller math, focused evidence, and synchronized
+  documentation; it does not start SPATIAL-01 or any profile/configuration successor.
+- **Gate 2 implementation result (2026-08-15):** the approved owner boundaries are implemented
+  without a new public declaration or caller migration. `GamepadDriveSource` raw-copies the mutable
+  setup value, validates that retained snapshot in declared-field order, and builds no shaping graph
+  or samples no axis after an invalid answer. `DriveGuidancePlan.Tuning` validates its complete
+  immutable tuple in the existing package-private constructor, so defaults, all six withers, both
+  staged builders, Pose Lock, and all four GoToPose helpers share the same value contract. The
+  controller now enforces zero and sub-nanounit translation caps and reconstructs a finite bounded
+  direction when finite multiplication or magnitude overflows. The implementation changes three
+  production Java files, five focused/API test files, three maintained guides, and this tracker only;
+  Phoenix, examples, FTC factories, profiles, tools, and every later tracker item remain unchanged.
+- **Principles and ownership conclusion:** generalize the contract, not a Java base type. Use an
+  owner-specific configuration object only when multiple cohesive answers travel together, have a
+  reusable baseline, or would be unsafe positional arguments. Mutable configuration is setup data,
+  never live tuning: a retaining/effectful owner captures an independent copy, validates that
+  snapshot, and retains only the snapshot before sampling a source or producing an effect. An
+  immutable authored value validates its complete tuple when created and needs no copy. A single
+  immediately consumed answer remains a direct argument. Software-valid defaults are only a
+  baseline; they do not claim that wiring, tuning, calibration, or robot safety was physically
+  reviewed.
+- **Complete gamepad-drive construction and caller surface:** `GamepadDriveSource.Config` has one
+  private constructor, five public mutable numeric fields, `defaults()`, and an independent `copy()`.
+  `GamepadDriveSource` has one public constructor taking the three semantic axis sources plus that
+  config. Phoenix controls retain it through their profile slice; the maintained Starter controls
+  and six numbered manual examples pass defaults; the sampling test supplies one customized value.
+  No caller needs live mutation, inheritance, a second default constructor, positional shaping
+  arguments, or a staged builder. Preserve this exact public surface and the visible
+  `Config.defaults()` setup grammar.
+- **Confirmed gamepad failure and selected boundary:** before CONFIG-02, the source copied but never
+  validated. Its generic `ScalarSource.shaped(...)` dependency applies `abs(deadband)` and
+  `max(1, expo)`, silently accepting negative authored values, while `NaN`/infinity and non-finite or
+  negative or greater-than-one scales can produce disabled, reversed, out-of-range, or non-finite
+  drive intent. Managed `RobotProgram` rejects a non-finite final signal only later; direct/manual
+  hosts can carry it farther toward an FTC motor write. Keep generic source-decorator normalization
+  unchanged. In the `GamepadDriveSource` constructor, first make the existing independent config
+  copy, then validate that captured snapshot before building its shaping graph or sampling an axis.
+  Keep public `Config.copy()` as mutation isolation only, rather than adding a public
+  `validatedCopy`, validator, immutable twin, or snapshot type. Phoenix currently copies its whole
+  profile before mode selection; making the data-copy operation validate would let an unused
+  TeleOp-only draft block Auto. The source that understands and retains these shaping answers is the
+  semantic validation boundary.
+- **Exact gamepad domains:** require `deadband` to be finite in `[0, 1]`; `translateExpo` and
+  `rotateExpo` to be finite and at least `1`; and `translateScale` and `rotateScale` to be finite in
+  `[0, 1]`. These domains follow the source's normalized per-axis drive intent: deadband zero means
+  no dead zone and one suppresses the full normalized axis; zero scale disables that channel and one
+  retains full scale; exponent one is linear after deadband normalization and larger exponents only
+  soften center response. Every rejection must be an actionable `IllegalArgumentException` naming
+  `GamepadDriveSource.Config.<field>`, its domain, and the received value. Existing valid defaults,
+  output signs, one-sample-per-call behavior, reset, and post-construction mutation isolation remain
+  unchanged.
+- **Complete guidance-tuning surface:** immutable `DriveGuidancePlan.Tuning` has six final answers, a
+  package-private six-value constructor, `defaults()`, and six named public withers. The staged plan
+  grammar offers implicit defaults, inline `driveTuning()` answers, and `use(Tuning)` for a reusable
+  bundle; `poseLock(...)` and all four `GoToPoseTasks` helpers also consume the value. Phoenix drive
+  assist uses a reusable translation tuning and Phoenix targeting uses a reusable aim tuning; the
+  Drive Guidance guide demonstrates concise inline answers. The inline staged path and reusable
+  immutable value are distinct capabilities retained deliberately by CLEAN-01. Preserve all of
+  these constructors, stages, factories, return types, and ordinary call shapes.
+- **Confirmed tuning failure and exact domains:** the pre-CONFIG-02 boundary allowed negative gains
+  that reversed correction; negative caps could reverse translation or be silently absolutized by
+  clamp-bound swapping; non-finite values could disable caps or emit non-finite commands; a
+  negative/non-finite minimum omega was silently ignored; `minOmegaCmd > maxOmegaCmd` collapsed the
+  requested minimum; and an invalid deadband could disable or corrupt aim. A positive minimum paired
+  with zero aim gain also contradicted the documented
+  minimum: `signum(kP * error)` is zero, so no turn is produced outside the deadband. Even a finite
+  translation gain such as `Double.MAX_VALUE` can overflow when multiplied by an ordinary finite
+  error, after which the old infinity-times-zero clamp produces `NaN`. Validate the complete
+  immutable tuple in the existing package-private `Tuning` constructor so defaults, every wither,
+  and both staged implementations share one authoring boundary. Require `kPTranslate` and `kPAim`
+  finite and at least zero; `maxTranslateCmd` and `maxOmegaCmd` finite in `[0, 1]`;
+  `minOmegaCmd` finite in `[0, maxOmegaCmd]`, with a positive minimum also requiring positive
+  `kPAim`; and `aimDeadbandRad` finite in `[0, Math.PI]`, matching the canonical wrapped
+  `[-pi, +pi]` aim-error domain. Zero gains/caps, zero minimum/deadband, and a deadband of pi remain
+  software-valid explicit disabling/extreme boundaries when those cross-field rules are satisfied.
+  Each error names the exact field or field pair, constraint, and received value. Every immutable
+  intermediate remains valid, so lowering both a nonzero minimum and its maximum may require lowering
+  the minimum first; no caller justifies a new atomic-pair method. The existing defaults remain
+  unchanged.
+- **Truthful bounded-translation behavior:** before implementation,
+  `DriveGuidanceControllers.translationCmd(...)` clamped only when command magnitude also exceeded
+  `1e-9`, so an accepted zero cap or tiny
+  positive cap can emit a command larger than its declared maximum. Remove that epsilon condition:
+  with a validated nonnegative cap, `magnitude > maxTranslateCmd` already proves a positive divisor.
+  Also make finite-error overflow fail bounded rather than become `NaN`: preserve the existing
+  multiply-and-cap result for the ordinary finite path, but when multiplication or `hypot` overflows,
+  recover direction by normalizing the original finite error vector and apply the configured cap.
+  This preserves direction, exact zero, and every finite `[0, 1]` maximum without inventing an
+  arbitrary gain ceiling. These bounded translation changes and the minimum-omega correction below
+  are the only controller behavior changes and are inseparable from the selected tuning domains;
+  non-finite runtime observations remain a separate spatial/evidence boundary. Adversarial
+  implementation review also found that an accepted finite positive aim gain can underflow
+  `kP * error` to signed zero. The minimum-omega path now takes its already-known
+  correction sign from the finite bearing error, rather than that underflowed product, so the
+  approved positive-minimum contract remains true without an arbitrary lower gain bound. Ordinary
+  finite outputs are unchanged.
+- **Already-correct configuration disposition:** leave `MecanumDrivebase.Config`,
+  `FtcDrives.MecanumWiringConfig`, `FtcDrives.MecanumConfig`, both `FtcDrives.mecanum(...)` factories,
+  and the hardware-neutral `MecanumDrivebase` constructor structurally unchanged. They have distinct
+  value as, respectively, core sink scaling, reusable FTC wiring, complete FTC construction,
+  beginner defaults, explicit custom FTC configuration, and custom/simulation output injection.
+  Their current consumer boundaries deep-copy the retained layers and validate applicable scaling,
+  name, direction, and group-identity facts before output effects. A raw wiring copy remains useful
+  to Pedro/tools whose owner-specific validation and lifecycle differ. CONFIG-06 owns known retained
+  outer tester aliases; CONFIG-07 and CONFIG-09 own profile boilerplate and contextual diagnostics.
+- **CONFIG-01 disposition:** retain the reviewed mutable, nullable `DriveGuidanceTask.Config` setup
+  and its private Task snapshot unchanged. It has real plan, GoToPose, Phoenix, and test callers, and
+  CONFIG-01 already proved the compatibility-preserving boundary. Converting it, or mechanically
+  making every type named `Config` look alike, adds churn without a caller problem.
+- **Rejected alternatives and simplicity comparison:** documentation or downstream sink checks leave
+  silent normalization, wrong-direction finite commands, and late non-finite failure. Clamping or
+  taking absolute values hides authored mistakes. Validating only a finished plan misses direct
+  pose-lock and permits invalid immutable values. Positional constructors create five- and six-double
+  transposition hazards; staged Gamepad setup or immutable Gamepad withers add verbs despite complete
+  defaults; mutable guidance tuning recreates alias/snapshot work already avoided by immutability.
+  An arbitrary finite gain ceiling has no physical or mathematical authority and merely moves the
+  overflow threshold; the private bounded-controller fallback is both smaller and truthful.
+  Removing either staged tuning answers or reusable `Tuning` deletes a distinct supported use.
+  `ConfigBase`, `CopyableConfig`, marker interfaces, reflection/annotation copiers, generic numeric
+  validators, and a Units/Measure migration have no polymorphic consumer and cannot encode these
+  field- and cross-field-specific rules. The selected design leaves student code byte-for-byte
+  unchanged and introduces no public noun.
+- **Bounded implementation and synchronized documentation:** change only
+  `GamepadDriveSource`, `DriveGuidancePlan.Tuning`, the bounded translation controller math and
+  inseparable minimum-omega sign correction,
+  focused config/controller/API tests, exact source/guidance Javadocs, the Drive Guidance and source/
+  TeleOp guide passages that teach these settings, and this record. Phoenix and examples need no
+  production migration because every maintained value is inside the selected domains. Do not change
+  drive ownership, source sampling, overlay composition, task timing/lifecycle, guidance masks,
+  spatial geometry, FTC hardware factories, profiles, Pedro, tools, or robot policy. Correct the
+  current claim that all tuning values are unitless: caps/minimums are normalized commands, gains are
+  command per inch or command per radian, and the deadband is radians.
+- **Completion evidence:** test every field with `NaN`, both infinities, and each finite out-of-domain
+  class; accept and behaviorally prove all selected zero/one/pi boundaries and unchanged defaults;
+  prove raw Gamepad-copy independence followed by rejection at source ownership, invalid source
+  construction sampling no axis, and caller mutation not drifting a constructed source; prove
+  immutable-withers independence, both staged plan implementations, pose-lock and GoToPose
+  consumption, both tuning cross-field rules, exact actionable messages, and exact zero plus
+  sub-`1e-9` translation caps never exceeded. Use `Double.MAX_VALUE` gain with an ordinary finite
+  error and a very large finite two-axis error vector to prove overflow-safe bounded direction, while
+  preserving default controller outputs. All four GoToPose helpers have CONFIG-01 test coverage but
+  no maintained production caller; preserve their capability-distinct signatures without inventing
+  adopter evidence. Lock the unchanged public constructors, fields, factories, withers, stages, and
+  declared return types. Rerun focused drive/source/guidance tests, Phoenix/Starter callers, full
+  TeamCode compile/tests, strict Javadocs/docs, caller/reflection and forbidden-layer scans, and
+  whitespace checks. This is a pure software authoring/command-domain contract; robot hardware
+  supplies no completion evidence.
+- **Adversarial and verification result (2026-08-15):** independent Gamepad/API/docs review found
+  and closed three initially nondiscriminating test cases: raw-copy evidence now begins with an
+  invalid draft, retained source state is checked independently of scalar wrappers, and zero/one
+  shaping endpoints are sampled. Independent guidance/math review found and closed the positive-
+  gain underflow case above, required finite-error wording in the guide, and required runtime—not
+  signature-only—proof that Pose Lock and every GoToPose helper consume custom tuning. The final
+  forced command
+  `.\gradlew.bat --console=plain --rerun-tasks :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs`
+  completed successfully: 160 XML suites, 1,538 tests, zero failures, zero errors, and zero skips.
+  Focused evidence includes Gamepad config 7/7 and sampling 2/2; the complete guidance package is
+  56 tests across nine suites; `DocumentationLinksTest` is 5/5; and `FrameworkBoundaryTest` is
+  14/14. Both production modules compiled and strict Javadocs were regenerated at
+  `build/docs-site/api`. `git diff --check`, all-12-file trailing-whitespace/final-newline checks,
+  caller scans, and public reflection locks pass. The host has only the Windows Store Python stub,
+  so a strict local Zensical render could not run; the link test and Javadocs are green, while the
+  eventual hosted documentation check remains the definitive rendered-site gate. The only build
+  diagnostics are the existing JDK 21 source/target-8 deprecation warnings. No robot run can prove
+  these software authoring and numeric-boundary contracts; physical drive response remains an
+  adopting-robot responsibility.
+- **Android Studio audit point (2026-08-15):** CONFIG-02 is **Verifying** on
+  `codex/config-02-core-config-ownership`, based exactly on
+  `origin/master@5b2ce48747baf420281e7ea3bfa2dd9ed5e34676`. The 12-file diff is unstaged and
+  uncommitted. Review `GamepadDriveSource` for raw-copy-then-owner-validation ordering and unchanged
+  sampling; review `DriveGuidancePlan.Tuning` for the six exact domains and two cross-field rules;
+  review `DriveGuidanceControllers` for default-preserving zero/tiny/overflow bounds and the
+  bearing-error sign; then inspect the five focused/API tests and the three guide updates. Confirm
+  that no public setup grammar, Phoenix/example behavior, or later tracker item changed. Publication
+  remains a separate authorization; do not stage, commit, push, or open a pull request until the
+  reviewed diff is approved.
+- **Manual review and Gate 3 authorization (2026-08-15):** the user replied with the complete
+  destination-specific authorization: **“CONFIG-02 looks good. Authorize committing the reviewed
+  CONFIG-02 diff on codex/config-02-core-config-ownership, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** CONFIG-02 is now **Done**. This authorizes staging only the reviewed 12-file diff,
+  committing it on the named branch, pushing it to the named origin, opening the pull request, and
+  merging it into `master`; it does not authorize mixing SPATIAL-01 into that commit. The appended
+  direction to move on authorizes beginning SPATIAL-01's Gate 1 only after this merge is verified.
 
 ### SPATIAL-01 - Finite authored spatial geometry
 

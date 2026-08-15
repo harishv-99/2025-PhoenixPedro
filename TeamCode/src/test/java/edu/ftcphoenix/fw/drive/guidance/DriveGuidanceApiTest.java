@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
+import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveOverlay;
@@ -12,6 +13,8 @@ import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveOverlayStack;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
+import edu.ftcphoenix.fw.task.Task;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -74,6 +77,20 @@ public final class DriveGuidanceApiTest {
                 DriveOverlayMask.class
         );
 
+        assertPublicStaticMethod(
+                DriveGuidance.class,
+                "poseLock",
+                DriveOverlay.class,
+                AbsolutePoseEstimator.class
+        );
+        assertPublicStaticMethod(
+                DriveGuidance.class,
+                "poseLock",
+                DriveOverlay.class,
+                AbsolutePoseEstimator.class,
+                DriveGuidancePlan.Tuning.class
+        );
+
         assertPublicInstanceMethod(
                 DriveGuidanceQuery.class,
                 "get",
@@ -99,6 +116,10 @@ public final class DriveGuidanceApiTest {
                 "defaults",
                 DriveGuidancePlan.Tuning.class
         );
+        assertTuningSurface();
+        assertDriveTuningStageSurface();
+        assertGoToPoseTaskSurface();
+
         assertTrue(Modifier.isPublic(
                 DriveGuidanceTask.Config.class.getConstructor().getModifiers()));
         assertEquals(1, DriveGuidanceTask.Config.class.getConstructors().length);
@@ -171,6 +192,182 @@ public final class DriveGuidanceApiTest {
         assertEquals(DriveGuidanceSpec.ResolveWith.class, create.getReturnType());
     }
 
+    private static void assertTuningSurface() throws Exception {
+        assertTrue(Modifier.isPublic(DriveGuidancePlan.Tuning.class.getModifiers()));
+        assertTrue(Modifier.isStatic(DriveGuidancePlan.Tuning.class.getModifiers()));
+        assertTrue(Modifier.isFinal(DriveGuidancePlan.Tuning.class.getModifiers()));
+        assertEquals(0, DriveGuidancePlan.Tuning.class.getConstructors().length);
+        assertEquals(1, DriveGuidancePlan.Tuning.class.getDeclaredConstructors().length);
+        java.lang.reflect.Constructor<?> tuningConstructor =
+                DriveGuidancePlan.Tuning.class.getDeclaredConstructor(
+                        double.class,
+                        double.class,
+                        double.class,
+                        double.class,
+                        double.class,
+                        double.class
+                );
+        int constructorModifiers = tuningConstructor.getModifiers();
+        assertFalse(Modifier.isPublic(constructorModifiers));
+        assertFalse(Modifier.isProtected(constructorModifiers));
+        assertFalse(Modifier.isPrivate(constructorModifiers));
+
+        assertPublicFinalField(DriveGuidancePlan.Tuning.class, "kPTranslate", double.class);
+        assertPublicFinalField(DriveGuidancePlan.Tuning.class, "maxTranslateCmd", double.class);
+        assertPublicFinalField(DriveGuidancePlan.Tuning.class, "kPAim", double.class);
+        assertPublicFinalField(DriveGuidancePlan.Tuning.class, "maxOmegaCmd", double.class);
+        assertPublicFinalField(DriveGuidancePlan.Tuning.class, "minOmegaCmd", double.class);
+        assertPublicFinalField(DriveGuidancePlan.Tuning.class, "aimDeadbandRad", double.class);
+
+        assertPublicInstanceMethod(
+                DriveGuidancePlan.Tuning.class,
+                "withTranslateKp",
+                DriveGuidancePlan.Tuning.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidancePlan.Tuning.class,
+                "withMaxTranslateCmd",
+                DriveGuidancePlan.Tuning.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidancePlan.Tuning.class,
+                "withAimKp",
+                DriveGuidancePlan.Tuning.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidancePlan.Tuning.class,
+                "withMaxOmegaCmd",
+                DriveGuidancePlan.Tuning.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidancePlan.Tuning.class,
+                "withMinOmegaCmd",
+                DriveGuidancePlan.Tuning.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidancePlan.Tuning.class,
+                "withAimDeadbandRad",
+                DriveGuidancePlan.Tuning.class,
+                double.class
+        );
+
+        int publicDeclaredMethods = 0;
+        for (Method method : DriveGuidancePlan.Tuning.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers())) {
+                publicDeclaredMethods++;
+            }
+        }
+        assertEquals("Tuning must retain defaults() plus exactly six named withers",
+                7, publicDeclaredMethods);
+    }
+
+    private static void assertDriveTuningStageSurface() throws Exception {
+        assertPublicInstanceMethod(
+                DriveGuidance.PlanOptionalTuningStage.class,
+                "driveTuning",
+                DriveGuidance.DriveTuningBranch.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "use",
+                DriveGuidance.DriveTuningBranch.class,
+                DriveGuidancePlan.Tuning.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "translateKp",
+                DriveGuidance.DriveTuningBranch.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "maxTranslateCmd",
+                DriveGuidance.DriveTuningBranch.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "aimKp",
+                DriveGuidance.DriveTuningBranch.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "maxOmegaCmd",
+                DriveGuidance.DriveTuningBranch.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "minOmegaCmd",
+                DriveGuidance.DriveTuningBranch.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "aimDeadbandRad",
+                DriveGuidance.DriveTuningBranch.class,
+                double.class
+        );
+        assertPublicInstanceMethod(
+                DriveGuidance.DriveTuningBranch.class,
+                "doneDriveTuning",
+                DriveGuidance.PlanOptionalTuningStage.class
+        );
+    }
+
+    private static void assertGoToPoseTaskSurface() throws Exception {
+        assertPublicStaticMethod(
+                GoToPoseTasks.class,
+                "goToPoseFieldRelative",
+                Task.class,
+                AbsolutePoseEstimator.class,
+                DriveCommandSink.class,
+                Pose2d.class,
+                DriveGuidancePlan.Tuning.class,
+                DriveGuidanceTask.Config.class
+        );
+        assertPublicStaticMethod(
+                GoToPoseTasks.class,
+                "goToPoseTagRelative",
+                Task.class,
+                AbsolutePoseEstimator.class,
+                DriveCommandSink.class,
+                TagLayout.class,
+                int.class,
+                double.class,
+                double.class,
+                double.class,
+                DriveGuidancePlan.Tuning.class,
+                DriveGuidanceTask.Config.class
+        );
+        assertPublicStaticMethod(
+                GoToPoseTasks.class,
+                "holdPositionAndAimFieldHeading",
+                Task.class,
+                AbsolutePoseEstimator.class,
+                DriveCommandSink.class,
+                double.class,
+                DriveGuidancePlan.Tuning.class,
+                DriveGuidanceTask.Config.class
+        );
+        assertPublicStaticMethod(
+                GoToPoseTasks.class,
+                "aimOnlyFieldHeading",
+                Task.class,
+                AbsolutePoseEstimator.class,
+                DriveCommandSink.class,
+                double.class,
+                DriveGuidancePlan.Tuning.class,
+                DriveGuidanceTask.Config.class
+        );
+    }
+
     private static void assertNoDeclaredMethod(Class<?> owner, String name) {
         for (Method method : owner.getDeclaredMethods()) {
             if (name.equals(method.getName())) {
@@ -185,6 +382,15 @@ public final class DriveGuidanceApiTest {
         java.lang.reflect.Field field = owner.getDeclaredField(name);
         assertTrue(Modifier.isPublic(field.getModifiers()));
         assertFalse(Modifier.isFinal(field.getModifiers()));
+        assertEquals(fieldType, field.getType());
+    }
+
+    private static void assertPublicFinalField(Class<?> owner,
+                                               String name,
+                                               Class<?> fieldType) throws Exception {
+        java.lang.reflect.Field field = owner.getDeclaredField(name);
+        assertTrue(Modifier.isPublic(field.getModifiers()));
+        assertTrue(Modifier.isFinal(field.getModifiers()));
         assertEquals(fieldType, field.getType());
     }
 

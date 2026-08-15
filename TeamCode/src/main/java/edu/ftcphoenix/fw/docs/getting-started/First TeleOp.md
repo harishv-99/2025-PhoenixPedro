@@ -136,6 +136,13 @@ driveSource = new GamepadDriveSource(
 );
 ```
 
+`Config.defaults()` is a software-valid shaping baseline, not a claim that the resulting speed or
+response is safe for this robot. `GamepadDriveSource` copies and validates that configuration once
+when it is constructed; changing the original object afterward cannot retune the live source. If
+you customize its deadband, exponents, or normalized maximum scales, use the exact domains in
+[`Sources and Signals`](<../core-concepts/Sources and Signals.md#gamepad-drive-shaping>). The raised-
+wheel test remains the evidence for physical direction and safe response.
+
 The same controls owner maps button edges to the capability from the mechanism lesson:
 
 ```java
