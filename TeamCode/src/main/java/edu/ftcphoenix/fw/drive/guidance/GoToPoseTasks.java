@@ -16,6 +16,10 @@ import edu.ftcphoenix.fw.task.Task;
  *
  * <p>This keeps the “go to pose” concept (very common in autonomous) while reusing
  * the same aim/translate/solveWith/driveTuning machinery as TeleOp DriveGuidance overlays.</p>
+ *
+ * <p>Every helper validates and snapshots its {@link DriveGuidanceTask.Config} before returning.
+ * Later mutations affect only Tasks created afterward, and a {@code null} config uses the ordinary
+ * guidance-task defaults.</p>
  */
 public final class GoToPoseTasks {
 
@@ -156,7 +160,6 @@ public final class GoToPoseTasks {
                 .doneDriveTuning()
                 .build();
 
-        DriveGuidanceTask.Config cfg = taskCfg != null ? taskCfg : new DriveGuidanceTask.Config();
-        return new DriveGuidanceTask(drivebase, plan, cfg);
+        return new DriveGuidanceTask(drivebase, plan, taskCfg);
     }
 }

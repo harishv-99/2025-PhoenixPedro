@@ -43,21 +43,27 @@ public final class DriveGuidanceTask implements Task {
 
     /**
      * Task-level settings (tolerances/timeouts) independent of controller tuning.
+     *
+     * <p>This is a mutable setup value. A {@link DriveGuidanceTask} validates and defensively
+     * snapshots it when the Task is created, so later mutations affect only Tasks created after
+     * those mutations. Pass {@code null} to a Task factory to use the defaults below.</p>
      */
     public static final class Config {
 
         /**
-         * Position tolerance in inches (applies when translation is requested).
+         * Position tolerance in inches (applies when translation is requested); must be finite
+         * and greater than or equal to zero.
          */
         public double positionTolInches = 1.5;
 
         /**
-         * Heading tolerance in radians (applies when omega is requested).
+         * Heading tolerance in radians (applies when omega is requested); must be finite and
+         * greater than or equal to zero.
          */
         public double headingTolRad = Math.toRadians(6.0);
 
         /**
-         * Overall timeout for the task.
+         * Overall timeout for the task; must be finite and greater than zero.
          */
         public double timeoutSec = 3.0;
 
@@ -66,22 +72,87 @@ public final class DriveGuidanceTask implements Task {
          *
          * <p>The consecutive interval begins when the task starts, or on the first no-command
          * loop after usable guidance was last available. Time from before that boundary is not
-         * charged to this timeout.</p>
+         * charged to this timeout. This value must be finite and greater than zero.</p>
          */
         public double maxNoGuidanceSec = 0.35;
 
         /**
          * Optional override: which DOFs the task should actively drive.
          *
-         * <p>If null, the task defaults to {@link DriveGuidancePlan#requestedMask()}.</p>
+         * <p>If null, the task defaults to {@link DriveGuidancePlan#requestedMask()}. The reference
+         * is captured with the other settings when the Task is created.</p>
          */
         public DriveOverlayMask requestedMask = null;
+    }
+
+    /** Validated construction-time settings retained privately by one Task instance. */
+    private static final class ConfigSnapshot {
+        final double positionTolInches;
+        final double headingTolRad;
+        final double timeoutSec;
+        final double maxNoGuidanceSec;
+        final DriveOverlayMask requestedMask;
+
+        private ConfigSnapshot(double positionTolInches,
+                               double headingTolRad,
+                               double timeoutSec,
+                               double maxNoGuidanceSec,
+                               DriveOverlayMask requestedMask) {
+            this.positionTolInches = positionTolInches;
+            this.headingTolRad = headingTolRad;
+            this.timeoutSec = timeoutSec;
+            this.maxNoGuidanceSec = maxNoGuidanceSec;
+            this.requestedMask = requestedMask;
+        }
+
+        static ConfigSnapshot from(Config config) {
+            Config source = config != null ? config : new Config();
+
+            // Capture each mutable answer once so validation and retained behavior use the same
+            // construction-time values.
+            double positionTolInches = source.positionTolInches;
+            double headingTolRad = source.headingTolRad;
+            double timeoutSec = source.timeoutSec;
+            double maxNoGuidanceSec = source.maxNoGuidanceSec;
+            DriveOverlayMask requestedMask = source.requestedMask;
+
+            requireFiniteNonNegative(positionTolInches, "positionTolInches");
+            requireFiniteNonNegative(headingTolRad, "headingTolRad");
+            requireFinitePositive(timeoutSec, "timeoutSec");
+            requireFinitePositive(maxNoGuidanceSec, "maxNoGuidanceSec");
+
+            return new ConfigSnapshot(
+                    positionTolInches,
+                    headingTolRad,
+                    timeoutSec,
+                    maxNoGuidanceSec,
+                    requestedMask
+            );
+        }
+
+        private static void requireFiniteNonNegative(double value, String fieldName) {
+            if (!Double.isFinite(value) || value < 0.0) {
+                throw new IllegalArgumentException(
+                        "DriveGuidanceTask.Config." + fieldName
+                                + " must be finite and >= 0, got " + value + "."
+                );
+            }
+        }
+
+        private static void requireFinitePositive(double value, String fieldName) {
+            if (!Double.isFinite(value) || value <= 0.0) {
+                throw new IllegalArgumentException(
+                        "DriveGuidanceTask.Config." + fieldName
+                                + " must be finite and > 0, got " + value + "."
+                );
+            }
+        }
     }
 
     private final String debugName;
     private final DriveCommandSink drivebase;
     private final DriveGuidancePlan plan;
-    private final Config cfg;
+    private final ConfigSnapshot cfg;
 
     private final DriveGuidanceCore core;
 
@@ -107,7 +178,7 @@ public final class DriveGuidanceTask implements Task {
         this.debugName = (debugName != null && !debugName.isEmpty()) ? debugName : "DriveGuidanceTask";
         this.drivebase = Objects.requireNonNull(drivebase, "drivebase");
         this.plan = Objects.requireNonNull(plan, "plan");
-        this.cfg = (cfg != null) ? cfg : new Config();
+        this.cfg = ConfigSnapshot.from(cfg);
         this.core = new DriveGuidanceCore(plan);
     }
 
@@ -183,7 +254,7 @@ public final class DriveGuidanceTask implements Task {
 
         // Hard timeout.
         double elapsed = clock.nowSec() - startTimeSec;
-        if (cfg.timeoutSec > 0.0 && elapsed > cfg.timeoutSec) {
+        if (elapsed > cfg.timeoutSec) {
             complete = true;
             outcome = TaskOutcome.TIMEOUT;
             drivebase.stop();
@@ -206,7 +277,7 @@ public final class DriveGuidanceTask implements Task {
                 noGuidanceStartSec = clock.nowSec();
             }
             noGuidanceSec = Math.max(0.0, clock.nowSec() - noGuidanceStartSec);
-            if (cfg.maxNoGuidanceSec > 0.0 && noGuidanceSec > cfg.maxNoGuidanceSec) {
+            if (noGuidanceSec > cfg.maxNoGuidanceSec) {
                 complete = true;
                 outcome = TaskOutcome.TIMEOUT;
             }

@@ -15,7 +15,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveOverlay;
+import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveSignal;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -525,6 +527,85 @@ public final class PhoenixTargetingSourceTest {
     }
 
     @Test
+    public void aimTaskSnapshotsEachInvalidNumericConfigBeforeDeferredStart() {
+        assertDeferredInvalidConfigSnapshot(
+                "positionTolInches",
+                "finite and >= 0",
+                Double.NaN,
+                0.5,
+                new ConfigAnswer() {
+                    @Override
+                    public void set(DriveGuidanceTask.Config config, double value) {
+                        config.positionTolInches = value;
+                    }
+                }
+        );
+        assertDeferredInvalidConfigSnapshot(
+                "headingTolRad",
+                "finite and >= 0",
+                Double.POSITIVE_INFINITY,
+                Math.toRadians(2.0),
+                new ConfigAnswer() {
+                    @Override
+                    public void set(DriveGuidanceTask.Config config, double value) {
+                        config.headingTolRad = value;
+                    }
+                }
+        );
+        assertDeferredInvalidConfigSnapshot(
+                "timeoutSec",
+                "finite and > 0",
+                0.0,
+                1.0,
+                new ConfigAnswer() {
+                    @Override
+                    public void set(DriveGuidanceTask.Config config, double value) {
+                        config.timeoutSec = value;
+                    }
+                }
+        );
+        assertDeferredInvalidConfigSnapshot(
+                "maxNoGuidanceSec",
+                "finite and > 0",
+                Double.NEGATIVE_INFINITY,
+                0.25,
+                new ConfigAnswer() {
+                    @Override
+                    public void set(DriveGuidanceTask.Config config, double value) {
+                        config.maxNoGuidanceSec = value;
+                    }
+                }
+        );
+    }
+
+    @Test
+    public void aimTaskSnapshotsRequestedMaskBeforeDeferredStart() {
+        PhoenixProfile profile = PhoenixProfile.current();
+        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        PhoenixTargeting targeting = targetingFor(
+                profile,
+                new CurrentFrameAprilTagSensor(selectedTagId),
+                Source.constant(Collections.singleton(selectedTagId))
+        );
+        DriveGuidanceTask.Config config = new DriveGuidanceTask.Config();
+        config.requestedMask = DriveOverlayMask.NONE;
+        RecordingDriveSink driveSink = new RecordingDriveSink();
+
+        Task aimTask = targeting.aimTask(driveSink, config);
+
+        config.requestedMask = DriveOverlayMask.OMEGA_ONLY;
+
+        LoopClock clock = new LoopClock();
+        clock.reset(0.0);
+        targeting.update(clock);
+        aimTask.start(clock);
+        aimTask.update(clock);
+
+        assertEquals("the snapshotted NONE mask must not reach the drive sink",
+                0, driveSink.driveCount);
+    }
+
+    @Test
     public void resetRequiresFreshOverlayWithoutPoisoningTheNextSession() {
         PhoenixProfile profile = PhoenixProfile.current();
         int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
@@ -654,6 +735,51 @@ public final class PhoenixTargetingSourceTest {
                 BooleanSource.constant(false),
                 profile.autoAim.shotVelocityTable
         );
+    }
+
+    private static void assertDeferredInvalidConfigSnapshot(String fieldName,
+                                                            String constraint,
+                                                            double invalidValue,
+                                                            double correctedValue,
+                                                            ConfigAnswer answer) {
+        PhoenixProfile profile = PhoenixProfile.current();
+        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        PhoenixTargeting targeting = targetingFor(
+                profile,
+                new CurrentFrameAprilTagSensor(selectedTagId),
+                Source.constant(Collections.singleton(selectedTagId))
+        );
+        DriveGuidanceTask.Config config = new DriveGuidanceTask.Config();
+        answer.set(config, invalidValue);
+        RecordingDriveSink driveSink = new RecordingDriveSink();
+
+        Task aimTask = targeting.aimTask(driveSink, config);
+        answer.set(config, correctedValue);
+
+        LoopClock clock = new LoopClock();
+        clock.reset(0.0);
+        targeting.update(clock);
+        try {
+            aimTask.start(clock);
+            fail("expected the snapshotted invalid " + fieldName + " to fail at START");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(
+                    "DriveGuidanceTask.Config." + fieldName + " must be " + constraint
+                            + ", got " + invalidValue + ".",
+                    expected.getMessage()
+            );
+        }
+
+        assertEquals("invalid deferred construction must not update the drive sink",
+                0, driveSink.updateCount);
+        assertEquals("invalid deferred construction must not drive",
+                0, driveSink.driveCount);
+        assertEquals("invalid deferred construction must not stop the drive sink",
+                0, driveSink.stopCount);
+    }
+
+    private interface ConfigAnswer {
+        void set(DriveGuidanceTask.Config config, double value);
     }
 
     private static void assertActionableTargetingUpdateMessage(IllegalStateException failure) {
@@ -907,6 +1033,27 @@ public final class PhoenixTargetingSourceTest {
         @Override
         public void stop() {
             // No hardware output is owned by this test sink.
+        }
+    }
+
+    private static final class RecordingDriveSink implements DriveCommandSink {
+        int updateCount;
+        int driveCount;
+        int stopCount;
+
+        @Override
+        public void update(LoopClock clock) {
+            updateCount++;
+        }
+
+        @Override
+        public void drive(DriveSignal signal) {
+            driveCount++;
+        }
+
+        @Override
+        public void stop() {
+            stopCount++;
         }
     }
 }

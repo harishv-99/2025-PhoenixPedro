@@ -227,6 +227,19 @@ Target visibility is handled inside the routine. The scoring attempt waits for i
 `waitForTargetSec`; timeout is retained truthfully, and `PhoenixPedroPreParkTask` selects the
 explicit return/park fallback. No pre-reset INIT timestamp crosses the START clock epoch.
 
+`PhoenixTargeting.aimTask(...)` accepts `DriveGuidanceTask.Config` as a mutable construction input,
+but freezes those values when the aim Task is requested. The returned start-time wrapper therefore
+cannot drift if its caller later edits the same Config. The wrapper may start later in the root
+graph, after an earlier route or Task has already used the drive sink. When the wrapper starts after
+targeting has published the selected-target guidance plan, it constructs the inner
+`DriveGuidanceTask`; that framework boundary performs the authoritative numeric validation before
+that inner aim Task invokes the sink. An invalid deferred aim configuration is consequently
+reported at that inner-task start boundary rather than being silently treated as an unbounded
+timeout. Request a fresh aim Task to use later configuration edits.
+
+This snapshot and validation establish software consistency only. They do not prove safe physical
+timeout or tolerance choices, successful aiming, drivetrain tuning, or target visibility.
+
 ## Capabilities and scoring
 
 `PhoenixCapabilities` contains the common vocabulary used by both mode clients. Controls and Auto

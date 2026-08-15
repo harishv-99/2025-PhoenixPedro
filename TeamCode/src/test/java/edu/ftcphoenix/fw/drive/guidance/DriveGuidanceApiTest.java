@@ -102,6 +102,16 @@ public final class DriveGuidanceApiTest {
         assertTrue(Modifier.isPublic(
                 DriveGuidanceTask.Config.class.getConstructor().getModifiers()));
         assertEquals(1, DriveGuidanceTask.Config.class.getConstructors().length);
+
+        assertPublicMutableField(DriveGuidanceTask.Config.class, "positionTolInches", double.class);
+        assertPublicMutableField(DriveGuidanceTask.Config.class, "headingTolRad", double.class);
+        assertPublicMutableField(DriveGuidanceTask.Config.class, "timeoutSec", double.class);
+        assertPublicMutableField(DriveGuidanceTask.Config.class, "maxNoGuidanceSec", double.class);
+        assertPublicMutableField(
+                DriveGuidanceTask.Config.class,
+                "requestedMask",
+                DriveOverlayMask.class
+        );
     }
 
     @Test
@@ -167,6 +177,15 @@ public final class DriveGuidanceApiTest {
                 fail(owner.getName() + "." + name + " must be removed");
             }
         }
+    }
+
+    private static void assertPublicMutableField(Class<?> owner,
+                                                 String name,
+                                                 Class<?> fieldType) throws Exception {
+        java.lang.reflect.Field field = owner.getDeclaredField(name);
+        assertTrue(Modifier.isPublic(field.getModifiers()));
+        assertFalse(Modifier.isFinal(field.getModifiers()));
+        assertEquals(fieldType, field.getType());
     }
 
     private static void assertPublicStaticMethod(Class<?> owner,

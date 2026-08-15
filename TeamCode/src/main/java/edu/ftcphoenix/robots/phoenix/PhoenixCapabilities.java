@@ -271,6 +271,13 @@ public final class PhoenixCapabilities {
 
         /**
          * Creates an autonomous aim task using Phoenix's shared targeting service.
+         *
+         * <p>The supplied mutable task configuration is defensively copied when the task is
+         * requested. Later caller mutation cannot change the returned task.</p>
+         *
+         * @param driveSink final drive-command sink owned by the autonomous drive path
+         * @param cfg task-level tolerances and timeouts, or {@code null} for framework defaults
+         * @return fresh single-use aim task
          */
         Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg);
     }

@@ -724,17 +724,19 @@ public final class PhoenixProfile {
         public double routeTimeoutSec = 4.0;
 
         /**
-         * Heading tolerance used by autonomous aim tasks, in degrees.
+         * Heading tolerance used by autonomous aim tasks, in degrees; must be finite and greater
+         * than or equal to zero.
          */
         public double aimHeadingToleranceDeg = 2.0;
 
         /**
-         * Overall timeout for autonomous aim tasks.
+         * Overall timeout for autonomous aim tasks; must be finite and greater than zero.
          */
         public double aimTimeoutSec = 1.75;
 
         /**
-         * Maximum time an aim task may run without usable guidance before timing out.
+         * Maximum time an aim task may run without usable guidance before timing out; must be
+         * finite and greater than zero.
          */
         public double aimMaxNoGuidanceSec = 0.75;
 
