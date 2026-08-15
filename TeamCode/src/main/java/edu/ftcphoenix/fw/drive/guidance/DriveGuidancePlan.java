@@ -32,9 +32,12 @@ public final class DriveGuidancePlan {
      * a target point, or how many radians you are turned away) and produces a drive command that
      * reduces that error. These constants decide how “strong” the corrections are.</p>
      *
-     * <p>These values are intentionally <b>unitless</b> and operate directly in
-     * {@link edu.ftcphoenix.fw.drive.DriveSignal} units (roughly -1..1). That makes them easy to use
-     * in TeleOp without any drivetrain characterization.</p>
+     * <p>The gains convert physical error into normalized
+     * {@link edu.ftcphoenix.fw.drive.DriveSignal} commands: translation gain is command per inch,
+     * and aim gain is omega command per radian. Command caps and the minimum omega command are
+     * normalized magnitudes in {@code [0, 1]}; the aim deadband is in radians. These software
+     * domains are validated whenever a tuning value is created. They do not prove that the tuning
+     * is physically safe or effective for a particular drivetrain.</p>
      *
      * <h2>How to tune (quick checklist)</h2>
      * <ol>
@@ -55,51 +58,61 @@ public final class DriveGuidancePlan {
     public static final class Tuning {
 
         /**
-         * P gain for translation: command per inch of error.
+         * P gain for translation, in normalized translation command per inch of error.
+         * Must be finite and non-negative.
          */
         public final double kPTranslate;
 
         /**
-         * Max translation command magnitude (0..1-ish).
+         * Maximum normalized translation command magnitude, in {@code [0, 1]}.
          */
         public final double maxTranslateCmd;
 
         /**
-         * P gain for aim: omega command per radian of bearing error.
+         * P gain for aim, in normalized omega command per radian of bearing error.
+         * Must be finite and non-negative.
          */
         public final double kPAim;
 
         /**
-         * Max omega command magnitude (0..1-ish).
+         * Maximum normalized omega command magnitude, in {@code [0, 1]}.
          */
         public final double maxOmegaCmd;
 
         /**
-         * Minimum omega command magnitude (0..1-ish) when outside the aim deadband.
+         * Minimum normalized omega command magnitude when outside the aim deadband.
          *
          * <p>This is a small "stiction bust" term: many drivetrains won't physically move
          * for very small turn commands due to static friction and motor deadband. When
          * {@code minOmegaCmd > 0}, the controller will output at least this magnitude
          * (with the correct sign) any time the aim error is outside {@link #aimDeadbandRad}.
          *
-         * <p>Typical values: 0.03–0.10. Leave at 0 to disable.</p>
+         * <p>The value must be finite and in {@code [0, maxOmegaCmd]}. A positive value also
+         * requires a positive {@link #kPAim}. Typical values are 0.03–0.10; leave it at zero to
+         * disable the minimum.</p>
          */
         public final double minOmegaCmd;
 
         /**
-         * Deadband for aim (radians): errors smaller than this output 0 omega.
+         * Deadband for aim, in radians. Errors at or inside this magnitude output zero omega.
+         * Must be finite and in {@code [0, Math.PI]}.
          */
         public final double aimDeadbandRad;
 
         /**
          * Creates a full tuning bundle.
          *
-         * @param kPTranslate     translation proportional gain in command-per-inch
-         * @param maxTranslateCmd max translation command magnitude
-         * @param kPAim           aim proportional gain in command-per-radian
-         * @param maxOmegaCmd     max omega command magnitude
-         * @param minOmegaCmd     minimum omega magnitude outside the deadband
-         * @param aimDeadbandRad  aim deadband in radians
+         * @param kPTranslate      finite, non-negative translation proportional gain in normalized
+         *                          command per inch
+         * @param maxTranslateCmd finite maximum translation command magnitude in {@code [0, 1]}
+         * @param kPAim            finite, non-negative aim proportional gain in normalized omega
+         *                          command per radian
+         * @param maxOmegaCmd      finite maximum omega command magnitude in {@code [0, 1]}
+         * @param minOmegaCmd      finite minimum omega magnitude in {@code [0, maxOmegaCmd]}; a
+         *                          positive minimum requires a positive {@code kPAim}
+         * @param aimDeadbandRad   finite aim deadband in {@code [0, Math.PI]} radians
+         * @throws IllegalArgumentException if a value is non-finite or outside its documented
+         *                                  domain, or if the complete tuple is contradictory
          */
         Tuning(double kPTranslate,
                double maxTranslateCmd,
@@ -107,6 +120,30 @@ public final class DriveGuidancePlan {
                double maxOmegaCmd,
                double minOmegaCmd,
                double aimDeadbandRad) {
+            requireFiniteNonNegative("kPTranslate", kPTranslate);
+            requireNormalizedMagnitude("maxTranslateCmd", maxTranslateCmd);
+            requireFiniteNonNegative("kPAim", kPAim);
+            requireNormalizedMagnitude("maxOmegaCmd", maxOmegaCmd);
+            requireFiniteNonNegative("minOmegaCmd", minOmegaCmd);
+            if (minOmegaCmd > maxOmegaCmd) {
+                throw new IllegalArgumentException(
+                        "DriveGuidancePlan.Tuning.minOmegaCmd/maxOmegaCmd must satisfy "
+                                + "minOmegaCmd <= maxOmegaCmd; received minOmegaCmd="
+                                + minOmegaCmd + ", maxOmegaCmd=" + maxOmegaCmd);
+            }
+            if (minOmegaCmd > 0.0 && kPAim == 0.0) {
+                throw new IllegalArgumentException(
+                        "DriveGuidancePlan.Tuning.minOmegaCmd/kPAim requires kPAim > 0 when "
+                                + "minOmegaCmd > 0; received minOmegaCmd=" + minOmegaCmd
+                                + ", kPAim=" + kPAim);
+            }
+            if (!Double.isFinite(aimDeadbandRad)
+                    || aimDeadbandRad < 0.0
+                    || aimDeadbandRad > Math.PI) {
+                throw new IllegalArgumentException(
+                        "DriveGuidancePlan.Tuning.aimDeadbandRad must be finite and in "
+                                + "[0, Math.PI]; received " + aimDeadbandRad);
+            }
             this.kPTranslate = kPTranslate;
             this.maxTranslateCmd = maxTranslateCmd;
             this.kPAim = kPAim;
@@ -115,10 +152,30 @@ public final class DriveGuidancePlan {
             this.aimDeadbandRad = aimDeadbandRad;
         }
 
+        private static void requireFiniteNonNegative(String field, double value) {
+            if (!Double.isFinite(value) || value < 0.0) {
+                throw new IllegalArgumentException(
+                        "DriveGuidancePlan.Tuning." + field
+                                + " must be finite and >= 0; received " + value);
+            }
+        }
+
+        private static void requireNormalizedMagnitude(String field, double value) {
+            if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+                throw new IllegalArgumentException(
+                        "DriveGuidancePlan.Tuning." + field
+                                + " must be finite and in [0, 1]; received " + value);
+            }
+        }
+
         /**
          * Return a copy of this tuning with a different translation kP gain.
          *
          * <p>Higher values make the robot drive toward the translation target more aggressively.</p>
+         *
+         * @param kPTranslate finite, non-negative normalized command per inch
+         * @return an independent validated tuning value
+         * @throws IllegalArgumentException if {@code kPTranslate} is non-finite or negative
          */
         public Tuning withTranslateKp(double kPTranslate) {
             return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
@@ -127,7 +184,11 @@ public final class DriveGuidancePlan {
         /**
          * Return a copy of this tuning with a different maximum translation command.
          *
-         * <p>This caps how fast the assist can drive the robot in X/Y (typical range: 0..1).</p>
+         * <p>This caps how strongly the assist can command X/Y translation.</p>
+         *
+         * @param maxTranslateCmd finite normalized magnitude in {@code [0, 1]}
+         * @return an independent validated tuning value
+         * @throws IllegalArgumentException if {@code maxTranslateCmd} is outside its domain
          */
         public Tuning withMaxTranslateCmd(double maxTranslateCmd) {
             return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
@@ -136,7 +197,13 @@ public final class DriveGuidancePlan {
         /**
          * Return a copy of this tuning with a different aim (turn) kP gain.
          *
-         * <p>Higher values make the robot turn toward the aim target more aggressively.</p>
+         * <p>Higher values make the robot turn toward the aim target more aggressively. A zero
+         * value is incompatible with a positive {@link #minOmegaCmd}.</p>
+         *
+         * @param kPAim finite, non-negative normalized omega command per radian
+         * @return an independent validated tuning value
+         * @throws IllegalArgumentException if {@code kPAim} is outside its domain or contradicts
+         *                                  the retained minimum omega command
          */
         public Tuning withAimKp(double kPAim) {
             return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
@@ -145,7 +212,13 @@ public final class DriveGuidancePlan {
         /**
          * Return a copy of this tuning with a different maximum omega (turn) command.
          *
-         * <p>This caps how fast the assist can turn the robot (typical range: 0..1).</p>
+         * <p>This caps how strongly the assist can command a turn.</p>
+         *
+         * @param maxOmegaCmd finite normalized magnitude in {@code [0, 1]} and not less than the
+         *                    retained {@link #minOmegaCmd}
+         * @return an independent validated tuning value
+         * @throws IllegalArgumentException if {@code maxOmegaCmd} is outside its domain or below
+         *                                  the retained minimum omega command
          */
         public Tuning withMaxOmegaCmd(double maxOmegaCmd) {
             return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
@@ -157,6 +230,12 @@ public final class DriveGuidancePlan {
          * <p>When {@code minOmegaCmd > 0}, DriveGuidance will output at least this magnitude
          * any time the aim error is outside the aim deadband. This helps overcome static
          * friction so the robot doesn't "give up" while still slightly mis-aimed.</p>
+         *
+         * @param minOmegaCmd finite normalized magnitude in {@code [0, maxOmegaCmd]}; a positive
+         *                    value requires a positive retained {@link #kPAim}
+         * @return an independent validated tuning value
+         * @throws IllegalArgumentException if {@code minOmegaCmd} is outside its domain or
+         *                                  contradicts the retained aim gain
          */
         public Tuning withMinOmegaCmd(double minOmegaCmd) {
             return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
@@ -165,7 +244,12 @@ public final class DriveGuidancePlan {
         /**
          * Return a copy of this tuning with a different aim deadband in radians.
          *
-         * <p>If the aim error magnitude is smaller than this, DriveGuidance outputs 0 turn command.</p>
+         * <p>If the aim error magnitude is at or inside this deadband, DriveGuidance outputs zero
+         * turn command.</p>
+         *
+         * @param aimDeadbandRad finite deadband in {@code [0, Math.PI]} radians
+         * @return an independent validated tuning value
+         * @throws IllegalArgumentException if {@code aimDeadbandRad} is outside its domain
          */
         public Tuning withAimDeadbandRad(double aimDeadbandRad) {
             return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);

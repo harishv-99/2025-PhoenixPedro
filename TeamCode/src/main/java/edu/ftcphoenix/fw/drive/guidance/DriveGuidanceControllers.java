@@ -4,11 +4,11 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 
 /**
- * Small, unitless P-style controllers used by drive guidance overlays.
+ * Small P-style controllers used by drive guidance overlays.
  *
- * <p>These controllers operate in “DriveSignal units” (typically [-1, +1]). They are not
- * kinematics-aware and intentionally avoid physical units (ips, rad/s) so they can be used
- * directly with Phoenix TeleOp driving.</p>
+ * <p>Translation gain maps error in inches to normalized translation command, while aim gain maps
+ * error in radians to normalized omega command. The controllers are not kinematics-aware and do
+ * not command physical velocity units such as inches per second or radians per second.</p>
  */
 final class DriveGuidanceControllers {
 
@@ -24,12 +24,46 @@ final class DriveGuidanceControllers {
 
         // Clamp translation magnitude to maxTranslateCmd (preserve direction).
         double mag = Math.hypot(ax, lat);
-        if (mag > tuning.maxTranslateCmd && mag > 1e-9) {
+        if (mag > tuning.maxTranslateCmd) {
+            if (!Double.isFinite(mag)
+                    && Double.isFinite(forwardErrorIn)
+                    && Double.isFinite(leftErrorIn)
+                    && tuning.kPTranslate > 0.0) {
+                return boundedTranslationFromFiniteError(
+                        forwardErrorIn,
+                        leftErrorIn,
+                        tuning.maxTranslateCmd
+                );
+            }
             double s = tuning.maxTranslateCmd / mag;
             ax *= s;
             lat *= s;
         }
         return new DriveSignal(ax, lat, 0.0);
+    }
+
+    /**
+     * Recovers a bounded command direction when finite multiplication or vector magnitude
+     * overflows. Scaling by the largest error component keeps the normalization finite without
+     * imposing an arbitrary upper bound on a valid gain or error.
+     */
+    private static DriveSignal boundedTranslationFromFiniteError(double forwardErrorIn,
+                                                                 double leftErrorIn,
+                                                                 double maxTranslateCmd) {
+        double largestError = Math.max(Math.abs(forwardErrorIn), Math.abs(leftErrorIn));
+        if (largestError == 0.0) {
+            return DriveSignal.zero();
+        }
+
+        double scaledForward = forwardErrorIn / largestError;
+        double scaledLeft = leftErrorIn / largestError;
+        double scaledMagnitude = Math.hypot(scaledForward, scaledLeft);
+        double commandScale = maxTranslateCmd / scaledMagnitude;
+        return new DriveSignal(
+                scaledForward * commandScale,
+                scaledLeft * commandScale,
+                0.0
+        );
     }
 
     /**
@@ -47,7 +81,10 @@ final class DriveGuidanceControllers {
         // below motor/controller deadbands.
         double min = tuning.minOmegaCmd;
         if (min > 0.0 && Double.isFinite(min) && Math.abs(om) < min) {
-            om = Math.signum(om) * min;
+            // A valid positive gain can still underflow to signed zero. The bearing error is the
+            // already-known correction direction whenever execution reaches this outside-deadband
+            // branch, so retain that sign rather than deriving it from the underflowed product.
+            om = Math.copySign(min, bearingErrorRad);
         }
 
         return MathUtil.clamp(om, -tuning.maxOmegaCmd, +tuning.maxOmegaCmd);

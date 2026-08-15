@@ -78,14 +78,15 @@ public final class GamepadDriveSource implements DriveSource {
      * Configuration for TeleOp stick shaping.
      *
      * <p>
-     * This is a mutable data object. {@link GamepadDriveSource} makes a defensive copy when it is
-     * constructed.
+     * This is a mutable data object. {@link GamepadDriveSource} makes and validates a defensive
+     * copy when it is constructed. {@link #copy()} itself remains a raw data copy so callers may
+     * edit a draft before handing it to the source that owns these rules.
      * </p>
      */
     public static final class Config {
 
         /**
-         * Symmetric deadband radius in [0, 1]. Default: 0.05.
+         * Finite symmetric deadband radius in [0, 1]. Default: 0.05.
          *
          * <p>
          * Values with {@code |v| <= deadband} are treated as 0. Values outside the deadband are
@@ -95,24 +96,25 @@ public final class GamepadDriveSource implements DriveSource {
         public double deadband = 0.05;
 
         /**
-         * Exponent for translation (axial + lateral). Default: 1.5.
+         * Finite exponent greater than or equal to 1 for translation (axial + lateral).
+         * Default: 1.5.
          *
          * <p>Values &gt; 1 soften near center and keep full-scale at the edges.</p>
          */
         public double translateExpo = 1.5;
 
         /**
-         * Exponent for rotation (omega). Default: 1.5.
+         * Finite exponent greater than or equal to 1 for rotation (omega). Default: 1.5.
          */
         public double rotateExpo = 1.5;
 
         /**
-         * Max translation scale applied after shaping. Default: 1.0.
+         * Finite max translation scale in [0, 1] applied after shaping. Default: 1.0.
          */
         public double translateScale = 1.0;
 
         /**
-         * Max rotation scale applied after shaping. Default: 1.0.
+         * Finite max rotation scale in [0, 1] applied after shaping. Default: 1.0.
          */
         public double rotateScale = 1.0;
 
@@ -170,7 +172,10 @@ public final class GamepadDriveSource implements DriveSource {
      * @param axisLateralRaw raw lateral axis (typically +right)
      * @param axisAxialRaw axial axis (typically +forward)
      * @param axisOmegaRaw raw omega axis (typically +clockwise / turn-right)
-     * @param cfg stick-shaping configuration; defensively copied
+     * @param cfg stick-shaping configuration; defensively copied and validated
+     * @throws IllegalArgumentException if an axis or {@code cfg} is null, if the deadband or a
+     *         scale is non-finite or outside [0, 1], or if an exponent is non-finite or less than
+     *         1
      */
     public GamepadDriveSource(ScalarSource axisLateralRaw,
                               ScalarSource axisAxialRaw,
@@ -189,10 +194,13 @@ public final class GamepadDriveSource implements DriveSource {
             throw new IllegalArgumentException("GamepadDriveSource.Config is required");
         }
 
+        Config snapshot = cfg.copy();
+        validateConfig(snapshot);
+
         this.axisLateralRaw = axisLateralRaw;
         this.axisAxialRaw = axisAxialRaw;
         this.axisOmegaRaw = axisOmegaRaw;
-        this.cfg = cfg.copy();
+        this.cfg = snapshot;
 
         // Keep shaping in ScalarSource while decoupling it from the externally supplied sources.
         // get(clock) captures each external axis once, then these wrappers all read that snapshot.
@@ -207,6 +215,32 @@ public final class GamepadDriveSource implements DriveSource {
                 .shaped(this.cfg.deadband, this.cfg.rotateExpo, -1.0, 1.0)
                 .scaled(this.cfg.rotateScale)
                 .inverted();
+    }
+
+    private static void validateConfig(Config config) {
+        requireFiniteUnitInterval("deadband", config.deadband);
+        requireFiniteAtLeastOne("translateExpo", config.translateExpo);
+        requireFiniteAtLeastOne("rotateExpo", config.rotateExpo);
+        requireFiniteUnitInterval("translateScale", config.translateScale);
+        requireFiniteUnitInterval("rotateScale", config.rotateScale);
+    }
+
+    private static void requireFiniteUnitInterval(String field, double value) {
+        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+            throw new IllegalArgumentException(
+                    "GamepadDriveSource.Config." + field
+                            + " must be finite and in [0.0, 1.0], got " + value + "."
+            );
+        }
+    }
+
+    private static void requireFiniteAtLeastOne(String field, double value) {
+        if (!Double.isFinite(value) || value < 1.0) {
+            throw new IllegalArgumentException(
+                    "GamepadDriveSource.Config." + field
+                            + " must be finite and >= 1.0, got " + value + "."
+            );
+        }
     }
 
     /**
