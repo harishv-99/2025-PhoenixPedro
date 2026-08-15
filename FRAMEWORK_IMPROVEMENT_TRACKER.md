@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -171,9 +171,19 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 84 | TUNE-02 | Continuous framework-owned Panels velocity-PIDF tuning | Done | The reviewed exact velocity-PIDF workflow, canonical fresh-Plant seam, scoring consolidation, synchronized evidence/docs, and publication authorization are complete. |
 | 85 | CTRL-02 | Systematic targets, setpoints, and output control | Done | The reviewed systematic motion-control grammar, truthful vocabulary and capabilities, synchronized callers/docs, automated verification, and publication authorization are complete. |
 | 86 | TUNE-03 | Unified standard-control experiments and tuning | Done | Adapt TUNE-02's fresh-Plant Panels workflow to CTRL-02's typed software controls and FTC controller shapes, add truthful velocity/position experiment metrics, and complete the mandatory legacy PIDF removal gate. |
-| 87 | EXAMPLE-04 | Curated managed concept examples | Proposed | Audit the nine manual-loop concept labs, migrate only distinct lessons to the managed robot grammar, and delete or absorb redundant examples. |
-| 88 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
-| 89 | DRIVE-03 | Field-centric TeleOp drive intent | Proposed | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
+| 87 | CONFIG-02 | Core configuration ownership contract | Proposed | Make retaining core owners validate and snapshot their cohesive configuration answers without adding a common Config base or a second setup grammar. |
+| 88 | SPATIAL-01 | Finite authored spatial geometry | Proposed | Reject non-finite authored mounts, frames, references, targets, and field layouts at their semantic construction boundaries. |
+| 89 | MATH-01 | Finite interpolation calibration tables | Proposed | Require every authored interpolation knot and value to be finite across the supported table construction paths. |
+| 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Proposed | Give each FTC vision and AprilTag owner one validated defensive configuration boundary before deferred open or resource acquisition. |
+| 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Proposed | Validate and snapshot Pinpoint, absolute-pose, fusion, and composite-lane configuration before hardware or estimator effects. |
+| 92 | CONFIG-05 | Pedro runtime configuration ownership | Proposed | Replace the production runtime's peer argument bundle with one owner-specific, deeply snapshotted Pedro configuration path. |
+| 93 | CONFIG-06 | Tool and tester configuration ownership | Proposed | Remove retained mutable aliases and constructor forests from maintained calibration and tester owners without changing their evidence roles. |
+| 94 | CONFIG-07 | Starter profile simplification | Proposed | Replace the starter's aggregate copy-and-validation boilerplate with small owner configs and mode-specific composition checks. |
+| 95 | CONFIG-08 | Basic Pedro profile independence | Proposed | Give the Pedro reference its own small reviewed profile and remove its dependency on Phoenix configuration and project constants. |
+| 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Proposed | Move Phoenix configuration sections beside their owning services and mechanisms while retaining one small data-only aggregate. |
+| 97 | EXAMPLE-04 | Curated managed concept examples | Proposed | Audit the nine manual-loop concept labs, migrate only distinct lessons to the managed robot grammar, and delete or absorb redundant examples. |
+| 98 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
+| 99 | DRIVE-03 | Field-centric TeleOp drive intent | Proposed | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -232,6 +242,15 @@ authorized committing it on `codex/recover-tracker-example-drive-runtime-intake`
 `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
 `master`. This restores three **Proposed** records only; it approves no decision gate or
 implementation and starts none of those items.
+
+On 2026-08-15, the simple-example review exposed configuration boilerplate as a prerequisite rather
+than an example lesson: `StarterProfile` is 231 lines for drive and intake, `PhoenixProfile` is
+1,033 lines across unrelated owners, and the Pedro reference reaches through Phoenix configuration.
+The user selected a full maintained-code configuration program before EXAMPLE-04, while rejecting a
+generic Config base, reflection copier, universal validation DSL, or units-system migration. The
+ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, then EXAMPLE-04. Each
+row remains **Proposed** and requires its own source/caller/construction-path decision gate; recording
+the program neither approves ten implementations nor permits compatibility shims or mixed-item PRs.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -16983,6 +17002,411 @@ writer, and explicit lifecycle ownership.
   merging it into `master`. This approval completes Gate 3 for TUNE-03 only, does not claim the
   deferred robot-hardware validation, and does not start another tracker item.
 
+### CONFIG-02 - Core configuration ownership contract
+
+- **Status and intake boundary (2026-08-15):** **Proposed.** CONFIG-01 fixed one proven retained-
+  alias defect without creating a general framework rule. This follow-up audits the maintained core
+  drive/configuration family and establishes a consistent ownership contract only where concrete
+  callers and failure paths justify it. No public construction path or config type is changed by
+  this intake.
+- **Confirmed current landscape:** owner-specific configurations already provide useful grouping.
+  `MecanumDrivebase.Config` and the fusion/EKF configs validate and copy before retention;
+  `StandardControl.Config` is an internal staged recipe; immutable semantic values need no copy.
+  `DriveGuidanceTask.Config` now snapshots and validates inside its retaining Task while preserving
+  its historical public no-argument setup. Treat that reviewed compatibility shape as a deliberate
+  exception unless Gate 1 finds a concrete caller problem; do not immediately churn CONFIG-01 for
+  visual consistency. These distinct shapes show that one shared Java base type is not the missing
+  capability.
+- **Confirmed remaining core defects:** `GamepadDriveSource.Config` is copied but not validated, so
+  non-finite deadband, exponent, or scale values can create non-finite drive intent and negative
+  shaping values are silently normalized. Immutable `DriveGuidancePlan.Tuning` accepts non-finite,
+  negative, out-of-range, and cross-field-incompatible gains, caps, stiction command, and deadband.
+  The broader drive family also includes `FtcDrives.MecanumWiringConfig`/`MecanumConfig`; Gate 1 must
+  distinguish already-correct ownership from real changes rather than mechanically rewriting every
+  class named Config.
+- **Program-level contract to test:** use an owner-specific Config only when two or more cohesive
+  answers travel together, have reusable defaults, or would be error-prone positional arguments.
+  A mutable Config is setup data, never live tuning: the first long-lived/effectful owner validates
+  captured answers and retains an independent snapshot before its first effect. Immutable authored/
+  configuration values validate at their semantic construction boundary; runtime evidence carriers
+  retain their documented unavailable/fail-closed policy. A single immediately consumed answer
+  stays a direct argument.
+  Software-valid defaults do not claim physical wiring, calibration, or safety review.
+- **Gate-1 construction-path requirement:** enumerate every public constructor, `defaults()`,
+  `copy()`, `of(...)`, staged builder, facade factory, and declared return type for the affected
+  drive family. Decide explicitly whether CONFIG-01's compatibility-preserved constructor/null
+  behavior remains a justified exception or is replaced; do not churn it merely for visual
+  symmetry. Preserve one ordinary call shape and remove any redundant layer only with complete
+  caller/docs migration.
+- **Leading hypothesis:** add owner-local validated snapshot paths for the two proven gaps and
+  document the shared ownership rule, while leaving already-safe configs structurally unchanged.
+  Reject `ConfigBase`, `CopyableConfig`, marker interfaces, reflection/annotation copiers, a generic
+  numeric validator, and a universal Units/Measure migration: none can encode deadband, gain, motor-
+  identity, timeout, frame, or cross-field policy and each would add a student concept.
+- **Bounded future scope and completion evidence:** limit production changes to protected-core and
+  FTC drive configuration directly selected by the caller audit, plus synchronized drive guidance,
+  TeleOp/source Javadocs, guides, and API tests. Prove every invalid field fails before source/sink
+  effects, every retained nested value is mutation-isolated, valid defaults and boundary values are
+  unchanged, public construction layers have distinct value, and ordinary robot setup stays short.
+  Run focused drive/source tests, full TeamCode compile/tests, strict Javadocs/docs, reflection/caller
+  scans, and whitespace checks. Robot hardware is not evidence for this data-ownership contract.
+- **Decision record:** _Pending. No implementation started._
+
+### SPATIAL-01 - Finite authored spatial geometry
+
+- **Status and intake boundary (2026-08-15):** **Proposed and blocking spatial examples.** The fixed-
+  geometry AprilTag curriculum requires authored camera, control, target, and field facts to fail at
+  authoring rather than later as an unavailable solve or non-finite drive command. No geometry API
+  or runtime observation behavior is changed by this intake.
+- **Confirmed failure surface:** `CameraMountConfig` accepts non-finite six-degree extrinsics;
+  numeric `References` point/frame/offset factories accept non-finite components;
+  `RobotFrames.rigid(...)` and fixed `SpatialControlFrames` accept non-finite poses;
+  `SpatialTargets` accepts non-finite field/tag target values; and `SimpleTagLayout` can retain a
+  non-finite field pose. `FtcGameTagLayout` can also convert malformed SDK metadata without a finite
+  boundary check. These values can propagate to a nominally present solution, an unexplained no-
+  solution result, or a later drive-source finite-value failure.
+- **Region/footprint gap:** authored spatial geometry also includes `AxisAlignedBoxRegion2d`,
+  `CircleRegion2d`, `ConvexPolygonRegion2d`, `CircleFootprint2d`, `RectangleFootprint2d`, and named
+  points in `RobotGeometry2d`. Their coordinates and dimensions are not comprehensively finite-
+  checked; the circle/rectangle constructors silently apply `Math.max(0, ...)`, which still retains
+  `NaN` and hides negative authored dimensions instead of reporting them.
+- **Truth boundary:** authored configuration must be finite in Phoenix's canonical inches/radians
+  vocabulary. Runtime sensor observations may still be absent or non-finite and must follow their
+  existing unavailable/fail-closed semantics; this item must not turn observation loss into a
+  construction exception. Preserve signed offsets, unnormalized finite angles, identity mounts,
+  and empty custom layouts where currently meaningful.
+- **Leading hypothesis:** validate at the narrow semantic constructors/factories that know a value is
+  authored: `CameraMountConfig`, all numeric `References` paths and offset values,
+  `RobotFrames.rigid`, fixed `SpatialControlFrames`, `SpatialTargets`, `SimpleTagLayout`, and the FTC
+  game-layout conversion boundary, plus every maintained region/footprint/robot-geometry authoring
+  path. Require finite coordinates; Gate 1 must decide explicitly whether negative physical
+  dimensions remain documented normalization or become fail-fast, while preserving zero where
+  meaningful. Add one explicit immutable snapshot facility for retained
+  `TagLayout` values only if the complete owner audit confirms the current mutable-layout alias can
+  drift in multiple long-lived consumers; do not copy through an undocumented concrete cast.
+- **Alternatives rejected at intake:** generic validation in `Pose2d`/`Pose3d` would also reject
+  runtime evidence values without semantic context. A new quantity/units system adds broad Java
+  ceremony and still accepts or must separately reject non-finite values. A documentation warning
+  preserves delayed failures. Plausibility ranges for field size, mount distance, or angle are
+  robot/game facts and must not be invented by the reusable framework. Polygon convexity, self-
+  intersection, degeneracy cleanup, and broader plausibility rules are separate geometry questions
+  and must not expand this finite-authored-value item.
+- **Bounded future scope and completion evidence:** no 3D aiming framework, moving-turret history,
+  localization fusion policy, or example robot belongs here. Test every numeric slot with `NaN` and
+  both infinities, atomic layout rejection, fixed-frame inheritance, map/selected-tag paths, finite
+  negative offsets, and direct-versus-localization equivalence for valid geometry. Synchronize
+  Spatial Queries, Drive Guidance, AprilTag localization, and affected Javadocs; run full software
+  verification and stale-construction scans. Physical mount measurements remain adopting-robot
+  evidence.
+- **Decision record:** _Pending. No implementation started._
+
+### MATH-01 - Finite interpolation calibration tables
+
+- **Status and intake boundary (2026-08-15):** **Proposed.** This is a small foundational correction
+  before robot profiles isolate shot, lift, or other calibration literals. It does not select a new
+  interpolation policy or add a table/profile DSL.
+- **Confirmed current behavior:** `InterpolatingTable1D.ofSorted(...)` clones its arrays and checks
+  length plus strict x ordering beginning at index one, but does not check finiteness and can accept
+  a non-finite first x; it never checks any y. `ofUnsorted(...)`, `ofSortedPairs(...)`, and
+  `Builder.buildSorted()` converge on that boundary,
+  so `NaN`/infinite calibration values can be retained in an otherwise immutable table and later
+  produce believable clamps or non-finite interpolation results.
+- **Leading hypothesis:** make the canonical table factory validate every captured x and y as finite
+  before construction, with index/value diagnostics, while retaining clone isolation, strict
+  increasing order, and endpoint clamping. `ofSortedPairs(...)` is the ordinary literal path,
+  `ofSorted(...)` is the array/data seam, and `ofUnsorted(...)` has distinct sorting behavior; the
+  builder has zero repository callers and must be removed unless Gate 1 finds distinct external-
+  compatibility value. Gate 1 must also decide and document the separate runtime-query contract for
+  a non-finite lookup input rather than accidentally treating unavailable sensor evidence as an
+  authored calibration error.
+- **Distinct boundary and rejected alternatives:** RANGE-01 validates scalar range construction but
+  cannot prove calibration knots or outputs; profile-local loops would duplicate the same invariant
+  in every robot. Generic Units/Measure wrappers do not enforce finiteness or monotonicity. Do not add
+  sorted-map, spline, extrapolation, duplicate-merging, or multidimensional-table behavior here.
+- **Future completion evidence:** cover every retained public construction path, single-point tables,
+  the first/middle/last x and y slots with `NaN`/both infinities, clone isolation, strict duplicates/
+  order, valid endpoint clamping/interpolation, and the selected non-finite query behavior. If the
+  builder remains, prove atomic failure and distinct caller value; otherwise lock its removal with
+  API/stale-caller scans. Synchronize Javadocs/calibration guidance, run focused math and every table-
+  using Phoenix/tester regression plus full TeamCode compile/tests and whitespace checks. No robot
+  run is required to prove finite table construction.
+- **Decision record:** _Pending. No implementation started._
+
+### CONFIG-03 - FTC vision and AprilTag configuration boundaries
+
+- **Status and intake boundary (2026-08-15):** **Proposed after SPATIAL-01/MATH-01.** This item owns
+  configuration capture and validation for reusable FTC vision acquisition and AprilTag solving; it
+  preserves VISION-01 resource ownership/readiness and VISION-02 stable timestamp semantics.
+- **Confirmed owner family:** maintained entry points include `FtcWebcamVisionPortalLane.Config`,
+  webcam and Limelight AprilTag lane configs, `FtcLimelightVisionLane.Config`, deferred
+  `AprilTagVisionLaneFactories`, `FixedTagFieldPoseSolver.Config`, and
+  `AprilTagPoseEstimator.Config`. The deferred factories already copy the supplied lane config when
+  the factory is created, and lane construction copies again; the question is whether both layers
+  have distinct value and where validation belongs, not a presumed live caller alias.
+- **Confirmed API-shape issue:** `AprilTagPoseEstimator.Config` inherits the mutable solver Config and
+  the family exposes overlapping public `copyOf(...)`, `normalizedValidatedCopyOf(...)`,
+  `validate(...)`, and `validatedCopy(...)` layers. The scalar webcam/Limelight factory overloads
+  have no repository caller; all maintained callers supply the backend's Config. Gate 1 must either
+  establish distinct external value for these layers or select one replacement path.
+- **Leading hypothesis:** keep owner-specific configs and one creation path per distinct backend.
+  Capture and validate the complete active configuration before storing a deferred opener and again
+  only where a new independent owner is constructed; open the camera/device only after validation.
+  Prefer composition of one solver config inside the pose-estimator config over public mutable
+  inheritance, deep-copy mutable nested processor/solver settings, retain already-immutable finite
+  camera mounts as values, and validate only the supplied backend config rather than introducing an
+  aggregate whose inactive branch can create false failures. Remove scalar factory overloads if the
+  complete caller/API audit confirms no distinct value. Use actionable owner/field diagnostics and
+  preserve partial-open cleanup.
+- **Gate-1 obligations:** enumerate each constructor/factory/default/copy/with path and all Phoenix,
+  tester, and example callers. Distinguish raw observation ownership, AprilTag interpretation, fixed
+  field facts, and backend selection. Decide where a public copy/validated-copy operation has real
+  cross-package value versus remaining owner-private. Remove an overload or nullable default only
+  when callers have one clearer replacement; do not add a generic vision facade beside existing
+  `AprilTagVisionLane` ownership.
+- **Excluded scope:** Phoenix's webcam-versus-Limelight choice belongs to CONFIG-09; Pinpoint/fusion
+  belongs to CONFIG-04; finite spatial leaf values belong to SPATIAL-01. Do not change exposure,
+  processor, timestamp, restart, or camera-close policy without a separately traced defect.
+- **Future completion evidence:** invalid configuration must produce zero portal/device/processor
+  effects; mutation after factory/owner creation must not drift deferred open; each backend's config
+  tests must be field-distinguishing; failures after partial acquisition must close exactly
+  the resources already created. Preserve readiness, timestamp, retry, stop, and backend-neutral
+  lane tests; update FTC vision/AprilTag guides and Javadocs; run full TeamCode verification and API/
+  caller scans. Physical camera names, calibration, exposure, and image quality remain robot tests.
+- **Decision record:** _Pending. No implementation started._
+
+### CONFIG-04 - Pinpoint and composite localization configuration boundaries
+
+- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-03.** This item regularizes
+  motion-predictor, absolute-pose, correction-estimator, and composite-lane configuration without
+  changing the one-heartbeat/one-pose-authority contracts established by PEDRO-02 and CYCLE-02.
+- **Confirmed defects and controls:** `PinpointOdometryPredictor.Config` is copied but does not
+  validate blank hardware identity, non-finite pod offsets/yaw/resolution values, wait timing, or
+  quality domains before hardware lookup/configuration. `FtcOdometryAprilTagLocalizationLane.Config`
+  deep-copies but lacks one complete outer preflight, so invalid nested choices can fail generically
+  or after the Pinpoint boundary is crossed. `LimelightFieldPoseEstimator.Config` joins this owner
+  family. Fusion/EKF configs already provide validated copies and should be audited/preserved rather
+  than rewritten for symmetry.
+- **Confirmed ignored-answer defect:** the distinct
+  `FtcOdometryAprilTagLocalizationLane.withPredictor(...)` seam correctly uses an externally owned
+  predictor, but it still accepts/copies the full Config and deliberately ignores its `predictor`
+  subsection. `config()` then returns that retained convenience-path subsection even though it does
+  not describe the active predictor. This is documented but remains a misleading accepted answer.
+- **Leading hypothesis:** give `PinpointOdometryPredictor.Config` one authoritative validated snapshot
+  path used by the predictor, composite lane, Pedro boundary, and maintained tools. Have the
+  composite lane capture and preflight every nested config, backend/mode combination, field layout,
+  and ownership choice before constructing the first effectful resource. Reuse SPATIAL-01's finite
+  leaves/layout snapshot and CONFIG-03's already-snapshotted vision inputs. Preserve the injected-
+  predictor capability but supply it only estimator/correction answers, or otherwise redesign the
+  split so every accepted and reported Config field is meaningful on that path.
+- **Construction and ownership gate:** inventory all public constructors, supplied-predictor versus
+  internally-created paths, reset/start-pose methods, factory helpers, and declared return types.
+  Retain a supplied predictor only if it is a materially distinct shared-owner seam; otherwise choose
+  one owner and migrate callers. Audit `PinpointOdometryPredictor.Config.of(...)`, public validated-
+  copy layers, and nullable defaults for distinct caller value; remove redundant paths only with
+  complete migration. Do not hide Pinpoint, webcam, tag layout, or estimator ownership in a
+  universal `LocalizationConfig` or silently add a second heartbeat.
+- **Future completion evidence:** every invalid primitive, nested null, mode/backend mismatch, and
+  mutable alias fails before hardware/device/estimator effects; valid configs are deeply independent
+  and defaults retain current software behavior. Preserve one update per cycle, INIT reset,
+  timestamp/replay, predictor-versus-corrected status, correction statistics, failure retention,
+  and partial construction cleanup; the separately supplied vision owner retains its CONFIG-03
+  close responsibility. Update localization/Pinpoint guides and Javadocs, run focused FTC/fusion/
+  cycle tests plus full verification, and leave pod directions/offsets/noise and physical correction
+  tuning to robot validation.
+- **Decision record:** _Pending. No implementation started._
+
+### CONFIG-05 - Pedro runtime configuration ownership
+
+- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-04.** This is the production
+  Pedro graph's configuration/construction boundary, not route geometry, route outcome, or a second
+  follower lifecycle.
+- **Confirmed current path:** the sole production factory currently accepts `HardwareMap`, an
+  already-created `PinpointOdometryPredictor`, mutable Pedro `FollowerConstants`, mutable
+  `MecanumConstants`, `PathConstraints`, and `PedroFieldTransform` as six peers. It validates many
+  answers and copies path constraints, but the pinned vendor objects can be retained by Pedro after
+  construction. Project `org.firstinspires.ftc.teamcode.pedroPathing.Constants` assembles this graph,
+  while the basic Pedro reference reaches that project/Phoenix-specific path.
+- **Leading hypothesis:** replace the six-peer production entry with one
+  `PedroPathingRuntime.Config` and `create(HardwareMap, Config)`. The config owns an independent
+  `PinpointOdometryPredictor.Config`, field-for-field copies of the pinned vendor follower/mecanum
+  constants, independent path constraints, and immutable field transform. The runtime validates the
+  complete snapshot before constructing Pinpoint, drivetrain, follower, or global vendor state, then
+  owns the sole predictor/follower graph while the existing managed service retains the one ordered
+  localization-then-drive heartbeat. Remove the old production overload and migrate all callers in
+  the same item; keep any genuinely different native-Follower tester path explicitly tool-only.
+- **Vendor and API gate:** prove which Pedro 2.1.2 fields are retained, mutated, or process-global,
+  and lock full field coverage so a dependency upgrade cannot silently omit new constants.
+  `FollowerConstants` and `MecanumConstants` expose no copy/clone API, and follower tuning contains
+  mutable nested coefficient objects, so the boundary must reconstruct fresh vendor values field by
+  field rather than retain an alias. Compare one config factory against positional args and any
+  existing project `Constants` helper; remove mutable production constant globals while preserving
+  the separate native-Follower path only for vendor tools. Do not add a second facade or expose
+  vendor config types through protected core. Keep field transform and route/path constraints as
+  distinct facts even when one aggregate transports them.
+- **Preserved behavior and excluded scope:** retain same-cycle deduplicated updates, reentrant stop,
+  path-builder constraint repair, route execution truth, cancellation, and error cleanup from
+  PEDRO-01/02 and ROUTE items. Basic-Pedro profile independence belongs to CONFIG-08; Phoenix owner
+  decomposition belongs to CONFIG-09. No follower tuning values or physical path performance are
+  selected here.
+- **Future completion evidence:** mutation-isolation tests must distinguish every copied vendor and
+  nested field; invalid configs produce zero Pinpoint/motor/follower effects; partial construction
+  stops already-created drivetrain resources; one public production path and exact declared return
+  type remain. Migrate project Constants/Phoenix callers, synchronize Pedro docs/Javadocs, run all
+  Pedro/runtime/route tests and full verification. Hardware still owns motor names/directions,
+  Pinpoint calibration, follower tuning, and physical STOP evidence.
+- **Decision record:** _Pending. No implementation started._
+
+### CONFIG-06 - Tool and tester configuration ownership
+
+- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-05.** This item applies the
+  selected ownership contract to maintained measurement tools without changing what any tool is
+  allowed to infer or promoting diagnostic setup into ordinary robot architecture.
+- **Confirmed defects and duplication:** `PinpointAxisDirectionTester` and
+  `PinpointPodOffsetCalibrator` retain caller-owned Config objects; the pod-offset copy is shallow for
+  nested `pinpoint` configuration and omits `autoComputeAfterAutoSample`, while initialization
+  mutates an AprilTag-assist flag on the retained caller state. Numeric settings also have uneven
+  validation.
+  `CameraMountCalibrator`, `AprilTagLocalizationTester`, and
+  `PinpointAprilTagFusionLocalizationTester` expose constructor forests with repeated peer answers
+  instead of one auditable owner input.
+- **Leading hypothesis:** give each maintained tool with multiple cohesive answers one owner-specific
+  Config, one ordinary factory/constructor, a complete deep copy, and pre-effect validation. Remove
+  redundant overloads and migrate Phoenix/tool hosts/tests together; retain a no-argument path only
+  when it represents truthful software defaults rather than hidden hardware facts. Ensure tool
+  initialization never writes back into the caller's config. Keep
+  `AprilTagVisionLaneFactory`/backend-neutral factory construction as an explicit dependency beside
+  the data config: the current pod-offset Config's
+  `Function<String, AprilTagVisionLaneFactory>` carries behavior and violates the data-only boundary.
+- **Boundary and alternatives:** preserve TESTER-01/02/03 lifecycle, Driver Station/Panels consoles,
+  CAL measurement semantics, raw evidence, explicit user confirmation, and cleanup. Do not create a
+  `TesterConfig` base, generic screen/schema DSL, config registry, or production fallback based on a
+  calibration result. Do not fold Phoenix-specific tester values into framework configs merely to
+  reduce constructor count.
+- **Future completion evidence:** enumerate every constructor/factory and caller first; prove every
+  retained field is independently copied, invalid values fail before hardware/portal/Panel effects,
+  INIT does not mutate caller state, partial setup cleans up, and restart/STOP/evidence behavior is
+  unchanged. Reflection tests should lock the one selected construction layer and field coverage.
+  Synchronize calibration/tester guides and run focused tester suites, full TeamCode verification,
+  strict docs/Javadocs, stale-overload scans, and whitespace checks. Physical measurements remain
+  mandatory where each tool already requires them.
+- **Decision record:** _Pending. No implementation started._
+
+### CONFIG-07 - Starter profile simplification
+
+- **Status and intake boundary (2026-08-15):** **Proposed after framework/tool contracts.** The user
+  identified the current starter configuration itself as too complex for an example. This item
+  simplifies the existing drive-plus-intake starter before EXAMPLE-04 adds any mechanism or lesson.
+- **Confirmed current burden:** `StarterProfile` is 231 physical lines for a profile containing a
+  review flag, `FtcDrives.MecanumConfig`, and intake facts. Much of the file is an issue accumulator,
+  duplicated name/direction/scale checks already owned by FTC drive/actuator boundaries, manual deep
+  copying, and mode-wide validation. `StarterRobot` then copies the aggregate and calls separate
+  TeleOp/Auto validators even though Auto intentionally does not construct drive hardware.
+- **Leading hypothesis:** retain `StarterProfile.current()` as a short, fresh, obvious editing
+  surface, but move intake configuration beside `StarterIntakeMechanism` and let each effectful owner
+  validate/snapshot its own slice. Keep only genuinely robot-level checks in the composition root:
+  physical-review acknowledgement and active-mode cross-owner hardware-name collisions. Use small
+  named factories with software-valid conservative values plus an explicit unreviewed state; never
+  use blank/null/`NaN` placeholders or a boolean as proof of physical correctness.
+- **Mode and seam rules:** Auto consumes and validates only intake configuration; TeleOp consumes
+  drive plus intake. Unused future sections cannot block an earlier checkpoint. Ordinary mechanisms
+  still receive `HardwareMap` plus their data-only config and own their Plant; remove or explicitly
+  justify any completed-Plant test seam that receives configuration peers. Do not add a generic
+  profile validator, reflection copier, inheritance base, or checked-in stage packages.
+- **Measurable simplicity target:** reduce `StarterProfile` from 231 physical/roughly 178 code lines
+  to at most 110 physical/60 code lines, with no validation loops, issue accumulator, manual drive
+  copier, or nested config family. Treat those numbers as review evidence, not a formatting-game CI
+  rule. Keep each ordinary OpMode `configure(...)` at its existing declaration-only scale and the
+  documented reading path short.
+- **Future completion evidence:** test fresh-current and nested mutation isolation, review gating,
+  mode-specific construction, actionable owner errors, trimmed cross-owner duplicate detection
+  before lookup, partial construction cleanup, unchanged intake/drive behavior, and no hardware
+  access from unused sections. Update the beginner course, Modern Starter Robot, first TeleOp/
+  mechanism/Task guides, Javadocs, and source-shape tests; run full verification. Names, directions,
+  power signs, wiring, and physical stop remain adopting-robot review.
+- **Decision record:** _Pending. No implementation started._
+
+### CONFIG-08 - Basic Pedro profile independence
+
+- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-05 and CONFIG-07.** The basic
+  Pedro reference is managed and tested, but its configuration story is not independent or simple
+  enough to serve as the optional route example.
+- **Confirmed current coupling:** the five-file Pedro example has no profile of its own.
+  `BasicPedroAutoExample` imports `PhoenixProfile`, copies its full aggregate, extracts one Phoenix
+  scoring motor configuration, and invokes project `pedroPathing.Constants` to construct the runtime.
+  This makes a generic example depend on season-robot hardware/configuration it does not teach.
+  The host also clears `PhoenixMatchHandoff` as a safety boundary; that behavior must be dispositioned
+  deliberately rather than removed as cosmetic coupling.
+- **Leading hypothesis:** add one fresh `BasicPedroProfile` containing an explicit physical-review
+  acknowledgement, the CONFIG-05 `PedroPathingRuntime.Config`, and the example mechanism's owner-
+  specific Config. Supply software-valid conservative data from small named factories and block
+  enablement until physical review. Construct/register the runtime before the mechanism factory so
+  later failure remains covered by managed cleanup. Remove all Basic-Pedro references to
+  `PhoenixProfile` and project Pedro `Constants` without importing Starter configuration.
+- **Example and seam boundary:** preserve the existing path, routine, capability, and managed-host
+  lessons; do not fold Pedro into Starter or introduce a shared `ExampleProfile` base. Audit the
+  current completed-Plant-plus-power test constructor against the Plant ownership rule and prefer
+  ordinary fake-HardwareMap construction or a semantic capability fake over blessing a peer seam.
+  Preserve the match-handoff clear unchanged in CONFIG-08 so a generic diagnostic Auto cannot leave
+  a recent Phoenix snapshot for a later TeleOp; defer any relocation/removal to EXAMPLE-04 or
+  RUNTIME-03 after this dependency has landed.
+- **Measurable simplicity target:** keep `BasicPedroProfile` at most 130 physical/75 code lines,
+  normal `configure(...)` declaration-only, and the package free of `PhoenixProfile` and project
+  `Constants` references. Metrics are review evidence; ownership, one construction path, and the
+  short student reading path are the actual contract.
+- **Future completion evidence:** cover fresh/deep copies of every runtime/mechanism field, review
+  gating before effects, exact runtime-before-mechanism registration, partial cleanup, route outcome
+  and cancellation, terminal stop, host handoff safety, and unchanged start/path behavior. Update
+  Basic Pedro guides/Javadocs and all callers; run Pedro/example/full tests and static dependency/
+  stale-path scans. Hardware still must validate Pinpoint/motor wiring, route geometry, follower
+  tuning, clear space, and STOP.
+- **Decision record:** _Pending. No implementation started._
+
+### CONFIG-09 - Phoenix profile owner-section decomposition
+
+- **Status and intake boundary (2026-08-15):** **Proposed after every earlier configuration item.**
+  Phoenix remains the production capstone, but its current profile is specifically rejected as the
+  configuration model for simple examples. This item changes configuration ownership and caller
+  shape without changing season behavior.
+- **Confirmed current burden:** `PhoenixProfile` is 1,033 physical/roughly 498 code lines. It owns a
+  shared static `CURRENT`, `defaults()`, a manual aggregate copy, ten nested configuration types,
+  backend-selection helpers, field facts, validation-adjacent policy, and a large shot table.
+  Forty-plus maintained production/test/doc files refer to the profile or nested types. Scoring,
+  targeting, controls, and drive-assist owners already receive narrow nested sections; the broad
+  consumers are `PhoenixRobot`, mode programs/prestarts, telemetry, readiness, Pedro context, and
+  testers, which still retain or reach through more of the aggregate than they need.
+- **Leading ownership map:** move vision selection to `PhoenixVisionFactory.Config`, controls to
+  `PhoenixTeleOpControls.Config`, drive-assist answers to `PhoenixDriveAssistService.Config`, scoring
+  hardware/realization to `PhoenixScoring.Config`, and targeting plus the shot table reference to
+  `PhoenixTargeting.Config`. Keep drive and localization as their framework owner configs; expose
+  the fixed `TagLayout` as a field fact rather than a one-field wrapper. Use top-level
+  `PhoenixAutoConfig` and `PhoenixCalibrationConfig` only if their facts are genuinely shared across
+  several robot owners. Isolate the literal shot calibration in one data-only named factory.
+- **Aggregate and caller hypothesis:** `PhoenixProfile.current()` returns a fresh small data-only
+  aggregate assembled from package-private named current-configuration factories. Delete static
+  mutable `CURRENT`, broad `defaults()`, nested config types, validation, lookup/policy helpers, and
+  large literals from the aggregate. `PhoenixRobot` is the one aggregate snapshot boundary; narrower
+  owners/prestarts/presenters/readiness/Pedro context retain only the exact copied slices or display
+  facts they use. Replace all callers in one item with no forwarding aliases or deprecated nested
+  types.
+- **Principle and behavior boundaries:** field layout, sensor ownership, localization, controls,
+  targeting policy, scoring realization, Auto strategy, and calibration evidence remain distinct.
+  Do not create a generic robot Config framework, split Gradle modules, move season policy into
+  reusable `fw`, or change capability/loop order/physical defaults. CONFIG-05 owns Pedro's generic
+  runtime config; CONFIG-03/04 supply the validated FTC/localization leaves consumed here.
+- **Measurable simplicity target:** reduce `PhoenixProfile` to at most 180 physical/90 code lines,
+  with zero nested config types, validation loops, large calibration literals, or static mutable
+  state. Keep every named `current()` factory reviewably short (normally at most 25 executable
+  statements, with the isolated shot-data literal exempt) and each owner input cohesive. Metrics
+  expose accidental complexity but must not be satisfied by meaningless file splitting.
+- **Future completion evidence:** exhaustive caller/type migration; fresh aggregate and deep nested
+  mutation isolation; unchanged checked-in default snapshot; owner-local invalid-value/pre-effect
+  tests; active-backend, readiness, TeleOp/Auto, scoring/targeting, Pedro, tester, partial-construction,
+  and handoff regressions; zero old nested-type/compatibility references; synchronized Phoenix
+  Architecture/calibration/readiness/docs. Run strict Javadocs/site, full TeamCode compile/tests,
+  static ownership/LOC evidence, and whitespace checks. Robot validation remains required for all
+  physical constants, calibrations, tuning, and season behavior.
+- **Decision record:** _Pending. No implementation started._
+
 ### EXAMPLE-04 - Curated managed concept examples
 
 - **Status and intake boundary (2026-08-14):** **Proposed.** This record comes from a read-only
@@ -17034,6 +17458,12 @@ writer, and explicit lifecycle ownership.
   shapes. Preserve a manual host only if the decision gate identifies a lifecycle that
   `RobotProgram` cannot truthfully express; seeing FTC phases explicitly is documentation/test
   material, not by itself a second robot architecture.
+- **Configuration prerequisite update (2026-08-15):** do not begin EXAMPLE-04's implementation
+  gate until CONFIG-02, SPATIAL-01, MATH-01, and CONFIG-03 through CONFIG-09 are complete. The
+  curated examples must consume the final owner-config, finite-geometry/table, FTC vision/
+  localization, Pedro, and simplified profile paths rather than duplicating validation or being
+  rewritten immediately after publication. This dependency records sequencing only; it does not
+  approve any survivor robot, checkpoint, or example API.
 - **Dependencies and scope questions:** use the already-approved one-managed-host principle for
   example ownership, but leave deprecation or visibility of reusable `LoopClock`, `Bindings`, and
   `TaskRunner` to RUNTIME-03. Coordinate with EXAMPLE-03 so Phoenix does not add a new advanced
