@@ -133,6 +133,31 @@ query memory; it does not reset frame providers, solve lanes, sensors, estimator
 policies borrowed through the plan's reusable spatial spec. Those collaborators remain owned by
 the robot services that supplied them.
 
+## Autonomous Task configuration
+
+`DriveGuidanceTask.Config` is a mutable construction input, not a live-tuning handle. A direct
+`plan.task(driveSink, config)` call validates the complete input and retains a private snapshot
+before it returns. Changing the same `config` afterward cannot change that Task; the new values are
+used only by a later Task constructed from the edited input.
+
+The task-level settings are separate from the controller tuning stored in the plan:
+
+| Setting | Default | Required software domain |
+| --- | ---: | --- |
+| `positionTolInches` | `1.5` | finite and `>= 0` |
+| `headingTolRad` | `Math.toRadians(6.0)` | finite and `>= 0` |
+| `timeoutSec` | `3.0` | finite and `> 0` |
+| `maxNoGuidanceSec` | `0.35` | finite and `> 0` |
+
+`positionTolInches` and `headingTolRad` decide when the requested translation and facing work is
+complete. `timeoutSec` bounds the complete Task; `maxNoGuidanceSec` bounds one consecutive interval
+without a usable guidance command. Zero, a negative value, `NaN`, or infinity is not a spelling for
+disabling either timeout. If `requestedMask` is `null`, the Task uses the plan's natural mask.
+
+These checks prove only that the software configuration is coherent. They do not prove that the
+tolerances or time budgets are appropriate for a particular drivetrain, that guidance is tuned
+safely, or that the robot will physically reach its target.
+
 ## Readiness / telemetry query
 
 A plan can create a runtime query for “are we ready?” checks:

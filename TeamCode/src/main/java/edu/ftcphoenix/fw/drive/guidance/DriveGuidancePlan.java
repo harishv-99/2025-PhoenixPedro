@@ -218,7 +218,9 @@ public final class DriveGuidancePlan {
      *
      * <p>This is the task counterpart to {@link #overlay()}: the same plan and tuning are reused,
      * but the output is sent directly to a {@link DriveCommandSink} until the task reaches its
-     * tolerance or timeout.</p>
+     * tolerance or timeout. The Task validates and snapshots {@code cfg} during this call; later
+     * mutations affect only subsequently created Tasks. A {@code null} config selects
+     * {@link DriveGuidanceTask.Config} defaults.</p>
      *
      * <p>Ordinary managed Auto usage:</p>
      * <pre>{@code
@@ -230,6 +232,12 @@ public final class DriveGuidancePlan {
      *
      * program.rootTask(plan.task(drivebase, new DriveGuidanceTask.Config()));
      * }</pre>
+     *
+     * @param drivebase final drive-command owner for this Task
+     * @param cfg task tolerances, timeouts, and optional requested-mask override; may be null
+     * @return a fresh single-use autonomous guidance Task
+     * @throws NullPointerException if {@code drivebase} is null
+     * @throws IllegalArgumentException if a numeric config value is outside its documented domain
      */
     public DriveGuidanceTask task(DriveCommandSink drivebase, DriveGuidanceTask.Config cfg) {
         return new DriveGuidanceTask(drivebase, this, cfg);

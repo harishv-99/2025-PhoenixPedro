@@ -251,6 +251,12 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
      * selected-target policy, AprilTag/localization resolution, and controller tuning, but drives a
      * supplied {@link DriveCommandSink} directly until the aim task reaches its tolerance.</p>
      *
+     * <p>The mutable task configuration is copied when this method is called, before construction
+     * of the deferred inner task. Later caller mutation therefore cannot change the task that will
+     * start. {@link DriveGuidanceTask} remains the owner of configuration validation and performs
+     * it at the inner aim Task's own start boundary, before that inner Task invokes the drive sink.
+     * In a larger routine this boundary may follow earlier route phases that used the same sink.</p>
+     *
      * @param driveSink sink used to apply the aim command
      * @param cfg       task-level tolerances/timeouts; when {@code null}, defaults are used
      * @return task that turns the robot toward the currently selected Phoenix scoring target
@@ -258,12 +264,31 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
     @Override
     public Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg) {
         DriveCommandSink requiredDriveSink = Objects.requireNonNull(driveSink, "driveSink");
+        final DriveGuidanceTask.Config taskConfig = copyAimTaskConfig(cfg);
         return Tasks.buildAtStart(
                 "Phoenix scoring aim",
                 () -> requireAimRuntime("start the scoring aim Task")
                         .plan
-                        .task(requiredDriveSink, cfg)
+                        .task(requiredDriveSink, taskConfig)
         );
+    }
+
+    /**
+     * Returns a private field-for-field snapshot for the deferred aim-task factory.
+     *
+     * <p>Validation deliberately remains at the framework task-construction boundary. This helper
+     * only prevents the mutable caller object from becoming live configuration retained by the
+     * start-time supplier.</p>
+     */
+    private static DriveGuidanceTask.Config copyAimTaskConfig(DriveGuidanceTask.Config cfg) {
+        DriveGuidanceTask.Config source = cfg != null ? cfg : new DriveGuidanceTask.Config();
+        DriveGuidanceTask.Config copy = new DriveGuidanceTask.Config();
+        copy.positionTolInches = source.positionTolInches;
+        copy.headingTolRad = source.headingTolRad;
+        copy.timeoutSec = source.timeoutSec;
+        copy.maxNoGuidanceSec = source.maxNoGuidanceSec;
+        copy.requestedMask = source.requestedMask;
+        return copy;
     }
 
     /**

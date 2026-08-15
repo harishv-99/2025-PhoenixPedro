@@ -161,7 +161,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 74 | CI-01 | Framework verification in CI | Done | Split the existing hosted pipeline into truthful framework and documentation checks, run them for every pull request targeting master, and require both before merging. |
 | 75 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
 | 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 77 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 77 | CONFIG-01 | Drive-guidance task configuration snapshot | Done | Validate and snapshot the existing five-answer task config without changing ordinary caller syntax or adding a parallel construction layer. |
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
 | 79 | DOC-03 | Generated Phoenix documentation site | Done | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
 | 80 | PLANT-03 | Terminal Plant lifecycle | Done | Make `Plant.stop()` terminal, remove broad `Plant.reset()`, and keep recoverable output fail-stop internal. |
@@ -14102,23 +14102,160 @@ writer, and explicit lifecycle ownership.
   CR-servo scope and unchanged-call assumption while preserving its finite-validation, distinct-
   capability, and no-inline-wrapper direction.
 
-### CONFIG-01 - Owner-configuration snapshot audit
+### CONFIG-01 - Drive-guidance task configuration snapshot
 
-- **Remaining evidence gap:** the API-03 audit found that `DriveGuidanceTask.Config` is mutable and
-  may be retained directly, while many other long-lived owners copy private config. Source shape
-  alone does not prove that a caller mutates it after construction or that a defensive copy,
-  immutable value, or different public answer would simplify guidance code.
-- **Resolved route half:** ROUTE-03 proved that `RouteTask.Config` was only a mutable, immediately
-  consumed one-field wrapper. It removed that type, its retained alias, and non-positive sentinel
-  semantics in favor of validated direct factory answers. Route configuration is no longer an open
-  part of CONFIG-01.
-- **Why Deferred:** “make all configs immutable” would still combine unrelated owners and add
-  wrappers or withers without traced robot-code benefit. Resume only for the named
-  `DriveGuidanceTask.Config` owner after a production, Phoenix, tool, or test caller demonstrates
-  mutation drift or an invalid retained-state failure; then compare an owner-specific defensive
-  copy, immutable reusable value, direct staged answer, and no-change design.
-- **Decision record (updated 2026-07-17):** **Deferred for concrete DriveGuidance caller evidence.**
-  This is an audit note, not an implementation-ready umbrella task.
+- **Reopened Gate 1 (2026-08-15):** the approved simple-example plan adds a bounded
+  drive-guidance Auto caller, and the existing production `PhoenixTargeting.aimTask(...)` already
+  supplies the concrete retained-owner path that the prior deferral required. The public method
+  returns `Tasks.buildAtStart(...)` and captures the caller's mutable config until the inner
+  `DriveGuidanceTask` is constructed when that returned wrapper later starts. Direct plan Tasks
+  retain the same caller object and reread it on every update. CONFIG-01 is therefore narrowed to
+  this one owner/config family; the resolved `RouteTask.Config` cleanup and every other
+  framework/robot config remain out of scope.
+- **Confirmed current behavior:** `DriveGuidanceTask.Config` contains four public numeric answers
+  plus an optional requested mask. Its valid defaults are 1.5 inches position tolerance, six
+  degrees heading tolerance, three seconds overall timeout, 0.35 seconds consecutive guidance-loss
+  timeout, and a null mask meaning the plan's natural mask. The Task currently retains the supplied
+  object by reference. Mutating it after `plan.task(...)` changes a running Task's tolerances,
+  timeout, loss timeout, requested mask, and diagnostics. Position/heading `NaN`, negative, or
+  negative-infinite values make success impossible; positive infinity accepts any finite error.
+  Nonpositive, `NaN`, or negative-infinite timeouts fail the current `> 0` enable checks, while
+  positive infinity passes those checks but can never be exceeded. Each case can silently turn a
+  documented bounded Task into an effectively unbounded one. No constructor error identifies the
+  bad field. Task construction itself has no drive-sink effect; the first physical boundary is the
+  Task's START-time `stop()`.
+- **Complete callers and public construction paths:** ordinary construction remains
+  `DriveGuidancePlan.task(DriveCommandSink, DriveGuidanceTask.Config)`, which returns the concrete
+  single-use `DriveGuidanceTask`; that type has no public constructor. Four capability-distinct
+  `GoToPoseTasks` factories accept the same config and return `Task`; none currently has an
+  executable repository caller. Phoenix's `Targeting.aimTask(...)` also accepts the config and
+  returns `Task`; `PhoenixAutoTasks.aimConfig(...)` creates one fresh bundle, changes three fields,
+  and immediately supplies it to that capability. Focused guidance timing/single-use tests and the
+  Pedro adapter test create a config, edit it before construction, and do not intentionally reuse
+  it. `DriveGuidanceApiTest` locks the config's sole public no-argument constructor and the plan-
+  owned Task factory. No maintained caller needs live tuning, a stored mutable alias, a config
+  subclass, or another Task-construction spelling.
+- **Selected design and exact domains:** preserve the existing public no-argument constructor,
+  fields, null-default compatibility, plan-owned factory, four GoToPose helpers, and Phoenix
+  capability signature. At each actual `DriveGuidanceTask` construction, copy the five answers
+  into a private snapshot before constructing runtime state. Require position and heading
+  tolerances to be finite and at least zero; require both timeouts to be finite and greater than
+  zero. Keep zero as a meaningful exact tolerance, preserve the strict `elapsed > limit` deadline,
+  and preserve a null requested mask as plan-mask inheritance. Every invalid value throws an
+  actionable `IllegalArgumentException` naming `DriveGuidanceTask.Config.<field>` before that newly
+  constructed Task can invoke update, drive, or stop on its sink. Runtime comparisons no longer
+  carry undocumented nonpositive-timeout sentinel branches because construction proves the
+  invariant.
+- **Deferred Phoenix boundary:** `PhoenixTargeting.aimTask(...)` must eagerly copy all five config
+  answers before its `buildAtStart` closure so caller mutation between declaration and the
+  wrapper's later start cannot drift the deferred Task. The inner Task remains the single
+  validation authority: when the wrapper starts after the targeting plan is available, it validates
+  that frozen Phoenix copy before that inner aim Task invokes the sink. This makes no claim that an
+  earlier route or Task has not already used the same sink. A five-field private robot helper is
+  preferable to a second public config-construction path for this sole deferred wrapper.
+- **Construction-layer and mask disposition:** the five related answers provide distinct reusable
+  value, unlike ROUTE-03's removed one-field wrapper. Do not add `defaults()`, `copy()`, a public
+  copy constructor, withers, positional overloads, a staged Task-config builder, or a generic
+  validation/Units layer. Explicit requested-mask compatibility with a plan is not changed here:
+  no maintained caller overrides the mask, and adding a new channel-subset policy would expand the
+  user-approved numeric/snapshot correction. Retain the existing nullable mask-override behavior
+  and audit impossible explicit masks only if a real caller demonstrates that adjacent failure.
+- **Alternatives rejected and simplicity comparison:** documentation-only leaves both alias drift
+  and silent unbounded execution. Validation without copying still lets later mutation violate the
+  validated state; copying without validation preserves invalid sentinels. An immutable value plus
+  four or five withers is robust but breaks the short familiar setup and adds several public verbs
+  without a caller that stores or composes configs. Direct scalar arguments are easy to transpose,
+  while a staged builder adds a second build grammar for settings with valid defaults. A public
+  `copy()` would help one private deferred wrapper but would expose another API operation whose
+  only repository caller is framework-owned. The private snapshot keeps the student call unchanged,
+  centralizes validation, and adds no public concept.
+- **Bounded implementation and documentation:** change only `DriveGuidanceTask`, the redundant
+  null-default line in `GoToPoseTasks`, Phoenix's deferred aim wrapper/capability documentation,
+  exact DriveGuidance plan/Task Javadocs, the Drive Guidance guide, Phoenix Architecture, focused
+  tests, and this record. Do not change controller tuning, requested-mask semantics, timing order,
+  lifecycle, drive ownership, other configs, examples, or Phoenix profile structure.
+- **Verification plan:** cover exact defaults and null config; every `NaN`, positive/negative
+  infinity, and out-of-domain finite value for each numeric field; accepted zero tolerances and
+  positive timeout boundaries; invalid construction before that Task's own sink/core effects;
+  post-construction mutation of every caller field; a later Task taking a new independent snapshot;
+  stable debug values; strict deadline ties; the four GoToPose entry paths; and Phoenix mutation
+  between `aimTask(...)` and the returned wrapper's later start. Preserve guidance timing,
+  single-use, API-shape, Pedro heartbeat,
+  Phoenix Auto/targeting, full TeamCode compile/test, strict Javadocs/docs, XML counts, caller scans,
+  and whitespace checks. This is a software ownership/configuration contract; robot hardware adds
+  no completion evidence.
+- **Approval and implementation start (2026-08-15):** the user approved the decision-complete
+  prerequisite in the simple-example plan and then instructed, **“Implement the plan.”** That
+  authorizes this no-new-public-API CONFIG-01 design. The item is **In progress** on
+  `codex/config-01-guidance-config-snapshot`; later prerequisite and example items remain untouched.
+- **Implementation result (2026-08-15):** **Verifying.** Each `DriveGuidanceTask` now captures the
+  five mutable config answers once, validates the captured numeric values, and retains only a
+  private immutable snapshot. Tolerances accept finite zero or positive values; both timeouts
+  require finite positive values. Runtime timeout comparisons preserve the strict exceeded-
+  deadline boundary without the old nonpositive sentinel branches. Null config and null-mask
+  defaults, explicit mask behavior, controller tuning, timing order, single-use lifecycle, and all
+  public constructors, fields, factories, and return types remain unchanged.
+- **Phoenix deferred-boundary result (2026-08-15):** `PhoenixTargeting.aimTask(...)` copies all five
+  answers before creating its start-time wrapper, so later caller mutation cannot drift the inner
+  aim Task. The inner `DriveGuidanceTask` remains the sole numeric validator when that wrapper later
+  starts after targeting has published its plan; invalid configuration fails before the inner Task
+  invokes the sink without claiming that an earlier route has not already used the same sink.
+  Phoenix capability, Auto profile, targeting, Drive Guidance, and Architecture documentation now
+  state the same snapshot, domain, timing, and physical-evidence boundary.
+- **Adversarial review and corrections (2026-08-15):** independent runtime/lifecycle,
+  API/caller/simplicity, and documentation/Principles reviews found no production-design or public-
+  surface blocker. They did identify false-positive tests that could pass if the implementation
+  retained defaults or omitted one of the five copies, plus imprecise FTC-START/sink wording and
+  two tracker terms. The corrected tests behaviorally distinguish each tolerance, timeout, and mask
+  from both defaults and later mutations; Phoenix's four numeric cases retain an invalid original
+  value while the caller repairs its alias, and its mask case distinguishes `NONE` from both the
+  plan mask and later `OMEGA_ONLY`. Invalid deferred construction proves zero inner-sink update,
+  drive, or stop calls. Documentation now places validation at the later inner aim-task boundary,
+  distinguishes positive-infinite timeout behavior, calls the mask a nullable override, and states
+  the three `PhoenixProfile.AutoConfig` aim domains.
+- **Automated verification (2026-08-15):** Android Studio's JBR ran
+  `./gradlew.bat --console=plain :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs` with **BUILD SUCCESSFUL**. The XML
+  result set contains **156 suites / 1,507 tests / 0 failures / 0 errors / 0 skipped**, including
+  `DriveGuidanceTaskConfigTest` 11/11, `DriveGuidanceApiTest` 3/3,
+  `PhoenixTargetingSourceTest` 14/14, and `DocumentationLinksTest` 5/5. TeamCode production/test
+  compilation and strict Javadocs succeeded; output contains only the repository's existing JDK 21
+  / Java 8 source-target and FTC sample deprecation warnings. The strict Zensical build could not
+  run because this host has only the Windows Store Python alias and no Python runtime; executable
+  documentation-link coverage is green.
+- **Static and scope verification (2026-08-15):** `git diff --check`, changed-file trailing-
+  whitespace, final-newline, stale retained-alias/sentinel, stale timing-wording, and parallel-
+  Config-API scans are clean across all 12 changed/untracked files. Caller and reflection coverage
+  confirm one public no-argument Config construction path with the same five mutable fields and no
+  new copy/default/builder/withers/overloads. The sole checkout is now on
+  `codex/config-01-guidance-config-snapshot` with these 12 CONFIG-01 paths unstaged. The separate
+  EXAMPLE-03/04 tracker draft remains preserved in local commit
+  `0d94a3c158c96216e4904c71db33d6c468ba693b` on
+  `codex/example-04-curated-managed-examples`; CONFIG-01 does not implement that draft,
+  SPATIAL-01, or EXAMPLE-04.
+- **Subsequent configuration-program boundary (2026-08-15):** after reviewing the wider config
+  inventory, the user selected a broad owner-configuration overhaul using one shared ownership
+  contract, owner-specific types, full caller replacement without compatibility shims, small named
+  robot factories, and completion of maintained framework/tool/Starter/Basic-Pedro/Phoenix config
+  work before EXAMPLE-04. The user explicitly chose to land this already verified narrow fix first.
+  That later program requires fresh tracker items and their own decision/implementation gates; it
+  does not expand or reinterpret CONFIG-01's reviewed public-API-preserving diff.
+- **Review and publication boundary (2026-08-15):** inspect the private snapshot/validation order,
+  strict timeout comparisons, direct and deferred field-distinguishing regressions, Phoenix's later
+  aim-task boundary, unchanged public API test, and synchronized Drive Guidance/Phoenix docs in
+  Android Studio. The unstaged implementation is in the repository checkout
+  `C:\Users\kids\StudioProjects\2025-PhoenixPedro` on
+  `codex/config-01-guidance-config-snapshot` at
+  `315011ab4765c831b5eca3ec540854aa9ea372ef`; its merge base and fetched `origin/master` are that
+  same commit. The resolved push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` and the target branch is `master`. Robot
+  hardware adds no evidence for this software configuration-ownership contract.
+- **Manual verification and publication authorization (2026-08-15):** the user completed the
+  requested Android Studio review and authorized committing the reviewed 12-file CONFIG-01 diff on
+  `codex/config-01-guidance-config-snapshot`, pushing it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. This closes Gate 3 for CONFIG-01; the broader configuration program remains separately
+  gated and is not part of this publication.
 
 ### SOURCE-04 - Successful source-cache commit semantics
 
