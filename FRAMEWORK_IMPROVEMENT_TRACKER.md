@@ -158,7 +158,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 71 | RUNTIME-02 | Production Phoenix managed-runtime migration | Done | Managed Auto/TeleOp lifecycle, shared-alliance targeting, truthful prestart UI, legacy cleanup, synchronized documentation, automated verification, Android Studio review, and publication authorization are complete. |
 | 72 | INPUT-02 | Binding update failure retention | Done | Retain exact same-cycle binding failures without replay, reject reentry, preserve explicit next-cycle and clear ownership, and keep robot code unchanged. |
 | 73 | BOUNDARY-01 | FTC boundary enforcement | Done | Relocated the FTC gamepad adapters without changing robot expressions and enforced the protected reusable core with one focused production-source rule. |
-| 74 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 74 | CI-01 | Framework verification in CI | Done | Split the existing hosted pipeline into truthful framework and documentation checks, run them for every pull request targeting master, and require both before merging. |
 | 75 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
 | 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
 | 77 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
@@ -9940,13 +9940,198 @@ writer, and explicit lifecycle ownership.
 
 ### CI-01 - Framework verification in CI
 
-- **Problem to confirm:** existing workflows do not compile or test framework changes.
-- **Alternatives to compare:** unit tests plus TeamCode compile; full FTC build; docs/boundary checks;
-  and local-only scripts if hosted CI cannot legally obtain dependencies.
-- **Leading hypothesis:** use the narrowest reliable unit-test and TeamCode compile jobs, then add
-  cheap docs and import checks.
-- **Completion:** the documented local commands and hosted checks agree; failures are actionable.
-- **Decision record:** _Pending._
+- **Research start (2026-08-14):** CI-01 is the sole active item on
+  `codex/ci-01-framework-verification-ci`, based exactly on merged
+  `origin/master@81e83529336d0bf428e9ecd36fe23a659b1c88f5`. BOUNDARY-01 is published and Done.
+  Gate 1 is read-only apart from this tracker record: it will inventory every workflow trigger,
+  Gradle verification task, dependency/toolchain acquisition path, branch-protection implication,
+  failure-reporting surface, and local/hosted command before deciding whether CI-01 still needs a
+  new workflow or only a bounded correction to the existing one. No workflow, Gradle, production,
+  test, documentation, example, Phoenix behavior, or other tracker item has started.
+- **Gate 1 finding - the old premise is obsolete:** DOC-03 already made
+  `.github/workflows/docs-site.yml` run strict narrative documentation, strict Phoenix Javadocs,
+  the complete TeamCode unit suite, and TeamCode Java compilation. All **20/20** pull-request and
+  `master` runs since that workflow was introduced completed successfully; the BOUNDARY-01 pull
+  request completed its artifact job in about 90 seconds. GitHub's Ubuntu runner, Temurin 17,
+  Gradle 8.9, AGP 8.7, Android 34, and the public FTC/Pedro/Panels repositories therefore form a
+  proven hosted path. CI-01 needs to repair ownership and enforcement, not invent a local-only
+  fallback or a second build system.
+- **Confirmed defects:**
+  - Pull-request path filtering covers every maintained Phoenix production source but only the one
+    documentation test package. It omits **155 of 156** maintained `edu.ftcphoenix` test files,
+    including BOUNDARY-01's `FrameworkBoundaryTest`; a test-only regression can therefore merge
+    without any hosted verification and is noticed only by the unfiltered post-merge `master` run.
+  - General compilation, unit, boundary, and robot-behavior failures are reported late under the
+    misleading check `Verify documentation artifact`, after Python installation and documentation
+    work. The standard JUnit XML and HTML reports remain runner-local.
+  - Live GitHub state on 2026-08-14 reports `master` unprotected and no repository ruleset or
+    required status check. Recent publication discipline waited for checks voluntarily, but the
+    repository does not enforce that policy.
+  - Maintainer Notes calls the unit-test task alone the complete local suite, separates compilation
+    into other guidance, does not map local commands to hosted check names or reports, and still
+    describes Pages setup as if the first deployment had not happened.
+- **Existing layers and distinct value:**
+  - Keep one checked-in workflow and one generated Pages artifact. The current read-only build and
+    master-only deploy permissions, pinned official actions, non-persisted checkout credentials,
+    `github-pages` environment, exact same-run artifact, and live-`master` refusal remain the
+    approved DOC-03 trust boundary.
+  - Keep the existing Gradle tasks. One invocation of
+    `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest` is the complete software
+    contract; the unit suite already contains `DocumentationLinksTest` and
+    `FrameworkBoundaryTest`. `:TeamCode:phoenixJavadocs` and strict Zensical generation remain the
+    documentation-artifact contract. No aggregate Gradle alias, shell script, import checker,
+    test-report plugin, or second construction path adds distinct value.
+  - The three inherited pull-request-management workflows are guarded to the upstream Pedro
+    repository and always skip here. Their mutable action tags, broad permissions, and noisy skipped
+    checks are copied-workflow cleanup outside CI-01 rather than a reason to expand this item.
+- **Alternatives compared:**
+  1. **No change or documentation-only warnings:** rejected because test-only pull requests remain
+     unverified and the current successful runs are advisory rather than a merge gate.
+  2. **Broaden paths and rename the current single job:** fewer YAML lines, but Python, Pages, and
+     general Java failures remain one ambiguous check and cannot be required independently.
+  3. **Add a second framework workflow:** a credible improvement, but it duplicates triggers,
+     concurrency, checkout/toolchain ownership, and creates an awkward choice between running the
+     full suite twice or allowing a Pages deployment to race the canonical framework result.
+  4. **Split the existing workflow into capability-owned jobs (selected):** one event, SHA,
+     concurrency group, artifact owner, and deployment barrier remain, while framework and
+     documentation failures receive separate stable identities. Removing pull-request path filters
+     costs roughly two low-volume runner-minutes for an otherwise unrelated pull request, but avoids
+     a fragile allowlist and is required for reliable required-check identities.
+  5. **Full `assembleDebug`, release/APK, lint, emulator, OS/JDK, or module matrices:** rejected.
+     They add dex/resource/signing/NDK downloads, copied-sample lint noise, or hardware claims
+     without improving the confirmed framework compile/unit contract. No Android instrumentation
+     tests exist. Supply-chain checksums, SBOM/license review, offline vendoring, merge queues, and
+     broader inherited-workflow cleanup also require separate evidence and scope.
+- **Selected workflow design:** keep the file `docs-site.yml`, rename the displayed workflow to
+  **`Phoenix verification and documentation`**, retain push and pull-request targeting of `master`,
+  and remove the pull-request `paths` filter.
+  - Job **`Verify Phoenix framework`** runs first with read-only contents permission,
+    `ubuntu-latest`, a bounded timeout, checkout without persisted credentials, Temurin 17 and the
+    existing Gradle cache, then exactly
+    `./gradlew --console=plain :TeamCode:compileDebugJavaWithJavac
+    :TeamCode:testDebugUnitTest`. Do not use `--rerun-tasks` on the fresh hosted workspace. On
+    failure, a pinned official artifact action retains the standard JUnit XML and HTML report trees
+    briefly; Javac failures remain actionable in the job log.
+  - Job **`Verify documentation artifact`** depends on successful framework verification. It keeps
+    Python 3.12, pinned documentation dependencies plus `pip check`, strict Zensical, strict
+    `phoenixJavadocs`, artifact assertions, and the exact one-day `github-pages` upload. The separate
+    focused Gradle link-test invocation and old full-suite step disappear because the prerequisite
+    full suite already ran `DocumentationLinksTest`. This preserves DOC-03's stronger ordering:
+    framework verification succeeds before even the deployable artifact is uploaded.
+  - **`Deploy trusted master artifact`** depends on both named jobs and otherwise retains its exact
+    upstream/push/master condition, Pages/OIDC-only permission, environment restriction,
+    live-`master` SHA check, and same-run artifact deployment. Do not use `always()` or make a pull
+    request deployable.
+  - After both check names have reported successfully in the repository, configure `master` to
+    require the exact GitHub Actions checks **`Verify Phoenix framework`** and
+    **`Verify documentation artifact`** before merge. This is an external repository-setting
+    mutation, not something the YAML can prove. Do not add review counts, merge queues, strict
+    up-to-date policy, linear history, or another branch rule in CI-01.
+- **Principles and dependency check:** the design has one hosted pipeline, one canonical local
+  Gradle command, one documentation artifact, two truthfully named capabilities, and one final
+  deployment owner. It adds no student API, Java runtime, dependency, robot heartbeat, hardware
+  access, generated source, or competing verification vocabulary. Always-running checks deliberately
+  fail closed for newly misplaced sources and future tests instead of requiring humans to maintain
+  another package/path matrix.
+- **Bounded implementation:** edit only `docs-site.yml`, this tracker record, and the current Phoenix
+  Maintainer Notes. Synchronize the exact local Windows/macOS/Linux command, the two hosted check
+  names, failure-report location/retention, advisory software-evidence boundary, and current Pages
+  state. Do not edit copied FTC contributing material, the PR template, Gradle, Java, tests,
+  production/robot code, examples, dependencies, other workflows, or another tracker item.
+- **Verification and completion:**
+  - Statically prove no workflow path filter; exact job dependencies, names, permissions, timeouts,
+    pinned actions, trigger/concurrency behavior, Gradle tasks exactly once, failure-only report
+    upload, and unchanged deploy safeguards. Run link/fence, YAML, action-pin, diff, and whitespace
+    checks.
+  - Locally run the exact full Gradle command from a forced clean boundary, strict
+    `:TeamCode:phoenixJavadocs`, and strict Zensical generation. Record suite/test counts and keep
+    hardware validation explicitly out of scope: hosted software cannot prove wiring, direction,
+    motion, tuning, camera readiness, or physical stop behavior.
+  - On the CI-01 pull request, require successful, separately visible framework and documentation
+    jobs and inspect the framework failure-artifact configuration. Merge only after both succeed.
+    Then require those exact checks on `master`, verify the resulting repository rule through the
+    GitHub API, and confirm the merged `master` framework check plus trusted Pages deployment.
+- **Required design approval:** this changes the hosted workflow/check identities and requests an
+  external protection rule on `master`; stop before implementation. The exact approval phrase is:
+  **`Approve CI-01 unified verification workflow and required-master-check design`**.
+- **Design approval received (2026-08-14):** the user supplied the exact approval phrase. CI-01 is
+  implemented on `codex/ci-01-framework-verification-ci`, whose starting `HEAD` and freshly fetched
+  `origin/master` both resolve to merged BOUNDARY-01 commit
+  `81e83529336d0bf428e9ecd36fe23a659b1c88f5`. Approval covers only the bounded workflow,
+  Maintainer Notes, tracker synchronization, verification, and the required-check repository
+  setting after its check identities exist. No Gradle, Java, test, production, robot, dependency,
+  example, copied workflow, or other tracker-item change is authorized.
+- **Gate 2 implementation (2026-08-14):** CI-01 changes exactly three files and is **Verifying**.
+  - `docs-site.yml` is now the single **Phoenix verification and documentation** pipeline. Every
+    push and pull request targeting `master` enters the same per-ref concurrency owner without a
+    path allowlist. The read-only **Verify Phoenix framework** job uses pinned checkout/setup-java,
+    Temurin 17, the existing Gradle cache, and the one canonical compile-plus-test invocation. A
+    failed unit-test execution can upload its standard XML/HTML reports for three days through
+    pinned official `upload-artifact` v6; setup or compilation failures remain in the job log.
+  - The dependent **Verify documentation artifact** job retains pinned Python/Java setup, exact
+    dependency checking, strict Zensical and Javadocs, generated-tree assertions, and the exact
+    one-day Pages artifact. It no longer repeats the focused documentation test or complete suite:
+    the prerequisite full suite already owns `DocumentationLinksTest`. The master-only deploy has
+    explicit dependencies on both jobs and retains the approved environment, Pages/OIDC-only
+    permission, upstream/ref/event condition, live-master refusal, and same-run artifact.
+  - All three hosted jobs now have bounded 20/20/10-minute timeouts. The internal documentation job
+    ID and displayed check name both describe its capability. Eight official action uses are pinned
+    to exact full release SHAs; the new `actions/upload-artifact` pin is verified against v6.0.0.
+  - Maintainer Notes now presents one local Windows command plus its macOS/Linux wrapper spelling,
+    maps it to both hosted checks and their dependency order, distinguishes logs from conditional
+    test-report artifacts and software from hardware evidence, documents the required unfiltered
+    checks, and describes the already-live master-only Pages configuration. No beginner guide,
+    copied FTC contribution file, Gradle/Java/test source, or runtime vocabulary changed.
+- **Automated verification (2026-08-14):**
+  - With Android Studio's JBR, a forced
+    `./gradlew.bat --no-daemon --console=plain --rerun-tasks
+    :TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest :TeamCode:phoenixJavadocs`
+    completed **BUILD SUCCESSFUL** in 1m50s. The complete XML set contained **155 suites / 1,494
+    tests / 0 failures / 0 errors / 0 skipped**, including `DocumentationLinksTest` **5/5** and
+    `FrameworkBoundaryTest` **14/14**. Strict Phoenix Javadocs generated successfully; output
+    contained only the repository's existing Java-8-on-JDK-21 and deprecation warnings.
+  - After the final Maintainer wording corrections, the focused `DocumentationLinksTest` passed
+    **5/5** again. Static workflow assertions prove exactly three jobs and their dependencies,
+    master-only push/PR triggers with no path filter, compile/test/Javadocs/Zensical each exactly
+    once, three bounded timeouts, no `always()` or `--rerun-tasks`, failure-only report upload,
+    least-privilege job permissions, and unchanged deploy safeguards. Every one of the eight
+    40-character action pins resolves to its documented official release tag.
+  - Three independent adversarial reviews found no workflow-security, permission, dependency,
+    documentation, tracker, Principles, test-validity, or scope blocker. They prompted the narrower
+    report-availability wording, the exact `targeting master` summary, and the truthful
+    `documentation` internal job ID. `git diff --check`, tracked/untracked whitespace scans, and the
+    exact three-file scope are clean.
+  - This Windows host has no real Python runtime, only the Microsoft Store alias, so a local strict
+    Zensical build and general YAML-parser run could not be performed and are not claimed. The
+    structure was exhaustively checked and the prior hosted renderer baseline is green, but the new
+    pull request's **Verify documentation artifact** job is the authoritative strict Linux/Python
+    proof and must pass before merge.
+- **Hardware scope:** no robot run can validate a hosted trigger, check graph, permission, or
+  documentation artifact. CI-01 proves software only and makes no claim about wiring, direction,
+  motion, tuning, camera readiness, or physical stop behavior.
+- **Gate 2 Android Studio review and publication stop:** inspect only the three changed files.
+  Confirm the unfiltered `master` triggers; framework -> documentation -> deploy graph; exact
+  compile/test command; conditional three-day test reports; pinned actions; job permissions and
+  timeouts; unchanged stale-master/Pages protections; and matching Maintainer guidance. The
+  resolved publication coordinates are branch `codex/ci-01-framework-verification-ci`, push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. After the pull-request
+  jobs first establish both check identities, the approved external action is to require exactly
+  **Verify Phoenix framework** and **Verify documentation artifact** from GitHub Actions on
+  `master`, with no review count, strict-up-to-date policy, merge queue, linear-history rule, or
+  other protection expansion. Stop without staging, committing, pushing, changing repository
+  settings, merging, or starting another item. The exact combined authorization is:
+
+  > `CI-01 looks good. Authorize committing the reviewed CI-01 diff on codex/ci-01-framework-verification-ci, pushing that branch to https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, configuring master to require the successful Verify Phoenix framework and Verify documentation artifact checks after they exist, and merging that pull request into master.`
+- **Gate 3 review and publication authorization (2026-08-14):** the user supplied the exact
+  combined authorization above after reviewing the CI-01 diff in Android Studio. This authorizes
+  one CI-01 commit on `codex/ci-01-framework-verification-ci`, publication to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, a pull request into `master`, and the
+  bounded repository-setting change that requires exactly the successful **Verify Phoenix
+  framework** and **Verify documentation artifact** GitHub Actions checks after those identities
+  exist. It also authorizes merging that pull request only after both checks and the repository
+  setting are verified; it authorizes no additional branch rule or tracker item.
+- **Decision record:** **Done; Gate 3 publication and the exact required-check setting are
+  authorized.**
 
 ### CLEAN-01 - Alias and risky convenience cleanup
 

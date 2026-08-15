@@ -106,16 +106,21 @@ Use this authoring contract:
   presentation; maintain its local links, anchors, and fences. Javadocs remain the authored exact
   method-level API contract and must stay synchronized with those guides.
 
-### 1.6 Automated framework unit tests
+### 1.6 Automated framework verification
 
 Pure framework behavior is tested locally under `TeamCode/src/test/java`. These tests run on the
 development computer and do not require a Control Hub, phone, emulator, or connected robot.
 
-On Windows, run the complete local framework suite from the repository root with:
+On Windows, run the complete local software check from the repository root with:
 
 ```powershell
-.\gradlew.bat :TeamCode:testDebugUnitTest
+.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest
 ```
+
+On macOS or Linux, use `./gradlew` in the same command; the task names and order are unchanged.
+This is the local equivalent of the hosted **Verify Phoenix framework** check: it compiles TeamCode
+and runs the complete unit suite, including the documentation-integrity and production-boundary
+tests.
 
 In Android Studio, either use the gutter run icon beside a test class/method or open the Gradle tool
 window and run **TeamCode → verification → testDebugUnitTest**.
@@ -125,7 +130,13 @@ framework `LoopClock` deterministically. Keep tests focused on documented contra
 Android stub default-return settings to conceal an accidental FTC/Android dependency in code that is
 supposed to remain pure Java.
 
-Local unit tests complement rather than replace the on-robot testers and calibration walkthroughs.
+The hosted job log contains setup, compiler, and test output; setup and compilation failures are
+actionable there. When a failed unit-test execution produces reports, its run also provides the
+standard JUnit XML and HTML report trees in a three-day `teamcode-test-reports` artifact on the
+GitHub Actions run summary. These software checks prove only compilation and tested software
+contracts. They do not prove robot wiring, motor or sensor direction, physical motion, tuning,
+camera readiness, or safe stop behavior. Use the on-robot testers and calibration walkthroughs for
+those facts.
 
 ### 1.7 Documentation integrity check
 
@@ -139,7 +150,8 @@ The check validates inline links/images, exact-case local targets, heading fragm
 fences in maintained Markdown without depending on network access. It skips generated/build trees
 and the four copied FTC SDK/sample Markdown files. It does not claim that an external website is
 reachable or that prose and code are semantically identical; those still require review alongside
-the compiled canonical examples.
+the compiled canonical examples. Use this focused command while iterating on documentation; the
+canonical full software command above already runs this test as part of the complete suite.
 
 ### 1.8 Generated documentation site
 
@@ -171,12 +183,21 @@ and `/api/` tree. Check navigation and both searches on desktop and a narrow mob
 strict Zensical build checks narrative links and anchors; the standard doclet checks exact Java API
 documentation. Neither replaces `DocumentationLinksTest` or Java compilation.
 
-The checked-in documentation workflow verifies pull requests with read-only repository access and
-deploys only the exact artifact built for an upstream `master` push. Before the first publication,
-set **Settings > Pages > Build and deployment > Source** to **GitHub Actions**. Then restrict the
-`github-pages` environment's deployment branches to `master` under **Settings > Environments**;
-do not permit arbitrary branches. Keep these repository settings aligned with the workflow's
-upstream-repository and live-`master` checks.
+The checked-in workflow exposes two hosted checks for every pull request targeting `master`.
+**Verify Phoenix framework** runs the canonical compile-and-test contract above. After it succeeds,
+**Verify documentation artifact** installs the pinned Python dependencies, checks them, builds the
+strict narrative and API documentation, verifies the generated tree, and uploads the exact Pages
+artifact. The trusted `master` deployment requires both jobs to succeed and deploys that same-run
+artifact; it never rebuilds the site.
+
+The `master` protection rule requires both hosted checks before merge. Keep the pull-request
+workflow unfiltered so both required check identities are always reported; do not make the
+master-only deployment job a required pull-request check.
+
+This repository's live Pages source is **GitHub Actions** under **Settings > Pages > Build and
+deployment**, and the `github-pages` environment permits deployment only from `master` under
+**Settings > Environments**. Keep those settings aligned with the workflow's upstream-repository,
+push, and live-`master` checks; do not permit arbitrary branches to deploy.
 
 `requirements-docs.txt` is the complete version-pinned Python 3.12 dependency list, not a floating
 list of minimum versions. Zensical is still a `0.0.x` package, so upgrades are deliberate:
