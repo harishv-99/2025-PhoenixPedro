@@ -171,6 +171,9 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 84 | TUNE-02 | Continuous framework-owned Panels velocity-PIDF tuning | Done | The reviewed exact velocity-PIDF workflow, canonical fresh-Plant seam, scoring consolidation, synchronized evidence/docs, and publication authorization are complete. |
 | 85 | CTRL-02 | Systematic targets, setpoints, and output control | Done | The reviewed systematic motion-control grammar, truthful vocabulary and capabilities, synchronized callers/docs, automated verification, and publication authorization are complete. |
 | 86 | TUNE-03 | Unified standard-control experiments and tuning | Done | Adapt TUNE-02's fresh-Plant Panels workflow to CTRL-02's typed software controls and FTC controller shapes, add truthful velocity/position experiment metrics, and complete the mandatory legacy PIDF removal gate. |
+| 87 | EXAMPLE-04 | Curated managed concept examples | Proposed | Audit the nine manual-loop concept labs, migrate only distinct lessons to the managed robot grammar, and delete or absorb redundant examples. |
+| 88 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
+| 89 | DRIVE-03 | Field-centric TeleOp drive intent | Proposed | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -213,6 +216,22 @@ address the adjacent calibration inputs. DOC-01 and a deliberately narrowed CLEA
 the remaining validation, boundary, and CI work. EXAMPLE-03 is now the last actionable proposed
 item in this cluster rather than the default next item. Deferred hardware/evidence items remain
 deferred regardless of their table position.
+
+On 2026-08-14, a tracker-only intake added EXAMPLE-04, RUNTIME-03, and DRIVE-03 without starting
+their decision gates or implementation. EXAMPLE-04 comes first because the nine disabled manual
+concept labs are the largest student-visible duplicate of the managed runtime. RUNTIME-03 then
+audits what direct-host guidance or enforcement remains while preserving genuinely different
+tester, portable-host, test, and private-owner seams. DRIVE-03 is independent behavior work, but it
+follows the example/runtime clarification so its first maintained example cannot create another
+robot lifecycle story. A later evidence-backed decision gate may reorder these Proposed items; no
+row here is an approved API or migration plan.
+
+The same day, the omitted intake was recovered exactly from local-only commit `3a90c01` on
+`codex/tracker-example-drive-runtime-intake`. The user reviewed the tracker-only recovery and
+authorized committing it on `codex/recover-tracker-example-drive-runtime-intake`, pushing it to
+`https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+`master`. This restores three **Proposed** records only; it approves no decision gate or
+implementation and starts none of those items.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -16826,6 +16845,216 @@ writer, and explicit lifecycle ownership.
   that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
   merging it into `master`. This approval completes Gate 3 for TUNE-03 only, does not claim the
   deferred robot-hardware validation, and does not start another tracker item.
+
+### EXAMPLE-04 - Curated managed concept examples
+
+- **Status and intake boundary (2026-08-14):** **Proposed.** This record comes from a read-only
+  source, caller, test, and documentation audit. It does not approve a survivor list, migrate an
+  example, delete a file, or begin implementation.
+- **Confirmed current split:** `edu.ftcphoenix.fw.tools.examples` contains ten Java files and 3,531
+  physical lines. Nine numbered, disabled TeleOps account for 3,255 of those lines. Every
+  `TeleOp_01` through `TeleOp_09` directly extends FTC `OpMode`, owns a private `LoopClock`, commits
+  telemetry, and manually coordinates some combination of input, Tasks, Plants, drive, and cleanup;
+  examples 02 through 09 own `Bindings`, and 03 and 06 also own `TaskRunner`. None uses
+  `FtcRobotOpMode` or `RobotProgram`, and no unit test directly names any numbered example or the
+  remaining `CustomVisionOwnershipExample` sketch.
+- **Current managed examples:** `edu.ftcphoenix.robots.examples` contains twelve files and 1,241
+  physical lines. Its FTC entries—`StarterTeleOp`, `StarterAuto`, and
+  `BasicPedroAutoExample`—all extend `FtcRobotOpMode` and override only
+  `configure(RobotProgram)`. Their robot owners declare outputs, drive, services, Tasks, and
+  presenters through the managed program, and six focused test files exercise the starter and
+  Pedro example packages. These remain the current copyable authorities.
+- **Concrete drift, not only old style:** the flat labs duplicate drive/shooter/vision setup and
+  lifecycle ceremony, but some also miss current safety or API rules. `TeleOp_07` owns a
+  Plant-backed mechanism without any STOP path. `TeleOp_08` directly implements an anonymous
+  `ScalarSource` instead of using the ordinary `ScalarSource.of(...)` adapter. `TeleOp_09` injects
+  prebuilt Plants as ordinary peer dependencies and stops multiple Plants sequentially rather than
+  through best-effort cleanup. Examples 01 through 06 can also acquire later resources after drive
+  construction without the managed host's partial-INIT cleanup boundary. Their disabled state does
+  not remove their teaching effect: the examples hub, progression guide, loop guide, Tasks guide,
+  actuator guide, drive-guidance guide, shooter walkthrough, and layered-shooter guide link to one
+  or more of them.
+- **Distinct concepts to classify at Gate 1:** the audit found potentially useful lessons in fresh
+  macro construction (03), shared tag selection plus omega-only guidance (05), external analog
+  feedback for a regulated Plant (08), and request/behavior/realization separation (09). Basic
+  drive (01), simple shooter ownership (02), interpolation hosted as an OpMode (04), the combined
+  macro/vision file (06), and the pass-through supervisor example (07) appear duplicative or better
+  expressed as smaller owners/tests, but those are disposition candidates rather than decisions.
+  `CustomVisionOwnershipExample` is not an OpMode and may retain distinct backend-ownership value;
+  Gate 1 must either promote it into a documented, tested managed example or remove the orphaned
+  sketch.
+- **Alternatives to compare:** keep the files and strengthen the existing warnings; mechanically
+  convert all nine while preserving the numeric progression; keep one renamed manual host only for
+  a materially different lifecycle; delete the entire flat collection and rely on prose; or curate
+  a smaller managed set around distinct concepts while absorbing pure calculations into tested
+  helpers. The comparison must include complete student navigation and concept count, source/config
+  size, failure and cleanup behavior, discoverability, and documentation burden—not merely the
+  number of lines in the outer OpMode.
+- **Leading hypothesis:** keep the tested starter and Pedro references unchanged; migrate only
+  distinct, current lessons into compact `robots.examples` owners with thin managed entries; delete
+  examples that merely repeat or combine earlier lessons; and remove raw lifecycle ceremony from
+  the ordinary concept progression. Do not add a lifecycle facade merely to preserve old file
+  shapes. Preserve a manual host only if the decision gate identifies a lifecycle that
+  `RobotProgram` cannot truthfully express; seeing FTC phases explicitly is documentation/test
+  material, not by itself a second robot architecture.
+- **Dependencies and scope questions:** use the already-approved one-managed-host principle for
+  example ownership, but leave deprecation or visibility of reusable `LoopClock`, `Bindings`, and
+  `TaskRunner` to RUNTIME-03. Coordinate with EXAMPLE-03 so Phoenix does not add a new advanced
+  reference into a collection being retired. Decide whether example 09 needs a real frame-valued
+  source/API change or should use an existing continuous source; do not expose the managed
+  program's clock to preserve one lesson. Resolve vision cleanup through a truthful service or
+  resource owner, not a fake heartbeat. Keep legacy `org.firstinspires.ftc.teamcode`, FTC SDK
+  samples, and Pedro vendor tuning examples out of scope.
+- **Future completion evidence:** every retained example follows the approved owner/lifecycle path,
+  has focused fake-backed tests for its distinctive behavior, partial construction failure,
+  repeated commands, terminal stop, and cleanup, and is linked from synchronized current-state
+  guidance. Removed names have no live callers or links. Focused static checks should reject raw
+  `OpMode`, private loop clocks/bindings/runners, direct telemetry commits, and raw Plant ownership
+  in the curated ordinary examples. Run full TeamCode tests and compilation, strict Javadocs,
+  documentation link/site checks where available, stale-name/API scans, and whitespace checks.
+  Hardware remains adopting-robot validation for names/directions, mechanism response and stop,
+  camera readiness, and physical drive/guidance behavior.
+- **Decision record:** _Pending. No implementation started._
+
+### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
+
+- **Status and intake boundary (2026-08-14):** **Proposed.** The audit evaluates whether “one way”
+  should deprecate direct loop ownership. It records current evidence only; it does not deprecate a
+  type, change visibility, add enforcement, or alter a host.
+- **Confirmed ordinary path:** the sole ordinary managed FTC construction path is subclassing
+  `FtcRobotOpMode` and overriding `configure(RobotProgram)`. `RobotProgram` has a package-private
+  constructor and package-private lifecycle methods, with no public builder, factory, or callable
+  phase facade. Managed starter, Pedro, and Phoenix entries do not own an active-loop clock, Task
+  runner, telemetry commit, or shutdown shell. The nine numbered tool examples are the only
+  maintained robot-like direct FTC hosts under `edu.ftcphoenix`; EXAMPLE-04 owns their eventual
+  source disposition.
+- **Direct ownership that is not a competing robot recipe:** `LoopClock`, `Bindings`, and
+  `TaskRunner` are public reusable owner primitives. The managed program deliberately retains them
+  privately and exposes narrower `CallbackBindings` and `TaskBindings` declaration surfaces, but
+  deterministic tests, portable hosts, `BaseTeleOpTester`, private `OutputTaskRunner` queues, and
+  bounded framework owners still need direct construction. Likewise, a mechanism or localization
+  service calling its private child's `update(clock)` inside one registered program role is the
+  intended ownership hierarchy, not manual FTC hosting.
+- **Materially different host:** `FtcTeleOpTesterOpMode` is a separate final-callback tester host.
+  Its current entries are `PhoenixTestersOpMode` and, through
+  `FtcPanelsTeleOpTesterOpMode`, `PhoenixPanelsTuningOpMode`,
+  `FrameworkPanelsTestersOpMode`, and `FrameworkDriverStationTestersOpMode`. These own dynamic
+  tester selection, resource acquisition after selection, exclusive tester telemetry screens,
+  optional alternate Panels input transport, and repeated child cleanup. Those needs differ from
+  `RobotProgram`'s frozen declaration graph and data-only prestart policy; the audit found no basis
+  for calling this an ordinary robot alternative.
+- **Answer to the broad deprecation question:** the current evidence does not justify deprecating
+  FTC's `OpMode` type, Phoenix's reusable clock/binding/runner constructors, or owner-level
+  update/stop methods. Such warnings would target valid advanced/test owners and leave them without
+  a truthful replacement. The issue to decide is narrower: whether any maintained ordinary-looking
+  manual FTC recipe should remain after EXAMPLE-04, and how Phoenix prevents a new one from becoming
+  a parallel student path.
+- **Alternatives to compare:** make no change because principles already label manual hosting
+  advanced; migrate/delete only the flat examples and update navigation; deprecate the low-level
+  primitives; make `RobotProgram` publicly constructible for custom hosts; force tester hosts into
+  the managed robot grammar; or retain one explicitly documented advanced custom-host contract and
+  add a narrow repository boundary check for ordinary robot entries. Gate 1 must compare ordinary
+  call sites, concepts, error quality, lifecycle omissions, advanced caller migrations, and public
+  API/implementation cost.
+- **Leading hypothesis:** keep `FtcRobotOpMode` plus its framework-created `RobotProgram` as the
+  sole ordinary FTC robot path. Preserve reusable primitives and the specialized tester host as
+  explicitly advanced capabilities. After EXAMPLE-04 resolves the largest visible duplicate,
+  consolidate any remaining direct-host guidance into one maintainer/custom-host section and add a
+  focused source/reflection rule so modern `edu.ftcphoenix.robots` entries use the managed host, a
+  Phoenix managed subtype, or an explicitly named tester host. Do not create or expose a second
+  lifecycle facade in order to police the first one.
+- **Dependencies and bounded scope:** consume EXAMPLE-04's example disposition rather than editing
+  the same nine files twice. Exclude legacy `org.firstinspires.ftc.teamcode`, FTC SDK samples, Pedro
+  vendor tuning OpModes, deterministic unit tests, and explicitly justified portable/tester hosts.
+  Do not add lifecycle observer hooks, expose `RobotProgram` internals, redesign tester menus, or
+  combine INPUT-02's separate binding-failure semantics. If example cleanup leaves no ordinary
+  manual caller, Gate 1 may conclude with documentation and enforcement only instead of inventing
+  an API removal.
+- **Future completion evidence:** enumerate every modern class extending FTC `OpMode`,
+  `FtcRobotOpMode`, a Phoenix managed subtype, `FtcTeleOpTesterOpMode`, or
+  `FtcPanelsTeleOpTesterOpMode`; scan modern robot code for direct clock/binding/runner construction,
+  raw FTC callbacks, and `telemetry.update()` with reasoned exceptions. Reflection tests should
+  retain final `FtcRobotOpMode` callbacks, the non-public `RobotProgram` constructor/lifecycle, and
+  the absence of a second public runtime factory. Preserve `FtcRobotOpModeTest`,
+  `FtcTeleOpTesterOpModeTest`, Panels-host coverage, direct primitive/portable tests, and owner-level
+  Plant/Pedro tests. Run full TeamCode tests/compile, strict Javadocs, docs checks, static API scans,
+  and whitespace checks. No robot hardware is required to establish this API/lifecycle boundary.
+- **Decision record:** _Pending. No implementation started._
+
+### DRIVE-03 - Field-centric TeleOp drive intent
+
+- **Status and intake boundary (2026-08-14):** **Proposed.** The missing capability and current
+  seams are confirmed, but heading origin, evidence loss, re-zero, and composition order materially
+  determine the public contract. No API, Phoenix adoption, or drive behavior is approved here.
+- **Confirmed current behavior:** `DriveSignal` is consistently robot-centric: positive axial is
+  robot forward, positive lateral is robot left, and positive omega is counter-clockwise.
+  `GamepadDriveSource` samples three explicit axes, shapes them, converts driver signs, and emits
+  that robot-centric signal. `DriveSource` offers scaling, rate limiting, overlays, and blending,
+  but no frame conversion. `RobotProgram.drive(...)`, `FtcDrives.mecanum(...)`,
+  `MecanumDrivebase`, guidance, and overlays all consume the same robot-centric contract. No
+  maintained framework, Phoenix, starter, or concept-example path implements field-relative manual
+  translation.
+- **Available evidence and caller order:** Phoenix currently builds
+  `GamepadDriveSource -> slow scaling -> rate limiting -> robot-frame assist overlays`, then declares
+  one final mecanum sink. Its managed localization service updates before drive output, so a future
+  source could consume an already-published `PoseEstimate` without polling hardware or advancing a
+  second estimator heartbeat. `PoseEstimate` carries pose availability, quality, and an epoch-safe
+  timestamp; a bare `ScalarSource` heading does not. Standalone TeleOp normally begins in Pinpoint's
+  initialization frame, while a valid Auto-to-TeleOp handoff restores an absolute field pose, so
+  silently equating estimator yaw with one universal driver-forward frame would produce different
+  controls depending on how TeleOp was entered.
+- **Behavioral precedent, not an architecture template:** the checked-in FTC field-relative
+  mecanum sample uses Control Hub IMU yaw, explicit hub orientation, an operator yaw reset, and a
+  held robot-relative override. It confirms the use case and rotation signs, but it is a manual
+  `OpMode` that writes four motors and chooses run modes directly. Phoenix must express equivalent
+  policy through controls/source composition and existing owners rather than copying that loop.
+- **Truthful boundary:** keep `DriveSignal`, drive overlays, `RobotProgram.drive(...)`,
+  `FtcDrives`, and the final drivetrain robot-centric. Field/control-frame conversion belongs
+  upstream in the manual intent source, before robot-frame assists and the one final sink. Controls
+  own what the sticks mean and any re-zero button; localization owns heading evidence; one source or
+  drive-policy owner converts the published evidence without mutating localization or writing
+  hardware. For a heading `theta` from the fixed control frame to robot +X, the contract must test
+  `robotAxial = cos(theta) * controlAxial + sin(theta) * controlLateral`,
+  `robotLateral = -sin(theta) * controlAxial + cos(theta) * controlLateral`, while omega passes
+  through unchanged.
+- **Questions the decision gate must answer:** whether “field-centric” means absolute FTC field
+  axes, a driver frame latched at START, or an alliance/start-aligned control frame; whether the
+  dependency is a pose estimate or a narrower availability-bearing heading snapshot; what happens
+  when heading is absent, non-finite, stale, or low quality; whether an operator can re-zero and who
+  owns that offset; how same-cycle sampling/reset/failure retention works; whether translation slew
+  limiting occurs in the control frame or robot frame; how existing slow mode and robot-frame
+  overlays compose; what readiness/diagnostics are visible; and whether Phoenix or a smaller modern
+  example is the first adopter. A silent robot-centric fallback or implicit localization reset must
+  not be selected without explicit evidence because either can abruptly change driver meaning or
+  corrupt other field consumers.
+- **Alternatives to compare:** documentation plus robot-local trigonometry; a Phoenix-only wrapper;
+  a `DriveSource` decorator that reinterprets an already robot-centric signal; a boolean in
+  `GamepadDriveSource.Config`; conversion in `MecanumDrivebase`/`FtcDrives`; a new FTC IMU lane; or
+  one explicitly named field/control-frame manual source that shares input shaping but returns the
+  existing robot-centric signal. Compare robot-centric and field/control-frame call sites, added
+  concepts, discoverability, evidence truth, failure behavior, reset ownership, and implementation
+  cost. Do not add a second drivetrain factory merely for coordinate conversion.
+- **Leading hypothesis:** add one dedicated, explicitly named upstream manual-drive source beside
+  `GamepadDriveSource`. It receives explicit axes/configuration plus truthful heading evidence,
+  owns any driver-frame offset, and emits one robot-centric `DriveSignal` for unchanged overlays and
+  sinks. The exact name, evidence type, origin choice, loss policy, and rate-limit placement remain
+  Gate-1 decisions. If only Phoenix can supply a complete policy, first prove the local wrapper and
+  caller before promoting a generic source; do not manufacture an IMU hardware API solely for
+  symmetry.
+- **Bounded future scope and completion evidence:** limit implementation to source-layer frame math,
+  evidence/lifecycle policy, diagnostics/readiness, one approved managed adopter, and synchronized
+  drive/TeleOp/Phoenix docs and Javadocs. Do not change `RobotProgram`, `FtcDrives`,
+  `MecanumDrivebase`, Auto route control, localization hardware ownership, or raw FTC hosting.
+  Focused tests must cover zero and cardinal/wrapped headings, signs, magnitude and omega
+  preservation, zero input, selected unavailable/stale/quality behavior, one input/evidence sample
+  per cycle, same-cycle retries/failures, reset/re-zero, START zero, first-active sampling,
+  rotate-while-translating behavior, and unchanged robot-centric overlays/callers. Run
+  `GamepadDriveSourceSamplingTest`, `DriveSourceCycleSafetyTest`,
+  `PhoenixTeleOpControlsTest`, the new frame-source tests, full TeamCode tests/compile, strict
+  Javadocs, docs checks, API scans, and whitespace checks. Raised-wheel/low-power cardinal motion,
+  heading sign/zero, loss response, rotating translation, and standalone-versus-handoff alignment
+  remain adopting-robot validation rather than software completion evidence.
+- **Decision record:** _Pending. No implementation started._
 
 ## Explicitly deferred architectural ideas
 
