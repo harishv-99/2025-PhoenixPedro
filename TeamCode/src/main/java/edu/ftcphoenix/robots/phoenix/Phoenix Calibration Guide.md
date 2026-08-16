@@ -279,6 +279,23 @@ Phoenix does not infer a made shot from controller error and does not store robo
 inside the tuner. Record several shots for one segment, then press A for a new segment when target
 or gains change.
 
+After the team reviews the trials, sort only the accepted finite rows by strictly increasing
+distance and replace the checked-in Phoenix shot table:
+
+```java
+PhoenixProfile.current().autoAim.shotVelocityTable =
+        InterpolatingTable1D.ofSortedPairs(
+                28.0, 1500.0,
+                36.0, 1430.0,
+                50.0, 1450.0);
+```
+
+Each adjacent pair is `(rangeInches, flywheelVelocityNative)`. The table owns validation of every
+finite value and rejects duplicate or out-of-order distances when Phoenix constructs the profile;
+do not add a profile-local validation loop. During a match, a fresh tag alone does not prove that
+its derived range is finite. Phoenix publishes a shot suggestion only when the table result is
+finite, so unavailable live geometry cannot masquerade as a clamped endpoint shot.
+
 The FTC controller may quantize gains, so copy the displayed **readback values** into:
 
 ```java
@@ -583,7 +600,8 @@ Other additions that fit this model include:
 1. establish raw drivetrain motor direction with `HW: Actuator Bring-up`
 2. run Phoenix configured-drivetrain verification with all wheels raised
 3. run the production TeleOp raised-wheel forward/strafe/turn integration check
-4. tune the installed flywheel through `Phoenix: Tuning (Panels)` and copy controller readback
+4. tune the installed flywheel through `Phoenix: Tuning (Panels)`, copy controller readback, and
+   adopt reviewed finite distance/velocity rows
 5. camera mount
 6. raw AprilTag localization check
 7. Pinpoint axis directions

@@ -176,7 +176,8 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
      *                                    defensively frozen before the first detection selection
      * @param autoAimEnabled              driver enable source that activates sticky target selection and the aim overlay
      * @param aimOverrideInput            driver override source that bypasses aim readiness gates when held
-     * @param shotVelocityTable           range-to-velocity table used for fresh target-based shot suggestions
+     * @param shotVelocityTable           finite range-to-velocity calibration table; a non-finite
+     *                                    live range produces no shot suggestion
      */
     public PhoenixTargeting(PhoenixProfile.AutoAimConfig config,
                             FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig,
@@ -397,9 +398,14 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                 ? cfg.targetProfileForTag(selection.selectedTagId)
                 : cfg.defaultTargetProfile(-1);
 
-        boolean hasSuggestedVelocity = selection.hasFreshSelectedObservation && selection.selectedObservation.hasTarget;
-        double suggestedVelocityNative = hasSuggestedVelocity
+        boolean hasFreshTargetObservation = selection.hasFreshSelectedObservation
+                && selection.selectedObservation.hasTarget;
+        double candidateVelocityNative = hasFreshTargetObservation
                 ? shotVelocityTable.interpolate(selection.selectedObservation.cameraRangeInches())
+                : Double.NaN;
+        boolean hasSuggestedVelocity = Double.isFinite(candidateVelocityNative);
+        double suggestedVelocityNative = hasSuggestedVelocity
+                ? candidateVelocityNative
                 : Double.NaN;
 
         Pose3d fieldToSelectedTag = null;

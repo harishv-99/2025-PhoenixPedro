@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-15
+Last updated: 2026-08-16
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -173,7 +173,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 86 | TUNE-03 | Unified standard-control experiments and tuning | Done | Adapt TUNE-02's fresh-Plant Panels workflow to CTRL-02's typed software controls and FTC controller shapes, add truthful velocity/position experiment metrics, and complete the mandatory legacy PIDF removal gate. |
 | 87 | CONFIG-02 | Core configuration ownership contract | Done | The reviewed owner-local validation, bounded controller math, synchronized guidance, automated verification, and destination-specific publication authorization are complete. |
 | 88 | SPATIAL-01 | Finite authored spatial geometry | Done | The reviewed finite authored-geometry, immutable-layout, dormant-API replacement, rectangle-in-box, and frozen heading-selection implementation is complete and authorized for publication. |
-| 89 | MATH-01 | Finite interpolation calibration tables | Proposed | Require every authored interpolation knot and value to be finite across the supported table construction paths. |
+| 89 | MATH-01 | Finite interpolation calibration tables | Done | The reviewed finite-table and runtime-unavailability contract, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Proposed | Give each FTC vision and AprilTag owner one validated defensive configuration boundary before deferred open or resource acquisition. |
 | 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Proposed | Validate and snapshot Pinpoint, absolute-pose, fusion, and composite-lane configuration before hardware or estimator effects. |
 | 92 | CONFIG-05 | Pedro runtime configuration ownership | Proposed | Replace the production runtime's peer argument bundle with one owner-specific, deeply snapshotted Pedro configuration path. |
@@ -17618,35 +17618,209 @@ writer, and explicit lifecycle ownership.
 
 ### MATH-01 - Finite interpolation calibration tables
 
-- **Status and intake boundary (2026-08-15):** **Proposed.** This is a small foundational correction
-  before robot profiles isolate shot, lift, or other calibration literals. It does not select a new
-  interpolation policy or add a table/profile DSL.
-- **Confirmed current behavior:** `InterpolatingTable1D.ofSorted(...)` clones its arrays and checks
-  length plus strict x ordering beginning at index one, but does not check finiteness and can accept
-  a non-finite first x; it never checks any y. `ofUnsorted(...)`, `ofSortedPairs(...)`, and
-  `Builder.buildSorted()` converge on that boundary,
-  so `NaN`/infinite calibration values can be retained in an otherwise immutable table and later
-  produce believable clamps or non-finite interpolation results.
-- **Leading hypothesis:** make the canonical table factory validate every captured x and y as finite
-  before construction, with index/value diagnostics, while retaining clone isolation, strict
-  increasing order, and endpoint clamping. `ofSortedPairs(...)` is the ordinary literal path,
-  `ofSorted(...)` is the array/data seam, and `ofUnsorted(...)` has distinct sorting behavior; the
-  builder has zero repository callers and must be removed unless Gate 1 finds distinct external-
-  compatibility value. Gate 1 must also decide and document the separate runtime-query contract for
-  a non-finite lookup input rather than accidentally treating unavailable sensor evidence as an
-  authored calibration error.
-- **Distinct boundary and rejected alternatives:** RANGE-01 validates scalar range construction but
-  cannot prove calibration knots or outputs; profile-local loops would duplicate the same invariant
-  in every robot. Generic Units/Measure wrappers do not enforce finiteness or monotonicity. Do not add
-  sorted-map, spline, extrapolation, duplicate-merging, or multidimensional-table behavior here.
-- **Future completion evidence:** cover every retained public construction path, single-point tables,
-  the first/middle/last x and y slots with `NaN`/both infinities, clone isolation, strict duplicates/
-  order, valid endpoint clamping/interpolation, and the selected non-finite query behavior. If the
-  builder remains, prove atomic failure and distinct caller value; otherwise lock its removal with
-  API/stale-caller scans. Synchronize Javadocs/calibration guidance, run focused math and every table-
-  using Phoenix/tester regression plus full TeamCode compile/tests and whitespace checks. No robot
-  run is required to prove finite table construction.
-- **Decision record:** _Pending. No implementation started._
+- **Status and intake boundary (2026-08-16):** **Done.** This is a small foundational correction
+  before robot profiles isolate shot, lift, or other calibration literals. The reviewed
+  implementation, automated verification, Android Studio review, and destination-specific Gate 3
+  authorization are complete. CONFIG-03 has not entered this MATH-01 diff.
+- **Gate 1 research start (2026-08-15):** MATH-01 is the sole active item on
+  `codex/math-01-finite-interpolation-tables`, branched from merged
+  `origin/master@1eee82786cb76a245c65666e88aa1bb0d0918f72`. The user requested the next task after
+  SPATIAL-01 merged. At that point this started the construction/query/caller/documentation audit
+  only; no Java, test, Javadoc, or guide implementation had started.
+- **Gate 1 caller and construction inventory:** before implementation,
+  `InterpolatingTable1D.ofSortedPairs(...)` was the only maintained authoring call and was used by
+  `PhoenixProfile` plus shooter examples 04, 05, and 06. `ofSorted(...)`, `ofUnsorted(...)`,
+  `builder()`, the public `Builder` constructor, `Builder.add(...)`, and
+  `Builder.buildSorted()` had no production, example, or guide caller outside the defining class
+  and its own Javadoc. `interpolate(...)` was called by `PhoenixTargeting` and all three examples.
+  `applyAsDouble(...)`, `size()`, `xs()`, and `ys()` had no maintained production caller;
+  `debugDump(...)` and `toString()` were the standard diagnostic surfaces. Eight Phoenix tests
+  passed the existing table through constructors, but no focused table test existed before this
+  item.
+- **Confirmed authored-value defect:** `ofSorted(...)` snapshots both arrays and checks matching,
+  non-empty lengths plus strict x ordering only from index one. It therefore admits a non-finite
+  first x in some shapes and never checks any y. Every current construction path eventually uses
+  that incomplete boundary, so an immutable table can retain `NaN` or infinity and fail only when
+  robot behavior queries it. Profile-local validation would duplicate the invariant and recreate the
+  long example/profile checks this configuration program is removing.
+- **Confirmed query and numerical defects:** query behavior is presently inconsistent: a one-point
+  table returns its y for every non-finite query, infinities on a multi-point table clamp to believable
+  endpoint values, and `NaN` can reach an invalid binary-search segment. Finite authored values also
+  do not guarantee correct or finite evaluation. With x knots `[-Double.MAX_VALUE,
+  Double.MAX_VALUE]`, the current difference formula can produce an infinite width, a wrong zero
+  fraction at query zero, or `Infinity / Infinity`; with opposite-sign extreme finite y values,
+  `MathUtil.lerp(...)` can overflow even though the mathematical interpolation lies between two
+  finite endpoints.
+- **Selected authored-table contract:** every retained factory first captures its input and rejects
+  each non-finite x and y with an actionable component, authored index, and value. Preserve current
+  null, length, non-empty, and even-pair requirements. `ofSorted(...)` continues to require strictly
+  increasing finite x values; its order error names the conflicting adjacent indices and values.
+  `ofUnsorted(...)` validates the original captured positions before sorting, preserves x/y pairing,
+  and reports duplicate x values using their authored positions. One-point tables, negative values,
+  non-monotonic y values, subnormal finite values, and finite signed zero remain valid; `-0.0` and
+  `+0.0` are duplicate x values. Input arrays remain defensively isolated.
+- **Selected construction and public surface:** retain exactly three named factories in one class.
+  `ofSortedPairs(x0, y0, ...)` is the ordinary, shortest checked-in literal path;
+  `ofSorted(xs, ys)` is the advanced aligned-array path when data is already ordered; and
+  `ofUnsorted(xs, ys)` owns the materially different operation of sorting arbitrary aligned arrays
+  without losing pair identity. Remove `builder()`, the public nested `Builder`, `add(...)`, and
+  `buildSorted()`: they repeat the sorted-literal questions while adding mutable accumulation and a
+  second completion concept, with no caller value. Also remove unused `size()`, `xs()`, and `ys()`;
+  the two exported peer arrays expose representation and make callers re-establish pair alignment.
+  If a real calibration-export adopter appears later, design one paired read-only view then.
+- **Selected evaluation surface:** `interpolate(double)` remains the one ordinary domain verb.
+  Retain `DoubleUnaryOperator`/`applyAsDouble(...)` only as the standard functional-adapter seam;
+  framework integrations such as `ScalarTuner.attachAxis(...)` already accept that standard type.
+  It delegates to `interpolate(...)` and has exactly the same contract, while beginner examples show
+  only `interpolate(...)`. `toString()` remains a compact human-readable configuration diagnostic,
+  not a parseable calibration export; `debugDump(...)` retains cached size/x-range diagnostics with
+  stable keys. Remove the unreachable runtime `x1 == x0` fallback: validated immutable strict
+  ordering already proves that state impossible, and silently returning y0 would hide an invariant
+  violation.
+- **Selected live-query contract:** a `NaN`, positive-infinite, or negative-infinite query returns
+  `Double.NaN` before the one-point or clamp paths. A query is runtime evidence, so unavailable
+  evidence must not masquerade as a nearest calibration row or throw an authored-configuration
+  exception. Every finite query returns a finite result: below/above-range values clamp to the exact
+  stored finite endpoint; an exact knot returns its exact y; an interior query uses the stable linear
+  calculation below. `applyAsDouble(...)` delegates and cannot disagree.
+- **Selected stable linear calculation:** keep the current piecewise-linear policy and endpoint
+  clamping; do not add extrapolation. Use the ordinary interpolation fraction when the finite segment
+  width remains finite. If subtracting opposite-sign extreme finite x endpoints overflows, halve x0,
+  x1, and the query before subtracting; this keeps both the numerator and denominator finite. Clamp
+  only rounding drift in the resulting fraction to `[0, 1]`. When `y1 - y0` is finite, interpolate
+  from the nearer endpoint (`y0 + t * delta` in the first half, `y1 - (1 - t) * delta` in the second)
+  to avoid an unnecessary large intermediate. If the delta overflows, the finite endpoints must have
+  opposite signs, so use the convex blend `(1 - t) * y0 + t * y1`. This keeps the result convex and
+  finite without placing an arbitrary ceiling on valid calibration values. Keep this arithmetic
+  private to the table; changing general `MathUtil.lerp(...)` would affect unrelated guidance/
+  localization callers and its documented extrapolation behavior.
+- **Affected runtime-consumer truth:** `AprilTagObservation.hasTarget` does not prove finite live
+  geometry, and its derived range can be non-finite. `PhoenixTargeting` must compute the lookup once
+  and publish `hasSuggestedVelocity` only when that result is finite; its unavailable value remains
+  `NaN`. Example 05 must command zero and report the range/velocity unavailable rather than send a
+  non-finite Plant request. Example 06 must not build or enqueue its shooting macro and must report
+  the unavailable range; `ScalarTasks.set(...)` would otherwise reject the non-finite target from a
+  button callback. Example 04's bounded manual distance is finite by construction and needs only
+  explanatory documentation. Do not reject runtime pose evidence in `AprilTagObservation` or change
+  vision ownership in this math item.
+- **Ownership boundaries retained:** the immutable table remains safe to share from
+  `PhoenixProfile.AutoAimConfig.copy()`. The redundant Phoenix targeting config/table peer is real,
+  but CONFIG-09 already owns moving the shot table into the targeting owner and migrating that
+  constructor family; MATH-01 changes only the directly affected result truth. EXAMPLE-04 owns later
+  deletion/replacement of the manual shooter labs. MATH-01 does not change calibration numbers,
+  velocity units, sensor freshness, shooter readiness, Plant ranges, or task/macro policy.
+- **Smallest ordinary call shape:** checked-in calibration remains a single finite, sorted declaration:
+  `InterpolatingTable1D.ofSortedPairs(24.0, 170.0, 30.0, 180.0)`, followed by
+  `table.interpolate(usableDistanceInches)`. No profile validation loop, Config object, generic units
+  wrapper, builder, result wrapper, or second query policy is introduced.
+- **Side-by-side construction decisions:** the selected literal shape
+  `ofSortedPairs(24.0, 170.0, 30.0, 180.0)` asks the student only to author two aligned `(x, y)`
+  facts in increasing x order. The retained advanced `ofSorted(new double[]{24.0, 30.0}, new
+  double[]{170.0, 180.0})` asks the caller to keep two columns aligned and guarantee x order;
+  `ofUnsorted(new double[]{30.0, 24.0}, new double[]{180.0, 170.0})` asks for aligned columns but
+  explicitly delegates ordering to the table. The rejected
+  `builder().add(24.0, 170.0).add(30.0, 180.0).buildSorted()` asks the same pair/order questions while
+  also introducing mutable accumulation and an explicit build step. Positional constructor doubles,
+  a staged builder, or a Config wrapper add still more decisions and have no credible advantage.
+- **Rejected alternatives:** throwing for a non-finite query would conflate transient evidence loss
+  with invalid authored configuration and can fail-stop a loop. Clamping infinity would invent a
+  plausible actuator command; preserving the current mixed behavior is not truthful. An
+  `OptionalDouble`/`tryInterpolate` pair would add a second query grammar when the framework already
+  uses `NaN` for unavailable scalar evidence. A shared Config/validator, profile loops, and generic
+  Units/Measure types cannot express pairing or monotonicity. Sorted maps, duplicate merging,
+  splines, polynomial fitting, extrapolation, multidimensional tables, and an unsorted-pairs factory
+  add policies with no adopter and remain out of scope.
+- **Compatibility and documentation:** this intentionally removes the zero-caller builder and
+  inspection/export methods (`size()`, `xs()`, and `ys()`), makes invalid authored data fail during
+  construction, changes every non-finite query to `NaN`, and corrects overflow-prone extreme finite
+  interpolation. The four maintained declarations and every maintained query keep their ordinary
+  call shape, and valid ordinary tables retain their clamp/interpolation policy. Synchronize class/
+  factory/query/functional-adapter Javadocs, Phoenix targeting and shot-table contracts, examples
+  04/05/06, `Shooter Case Study & Examples Walkthrough.md`, `Control Tuning Workflow.md`, and
+  `Phoenix Calibration Guide.md`. The calibration guides must show how accepted finite, strictly
+  ordered rows become one `ofSortedPairs(...)` declaration and state that live unavailable distance
+  remains unavailable. No new math guide or table DSL is warranted.
+- **Required automated evidence:** add focused table tests for null/empty/mismatched/odd inputs;
+  every retained factory; x and y at first/middle/last positions with `NaN` and both infinities;
+  original-index diagnostics for unsorted input; duplicates, descending sorted input, signed-zero
+  duplicates, one point, finite extrema/subnormals, input isolation, and unsorted pair alignment.
+  Lock exact knots, both clamps, ordinary interpolation, all three non-finite queries for both query
+  methods, and exact extreme cases: x `[-MAX, MAX]`, y `[0, 100]`, and queries
+  `[-MAX/2, 0, MAX/2]` produce `[25, 50, 75]`; x `[0, 1]`, query `0.5`, and both directions of y
+  `[-MAX, MAX]` produce zero. Reflection/source scans lock the three factories, absent builder/nested
+  public type, absent `size()`/`xs()`/`ys()`, and the retained functional adapter. Lock the exact
+  `debugDump()` size/x-range keys; verify that `toString()` is useful to a human and includes the
+  authored pairs without treating its punctuation/format as serialization. Add a Phoenix targeting
+  regression proving non-finite live range does not claim a suggested velocity, plus direct source/
+  compile evidence for both example guards.
+- **Verification scope and physical limit:** run focused core-math and Phoenix-targeting tests, every
+  table-using example/Phoenix compile, strict Javadocs, documentation-link tests, full TeamCode unit
+  tests/compile, public-surface and stale-symbol scans, and diff/whitespace checks. No robot run is
+  required to prove construction/query correctness. Physical distance rows, velocity units, sensor
+  quality, and whether a shot succeeds remain robot calibration evidence and must not be inferred
+  from software finiteness.
+- **Decision record:** **Ready.** Gate 1 selects finite fail-fast authored samples, stable finite
+  piecewise-linear evaluation, `NaN` for non-finite live queries, finite-result guards at all three
+  live consumers, one ordinary query verb plus a standard functional adapter, three distinct named
+  factories, and removal of the unused builder/export surface. At that approval stop no
+  implementation had started; explicit user approval of this public/behavioral design was required
+  before Gate 2.
+- **Gate 2 approval (2026-08-15):** the user explicitly approved: **“Approve MATH-01 finite
+  authored-table validation, stable finite interpolation, non-finite-query unavailability, runtime
+  consumer guards, and redundant builder/export removal.”** Implementation may now proceed only
+  within the decision record above; CONFIG-03 and later items remain out of scope.
+- **Gate 2 implementation (2026-08-15):** `InterpolatingTable1D` now captures and validates every
+  retained finite x/y sample with authored-index diagnostics, preserves unsorted pair identity and
+  original duplicate indices, and retains exactly the three approved factories. Non-finite queries
+  return `NaN` before the one-point/clamp paths. Interior evaluation uses an overflow-safe fraction
+  and nearer-endpoint/convex interpolation, so every finite query over finite stored samples remains
+  finite. The zero-caller builder, nested `Builder`, `size()`, `xs()`, and `ys()` are removed while
+  `interpolate(...)`, the standard `DoubleUnaryOperator` adapter, and human/debug diagnostics remain.
+- **Runtime truth and curriculum synchronization (2026-08-15):** Phoenix targeting performs one
+  lookup and claims a suggestion only for a finite result, otherwise publishing the canonical
+  unavailable `NaN`. Example 05 commands zero and reports availability when its fresh live lookup is
+  unavailable; Example 06 returns before Task construction/enqueue for a missing fresh tag,
+  non-finite range, or non-finite lookup. Example 04 retains its bounded manual behavior and teaches
+  the future live-evidence guard. Javadocs and the shooter walkthrough, control-tuning workflow, and
+  Phoenix calibration guide now show finite sorted table adoption without profile-local validation.
+- **Independent adversarial review (2026-08-15):** separate production/API/numerical and
+  tests/docs/student-path audits found no remaining behavioral or architectural blocker. The review
+  confirmed finite extreme arithmetic, exact public-surface disposition, one-lookup Phoenix truth,
+  safe example behavior, and one-item scope. It found three documentation precision gaps: the odd
+  flattened-pair exception text, an undefined telemetry variable, and a Gate 1 inventory written in
+  present tense after focused tests were added. All three are corrected and rechecked. No
+  CONFIG-03, profile decomposition, example curation, unit migration, or generic-math change entered
+  this 13-file MATH-01 diff.
+- **Automated verification (2026-08-15):** the focused table suite passes 14 tests and the focused
+  Phoenix-targeting suite passes 16 tests. The integrated
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passes 172 suites / 1,609
+  tests / 0 failures / 0 errors / 0 skipped, including five documentation-link tests and compilation
+  of all three table-using examples. `:TeamCode:phoenixJavadocs` passes. Reflection locks the one
+  private constructor, three exact factories, ordinary query, functional adapter, and absence of the
+  removed builder/export surface; extreme x/y, subnormal, defensive-capture, diagnostic-key, and
+  runtime-unavailability cases are covered. Stale-symbol, trailing-whitespace, final-newline, NUL,
+  and `git diff --check` scans are clean. The only build output is the existing JDK 21 warning about
+  Java 8 source/target compatibility.
+- **Physical verification boundary (2026-08-15):** no robot run is needed to prove the authored
+  table, interpolation, or unavailable-result contract. Software finiteness does not prove the
+  checked-in distance rows, native velocity units, AprilTag quality, flywheel readiness, or shot
+  success; those remain team calibration and on-robot evidence.
+- **Android Studio audit point (2026-08-15):** inspect the 13-file unstaged diff on
+  `codex/math-01-finite-interpolation-tables`, especially `InterpolatingTable1D` plus its focused
+  test, the one-lookup Phoenix targeting change/test, the Example 05 zero-command path, and the
+  Example 06 guard-before-Task path. Confirm the IDE shows no Java/Javadoc errors, the three examples
+  remain understandable, and the removed builder/accessors have no unresolved references. No file
+  has been staged, committed, pushed, or merged; publication still requires the exact Gate 3
+  authorization for this branch, origin URL, and `master` target.
+- **Manual review and Gate 3 authorization (2026-08-16):** the user replied with the complete
+  destination-specific authorization: **“MATH-01 looks good. Authorize committing the reviewed
+  MATH-01 diff on codex/math-01-finite-interpolation-tables, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** MATH-01 is now **Done**. This authorizes staging only the reviewed 13-file diff,
+  committing it on the named branch, pushing it to the named origin, opening the pull request, and
+  merging it into `master`. The user's subsequent instruction to move to the next task applies only
+  after MATH-01 publication; CONFIG-03 work must begin from the verified merged `origin/master` and
+  must not be mixed into this commit.
 
 ### CONFIG-03 - FTC vision and AprilTag configuration boundaries
 

@@ -819,7 +819,9 @@ public final class PhoenixProfile {
         public AimOffset defaultAimOffset = new AimOffset(0.0, 0.0);
 
         /**
-         * Distance (in) -> recommended flywheel velocity (native units) for range-based shot capture.
+         * Distance (in) -> recommended flywheel velocity (native units) for range-based shot
+         * capture. Every authored distance and velocity must be finite. A non-finite live range
+         * leaves Phoenix's suggested velocity unavailable instead of selecting a table endpoint.
          */
         public InterpolatingTable1D shotVelocityTable = InterpolatingTable1D.ofSortedPairs(
                 28.06, 1505.6,
