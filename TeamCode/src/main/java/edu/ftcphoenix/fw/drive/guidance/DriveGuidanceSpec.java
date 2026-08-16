@@ -101,29 +101,26 @@ public final class DriveGuidanceSpec {
         public final AprilTagSensor sensor;
         public final CameraMountConfig cameraMount;
         public final double maxAgeSec;
-        public final FixedTagFieldPoseSolver.Config fieldPoseSolverConfig;
+        public final FixedTagFieldPoseSolver fieldPoseSolver;
 
         AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount) {
-            this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC, FixedTagFieldPoseSolver.Config.defaults());
+            this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC,
+                    new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults()));
         }
 
         AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount, double maxAgeSec) {
-            this(sensor, cameraMount, maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
+            this(sensor, cameraMount, maxAgeSec,
+                    new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults()));
         }
 
         AprilTags(AprilTagSensor sensor,
                   CameraMountConfig cameraMount,
                   double maxAgeSec,
-                  FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
+                  FixedTagFieldPoseSolver fieldPoseSolver) {
             this.sensor = Objects.requireNonNull(sensor, "sensor");
             this.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
             this.maxAgeSec = maxAgeSec;
-            this.fieldPoseSolverConfig = fieldPoseSolverConfig != null
-                    ? FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
-                    fieldPoseSolverConfig,
-                    "DriveGuidanceSpec.AprilTags.fieldPoseSolverConfig"
-            )
-                    : FixedTagFieldPoseSolver.Config.defaults();
+            this.fieldPoseSolver = Objects.requireNonNull(fieldPoseSolver, "fieldPoseSolver");
         }
     }
 

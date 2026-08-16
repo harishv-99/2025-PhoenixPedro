@@ -29,7 +29,6 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
-import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.localization.fusion.CorrectedPoseEstimator;
 import edu.ftcphoenix.fw.localization.fusion.CorrectionStats;
 import edu.ftcphoenix.fw.localization.fusion.OdometryCorrectionEkfEstimator;
@@ -273,10 +272,9 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
         if (aprilTagPoseOverride != null) {
             cfg.aprilTags.maxDetectionAgeSec = aprilTagPoseOverride.maxDetectionAgeSec;
-            FixedTagFieldPoseSolver.Config solverCfg = aprilTagPoseOverride.toSolverConfig();
-            cfg.aprilTags.fieldPoseSolver = solverCfg != null
-                    ? solverCfg.copy()
-                    : FixedTagFieldPoseSolver.Config.defaults();
+            cfg.aprilTags.fieldPoseSolver = aprilTagPoseOverride.fieldPoseSolver != null
+                    ? aprilTagPoseOverride.fieldPoseSolver.copy()
+                    : null;
         }
         return cfg;
     }

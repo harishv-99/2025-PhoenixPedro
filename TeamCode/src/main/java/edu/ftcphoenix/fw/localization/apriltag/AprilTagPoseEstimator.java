@@ -13,7 +13,6 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.spatial.Region2d;
 
 /**
  * {@link AbsolutePoseEstimator} that derives a field-centric robot pose estimate from one or more fresh
@@ -36,7 +35,11 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
     /**
      * Configuration parameters for {@link AprilTagPoseEstimator}.
      */
-    public static final class Config extends FixedTagFieldPoseSolver.Config {
+    public static final class Config {
+        /** Multi-tag weighting, consensus, and field-plausibility policy. */
+        public FixedTagFieldPoseSolver.Config fieldPoseSolver =
+                FixedTagFieldPoseSolver.Config.defaults();
+
         /**
          * Maximum age (seconds) of the underlying detections frame accepted by this estimator.
          *
@@ -52,7 +55,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
         public CameraMountConfig cameraMount = CameraMountConfig.identity();
 
         private Config() {
-            // Defaults assigned in field initializers and base class fields.
+            // Defaults assigned in field initializers.
         }
 
         /**
@@ -63,87 +66,15 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
         }
 
         /**
-         * Sets the camera mount extrinsics used to convert camera observations into robot-frame
-         * poses.
-         */
-        public Config withCameraMount(CameraMountConfig mount) {
-            this.cameraMount = mount;
-            return this;
-        }
-
-        /**
-         * Sets the maximum accepted detections-frame age in seconds.
+         * Returns a raw authoring copy of this config without validating it.
          *
-         * <p>The value must be finite and >= 0.</p>
+         * <p>A non-null nested solver config is copied independently. A null nested draft stays
+         * null so an inactive profile branch can be copied without inventing defaults; the active
+         * estimator owner rejects it.</p>
          */
-        public Config withMaxDetectionAgeSec(double maxDetectionAgeSec) {
-            this.maxDetectionAgeSec = maxDetectionAgeSec;
-            return this;
-        }
-
-        /**
-         * Sets an optional field-region plausibility gate for AprilTag global pose solves.
-         */
-        public Config withPlausibleFieldRegion(Region2d region) {
-            this.plausibleFieldRegion = region;
-            return this;
-        }
-
-        /**
-         * Sets how far outside the plausible field region a solve may drift before it is rejected.
-         */
-        public Config withMaxOutsidePlausibleFieldRegionInches(double maxOutsideInches) {
-            this.maxOutsidePlausibleFieldRegionInches = maxOutsideInches;
-            return this;
-        }
-
-        /**
-         * Returns a pure {@link FixedTagFieldPoseSolver.Config} snapshot of the shared solver
-         * settings contained in this config.
-         *
-         * <p>Use this when one robot wants AprilTag-only localization and Drive Guidance's
-         * temporary AprilTag field-pose bridge to share the same weighting / plausibility policy
-         * without leaking TagOnly-specific settings such as {@link #cameraMount} or
-         * {@link #maxDetectionAgeSec} into the guidance API.</p>
-         */
-        public FixedTagFieldPoseSolver.Config toSolverConfig() {
-            return FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
-                    this,
-                    "AprilTagPoseEstimator.Config.toSolverConfig"
-            );
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void validate(String context) {
-            super.validate(context);
-            String p = (context != null && !context.trim().isEmpty())
-                    ? context.trim()
-                    : "AprilTagPoseEstimator.Config";
-            if (!Double.isFinite(maxDetectionAgeSec) || maxDetectionAgeSec < 0.0) {
-                throw new IllegalArgumentException(p + ".maxDetectionAgeSec must be finite and >= 0");
-            }
-        }
-
-        /**
-         * Returns a shallow validated copy of this config.
-         */
-        @Override
-        public Config validatedCopy(String context) {
-            Config c = copy();
-            c.validate(context);
-            return c;
-        }
-
-        /**
-         * Returns a shallow copy of this config.
-         */
-        @Override
         public Config copy() {
             Config c = new Config();
-            copyBaseFieldsInto(c);
+            c.fieldPoseSolver = fieldPoseSolver != null ? fieldPoseSolver.copy() : null;
             c.maxDetectionAgeSec = this.maxDetectionAgeSec;
             c.cameraMount = this.cameraMount;
             return c;
@@ -153,6 +84,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
     private final AprilTagSensor tags;
     private final TagLayout layout;
     private final Config cfg;
+    private final FixedTagFieldPoseSolver fieldPoseSolver;
 
     private PoseEstimate lastEstimate;
     private AprilTagDetections lastDetections = AprilTagDetections.none();
@@ -171,18 +103,38 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
      *
      * @param tags shared AprilTag observation source
      * @param layout fixed field-tag facts to validate and snapshot
-     * @param cfg estimator setup, or {@code null} for defaults
-     * @throws NullPointerException if {@code tags} or {@code layout} is null
+     * @param cfg complete estimator setup; non-null
+     * @throws NullPointerException if {@code cfg}, its nested solver config or mount, {@code tags},
+     *                              or {@code layout} is null
      * @throws IllegalArgumentException if the layout or estimator configuration is invalid
      */
     public AprilTagPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
+        Config snapshot = captureConfig(cfg);
+        FixedTagFieldPoseSolver solver = new FixedTagFieldPoseSolver(
+                Objects.requireNonNull(
+                        snapshot.fieldPoseSolver,
+                        "AprilTagPoseEstimator.Config.fieldPoseSolver"
+                )
+        );
+        Objects.requireNonNull(snapshot.cameraMount, "AprilTagPoseEstimator.Config.cameraMount");
+
+        this.cfg = snapshot;
+        this.fieldPoseSolver = solver;
         this.tags = Objects.requireNonNull(tags, "tags");
         this.layout = TagLayouts.snapshot(Objects.requireNonNull(layout, "layout"));
-        this.cfg = (cfg != null) ? cfg.validatedCopy("AprilTagPoseEstimator.Config") : Config.defaults();
-        if (this.cfg.cameraMount == null) {
-            this.cfg.cameraMount = CameraMountConfig.identity();
-        }
         this.lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+    }
+
+    /** Capture and validate estimator-owned fields before touching sensor or layout collaborators. */
+    private static Config captureConfig(Config config) {
+        Config snapshot = Objects.requireNonNull(config, "cfg").copy();
+        if (!Double.isFinite(snapshot.maxDetectionAgeSec) || snapshot.maxDetectionAgeSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "AprilTagPoseEstimator.Config.maxDetectionAgeSec must be finite and >= 0, got "
+                            + snapshot.maxDetectionAgeSec
+            );
+        }
+        return snapshot;
     }
 
     /**
@@ -245,11 +197,10 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
             return;
         }
 
-        lastSolve = FixedTagFieldPoseSolver.solve(
+        lastSolve = fieldPoseSolver.solve(
                 freshDetections.observations,
                 layout,
-                cfg.cameraMount,
-                cfg
+                cfg.cameraMount
         );
 
         if (!lastSolve.hasPose) {

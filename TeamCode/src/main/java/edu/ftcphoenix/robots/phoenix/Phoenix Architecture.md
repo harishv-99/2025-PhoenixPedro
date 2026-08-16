@@ -223,6 +223,11 @@ candidate preview and sticky selection, so an opposite-alliance tag cannot becom
 scoring target. This does not filter localization: its solver still owns the complete fixed tag
 layout. `reset()` begins a new targeting session and requires a fresh drive graph.
 
+The profile retains data-only `FixedTagFieldPoseSolver.Config` tuning. `PhoenixTargeting` validates
+and captures it once as a configured `FixedTagFieldPoseSolver`, then passes that completed policy
+into each guidance plan. Localization independently captures the nested solver Config in its
+`AprilTagPoseEstimator`. Later edits to either profile draft cannot change a running solve policy.
+
 Target visibility is handled inside the routine. The scoring attempt waits for its bounded
 `waitForTargetSec`; timeout is retained truthfully, and `PhoenixPedroPreParkTask` selects the
 explicit return/park fallback. No pre-reset INIT timestamp crosses the START clock epoch.

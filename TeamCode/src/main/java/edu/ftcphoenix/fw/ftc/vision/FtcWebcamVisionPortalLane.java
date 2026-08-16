@@ -35,7 +35,7 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     private static final Size DEFAULT_RESOLUTION = new Size(640, 480);
     private static final String DEFAULT_CAMERA_MONITOR_VIEW_ID_NAME = "cameraMonitorViewId";
 
-    /** Stable configuration for one webcam VisionPortal owner. */
+    /** Mutable data-only authoring config for one webcam VisionPortal owner. */
     public static final class Config {
 
         /** FTC hardware-map name of the webcam. */
@@ -53,7 +53,10 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
             return new Config();
         }
 
-        /** Returns an independently editable config copy. */
+        /**
+         * Returns a raw, independently editable authoring copy without validating it.
+         * The active owner performs validation before device lookup.
+         */
         public Config copy() {
             Config copy = new Config();
             copy.webcamName = webcamName;
@@ -150,7 +153,7 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
      * Opens one webcam portal with its complete processor set.
      *
      * @param hardwareMap FTC hardware map containing the configured webcam
-     * @param config stable webcam settings; defensively copied
+     * @param config complete webcam authoring config; copied and validated before device lookup
      * @param processors complete set of fresh processors to attach to this portal
      */
     public FtcWebcamVisionPortalLane(
@@ -222,11 +225,6 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
         for (VisionProcessor processor : this.processors) {
             processorStates.put(processor, new ProcessorState(constructionCompletedNanos));
         }
-    }
-
-    /** Returns a defensive copy of the portal configuration. */
-    public final Config portalConfig() {
-        return cfg.copy();
     }
 
     /** Returns the normalized FTC hardware-map name of the owned webcam. */
@@ -515,16 +513,17 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     private static Config validateAndCopy(Config config, ResolutionReader resolutionReader) {
-        Config copy = Objects.requireNonNull(config, "config").copy();
+        String prefix = "FtcWebcamVisionPortalLane.Config";
+        Config copy = Objects.requireNonNull(config, prefix).copy();
         copy.webcamName = requireWebcamName(copy.webcamName);
-        Objects.requireNonNull(copy.cameraResolution, "cameraResolution");
+        Objects.requireNonNull(copy.cameraResolution, prefix + ".cameraResolution");
         ResolutionReader checkedReader = Objects.requireNonNull(
                 resolutionReader, "resolutionReader");
         int width = checkedReader.width(copy.cameraResolution);
         int height = checkedReader.height(copy.cameraResolution);
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException(
-                    "cameraResolution must have positive width and height, got "
+                    prefix + ".cameraResolution must have positive width and height, got "
                             + width + "x" + height);
         }
         return copy;
@@ -554,9 +553,10 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     private static String requireWebcamName(String webcamName) {
-        String checked = Objects.requireNonNull(webcamName, "webcamName").trim();
+        String fieldName = "FtcWebcamVisionPortalLane.Config.webcamName";
+        String checked = Objects.requireNonNull(webcamName, fieldName).trim();
         if (checked.isEmpty()) {
-            throw new IllegalArgumentException("webcamName must not be blank");
+            throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return checked;
     }

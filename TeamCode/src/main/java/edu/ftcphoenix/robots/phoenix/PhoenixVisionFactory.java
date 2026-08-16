@@ -23,6 +23,10 @@ public final class PhoenixVisionFactory {
     /**
      * Creates the concrete AprilTag vision lane requested by the supplied Phoenix profile.
      *
+     * <p>The selected concrete owner validates and snapshots its complete active configuration
+     * before looking up the requested device. This robot selector does not validate the inactive
+     * backend.</p>
+     *
      * @param hardwareMap FTC hardware map used to acquire the chosen vision device
      * @param cfg Phoenix AprilTag backend-selection config
      * @return concrete vision lane for the active Phoenix backend

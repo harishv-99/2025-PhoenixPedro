@@ -543,7 +543,7 @@ public final class PhoenixRobot {
                                              BooleanSource aimOverrideSource) {
         return new PhoenixTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver.copy(),
+                profile.localization.aprilTags.fieldPoseSolver,
                 vision.tagSensor(),
                 vision.cameraMountConfig(),
                 localization.globalEstimator(),

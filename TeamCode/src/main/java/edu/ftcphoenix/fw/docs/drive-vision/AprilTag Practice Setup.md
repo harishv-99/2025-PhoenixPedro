@@ -56,6 +56,20 @@ FtcWebcamAprilTagVisionLane vision =
 Keep `vision` as the owner and call `vision.close()` during shutdown. Consumers borrow
 `vision.tagSensor()`; they do not own the webcam lifecycle.
 
+The config is an authoring draft. Its raw `copy()` isolates the config container, but deliberately
+keeps a supplied SDK `AprilTagLibrary` as a borrowed reference. The active webcam owner validates
+and deep-snapshots that library before it acquires hardware, converts tag size and field positions
+to inches, and gives the processor its own private metadata. Mutating `lib`, its metadata array, a
+position vector, or an orientation after owner construction therefore does not tune the running
+camera. Construct a new owner to adopt a changed library. A selectable tester's
+`AprilTagVisionLaneFactories.webcam(visionCfg)` performs the same validation and capture when the
+factory is created, then gives every open a fresh private library snapshot.
+
+A custom library must be nonempty. Tag IDs must be unique and non-negative; sizes must be finite
+and positive; field positions must contain exactly three finite coordinates; and orientations
+must be finite quaternions whose magnitude is within `1e-5` of `1.0`. These are software
+metadata checks, not proof that the printed size or physical placement is correct.
+
 ## 3) Create a simple tag layout (field pose)
 
 To get a full field-centric robot pose from a tag, the system needs to know where the tag is in your chosen **field frame**.

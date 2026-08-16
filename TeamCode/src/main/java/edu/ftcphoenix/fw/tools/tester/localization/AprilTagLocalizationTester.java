@@ -597,9 +597,12 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         AprilTagPoseEstimator.Config cfg = (poseEstimatorConfigOverride != null)
                 ? poseEstimatorConfigOverride.copy()
-                : AprilTagPoseEstimator.Config.defaults().withMaxDetectionAgeSec(effectiveMaxAgeSec);
-        cfg.withCameraMount(cameraMount);
-        cfg.maxAbsBearingRad = 0.0;
+                : AprilTagPoseEstimator.Config.defaults();
+        cfg.maxDetectionAgeSec = effectiveMaxAgeSec;
+        cfg.cameraMount = cameraMount;
+        if (cfg.fieldPoseSolver != null) {
+            cfg.fieldPoseSolver.maxAbsBearingRad = 0.0;
+        }
 
         poseEstimator = new AprilTagPoseEstimator(tagSensor, layout, cfg);
 

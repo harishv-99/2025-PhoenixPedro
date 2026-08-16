@@ -120,9 +120,14 @@ public final class PhoenixProfile {
     }
 
     /**
-     * Creates a deep copy of this profile.
+     * Creates a data-only defensive copy of this profile.
      *
-     * @return copy whose nested config objects can be edited independently of the original
+     * <p>Nested mutable Config containers are independently editable. Documented borrowed or
+     * stable collaborators remain references until the selected active owner validates and
+     * snapshots them; see {@link VisionConfig#copy()} for the custom FTC tag-library case.</p>
+     *
+     * @return independently editable profile/config containers with documented collaborator
+     *         references preserved
      */
     public PhoenixProfile copy() {
         PhoenixProfile copy = new PhoenixProfile();
@@ -187,7 +192,12 @@ public final class PhoenixProfile {
         }
 
         /**
-         * Creates a deep copy of this vision config.
+         * Creates a data-only copy of this vision config.
+         *
+         * <p>The nested backend config containers are copied independently. A custom FTC
+         * {@code AprilTagLibrary} in the webcam draft remains a borrowed reference at this profile
+         * layer; only the active webcam factory or lane can validate and deep-snapshot that SDK
+         * object without making an inactive backend block profile copying.</p>
          *
          * @return copied backend-selection config
          */

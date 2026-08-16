@@ -29,30 +29,33 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
     private final AprilTagSensor sensor;
     private final TimeAwareSource<CameraMountConfig> cameraMount;
     private final double maxAgeSec;
-    private final FixedTagFieldPoseSolver.Config fieldPoseSolverConfig;
+    private final FixedTagFieldPoseSolver fieldPoseSolver;
 
     /**
      * Creates a live-AprilTag lane for a fixed camera mount.
      */
     public AprilTagSpatialSolveLane(AprilTagSensor sensor, CameraMountConfig cameraMount) {
-        this(sensor, TimeAwareSources.fixed(cameraMount), DEFAULT_MAX_AGE_SEC, FixedTagFieldPoseSolver.Config.defaults());
+        this(sensor, TimeAwareSources.fixed(cameraMount), DEFAULT_MAX_AGE_SEC,
+                new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults()));
     }
 
     /** Creates a live-AprilTag lane for a fixed camera mount and explicit maximum observation age. */
     public AprilTagSpatialSolveLane(AprilTagSensor sensor,
                                     CameraMountConfig cameraMount,
                                     double maxAgeSec) {
-        this(sensor, TimeAwareSources.fixed(cameraMount), maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
+        this(sensor, TimeAwareSources.fixed(cameraMount), maxAgeSec,
+                new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults()));
     }
 
     /**
-     * Creates a live-AprilTag lane for a fixed camera mount with explicit field-pose bridge tuning.
+     * Creates a live-AprilTag lane for a fixed camera mount with an explicitly configured
+     * field-pose solver.
      */
     public AprilTagSpatialSolveLane(AprilTagSensor sensor,
                                     CameraMountConfig cameraMount,
                                     double maxAgeSec,
-                                    FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
-        this(sensor, TimeAwareSources.fixed(cameraMount), maxAgeSec, fieldPoseSolverConfig);
+                                    FixedTagFieldPoseSolver fieldPoseSolver) {
+        this(sensor, TimeAwareSources.fixed(cameraMount), maxAgeSec, fieldPoseSolver);
     }
 
     /**
@@ -61,7 +64,8 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
     public AprilTagSpatialSolveLane(AprilTagSensor sensor,
                                     TimeAwareSource<CameraMountConfig> cameraMount,
                                     double maxAgeSec) {
-        this(sensor, cameraMount, maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
+        this(sensor, cameraMount, maxAgeSec,
+                new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults()));
     }
 
     /**
@@ -70,25 +74,21 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
      * @param sensor                 tag sensor source
      * @param cameraMount            robot->camera mount provider; may be fixed or timestamp-aware
      * @param maxAgeSec              maximum acceptable age for tag observations
-     * @param fieldPoseSolverConfig  config used only when this lane bridges live tags into a field pose
+     * @param fieldPoseSolver       immutable solver policy used when this lane bridges live tags
+     *                              into a field pose
      */
     public AprilTagSpatialSolveLane(AprilTagSensor sensor,
                                     TimeAwareSource<CameraMountConfig> cameraMount,
                                     double maxAgeSec,
-                                    FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
-        this.sensor = Objects.requireNonNull(sensor, "sensor");
-        this.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
+                                    FixedTagFieldPoseSolver fieldPoseSolver) {
         if (!Double.isFinite(maxAgeSec) || maxAgeSec < 0.0) {
             throw new IllegalArgumentException(
                     "maxAgeSec must be finite and >= 0, got " + maxAgeSec);
         }
         this.maxAgeSec = maxAgeSec;
-        this.fieldPoseSolverConfig = fieldPoseSolverConfig != null
-                ? FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
-                fieldPoseSolverConfig,
-                "AprilTagSpatialSolveLane.fieldPoseSolverConfig"
-        )
-                : FixedTagFieldPoseSolver.Config.defaults();
+        this.fieldPoseSolver = Objects.requireNonNull(fieldPoseSolver, "fieldPoseSolver");
+        this.sensor = Objects.requireNonNull(sensor, "sensor");
+        this.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
     }
 
     @Override
@@ -315,11 +315,10 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
             return null;
         }
 
-        FixedTagFieldPoseSolver.Result solve = FixedTagFieldPoseSolver.solve(
+        FixedTagFieldPoseSolver.Result solve = fieldPoseSolver.solve(
                 observations,
                 layout,
-                mountAtFrame,
-                fieldPoseSolverConfig
+                mountAtFrame
         );
         if (!solve.hasPose) {
             return null;
@@ -349,6 +348,6 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
         return "AprilTagSpatialSolveLane{sensor=" + sensor
                 + ", cameraMount=" + cameraMount
                 + ", maxAgeSec=" + maxAgeSec
-                + ", fieldPoseSolverConfig=" + fieldPoseSolverConfig + '}';
+                + ", fieldPoseSolver=" + fieldPoseSolver + '}';
     }
 }

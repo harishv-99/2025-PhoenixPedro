@@ -95,24 +95,48 @@ public final class FtcWebcamVisionPortalLaneTest {
         FtcWebcamVisionPortalLane.Config cfg = validConfig();
         cfg.webcamName = "  ";
         FtcWebcamVisionPortalLane.Config blankName = cfg;
-        expectFailure(IllegalArgumentException.class,
+        expectFailureMessage(IllegalArgumentException.class,
+                "FtcWebcamVisionPortalLane.Config.webcamName must not be blank",
                 () -> testOwner(blankName, factory, processor));
+
+        cfg = validConfig();
+        cfg.webcamName = null;
+        FtcWebcamVisionPortalLane.Config nullName = cfg;
+        expectFailureMessage(NullPointerException.class,
+                "FtcWebcamVisionPortalLane.Config.webcamName",
+                () -> testOwner(nullName, factory, processor));
 
         cfg = validConfig();
         cfg.cameraResolution = null;
         FtcWebcamVisionPortalLane.Config nullResolution = cfg;
-        expectFailure(NullPointerException.class,
+        expectFailureMessage(NullPointerException.class,
+                "FtcWebcamVisionPortalLane.Config.cameraResolution",
                 () -> testOwner(nullResolution, factory, processor));
 
         cfg = validConfig();
         cfg.cameraResolution = new Size(0, 480);
         FtcWebcamVisionPortalLane.Config invalidWidth = cfg;
-        expectFailure(IllegalArgumentException.class,
+        expectFailureMessage(IllegalArgumentException.class,
+                "FtcWebcamVisionPortalLane.Config.cameraResolution "
+                        + "must have positive width and height, got 0x480",
                 () -> new FtcWebcamVisionPortalLane(
                         invalidWidth,
                         factory,
                         new MutableNanoClock(100),
                         INVALID_WIDTH_READER,
+                        processor));
+
+        cfg = validConfig();
+        cfg.cameraResolution = new Size(640, 0);
+        FtcWebcamVisionPortalLane.Config invalidHeight = cfg;
+        expectFailureMessage(IllegalArgumentException.class,
+                "FtcWebcamVisionPortalLane.Config.cameraResolution "
+                        + "must have positive width and height, got 640x0",
+                () -> new FtcWebcamVisionPortalLane(
+                        invalidHeight,
+                        factory,
+                        new MutableNanoClock(100),
+                        INVALID_HEIGHT_READER,
                         processor));
 
         expectFailure(NullPointerException.class,
@@ -636,6 +660,20 @@ public final class FtcWebcamVisionPortalLaneTest {
         }
     }
 
+    private static void expectFailureMessage(
+            Class<? extends RuntimeException> expectedType,
+            String expectedMessage,
+            Runnable action
+    ) {
+        try {
+            action.run();
+            fail("Expected " + expectedType.getSimpleName());
+        } catch (RuntimeException actual) {
+            assertTrue("Unexpected failure: " + actual, expectedType.isInstance(actual));
+            assertEquals(expectedMessage, actual.getMessage());
+        }
+    }
+
     private static final class MutableNanoClock implements FtcWebcamVisionPortalLane.NanoClock {
         long now;
 
@@ -672,6 +710,19 @@ public final class FtcWebcamVisionPortalLaneTest {
                 @Override
                 public int height(Size size) {
                     return 480;
+                }
+            };
+
+    private static final FtcWebcamVisionPortalLane.ResolutionReader INVALID_HEIGHT_READER =
+            new FtcWebcamVisionPortalLane.ResolutionReader() {
+                @Override
+                public int width(Size size) {
+                    return 640;
+                }
+
+                @Override
+                public int height(Size size) {
+                    return 0;
                 }
             };
 

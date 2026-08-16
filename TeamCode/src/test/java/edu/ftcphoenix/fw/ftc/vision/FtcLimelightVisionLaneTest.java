@@ -43,45 +43,139 @@ public final class FtcLimelightVisionLaneTest {
         FtcLimelightVisionLane.Config cfg = validConfig();
         cfg.hardwareName = "   ";
         FtcLimelightVisionLane.Config blankName = cfg;
-        expectFailure(IllegalArgumentException.class,
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightVisionLane.Config.hardwareName must not be blank",
                 () -> new FtcLimelightVisionLane(blankName, factory));
+
+        cfg = validConfig();
+        cfg.hardwareName = null;
+        FtcLimelightVisionLane.Config nullName = cfg;
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightVisionLane.Config.hardwareName must not be blank",
+                () -> new FtcLimelightVisionLane(nullName, factory));
 
         cfg = validConfig();
         cfg.pipelineIndex = -1;
         FtcLimelightVisionLane.Config invalidPipeline = cfg;
-        expectFailure(IllegalArgumentException.class,
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightVisionLane.Config.pipelineIndex "
+                        + "must be within [0, 9], got -1",
                 () -> new FtcLimelightVisionLane(invalidPipeline, factory));
 
         cfg = validConfig();
         cfg.pipelineIndex = 10;
         FtcLimelightVisionLane.Config highPipeline = cfg;
-        expectFailure(IllegalArgumentException.class,
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightVisionLane.Config.pipelineIndex "
+                        + "must be within [0, 9], got 10",
                 () -> new FtcLimelightVisionLane(highPipeline, factory));
 
         cfg = validConfig();
         cfg.pollRateHz = 0;
         FtcLimelightVisionLane.Config zeroPoll = cfg;
-        expectFailure(IllegalArgumentException.class,
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightVisionLane.Config.pollRateHz "
+                        + "must be within [1, 250], got 0",
                 () -> new FtcLimelightVisionLane(zeroPoll, factory));
 
         cfg = validConfig();
         cfg.pollRateHz = 251;
         FtcLimelightVisionLane.Config highPoll = cfg;
-        expectFailure(IllegalArgumentException.class,
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightVisionLane.Config.pollRateHz "
+                        + "must be within [1, 250], got 251",
                 () -> new FtcLimelightVisionLane(highPoll, factory));
 
-        for (double age : new double[]{0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY}) {
+        for (double age : new double[]{
+                0.0,
+                -1.0,
+                Double.NaN,
+                Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY
+        }) {
             cfg = validConfig();
             cfg.maxResultAgeSec = age;
             FtcLimelightVisionLane.Config invalidAge = cfg;
-            expectFailure(IllegalArgumentException.class,
+            expectFailureContaining(IllegalArgumentException.class,
+                    "FtcLimelightVisionLane.Config.maxResultAgeSec "
+                            + "must be finite and > 0, got " + age,
                     () -> new FtcLimelightVisionLane(invalidAge, factory));
         }
 
-        expectFailure(NullPointerException.class,
+        expectFailureContaining(NullPointerException.class,
+                "FtcLimelightVisionLane.Config",
                 () -> new FtcLimelightVisionLane(null, factory));
-        expectFailure(NullPointerException.class,
+        expectFailureContaining(NullPointerException.class,
+                "deviceFactory",
                 () -> new FtcLimelightVisionLane(validConfig(), null));
+        assertEquals(0, factory.openCount);
+    }
+
+    @Test
+    public void invalidAprilTagSpecializationNeverOpensHardware() {
+        RecordingFactory factory = new RecordingFactory(new FakeDevice());
+
+        FtcLimelightAprilTagVisionLane.Config cfg =
+                FtcLimelightAprilTagVisionLane.Config.defaults();
+        cfg.hardwareName = null;
+        FtcLimelightAprilTagVisionLane.Config nullName = cfg;
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightAprilTagVisionLane.Config.hardwareName must not be blank",
+                () -> new FtcLimelightAprilTagVisionLane(nullName, factory));
+
+        cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+        cfg.hardwareName = "   ";
+        FtcLimelightAprilTagVisionLane.Config blankName = cfg;
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightAprilTagVisionLane.Config.hardwareName must not be blank",
+                () -> new FtcLimelightAprilTagVisionLane(blankName, factory));
+
+        for (int pipelineIndex : new int[]{-1, 10}) {
+            cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+            cfg.pipelineIndex = pipelineIndex;
+            FtcLimelightAprilTagVisionLane.Config invalidPipeline = cfg;
+            expectFailureContaining(IllegalArgumentException.class,
+                    "FtcLimelightAprilTagVisionLane.Config.pipelineIndex "
+                            + "must be within [0, 9], got " + pipelineIndex,
+                    () -> new FtcLimelightAprilTagVisionLane(invalidPipeline, factory));
+        }
+
+        for (int pollRateHz : new int[]{0, 251}) {
+            cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+            cfg.pollRateHz = pollRateHz;
+            FtcLimelightAprilTagVisionLane.Config invalidPoll = cfg;
+            expectFailureContaining(IllegalArgumentException.class,
+                    "FtcLimelightAprilTagVisionLane.Config.pollRateHz "
+                            + "must be within [1, 250], got " + pollRateHz,
+                    () -> new FtcLimelightAprilTagVisionLane(invalidPoll, factory));
+        }
+
+        for (double age : new double[]{
+                0.0,
+                -1.0,
+                Double.NaN,
+                Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY
+        }) {
+            cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+            cfg.maxResultAgeSec = age;
+            FtcLimelightAprilTagVisionLane.Config invalidAge = cfg;
+            expectFailureContaining(IllegalArgumentException.class,
+                    "FtcLimelightAprilTagVisionLane.Config.maxResultAgeSec "
+                            + "must be finite and > 0, got " + age,
+                    () -> new FtcLimelightAprilTagVisionLane(invalidAge, factory));
+        }
+
+        cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+        cfg.cameraMount = null;
+        FtcLimelightAprilTagVisionLane.Config nullMount = cfg;
+        expectFailureContaining(IllegalArgumentException.class,
+                "FtcLimelightAprilTagVisionLane.Config.cameraMount must not be null",
+                () -> new FtcLimelightAprilTagVisionLane(nullMount, factory));
+
+        expectFailureContaining(NullPointerException.class,
+                "FtcLimelightAprilTagVisionLane.Config",
+                () -> new FtcLimelightAprilTagVisionLane(null, factory));
         assertEquals(0, factory.openCount);
     }
 
@@ -152,9 +246,6 @@ public final class FtcLimelightVisionLaneTest {
         assertEquals("first-limelight", first.hardwareName());
         assertEquals(2, first.requestedPipelineIndex());
 
-        FtcLimelightVisionLane.Config returned = first.visionConfig();
-        returned.hardwareName = "mutated-returned-copy";
-        returned.pipelineIndex = 8;
         assertEquals("first-limelight", first.hardwareName());
         assertEquals(2, first.requestedPipelineIndex());
 
@@ -403,8 +494,7 @@ public final class FtcLimelightVisionLaneTest {
         laneCfg.hardwareName = "  limelight-main  ";
         FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
                 laneCfg, new RecordingFactory(new FakeDevice()));
-        assertEquals("limelight-main", lane.config().hardwareName);
-        assertEquals(lane.hardwareName(), lane.config().hardwareName);
+        assertEquals("limelight-main", lane.hardwareName());
         LimelightFieldPoseEstimator.Config estimatorCfg =
                 LimelightFieldPoseEstimator.Config.defaults();
         LimelightFieldPoseEstimator estimator =
@@ -991,6 +1081,20 @@ public final class FtcLimelightVisionLaneTest {
             fail("Expected " + expectedType.getSimpleName());
         } catch (RuntimeException actual) {
             assertTrue("Unexpected failure: " + actual, expectedType.isInstance(actual));
+        }
+    }
+
+    private static void expectFailureContaining(
+            Class<? extends RuntimeException> expectedType,
+            String expectedMessage,
+            Runnable action
+    ) {
+        try {
+            action.run();
+            fail("Expected " + expectedType.getSimpleName());
+        } catch (RuntimeException actual) {
+            assertTrue("Unexpected failure: " + actual, expectedType.isInstance(actual));
+            assertEquals(expectedMessage, actual.getMessage());
         }
     }
 

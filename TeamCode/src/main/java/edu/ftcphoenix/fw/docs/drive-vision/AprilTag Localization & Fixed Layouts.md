@@ -157,6 +157,20 @@ They are AprilTag-specialized forms of two different advanced owners:
 Those owners are intentionally parallel in lifecycle and readiness, not flattened into a fake
 camera API. Webcam processors can coexist; Limelight pipelines cannot.
 
+Their Config objects are mutable authoring drafts. A direct owner validates and snapshots its
+complete active config before device lookup. A deferred `AprilTagVisionLaneFactories.webcam(cfg)`
+or `.limelight(cfg)` validates and captures when the factory is created, and a later `open(...)`
+constructs another independently validated owner. Retain the authored config when configuration
+provenance matters; runtime lanes expose focused identity, mount, readiness, and diagnostics rather
+than exporting another construction Config.
+
+For webcam AprilTags, a supplied FTC `AprilTagLibrary` is the one deliberate raw-copy exception:
+`Config.copy()` retains that borrowed SDK object so copying an inactive profile branch cannot fail.
+The active factory or lane resolves the current-game default when needed, validates the metadata,
+canonicalizes tag sizes and field positions to inches, and deep-snapshots the complete library.
+Later mutation of the source library, metadata array, position vectors, or quaternions cannot drift
+the running processor. Construct a fresh factory or owner to adopt changed metadata.
+
 When `FtcWebcamAprilTagVisionLane` also owns custom processors, its
 `setAprilTagProcessorEnabled(...)` and `isAprilTagProcessorEnabled()` operations let the
 robot-owned mode realization control the built-in AprilTag processor without exposing that SDK
@@ -407,15 +421,21 @@ That keeps guidance and localization from drifting into subtly different AprilTa
 
 ### Sharing solver tuning cleanly
 
-`AprilTagPoseEstimator.Config` extends the shared fixed-tag solver config and adds camera-specific fields.
+`AprilTagPoseEstimator.Config` composes three data-only answers: `fieldPoseSolver`,
+`maxDetectionAgeSec`, and `cameraMount`. The solver Config is not an estimator subtype. Each
+long-lived consumer validates and snapshots the policy once, so a running estimator or guidance
+plan cannot drift when the authoring draft changes.
 
-When another component should reuse the same weighting / outlier / plausibility policy, use `toSolverConfig()`:
+When localization and guidance should deliberately share the same weighting, outlier, and
+plausibility policy, author one solver Config and construct the configured solver explicitly:
 
 ```java
 AprilTagPoseEstimator.Config tagCfg = profile.localization.aprilTags
         .toAprilTagPoseEstimatorConfig(profile.vision.activeCameraMount());
 
 AprilTagPoseEstimator tagLocalizer = new AprilTagPoseEstimator(tags, fixedLayout, tagCfg);
+FixedTagFieldPoseSolver guidanceSolver =
+        new FixedTagFieldPoseSolver(tagCfg.fieldPoseSolver);
 
 DriveGuidancePlan plan = DriveGuidance.plan()
         .faceTo()
@@ -426,10 +446,13 @@ DriveGuidancePlan plan = DriveGuidance.plan()
             .aprilTags(tags, profile.vision.activeCameraMount())
             .aprilTagMaxAgeSec(0.50)
             .fixedAprilTagLayout(fixedLayout)
-            .aprilTagFieldPoseConfig(tagCfg.toSolverConfig())
+            .aprilTagFieldPoseSolver(guidanceSolver)
             .doneAdaptive()
         .build();
 ```
+
+Use `FixedTagFieldPoseSolver.Config.defaults()` and `CameraMountConfig.identity()` explicitly when
+those software baselines are intended. Neither proves a physically calibrated camera or field.
 
 ---
 

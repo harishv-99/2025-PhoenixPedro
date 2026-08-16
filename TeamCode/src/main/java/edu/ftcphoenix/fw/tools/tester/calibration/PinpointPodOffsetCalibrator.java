@@ -930,8 +930,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             tagSensor = visionLane.tagSensor();
             activeVisionDescription = factory.description();
 
-            AprilTagPoseEstimator.Config estCfg = AprilTagPoseEstimator.Config.defaults()
-                    .withCameraMount(visionLane.cameraMountConfig());
+            AprilTagPoseEstimator.Config estCfg = AprilTagPoseEstimator.Config.defaults();
+            estCfg.cameraMount = visionLane.cameraMountConfig();
             estCfg.maxDetectionAgeSec = cfg.maxTagAgeSec;
             tagEstimator = new AprilTagPoseEstimator(tagSensor, layout, estCfg);
             aprilTagAssistNotice = null;

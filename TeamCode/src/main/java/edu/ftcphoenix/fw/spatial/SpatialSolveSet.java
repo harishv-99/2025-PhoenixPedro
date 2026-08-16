@@ -111,24 +111,26 @@ public final class SpatialSolveSet {
                                 double maxAgeSec);
 
         /**
-         * Adds a live-AprilTag solve lane with explicit freshness and fixed-tag field-pose bridge tuning.
+         * Adds a live-AprilTag solve lane with explicit freshness and a configured fixed-tag
+         * field-pose solver.
          *
          * @param maxAgeSec maximum accepted tag age, in seconds
          */
         MoreLanesStep aprilTags(AprilTagSensor sensor,
                                 CameraMountConfig cameraMount,
                                 double maxAgeSec,
-                                FixedTagFieldPoseSolver.Config fieldPoseSolverConfig);
+                                FixedTagFieldPoseSolver fieldPoseSolver);
 
         /**
-         * Adds a live-AprilTag solve lane with a dynamic camera mount and explicit field-pose bridge tuning.
+         * Adds a live-AprilTag solve lane with a dynamic camera mount and a configured field-pose
+         * solver.
          *
          * @param maxAgeSec maximum accepted tag age, in seconds
          */
         MoreLanesStep aprilTags(AprilTagSensor sensor,
                                 TimeAwareSource<CameraMountConfig> cameraMount,
                                 double maxAgeSec,
-                                FixedTagFieldPoseSolver.Config fieldPoseSolverConfig);
+                                FixedTagFieldPoseSolver fieldPoseSolver);
     }
 
     /**
@@ -179,24 +181,26 @@ public final class SpatialSolveSet {
                                 double maxAgeSec);
 
         /**
-         * Adds a live-AprilTag solve lane with explicit freshness and fixed-tag field-pose bridge tuning.
+         * Adds a live-AprilTag solve lane with explicit freshness and a configured fixed-tag
+         * field-pose solver.
          *
          * @param maxAgeSec maximum accepted tag age, in seconds
          */
         MoreLanesStep aprilTags(AprilTagSensor sensor,
                                 CameraMountConfig cameraMount,
                                 double maxAgeSec,
-                                FixedTagFieldPoseSolver.Config fieldPoseSolverConfig);
+                                FixedTagFieldPoseSolver fieldPoseSolver);
 
         /**
-         * Adds a live-AprilTag solve lane with a dynamic camera mount and explicit field-pose bridge tuning.
+         * Adds a live-AprilTag solve lane with a dynamic camera mount and a configured field-pose
+         * solver.
          *
          * @param maxAgeSec maximum accepted tag age, in seconds
          */
         MoreLanesStep aprilTags(AprilTagSensor sensor,
                                 TimeAwareSource<CameraMountConfig> cameraMount,
                                 double maxAgeSec,
-                                FixedTagFieldPoseSolver.Config fieldPoseSolverConfig);
+                                FixedTagFieldPoseSolver fieldPoseSolver);
 
         /**
          * Builds the immutable non-empty solve set.
@@ -248,16 +252,16 @@ public final class SpatialSolveSet {
         public MoreLanesStep aprilTags(AprilTagSensor sensor,
                                        CameraMountConfig cameraMount,
                                        double maxAgeSec,
-                                       FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
-            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolverConfig));
+                                       FixedTagFieldPoseSolver fieldPoseSolver) {
+            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolver));
         }
 
         @Override
         public MoreLanesStep aprilTags(AprilTagSensor sensor,
                                        TimeAwareSource<CameraMountConfig> cameraMount,
                                        double maxAgeSec,
-                                       FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
-            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolverConfig));
+                                       FixedTagFieldPoseSolver fieldPoseSolver) {
+            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolver));
         }
 
         @Override

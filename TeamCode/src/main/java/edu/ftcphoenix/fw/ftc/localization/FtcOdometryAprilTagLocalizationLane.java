@@ -91,26 +91,18 @@ public final class FtcOdometryAprilTagLocalizationLane {
         }
 
         /**
-         * Builds an {@link AprilTagPoseEstimator.Config} by combining this localization tuning with
-         * the specific camera mount from a shared vision lane.
+         * Builds a raw {@link AprilTagPoseEstimator.Config} authoring copy by combining this
+         * localization tuning with the specific camera mount from a shared vision lane.
+         *
+         * <p>This conversion does not validate or invent defaults. It independently copies a
+         * non-null solver draft, preserves a null draft or mount, and leaves the active estimator
+         * owner to reject incomplete configuration.</p>
          */
         public AprilTagPoseEstimator.Config toAprilTagPoseEstimatorConfig(CameraMountConfig cameraMount) {
             AprilTagPoseEstimator.Config c = AprilTagPoseEstimator.Config.defaults();
-            FixedTagFieldPoseSolver.Config solver = FixedTagFieldPoseSolver.Config.copyOf(this.fieldPoseSolver);
-            c.maxAbsBearingRad = solver.maxAbsBearingRad;
-            c.preferObservationFieldPose = solver.preferObservationFieldPose;
-            c.observationFieldPoseMaxDeltaInches = solver.observationFieldPoseMaxDeltaInches;
-            c.observationFieldPoseMaxDeltaHeadingRad = solver.observationFieldPoseMaxDeltaHeadingRad;
-            c.rangeSoftnessInches = solver.rangeSoftnessInches;
-            c.minObservationWeight = solver.minObservationWeight;
-            c.outlierPositionGateInches = solver.outlierPositionGateInches;
-            c.outlierHeadingGateRad = solver.outlierHeadingGateRad;
-            c.consistencyPositionScaleInches = solver.consistencyPositionScaleInches;
-            c.consistencyHeadingScaleRad = solver.consistencyHeadingScaleRad;
-            c.plausibleFieldRegion = solver.plausibleFieldRegion;
-            c.maxOutsidePlausibleFieldRegionInches = solver.maxOutsidePlausibleFieldRegionInches;
+            c.fieldPoseSolver = this.fieldPoseSolver != null ? this.fieldPoseSolver.copy() : null;
             c.maxDetectionAgeSec = this.maxDetectionAgeSec;
-            c.cameraMount = cameraMount != null ? cameraMount : CameraMountConfig.identity();
+            c.cameraMount = cameraMount;
             return c;
         }
     }

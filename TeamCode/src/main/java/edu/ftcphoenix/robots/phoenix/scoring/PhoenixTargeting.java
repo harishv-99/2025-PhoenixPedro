@@ -142,7 +142,7 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
     }
 
     private final PhoenixProfile.AutoAimConfig cfg;
-    private final FixedTagFieldPoseSolver.Config fieldPoseCfg;
+    private final FixedTagFieldPoseSolver fieldPoseSolver;
     private final AprilTagSensor tagSensor;
     private final CameraMountConfig cameraMountConfig;
     private final AbsolutePoseEstimator globalAbsolutePoseEstimator;
@@ -166,7 +166,8 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
      * Creates the shared Phoenix scoring-targeting service.
      *
      * @param config                      auto-aim configuration snapshot copied for local ownership
-     * @param aprilTagFieldPoseConfig     AprilTag field-pose solve config used by the guidance plan
+     * @param aprilTagFieldPoseConfig     AprilTag field-pose solve configuration captured by this
+     *                                    service before it builds guidance plans
      * @param tagSensor                   shared AprilTag sensor used for selection and guidance
      * @param cameraMountConfig           fixed camera extrinsics for the current robot profile
      * @param globalAbsolutePoseEstimator current global pose-estimator lane used by adaptive guidance
@@ -190,11 +191,9 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                             BooleanSource aimOverrideInput,
                             InterpolatingTable1D shotVelocityTable) {
         this.cfg = Objects.requireNonNull(config, "config").copy();
-        this.fieldPoseCfg =
-                FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
-                        Objects.requireNonNull(aprilTagFieldPoseConfig, "aprilTagFieldPoseConfig"),
-                        "PhoenixTargeting.aprilTagFieldPoseConfig"
-                );
+        this.fieldPoseSolver = new FixedTagFieldPoseSolver(
+                Objects.requireNonNull(aprilTagFieldPoseConfig, "aprilTagFieldPoseConfig")
+        );
         this.tagSensor = Objects.requireNonNull(tagSensor, "tagSensor");
         this.cameraMountConfig = Objects.requireNonNull(cameraMountConfig, "cameraMountConfig");
         this.globalAbsolutePoseEstimator = Objects.requireNonNull(
@@ -579,7 +578,7 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                 .localization(globalAbsolutePoseEstimator)
                 .aprilTags(tagSensor, cameraMountConfig)
                 .aprilTagMaxAgeSec(cfg.selectionMaxAgeSec)
-                .aprilTagFieldPoseConfig(fieldPoseCfg)
+                .aprilTagFieldPoseSolver(fieldPoseSolver)
                 .fixedAprilTagLayout(scoringTagLayout)
                 .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
                 .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)

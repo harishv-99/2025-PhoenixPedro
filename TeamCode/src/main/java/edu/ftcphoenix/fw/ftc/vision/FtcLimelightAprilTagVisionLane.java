@@ -35,7 +35,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
         implements AprilTagVisionLane {
 
-    /** Configuration for the Limelight AprilTag specialization. */
+    /** Mutable data-only authoring config for the Limelight AprilTag specialization. */
     public static final class Config {
 
         /** FTC hardware-map name for the Limelight device. */
@@ -72,7 +72,10 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
             return new Config();
         }
 
-        /** @return an independent copy of this config. */
+        /**
+         * @return a raw independent authoring copy; validation occurs at the active factory or
+         *         owner boundary
+         */
         public Config copy() {
             Config c = new Config();
             c.hardwareName = this.hardwareName;
@@ -81,6 +84,17 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
             c.maxResultAgeSec = this.maxResultAgeSec;
             c.cameraMount = this.cameraMount;
             return c;
+        }
+
+        @Override
+        public String toString() {
+            return "FtcLimelightAprilTagVisionLane.Config{"
+                    + "hardwareName='" + hardwareName + '\''
+                    + ", pipelineIndex=" + pipelineIndex
+                    + ", pollRateHz=" + pollRateHz
+                    + ", maxResultAgeSec=" + maxResultAgeSec
+                    + ", cameraMount=" + cameraMount
+                    + '}';
         }
     }
 
@@ -121,11 +135,6 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
         super(prepared.ownerConfig, deviceFactory);
         this.cfg = prepared.tagConfig;
         this.tagSensor = new LimelightAprilTagSensor();
-    }
-
-    /** @return independent copy of the AprilTag-specialized config. */
-    public Config config() {
-        return cfg.copy();
     }
 
     /** {@inheritDoc} */
@@ -182,16 +191,7 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
     }
 
     private static Prepared prepare(Config config) {
-        Config copied = Objects.requireNonNull(config, "config").copy();
-        if (copied.hardwareName == null || copied.hardwareName.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "FtcLimelightAprilTagVisionLane.Config.hardwareName must not be blank");
-        }
-        copied.hardwareName = copied.hardwareName.trim();
-        if (copied.cameraMount == null) {
-            throw new IllegalArgumentException(
-                    "FtcLimelightAprilTagVisionLane.Config.cameraMount must not be null");
-        }
+        Config copied = validatedCopy(config);
 
         FtcLimelightVisionLane.Config owner = FtcLimelightVisionLane.Config.defaults();
         owner.hardwareName = copied.hardwareName;
@@ -199,6 +199,25 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
         owner.pollRateHz = copied.pollRateHz;
         owner.maxResultAgeSec = copied.maxResultAgeSec;
         return new Prepared(copied, owner);
+    }
+
+    static Config validatedCopy(Config config) {
+        String prefix = "FtcLimelightAprilTagVisionLane.Config";
+        Config copied = Objects.requireNonNull(config, prefix).copy();
+        FtcLimelightVisionLane.Config owner = FtcLimelightVisionLane.Config.defaults();
+        owner.hardwareName = copied.hardwareName;
+        owner.pipelineIndex = copied.pipelineIndex;
+        owner.pollRateHz = copied.pollRateHz;
+        owner.maxResultAgeSec = copied.maxResultAgeSec;
+        FtcLimelightVisionLane.Config validatedOwner = owner.validatedCopy(prefix);
+        copied.hardwareName = validatedOwner.hardwareName;
+        copied.pipelineIndex = validatedOwner.pipelineIndex;
+        copied.pollRateHz = validatedOwner.pollRateHz;
+        copied.maxResultAgeSec = validatedOwner.maxResultAgeSec;
+        if (copied.cameraMount == null) {
+            throw new IllegalArgumentException(prefix + ".cameraMount must not be null");
+        }
+        return copied;
     }
 
     private static ResultSnapshot confirmedUnavailableResult() {
