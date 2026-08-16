@@ -67,6 +67,8 @@ import edu.ftcphoenix.fw.spatial.References;
  *       <li>Read {@link AprilTagObservation#cameraRangeInches()} from the selector's fresh selected observation.</li>
  *       <li>Use an {@link InterpolatingTable1D} to map
  *           {@code distance → shooter velocity} (native units).</li>
+ *       <li>If the live range or lookup is unavailable, command zero and tell the driver instead
+ *           of sending a non-finite target to the shooter.</li>
  *     </ul>
  *   </li>
  * </ol>
@@ -87,7 +89,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
 
     private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE =
             InterpolatingTable1D.ofSortedPairs(
-                    // Example calibration data (distanceInches, velocityNative):
+                    // Finite example pairs, sorted by distance (distanceInches, velocityNative):
                     24.0, 3500.0,
                     30.0, 3600.0,
                     36.0, 3700.0,
@@ -161,6 +163,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     private int lastTagId = -1;
 
     private double lastShooterTargetVel = 0.0;
+    private boolean lastShooterVelocityAvailable = false;
 
     /**
      * {@inheritDoc}
@@ -302,14 +305,12 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         lastTagAgeSec = obs.frameAgeSec(clock);
         lastTagId = obs.id;
 
-        if (shooterEnabled && obs.hasTarget) {
-            double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
-            lastShooterTargetVel = targetVel;
-            shooter.commandTarget().set(targetVel);
-        } else {
-            lastShooterTargetVel = 0.0;
-            shooter.commandTarget().set(0.0);
-        }
+        double targetVel = obs.hasTarget
+                ? SHOOTER_VELOCITY_TABLE.interpolate(lastTagRangeInches)
+                : Double.NaN;
+        lastShooterVelocityAvailable = Double.isFinite(targetVel);
+        lastShooterTargetVel = shooterEnabled && lastShooterVelocityAvailable ? targetVel : 0.0;
+        shooter.commandTarget().set(lastShooterTargetVel);
 
         // 4) Control / Actuate (subsystems)
 
@@ -335,7 +336,14 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         telemetry.addData("tag.rangeIn", lastTagRangeInches);
         telemetry.addData("tag.ageSec", lastTagAgeSec);
         telemetry.addData("shooter.enabled", shooterEnabled);
+        telemetry.addData("shooter.velocityAvailable", lastShooterVelocityAvailable);
         telemetry.addData("shooter.targetVelNative", lastShooterTargetVel);
+        telemetry.addData(
+                "shooter.status",
+                !shooterEnabled
+                        ? "off"
+                        : (lastShooterVelocityAvailable ? "tracking" : "unavailable: tag range")
+        );
         telemetry.addData("drive.cmd", cmd);
         telemetry.addData("debug.enabled", DEBUG);
 

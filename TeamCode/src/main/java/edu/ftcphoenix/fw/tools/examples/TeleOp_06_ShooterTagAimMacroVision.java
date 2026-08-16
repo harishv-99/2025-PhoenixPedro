@@ -97,8 +97,8 @@ import edu.ftcphoenix.fw.task.Tasks;
  *   </li>
  * </ul>
  *
- * <p>If Y is pressed but no valid tag is seen, the macro is not started
- * and a status message is shown in telemetry.</p>
+ * <p>If Y is pressed without a fresh tag and a finite range/velocity lookup, the macro is not
+ * built or queued and a status message is shown in telemetry.</p>
  */
 @TeleOp(name = "FW Ex 06: Shooter Guidance Macro Vision", group = "Framework Examples")
 @Disabled
@@ -112,8 +112,8 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      * Example shooter velocity table. Teams should tune these numbers for
      * their actual robot and field setup.
      *
-     * <p>x: distance in inches. y: shooter velocity in native units
-     * (e.g., ticks/sec). The table clamps outside the range and linearly
+     * <p>x: finite distance in inches, written in strictly increasing order. y: finite shooter
+     * velocity in native units (e.g., ticks/sec). The table clamps outside the range and linearly
      * interpolates between points.</p>
      */
     private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE =
@@ -500,13 +500,27 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 ? selection.selectedObservation
                 : AprilTagObservation.noTarget();
         if (!obs.hasTarget) {
-            lastMacroStatus = "no tag: macro not started";
+            lastShooterMacroTargetVel = 0.0;
+            lastMacroStatus = "unavailable: no fresh tag";
             return;
         }
 
-        double shooterTargetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
+        double rangeInches = obs.cameraRangeInches();
+        if (!Double.isFinite(rangeInches)) {
+            lastShooterMacroTargetVel = 0.0;
+            lastMacroStatus = "unavailable: tag range";
+            return;
+        }
+
+        double shooterTargetVel = SHOOTER_VELOCITY_TABLE.interpolate(rangeInches);
+        if (!Double.isFinite(shooterTargetVel)) {
+            lastShooterMacroTargetVel = 0.0;
+            lastMacroStatus = "unavailable: shooter velocity";
+            return;
+        }
+
         lastShooterMacroTargetVel = shooterTargetVel;
-        lastMacroStatus = "shoot1: range=" + obs.cameraRangeInches();
+        lastMacroStatus = "shoot1: range=" + rangeInches;
 
         Task macro = buildShootOneBallMacro(shooterTargetVel);
         macroRunner.cancelAndClear();

@@ -139,6 +139,31 @@ AprilTagObservation obs = selection.hasFreshSelectedObservation
 
 That avoids duplicated “which tag?” logic.
 
+Write checked-in calibration as finite `(distance, velocity)` pairs in strictly increasing
+distance order:
+
+```java
+InterpolatingTable1D velocityByRange = InterpolatingTable1D.ofSortedPairs(
+        24.0, 3500.0,
+        30.0, 3600.0,
+        36.0, 3700.0);
+```
+
+The table rejects a non-finite row or a duplicate/out-of-order distance when it is created. Live
+camera geometry is different: it can be unavailable. The example therefore commands the finite
+lookup only when one exists and otherwise commands zero with an unavailable driver status:
+
+```java
+double targetVelocity = obs.hasTarget
+        ? velocityByRange.interpolate(obs.cameraRangeInches())
+        : Double.NaN;
+
+shooter.commandTarget().set(Double.isFinite(targetVelocity) ? targetVelocity : 0.0);
+```
+
+Do not treat an unavailable live range as an endpoint shot. A non-finite table query returns
+`NaN`; the robot consumer decides the safe behavior and reports that the suggestion is unavailable.
+
 ---
 
 ## 4. Example 06: macro + aim assist + vision distance
@@ -150,8 +175,12 @@ The macro still uses the same shared selection source.
 When the driver presses the macro button:
 
 1. read the currently selected fresh observation,
-2. choose shooter velocity from the range table,
-3. enqueue the macro task sequence.
+2. require a finite range and finite table result,
+3. choose shooter velocity from the range table,
+4. build and enqueue the macro task sequence.
+
+If either finite check fails, Example 06 reports the unavailable range/velocity and returns before
+building or enqueueing a Task. A later button press makes a fresh decision from current evidence.
 
 That keeps the decision boundary clean:
 
@@ -201,6 +230,7 @@ The examples should surface the selection state directly to the driver:
 - selected tag ID
 - whether the selected tag is still freshly visible
 - range
+- whether a finite shooter velocity is available (or why a macro did not start)
 - bearing
 - aim-ready state
 
@@ -208,9 +238,14 @@ A good minimal telemetry set is:
 
 ```java
 TagSelectionResult sel = scoringSelection.get(clock);
+double targetVelocity = sel.hasFreshSelectedObservation
+        ? velocityByRange.interpolate(sel.selectedObservation.cameraRangeInches())
+        : Double.NaN;
+boolean velocityAvailable = Double.isFinite(targetVelocity);
 telemetry.addData("tag.selected", sel.hasSelection ? sel.selectedTagId : "none");
 telemetry.addData("tag.visibleNow", sel.hasFreshSelectedObservation);
 telemetry.addData("tag.reason", sel.reason);
+telemetry.addData("shooter.velocityAvailable", velocityAvailable);
 telemetry.addData("aim.ready", aimReady.getAsBoolean(clock));
 ```
 

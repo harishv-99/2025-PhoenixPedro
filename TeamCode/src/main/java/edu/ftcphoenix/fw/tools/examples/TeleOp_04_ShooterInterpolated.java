@@ -50,8 +50,9 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *   <li>Command the shooter plant to that velocity (if enabled).</li>
  * </ol>
  *
- * <p>Later, you can replace this manual distance with a real vision
- * distance (AprilTag) by swapping only the "distance source" logic.</p>
+ * <p>The manual distance is always finite because the D-pad logic keeps it inside a finite
+ * range. A later vision source also needs to prove that its current distance is finite before
+ * using the result as a hardware command.</p>
  * <hr/>
  *
  * <h2>Why a manual distance source?</h2>
@@ -70,7 +71,12 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *
  * // Vision-based setup later:
  * distanceInches = vision.getDistanceInches(); // from AprilTag
- * shooter.commandTarget().set(table.interpolate(distanceInches));
+ * double targetVelocity = table.interpolate(distanceInches);
+ * if (Double.isFinite(targetVelocity)) {
+ *     shooter.commandTarget().set(targetVelocity);
+ * } else {
+ *     shooter.commandTarget().set(0.0); // also report "range unavailable"
+ * }
  * }</pre>
  * <hr/>
  *
@@ -117,7 +123,9 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       just be consistent with what your shooter plant expects.</li>
  * </ul>
  *
- * <p>The table is clamped and linearly interpolated:</p>
+ * <p>Author every distance and velocity as a finite value, with distances in strictly increasing
+ * order. {@link InterpolatingTable1D#ofSortedPairs(double...)} checks those calibration facts when
+ * the table is created. For a finite query, the table is clamped and linearly interpolated:</p>
  *
  * <ul>
  *   <li>Below the smallest x → use the first y.</li>
@@ -136,7 +144,8 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     /**
      * Shooter velocity table built from sorted (distance, velocity) pairs.
      *
-     * <p>Example numbers only – tune for your robot.</p>
+     * <p>Example numbers only – tune for your robot. Every pair is finite and the distance values
+     * are written in strictly increasing order.</p>
      */
     private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE =
             InterpolatingTable1D.ofSortedPairs(

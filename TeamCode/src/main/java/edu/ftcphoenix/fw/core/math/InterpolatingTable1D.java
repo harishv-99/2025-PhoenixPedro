@@ -1,15 +1,13 @@
 package edu.ftcphoenix.fw.core.math;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import java.util.function.DoubleUnaryOperator;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 
 /**
- * Simple immutable 1D lookup table with linear interpolation.
+ * Immutable one-dimensional calibration table with linear interpolation.
  *
  * <p>Typical usage:</p>
  * <ul>
@@ -19,11 +17,16 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  *
  * <p>Semantics:</p>
  * <ul>
- *   <li>x-values must be strictly increasing.</li>
- *   <li>Values below the first x clamp to the first y.</li>
- *   <li>Values above the last x clamp to the last y.</li>
- *   <li>Values in-between are linearly interpolated.</li>
+ *   <li>Every authored x- and y-value must be finite.</li>
+ *   <li>Sorted x-values must be strictly increasing.</li>
+ *   <li>Finite queries below or above the authored range clamp to the corresponding y-value.</li>
+ *   <li>Finite queries inside the range produce a finite, piecewise-linear result.</li>
+ *   <li>A non-finite runtime query returns {@link Double#NaN} rather than inventing an endpoint
+ *       value.</li>
  * </ul>
+ *
+ * <p>Factories defensively capture their input. Construction validates authored calibration facts;
+ * a non-finite query instead represents unavailable runtime evidence.</p>
  */
 public final class InterpolatingTable1D implements DoubleUnaryOperator {
 
@@ -36,18 +39,24 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
     }
 
     /**
-     * Create a table from sorted x-values and corresponding y-values.
+     * Creates a table from already-sorted x-values and their corresponding y-values.
      *
      * <p>Preconditions:</p>
      * <ul>
      *   <li>{@code xs.length == ys.length}</li>
      *   <li>{@code xs.length >= 1}</li>
-     *   <li>{@code xs} must be strictly increasing (no duplicates).</li>
+     *   <li>Every x- and y-value is finite.</li>
+     *   <li>{@code xs} is strictly increasing (no duplicates, including signed zero).</li>
      * </ul>
      *
-     * @param xs sorted x-values
-     * @param ys corresponding y-values
-     * @return a new {@link InterpolatingTable1D}
+     * <p>Both arrays are copied before they are retained.</p>
+     *
+     * @param xs sorted finite x-values
+     * @param ys corresponding finite y-values
+     * @return an independent immutable table
+     * @throws NullPointerException if either array is {@code null}
+     * @throws IllegalArgumentException if the arrays have different or zero lengths, a value is
+     *                                  non-finite, or the x-values are not strictly increasing
      */
     public static InterpolatingTable1D ofSorted(double[] xs, double[] ys) {
         Objects.requireNonNull(xs, "xs is required");
@@ -61,11 +70,11 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
 
         double[] xsCopy = xs.clone();
         double[] ysCopy = ys.clone();
+        validateFiniteSamples(xsCopy, ysCopy);
 
-        // Verify strict monotonicity
         for (int i = 1; i < xsCopy.length; i++) {
             if (!(xsCopy[i] > xsCopy[i - 1])) {
-                throw new IllegalArgumentException("xs must be strictly increasing");
+                throw sortedOrderFailure(i - 1, xsCopy[i - 1], i, xsCopy[i]);
             }
         }
 
@@ -73,14 +82,18 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
     }
 
     /**
-     * Create a table from arbitrary x-values and corresponding y-values.
+     * Creates a table from arbitrarily ordered x-values and their corresponding y-values.
      *
-     * <p>The points are sorted by x internally. Duplicate x-values are not
-     * allowed.</p>
+     * <p>The captured samples are sorted by x internally while preserving each x/y pair. Every
+     * value must be finite, and duplicate x-values are rejected. Validation errors identify the
+     * original authored array indices, not positions after sorting.</p>
      *
-     * @param xs unsorted x-values
-     * @param ys corresponding y-values
-     * @return a new {@link InterpolatingTable1D}
+     * @param xs finite x-values in any order
+     * @param ys corresponding finite y-values
+     * @return an independent immutable table ordered by x
+     * @throws NullPointerException if either array is {@code null}
+     * @throws IllegalArgumentException if the arrays have different or zero lengths, a value is
+     *                                  non-finite, or two x-values are duplicates
      */
     public static InterpolatingTable1D ofUnsorted(double[] xs, double[] ys) {
         Objects.requireNonNull(xs, "xs is required");
@@ -95,6 +108,7 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
         int n = xs.length;
         double[] xsCopy = xs.clone();
         double[] ysCopy = ys.clone();
+        validateFiniteSamples(xsCopy, ysCopy);
 
         // Sort by xs, keeping ys aligned via index indirection.
         Integer[] indices = new Integer[n];
@@ -106,15 +120,21 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
         double[] sortedX = new double[n];
         double[] sortedY = new double[n];
         for (int i = 0; i < n; i++) {
-            sortedX[i] = xsCopy[indices[i]];
-            sortedY[i] = ysCopy[indices[i]];
+            int authoredIndex = indices[i];
+            sortedX[i] = xsCopy[authoredIndex];
+            sortedY[i] = ysCopy[authoredIndex];
+            if (i > 0 && !(sortedX[i] > sortedX[i - 1])) {
+                int previousAuthoredIndex = indices[i - 1];
+                throw duplicateFailure(previousAuthoredIndex, sortedX[i - 1],
+                        authoredIndex, sortedX[i]);
+            }
         }
 
-        return ofSorted(sortedX, sortedY);
+        return new InterpolatingTable1D(sortedX, sortedY);
     }
 
     /**
-     * Convenience factory: build from sorted (x,y) pairs.
+     * Creates a table from sorted, flattened {@code (x, y)} pairs.
      *
      * <p>Example:</p>
      * <pre>
@@ -126,7 +146,15 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
      * );
      * </pre>
      *
+     * <p>The supplied varargs array is captured into independent x/y arrays. Every value must be
+     * finite, and x-values must be strictly increasing.</p>
+     *
      * @param xsAndYs flattened pairs: x0, y0, x1, y1, ...
+     * @return an independent immutable table
+     * @throws NullPointerException if {@code xsAndYs} is {@code null}
+     * @throws IllegalArgumentException if the input is empty or contains an incomplete odd value,
+     *                                  a value is non-finite, or the x-values are not strictly
+     *                                  increasing
      */
     public static InterpolatingTable1D ofSortedPairs(double... xsAndYs) {
         Objects.requireNonNull(xsAndYs, "xsAndYs is required");
@@ -146,29 +174,22 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
     }
 
     /**
-     * Builder for readable table declarations in robot code.
+     * Evaluates this table at {@code x} using finite linear interpolation and endpoint clamping.
      *
-     * <pre>{@code
-     * InterpolatingTable1D table = InterpolatingTable1D.builder()
-     *         .add(24.0, 180.0)
-     *         .add(30.0, 190.0)
-     *         .add(36.0, 205.0)
-     *         .add(42.0, 220.0)
-     *         .buildSorted();
-     * }</pre>
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    /**
-     * Evaluate the table at the given x using linear interpolation
-     * with clamping to the end values.
+     * <p>A finite query below or above the calibration range returns the exact corresponding
+     * endpoint y-value. An exact authored x-value returns its exact y-value. Any other finite query
+     * returns a finite value between the surrounding y-values. A non-finite query is unavailable
+     * runtime evidence and returns {@link Double#NaN}, including for a one-point table.</p>
      *
      * @param x query x-value
-     * @return interpolated y-value
+     * @return a finite interpolated or clamped y-value, or {@link Double#NaN} when {@code x} is
+     *         non-finite
      */
     public double interpolate(double x) {
+        if (!Double.isFinite(x)) {
+            return Double.NaN;
+        }
+
         int n = xs.length;
         if (n == 1) {
             return ys[0];
@@ -200,43 +221,20 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
         double y0 = ys[i0];
         double y1 = ys[i1];
 
-        if (x1 == x0) {
-            // Should not happen if xs is strictly increasing, but guard anyway.
-            return y0;
-        }
-
-        double t = (x - x0) / (x1 - x0);
-        // Use shared interpolation helper for consistency.
-        return MathUtil.lerp(y0, y1, t);
+        double t = interpolationFraction(x, x0, x1);
+        return interpolateFinite(y0, y1, t);
     }
 
     /**
-     * Functional interface integration: treat this table as a DoubleUnaryOperator.
+     * Evaluates this table through the standard {@link DoubleUnaryOperator} adapter.
+     *
+     * @param operand query x-value
+     * @return the same result as {@link #interpolate(double)}, including {@link Double#NaN} for a
+     *         non-finite query
      */
     @Override
     public double applyAsDouble(double operand) {
         return interpolate(operand);
-    }
-
-    /**
-     * @return number of calibration points.
-     */
-    public int size() {
-        return xs.length;
-    }
-
-    /**
-     * @return defensive copy of x-samples.
-     */
-    public double[] xs() {
-        return xs.clone();
-    }
-
-    /**
-     * @return defensive copy of y-samples.
-     */
-    public double[] ys() {
-        return ys.clone();
     }
 
     /**
@@ -254,52 +252,6 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
     }
 
     /**
-     * Builder for InterpolatingTable1D.
-     *
-     * <p>Note: x-values must be added in strictly increasing order.
-     * This is enforced when {@link #buildSorted()} is called.</p>
-     */
-    public static final class Builder {
-        private final List<Double> xs = new ArrayList<>();
-        private final List<Double> ys = new ArrayList<>();
-
-        /**
-         * Add a single (x, y) sample to the builder.
-         *
-         * <p>Points should be added in strictly increasing {@code x} order if you plan to call
-         * {@link #buildSorted()}.</p>
-         *
-         * @param x x-coordinate (independent variable)
-         * @param y y-coordinate (dependent variable)
-         * @return this builder for chaining
-         */
-        public Builder add(double x, double y) {
-            xs.add(x);
-            ys.add(y);
-            return this;
-        }
-
-        /**
-         * Build a table from the added points, assuming they are already
-         * sorted by x and strictly increasing.
-         */
-        public InterpolatingTable1D buildSorted() {
-            int n = xs.size();
-            if (n == 0) {
-                throw new IllegalStateException("No points added to table");
-            }
-
-            double[] xsArr = new double[n];
-            double[] ysArr = new double[n];
-            for (int i = 0; i < n; i++) {
-                xsArr[i] = xs.get(i);
-                ysArr[i] = ys.get(i);
-            }
-            return InterpolatingTable1D.ofSorted(xsArr, ysArr);
-        }
-    }
-
-    /**
      * Emit a small summary of this table (size and range).
      *
      * @param dbg    debug sink (may be {@code null}; if null, no output is produced)
@@ -314,5 +266,77 @@ public final class InterpolatingTable1D implements DoubleUnaryOperator {
         dbg.addData(p + ".size", n)
                 .addData(p + ".xMin", xs[0])
                 .addData(p + ".xMax", xs[n - 1]);
+    }
+
+    /** Validates finite samples at their original authored indices. */
+    private static void validateFiniteSamples(double[] xs, double[] ys) {
+        for (int i = 0; i < xs.length; i++) {
+            if (!Double.isFinite(xs[i])) {
+                throw nonFiniteFailure("x", i, xs[i]);
+            }
+            if (!Double.isFinite(ys[i])) {
+                throw nonFiniteFailure("y", i, ys[i]);
+            }
+        }
+    }
+
+    /** Creates an actionable diagnostic for one non-finite authored component. */
+    private static IllegalArgumentException nonFiniteFailure(String component,
+                                                             int authoredIndex,
+                                                             double value) {
+        return new IllegalArgumentException(component + " at authored index " + authoredIndex
+                + " must be finite, but was " + value
+                + "; provide a finite " + component + "-value");
+    }
+
+    /** Creates an actionable diagnostic for adjacent authored x-values that are not ordered. */
+    private static IllegalArgumentException sortedOrderFailure(int previousAuthoredIndex,
+                                                               double previousValue,
+                                                               int authoredIndex,
+                                                               double value) {
+        return new IllegalArgumentException("x-values must be strictly increasing: x at authored "
+                + "index " + authoredIndex + " was " + value + " but must be greater than x at "
+                + "authored index " + previousAuthoredIndex + " (" + previousValue + "); reorder "
+                + "or remove the conflicting x-value");
+    }
+
+    /** Creates an actionable diagnostic that retains both pre-sort authored indices. */
+    private static IllegalArgumentException duplicateFailure(int firstAuthoredIndex,
+                                                             double firstValue,
+                                                             int secondAuthoredIndex,
+                                                             double secondValue) {
+        return new IllegalArgumentException("duplicate x-values at authored indices "
+                + firstAuthoredIndex + " (" + firstValue + ") and " + secondAuthoredIndex + " ("
+                + secondValue + "); provide one sample per unique x-value");
+    }
+
+    /**
+     * Computes the finite in-segment fraction without overflowing an opposite-sign x span.
+     */
+    private static double interpolationFraction(double x, double x0, double x1) {
+        double span = x1 - x0;
+        double fraction;
+        if (Double.isFinite(span)) {
+            fraction = (x - x0) / span;
+        } else {
+            fraction = (x * 0.5 - x0 * 0.5) / (x1 * 0.5 - x0 * 0.5);
+        }
+
+        // The query is already proven interior; clamp only floating-point rounding drift.
+        return Math.max(0.0, Math.min(1.0, fraction));
+    }
+
+    /**
+     * Interpolates finite endpoints without overflowing a valid convex result.
+     */
+    private static double interpolateFinite(double y0, double y1, double fraction) {
+        double delta = y1 - y0;
+        if (!Double.isFinite(delta)) {
+            return (1.0 - fraction) * y0 + fraction * y1;
+        }
+        if (fraction <= 0.5) {
+            return y0 + fraction * delta;
+        }
+        return y1 - (1.0 - fraction) * delta;
     }
 }

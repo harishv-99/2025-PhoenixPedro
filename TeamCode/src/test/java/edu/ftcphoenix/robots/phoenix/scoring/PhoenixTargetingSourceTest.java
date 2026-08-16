@@ -129,6 +129,55 @@ public final class PhoenixTargetingSourceTest {
     }
 
     @Test
+    public void freshObservationWithNonFiniteRangePublishesNoSuggestedVelocity() {
+        PhoenixProfile profile = PhoenixProfile.current();
+        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        PhoenixTargeting targeting = targetingFor(
+                profile,
+                new CurrentFrameNonFiniteRangeAprilTagSensor(selectedTagId),
+                Source.constant(Collections.singleton(selectedTagId))
+        );
+        LoopClock clock = new LoopClock();
+        clock.reset(0.0);
+
+        targeting.update(clock);
+
+        PhoenixCapabilities.TargetingStatus status = targeting.status();
+        assertTrue(status.selection.hasFreshSelectedObservation);
+        assertTrue(status.selection.selectedObservation.hasTarget);
+        assertTrue(Double.isInfinite(
+                status.selection.selectedObservation.cameraRangeInches()
+        ));
+        assertFalse(status.hasSuggestedVelocity);
+        assertTrue(Double.isNaN(status.suggestedVelocityNative));
+    }
+
+    @Test
+    public void freshObservationWithFiniteRangePublishesFiniteSuggestedVelocity() {
+        PhoenixProfile profile = PhoenixProfile.current();
+        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        PhoenixTargeting targeting = targetingFor(
+                profile,
+                new CurrentFrameAprilTagSensor(selectedTagId),
+                Source.constant(Collections.singleton(selectedTagId))
+        );
+        LoopClock clock = new LoopClock();
+        clock.reset(0.0);
+
+        targeting.update(clock);
+
+        PhoenixCapabilities.TargetingStatus status = targeting.status();
+        assertTrue(status.selection.hasFreshSelectedObservation);
+        assertTrue(status.hasSuggestedVelocity);
+        assertTrue(Double.isFinite(status.suggestedVelocityNative));
+        assertEquals(
+                profile.autoAim.shotVelocityTable.interpolate(36.0),
+                status.suggestedVelocityNative,
+                0.0
+        );
+    }
+
+    @Test
     public void failedCalculationRetriesWithoutPublishingDefaultAndBorrowedResetStopsAtView() {
         PhoenixProfile profile = PhoenixProfile.current();
         RuntimeException injectedFailure = new RuntimeException("injected override read failure");
@@ -804,6 +853,32 @@ public final class PhoenixTargetingSourceTest {
                         Collections.singletonList(AprilTagObservation.target(
                                 tagId,
                                 new Pose3d(36.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                        ))
+                );
+                lastCycle = clock.cycle();
+            }
+            return last;
+        }
+    }
+
+    private static final class CurrentFrameNonFiniteRangeAprilTagSensor
+            implements AprilTagSensor {
+        private final int tagId;
+        private long lastCycle = Long.MIN_VALUE;
+        private AprilTagDetections last = AprilTagDetections.none();
+
+        CurrentFrameNonFiniteRangeAprilTagSensor(int tagId) {
+            this.tagId = tagId;
+        }
+
+        @Override
+        public AprilTagDetections get(LoopClock clock) {
+            if (clock.cycle() != lastCycle) {
+                last = AprilTagDetections.fromFrame(
+                        clock.nowTimestamp(),
+                        Collections.singletonList(AprilTagObservation.target(
+                                tagId,
+                                new Pose3d(Double.MAX_VALUE, 0.0, 0.0, 0.0, 0.0, 0.0)
                         ))
                 );
                 lastCycle = clock.cycle();

@@ -119,7 +119,9 @@ public final class PhoenixCapabilities {
         public final String targetLabel;
         public final double aimOffsetForwardInches;
         public final double aimOffsetLeftInches;
+        /** True only when {@link #suggestedVelocityNative} is a finite, usable suggestion. */
         public final boolean hasSuggestedVelocity;
+        /** Finite suggested flywheel velocity, or {@link Double#NaN} when unavailable. */
         public final double suggestedVelocityNative;
         public final Pose3d fieldToSelectedTag;
         public final Pose2d fieldToAimPoint;

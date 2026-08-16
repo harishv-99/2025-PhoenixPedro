@@ -302,6 +302,22 @@ A practical shooter workflow is:
 4. Change the target or gains and press A for a new immutable segment; add another row.
 5. Mark `accepted` only after the team's external success criterion is met.
 
+After review, copy only the accepted finite distance/velocity rows into checked-in configuration.
+Sort them by strictly increasing distance, then declare the table directly:
+
+```java
+InterpolatingTable1D velocityByRange = InterpolatingTable1D.ofSortedPairs(
+        24.0, 3500.0,
+        30.0, 3600.0,
+        36.0, 3700.0);
+```
+
+`ofSortedPairs(...)` owns the authored-data check: every distance and velocity must be finite, and
+duplicate or out-of-order distances are rejected during construction. Robot code does not need a
+second validation loop. A live sensor range is runtime evidence, so gate on the finite lookup
+result before commanding hardware; an unavailable range must remain unavailable rather than
+select an endpoint.
+
 This keeps exact controller evidence correlated without pretending Phoenix can infer success. If a
 future robot repeatedly proves that one typed piece of external evidence should be framework-owned,
 it can justify a separate bounded item; TUNE-03 does not introduce a string-keyed metadata registry.
