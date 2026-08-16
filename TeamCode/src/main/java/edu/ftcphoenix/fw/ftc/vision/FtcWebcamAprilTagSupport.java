@@ -10,7 +10,6 @@ import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
-import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 import org.firstinspires.ftc.vision.apriltag.AprilTagPoseRaw;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
@@ -56,9 +55,7 @@ final class FtcWebcamAprilTagSupport {
             AprilTagLibrary tagLibrary
     ) {
         AprilTagProcessor.Builder builder = new AprilTagProcessor.Builder()
-                .setTagLibrary(tagLibrary != null
-                        ? tagLibrary
-                        : AprilTagGameDatabase.getCurrentGameTagLibrary())
+                .setTagLibrary(Objects.requireNonNull(tagLibrary, "tagLibrary"))
                 .setOutputUnits(DistanceUnit.INCH, AngleUnit.RADIANS);
         applyCameraMount(builder, cameraMount);
         return builder.build();

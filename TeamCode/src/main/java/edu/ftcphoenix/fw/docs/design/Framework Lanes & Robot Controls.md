@@ -76,6 +76,11 @@ A primitive answers:
 
 > What is the smallest reusable capability here?
 
+Some primitives capture data-only policy at construction. For example,
+`new FixedTagFieldPoseSolver(config)` validates and freezes one solve policy, then localization,
+spatial queries, and guidance can share that configured capability without passing a mutable Config
+through a completed runtime graph.
+
 ### Lane
 
 A **lane** is a reusable owner of a stable multi-object capability graph.
@@ -490,6 +495,11 @@ public final class MyRobotProfile {
 For the simplest robot, keeping `vision` concrete as `FtcWebcamAprilTagVisionLane.Config` is still a good default.
 If you expect to swap between webcam and smart-camera backends, keep a robot-owned `VisionConfig`
 wrapper in the profile and let the composition root hold the backend-neutral `AprilTagVisionLane` interface.
+
+Profile copies isolate mutable backend Config containers but do not activate or validate every
+alternative. In particular, a webcam Config's custom FTC `AprilTagLibrary` remains borrowed until
+the selected webcam factory or owner validates and deep-snapshots it. This lets an inactive draft
+remain data while the active resource owner closes the mutable SDK boundary before hardware use.
 
 Why this order works:
 

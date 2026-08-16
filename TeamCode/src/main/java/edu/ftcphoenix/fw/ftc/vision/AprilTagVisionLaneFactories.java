@@ -2,10 +2,6 @@ package edu.ftcphoenix.fw.ftc.vision;
 
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import java.util.Objects;
-
-import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
-
 /**
  * Convenience builders for common {@link AprilTagVisionLaneFactory} variants.
  *
@@ -14,59 +10,135 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  */
 public final class AprilTagVisionLaneFactories {
 
+    /** Package-private construction seam for factory capture tests. */
+    interface WebcamOwnerOpener {
+        AprilTagVisionLane open(
+                HardwareMap hardwareMap,
+                FtcWebcamAprilTagVisionLane.ActiveConfig config
+        );
+    }
+
+    /** Package-private construction seam for factory capture tests. */
+    interface LimelightOwnerOpener {
+        AprilTagVisionLane open(
+                HardwareMap hardwareMap,
+                FtcLimelightAprilTagVisionLane.Config config
+        );
+    }
+
+    private static final WebcamOwnerOpener WEBCAM_OWNER_OPENER =
+            new WebcamOwnerOpener() {
+                @Override
+                public AprilTagVisionLane open(
+                        HardwareMap hardwareMap,
+                        FtcWebcamAprilTagVisionLane.ActiveConfig config
+                ) {
+                    return new FtcWebcamAprilTagVisionLane(hardwareMap, config);
+                }
+            };
+
+    private static final LimelightOwnerOpener LIMELIGHT_OWNER_OPENER =
+            new LimelightOwnerOpener() {
+                @Override
+                public AprilTagVisionLane open(
+                        HardwareMap hardwareMap,
+                        FtcLimelightAprilTagVisionLane.Config config
+                ) {
+                    return new FtcLimelightAprilTagVisionLane(hardwareMap, config);
+                }
+            };
+
     private AprilTagVisionLaneFactories() {
     }
 
     /**
      * Returns a deferred opener for a webcam-backed AprilTag lane.
      *
-     * @param config webcam lane config to copy and reopen later
+     * <p>This method validates and captures the active config immediately without touching
+     * {@link HardwareMap}. It deep-snapshots the selected FTC tag library. Each later
+     * {@link AprilTagVisionLaneFactory#open(HardwareMap)} creates an independently validated owner
+     * with a fresh private library snapshot.</p>
+     *
+     * @param config complete webcam lane authoring config to validate and capture
      * @return opener that creates {@link FtcWebcamAprilTagVisionLane}
+     * @throws NullPointerException if the config or a required field is null
+     * @throws IllegalArgumentException if the active config or tag metadata is invalid
      */
     public static AprilTagVisionLaneFactory webcam(FtcWebcamAprilTagVisionLane.Config config) {
-        final FtcWebcamAprilTagVisionLane.Config cfg =
-                Objects.requireNonNull(config, "config").copy();
+        return webcam(config, new FtcWebcamVisionPortalLane.ResolutionReader() {
+            @Override
+            public int width(android.util.Size size) {
+                return size.getWidth();
+            }
+
+            @Override
+            public int height(android.util.Size size) {
+                return size.getHeight();
+            }
+        }, WEBCAM_OWNER_OPENER);
+    }
+
+    static AprilTagVisionLaneFactory webcam(
+            FtcWebcamAprilTagVisionLane.Config config,
+            FtcWebcamVisionPortalLane.ResolutionReader resolutionReader
+    ) {
+        return webcam(config, resolutionReader, WEBCAM_OWNER_OPENER);
+    }
+
+    static AprilTagVisionLaneFactory webcam(
+            FtcWebcamAprilTagVisionLane.Config config,
+            FtcWebcamVisionPortalLane.ResolutionReader resolutionReader,
+            WebcamOwnerOpener ownerOpener
+    ) {
+        final FtcWebcamAprilTagVisionLane.ActiveConfig cfg =
+                FtcWebcamAprilTagVisionLane.captureActiveConfig(config, resolutionReader);
+        final WebcamOwnerOpener opener = java.util.Objects.requireNonNull(
+                ownerOpener,
+                "ownerOpener"
+        );
         return new AprilTagVisionLaneFactory() {
             @Override
             public AprilTagVisionLane open(HardwareMap hardwareMap) {
-                return new FtcWebcamAprilTagVisionLane(hardwareMap, cfg);
+                return opener.open(hardwareMap, cfg);
             }
 
             @Override
             public String description() {
-                return "webcam: " + cfg.webcamName;
+                return "webcam: " + cfg.webcamName();
             }
         };
     }
 
     /**
-     * Returns a deferred opener for a webcam-backed AprilTag lane using just the stable essentials.
-     *
-     * @param webcamName  webcam hardware-map name
-     * @param cameraMount robot→camera extrinsics used by the lane
-     * @return opener that creates {@link FtcWebcamAprilTagVisionLane}
-     */
-    public static AprilTagVisionLaneFactory webcam(String webcamName,
-                                                   CameraMountConfig cameraMount) {
-        FtcWebcamAprilTagVisionLane.Config cfg = FtcWebcamAprilTagVisionLane.Config.defaults();
-        cfg.webcamName = webcamName;
-        cfg.cameraMount = (cameraMount != null) ? cameraMount : CameraMountConfig.identity();
-        return webcam(cfg);
-    }
-
-    /**
      * Returns a deferred opener for a Limelight-backed AprilTag lane.
      *
-     * @param config Limelight lane config to copy and reopen later
+     * <p>This method validates and captures the active config immediately without touching
+     * {@link HardwareMap}. Each later {@link AprilTagVisionLaneFactory#open(HardwareMap)} creates
+     * an independently validated owner.</p>
+     *
+     * @param config complete Limelight lane authoring config to validate and capture
      * @return opener that creates {@link FtcLimelightAprilTagVisionLane}
+     * @throws NullPointerException if the config is null
+     * @throws IllegalArgumentException if the active config is invalid
      */
     public static AprilTagVisionLaneFactory limelight(FtcLimelightAprilTagVisionLane.Config config) {
+        return limelight(config, LIMELIGHT_OWNER_OPENER);
+    }
+
+    static AprilTagVisionLaneFactory limelight(
+            FtcLimelightAprilTagVisionLane.Config config,
+            LimelightOwnerOpener ownerOpener
+    ) {
         final FtcLimelightAprilTagVisionLane.Config cfg =
-                Objects.requireNonNull(config, "config").copy();
+                FtcLimelightAprilTagVisionLane.validatedCopy(config);
+        final LimelightOwnerOpener opener = java.util.Objects.requireNonNull(
+                ownerOpener,
+                "ownerOpener"
+        );
         return new AprilTagVisionLaneFactory() {
             @Override
             public AprilTagVisionLane open(HardwareMap hardwareMap) {
-                return new FtcLimelightAprilTagVisionLane(hardwareMap, cfg);
+                return opener.open(hardwareMap, cfg);
             }
 
             @Override
@@ -74,20 +146,5 @@ public final class AprilTagVisionLaneFactories {
                 return "limelight: " + cfg.hardwareName;
             }
         };
-    }
-
-    /**
-     * Returns a deferred opener for a Limelight-backed AprilTag lane using just the stable essentials.
-     *
-     * @param hardwareName Limelight hardware-map name
-     * @param cameraMount  robot→camera extrinsics used by the lane
-     * @return opener that creates {@link FtcLimelightAprilTagVisionLane}
-     */
-    public static AprilTagVisionLaneFactory limelight(String hardwareName,
-                                                      CameraMountConfig cameraMount) {
-        FtcLimelightAprilTagVisionLane.Config cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
-        cfg.hardwareName = hardwareName;
-        cfg.cameraMount = (cameraMount != null) ? cameraMount : CameraMountConfig.identity();
-        return limelight(cfg);
     }
 }

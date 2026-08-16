@@ -36,6 +36,17 @@ owner, map robot meanings to processor enablement or pipeline transitions in one
 and expose immutable timestamped robot snapshots to strategy. Do not make Auto or TeleOp interpret FTC/vendor
 results, and do not pretend that webcam processors and Limelight pipelines have the same lifecycle.
 
+Treat vision Configs as data-only drafts. The selected direct owner, or a deliberately deferred
+vision-lane factory, validates and captures its complete active configuration before hardware
+acquisition. A custom FTC tag library stays borrowed while it is only an inactive profile value;
+the active webcam boundary deep-snapshots its mutable metadata. Runtime consumers use focused lane
+capabilities and diagnostics rather than recovering a construction Config from the lane.
+
+Likewise, author fixed-tag solve tuning in `FixedTagFieldPoseSolver.Config`, but construct a
+`FixedTagFieldPoseSolver` before passing that completed policy into spatial or guidance graphs.
+`AprilTagPoseEstimator.Config` composes its own solver Config with freshness and camera-mount data;
+it is not a specialized solver Config.
+
 ### Why this matters
 
 This keeps stable framework code reusable across seasons without turning the lifecycle host into a

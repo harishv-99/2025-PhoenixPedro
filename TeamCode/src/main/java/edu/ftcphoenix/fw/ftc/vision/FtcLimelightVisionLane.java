@@ -35,7 +35,7 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
  */
 public class FtcLimelightVisionLane implements AutoCloseable {
 
-    /** Configuration for one Limelight owner. */
+    /** Mutable data-only authoring config for one Limelight owner. */
     public static final class Config {
 
         /** FTC hardware-map name for the Limelight. */
@@ -70,7 +70,10 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             return new Config();
         }
 
-        /** @return an independent copy of this config. */
+        /**
+         * @return a raw independent authoring copy; validation occurs at the active factory or
+         *         owner boundary
+         */
         public Config copy() {
             Config c = new Config();
             c.hardwareName = this.hardwareName;
@@ -80,7 +83,17 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             return c;
         }
 
-        private Config validatedCopy(String context) {
+        @Override
+        public String toString() {
+            return "FtcLimelightVisionLane.Config{"
+                    + "hardwareName='" + hardwareName + '\''
+                    + ", pipelineIndex=" + pipelineIndex
+                    + ", pollRateHz=" + pollRateHz
+                    + ", maxResultAgeSec=" + maxResultAgeSec
+                    + '}';
+        }
+
+        Config validatedCopy(String context) {
             Config c = copy();
             String p = context != null && !context.trim().isEmpty()
                     ? context.trim()
@@ -88,10 +101,13 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             c.hardwareName = requireNonBlank(c.hardwareName, p + ".hardwareName");
             requirePipelineIndex(c.pipelineIndex, p + ".pipelineIndex");
             if (c.pollRateHz < 1 || c.pollRateHz > 250) {
-                throw new IllegalArgumentException(p + ".pollRateHz must be within [1, 250]");
+                throw new IllegalArgumentException(
+                        p + ".pollRateHz must be within [1, 250], got " + c.pollRateHz);
             }
             if (!Double.isFinite(c.maxResultAgeSec) || c.maxResultAgeSec <= 0.0) {
-                throw new IllegalArgumentException(p + ".maxResultAgeSec must be finite and > 0");
+                throw new IllegalArgumentException(
+                        p + ".maxResultAgeSec must be finite and > 0, got "
+                                + c.maxResultAgeSec);
             }
             return c;
         }
@@ -457,7 +473,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
     }
 
     FtcLimelightVisionLane(Config config, DeviceFactory deviceFactory) {
-        Config base = Objects.requireNonNull(config, "config")
+        Config base = Objects.requireNonNull(config, "FtcLimelightVisionLane.Config")
                 .validatedCopy("FtcLimelightVisionLane.Config");
         DeviceFactory requiredFactory = Objects.requireNonNull(deviceFactory, "deviceFactory");
 
@@ -486,11 +502,6 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         if (!accepted) {
             this.lastReadiness = rejectedReadiness(base.pipelineIndex);
         }
-    }
-
-    /** @return an independent snapshot of the generic owner config. */
-    public final Config visionConfig() {
-        return cfg.copy();
     }
 
     /** @return configured FTC hardware-map name. */
@@ -884,7 +895,8 @@ public class FtcLimelightVisionLane implements AutoCloseable {
 
     private static void requirePipelineIndex(int pipelineIndex, String name) {
         if (pipelineIndex < 0 || pipelineIndex > 9) {
-            throw new IllegalArgumentException(name + " must be within [0, 9]");
+            throw new IllegalArgumentException(
+                    name + " must be within [0, 9], got " + pipelineIndex);
         }
     }
 

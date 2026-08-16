@@ -174,7 +174,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 87 | CONFIG-02 | Core configuration ownership contract | Done | The reviewed owner-local validation, bounded controller math, synchronized guidance, automated verification, and destination-specific publication authorization are complete. |
 | 88 | SPATIAL-01 | Finite authored spatial geometry | Done | The reviewed finite authored-geometry, immutable-layout, dormant-API replacement, rectangle-in-box, and frozen heading-selection implementation is complete and authorized for publication. |
 | 89 | MATH-01 | Finite interpolation calibration tables | Done | The reviewed finite-table and runtime-unavailability contract, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Proposed | Give each FTC vision and AprilTag owner one validated defensive configuration boundary before deferred open or resource acquisition. |
+| 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Done | The reviewed owner-local vision snapshots, canonical FTC tag-library capture, configured solver/estimator composition, synchronized callers/docs, and destination-specific publication authorization are complete. |
 | 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Proposed | Validate and snapshot Pinpoint, absolute-pose, fusion, and composite-lane configuration before hardware or estimator effects. |
 | 92 | CONFIG-05 | Pedro runtime configuration ownership | Proposed | Replace the production runtime's peer argument bundle with one owner-specific, deeply snapshotted Pedro configuration path. |
 | 93 | CONFIG-06 | Tool and tester configuration ownership | Proposed | Remove retained mutable aliases and constructor forests from maintained calibration and tester owners without changing their evidence roles. |
@@ -250,10 +250,12 @@ than an example lesson: `StarterProfile` is 231 lines for drive and intake, `Pho
 The user selected a full maintained-code configuration program before EXAMPLE-04, while rejecting a
 generic Config base, reflection copier, universal validation DSL, or units-system migration. The
 ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, then EXAMPLE-04. At
-intake, each row was **Proposed** and required its own source/caller/construction-path decision gate;
-CONFIG-02 has since advanced through its separately approved implementation to **Verifying**, while
-the remaining rows stay **Proposed**. Recording the program neither approves the later implementations
-nor permits compatibility shims or mixed-item PRs.
+intake, each row was **Proposed** and required its own source/caller/construction-path decision gate.
+CONFIG-02, SPATIAL-01, and MATH-01 have since completed their separately approved publication;
+CONFIG-03 has now completed its separately approved implementation, Android Studio review, and
+destination-specific publication authorization; CONFIG-04 through CONFIG-09 remain **Proposed**.
+Recording the program neither approves the later implementations nor permits compatibility shims or
+mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
 after its curriculum scope was reopened, and its eventual rationalization must preserve the
 EXAMPLE-03 evidence gate recorded below.
@@ -17824,45 +17826,315 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-03 - FTC vision and AprilTag configuration boundaries
 
-- **Status and intake boundary (2026-08-15):** **Proposed after SPATIAL-01/MATH-01.** This item owns
-  configuration capture and validation for reusable FTC vision acquisition and AprilTag solving; it
-  preserves VISION-01 resource ownership/readiness and VISION-02 stable timestamp semantics.
-- **Confirmed owner family:** maintained entry points include `FtcWebcamVisionPortalLane.Config`,
-  webcam and Limelight AprilTag lane configs, `FtcLimelightVisionLane.Config`, deferred
-  `AprilTagVisionLaneFactories`, `FixedTagFieldPoseSolver.Config`, and
-  `AprilTagPoseEstimator.Config`. The deferred factories already copy the supplied lane config when
-  the factory is created, and lane construction copies again; the question is whether both layers
-  have distinct value and where validation belongs, not a presumed live caller alias.
-- **Confirmed API-shape issue:** `AprilTagPoseEstimator.Config` inherits the mutable solver Config and
-  the family exposes overlapping public `copyOf(...)`, `normalizedValidatedCopyOf(...)`,
-  `validate(...)`, and `validatedCopy(...)` layers. The scalar webcam/Limelight factory overloads
-  have no repository caller; all maintained callers supply the backend's Config. Gate 1 must either
-  establish distinct external value for these layers or select one replacement path.
-- **Leading hypothesis:** keep owner-specific configs and one creation path per distinct backend.
-  Capture and validate the complete active configuration before storing a deferred opener and again
-  only where a new independent owner is constructed; open the camera/device only after validation.
-  Prefer composition of one solver config inside the pose-estimator config over public mutable
-  inheritance, deep-copy mutable nested processor/solver settings, retain already-immutable finite
-  camera mounts as values, and validate only the supplied backend config rather than introducing an
-  aggregate whose inactive branch can create false failures. Remove scalar factory overloads if the
-  complete caller/API audit confirms no distinct value. Use actionable owner/field diagnostics and
-  preserve partial-open cleanup.
-- **Gate-1 obligations:** enumerate each constructor/factory/default/copy/with path and all Phoenix,
-  tester, and example callers. Distinguish raw observation ownership, AprilTag interpretation, fixed
-  field facts, and backend selection. Decide where a public copy/validated-copy operation has real
-  cross-package value versus remaining owner-private. Remove an overload or nullable default only
-  when callers have one clearer replacement; do not add a generic vision facade beside existing
-  `AprilTagVisionLane` ownership.
-- **Excluded scope:** Phoenix's webcam-versus-Limelight choice belongs to CONFIG-09; Pinpoint/fusion
-  belongs to CONFIG-04; finite spatial leaf values belong to SPATIAL-01. Do not change exposure,
-  processor, timestamp, restart, or camera-close policy without a separately traced defect.
-- **Future completion evidence:** invalid configuration must produce zero portal/device/processor
-  effects; mutation after factory/owner creation must not drift deferred open; each backend's config
-  tests must be field-distinguishing; failures after partial acquisition must close exactly
-  the resources already created. Preserve readiness, timestamp, retry, stop, and backend-neutral
-  lane tests; update FTC vision/AprilTag guides and Javadocs; run full TeamCode verification and API/
-  caller scans. Physical camera names, calibration, exposure, and image quality remain robot tests.
-- **Decision record:** _Pending. No implementation started._
+- **Status and Gate 1 boundary (2026-08-16):** Gate 1 reached **Ready** before implementation. After
+  MATH-01 PR #90 merged, the user instructed the workflow to move to the next task. CONFIG-03 is the
+  sole active item on `codex/config-03-ftc-vision-apriltag-configuration`, branched directly from
+  merged `origin/master@6838000fb4538a6d384151f28b028a07c1f7f508`. This record completes the
+  read-only design gate. At that stop, no Java, test, Javadoc, guide, or example implementation had
+  started, and the selected public/API removals, configured-solver replacement, and behavioral
+  changes required explicit approval before Gate 2.
+- **Principles and ownership conclusion:** keep mutable `Owner.Config` values as data-only authoring
+  drafts with `defaults()` and raw `copy()`; a copy isolates the mutable authoring container and
+  immutable leaves but retains explicitly documented borrowed collaborators, and does not validate
+  an inactive profile branch. The first long-lived owner that understands a complete active config
+  validates its own captured snapshot before effects. A deferred vision factory and the lane it
+  later opens are two real retaining owners, so each validates/captures independently. Do not add a
+  `Config` base, marker, reflection copier, public validator, immutable twin, backend aggregate, or
+  generic vision facade. Camera mounts are already finite immutable values; field layouts remain
+  separate fixed-field facts and are snapshotted by the completed spatial/localization owner.
+- **Complete vision construction and caller inventory:** `FtcWebcamVisionPortalLane` and
+  `FtcLimelightVisionLane` are advanced multipurpose SDK-resource owners, each with one public
+  `(HardwareMap, Config, ...)` construction path plus package-private device seams for lifecycle
+  tests. `FtcWebcamAprilTagVisionLane` and `FtcLimelightAprilTagVisionLane` are concrete
+  specializations that add AprilTag meaning, immutable camera extrinsics, timestamped detections,
+  and the backend-neutral `AprilTagVisionLane` view. `PhoenixVisionFactory` constructs both active
+  specializations directly; TeleOp examples 05/06 construct the webcam specialization; and
+  `CustomVisionOwnershipExample` is the one maintained advanced caller of each generic owner.
+  `PhoenixRobotTesters` uses both deferred Config factories; `StandardTesters` uses Limelight; and
+  `AprilTagLocalizationTester`, `PinpointAprilTagFusionLocalizationTester`,
+  `CameraMountCalibrator`, and `PinpointPodOffsetCalibrator` use webcam. These six classes retain
+  `AprilTagVisionLaneFactory` because they choose a device/backend before acquiring hardware, for
+  seven maintained Config-based factory calls. Neither scalar `(String, CameraMountConfig)`
+  overload has a repository caller.
+- **Existing vision behavior and concrete gaps:** both generic owners already copy and validate
+  before device lookup, and preserve VISION-01's cleanup rule after partial acquisition. The
+  Limelight specialization delegates three invalid fields to its base, so an authored
+  `FtcLimelightAprilTagVisionLane.Config.pipelineIndex`, `pollRateHz`, or `maxResultAgeSec` error is
+  currently mislabeled as `FtcLimelightVisionLane.Config`. The Limelight deferred factory safely
+  captures its top-level scalar/immutable fields, and the webcam factory copies those same safe
+  fields, but the webcam copy still aliases the mutable SDK `AprilTagLibrary`; both factories store
+  an invalid opener and delay validation until `open(...)`. Their human description can therefore
+  publish untrimmed invalid input. The webcam specialization checks only
+  name/null fields before building its processor: invalid resolution, additional-processor arrays,
+  or a null `HardwareMap` can fail after processor construction even though none requires hardware.
+  Config-export methods (`portalConfig()`, generic `visionConfig()`, and both specialized
+  `config()` methods) have no production caller and create overlapping construction snapshots rather
+  than live capability/status.
+- **Confirmed mutable FTC-library defect:** FTC Vision 11.1 `AprilTagLibrary.getAllTags()` returns
+  its backing array; the library retains `AprilTagMetadata` identities; metadata retains a mutable
+  `VectorF fieldPosition` and mutable `Quaternion fieldOrientation`; and the processor looks tags up
+  from that retained library on every frame. Current factory/owner capture is shallow. A caller can
+  therefore mutate a custom library—including one it obtained from the current-game database—after
+  factory/owner construction and change the running detector. Java `String`, Android `Size`, and
+  `CameraMountConfig` are safe immutable
+  references; intentionally supplied processor identities remain shared because typed robot
+  adapters control those exact processors.
+- **Selected webcam library snapshot:** keep `Config.tagLibrary == null` as the authored meaning
+  “current FTC game,” but resolve it exactly at factory/owner capture, immediately deep-snapshot it,
+  and never expose or retain the transient SDK library. Clone the returned metadata array before
+  inspection; require it nonempty; require every entry nonnull with a unique nonnegative ID,
+  nonnull `DistanceUnit`, finite positive tag size whose inch conversion remains finite/positive,
+  a nonnull three-component position whose converted inch components are finite as doubles and
+  remain finite when represented by the snapshot's floats, and a nonnull quaternion whose
+  components and overflow-safe magnitude are finite and whose magnitude differs from one by at
+  most `1e-5`. The SDK's size-only builder overload itself supplies zero position and identity
+  orientation; nullable pose metadata would fault its robot-pose path before Phoenix receives a
+  detection. Preserve tag order, exact name (including null), accepted quaternion components, and
+  acquisition time. Canonicalize tag size and all three
+  field-position components to `DistanceUnit.INCH`, but do not normalize the already-near-unit
+  quaternion so the processor and `FtcGameTagLayout` consume the same authored orientation. This
+  conversion is necessary because FTC Vision 11.1 converts tag size but consumes `fieldPosition`
+  as inches and sends `fieldOrientation.toMatrix()` directly without normalization. Rebuild every
+  metadata/vector/quaternion and the private library. Reject materially non-unit orientation with
+  an actionable normalization diagnostic and reject duplicate IDs with both authored indices
+  instead of using the SDK builder's overwrite policy. Preserve
+  current-game versus custom provenance separately from the private resolved snapshot, and clone
+  that snapshot again for every fresh `open(...)` so processors never share a mutable library.
+  Public specialized `Config.copy()` stays a raw, null-preserving authoring copy and retains the
+  external SDK-library reference deliberately: the SDK Builder cannot faithfully rebuild malformed
+  null/duplicate metadata without validating or losing information, and profile copy must not make
+  an inactive backend fail. Its Javadoc names that borrowed-draft exception. Only the active
+  factory/owner's private validated snapshot makes the deep library copy and owns its behavior.
+- **Selected vision validation/effect order:** a Config-based deferred factory validates and
+  normalizes the complete active backend config when the opener is created, captures only its own
+  snapshot, and exposes a normalized description without touching `HardwareMap`. Every direct or
+  deferred lane construction independently repeats owner validation before device lookup. The
+  webcam specialization checks `HardwareMap`, resolution, mount/library, and the caller's complete
+  additional-processor array before creating the built-in processor; it then lets the generic
+  portal owner validate the final combined processor set before opening the portal. Limelight
+  specialization errors name `FtcLimelightAprilTagVisionLane.Config.<field>`. Exact domains are:
+  trimmed nonblank device name; positive webcam width/height; Limelight pipeline `[0, 9]`, poll rate
+  `[1, 250]`, and finite `maxResultAgeSec > 0`; and nonnull finite immutable camera mount. Identity is
+  a valid software placeholder, never proof of calibration. Keep existing stop/close aggregation,
+  readiness, timestamp, pipeline-transition, retry, and same-cycle behavior unchanged.
+- **Vision public-surface disposition:** retain all four owner classes, their flat owner-specific
+  Configs, `defaults()`, raw `copy()`, compact configuration `toString()`, the generic varargs
+  processor owner, both direct specialized owners, `AprilTagVisionLaneFactory`, and each
+  Config-based deferred backend factory. Flat
+  specialization Configs keep ordinary code at one owner vocabulary; nesting the generic config
+  would expose an advanced implementation layer without removing a decision. Remove the exact
+  two-argument webcam-specialization constructor because its varargs peer accepts zero additional
+  processors with the identical Java call; retain only the capability-complete varargs signature.
+  Remove both zero-caller scalar deferred overloads because they hide pipeline/resolution/freshness
+  answers and silently turn a null mount into identity. Remove the four zero-production-caller
+  config-export methods; use `webcamName()`, `hardwareName()`, `cameraMountConfig()`, typed status,
+  and `debugDump(...)`, or retain the authored profile config where provenance is actually needed.
+  Keep public raw `Config.copy()` on generic and specialized owners as the standard top-level
+  draft-mutation isolation operation for authoring, profiles, and constructing a fresh retry owner;
+  the webcam library exception above is explicit, and validation helpers remain
+  owner/package-private.
+- **Construction-layer counts and compared call shapes:** today the generic webcam has one public
+  varargs constructor, its specialization has two public constructors, and the generic/specialized
+  Limelight owners have one each; the selected surface leaves one public constructor per owner.
+  `AprilTagVisionLaneFactories` goes from four public methods to the two Config methods, both still
+  declared as `AprilTagVisionLaneFactory`, while four config-export methods go to zero. The solver
+  changes from a static Config-bearing solve with no constructible policy owner to one public
+  `FixedTagFieldPoseSolver(Config)` plus its instance solve. The two fixed/dynamic custom-policy
+  spatial-lane constructors, corresponding first/more solve-set stages, and two Drive Guidance
+  stages keep their counts and change only from mutable Config answers to the configured solver.
+  Side by side, the selected ordinary webcam call answers one flat specialization Config—hardware
+  name and resolution (portal facts), then mount and optional library (AprilTag facts)—before
+  `new FtcWebcamAprilTagVisionLane(hardwareMap, cfg)`. Nesting a generic portal Config would add an
+  implementation-layer `cfg.portal` decision without eliminating any answer; the scalar
+  `webcam(name, mount)` alternative hides resolution/library decisions; and the mutable builder-like
+  solver alternative exposes validate/copy timing. Those alternatives are rejected in favor of the
+  flat owner Config and a configured capability only where advanced policy reuse is deliberate.
+- **Complete solver/estimator inventory and defect:** `FixedTagFieldPoseSolver.Config` currently has
+  an implicit public constructor, mutable subclassing, `defaults()`, virtual `copy()`, static
+  `copyOf(...)` and `normalizedValidatedCopyOf(...)`, public `validate(...)` and
+  `validatedCopy(...)`, plus protected `copyBaseFieldsInto(...)`. `AprilTagPoseEstimator.Config`
+  falsely extends it, adds mount/freshness, adds four mutating withers and `toSolverConfig()`, and
+  overrides copy/validation. Passing an estimator Config as a solver Config makes unused estimator
+  fields participate through virtual validation/copy; the normalizer APIs exist mainly to strip
+  that false subtype. The FTC composite manually flattens twelve solver fields. Static
+  `solve(...)` has exactly two production callers, `AprilTagPoseEstimator` and
+  `AprilTagSpatialSolveLane`; Drive Guidance, `DriveGuidanceSpec`, that spatial lane,
+  `PhoenixTargeting`, estimator conversion (also consumed by
+  `PinpointAprilTagFusionLocalizationTester`), and the FTC composite copy/normalize the same policy
+  at several boundaries before static `solve(...)` validates it again on every frame. Direct estimator
+  construction occurs in the FTC composite, `AprilTagLocalizationTester`, and
+  `PinpointPodOffsetCalibrator`. Null solver config
+  and null mount silently mean defaults/identity. Validation says `> 0` while rejecting values
+  `<= 1e-9`, and solve-time fallback can silently replace an already accepted tiny softness value.
+- **Selected solver ownership and composition:** make `FixedTagFieldPoseSolver.Config` final with a
+  private constructor and retain only `defaults()` plus raw `copy()`. Make
+  `FixedTagFieldPoseSolver(Config)` the public validated, immutable, side-effect-free policy owner;
+  its instance `solve(observations, layout, cameraMount)` replaces the static config-bearing solve.
+  It requires explicit nonnull Config and mount—`Config.defaults()` and
+  `CameraMountConfig.identity()` are the visible baseline choices—and gives a compact configuration
+  `toString()`. Carry this configured solver, never a mutable Config, across completed guidance/
+  spatial boundaries. The Drive Guidance stage becomes
+  `aprilTagFieldPoseSolver(FixedTagFieldPoseSolver)`; custom-policy `AprilTagSpatialSolveLane` and
+  `SpatialSolveSet` paths likewise take the configured capability. Defaults construct one default
+  solver internally. This removes repeat validation and config drift without a public validator.
+- **Estimator config after composition:** `AprilTagPoseEstimator.Config` becomes a final data-only
+  bundle containing `FixedTagFieldPoseSolver.Config fieldPoseSolver`, finite
+  `maxDetectionAgeSec`, and immutable `CameraMountConfig cameraMount`. Retain its private
+  constructor, `defaults()`, and raw nested-config `copy()` only. That copy preserves a null nested
+  solver draft as null and independently copies a nonnull one; it validates neither case. Remove
+  inheritance, all mutating withers, `toSolverConfig()`, and public validation/copy variants.
+  Estimator construction requires a
+  nonnull Config, validates/captures age, mount, and nested solver before touching the sensor or
+  layout, constructs its configured solver once, snapshots the layout, and reuses the solver per
+  frame. `FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig` keeps its distinct
+  mount-free owner slice for CONFIG-04; its forced conversion becomes three assignments (solver
+  copy, age, active vision-lane mount). Phoenix targeting accepts data-only solver Config, constructs
+  one solver at its constructor boundary, and passes that capability to later aim plans. Tool/test
+  withers migrate to direct fields. No compatibility aliases remain.
+- **Solver numeric contract:** validate captured values with exact field/domain/value diagnostics:
+  `maxAbsBearingRad` finite `[0, pi]` where zero disables; observation field-pose position delta
+  finite `>= 0`; its heading delta finite `[0, pi]`; `rangeSoftnessInches` finite `> 0` and used
+  exactly; `minObservationWeight` finite `[0, 1]`; outlier position finite `> 0`; outlier heading
+  finite `(0, pi]`; both consistency scales finite `> 0`; and maximum outside plausible region
+  finite `>= 0`. Estimator age is finite `>= 0`. Remove the solve-time softness default and the
+  plausible-region quality epsilon that currently changes an accepted tiny-positive authored
+  tolerance; keep runtime consensus/tie guards that do not substitute configuration. `Region2d`
+  remains a documented stable, side-effect-free policy
+  collaborator (the maintained field region is immutable); Config copies retain that reference,
+  and a non-finite signed-distance result rejects the solve rather than publishing a pose/quality.
+  After combination, the configured solver also returns `Result.none()` unless every published
+  pose, range, quality, accepted-weight/fraction, and aggregate numeric result is finite, with
+  range nonnegative and fractions/quality inside their documented bounds. Finite authored
+  observations can still overflow an aggregate sum, so this final truth check belongs at the
+  solver boundary.
+- **Ordinary call shapes and student decisions:** direct vision remains one flat owner config:
+  `cfg.hardwareName = "limelight"` (physical identity), `cfg.pipelineIndex = 0` (reviewed device
+  meaning), `cfg.cameraMount = solvedMount` (rig geometry), then
+  `new FtcLimelightAprilTagVisionLane(hardwareMap, cfg)`. A selectable tester adds the distinct
+  delayed-acquisition decision with `AprilTagVisionLaneFactories.limelight(cfg)`. Ordinary FTC
+  localization remains `locCfg.aprilTags.fieldPoseSolver.rangeSoftnessInches = 30.0`, followed by
+  the existing localization-lane constructor; robot code calls no validator. An advanced shared
+  policy is explicit once: author `FixedTagFieldPoseSolver.Config solve`, assign it into
+  `AprilTagPoseEstimator.Config.fieldPoseSolver`, and pass
+  `new FixedTagFieldPoseSolver(solve)` to Drive Guidance. Fixed/dynamic mount and direct spatial
+  lane/ordered solve-set variants remain because their evidence and composition lifecycles differ.
+- **Rejected alternatives:** retaining estimator inheritance preserves a false is-a relationship
+  and Java virtual/static leakage; duplicating twelve solver fields preserves manual drift; putting
+  a configured solver inside Config makes setup data retain a capability; public validate or
+  validated-copy layers create multiple caller choices and validate/use races; making raw copy
+  validate lets an inactive profile draft block a different backend. Positional constructors,
+  staged builders, and immutable wither forests add many concepts without preventing a dependent
+  combination. Generic base-config composition makes an ordinary AprilTag author learn the advanced
+  multipurpose owner. Scalar deferred factories hide real settings. A backend enum/facade duplicates
+  robot-owned selection and creates inactive-branch ambiguity. Documentation-only changes leave
+  mutable SDK-library drift, silent defaults, wrong error ownership, and repeated validation.
+  Validating only the deferred factories is the smallest local patch but still leaves the mutable
+  library, processor-before-validation order, false solver/estimator inheritance, and duplicate
+  public paths. Conversely, validating or deep-copying public raw drafts is broader at the wrong
+  boundary because an inactive backend could block profile capture. The selected private active
+  snapshots plus one configured solver add implementation work only where those owners can close
+  the proven misuse.
+- **Compatibility and bounded migrations:** this intentionally breaks only the redundant/unsafe
+  public paths named above and updates every in-repository caller, API test, Javadoc, and guide in
+  one replacement. Source calls to the removed exact webcam constructor continue to bind to the
+  varargs constructor after recompilation. Existing Config-based ordinary vision calls remain the
+  same. Solver-policy callers migrate from normalizers/`toSolverConfig()` to composition and the
+  configured solver. Preserve VISION-01/02 lifecycle, freshness, output-unit, and cleanup contracts;
+  do not add detector drawing/decimation/family tuning without a caller.
+- **Dependency and one-item boundary:** CONFIG-03 owns webcam/Limelight acquisition Configs, the
+  deferred backend factories, mutable FTC tag-library capture, the fixed-tag solver, and the raw
+  AprilTag pose-estimator Config needed to close those boundaries. CONFIG-04 still owns complete
+  Pinpoint/composite-localization preflight and its ignored/inactive config answers; invalid nested
+  solver config passed through today's outer lane may therefore still be discovered after Pinpoint
+  hardware construction until CONFIG-04. CONFIG-06 owns tester constructor/config forests;
+  CONFIG-09 owns Phoenix backend selection/profile decomposition and cross-owner preflight. No
+  CONFIG-03 promise can retroactively prevent effects from an independently constructed predictor
+  or vision owner. Exposure, physical pipeline contents, mount calibration, field placement,
+  thresholds, polling quality, and image quality remain robot evidence.
+- **Completion evidence:** add field-distinguishing generic/specialized backend tests for every null,
+  finite/range boundary, exact error namespace/value, capture normalization, and zero processor/
+  portal/device effects; prove factory-time validation, description normalization, all-field
+  mutation isolation, independent repeated opens, and direct/factory current/custom library deep
+  isolation by mutating the source array, metadata vector, quaternion, and SDK library after active
+  capture. Prove raw Config copy preserves even an inactive borrowed library without validation;
+  prove invalid/duplicate/empty metadata diagnostics at the active boundary, non-INCH-to-INCH
+  physical equivalence, converted-position float-representability overflow rejection, the exact
+  near-unit quaternion boundary, and materially non-unit rejection. Preserve the existing deepest
+  partial-acquisition stop/close suppression tests. Reflection-lock the retained constructors/factories/
+  raw copies and removed scalar/export/exact-overload paths. For solver/estimator, cover every
+  numeric invalid/boundary, no tiny-positive softness or maximum-outside substitution,
+  post-construction mutation isolation,
+  private/final API shape, estimator nested deep copy, nonnull ownership, no sensor/layout access on
+  invalid construction, configured-solver sharing through fixed/dynamic spatial and guidance paths,
+  non-finite region and extreme-finite aggregate-overflow fail-closed behavior, and preserved
+  preference/outlier/plausibility/timestamp/cycle semantics. Include
+  `SelectableVisionTesterLifecycleTest` in the retained deferred-factory lifecycle evidence and
+  reflection-lock compact `toString()` coverage for every retained vision Config and the configured
+  solver. Update class/factory/sensor/Drive Guidance Javadocs and the maintained FTC vision,
+  AprilTag localization/practice, design, calibration, and recommended-robot guides; keep examples
+  05/06, CustomVision, Phoenix, and selectable testers compiling. Run focused tests, full TeamCode
+  tests/compiles, strict Javadocs/document links, API/caller/stale-symbol scans, and whitespace
+  checks. No robot run can prove these software ownership contracts; physical camera behavior
+  remains adopting-robot verification.
+- **Decision record (Gate 1):** **Ready for explicit Gate 1 approval.** At that decision stop, no
+  Java, test, Javadoc, guide, or example implementation had started.
+- **Gate 1 approval (2026-08-16):** the user approved the exact design by replying: **“Approve
+  CONFIG-03 owner-local vision snapshots, canonical FTC AprilTag library capture, configured
+  fixed-tag solver, estimator composition, and redundant API removal design.”** CONFIG-03 then
+  moved to **In progress** on the same branch; this approval authorized Gate 2 implementation of
+  CONFIG-03 only and did not start CONFIG-04 or authorize publication.
+- **Gate 2 implementation (2026-08-16):** the completed unstaged diff contains exactly **42 files**:
+  **21 production Java files, 14 test files, six maintained Markdown guides, and this
+  tracker**. The vision edge now validates and snapshots each active flat webcam/Limelight Config
+  before device or processor effects; deferred factories capture independently and create fresh
+  owners; webcam owners privately canonicalize current/custom FTC tag metadata to inches with
+  exact ID/order/provenance, position, and near-unit quaternion checks. Raw Config copies remain
+  nonvalidating authoring copies, including the documented borrowed custom-library reference.
+  The redundant scalar factories, duplicate webcam constructor declaration, and four config-export
+  views are removed while the one direct and one delayed-acquisition path per backend remain.
+- **Configured-solver and estimator replacement (2026-08-16):**
+  `FixedTagFieldPoseSolver.Config` is now final/private-construction data with only `defaults()` and
+  raw `copy()`; `FixedTagFieldPoseSolver(Config)` validates once and exposes the reusable instance
+  solve capability. `AprilTagPoseEstimator.Config` now composes the nested solver Config, mount, and
+  freshness instead of inheriting solver policy. Guidance/spatial lanes carry the configured
+  solver, the estimator validates before sensor/layout access, and finite-domain, tiny-positive,
+  non-finite-region, and aggregate-output truth checks fail closed. Phoenix, the FTC localization
+  conversion, three tools, tests, Javadocs, and the six maintained guides use the replacement
+  vocabulary; CONFIG-04/06/09 ownership remains untouched.
+- **Automated verification (2026-08-16):** focused owner/configured-solver suites were exercised
+  throughout implementation. After independent review tightened direct/factory preflight and exact
+  diagnostics, the final three vision configuration/owner suites passed **48 tests / 0 failures /
+  0 errors / 0 skipped**. The exact final tree then passed
+  `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, and
+  `:TeamCode:phoenixJavadocs`: **178 suites / 1,645 tests / 0 failures / 0 errors / 0 skipped**.
+  Documentation-link coverage is included in that full suite. Output contains only the repository's
+  existing Java-8-on-JBR-21 and deprecation warnings.
+- **Independent review and static evidence (2026-08-16):** separate production/API,
+  docs/caller/tracker, solver, and vision reviews found no remaining blocker after the focused test
+  corrections. Static scans find no production use of the removed normalizers, estimator withers,
+  conversion helpers, Config-bearing guidance answer, static solver signature, scalar vision
+  factories, or config exports; the removed names remain only where reflection tests assert their
+  absence. `git diff --check` is clean apart from informational LF-to-CRLF notices, all seven new
+  files have clean whitespace/final newlines, and nothing is staged, committed, or pushed.
+- **Hardware and Android Studio audit point (2026-08-16):** CONFIG-03 is **Verifying** on
+  `codex/config-03-ftc-vision-apriltag-configuration`, based exactly on merged
+  `origin/master@6838000fb4538a6d384151f28b028a07c1f7f508`. Inspect (1) raw draft copy versus active
+  owner/factory capture, (2) FTC metadata unit/quaternion/order/provenance canonicalization, (3)
+  direct versus delayed resource ownership and the deliberately removed API paths, (4) configured
+  solver/estimator composition and fail-closed numeric behavior, and (5) the Phoenix/tool/guide
+  migrations and preserved CONFIG-04/06/09 boundary. Software cannot verify the physical camera
+  pipeline, mount calibration, field metadata, exposure/polling quality, or image quality; those
+  remain adopting-robot checks. Gate 2 deliberately stops with this 42-file diff unstaged. After
+  Android Studio review, publication requires one combined authorization naming this branch, push
+  URL `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target branch `master`.
+- **Gate 3 review and publication authorization (2026-08-16):** the user completed the Android
+  Studio review and replied with the exact combined authorization: **“CONFIG-03 looks good.
+  Authorize committing the reviewed CONFIG-03 diff on
+  codex/config-03-ftc-vision-apriltag-configuration, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** CONFIG-03 is **Done**. This authorizes staging only the reviewed 42-file diff,
+  committing it on the named branch, pushing it to the named origin, opening the pull request, and
+  merging it into `master`; it does not place CONFIG-04 research or implementation in that commit.
 
 ### CONFIG-04 - Pinpoint and composite localization configuration boundaries
 

@@ -37,10 +37,12 @@ public final class AprilTagPoseEstimatorTimestampTest {
                         solvedPose
                 ))
         );
+        AprilTagPoseEstimator.Config config = AprilTagPoseEstimator.Config.defaults();
+        config.maxDetectionAgeSec = 0.50;
         AprilTagPoseEstimator estimator = new AprilTagPoseEstimator(
                 clock -> retainedFrame,
                 new SimpleTagLayout().addPose(5, solvedPose),
-                AprilTagPoseEstimator.Config.defaults().withMaxDetectionAgeSec(0.50)
+                config
         );
 
         estimator.update(time.clock());
@@ -155,8 +157,8 @@ public final class AprilTagPoseEstimatorTimestampTest {
 
     private static AprilTagPoseEstimator estimator(AprilTagSensor sensor, Pose3d tagPose) {
         AprilTagPoseEstimator.Config config = AprilTagPoseEstimator.Config.defaults();
-        config.observationFieldPoseMaxDeltaInches = 1_000.0;
-        config.observationFieldPoseMaxDeltaHeadingRad = Math.PI;
+        config.fieldPoseSolver.observationFieldPoseMaxDeltaInches = 1_000.0;
+        config.fieldPoseSolver.observationFieldPoseMaxDeltaHeadingRad = Math.PI;
         return new AprilTagPoseEstimator(
                 sensor,
                 new SimpleTagLayout().addPose(5, tagPose),

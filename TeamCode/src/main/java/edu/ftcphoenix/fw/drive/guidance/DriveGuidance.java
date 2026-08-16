@@ -516,9 +516,9 @@ public final class DriveGuidance {
         AprilTagsOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
         /**
-         * Overrides the shared multi-tag field-pose solver config for fixed-tag solving.
+         * Supplies the configured multi-tag field-pose solver for fixed-tag solving.
          */
-        AprilTagsOnlyTuningStage<RETURN> aprilTagFieldPoseConfig(FixedTagFieldPoseSolver.Config cfg);
+        AprilTagsOnlyTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver);
 
         /**
          * Chooses what guidance outputs when the requested channels cannot be solved.
@@ -577,9 +577,9 @@ public final class DriveGuidance {
         AdaptiveTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
         /**
-         * Overrides the shared multi-tag field-pose solver config for fixed-tag solving.
+         * Supplies the configured multi-tag field-pose solver for fixed-tag solving.
          */
-        AdaptiveTuningStage<RETURN> aprilTagFieldPoseConfig(FixedTagFieldPoseSolver.Config cfg);
+        AdaptiveTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver);
 
         /**
          * Configures adaptive translation takeover hysteresis and blend timing, in inches/seconds.
@@ -617,7 +617,8 @@ public final class DriveGuidance {
         AprilTagSensor aprilTagSensor;
         CameraMountConfig cameraMount;
         double tagsMaxAgeSec = DriveGuidanceSpec.AprilTags.DEFAULT_MAX_AGE_SEC;
-        FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig = FixedTagFieldPoseSolver.Config.defaults();
+        FixedTagFieldPoseSolver aprilTagFieldPoseSolver =
+                new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults());
 
         AbsolutePoseEstimator poseEstimator;
         double poseMaxAgeSec = DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC;
@@ -650,7 +651,7 @@ public final class DriveGuidance {
                     s.aprilTagSensor,
                     s.cameraMount,
                     s.tagsMaxAgeSec,
-                    s.aprilTagFieldPoseConfig
+                    s.aprilTagFieldPoseSolver
             );
         }
 
@@ -684,9 +685,9 @@ public final class DriveGuidance {
             aprilTagsLaneIndex = nextLaneIndex++;
             if (solveSetBuilder == null) {
                 solveSetBuilder = SpatialSolveSet.builder()
-                        .aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolverConfig);
+                        .aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolver);
             } else {
-                solveSetBuilder.aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolverConfig);
+                solveSetBuilder.aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolver);
             }
         }
         if (solveSetBuilder == null) {
@@ -1076,7 +1077,8 @@ public final class DriveGuidance {
         s.aprilTagSensor = null;
         s.cameraMount = null;
         s.tagsMaxAgeSec = DriveGuidanceSpec.AprilTags.DEFAULT_MAX_AGE_SEC;
-        s.aprilTagFieldPoseConfig = FixedTagFieldPoseSolver.Config.defaults();
+        s.aprilTagFieldPoseSolver =
+                new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults());
         s.poseEstimator = null;
         s.poseMaxAgeSec = DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC;
         s.poseMinQuality = DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY;
@@ -1087,13 +1089,8 @@ public final class DriveGuidance {
         s.onLoss = DriveGuidanceSpec.LossPolicy.PASS_THROUGH;
     }
 
-    private static void setAprilTagFieldPoseConfig(State s, FixedTagFieldPoseSolver.Config cfg) {
-        s.aprilTagFieldPoseConfig = (cfg != null)
-                ? FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
-                cfg,
-                "DriveGuidance.solveWith().aprilTagFieldPoseConfig"
-        )
-                : FixedTagFieldPoseSolver.Config.defaults();
+    private static void setAprilTagFieldPoseSolver(State s, FixedTagFieldPoseSolver solver) {
+        s.aprilTagFieldPoseSolver = Objects.requireNonNull(solver, "solver");
     }
 
     private static abstract class ConfiguredTargetBuilder<SELF, AFTER_SOLVE> {
@@ -1466,8 +1463,8 @@ public final class DriveGuidance {
         }
 
         @Override
-        public AprilTagsOnlyTuningStage<RETURN> aprilTagFieldPoseConfig(FixedTagFieldPoseSolver.Config cfg) {
-            setAprilTagFieldPoseConfig(s, cfg);
+        public AprilTagsOnlyTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver) {
+            setAprilTagFieldPoseSolver(s, solver);
             return this;
         }
 
@@ -1534,8 +1531,8 @@ public final class DriveGuidance {
         }
 
         @Override
-        public AdaptiveTuningStage<RETURN> aprilTagFieldPoseConfig(FixedTagFieldPoseSolver.Config cfg) {
-            setAprilTagFieldPoseConfig(s, cfg);
+        public AdaptiveTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver) {
+            setAprilTagFieldPoseSolver(s, solver);
             return this;
         }
 

@@ -39,7 +39,7 @@ public final class AprilTagPoseEstimatorLayoutSnapshotTest {
         AprilTagPoseEstimator estimator = new AprilTagPoseEstimator(
                 new FixedFrameSensor(frame),
                 authored,
-                null
+                AprilTagPoseEstimator.Config.defaults()
         );
 
         assertEquals(1, authored.idsCalls);

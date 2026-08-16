@@ -362,6 +362,12 @@ The backend only changes which concrete AprilTag lane is created:
 - `Backend.WEBCAM` -> `FtcWebcamAprilTagVisionLane`
 - `Backend.LIMELIGHT` -> `FtcLimelightAprilTagVisionLane`
 
+The selected concrete owner validates and snapshots its full backend Config before device lookup;
+the inactive profile branch is not opened or treated as calibrated. Profile copies keep a custom
+FTC webcam tag library as borrowed draft data, while the active webcam owner canonicalizes its
+units and deep-snapshots its mutable metadata. Change the checked-in profile and restart the OpMode
+to adopt different metadata or solver tuning; neither is a live-tuning surface.
+
 That does not make the devices identical. A webcam portal may run its construction-time processor
 set concurrently; a Limelight runs one onboard pipeline and must confirm a fresh result after each
 requested change. Phoenix displays `vision.componentReadiness` and `vision.readinessReason` every
@@ -586,6 +592,11 @@ Phoenix treats localization as three different roles:
 - `CorrectedPoseEstimator` -> combines a predictor with one absolute correction source (`OdometryCorrectionFusionEstimator` or `OdometryCorrectionEkfEstimator`)
 
 That split keeps each extension at the role whose contract it satisfies.
+
+The raw AprilTag estimator composes camera freshness/mount data with a
+`FixedTagFieldPoseSolver.Config`. Phoenix targeting constructs its own configured
+`FixedTagFieldPoseSolver` from the same profile policy before building guidance plans. The two
+runtime owners therefore use the same authored policy without sharing a mutable Config.
 
 Other additions that fit this model include:
 
