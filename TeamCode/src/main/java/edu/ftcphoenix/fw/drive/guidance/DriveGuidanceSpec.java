@@ -75,11 +75,20 @@ public final class DriveGuidanceSpec {
 
         /**
          * Creates a robot-relative translation target captured from the translation control frame
-         * when guidance enables.
+         * when guidance enables. Both offsets must be finite; signed offsets are valid.
          */
         RobotRelativePoint(double forwardInches, double leftInches) {
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
+            this.forwardInches = requireFinite("forwardInches", forwardInches);
+            this.leftInches = requireFinite("leftInches", leftInches);
+        }
+
+        private static double requireFinite(String fieldName, double value) {
+            if (!Double.isFinite(value)) {
+                throw new IllegalArgumentException(
+                        "DriveGuidanceSpec.RobotRelativePoint." + fieldName
+                                + " must be finite, got " + value);
+            }
+            return value;
         }
     }
 

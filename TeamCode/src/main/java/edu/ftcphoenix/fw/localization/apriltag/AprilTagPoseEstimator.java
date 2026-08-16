@@ -7,6 +7,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -163,10 +164,20 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
     /**
      * Creates an AprilTag-only pose estimator that may use multiple visible fixed tags from the
      * same frame.
+     *
+     * <p>The estimator validates and snapshots {@code layout} during construction. Later mutation
+     * of an authored or borrowed source layout cannot change this estimator's trusted field
+     * facts.</p>
+     *
+     * @param tags shared AprilTag observation source
+     * @param layout fixed field-tag facts to validate and snapshot
+     * @param cfg estimator setup, or {@code null} for defaults
+     * @throws NullPointerException if {@code tags} or {@code layout} is null
+     * @throws IllegalArgumentException if the layout or estimator configuration is invalid
      */
     public AprilTagPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
         this.tags = Objects.requireNonNull(tags, "tags");
-        this.layout = Objects.requireNonNull(layout, "layout");
+        this.layout = TagLayouts.snapshot(Objects.requireNonNull(layout, "layout"));
         this.cfg = (cfg != null) ? cfg.validatedCopy("AprilTagPoseEstimator.Config") : Config.defaults();
         if (this.cfg.cameraMount == null) {
             this.cfg.cameraMount = CameraMountConfig.identity();

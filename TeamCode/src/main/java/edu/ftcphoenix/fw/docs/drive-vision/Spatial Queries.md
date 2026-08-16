@@ -107,16 +107,28 @@ SpatialQuery driveSide = SpatialQuery.from(spec);
 SpatialQuery telemetrySide = SpatialQuery.from(spec);
 ```
 
+The staged builders and `SpatialQuery.from(spec)` are the public construction paths. Named
+factories such as `References.relativeToTagPoint(...)`, `SpatialTargets.fieldHeading(...)`, and
+`RobotFrames.rigid(...)` validate finite authored coordinates, offsets, and angles where
+their meaning is known. Generic `Pose2d` and `Pose3d` values remain permissive because they also
+carry runtime observations and derived math; do not use `NaN` or infinity as a configuration
+sentinel.
+
 Create one stateful `SpatialQuery` per independent consumer and share the immutable
 `SpatialQuerySpec`. Each runtime owns its per-cycle result cache and explicit reset boundary. A
 repeated read in one cycle returns the same completed result; the cache is committed only after all
 frame and lane sampling succeeds.
 
-The objects supplied through the spec remain borrowed dependencies. `SpatialQuery.reset()` clears
-only that runtime query's cached result. It does not reset the spec's frame providers, solve lanes,
-sensors, estimators, or selected-tag policies, because those may also serve another query or a
-robot-owned targeting service. Reset those collaborators only through their actual composition-root
-owner when that owner's lifecycle requires it.
+Frame providers, solve lanes, sensors, estimators, and selected-tag policies supplied through the
+spec remain borrowed dependencies. An optional fixed `TagLayout` is different: the completed spec
+retains an immutable semantic snapshot, so later edits to a mutable `SimpleTagLayout` cannot change
+trusted field facts inside an existing query. Build a new spec/runtime when the field layout should
+change.
+
+`SpatialQuery.reset()` clears only that runtime query's cached result. It does not reset the
+borrowed collaborators, because they may also serve another query or a robot-owned targeting
+service. Reset those collaborators only through their actual composition-root owner when that
+owner's lifecycle requires it.
 
 `LoopClock.reset(...)` is separate again: it advances the cycle identity, which prevents any
 pre-reset result from being reused, but it does not call `SpatialQuery.reset()` or clear component
@@ -157,6 +169,11 @@ Phoenix therefore supports `TimeAwareSource<T>` for dynamic frames and camera mo
 historical lookup receives one `LoopTimestamp`, not a raw timestamp plus a reset epoch. Fixed frames
 use `RobotFrames.rigid(...)` or `TimeAwareSources.fixed(...)`. Current-only dynamic frames can use
 `RobotFrames.currentOnly(...)`, but moving sensors should eventually use a history-backed source.
+
+Fixed-frame factories validate their authored pose immediately. A live `Source` or
+`TimeAwareSource` is runtime evidence and is not sampled during construction. Its owner must publish
+truthful finite poses; a non-finite dynamic frame does not currently have a general framework-wide
+"unavailable" interpretation.
 
 A source owner that receives age instead of an absolute Phoenix timestamp anchors the measurement
 once:

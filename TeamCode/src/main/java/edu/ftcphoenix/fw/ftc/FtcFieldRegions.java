@@ -1,7 +1,7 @@
 package edu.ftcphoenix.fw.ftc;
 
 import edu.ftcphoenix.fw.spatial.AxisAlignedBoxRegion2d;
-import edu.ftcphoenix.fw.spatial.ConvexRegion2d;
+import edu.ftcphoenix.fw.spatial.Region2d;
 
 /**
  * FTC field-region helpers shared by localization, guidance, and testers.
@@ -25,7 +25,7 @@ public final class FtcFieldRegions {
     /**
      * Returns the standard full FTC field floor footprint.
      */
-    public static ConvexRegion2d fullField() {
+    public static Region2d fullField() {
         return fullFieldWithMargin(0.0);
     }
 
@@ -36,7 +36,7 @@ public final class FtcFieldRegions {
      * <p>This is useful when a caller wants a small tolerance band for plausibility gating rather
      * than a perfectly hard wall at the official boundary.</p>
      */
-    public static ConvexRegion2d fullFieldWithMargin(double marginInches) {
+    public static Region2d fullFieldWithMargin(double marginInches) {
         if (!Double.isFinite(marginInches)) {
             throw new IllegalArgumentException("marginInches must be finite");
         }
@@ -49,4 +49,3 @@ public final class FtcFieldRegions {
         return new AxisAlignedBoxRegion2d(-h, h, -h, h);
     }
 }
-

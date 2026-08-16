@@ -423,7 +423,23 @@ public final class FtcGameTagLayout implements TagLayout {
         Mat3 rFieldToTag = rotationFromQuaternion(q);
         Mat3.YawPitchRoll ypr = Mat3.toYawPitchRoll(rFieldToTag);
 
+        requireFiniteMetadataField(meta.id, "fieldToTagPose.xInches", xInches);
+        requireFiniteMetadataField(meta.id, "fieldToTagPose.yInches", yInches);
+        requireFiniteMetadataField(meta.id, "fieldToTagPose.zInches", zInches);
+        requireFiniteMetadataField(meta.id, "fieldToTagPose.yawRad", ypr.yawRad);
+        requireFiniteMetadataField(meta.id, "fieldToTagPose.pitchRad", ypr.pitchRad);
+        requireFiniteMetadataField(meta.id, "fieldToTagPose.rollRad", ypr.rollRad);
+
         return new Pose3d(xInches, yInches, zInches, ypr.yawRad, ypr.pitchRad, ypr.rollRad);
+    }
+
+    private static double requireFiniteMetadataField(int tagId, String fieldName, double value) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(
+                    "AprilTag metadata for id=" + tagId + " " + fieldName
+                            + " must be finite, got " + value);
+        }
+        return value;
     }
 
     private static void validateRequestedIds(Set<Integer> requested, Set<Integer> sourceIds) {
@@ -442,6 +458,10 @@ public final class FtcGameTagLayout implements TagLayout {
         HashSet<Integer> ids = new HashSet<Integer>();
         for (AprilTagMetadata meta : library.getAllTags()) {
             if (meta != null) {
+                if (meta.id < 0) {
+                    throw new IllegalArgumentException(
+                            "AprilTag metadata id must be non-negative, got " + meta.id);
+                }
                 ids.add(meta.id);
             }
         }

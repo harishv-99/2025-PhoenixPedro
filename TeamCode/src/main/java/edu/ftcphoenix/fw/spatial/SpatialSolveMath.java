@@ -48,8 +48,14 @@ final class SpatialSolveMath {
                                                  double desiredFieldHeadingRad,
                                                  double quality,
                                                  LoopTimestamp timestamp) {
-        Pose2d fieldToFacingFrame = fieldToRobot.then(robotToFacingFrame);
-        return new FacingSolution(Pose2d.wrapToPi(desiredFieldHeadingRad - fieldToFacingFrame.headingRad),
+        double fieldToFacingFrameHeadingRad = wrappedHeadingSumRad(
+                fieldToRobot.headingRad,
+                robotToFacingFrame.headingRad
+        );
+        return new FacingSolution(wrappedHeadingErrorRad(
+                desiredFieldHeadingRad,
+                fieldToFacingFrameHeadingRad
+        ),
                 quality, timestamp);
     }
 
@@ -70,7 +76,10 @@ final class SpatialSolveMath {
                                                  double desiredRobotHeadingRad,
                                                  double quality,
                                                  LoopTimestamp timestamp) {
-        return new FacingSolution(Pose2d.wrapToPi(desiredRobotHeadingRad - robotToFacingFrame.headingRad),
+        return new FacingSolution(wrappedHeadingErrorRad(
+                desiredRobotHeadingRad,
+                robotToFacingFrame.headingRad
+        ),
                 quality, timestamp);
     }
 
@@ -83,5 +92,29 @@ final class SpatialSolveMath {
                 facingFrameToPoint.xInches,
                 facingFrameToPoint.yInches
         )), quality, timestamp);
+    }
+
+    /**
+     * Adds two finite or runtime heading values without overflowing before angle wrapping.
+     *
+     * <p>Each operand is wrapped separately before addition. Non-finite runtime evidence continues
+     * to propagate as {@code NaN}; validation remains at the semantic authoring boundary.</p>
+     */
+    static double wrappedHeadingSumRad(double firstHeadingRad, double secondHeadingRad) {
+        return Pose2d.wrapToPi(
+                Pose2d.wrapToPi(firstHeadingRad) + Pose2d.wrapToPi(secondHeadingRad)
+        );
+    }
+
+    /**
+     * Computes {@code desired - current} without overflowing before angle wrapping.
+     *
+     * <p>The result uses Phoenix's canonical {@code (-pi, +pi]} interval, including positive pi
+     * for an exact antipode.</p>
+     */
+    static double wrappedHeadingErrorRad(double desiredHeadingRad, double currentHeadingRad) {
+        return Pose2d.wrapToPi(
+                Pose2d.wrapToPi(desiredHeadingRad) - Pose2d.wrapToPi(currentHeadingRad)
+        );
     }
 }

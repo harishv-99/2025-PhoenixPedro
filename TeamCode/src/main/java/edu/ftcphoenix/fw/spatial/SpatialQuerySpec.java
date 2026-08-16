@@ -3,6 +3,7 @@ package edu.ftcphoenix.fw.spatial;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.field.TagLayouts;
 
 /**
  * Immutable, controller-neutral description of a spatial relationship to solve.
@@ -20,7 +21,8 @@ import edu.ftcphoenix.fw.field.TagLayout;
  * <p>The staged builder intentionally does not expose {@code build()} until a target and a solve
  * set are chosen. Use {@link SpatialQuery#builder()} for the common runtime source. Use this spec
  * when you want to create multiple independent runtime queries with the same immutable
- * description.</p>
+ * description. If supplied, the fixed tag layout is validated and snapshotted when
+ * {@code build()} completes.</p>
  */
 public final class SpatialQuerySpec {
 
@@ -30,11 +32,11 @@ public final class SpatialQuerySpec {
     public final SpatialSolveSet solveSet;
     public final TagLayout fixedAprilTagLayout;
 
-    public SpatialQuerySpec(TranslationTarget2d translationTarget,
-                            FacingTarget2d facingTarget,
-                            SpatialControlFrames controlFrames,
-                            SpatialSolveSet solveSet,
-                            TagLayout fixedAprilTagLayout) {
+    private SpatialQuerySpec(TranslationTarget2d translationTarget,
+                             FacingTarget2d facingTarget,
+                             SpatialControlFrames controlFrames,
+                             SpatialSolveSet solveSet,
+                             TagLayout fixedAprilTagLayout) {
         if (translationTarget == null && facingTarget == null) {
             throw new IllegalArgumentException("SpatialQuerySpec needs translateTo(...), faceTo(...), or both");
         }
@@ -45,7 +47,9 @@ public final class SpatialQuerySpec {
         if (solveSet.size() <= 0) {
             throw new IllegalArgumentException("SpatialQuerySpec requires at least one solve lane");
         }
-        this.fixedAprilTagLayout = fixedAprilTagLayout;
+        this.fixedAprilTagLayout = fixedAprilTagLayout != null
+                ? TagLayouts.snapshot(fixedAprilTagLayout)
+                : null;
     }
 
     /**
@@ -90,7 +94,8 @@ public final class SpatialQuerySpec {
         TranslationTargetStage controlFrames(SpatialControlFrames controlFrames);
 
         /**
-         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag
+         * geometry. The layout is validated and snapshotted when {@code build()} completes.
          */
         TranslationTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
 
@@ -115,7 +120,8 @@ public final class SpatialQuerySpec {
         FacingTargetStage controlFrames(SpatialControlFrames controlFrames);
 
         /**
-         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag
+         * geometry. The layout is validated and snapshotted when {@code build()} completes.
          */
         FacingTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
 
@@ -135,7 +141,8 @@ public final class SpatialQuerySpec {
         BothTargetStage controlFrames(SpatialControlFrames controlFrames);
 
         /**
-         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag
+         * geometry. The layout is validated and snapshotted when {@code build()} completes.
          */
         BothTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
 
@@ -150,7 +157,8 @@ public final class SpatialQuerySpec {
      */
     public interface ReadyStage {
         /**
-         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag
+         * geometry. The layout is validated and snapshotted when {@code build()} completes.
          */
         ReadyStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
 

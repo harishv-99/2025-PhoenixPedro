@@ -21,6 +21,9 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
  * <em>geometry</em>, not robot behavior. The same reference can later be used to translate,
  * aim, query readiness, or drive telemetry.</p>
  *
+ * <p>Every authored coordinate, offset, and heading supplied here must be finite. Signed offsets,
+ * negative field coordinates, and unnormalized finite headings are valid.</p>
+ *
  * <h2>Guiding principles</h2>
  * <ul>
  *   <li><b>One obvious geometry story:</b> references describe field-fixed points / frames,
@@ -63,9 +66,11 @@ public final class References {
         /**
          * Creates a per-tag point offset in tag-local forward/left coordinates.
          */
-        public TagPointOffset(double forwardInches, double leftInches) {
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
+        private TagPointOffset(double forwardInches, double leftInches) {
+            this.forwardInches = SpatialValidation.requireFinite(
+                    "TagPointOffset.forwardInches", forwardInches);
+            this.leftInches = SpatialValidation.requireFinite(
+                    "TagPointOffset.leftInches", leftInches);
         }
 
         /**
@@ -88,10 +93,13 @@ public final class References {
         /**
          * Creates a per-tag frame offset in tag-local forward/left/heading coordinates.
          */
-        public TagFrameOffset(double forwardInches, double leftInches, double headingRad) {
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
-            this.headingRad = headingRad;
+        private TagFrameOffset(double forwardInches, double leftInches, double headingRad) {
+            this.forwardInches = SpatialValidation.requireFinite(
+                    "TagFrameOffset.forwardInches", forwardInches);
+            this.leftInches = SpatialValidation.requireFinite(
+                    "TagFrameOffset.leftInches", leftInches);
+            this.headingRad = SpatialValidation.requireFinite(
+                    "TagFrameOffset.headingRad", headingRad);
         }
 
         /**
@@ -388,7 +396,10 @@ public final class References {
             }
             Pose3d fieldToTag = layout.getFieldToTagPose(tf.tagId);
             return fieldToTag != null
-                    ? fieldToTag.toPose2d().then(new Pose2d(tf.forwardInches, tf.leftInches, tf.headingRad))
+                    ? composeFieldToTagFrame(
+                            fieldToTag,
+                            new Pose2d(tf.forwardInches, tf.leftInches, tf.headingRad)
+                    )
                     : null;
         }
         if (ref instanceof SelectedTagFrameRef) {
@@ -400,10 +411,25 @@ public final class References {
             Pose3d fieldToTag = layout.getFieldToTagPose(tagId);
             Pose2d tagToFrame = sf.lookup.tagToFrame(tagId);
             return (fieldToTag != null && tagToFrame != null)
-                    ? fieldToTag.toPose2d().then(tagToFrame)
+                    ? composeFieldToTagFrame(fieldToTag, tagToFrame)
                     : null;
         }
         return null;
+    }
+
+    private static Pose2d composeFieldToTagFrame(Pose3d fieldToTag, Pose2d tagToFrame) {
+        Pose2d fieldToTag2d = fieldToTag.toPose2d();
+        Pose2d fieldToFrameTranslation = fieldToTag2d.then(
+                new Pose2d(tagToFrame.xInches, tagToFrame.yInches, 0.0)
+        );
+        return new Pose2d(
+                fieldToFrameTranslation.xInches,
+                fieldToFrameTranslation.yInches,
+                SpatialSolveMath.wrappedHeadingSumRad(
+                        fieldToTag2d.headingRad,
+                        tagToFrame.headingRad
+                )
+        );
     }
 
     static Pose2d directTagToPoint(ReferencePoint2d ref, int tagId) {
@@ -486,8 +512,10 @@ public final class References {
         private final double leftInches;
 
         FixedPointLookup(double forwardInches, double leftInches) {
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
+            this.forwardInches = SpatialValidation.requireFinite(
+                    "selectedTagPoint.forwardInches", forwardInches);
+            this.leftInches = SpatialValidation.requireFinite(
+                    "selectedTagPoint.leftInches", leftInches);
         }
 
         /**
@@ -505,9 +533,12 @@ public final class References {
         private final double headingRad;
 
         FixedFrameLookup(double forwardInches, double leftInches, double headingRad) {
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
-            this.headingRad = headingRad;
+            this.forwardInches = SpatialValidation.requireFinite(
+                    "selectedTagFrame.forwardInches", forwardInches);
+            this.leftInches = SpatialValidation.requireFinite(
+                    "selectedTagFrame.leftInches", leftInches);
+            this.headingRad = SpatialValidation.requireFinite(
+                    "selectedTagFrame.headingRad", headingRad);
         }
 
         /**
@@ -532,7 +563,12 @@ public final class References {
                 if (id == null || offset == null) {
                     throw new IllegalArgumentException("offsetsByTag must not contain null keys or values");
                 }
-                copy.put(normalizeTagId(id), offset);
+                int normalizedId = normalizeTagId(id);
+                SpatialValidation.requireFinite(
+                        "offsetsByTag[" + normalizedId + "].forwardInches", offset.forwardInches);
+                SpatialValidation.requireFinite(
+                        "offsetsByTag[" + normalizedId + "].leftInches", offset.leftInches);
+                copy.put(normalizedId, offset);
             }
             for (Integer id : selection.candidateIds()) {
                 if (!copy.containsKey(id)) {
@@ -565,7 +601,14 @@ public final class References {
                 if (id == null || offset == null) {
                     throw new IllegalArgumentException("offsetsByTag must not contain null keys or values");
                 }
-                copy.put(normalizeTagId(id), offset);
+                int normalizedId = normalizeTagId(id);
+                SpatialValidation.requireFinite(
+                        "offsetsByTag[" + normalizedId + "].forwardInches", offset.forwardInches);
+                SpatialValidation.requireFinite(
+                        "offsetsByTag[" + normalizedId + "].leftInches", offset.leftInches);
+                SpatialValidation.requireFinite(
+                        "offsetsByTag[" + normalizedId + "].headingRad", offset.headingRad);
+                copy.put(normalizedId, offset);
             }
             for (Integer id : selection.candidateIds()) {
                 if (!copy.containsKey(id)) {
@@ -590,8 +633,8 @@ public final class References {
         final double yInches;
 
         FieldPointRef(double xInches, double yInches) {
-            this.xInches = xInches;
-            this.yInches = yInches;
+            this.xInches = SpatialValidation.requireFinite("fieldPoint.xInches", xInches);
+            this.yInches = SpatialValidation.requireFinite("fieldPoint.yInches", yInches);
         }
 
         /**
@@ -609,9 +652,9 @@ public final class References {
         final double headingRad;
 
         FieldFrameRef(double xInches, double yInches, double headingRad) {
-            this.xInches = xInches;
-            this.yInches = yInches;
-            this.headingRad = headingRad;
+            this.xInches = SpatialValidation.requireFinite("fieldFrame.xInches", xInches);
+            this.yInches = SpatialValidation.requireFinite("fieldFrame.yInches", yInches);
+            this.headingRad = SpatialValidation.requireFinite("fieldFrame.headingRad", headingRad);
         }
 
         /**
@@ -630,8 +673,10 @@ public final class References {
 
         TagPointRef(int tagId, double forwardInches, double leftInches) {
             this.tagId = tagId;
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
+            this.forwardInches = SpatialValidation.requireFinite(
+                    "relativeToTagPoint.forwardInches", forwardInches);
+            this.leftInches = SpatialValidation.requireFinite(
+                    "relativeToTagPoint.leftInches", leftInches);
         }
 
         /**
@@ -651,9 +696,12 @@ public final class References {
 
         TagFrameRef(int tagId, double forwardInches, double leftInches, double headingRad) {
             this.tagId = tagId;
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
-            this.headingRad = headingRad;
+            this.forwardInches = SpatialValidation.requireFinite(
+                    "relativeToTagFrame.forwardInches", forwardInches);
+            this.leftInches = SpatialValidation.requireFinite(
+                    "relativeToTagFrame.leftInches", leftInches);
+            this.headingRad = SpatialValidation.requireFinite(
+                    "relativeToTagFrame.headingRad", headingRad);
         }
 
         /**
@@ -709,8 +757,10 @@ public final class References {
 
         FramePointRef(ReferenceFrame2d frame, double forwardInches, double leftInches) {
             this.frame = frame;
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
+            this.forwardInches = SpatialValidation.requireFinite(
+                    "framePoint.forwardInches", forwardInches);
+            this.leftInches = SpatialValidation.requireFinite(
+                    "framePoint.leftInches", leftInches);
         }
 
         /**

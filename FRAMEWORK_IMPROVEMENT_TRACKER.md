@@ -172,7 +172,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 85 | CTRL-02 | Systematic targets, setpoints, and output control | Done | The reviewed systematic motion-control grammar, truthful vocabulary and capabilities, synchronized callers/docs, automated verification, and publication authorization are complete. |
 | 86 | TUNE-03 | Unified standard-control experiments and tuning | Done | Adapt TUNE-02's fresh-Plant Panels workflow to CTRL-02's typed software controls and FTC controller shapes, add truthful velocity/position experiment metrics, and complete the mandatory legacy PIDF removal gate. |
 | 87 | CONFIG-02 | Core configuration ownership contract | Done | The reviewed owner-local validation, bounded controller math, synchronized guidance, automated verification, and destination-specific publication authorization are complete. |
-| 88 | SPATIAL-01 | Finite authored spatial geometry | Proposed | Reject non-finite authored mounts, frames, references, targets, and field layouts at their semantic construction boundaries. |
+| 88 | SPATIAL-01 | Finite authored spatial geometry | Done | The reviewed finite authored-geometry, immutable-layout, dormant-API replacement, rectangle-in-box, and frozen heading-selection implementation is complete and authorized for publication. |
 | 89 | MATH-01 | Finite interpolation calibration tables | Proposed | Require every authored interpolation knot and value to be finite across the supported table construction paths. |
 | 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Proposed | Give each FTC vision and AprilTag owner one validated defensive configuration boundary before deferred open or resource acquisition. |
 | 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Proposed | Validate and snapshot Pinpoint, absolute-pose, fusion, and composite-lane configuration before hardware or estimator effects. |
@@ -17251,51 +17251,370 @@ writer, and explicit lifecycle ownership.
 
 ### SPATIAL-01 - Finite authored spatial geometry
 
-- **Status and intake boundary (2026-08-15):** **Proposed and blocking spatial examples.** The fixed-
-  geometry AprilTag curriculum requires authored camera, control, target, and field facts to fail at
-  authoring rather than later as an unavailable solve or non-finite drive command. No geometry API
-  or runtime observation behavior is changed by this intake.
-- **Confirmed failure surface:** `CameraMountConfig` accepts non-finite six-degree extrinsics;
-  numeric `References` point/frame/offset factories accept non-finite components;
-  `RobotFrames.rigid(...)` and fixed `SpatialControlFrames` accept non-finite poses;
-  `SpatialTargets` accepts non-finite field/tag target values; and `SimpleTagLayout` can retain a
-  non-finite field pose. `FtcGameTagLayout` can also convert malformed SDK metadata without a finite
-  boundary check. These values can propagate to a nominally present solution, an unexplained no-
-  solution result, or a later drive-source finite-value failure.
-- **Region/footprint gap:** authored spatial geometry also includes `AxisAlignedBoxRegion2d`,
-  `CircleRegion2d`, `ConvexPolygonRegion2d`, `CircleFootprint2d`, `RectangleFootprint2d`, and named
-  points in `RobotGeometry2d`. Their coordinates and dimensions are not comprehensively finite-
-  checked; the circle/rectangle constructors silently apply `Math.max(0, ...)`, which still retains
-  `NaN` and hides negative authored dimensions instead of reporting them.
-- **Truth boundary:** authored configuration must be finite in Phoenix's canonical inches/radians
-  vocabulary. Runtime sensor observations may still be absent or non-finite and must follow their
-  existing unavailable/fail-closed semantics; this item must not turn observation loss into a
-  construction exception. Preserve signed offsets, unnormalized finite angles, identity mounts,
-  and empty custom layouts where currently meaningful.
-- **Leading hypothesis:** validate at the narrow semantic constructors/factories that know a value is
-  authored: `CameraMountConfig`, all numeric `References` paths and offset values,
-  `RobotFrames.rigid`, fixed `SpatialControlFrames`, `SpatialTargets`, `SimpleTagLayout`, and the FTC
-  game-layout conversion boundary, plus every maintained region/footprint/robot-geometry authoring
-  path. Require finite coordinates; Gate 1 must decide explicitly whether negative physical
-  dimensions remain documented normalization or become fail-fast, while preserving zero where
-  meaningful. Add one explicit immutable snapshot facility for retained
-  `TagLayout` values only if the complete owner audit confirms the current mutable-layout alias can
-  drift in multiple long-lived consumers; do not copy through an undocumented concrete cast.
-- **Alternatives rejected at intake:** generic validation in `Pose2d`/`Pose3d` would also reject
-  runtime evidence values without semantic context. A new quantity/units system adds broad Java
-  ceremony and still accepts or must separately reject non-finite values. A documentation warning
-  preserves delayed failures. Plausibility ranges for field size, mount distance, or angle are
-  robot/game facts and must not be invented by the reusable framework. Polygon convexity, self-
-  intersection, degeneracy cleanup, and broader plausibility rules are separate geometry questions
-  and must not expand this finite-authored-value item.
-- **Bounded future scope and completion evidence:** no 3D aiming framework, moving-turret history,
-  localization fusion policy, or example robot belongs here. Test every numeric slot with `NaN` and
-  both infinities, atomic layout rejection, fixed-frame inheritance, map/selected-tag paths, finite
-  negative offsets, and direct-versus-localization equivalence for valid geometry. Synchronize
-  Spatial Queries, Drive Guidance, AprilTag localization, and affected Javadocs; run full software
-  verification and stale-construction scans. Physical mount measurements remain adopting-robot
-  evidence.
-- **Decision record:** _Pending. No implementation started._
+- **Gate 1 research start (2026-08-15):** SPATIAL-01 is the sole active item on
+  `codex/spatial-01-finite-authored-geometry`, based exactly on merged
+  `origin/master@e5e24bb04c4373c6b8dc8c395499db1f1d00aeb7`. This gate is limited to source,
+  caller, construction-path, documentation, failure-path, and simplicity analysis plus this tracker
+  record. No framework, Phoenix, tool, example, Javadoc, or guide implementation has started.
+- **Gate 1 scope reopening (2026-08-15):** the initial audit selected removal of an unproved
+  dormant spatial family, but the user then supplied a concrete curriculum need for quick, accurate
+  parking within a rectangular zone. Gate 1 was reopened to retain only the smallest truthful
+  parking geometry while continuing the finite-value, layout-snapshot, and duplicate-construction
+  decisions below. No implementation had started at that reopening.
+- **Heading-choice reopening (2026-08-15):** after the rectangle-in-box design reached Ready, the
+  user identified that a centered non-square robot can still extend outside a square at an arbitrary
+  heading and asked for either one required heading or a set of acceptable headings. Gate 1 was
+  returned to **Researching** only for the smallest heading-target/selection composition; the
+  already-selected finite-value, layout-snapshot, and manual shared-box boundaries remained
+  unchanged. No implementation had started at that reopening.
+- **Confirmed failure paths:** authored non-finite values currently enter the proven stack through
+  `CameraMountConfig`; every numeric `References` point/frame/offset path; fixed
+  `RobotFrames`/`SpatialControlFrames`; `SpatialTargets`; Drive Guidance's robot-relative point;
+  `AxisAlignedBoxRegion2d`; `SimpleTagLayout`; and FTC-library conversion in `FtcGameTagLayout`.
+  Depending on the path, the value is retained, reported later as no solution, or propagated through
+  a nominal spatial solution toward Drive Guidance command evaluation.
+- **Retained-layout defect:** `SimpleTagLayout` is intentionally mutable, while
+  `SpatialQuerySpec`, Drive Guidance, `AprilTagPoseEstimator`, the FTC composite localization lane,
+  four maintained localization/calibration tools, and Phoenix profile/targeting paths can retain a
+  supplied `TagLayout`. A caller mutation can therefore change fixed field facts after owner
+  construction. Copying only known concrete implementations would leave custom layouts unsafe and
+  create an undocumented cast-based contract.
+- **Caller audit:** protected-core production paths are direct `SpatialQuery`,
+  `DriveGuidance`/`DriveGuidanceEvaluator`, `GoToPoseTasks`, and `AprilTagPoseEstimator` plus the
+  stateless `FixedTagFieldPoseSolver`. FTC edges are `FtcGameTagLayout`, `FtcFieldRegions`, and
+  `FtcOdometryAprilTagLocalizationLane`. Phoenix passes field geometry through `PhoenixProfile`,
+  `PhoenixRobot`, `PhoenixReadiness`, `PhoenixTargeting`, and its tester registration. The retained
+  tool paths are `CameraMountCalibrator`, `PinpointPodOffsetCalibrator`,
+  `AprilTagLocalizationTester`, and `PinpointAprilTagFusionLocalizationTester`. The maintained
+  `robots.examples` starter/Pedro examples do not directly author this geometry; disabled flat
+  examples 05 and 06 use the existing Camera Mount, References, and Drive Guidance paths and will
+  inherit leaf validation without being rewritten before EXAMPLE-04.
+- **Dormant-family audit:** fourteen public types--`RobotFootprint2d`, `CircleFootprint2d`,
+  `RectangleFootprint2d`, `RobotGeometry2d`, `RobotZone2d`, `RobotZones2d`, `ZoneLatch`,
+  `RobotHeading2d`, `RobotHeadings2d`, `HeadingLatch`, `CircleRegion2d`,
+  `ConvexPolygonRegion2d`, `ConvexRegions2d`, and the marker `ConvexRegion2d`--total 1,140 physical
+  source lines but have no maintained behavioral adopter, focused test, or current guide. Outside
+  their self/Javadoc links, the only maintained reference is `FtcFieldRegions` declaring the dormant
+  `ConvexRegion2d` return type while constructing an `AxisAlignedBoxRegion2d`. The live region story
+  is instead `Region2d`, consumed by `FixedTagFieldPoseSolver`. The dormant helper's behavior is also
+  unproven: for example, `ConvexRegions2d.clamped(...)` accepts non-finite or negative limits through
+  `Math.abs`, and zero can produce `-0.0`, which Java comparisons can incorrectly classify as inside.
+- **Parking evidence and truth boundary:** recent FTC games establish a real recurring need, but not
+  one universal scoring predicate. [INTO THE DEEP](https://ftc-resources.firstinspires.org/ftc/archive/2025/game/cm-html/Competition%20Manual%20-%20V14.htm)
+  and [CENTERSTAGE](https://ftc-resources.firstinspires.org/ftc/archive/2024/game/gm2) used area-entry
+  geometry, while the [DECODE Competition Manual](https://ftc-resources.firstinspires.org/ftc/archive/2026/game/cm-html/DECODE_Competition_Manual_TU32.htm)
+  distinguishes partial and full BASE return by direct or transitive support on the BASE ZONE tile.
+  A robot corner or outer outline above the tile therefore cannot by itself prove a DECODE score.
+  The published [BIOBUZZ Skill Builders](https://community.firstinspires.org/introducing-first-tech-challenge-skill-builders)
+  establish precision-driving and autonomous-navigation curriculum value, but the
+  [BIOBUZZ field, gameplay, and scoring rules](https://www.firstinspires.org/programs/ftc/game-and-season)
+  are not yet public.
+  Framework geometry may report exact authored rectangle-versus-box facts; the robot/game policy
+  and referees decide whether those facts satisfy a season rule. Occupancy, collision clearance,
+  and transitive support are explicitly unavailable from pose plus rectangle geometry.
+- **Selected authored-value contract:** require every semantically used authored coordinate,
+  distance, and angle to be finite, with field-distinguishing `IllegalArgumentException` messages.
+  Preserve signed offsets, negative field coordinates, unnormalized finite angles, identity
+  transforms, reversed AABB bounds with their existing normalization, zero-area AABBs, replacement
+  of an existing `SimpleTagLayout` ID, and empty layouts. The selected robot-frame rectangle is a
+  nondegenerate authored rectangle rather than a generic region: its two dimensions must be finite
+  and strictly positive, and its named minimum/maximum bounds must have strict positive X and Y spans
+  rather than being silently reordered. A heading selection requires a non-null, nonempty ordered
+  candidate array plus a finite reference and finite candidates; the pure selector retains nothing.
+- **Exact pose-field disposition:** validate all six fields of authored `Pose3d` camera mounts and
+  tag poses and all three fields of rigid `Pose2d` frames because each affects the transform. Keep
+  generic `Pose2d`/`Pose3d` permissive because they also carry runtime evidence and derived math.
+- **Validation ownership:** use one package-private spatial validation helper for consistent local
+  checks, not a public validation framework. `CameraMountConfig`,
+  `DriveGuidanceSpec.RobotRelativePoint`, and the field/FTC packages keep equivalent owner-local
+  checks at their own cross-package semantic boundaries. Do not add general validation to generic
+  `Pose2d`/`Pose3d`, existing runtime-math methods in `SpatialMath2d`, solution/result carriers,
+  detections, or estimator outputs because those types also represent runtime evidence. The new
+  `nearestHeadingRad(...)` method is the narrow exception: it validates its explicit
+  reference/candidate selection arguments rather than changing those existing types or methods.
+- **Immutable layout design:** add `TagLayouts.snapshot(TagLayout)`. It requires a non-null layout,
+  samples `ids()` exactly once, requires that set and every member be non-null, requires every ID be
+  non-negative, and resolves exactly one non-null finite six-field pose per ID into a private
+  immutable map-backed implementation. Empty layouts remain valid; failure publishes no partial
+  snapshot; an already-created private snapshot may be returned unchanged. The implementation
+  relies only on `TagLayout`, never a concrete cast.
+- **Snapshot ownership in this item:** `SpatialQuerySpec` snapshots its optional layout; Drive
+  Guidance snapshots before capability validation/build and uses that same semantic snapshot in
+  both `ResolveWith` and the embedded `SpatialQuerySpec`; and `AprilTagPoseEstimator` snapshots its
+  retained layout. `SubsetTagLayout` remains an explicitly borrowed/live view while a long-lived
+  completed owner freezes it. This closes every protected-core completed-retention path without
+  making authors call `snapshot(...)` manually.
+- **Later-item boundary:** SPATIAL-01 does not validate or snapshot raw aggregate/profile fields.
+  Pre-hardware snapshotting in `FtcOdometryAprilTagLocalizationLane` belongs to CONFIG-04; retained
+  tool overrides belong to CONFIG-06; and `PhoenixProfile`/`PhoenixTargeting` alias removal belongs
+  to CONFIG-09. CONFIG-03 still owns complete FTC vision/AprilTag configuration capture, while
+  SPATIAL-01 supplies only its finite Camera Mount and TagLayout leaf contract. Pulling those owner
+  migrations forward would mix tracker items and could make unused profile branches fail.
+- **Dynamic-frame correction and bounded deferral:** the intake's statement that runtime non-finite
+  observations already follow a general unavailable/fail-closed contract is not true for control
+  frames. `SpatialQuery` checks current frame samples only for null, and `SpatialSolveRequest`
+  checks historical `getAt(...)` results only for null, so a non-finite `Source`/`TimeAwareSource`
+  pose can enter lane math and a nominal result. Construction must not sample those providers. No
+  maintained robot currently adopts a moving control frame, and the correct runtime distinction
+  among provider-contract failure, unavailable evidence, and channel-level loss is not yet
+  evidenced. Runtime guarding is therefore excluded here and must be reopened with EXAMPLE-03 or
+  the first real timestamped moving-mechanism adopter. That gate must cover both current and
+  historical samples before any lane or sink, preserve same-cycle sampling, and define the exact
+  exception/unavailable behavior explicitly.
+- **Public construction-layer cleanup:** make `References.TagPointOffset`/`TagFrameOffset`
+  constructors private while retaining `References.pointOffset(...)`/`frameOffset(...)`; make the
+  four `SpatialTargets` nested value constructors private while retaining the named factories;
+  make the direct `SpatialQuerySpec(...)` constructor private while retaining its staged builder;
+  make `SpatialQuery(SpatialQuerySpec)` private while retaining `SpatialQuery.from(spec)`; and make
+  both `SubsetTagLayout` constructors package-private so `TagLayouts.subset(...)`/`subsetOrSame(...)`
+  are the sole public subset grammar. These constructor layers add no capability, hide units or
+  required ordering, and have no ordinary production caller; affected framework tests and
+  `DriveGuidanceEvaluator` migrate to the named paths.
+- **Dormant public-family replacement:** delete all fourteen unproved footprint/robot-geometry/
+  zone/heading/circle/polygon/convex-helper types listed above. Replace them with one narrow final
+  value and one pure calculation rather than retaining the old builders, functional rules, type
+  switches, and latches. `RobotFrameRectangle2d` promises only a rectangle rigidly authored in the
+  robot frame--not a footprint, support model, collision envelope, or scoring result. Retain exactly two
+  named factories: `centeredInches(lengthInches, widthInches)` for the ordinary centered case and
+  `fromRobotFrameBoundsInches(minXInches, maxXInches, minYInches, maxYInches)` when the tracked robot
+  origin is not the rectangle center. In the centered factory, length lies on robot +X/forward and
+  width on robot +Y/left-right. The bounds factory does not require the robot origin to lie inside
+  the rectangle. Construction is private; the bounds remain implementation detail rather than a
+  second public data path.
+- **Exact rectangle predicates:** `RobotFrameRectangle2d.fullyInside(AxisAlignedBoxRegion2d,
+  Pose2d fieldToRobot)` returns true only when all four transformed corners are inside or on the
+  box; `hasAnyCornerInside(...)` returns true only when at least one transformed rectangle corner is
+  inside or on. These are exact answers to those two geometric questions because the field box is
+  convex. They are deliberately not a general overlap, support, legality, occupancy, or collision
+  test: edge-crossing rectangles and a field box wholly inside the robot rectangle can overlap while
+  `hasAnyCornerInside(...)` remains false. The corner predicate therefore must never be renamed,
+  presented, or consumed as `partiallyInside` or `overlaps`.
+  A null box or pose fails immediately with `NullPointerException` via `Objects.requireNonNull`; a
+  non-finite runtime robot pose fails closed with `false` rather than being treated as authored
+  configuration or throwing from the loop.
+- **Parking-assist composition boundary:** SPATIAL-01 adds no parking controller and derives no
+  target pose or path from a box. A later robot-owned, known-clear full-box assist supplies an
+  explicit reviewed field `Pose2d` and reuses `GoToPoseTasks.goToPoseFieldRelative(...)`; the
+  rectangle predicate supplies truthful status/evidence only. EXAMPLE-04 is the first required
+  compiled adopter after its configuration prerequisites. It must keep entry into a shared or
+  partially occupied box manual and may show `hasAnyCornerInside(...)` only as literal geometric
+  status. It must never label either predicate an official score.
+  `AxisAlignedBoxRegion2d` will implement `Region2d` directly, and
+  `FtcFieldRegions.fullField(...)`/`fullFieldWithMargin(...)` will declare `Region2d`.
+- **Physical-state and sampling boundary:** the adopting robot must author a conservative rectangle
+  for the mechanism state in which it parks; `fullyInside(...)` proves nothing about an intake,
+  turret, arm, or support point outside that rectangle. Both predicates are instantaneous and have
+  no hidden hysteresis or history. Robot policy must select a target with physical/localization
+  clearance and display raw boundary status truthfully rather than treating a noisy edge transition
+  as a latched referee decision.
+- **One required heading already exists:** `GoToPoseTasks.goToPoseFieldRelative(...)` consumes a
+  complete target `Pose2d`, and Drive Guidance already turns toward that pose's field heading. A
+  parking behavior with one required orientation therefore authors that heading directly in the
+  reviewed target pose; SPATIAL-01 adds no overload, facing-target type, controller, or latch for it.
+- **Several acceptable headings:** add one pure
+  `SpatialMath2d.nearestHeadingRad(referenceHeadingRad, candidateHeadingRads...)` calculation. It
+  rejects a null varargs array with `NullPointerException`; an empty array, non-finite named
+  reference, or non-finite indexed candidate fails with an actionable `IllegalArgumentException`.
+  It retains nothing and returns one exact authored candidate. It minimizes
+  `abs(wrapToPi(wrapToPi(candidate) - wrapToPi(reference)))`, so the +/-pi seam is correct and
+  opposite huge finite inputs cannot overflow. A strictly smaller distance wins;
+  an exact tie preserves the first-authored option. Equivalent candidates and signed-zero aliases
+  are harmless deterministic ties; the selector does not normalize, deduplicate, reorder, or imply
+  that a candidate is safe merely because it was supplied.
+- **Retained heading-math correction:** preserving an unnormalized finite winner requires the
+  maintained solve path to be overflow-safe too. `SpatialSolveMath.facingFromFieldHeading(...)`
+  currently composes two raw finite headings and then subtracts the raw desired heading, while
+  `facingFromRobotHeading(...)` also subtracts raw finite operands; either operation can overflow
+  before `wrapToPi(...)`. The frame-heading target paths in `AbsolutePoseSpatialSolveLane` and both
+  corresponding `AprilTagSpatialSolveLane` branches also add a finite resolved-frame heading and
+  finite authored offset before reaching that helper. Compute each of those three desired headings,
+  the field-facing-frame heading, and both final errors with separately wrapped operands before any
+  addition/subtraction. Keep the existing Phoenix canonical interval `(-pi, +pi]`, including the
+  existing positive-pi/CCW result for an exact antipode.
+- **Selection lifecycle and fit:** robot policy owns which field headings are acceptable. It calls
+  `nearestHeadingRad(...)` once from a usable pose when one fresh parking attempt is constructed,
+  freezes that chosen heading into the target `Pose2d`, and then uses the existing Go-to-Pose Task. It must
+  not recompute the option every loop or near a tie. Every configured candidate at the reviewed
+  target translation must make the authored robot rectangle `fullyInside(...)`; an unavailable or
+  non-finite reference pose suppresses the assist with truthful status rather than invoking the
+  selector. The robot-owned parking configuration/specification defensively snapshots its candidate
+  array and, before owner/hardware effects, rejects any candidate that the authored rectangle/box
+  model does not classify as fully inside at the reviewed target translation rather than silently
+  filtering it. Nearest turn distance does not prove a clear route or safe rotation, so the known-
+  clear and manual shared-box boundaries remain controlling.
+- **Retained public layers:** keep all `CameraMountConfig` factories because `Pose3d` interop,
+  radians, degrees, and identity are distinct authoring needs. Keep fixed, current-only, and time-
+  aware control-frame paths because they express different temporal guarantees. Keep
+  `SpatialQuery.builder()` for one runtime query and `SpatialQuerySpec.builder()` plus `from(...)`
+  for a reusable specification. Keep `Region2d`, concrete `AxisAlignedBoxRegion2d`, and
+  `FtcFieldRegions` because they form the one proven plausibility-region path. Keep Drive Guidance
+  plan, immutable spec, and retuned-plan layers because they separately provide ordinary authoring,
+  reusable built state, and controller-only retuning.
+- **Student call-site result:** ordinary targeting code supplies the same conceptual decisions--
+  target, reference frame, solve lanes, and optional fixed layout--through the existing named
+  factories and staged builders. It gains no validator, snapshot call, generic Config, or units
+  wrapper. Parking geometry is one visible value and two direct questions:
+  `RobotFrameRectangle2d.centeredInches(robotLengthInches, robotWidthInches)`,
+  `rectangle.fullyInside(parkBox, fieldToRobot)`, and
+  `rectangle.hasAnyCornerInside(parkBox, fieldToRobot)`. The advanced bounds factory makes an offset
+  tracking origin explicit without adding a geometry builder or robot-profile aggregate. One fixed
+  orientation stays a normal target-pose field; alternatives remain compact:
+  `SpatialMath2d.nearestHeadingRad(fieldToRobot.headingRad, 0.0, Math.PI)`. Named
+  targeting calls such as `References.pointOffset(...)`,
+  `SpatialTargets.fieldPoint(...)`, `SpatialQuerySpec.builder()`, `SpatialQuery.from(spec)`, and
+  `TagLayouts.subset(...)` remain more discoverable than their duplicate constructors.
+- **Rejected alternatives:** documentation-only warnings preserve delayed failures; generic
+  `Pose2d`/`Pose3d` validation conflates authored facts with runtime evidence; a public validator,
+  quantity system, or universal geometry Config adds ceremony without ownership; validating only
+  Drive Guidance leaves direct query/localization paths unsafe; concrete-layout copying is not an
+  interface contract; making `TagLayout` universally immutable removes useful fluent practice/test
+  authoring; and snapshotting profile, FTC composite, or tool aggregates now preempts
+  CONFIG-04/06/09. Hardening the dormant 1,140-line family would certify many unrelated APIs without
+  a real adopter; deleting every robot-area primitive would ignore the now-confirmed precision-
+  parking curriculum need. Retaining the old `RectangleFootprint2d`/`RobotZones2d` names would imply
+  a season/scoring model and preserve approximate probes, type switches, and builders. A general
+  polygon intersection/collision API, support sensor model, zone latch, box-derived target planner,
+  or automatic shared-box entry adds unsupported policy and complexity. Retaining
+  `RobotHeading2d`/`RobotHeadings2d`/`HeadingLatch` would duplicate existing facing targets, expose an
+  unrestricted error function, and add state without solving option selection. A live multi-heading
+  `FacingTarget2d`, retained option-set type, Go-to-Pose overload, per-loop nearest recomputation, or
+  heading-derived-from-box rule would add public/stateful grammar without owning fit or execution
+  policy. Field-size, mount-distance, and angle plausibility bounds remain out of scope.
+- **Compatibility:** this intentionally breaks source use of the redundant public constructors;
+  removes the fourteen dormant public types; adds the intentionally smaller
+  `RobotFrameRectangle2d` plus `SpatialMath2d.nearestHeadingRad(...)`; and narrows
+  `FtcFieldRegions`' declared return type from
+  `ConvexRegion2d` to its actual required contract, `Region2d`. There is no maintained caller to
+  migrate for the removed family beyond that explicit `FtcFieldRegions` convex return seam and stale
+  self/Javadoc links; affected internal query tests and evaluator construction will move to the named
+  paths. Formerly accepted non-finite authored values fail immediately. Valid finite geometry on the
+  retained proven paths keeps its current math and units, and long-lived protected-core owners
+  become independent of later layout mutation.
+- **Implementation scope:** update only the finite leaf constructors/factories listed above,
+  `TagLayouts`/`TagLayout`/`SimpleTagLayout`/`SubsetTagLayout`, protected-core snapshot consumers,
+  the explicitly removed dormant files, the new rectangle/heading calculation, retained heading-
+  error math, required internal callers, focused tests, affected Javadocs, and the Spatial Queries,
+  Drive Guidance, First Pedro Auto, AprilTag
+  Practice Setup, and AprilTag Localization guides. Drive Guidance may show the short known-clear-
+  box composition shape but receives no new API or controller. Do not change runtime observation
+  policy, 3D aiming, localization fusion, FTC resource configuration, Phoenix profile decomposition,
+  tools, examples, or robot strategy.
+- **Verification plan:** test every numeric slot with `NaN`, positive infinity, and negative
+  infinity; finite signed offsets, signed zero, and unnormalized angles; reversed/zero-area AABBs;
+  every Camera Mount factory; every References map/direct/selected/frame path; targets and fixed
+  control frames; atomic `SimpleTagLayout` replacement failure; malformed FTC metadata conversion;
+  null layout, null `ids()`, null/negative IDs, missing/null/non-finite poses, empty/custom/idempotent,
+  and mutation-isolated layout snapshots; and shared Drive Guidance/Spatial Query/AprilTag estimator
+  retention. Preserve direct-versus-localization
+  equivalence for valid non-zero camera, tag, and tool offsets. Add reflection and stale-symbol scans
+  for every removed constructor and type. Exhaustively test centered and offset robot-frame
+  rectangles, strict factory domains, rotation/translation, boundary inclusion, all-corners versus
+  one-corner results, non-finite runtime-pose fail-closed behavior, and the deliberate no-corner case
+  where the box lies wholly inside the rectangle. Add reflection coverage for private construction,
+  exactly two public factories and two public predicates, and no public bounds/corner/probe escape;
+  reflection-lock the one added static selector and absence of a retained options type. Test null/
+  empty candidates, every indexed non-finite candidate, non-finite reference, one/many options,
+  wrap-boundary and huge-finite values, equivalent/signed-zero candidates, and exact ties retaining
+  declaration order. Test both retained heading-error helpers and all three frame-heading caller
+  additions against finite-addition/subtraction overflow plus ordinary finite, wrap-boundary, sign,
+  and canonical-positive-pi behavior. Add
+  compiled composition tests that check
+  fixed-heading and nearest-option full-box poses and construct the existing
+  `GoToPoseTasks.goToPoseFieldRelative(...)` Task without adding a controller or example adopter.
+  Run strict Javadocs and guide checks, focused tests, full TeamCode unit tests/compile,
+  `git diff --check`, and whitespace scans. Physical field, rectangle, target-pose, obstacle, and
+  camera-mount measurements remain adopting-robot validation.
+- **Approval stop:** no framework, Phoenix, tool, example, Javadoc, or guide implementation has
+  started. Because this deletes public types, adds a deliberately narrow replacement, changes public
+  constructors, and changes retained-layout semantics, Gate 1 stops here for explicit approval.
+- **Decision record (2026-08-15):** **Ready; explicit finite-geometry, immutable-layout,
+  duplicate/dormant-API, neutral rectangle-in-box, and frozen heading-selection approval is required
+  before implementation.** The parking and heading scope reopenings are resolved by one small
+  immutable rectangle value, one pure selector, the existing exact-pose guidance path, and the hard
+  manual/shared-box boundary above. No implementation has started.
+- **Design approval (2026-08-15):** the user approved the complete Gate 1 design with **“Approve
+  SPATIAL-01 finite authored geometry, TagLayout snapshot, dormant spatial API replacement,
+  rectangle-in-box, and frozen heading-selection design.”**
+- **Gate 2 implementation start (2026-08-15):** **In progress.** Implementation is limited to the
+  reviewed leaf validation, protected-core layout snapshots, duplicate constructor removal, dormant
+  family replacement, rectangle predicates, pure heading selection/overflow-safe retained heading
+  math, internal caller migration, focused tests, and synchronized Javadocs/guides. It does not pull
+  forward CONFIG-03/04/06/09 edge-owner migrations or implement EXAMPLE-04's robot adopter.
+- **Gate 2 implementation result (2026-08-15):** the approved design is implemented in a 58-file
+  unstaged diff: 39 framework production paths, including the exact fourteen deletions and two new
+  package/source files; thirteen focused test paths; five maintained guides; and this tracker.
+  `CameraMountConfig`, `References`, rigid robot/control frames, `SpatialTargets`, Drive Guidance's
+  robot-relative point, AABBs, simple/FTC tag layouts, and the retained heading-addition paths now
+  reject or avoid the reviewed invalid authored values at their semantic boundaries. No Phoenix,
+  FTC OpMode, tool, or example implementation changed.
+- **Layout ownership and construction result:** `TagLayouts.snapshot(...)` now produces an
+  immutable, validated, idempotent interface-level copy after one ID-set read and one pose read per
+  ID. `SpatialQuerySpec`, Drive Guidance, and `AprilTagPoseEstimator` retain snapshots; Drive
+  Guidance shares the same snapshot identity between `ResolveWith` and its embedded query spec.
+  `SimpleTagLayout` remains the mutable authoring surface, `SubsetTagLayout` remains a borrowed
+  view, and the CONFIG-04/06/09 edge migrations remain deferred exactly as approved. The duplicate
+  offset, target, query/spec, and subset constructors are no longer public, while their named
+  factory/builder paths remain.
+- **Dormant-family and parking result:** the fourteen unadopted footprint/zone/heading/convex types
+  are removed, `AxisAlignedBoxRegion2d` now implements `Region2d` directly, and `FtcFieldRegions`
+  returns that proven interface. The replacement `RobotFrameRectangle2d` exposes only two named
+  factories, `fullyInside(...)`, `hasAnyCornerInside(...)`, and a stable diagnostic `toString()`.
+  Its predicates transform all four authored corners, treat the boundary as inside, reject invalid
+  authored bounds, fail closed for non-finite runtime poses/derived corners, and retain the explicit
+  non-overlap/non-collision/non-support/non-scoring contract. EXAMPLE-04 remains the required first
+  managed adopter; no parking controller or box-derived motion policy was added here.
+- **Heading result:** `SpatialMath2d.nearestHeadingRad(...)` is the sole new selector. It validates
+  its non-retained ordered input, compares the exact nested wrapped distance, returns the selected
+  authored bit pattern unchanged, and preserves declaration order on exact ties. Retained solve
+  math wraps operands before every overflow-sensitive heading sum/difference in the two shared
+  helpers and the absolute/direct-tag/tag-field-fallback caller paths. One fixed heading still uses
+  an ordinary target `Pose2d`; robot policy remains responsible for validating every candidate
+  against its conservative rectangle model, selecting once from usable localization, freezing the
+  selected pose, and keeping shared/occupied-box entry manual.
+- **Adversarial review result:** production review found and resolved the rectangle's missing compact
+  bounds-bearing `toString()` and one late heading-overflow path. Fixed- and selected-tag field-frame
+  resolution had composed the finite layout yaw and authored tag-frame heading through raw
+  `Pose2d.then(...)` addition before the retained solve helpers could wrap it; resolution now composes
+  translation separately and uses `wrappedHeadingSumRad(...)`. Absolute-pose, AprilTag field-fallback,
+  and selected-reference regressions prove the nested huge-finite operands remain finite. Documentation
+  review narrowed snapshot promises to completed protected-core owners, documented
+  estimator/query/guidance snapshot timing, corrected the official CENTERSTAGE evidence link, and
+  corrected the public BIOBUZZ statement to the not-yet-published field, gameplay, and scoring rules.
+  Test review replaced symmetric/empty fixtures with asymmetric offset-rectangle corner cases, a real
+  estimator solve after its authored layout becomes inaccessible, throwing/counting dynamic providers
+  that prove zero construction reads, all-six-field finite matrices, live-subset versus
+  retained-snapshot isolation, raw-bit candidate checks, and non-zero
+  camera/tag/reference/facing-frame equivalence across direct AprilTag, tag-field fallback, and
+  absolute-pose lanes. The final production review found no remaining blocker.
+- **Automated verification (2026-08-15):** with Android Studio's JBR and a serial `--no-daemon`
+  build, the thirteen focused SPATIAL-01 suites pass **63 tests, 0 failures, 0 errors, 0 skipped**.
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` then passes **171 suites / 1,593
+  tests / 0 failures / 0 errors / 0 skipped**, and strict `:TeamCode:phoenixJavadocs` passes. The
+  full run includes `DocumentationLinksTest` at **5/0/0/0**. The only compiler output is the
+  repository's existing JDK-21 source/target-8 deprecation warning.
+- **Static verification (2026-08-15):** `git diff --check`, tracked/untracked trailing-whitespace,
+  zero-byte, and final-newline scans pass. The fourteen deleted names have no production or guide
+  reference and occur only as removal assertions in `SpatialApiReplacementTest`. Reflection tests
+  lock the narrowed constructors, exact rectangle/selector public surface, and absence of a retained
+  heading-options type. The tracker retains 99 contiguous unique table rows and 99 matching unique
+  detailed records. The branch remains based on merged `origin/master`; nothing is staged or
+  committed.
+- **Hardware and Android Studio audit point (2026-08-15):** SPATIAL-01 is **Verifying** on
+  `codex/spatial-01-finite-authored-geometry`. Review the semantic-owner validation messages,
+  immutable-layout capture points, intentional public deletions, rectangle truth boundaries,
+  heading wrap/sign behavior, and synchronized guides in Android Studio. Software cannot validate
+  the physical camera extrinsics, fixed-tag survey, robot rectangle for every mechanism state,
+  target-pose/headings and localization/tolerance clearance, field obstacles, shared-box occupancy,
+  transitive support, or a season referee decision; those remain adopting-robot and on-field checks.
+  Publication remains a separate authorization: do not stage, commit, push, open a pull request, or
+  merge until the reviewed diff receives the required destination-specific approval.
+- **Manual review and Gate 3 authorization (2026-08-15):** the user replied with the complete
+  destination-specific authorization: **“SPATIAL-01 looks good. Authorize committing the reviewed
+  SPATIAL-01 diff on codex/spatial-01-finite-authored-geometry, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** SPATIAL-01 is now **Done**. This authorizes staging only the reviewed 58-file diff,
+  committing it on the named branch, pushing it to the named origin, opening the pull request, and
+  merging it into `master`; it does not authorize starting MATH-01.
 
 ### MATH-01 - Finite interpolation calibration tables
 
@@ -17622,6 +17941,20 @@ writer, and explicit lifecycle ownership.
   deposit, and parking capabilities. Those requirements reopen EXAMPLE-04's survivor families and
   checkpoint design. They do not reopen EXAMPLE-03's evidence-gated deferral or approve any of the
   candidate Starter, delivery, targeting, or field-skills shapes discussed during research.
+- **Required parking adopter (2026-08-15):** the user additionally confirmed a recurring curriculum
+  need for quick, accurate entry into a rectangular parking area while keeping a shared/partially
+  occupied area under driver control. Without choosing the still-open survivor robot or checkpoint
+  structure, EXAMPLE-04 must include the first compiled managed adopter of SPATIAL-01's neutral
+  `RobotFrameRectangle2d`: an explicit reviewed target pose may guide only into a designated known-
+  clear full box, while `hasAnyCornerInside(...)` may be presented only as literal status during
+  manual shared/partial entry. Neither result may be called an official score, overlap, collision,
+  or occupancy decision. A single required orientation stays in that target `Pose2d`; when the
+  practice specification permits several headings, its robot-owned config must validate every
+  complete target pose against the conservative authored rectangle/box model, then select the
+  nearest candidate once through
+  `SpatialMath2d.nearestHeadingRad(...)` and display the frozen choice. Missing pose evidence starts
+  no motion. This is a narrow prerequisite-consumption obligation, not approval of a season-specific
+  parking API or the remaining example architecture.
 - **Confirmed current split:** `edu.ftcphoenix.fw.tools.examples` contains ten Java files and 3,531
   physical lines. Nine numbered, disabled TeleOps account for 3,255 of those lines. Every
   `TeleOp_01` through `TeleOp_09` directly extends FTC `OpMode`, owns a private `LoopClock`, commits

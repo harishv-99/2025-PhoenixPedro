@@ -1,7 +1,5 @@
 package edu.ftcphoenix.fw.spatial;
 
-import java.util.Objects;
-
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.source.Source;
@@ -28,9 +26,12 @@ public final class RobotFrames {
 
     /**
      * Returns a constant rigid robot-frame provider.
+     *
+     * @param robotToFrame authored robot-to-frame pose; all three fields must be finite
+     * @throws IllegalArgumentException if any pose field is not finite
      */
     public static TimeAwareSource<Pose2d> rigid(Pose2d robotToFrame) {
-        Objects.requireNonNull(robotToFrame, "robotToFrame");
+        SpatialValidation.requireFinitePose2d("robotToFrame", robotToFrame);
         return new TimeAwareSource<Pose2d>() {
             @Override
             public Pose2d getAt(LoopClock clock, LoopTimestamp timestamp) {

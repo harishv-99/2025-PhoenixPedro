@@ -103,7 +103,10 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                 facing = SpatialSolveMath.facingFromFieldHeading(
                         fieldToRobot,
                         facingFrame,
-                        fieldToFrame.headingRad + target.headingOffsetRad,
+                        SpatialSolveMath.wrappedHeadingSumRad(
+                                fieldToFrame.headingRad,
+                                target.headingOffsetRad
+                        ),
                         est.quality,
                         est.timestamp
                 );

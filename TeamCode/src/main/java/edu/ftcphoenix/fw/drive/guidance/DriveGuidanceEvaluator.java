@@ -38,7 +38,9 @@ final class DriveGuidanceEvaluator {
      */
     DriveGuidanceEvaluator(DriveGuidanceSpec spec) {
         this.spec = Objects.requireNonNull(spec, "spec");
-        this.spatialQuery = spec.spatialQuerySpec != null ? new SpatialQuery(spec.spatialQuerySpec) : null;
+        this.spatialQuery = spec.spatialQuerySpec != null
+                ? SpatialQuery.from(spec.spatialQuerySpec)
+                : null;
     }
 
     /**

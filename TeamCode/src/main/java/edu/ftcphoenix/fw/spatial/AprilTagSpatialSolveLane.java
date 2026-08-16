@@ -227,7 +227,10 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
             if (robotToFrame != null) {
                 return SpatialSolveMath.facingFromRobotHeading(
                         facingFrame,
-                        robotToFrame.headingRad + target.headingOffsetRad,
+                        SpatialSolveMath.wrappedHeadingSumRad(
+                                robotToFrame.headingRad,
+                                target.headingOffsetRad
+                        ),
                         1.0,
                         timestamp
                 );
@@ -266,7 +269,10 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
                     return SpatialSolveMath.facingFromFieldHeading(
                             liveFieldPose.fieldToRobot,
                             facingFrame,
-                            fieldToFrame.headingRad + target.headingOffsetRad,
+                            SpatialSolveMath.wrappedHeadingSumRad(
+                                    fieldToFrame.headingRad,
+                                    target.headingOffsetRad
+                            ),
                             liveFieldPose.quality,
                             liveFieldPose.timestamp
                     );

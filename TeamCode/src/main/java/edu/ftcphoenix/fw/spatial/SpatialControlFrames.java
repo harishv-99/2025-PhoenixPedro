@@ -55,10 +55,17 @@ public final class SpatialControlFrames {
     }
 
     /**
-     * Creates control frames from explicit rigid robot->frame poses.
+     * Creates control frames from explicit rigid robot->frame poses. Every pose field must be
+     * finite.
+     *
+     * @throws IllegalArgumentException if any field in either pose is not finite
      */
     public static SpatialControlFrames of(Pose2d robotToTranslationFrame, Pose2d robotToFacingFrame) {
-        return new SpatialControlFrames(RobotFrames.rigid(robotToTranslationFrame), RobotFrames.rigid(robotToFacingFrame));
+        Pose2d translation = SpatialValidation.requireFinitePose2d(
+                "robotToTranslationFrame", robotToTranslationFrame);
+        Pose2d facing = SpatialValidation.requireFinitePose2d(
+                "robotToFacingFrame", robotToFacingFrame);
+        return new SpatialControlFrames(RobotFrames.rigid(translation), RobotFrames.rigid(facing));
     }
 
     /**
@@ -75,9 +82,11 @@ public final class SpatialControlFrames {
         return facingFrame;
     }
 
-    /** Returns a copy with a rigid translation frame pose. */
+    /** Returns a copy with a rigid translation frame pose whose three fields are finite. */
     public SpatialControlFrames withTranslationFrame(Pose2d robotToTranslationFrame) {
-        return withTranslationFrame(RobotFrames.rigid(robotToTranslationFrame));
+        Pose2d frame = SpatialValidation.requireFinitePose2d(
+                "robotToTranslationFrame", robotToTranslationFrame);
+        return withTranslationFrame(RobotFrames.rigid(frame));
     }
 
     /** Returns a copy with a current-only dynamic translation-frame provider. */
@@ -93,10 +102,12 @@ public final class SpatialControlFrames {
     }
 
     /**
-     * Returns a copy with a rigid facing-frame pose.
+     * Returns a copy with a rigid facing-frame pose whose three fields are finite.
      */
     public SpatialControlFrames withFacingFrame(Pose2d robotToFacingFrame) {
-        return withFacingFrame(RobotFrames.rigid(robotToFacingFrame));
+        Pose2d frame = SpatialValidation.requireFinitePose2d(
+                "robotToFacingFrame", robotToFacingFrame);
+        return withFacingFrame(RobotFrames.rigid(frame));
     }
 
     /**

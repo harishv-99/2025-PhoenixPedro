@@ -202,13 +202,12 @@ public final class DriveGuidanceCycleSafetyTest {
                 .add(localization)
                 .add(aprilTags)
                 .build();
-        SpatialQuerySpec spatialSpec = new SpatialQuerySpec(
-                target,
-                target,
-                frames,
-                solveSet,
-                null
-        );
+        SpatialQuerySpec spatialSpec = SpatialQuerySpec.builder()
+                .translateTo(target)
+                .andFaceTo(target)
+                .controlFrames(frames)
+                .solveWith(solveSet)
+                .build();
         DriveGuidanceSpec.ResolveWith resolveWith = DriveGuidanceSpec.ResolveWith.create(
                 DriveGuidanceSpec.SolveMode.ADAPTIVE,
                 new DriveGuidanceSpec.AprilTags(NO_TAGS, CameraMountConfig.identity()),
@@ -229,13 +228,12 @@ public final class DriveGuidanceCycleSafetyTest {
     private static DriveGuidancePlan localizationPlan(ManualLoopClock time, RecordingLane lane) {
         SpatialTargets.FieldPoint target = SpatialTargets.fieldPoint(12.0, 2.0);
         SpatialControlFrames frames = SpatialControlFrames.robotCenter();
-        SpatialQuerySpec spatialSpec = new SpatialQuerySpec(
-                target,
-                target,
-                frames,
-                SpatialSolveSet.builder().add(lane).build(),
-                null
-        );
+        SpatialQuerySpec spatialSpec = SpatialQuerySpec.builder()
+                .translateTo(target)
+                .andFaceTo(target)
+                .controlFrames(frames)
+                .solveWith(SpatialSolveSet.builder().add(lane).build())
+                .build();
         DriveGuidanceSpec.Localization localization = new DriveGuidanceSpec.Localization(
                 new FixedPoseEstimator(PoseEstimate.noPose(time.clock().nowTimestamp()))
         );

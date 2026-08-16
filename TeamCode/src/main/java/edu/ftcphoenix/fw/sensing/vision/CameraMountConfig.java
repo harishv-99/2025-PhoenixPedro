@@ -68,14 +68,23 @@ public final class CameraMountConfig {
     private static final CameraMountConfig IDENTITY = new CameraMountConfig(Pose3d.zero());
 
     private CameraMountConfig(Pose3d robotToCamera) {
-        this.robotToCamera = Objects.requireNonNull(robotToCamera, "robotToCamera");
+        Pose3d pose = Objects.requireNonNull(robotToCamera, "robotToCamera");
+        requireFinite("robotToCameraPose.xInches", pose.xInches);
+        requireFinite("robotToCameraPose.yInches", pose.yInches);
+        requireFinite("robotToCameraPose.zInches", pose.zInches);
+        requireFinite("robotToCameraPose.yawRad", pose.yawRad);
+        requireFinite("robotToCameraPose.pitchRad", pose.pitchRad);
+        requireFinite("robotToCameraPose.rollRad", pose.rollRad);
+        this.robotToCamera = pose;
     }
 
     /**
      * Creates a mount config from a full 6DOF robot→camera pose expressed in the robot frame.
      *
-     * @param robotToCameraPose robot→camera pose in the robot frame (non-null)
+     * @param robotToCameraPose robot→camera pose in the robot frame; non-null with six finite
+     *                          fields
      * @return a new {@link CameraMountConfig}
+     * @throws IllegalArgumentException if any pose field is not finite
      */
     public static CameraMountConfig ofPose(Pose3d robotToCameraPose) {
         return new CameraMountConfig(robotToCameraPose);
@@ -91,6 +100,7 @@ public final class CameraMountConfig {
      * @param pitchRad rotation about +Y (radians)
      * @param rollRad  rotation about +X (radians)
      * @return a new {@link CameraMountConfig}
+     * @throws IllegalArgumentException if any supplied value is not finite
      */
     public static CameraMountConfig of(
             double xInches,
@@ -116,6 +126,7 @@ public final class CameraMountConfig {
      * @param pitchDeg rotation about +Y (degrees)
      * @param rollDeg  rotation about +X (degrees)
      * @return a new {@link CameraMountConfig}
+     * @throws IllegalArgumentException if any supplied value is not finite
      */
     public static CameraMountConfig ofDegrees(
             double xInches,
@@ -125,14 +136,24 @@ public final class CameraMountConfig {
             double pitchDeg,
             double rollDeg
     ) {
-        return of(
-                xInches,
-                yInches,
-                zInches,
-                Math.toRadians(yawDeg),
-                Math.toRadians(pitchDeg),
-                Math.toRadians(rollDeg)
-        );
+        requireFinite("xInches", xInches);
+        requireFinite("yInches", yInches);
+        requireFinite("zInches", zInches);
+        requireFinite("yawDeg", yawDeg);
+        requireFinite("pitchDeg", pitchDeg);
+        requireFinite("rollDeg", rollDeg);
+        return new CameraMountConfig(new Pose3d(
+                xInches, yInches, zInches,
+                Math.toRadians(yawDeg), Math.toRadians(pitchDeg), Math.toRadians(rollDeg)
+        ));
+    }
+
+    private static double requireFinite(String fieldName, double value) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(
+                    "CameraMountConfig." + fieldName + " must be finite, got " + value);
+        }
+        return value;
     }
 
     /**

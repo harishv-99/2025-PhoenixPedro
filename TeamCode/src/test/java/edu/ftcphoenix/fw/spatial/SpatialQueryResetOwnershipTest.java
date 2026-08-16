@@ -29,13 +29,11 @@ public final class SpatialQueryResetOwnershipTest {
         TranslationTarget2d target = SpatialTargets.point(
                 References.relativeToSelectedTagPoint(selection, 0.0, 0.0)
         );
-        SpatialQuerySpec spec = new SpatialQuerySpec(
-                target,
-                null,
-                SpatialControlFrames.of(frames, frames),
-                SpatialSolveSet.builder().add(lane).build(),
-                null
-        );
+        SpatialQuerySpec spec = SpatialQuerySpec.builder()
+                .translateTo(target)
+                .controlFrames(SpatialControlFrames.of(frames, frames))
+                .solveWith(SpatialSolveSet.builder().add(lane).build())
+                .build();
         SpatialQuery first = SpatialQuery.from(spec);
         SpatialQuery second = SpatialQuery.from(spec);
 

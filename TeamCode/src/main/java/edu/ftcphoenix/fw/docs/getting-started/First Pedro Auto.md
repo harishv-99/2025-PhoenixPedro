@@ -73,11 +73,18 @@ practiceRoute = requiredRuntime.pathBuilder()
 Fixed geometry is built during configuration. Route geometry that genuinely depends on a live
 fact uses the separately documented start-time route factory; this first route does not need it.
 
-Before changing any number, draw the start, end, heading, robot footprint, and clear stopping area.
-Names ending in `INCHES` or `RAD` make the units visible. Use Pedro's
+Before changing any number, draw the start, end, heading, robot's relevant physical boundary in its
+route-running mechanism state, and clear stopping area. Names ending in `INCHES` or `RAD` make the
+units visible. Use Pedro's
 [`coordinate reference`](https://pedropathing.com/docs/pathing/reference/coordinates) to interpret
 the field origin, axes, and heading; a pose applies to the adopting localizer's tracked robot
 reference point, not automatically to a bumper corner.
+
+If a later parking lesson models that boundary as a conservative rectangle, use
+`RobotFrameRectangle2d.fromRobotFrameBoundsInches(...)` when the tracked origin is off-center.
+That rectangle can answer an exact rectangle-versus-box question at one pose; it does not prove a
+clear route, collision clearance, physical support, or an official season score. See the
+known-clear-box composition in [`Drive Guidance`](<../drive-vision/Drive Guidance.md#known-clear-rectangular-parking-assist>).
 
 ## 2. Follow the route as a Task
 

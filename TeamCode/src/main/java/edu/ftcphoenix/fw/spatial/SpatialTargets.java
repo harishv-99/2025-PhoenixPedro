@@ -4,6 +4,9 @@ import java.util.Objects;
 
 /**
  * Factory helpers for common spatial-query targets.
+ *
+ * <p>Authored coordinates and angles must be finite. Negative field coordinates and
+ * unnormalized finite headings remain valid.</p>
  */
 public final class SpatialTargets {
 
@@ -14,9 +17,9 @@ public final class SpatialTargets {
         public final double xInches;
         public final double yInches;
 
-        public FieldPoint(double xInches, double yInches) {
-            this.xInches = xInches;
-            this.yInches = yInches;
+        private FieldPoint(double xInches, double yInches) {
+            this.xInches = SpatialValidation.requireFinite("FieldPoint.xInches", xInches);
+            this.yInches = SpatialValidation.requireFinite("FieldPoint.yInches", yInches);
         }
 
         @Override
@@ -31,8 +34,9 @@ public final class SpatialTargets {
     public static final class FieldHeading implements FacingTarget2d {
         public final double fieldHeadingRad;
 
-        public FieldHeading(double fieldHeadingRad) {
-            this.fieldHeadingRad = fieldHeadingRad;
+        private FieldHeading(double fieldHeadingRad) {
+            this.fieldHeadingRad = SpatialValidation.requireFinite(
+                    "FieldHeading.fieldHeadingRad", fieldHeadingRad);
         }
 
         @Override
@@ -47,7 +51,7 @@ public final class SpatialTargets {
     public static final class ReferencePointTarget implements TranslationTarget2d, FacingTarget2d {
         public final ReferencePoint2d reference;
 
-        public ReferencePointTarget(ReferencePoint2d reference) {
+        private ReferencePointTarget(ReferencePoint2d reference) {
             this.reference = Objects.requireNonNull(reference, "reference");
         }
 
@@ -64,9 +68,10 @@ public final class SpatialTargets {
         public final ReferenceFrame2d reference;
         public final double headingOffsetRad;
 
-        public ReferenceFrameHeadingTarget(ReferenceFrame2d reference, double headingOffsetRad) {
+        private ReferenceFrameHeadingTarget(ReferenceFrame2d reference, double headingOffsetRad) {
             this.reference = Objects.requireNonNull(reference, "reference");
-            this.headingOffsetRad = headingOffsetRad;
+            this.headingOffsetRad = SpatialValidation.requireFinite(
+                    "ReferenceFrameHeadingTarget.headingOffsetRad", headingOffsetRad);
         }
 
         @Override
