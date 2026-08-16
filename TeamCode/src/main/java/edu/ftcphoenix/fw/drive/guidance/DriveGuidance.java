@@ -6,6 +6,7 @@ import java.util.Set;
 
 import edu.ftcphoenix.fw.drive.DriveOverlay;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -473,7 +474,8 @@ public final class DriveGuidance {
         LocalizationOnlyTuningStage<RETURN> minQuality(double minQuality);
 
         /**
-         * Supplies fixed field metadata so localization can resolve fixed-tag references.
+         * Supplies fixed field metadata so localization can resolve fixed-tag references. The
+         * completed guidance spec or plan validates and snapshots the layout.
          */
         LocalizationOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
@@ -508,7 +510,8 @@ public final class DriveGuidance {
         AprilTagsOnlyTuningStage<RETURN> maxAgeSec(double maxAgeSec);
 
         /**
-         * Supplies fixed field metadata for field-fixed AprilTag solving.
+         * Supplies fixed field metadata for field-fixed AprilTag solving. The completed guidance
+         * spec or plan validates and snapshots the layout.
          */
         AprilTagsOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
@@ -569,6 +572,7 @@ public final class DriveGuidance {
 
         /**
          * Supplies fixed field metadata for field-fixed AprilTag/localization reference solving.
+         * The completed guidance spec or plan validates and snapshots the layout.
          */
         AdaptiveTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
@@ -635,7 +639,10 @@ public final class DriveGuidance {
             throw new IllegalStateException("DriveGuidance spec needs translateTo() and/or faceTo() configured");
         }
 
-        validateCapabilitiesOrThrow(s);
+        TagLayout fixedAprilTagLayout = s.fixedAprilTagLayout != null
+                ? TagLayouts.snapshot(s.fixedAprilTagLayout)
+                : null;
+        validateCapabilitiesOrThrow(s, fixedAprilTagLayout);
 
         DriveGuidanceSpec.AprilTags tags = null;
         if (s.aprilTagSensor != null && s.cameraMount != null) {
@@ -657,7 +664,7 @@ public final class DriveGuidance {
                 mode,
                 tags,
                 localization,
-                s.fixedAprilTagLayout,
+                fixedAprilTagLayout,
                 s.translationTakeover,
                 s.omegaPolicy,
                 s.onLoss
@@ -697,21 +704,21 @@ public final class DriveGuidance {
                     .andFaceTo(s.facingTarget)
                     .controlFrames(s.controlFrames)
                     .solveWith(solveSet)
-                    .fixedAprilTagLayout(s.fixedAprilTagLayout)
+                    .fixedAprilTagLayout(fixedAprilTagLayout)
                     .build();
         } else if (spatialTranslationTarget != null) {
             spatialQuerySpec = SpatialQuerySpec.builder()
                     .translateTo(spatialTranslationTarget)
                     .controlFrames(s.controlFrames)
                     .solveWith(solveSet)
-                    .fixedAprilTagLayout(s.fixedAprilTagLayout)
+                    .fixedAprilTagLayout(fixedAprilTagLayout)
                     .build();
         } else if (s.facingTarget != null) {
             spatialQuerySpec = SpatialQuerySpec.builder()
                     .faceTo(s.facingTarget)
                     .controlFrames(s.controlFrames)
                     .solveWith(solveSet)
-                    .fixedAprilTagLayout(s.fixedAprilTagLayout)
+                    .fixedAprilTagLayout(fixedAprilTagLayout)
                     .build();
         }
 
@@ -736,12 +743,12 @@ public final class DriveGuidance {
     /**
      * Ensures the configured targets can be solved by the configured solve lanes.
      */
-    private static void validateCapabilitiesOrThrow(State s) {
+    private static void validateCapabilitiesOrThrow(State s, TagLayout fixedAprilTagLayout) {
         ArrayList<String> errors = new ArrayList<String>();
 
         boolean hasAprilTags = s.aprilTagSensor != null && s.cameraMount != null;
         boolean hasLocalization = s.poseEstimator != null;
-        boolean hasLayout = s.fixedAprilTagLayout != null;
+        boolean hasLayout = fixedAprilTagLayout != null;
 
         if (!hasAprilTags && !hasLocalization) {
             errors.add("solveWith() must choose localizationOnlyWithDefaults(...), aprilTagsOnlyWithDefaults(...), adaptiveWithDefaults(...), or enter one of the solve-mode branches");
@@ -806,11 +813,11 @@ public final class DriveGuidance {
         }
 
         boolean canLocT = hasLocalization
-                && canSolveTranslationWithLocalization(s.translationTarget, s.fixedAprilTagLayout);
+                && canSolveTranslationWithLocalization(s.translationTarget, fixedAprilTagLayout);
         boolean canTagsT = hasAprilTags
                 && canSolveTranslationWithAprilTags(s.translationTarget, hasLayout);
         boolean canLocO = hasLocalization
-                && canSolveAimWithLocalization(s.facingTarget, s.fixedAprilTagLayout);
+                && canSolveAimWithLocalization(s.facingTarget, fixedAprilTagLayout);
         boolean canTagsO = hasAprilTags
                 && canSolveAimWithAprilTags(s.facingTarget, hasLayout);
 
@@ -820,7 +827,7 @@ public final class DriveGuidance {
 
         if (s.translationTarget != null) {
             if (mode == DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY && !canLocT) {
-                errors.add(localizationFailureForTranslationTarget(s.translationTarget, s.fixedAprilTagLayout));
+                errors.add(localizationFailureForTranslationTarget(s.translationTarget, fixedAprilTagLayout));
             }
             if (mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY && !canTagsT) {
                 errors.add("translateTo() target cannot be solved from aprilTags(...); add fixedAprilTagLayout(...) for field-fixed references or choose localization()/adaptive() as appropriate");
@@ -832,7 +839,7 @@ public final class DriveGuidance {
 
         if (s.facingTarget != null) {
             if (mode == DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY && !canLocO) {
-                errors.add(localizationFailureForFacingTarget(s.facingTarget, s.fixedAprilTagLayout));
+                errors.add(localizationFailureForFacingTarget(s.facingTarget, fixedAprilTagLayout));
             }
             if (mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY && !canTagsO) {
                 errors.add("faceTo() target cannot be solved from aprilTags(...); add fixedAprilTagLayout(...) for field-fixed references or choose localization()/adaptive() as appropriate");

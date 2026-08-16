@@ -22,7 +22,8 @@ import edu.ftcphoenix.fw.field.TagLayout;
  * <p>Use {@code SpatialQuery} directly when robot code needs raw geometry: a tag-relative point,
  * a facing error, a translation error, or a comparison between solve lanes. Use higher-level
  * planners such as drive guidance or Plant target planning when you want a command or a plant
- * setpoint.</p>
+ * setpoint. A fixed AprilTag layout supplied through the builder is validated and snapshotted when
+ * {@link ReadyStage#build()} completes.</p>
  */
 public final class SpatialQuery implements Source<SpatialQueryResult> {
 
@@ -155,7 +156,7 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
     /**
      * Creates a runtime query from one immutable spatial-query spec.
      */
-    public SpatialQuery(SpatialQuerySpec spec) {
+    private SpatialQuery(SpatialQuerySpec spec) {
         this.spec = Objects.requireNonNull(spec, "spec");
     }
 

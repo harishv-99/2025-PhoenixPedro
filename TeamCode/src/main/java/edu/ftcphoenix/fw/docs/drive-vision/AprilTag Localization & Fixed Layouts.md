@@ -60,6 +60,12 @@ FtcGameTagLayout.fromLibraryAllTags(library);   // escape hatch only
 
 Use `fromLibraryAllTags(...)` only when you already know every tag in that library is truly fixed in the environment you are solving against.
 
+Every fixed-layout ID must be non-negative, and every position and orientation component of its
+field-to-tag pose must be finite. A mutable `SimpleTagLayout` is an authoring convenience, not a
+live-tuning handle. Complete it before owner construction. Protected-core retaining owners such as
+`AprilTagPoseEstimator`, `SpatialQuerySpec`, and Drive Guidance retain immutable semantic snapshots,
+so later edits cannot silently move a trusted landmark inside those existing owners.
+
 ---
 
 ## 2. Localization roles: absolute pose vs motion prediction

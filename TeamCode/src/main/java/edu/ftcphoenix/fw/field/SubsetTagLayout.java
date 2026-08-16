@@ -19,7 +19,10 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
  * </ul>
  *
  * <p>Wrapping the layout keeps the filtering policy in the framework rather than forcing each
- * robot to carry ad-hoc {@code if (id == ...)} logic at every call site.</p>
+ * robot to carry ad-hoc {@code if (id == ...)} logic at every call site. This object is a live,
+ * borrowed view of its backing layout. A completed owner that retains the view should freeze it
+ * through {@link TagLayouts#snapshot(TagLayout)}; protected-core query, guidance, and AprilTag-
+ * estimator owners do so automatically.</p>
  */
 public final class SubsetTagLayout implements TagLayout {
 
@@ -33,7 +36,7 @@ public final class SubsetTagLayout implements TagLayout {
      * @param base backing layout containing the original field metadata
      * @param ids IDs to expose through this view; every ID must already exist in {@code base}
      */
-    public SubsetTagLayout(TagLayout base, Set<Integer> ids) {
+    SubsetTagLayout(TagLayout base, Set<Integer> ids) {
         this(base, ids, "subset");
     }
 
@@ -44,7 +47,7 @@ public final class SubsetTagLayout implements TagLayout {
      * @param ids IDs to expose through this view; every ID must already exist in {@code base}
      * @param description short label used in debug dumps and {@link #toString()}
      */
-    public SubsetTagLayout(TagLayout base, Set<Integer> ids, String description) {
+    SubsetTagLayout(TagLayout base, Set<Integer> ids, String description) {
         this.base = Objects.requireNonNull(base, "base");
         Objects.requireNonNull(ids, "ids");
 
@@ -53,6 +56,7 @@ public final class SubsetTagLayout implements TagLayout {
             if (id == null) {
                 throw new IllegalArgumentException("ids must not contain null");
             }
+            TagLayouts.requireNonNegativeTagId(id, "SubsetTagLayout id");
             if (!base.has(id)) {
                 throw new IllegalArgumentException(
                         "SubsetTagLayout requested id=" + id + " but base layout does not contain it"

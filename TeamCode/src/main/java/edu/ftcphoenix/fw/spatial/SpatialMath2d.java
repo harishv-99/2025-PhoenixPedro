@@ -1,5 +1,7 @@
 package edu.ftcphoenix.fw.spatial;
 
+import java.util.Objects;
+
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 
@@ -19,6 +21,62 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
 public final class SpatialMath2d {
 
     private SpatialMath2d() {
+    }
+
+    /**
+     * Selects the authored heading requiring the smallest wrapped turn from a reference heading.
+     *
+     * <p>The returned value is the exact candidate supplied by the caller; this method does not
+     * normalize, deduplicate, reorder, retain, or imply the physical safety of candidates. A
+     * strictly smaller wrapped distance wins, so an exact tie preserves the first-authored
+     * candidate. Both operands are wrapped before subtraction, which keeps the calculation finite
+     * for opposite, very large finite headings and handles the {@code +/-pi} seam correctly.</p>
+     *
+     * <p>Robot policy normally calls this once from a usable current pose while constructing one
+     * fresh behavior, then freezes the selected heading in that behavior's target pose. Recomputing
+     * every loop can make the target flip near a tie.</p>
+     *
+     * @param referenceHeadingRad finite heading from which turn distance is measured, in radians
+     * @param candidateHeadingRads non-null, nonempty ordered finite authored headings, in radians
+     * @return the exact candidate with the smallest wrapped turn distance
+     * @throws NullPointerException if {@code candidateHeadingRads} is null
+     * @throws IllegalArgumentException if the candidate list is empty, the reference is
+     *                                  non-finite, or an indexed candidate is non-finite
+     */
+    public static double nearestHeadingRad(double referenceHeadingRad,
+                                           double... candidateHeadingRads) {
+        Objects.requireNonNull(candidateHeadingRads, "candidateHeadingRads");
+        if (candidateHeadingRads.length == 0) {
+            throw new IllegalArgumentException(
+                    "candidateHeadingRads must contain at least one authored heading"
+            );
+        }
+        SpatialValidation.requireFinite("referenceHeadingRad", referenceHeadingRad);
+
+        double wrappedReferenceHeadingRad = Pose2d.wrapToPi(referenceHeadingRad);
+        double bestCandidateHeadingRad = candidateHeadingRads[0];
+        SpatialValidation.requireFinite("candidateHeadingRads[0]", bestCandidateHeadingRad);
+        double bestDistanceRad = wrappedDistanceRad(
+                wrappedReferenceHeadingRad,
+                bestCandidateHeadingRad
+        );
+
+        for (int i = 1; i < candidateHeadingRads.length; i++) {
+            double candidateHeadingRad = candidateHeadingRads[i];
+            SpatialValidation.requireFinite(
+                    "candidateHeadingRads[" + i + "]",
+                    candidateHeadingRad
+            );
+            double candidateDistanceRad = wrappedDistanceRad(
+                    wrappedReferenceHeadingRad,
+                    candidateHeadingRad
+            );
+            if (candidateDistanceRad < bestDistanceRad) {
+                bestCandidateHeadingRad = candidateHeadingRad;
+                bestDistanceRad = candidateDistanceRad;
+            }
+        }
+        return bestCandidateHeadingRad;
     }
 
     /**
@@ -91,5 +149,13 @@ public final class SpatialMath2d {
      */
     public static double lerp(double a, double b, double t) {
         return MathUtil.lerp(a, b, t);
+    }
+
+    private static double wrappedDistanceRad(double wrappedReferenceHeadingRad,
+                                             double candidateHeadingRad) {
+        double wrappedCandidateHeadingRad = Pose2d.wrapToPi(candidateHeadingRad);
+        return Math.abs(Pose2d.wrapToPi(
+                wrappedCandidateHeadingRad - wrappedReferenceHeadingRad
+        ));
     }
 }

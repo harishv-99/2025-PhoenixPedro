@@ -13,8 +13,9 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
  *
  * <p>{@link SimpleTagLayout} is the easiest way to author a handful of fixed tags for tests,
  * practice fields, calibration tools, or custom off-season games. It is intentionally mutable so
- * setup code can read fluently, while consumers still view it through the immutable
- * {@link TagLayout} interface.</p>
+ * setup code can read fluently. A completed owner that retains the layout should snapshot the
+ * authored value with {@link TagLayouts#snapshot(TagLayout)}; protected-core query, guidance, and
+ * AprilTag-estimator owners do so automatically.</p>
  *
  * <h2>Common usage</h2>
  *
@@ -59,17 +60,17 @@ public final class SimpleTagLayout implements TagLayout {
      * Adds or replaces a tag placement using a pre-built pose object.
      *
      * @param id AprilTag numeric ID code (must be non-negative)
-     * @param fieldToTagPose tag pose in the FTC field frame
+     * @param fieldToTagPose tag pose in the FTC field frame; all six components must be finite
      * @return {@code this} for fluent setup code
+     * @throws IllegalArgumentException if the ID is negative or the pose is null/non-finite
      */
     public SimpleTagLayout addPose(int id, Pose3d fieldToTagPose) {
-        if (id < 0) {
-            throw new IllegalArgumentException("id must be non-negative");
-        }
-        if (fieldToTagPose == null) {
-            throw new IllegalArgumentException("fieldToTagPose must not be null");
-        }
-        byId.put(id, fieldToTagPose);
+        TagLayouts.requireNonNegativeTagId(id, "SimpleTagLayout.addPose id");
+        Pose3d validatedPose = TagLayouts.requireFinitePose(
+                fieldToTagPose,
+                "SimpleTagLayout.addPose fieldToTagPose"
+        );
+        byId.put(id, validatedPose);
         return this;
     }
 
@@ -86,6 +87,7 @@ public final class SimpleTagLayout implements TagLayout {
      * @param pitchRad tag pitch in the FTC field frame
      * @param rollRad tag roll in the FTC field frame
      * @return {@code this} for fluent setup code
+     * @throws IllegalArgumentException if the ID is negative or any pose component is non-finite
      */
     public SimpleTagLayout add(
             int id,

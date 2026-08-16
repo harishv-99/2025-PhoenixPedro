@@ -15,9 +15,9 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
  *   <li>Negative means the point is <b>outside</b> the region.</li>
  * </ul>
  *
- * <p>The signed distance lets you add hysteresis around a boundary (see {@link ZoneLatch}).
- * For robot-aware checks ("footprint overlaps zone", "robot fully inside"), see
- * {@link RobotZones2d}.</p>
+ * <p>The signed distance is a point-to-region fact. Robot-frame rectangle containment is modeled
+ * separately by {@link RobotFrameRectangle2d}; neither contract decides season scoring, physical
+ * support, collision clearance, or occupancy.</p>
  */
 public interface Region2d {
 

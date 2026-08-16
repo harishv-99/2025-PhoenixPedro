@@ -75,6 +75,12 @@ SimpleTagLayout layout = new SimpleTagLayout()
         );
 ```
 
+Tag IDs must be non-negative, and every authored position and orientation component must be finite.
+`SimpleTagLayout` is a convenient mutable authoring surface: finish adding or replacing poses before
+constructing the query or estimator that will use it. Retaining protected-core owners take an
+immutable semantic snapshot; editing `layout` afterward is not live field-layout tuning. Construct
+a new owner when the practice layout changes.
+
 ## 4) Use the layout/library with Phoenix testers
 
 The testers that use AprilTags support:

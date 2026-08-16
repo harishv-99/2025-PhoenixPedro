@@ -8,7 +8,7 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  * <p>The rectangle sides are aligned with the region's X/Y axes. This is a common and
  * very fast special-case of a convex polygon.</p>
  */
-public final class AxisAlignedBoxRegion2d implements ConvexRegion2d {
+public final class AxisAlignedBoxRegion2d implements Region2d {
 
     /**
      * Min X (inches).
@@ -33,9 +33,14 @@ public final class AxisAlignedBoxRegion2d implements ConvexRegion2d {
     /**
      * Creates an axis-aligned box region from two X bounds and two Y bounds.
      *
-     * <p>The constructor tolerates either ordering and normalizes the stored min/max values.</p>
+     * <p>The constructor requires finite values, tolerates either ordering, and normalizes the
+     * stored min/max values. Equal bounds are valid and describe a zero-area box.</p>
      */
     public AxisAlignedBoxRegion2d(double minXInches, double maxXInches, double minYInches, double maxYInches) {
+        SpatialValidation.requireFinite("AxisAlignedBoxRegion2d.minXInches", minXInches);
+        SpatialValidation.requireFinite("AxisAlignedBoxRegion2d.maxXInches", maxXInches);
+        SpatialValidation.requireFinite("AxisAlignedBoxRegion2d.minYInches", minYInches);
+        SpatialValidation.requireFinite("AxisAlignedBoxRegion2d.maxYInches", maxYInches);
         this.minXInches = Math.min(minXInches, maxXInches);
         this.maxXInches = Math.max(minXInches, maxXInches);
         this.minYInches = Math.min(minYInches, maxYInches);

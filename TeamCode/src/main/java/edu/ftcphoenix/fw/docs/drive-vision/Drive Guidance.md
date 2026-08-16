@@ -186,6 +186,51 @@ These checks prove only that the software configuration is coherent. They do not
 tolerances or time budgets are appropriate for a particular drivetrain, that guidance is tuned
 safely, or that the robot will physically reach its target.
 
+## Known-clear rectangular parking assist
+
+A robot-owned parking assist can reuse the ordinary field-relative Go-to-Pose Task. It must own an
+explicit target translation and one or more reviewed target headings; the framework does not derive
+a target or collision-free route from the parking box.
+
+For one required orientation, put that heading directly in the target `Pose2d`. When several
+orientations are acceptable, choose the nearest one exactly once from a usable current pose and
+freeze it into the Task's target:
+
+```java
+double selectedHeadingRad = SpatialMath2d.nearestHeadingRad(
+        fieldToRobot.headingRad,
+        PARK_HEADINGS_RAD
+);
+Pose2d parkTarget = new Pose2d(PARK_X_INCHES, PARK_Y_INCHES, selectedHeadingRad);
+
+Task parkTask = GoToPoseTasks.goToPoseFieldRelative(
+        poseEstimator,
+        drivebase,
+        parkTarget,
+        driveTuning,
+        taskConfig
+);
+```
+
+The ordered heading list belongs to the robot's configuration and must be defensively copied. Before
+constructing hardware or behavior owners, check every complete candidate pose at the reviewed target
+translation with a conservative `RobotFrameRectangle2d` and the authored
+`AxisAlignedBoxRegion2d`; reject the configuration if any candidate is not
+`rectangle.fullyInside(box, candidatePose)`. An off-center tracked origin uses
+`RobotFrameRectangle2d.fromRobotFrameBoundsInches(...)` rather than pretending the origin is the
+rectangle center.
+
+Do not reselect the heading each loop near a tie. If the current pose is unavailable or non-finite,
+do not start automatic motion; report the assist as unavailable and leave manual drive available.
+`fullyInside(...)` reports only whether all four modeled corners are inside or on the box at that
+instant. `hasAnyCornerInside(...)` answers only its literal corner question: it is not a general
+overlap test and neither predicate proves support, collision clearance, occupancy, legality, or an
+official score.
+
+Use this assist only for a designated known-clear box with conservative pose and physical clearance.
+A shared or partially occupied box remains a manual driver decision. The final-pose check does not
+prove that the robot can turn or drive there without sweeping outside the clear area.
+
 ## Readiness / telemetry query
 
 A plan can create a runtime query for “are we ready?” checks:

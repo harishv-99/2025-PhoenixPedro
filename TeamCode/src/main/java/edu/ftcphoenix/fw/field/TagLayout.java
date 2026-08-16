@@ -58,7 +58,10 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
  * }</pre>
  *
  * <p>Callers that only need planar math can project with {@link Pose3d#toPose2d()} at the usage
- * site.</p>
+ * site. A completed owner that retains a layout should use
+ * {@link TagLayouts#snapshot(TagLayout)} at its construction boundary; the protected-core query,
+ * guidance, and AprilTag-estimator owners do so automatically. This keeps mutable authoring
+ * layouts and borrowed subset views from changing their retained field facts later.</p>
  */
 public interface TagLayout {
 
@@ -77,7 +80,9 @@ public interface TagLayout {
     /**
      * Returns the set of all tag IDs contained in this layout.
      *
-     * <p>Implementations should return an immutable set or an effectively immutable view.</p>
+     * <p>Implementations should return an immutable set or an effectively immutable view. Every
+     * declared ID must be non-null and non-negative, and must map to a non-null finite pose before
+     * the layout is retained as trusted field metadata.</p>
      *
      * @return all IDs present in this layout
      */
