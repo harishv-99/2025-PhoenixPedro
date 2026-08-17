@@ -7,6 +7,7 @@ import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import edu.ftcphoenix.fw.actuation.Plant;
@@ -93,7 +94,7 @@ public final class BasicPedroAutoRobotTest {
                 new RecordingLocalization(events),
                 drive,
                 () -> events.add("startPose"),
-                new BasicPedroAutoMechanism(plant, 0.7),
+                () -> new BasicPedroAutoMechanism(plant),
                 task
         ));
         mode.telemetry = inertTelemetry();
@@ -138,7 +139,7 @@ public final class BasicPedroAutoRobotTest {
                 new RecordingLocalization(events),
                 drive,
                 () -> events.add("startPose"),
-                new BasicPedroAutoMechanism(plant, 0.7),
+                () -> new BasicPedroAutoMechanism(plant),
                 task
         ));
         mode.telemetry = inertTelemetry();
@@ -174,21 +175,25 @@ public final class BasicPedroAutoRobotTest {
     }
 
     @Test
-    public void failureAfterServiceRegistrationStopsAlreadyOwnedResources() {
+    public void mechanismFactoryFailureStopsAlreadyOwnedServiceExactlyOnce() {
         List<String> events = new ArrayList<String>();
-        RuntimeException constructionFailure = new RuntimeException("later construction failed");
+        RuntimeException constructionFailure = new RuntimeException("mechanism factory failed");
+        RuntimeException driveFailure = new RuntimeException("drive stop failed");
+        AtomicInteger factoryCalls = new AtomicInteger();
         RecordingDrive drive = new RecordingDrive(events);
-        RecordingOpMode mode = new RecordingOpMode(program -> {
-            new BasicPedroAutoRobot(
-                    program,
-                    new RecordingLocalization(events),
-                    drive,
-                    () -> events.add("startPose"),
-                    new BasicPedroAutoMechanism(new RecordingPlant(events), 0.7),
-                    new RecordingTask(events)
-            );
-            throw constructionFailure;
-        });
+        drive.stopFailure = driveFailure;
+        RecordingOpMode mode = new RecordingOpMode(program -> new BasicPedroAutoRobot(
+                program,
+                new RecordingLocalization(events),
+                drive,
+                () -> events.add("startPose"),
+                () -> {
+                    factoryCalls.incrementAndGet();
+                    events.add("mechanismFactory");
+                    throw constructionFailure;
+                },
+                new RecordingTask(events)
+        ));
         mode.telemetry = inertTelemetry();
 
         try {
@@ -196,9 +201,57 @@ public final class BasicPedroAutoRobotTest {
             fail("expected construction failure");
         } catch (RuntimeException failure) {
             assertSame(constructionFailure, failure);
+            assertEquals(1, failure.getSuppressed().length);
+            assertSame(driveFailure, failure.getSuppressed()[0]);
         }
 
-        assertEquals(Arrays.asList("plant.stop", "drive.stop"), events);
+        assertEquals(1, factoryCalls.get());
+        assertEquals(Arrays.asList("mechanismFactory", "drive.stop"), events);
+        mode.stop();
+        assertEquals(2, events.size());
+    }
+
+    @Test
+    public void duplicateOutputFailureStopsMechanismThenManagedServiceWithSuppressionTruth() {
+        List<String> events = new ArrayList<String>();
+        RuntimeException mechanismFailure = new RuntimeException("mechanism stop failed");
+        RuntimeException driveFailure = new RuntimeException("drive stop failed");
+        RecordingPlant plant = new RecordingPlant(events);
+        plant.stopFailure = mechanismFailure;
+        BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(plant);
+        RecordingDrive drive = new RecordingDrive(events);
+        drive.stopFailure = driveFailure;
+        RecordingOpMode mode = new RecordingOpMode(program -> {
+            program.output(mechanism);
+            return new BasicPedroAutoRobot(
+                    program,
+                    new RecordingLocalization(events),
+                    drive,
+                    () -> events.add("startPose"),
+                    () -> {
+                        events.add("mechanismFactory");
+                        return mechanism;
+                    },
+                    new RecordingTask(events)
+            );
+        });
+        mode.telemetry = inertTelemetry();
+
+        try {
+            mode.init();
+            fail("expected duplicate output registration to fail");
+        } catch (RuntimeException failure) {
+            assertTrue(failure.getMessage().contains("already registered"));
+            assertEquals(2, failure.getSuppressed().length);
+            assertSame(mechanismFailure, failure.getSuppressed()[0]);
+            assertSame(driveFailure, failure.getSuppressed()[1]);
+        }
+
+        assertEquals(
+                Arrays.asList("mechanismFactory", "plant.stop", "drive.stop"),
+                events);
+        mode.stop();
+        assertEquals(3, events.size());
     }
 
     /** Create the same fake-backed declaration for the separate FTC host lifecycle test. */
@@ -210,7 +263,7 @@ public final class BasicPedroAutoRobotTest {
                 new RecordingLocalization(events),
                 new RecordingDrive(events),
                 () -> events.add("startPose"),
-                new BasicPedroAutoMechanism(plant, 0.7),
+                () -> new BasicPedroAutoMechanism(plant),
                 new RecordingTask(events)
         );
     }

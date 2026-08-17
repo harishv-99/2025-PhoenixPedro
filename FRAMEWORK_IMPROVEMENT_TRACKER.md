@@ -179,7 +179,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 92 | CONFIG-05 | Pedro runtime configuration ownership | Done | The reviewed owner-local Pedro snapshots, complete pre-effect validation, pure Phoenix mapper, exclusive native-tool path, narrow pose observation, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 93 | CONFIG-06 | Tool and tester configuration ownership | Done | The reviewed defaults-only tester Configs, explicit vision-factory behavior, production-aligned Pod evidence, corrected-localization naming, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 94 | CONFIG-07 | Starter profile simplification | Done | The reviewed owner-local Starter profile, separate motion permissions, synchronous active-slice declarations, API removals, cleanup evidence, synchronized teaching, and destination-specific publication authorization are complete. |
-| 95 | CONFIG-08 | Basic Pedro profile independence | Proposed | Give the Pedro reference its own small reviewed profile and remove its dependency on Phoenix configuration and project constants. |
+| 95 | CONFIG-08 | Basic Pedro profile independence | Done | The reviewed independent profile, one review-gated root path, owner-local capture, collision preflight, tests, teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Proposed | Move Phoenix configuration sections beside their owning services and mechanisms while retaining one small data-only aggregate. |
 | 97 | EXAMPLE-04 | Curated managed concept examples | Proposed | Rationalize the manual-loop examples into a smaller managed progression while preserving EXAMPLE-03's evidence-gated deferral. |
 | 98 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
@@ -259,7 +259,9 @@ is **Done** after its separately approved implementation, automated verification
 review, and destination-specific publication authorization. CONFIG-07 is **Done** after its
 approved implementation, focused/full automated verification, strict Javadocs, documentation
 checks, independent adversarial review, Android Studio review, and destination-specific publication
-authorization; CONFIG-08 and CONFIG-09 remain **Proposed**.
+authorization; CONFIG-08 is **Done** after its approved implementation, focused/full automated
+verification, strict Javadocs, documentation checks, independent adversarial review, Android Studio
+review, and destination-specific publication authorization. CONFIG-09 remains **Proposed**.
 Recording the program neither approves the later implementations nor permits compatibility shims or
 mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
@@ -19675,39 +19677,323 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-08 - Basic Pedro profile independence
 
-- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-05 and CONFIG-07.** The basic
-  Pedro reference is managed and tested, but its configuration story is not independent or simple
-  enough to serve as the optional route example.
-- **Confirmed current coupling:** the five-file Pedro example has no profile of its own.
-  `BasicPedroAutoExample` imports `PhoenixProfile`, copies its full aggregate, extracts one Phoenix
-  scoring motor configuration, and invokes project `pedroPathing.Constants` to construct the runtime.
-  This makes a generic example depend on season-robot hardware/configuration it does not teach.
-  The host also clears `PhoenixMatchHandoff` as a safety boundary; that behavior must be dispositioned
-  deliberately rather than removed as cosmetic coupling.
-- **Leading hypothesis:** add one fresh `BasicPedroProfile` containing an explicit physical-review
-  acknowledgement, the CONFIG-05 `PedroPathingRuntime.Config`, and the example mechanism's owner-
-  specific Config. Supply software-valid conservative data from small named factories and block
-  enablement until physical review. Construct/register the runtime before the mechanism factory so
-  later failure remains covered by managed cleanup. Remove all Basic-Pedro references to
-  `PhoenixProfile` and project Pedro `Constants` without importing Starter configuration.
-- **Example and seam boundary:** preserve the existing path, routine, capability, and managed-host
-  lessons; do not fold Pedro into Starter or introduce a shared `ExampleProfile` base. Audit the
-  current completed-Plant-plus-power test constructor against the Plant ownership rule and prefer
-  ordinary fake-HardwareMap construction or a semantic capability fake over blessing a peer seam.
-  Preserve the match-handoff clear unchanged in CONFIG-08 so a generic diagnostic Auto cannot leave
-  a recent Phoenix snapshot for a later TeleOp; defer any relocation/removal to EXAMPLE-04 or
-  RUNTIME-03 after this dependency has landed.
-- **Measurable simplicity target:** keep `BasicPedroProfile` at most 130 physical/75 code lines,
-  normal `configure(...)` declaration-only, and the package free of `PhoenixProfile` and project
-  `Constants` references. Metrics are review evidence; ownership, one construction path, and the
-  short student reading path are the actual contract.
-- **Future completion evidence:** cover fresh/deep copies of every runtime/mechanism field, review
-  gating before effects, exact runtime-before-mechanism registration, partial cleanup, route outcome
-  and cancellation, terminal stop, host handoff safety, and unchanged start/path behavior. Update
-  Basic Pedro guides/Javadocs and all callers; run Pedro/example/full tests and static dependency/
-  stale-path scans. Hardware still must validate Pinpoint/motor wiring, route geometry, follower
-  tuning, clear space, and STOP.
-- **Decision record:** _Pending. No implementation started._
+- **Status and Gate 1 boundary (2026-08-17):** **Ready after decision-complete research.** Gate 1
+  ran on `codex/config-08-basic-pedro-profile-independence`, based directly on
+  `origin/master@21f338849160d3a1a180f15b6bcc44ff36d1a12c`, and changed only this tracker. Three
+  independent source/API, student-simplicity/documentation, and adversarial architecture audits
+  found no evidence gate or unresolved design blocker. No production implementation, staging,
+  publication, CONFIG-09, or EXAMPLE-04 work is authorized before the approval stop below.
+- **Gate 2 implementation authorization (2026-08-17):** the user replied exactly **“Approve
+  CONFIG-08 independent Basic Pedro profile, one review-gated composition-root construction path,
+  owner-local runtime and intake snapshots, explicit local example baselines, cross-owner motor
+  collision preflight, Plant-only hardware-neutral test seam, and redundant Phoenix/project
+  construction dependency removal design.”** CONFIG-08 is now **In progress**. That authorization
+  covers only the bounded Java, tests, Javadocs, maintained guides, and Gate 2 verification below;
+  it does not authorize staging, publication, CONFIG-09, EXAMPLE-04, RUNTIME-03, or a hardware-
+  safety claim.
+- **Complete current owner, construction, and caller inventory:** the production reference is five
+  Java files totaling **613 physical / roughly 421 code lines**, plus four focused test classes.
+  `BasicPedroAutoExample` has one public FTC no-arg constructor and one package-private
+  `Function<RobotProgram, BasicPedroAutoRobot>` host-test constructor. It is the sole production
+  caller of the public root constructor. `BasicPedroAutoMechanism.Config` has three public fields
+  (`String intakeMotorName`, `Direction intakeMotorDirection`, `double collectPower`), a private
+  constructor, and public positional `of(String, Direction, double)`; the mechanism has public
+  `(HardwareMap, Config)`, package-private `(Plant, double)`, and four public lifecycle/Task
+  methods. `BasicPedroAutoRobot` has public
+  `(RobotProgram, PedroPathingRuntime, Supplier<BasicPedroAutoMechanism>)`, a package-private
+  six-peer fake-component constructor, and public `pedroStartPose()`, `isRootComplete()`, and
+  `rootOutcome()`. `BasicPedroAutoPaths(PedroPathingRuntime)` plus its pose/route accessors and
+  `BasicPedroAutoRoutine.build(...)` are the remaining supported geometry/strategy paths. No
+  production caller stores, shares, reuses, composes, or independently validates the positional
+  mechanism Config, completed runtime argument, or mechanism Supplier; all are authored inline for
+  this single root declaration. Tests use only the two package-private hardware-neutral seams and
+  currently never exercise the ordinary mechanism constructor, its Config validation, the public
+  runtime-plus-Supplier root, or a production profile.
+- **Confirmed configuration and ownership defects:** current production order is
+  `PhoenixMatchHandoff.clear()` -> `PhoenixProfile.current().copy()` -> extract three scoring
+  leaves -> `Constants.phoenixAutoRuntimeConfig(profile)` -> runtime validation/construction ->
+  service registration -> eager paths/start action -> mechanism construction/registration -> root
+  Task -> presenters. The broad 1,052-line season profile copy inspects unrelated robot sections,
+  while the 246-line project Constants class supplies the Pinpoint/drive mapping and hidden checked-
+  in Pedro tuning. The optional lesson therefore sends a student outside its example package and
+  through two season/project concepts to answer one runtime and one intake. There is no positive
+  physical-review permission. There is also no root check preventing the intake name from resolving
+  to any of the four Pedro drive motor names, which would create peer command owners for one SDK
+  device. The current docs simultaneously call the reference independent and explain that it
+  borrows Phoenix configuration.
+- **Selected fresh profile and exact public surface:** add `public final BasicPedroProfile` with a
+  private no-arg constructor, exactly three public mutable fields in teaching order--
+  `PedroPathingRuntime.Config pedro`, `BasicPedroAutoMechanism.Config intake`, and
+  `boolean allowRobotMotion`--and exactly one public method,
+  `public static BasicPedroProfile current()`. Add no aggregate `copy`, validator,
+  `validatedCopy`, builder, inheritance base, getter forest, or live-tuning path. Every call to
+  `current()` returns a fresh outer object, fresh runtime Config graph, and fresh intake Config.
+  The root consumes the aggregate synchronously and retains none of it; the runtime and mechanism
+  remain the long-lived owners that snapshot only their own active Configs.
+- **Selected software baseline and deliberate behavior change:** `current()` starts from the
+  owner-provided `PedroPathingRuntime.Config.defaults()` rather than copying Phoenix or duplicating
+  project tuning. It visibly keeps the framework Pinpoint software baseline (`"odo"`, zero pod
+  offsets, goBILDA four-bar resolution, FORWARD/FORWARD pod directions, null yaw scalar, quality
+  `0.75`), Pedro 2.1.2's fresh follower and velocity/vector values, the runtime's owner-local
+  eight-value path-constraint baseline (`0.995`, `0.1`, `0.1`, `0.007`, `100.0`, `1.0`, `10`,
+  `1.0`), and the decode-inverted FTC field transform. It explicitly authors drive names
+  `"frontLeftMotor"`, `"backLeftMotor"`, `"frontRightMotor"`, and `"backRightMotor"`, the Pedro
+  baseline left REVERSE/right FORWARD directions, `maxPower=0.25`, and brake mode enabled. The
+  intake baseline is `"intakeMotor"`, `Direction.FORWARD`, and `collectPower=0.20`.
+  `allowRobotMotion` is false. Moving from the borrowed Phoenix mass/constraints/name/direction
+  graph to local owner defaults, reducing the intake action, and authoring the initial drivetrain
+  setting are deliberate. Pedro 2.1.2 restores its Follower's separate `globalMaxPower`--`1.0` by
+  default--when `followPath(...)` starts, so `mecanumConstants.maxPower=0.25` is **not** a durable
+  autonomous route cap; `useBrakeModeInTeleOp` likewise does not define Auto route braking. The
+  disabled annotation and false permission are the checked-in motion gates. None of these facts is
+  tuning, calibration, a safe-power claim, or permission to enable the OpMode.
+- **Why one permission is exact:** every supported Basic Pedro Auto path always constructs both the
+  Pedro drivetrain/localization graph and the intake mechanism and declares the one route-plus-
+  intake routine. There is no maintained Pedro-only or intake-only mode for this profile. One
+  false-by-default `allowRobotMotion` therefore represents the two real states this example can
+  use: the complete graph is not permitted, or a human has deliberately reviewed the complete
+  active graph for a supervised run. Two flags, a curriculum-stage enum, a generic review object,
+  default-difference inference, or an `isValid` claim would create states/certainty the supported
+  graph does not use. Editing any active fact requires clearing the permission again. The Boolean
+  authorizes a run; it never proves a physical fact.
+- **Exact owner-local intake API:** simplify `BasicPedroAutoMechanism.Config` to exactly public
+  fields `String motorName`, `Direction direction`, and `double collectPower`, a private no-arg
+  constructor, and sole public `static Config defaults()` using the intake baseline above. Remove
+  positional `of(...)`; do not add public copy/validation methods. Public ordinary construction
+  remains exactly `BasicPedroAutoMechanism(HardwareMap, Config)`. It copies all three values,
+  rejects a null/trim-blank name, null direction, or non-finite, zero, or out-of-`[-1,+1]`
+  collection power with owner-qualified diagnostics before its first lookup, then privately owns
+  its command-backed Plant. Both power signs and exact `-1/+1` remain valid; `+0.0` and `-0.0` are
+  rejected because a named collect action must not silently be a no-op.
+- **Distinct completed-Plant seam:** replace package-private `(Plant, double)` with exactly
+  `BasicPedroAutoMechanism(Plant)`. It is the Principles' completed-Plant-alone hardware-neutral
+  test exception: it receives no Config, target, or power peer, requires the graph-owned command
+  target, derives its action power only from `Config.defaults()`, and retains useful hostile-target,
+  Task, cancellation, and terminal-stop evidence that an SDK fixture does not express. Custom
+  authored power and all Config branches use the ordinary fake-`HardwareMap` constructor. Remove,
+  rather than overload, every `(Plant, ...)` path.
+- **One ordinary composition-root construction path:** replace the public completed-runtime plus
+  mechanism-Supplier constructor with exactly
+  `public BasicPedroAutoRobot(RobotProgram, HardwareMap, BasicPedroProfile)`. This root requires the
+  program, map, and profile, checks `allowRobotMotion`, requires both active Config objects, and
+  checks the only cross-owner resource collision before any runtime hardware effect. It then calls
+  the sole `PedroPathingRuntime.create(...)` effect boundary, immediately registers the service,
+  builds the fixed paths/start action, constructs and registers the intake owner, and declares the
+  routine root. The host becomes one ordinary expression:
+
+  ```java
+  robot = new BasicPedroAutoRobot(
+          program,
+          hardwareMap,
+          BasicPedroProfile.current());
+  ```
+
+  The current ordinary path instead asks the student for a season profile, one positional scoring-
+  to-example translation, the project mapper, one completed runtime, and one mechanism Supplier:
+
+  ```java
+  PhoenixProfile profile = PhoenixProfile.current().copy();
+  BasicPedroAutoMechanism.Config mechanism = BasicPedroAutoMechanism.Config.of(
+          profile.scoring.nameMotorIntake,
+          profile.scoring.directionMotorIntake,
+          profile.scoring.intakeMotorPower);
+  PedroPathingRuntime runtime = PedroPathingRuntime.create(
+          hardwareMap,
+          Constants.phoenixAutoRuntimeConfig(profile));
+  robot = new BasicPedroAutoRobot(
+          program,
+          runtime,
+          () -> new BasicPedroAutoMechanism(hardwareMap, mechanism));
+  ```
+
+  Merely inserting a local profile while retaining that public assembly would still expose four
+  steps and let ordinary callers bypass the permission with an already-effectful runtime. It is
+  therefore removed rather than aliased or deprecated.
+- **Exact retained test and observation seams:** keep the package-private Example
+  `Function<RobotProgram, BasicPedroAutoRobot>` constructor. It provides distinct evidence for the
+  final FTC host, additive presenters, and handoff clear without acquiring Pedro hardware and is
+  not a public extension API. Retain exactly one package-private fake-component Robot constructor,
+  changing its mechanism argument to `Supplier<BasicPedroAutoMechanism>`:
+  `(RobotProgram, AbsolutePoseEstimator, DriveCommandSink, Runnable,
+  Supplier<BasicPedroAutoMechanism>, Task)`. It registers the semantic service before applying that
+  Supplier exactly once, so a throwing later factory proves managed cleanup stops the already-owned
+  drive. It is not an FTC/runtime Config recipe. The three existing public root status observations
+  remain unchanged. Add only a package-private `latestRouteStatus()` for the same-package host
+  presenter; do not expose the runtime, drive adapter, path builder, or raw Follower.
+- **Exact pre-effect and cleanup truth:** permission is checked before nested tuning or hardware;
+  an unreviewed but malformed draft therefore reports the actionable permission first. The root's
+  null-safe collision check compares a nonblank intake name against each nonblank Pedro motor name
+  using FTC's raw-preserving, trim-then-case-sensitive lookup identity and reports both exact
+  profile paths/effective key. Missing or malformed owner fields are skipped by that cross-owner
+  comparison so the runtime or mechanism remains their authoritative validator. Runtime
+  `validatedCopy` still completes before drivetrain/Pinpoint/Follower effects. Once that runtime is
+  created, its service is program-owned before paths or intake construction. A later intake Config,
+  constructor, or registration `RuntimeException` may therefore occur after runtime hardware
+  effects; ordinary `FtcRobotOpMode` failure cleanup stops the registered drive, while the
+  mechanism cleans a completed Plant that failed before ownership transfer. Registration failures
+  retain the existing immediate stop plus primary/suppressed exception contract. A Mecanum
+  constructor that never returns a handle, Pinpoint reset with no close operation, Follower static
+  effects, `Error`, and SDK physical state remain the already-documented best-effort limits.
+- **Match-handoff boundary:** preserve `PhoenixMatchHandoff.clear()` as the first host action. It is
+  a deliberate diagnostic safety dependency, not hardware configuration: this disabled generic
+  Auto must not leave a recent Phoenix match snapshot for a later TeleOp. Production Basic Pedro
+  code and maintained Basic construction snippets must have no `PhoenixProfile` or project
+  `pedroPathing.Constants` reference; the one named match-handoff clear is the explicit exception.
+  The host test can prove the clear by publishing again after INIT, removing its incidental need to
+  construct a `PhoenixRobot` with `PhoenixProfile` merely to inspect carrier state. Relocating the
+  handoff policy belongs to EXAMPLE-04 or RUNTIME-03, not this item.
+- **Validation-helper disposition:** add no `ConfigValidation`, `requirePower`,
+  `requireDirection`, public hardware-name value, or public identity comparator. The Basic collect
+  scalar overlaps one Starter predicate after zero becomes invalid, but Starter also owns an eject
+  scalar and pairwise-difference rule; Pedro max power is `(0,1]`, drive scales are `[0,1]`, and
+  inactive-branch/error contexts differ. Direction needs only owner-qualified null handling. ACT-01
+  already selected raw-preserving `name.trim()`/case-sensitive FTC group identity and explicitly
+  kept `FtcHardwareNameGroups` package-private with no global/public name registry. The Basic root's
+  cross-owner comparison is a different robot-graph policy. Promoting a helper across two example
+  packages would add a public noun and still leave every owner rule local; CONFIG-08 keeps the few
+  exact checks beside their owners. Any future shared FTC identity concept requires its own decision
+  after CONFIG-09 supplies independent adopter evidence.
+- **Public-layer capability disposition:** `PedroPathingRuntime.create(HardwareMap, Config)` remains
+  the sole production Pedro effect boundary; its Config's `defaults/copy/validatedCopy` and advanced
+  completed-Follower adapter retain their CONFIG-05 roles. Project `Constants.phoenixAutoRuntimeConfig`
+  remains the pure Phoenix production/native-tool mapper because Phoenix and its generated tools
+  still use it; CONFIG-08 only removes the Basic caller. `BasicPedroAutoPaths` and
+  `BasicPedroAutoRoutine` keep their distinct geometry and strategy factories. No static Basic
+  runtime factory, profile mapper, facade overload, staged builder, or second Robot constructor is
+  added for symmetry.
+- **Preserved behavior and bounded one-item scope:** preserve fixed route geometry/start pose,
+  eager path construction, per-start route truth, success/timeout/cancellation-like policy, Task
+  freshness/timing, localization-before-Pedro heartbeat, exact START/output order, cancellation,
+  terminal Plant/drive stop, presenter keys, disabled annotation, and handoff invalidation. Do not
+  change Pedro integration algorithms/APIs, project Constants or Phoenix production construction,
+  PhoenixProfile decomposition (CONFIG-09), concept-example curation (EXAMPLE-04), host ownership
+  (RUNTIME-03), route geometry, or physical tuning beyond the explicit checked-in Basic baseline
+  changes above. The expected production scope is the new profile plus Basic host/root/mechanism
+  Javadocs and implementation; paths/routine change only if compilation or exact documentation
+  synchronization requires it.
+- **Documentation synchronization:** add `BasicPedroProfile` to the optional lesson's six-file
+  reading path. Update `BasicPedroAutoExample`, `BasicPedroAutoRobot`, and
+  `BasicPedroAutoMechanism` Javadocs; `First Pedro Auto.md`; `Pedro Autonomous Reference.md`; and
+  only the Basic snippet in `Recommended Robot Design.md`. Teach one local false-by-default profile,
+  the sole root call, owner-local snapshots/validation, runtime-before-intake cleanup coverage,
+  the handoff exception, and the difference between a software baseline and reviewed hardware.
+  Keep the generic Pedro integration guide, Loop Structure, examples index, getting-started index,
+  and Phoenix Architecture unchanged where their current lifecycle/ownership claims remain true;
+  do not churn them for symmetry.
+- **Measurable simplicity:** keep `BasicPedroProfile` at most **130 physical / 75 code lines** and
+  normal `configure(...)` declaration-only. Record the complete Basic production package before/
+  after counts so the new file does not hide displaced aggregate boilerplate, but do not require a
+  false net reduction: the actual student win is replacing the current local -> 1,052-line season
+  profile -> 246-line project mapper reading path with one <=130-line local file and one root call.
+  These are review metrics, not formatting-game CI tests.
+- **Required Gate 2 evidence:** reflection-lock the exact Profile, Config, Example, Mechanism, and
+  Robot visibility/constructors/fields/methods and absence of the removed public/peer paths. Prove
+  two `current()` calls have independent outer, predictor, follower coefficient, Mecanum vector,
+  path-constraint, and intake graphs; exact defaults/limits; no Pedro-global default read; and
+  caller mutation cannot retune either constructed owner. Table-test null/blank names, null
+  direction, NaN/positive/negative infinity, both signed zeros, just-outside and exact `-1/+1`
+  power, permission, null active Configs, and every intake-versus-four-drive exact/trim/case branch
+  with owner-qualified errors. Permission/collision/runtime-invalid cases must show zero hardware
+  lookup, Pinpoint reset, motor write, mechanism factory call, and vendor-global mutation as
+  applicable. Prove service registration precedes the one-shot mechanism Supplier; later factory/
+  Config/registration failure triggers exact managed drive/Plant cleanup with primary/suppressed
+  truth. Preserve all route outcome/cancellation, START phase, terminal STOP, presenter, and
+  handoff-clear regressions. Run focused Basic/Pedro tests, full TeamCode test+compile, strict
+  Javadocs, documentation links, diff/whitespace, exact caller/old-signature/dependency/no-sleep
+  scans, and report the profile/package line counts.
+- **Adopting-robot evidence boundary:** no physical evidence blocks software implementation because
+  the checked-in host remains `@Disabled` and `allowRobotMotion=false`; neither fact is later proof
+  of safety. Before enabling an adapted host, a human still must verify all drive/intake hardware
+  identities and directions, brake behavior, the configured initial drivetrain value and Pedro's
+  route-time power reset, the intake command, Pinpoint identity/pod placement/
+  resolution/directions/yaw/READY reset, follower/velocity/path tuning, field transform and physical
+  start, route/mechanism clearance, stopping distance, repeatability, and immediate physical STOP.
+  The first run remains supervised with unloaded mechanisms/raised wheels where appropriate and
+  clear space.
+- **Alternatives rejected:** documentation-only leaves a compiling counterexample. A local profile
+  plus the old runtime/Supplier root preserves a bypassable permission and redundant assembly.
+  Adding a Basic overload to project Constants or a pure Basic mapper creates a second public noun
+  for data the profile already owns. Reusing `StarterProfile`, adding a shared `ExampleProfile`
+  base/interface, or nesting Basic inside Starter erases different active-graph/permission semantics
+  without a polymorphic consumer. A staged builder, immutable tuple forest, reflection copier,
+  generic Config schema, or aggregate validator adds concepts while every caller authors one fresh
+  profile inline. Two permissions or a mode enum add unreachable states; one broad validated copy
+  duplicates both owners and recreates the unused-section problem. Retaining `(Plant, double)` or
+  adding `(Plant, Config)` violates the completed-Plant-alone rule; removing every Plant seam loses
+  distinct hostile-target lifecycle evidence. Copying Phoenix tuning wholesale keeps season meaning
+  in the generic lesson, while accepting raw Pedro defaults at full power hides a poor first-test
+  limit; the selected local defaults, explicit initial drivetrain and intake values, and false
+  permission are the smaller honest baseline. Only the false permission prevents route motion in
+  the checked-in host.
+- **Gate 1 decision and approval stop (historical):** CONFIG-08 became decision-complete and
+  **Ready**. The requested reply was **“Approve CONFIG-08 independent Basic Pedro profile, one
+  review-gated composition-root
+  construction path, owner-local runtime and intake snapshots, explicit local example baselines,
+  cross-owner motor collision preflight, Plant-only hardware-neutral test seam, and redundant
+  Phoenix/project construction dependency removal design.”** The workflow stopped, and the user
+  later sent that exact reply as recorded above. It authorized only the bounded CONFIG-08 Java,
+  tests, Javadocs, maintained guides, and Gate 2 verification; it did not authorize publication,
+  CONFIG-09, EXAMPLE-04, RUNTIME-03, or a hardware-safety claim.
+- **Gate 2 implementation and exact scope (2026-08-17):** CONFIG-08 is **Verifying** with an
+  unstaged **15-file** diff: this tracker; four Basic Pedro production Java files (new
+  `BasicPedroProfile` plus the host, composition root, and intake owner); seven focused test Java
+  files (four migrated and three new); and three maintained Markdown guides. The path and routine
+  production files did not need changes. The exact tree is eleven modified tracked files plus four
+  untracked new files, with zero staged files and no CONFIG-09, EXAMPLE-04, project Constants,
+  Phoenix production, Pedro integration, generated, vendored, SDK-sample, or legacy edit.
+- **Implemented result:** the Basic host now clears the match handoff and declares exactly
+  `new BasicPedroAutoRobot(program, hardwareMap, BasicPedroProfile.current())`. The fresh local
+  profile owns one complete Pedro draft, one intake draft, and false motion permission; it imports
+  no Phoenix profile or project Pedro Constants. The root checks permission and trim-equivalent,
+  case-sensitive intake/drive ownership before effects, creates and immediately registers the
+  runtime, then constructs/registers the intake and declares the routine. The mechanism owns the
+  exact defaults-only Config and ordinary `HardwareMap` path; its only second constructor is the
+  package-private Plant-alone hardware-neutral seam. The root exposes only semantic status, while
+  paths/routine and the package fake roles retain their distinct geometry, strategy, and lifecycle
+  evidence. Javadocs and all three maintained guides teach the same six-file story and the exact
+  Pedro `globalMaxPower` caveat.
+- **Automated verification (2026-08-17):** Android Studio JBR 21 production compilation and the
+  focused Basic Pedro package passed **6 suites / 30 tests / 0 failures / 0 errors / 0 skipped**.
+  On the exact frozen Java/docs tree, `:TeamCode:testDebugUnitTest` plus
+  `:TeamCode:compileDebugJavaWithJavac` passed **193 suites / 1,813 tests / 0 failures / 0 errors /
+  0 skipped**. `DocumentationLinksTest` separately passed **5/5**, and strict
+  `:TeamCode:phoenixJavadocs` completed successfully. Output contained only the repository's
+  existing Java 8 source/target deprecation warnings under JBR 21.
+- **Independent and static review:** separate production/API and tests/docs adversarial audits
+  passed after strengthening both-sided trimmed-name cases and reflection closure over public
+  static fields. The suites lock the exact public/package construction paths, absence of raw
+  runtime/Follower fields, fresh/deep defaults, Pedro-global isolation, owner capture, every intake
+  scalar/null boundary, permission/null/collision/runtime no-effect ordering, one-shot mechanism
+  factory order, service/output cleanup with suppression truth, route outcomes/cancellation,
+  START/STOP, presenters, and handoff clearing. Removed-symbol, Basic PhoenixProfile/project-
+  Constants dependency, no-sleep, local-link, Markdown-fence, stale-snippet, trailing-whitespace,
+  final-newline, and `git diff --check` scans are clean. The new profile is **65 physical / 31
+  rough-code lines**; the complete six-file production package is **761 physical / roughly 527
+  code lines**, compared with the prior five-file **613 / roughly 421**, while the student reading
+  path no longer traverses the 1,052-line season profile or 246-line project mapper.
+- **Android Studio and adopting-robot review required:** inspect the local profile values and false
+  permission; sole root/Config/Plant construction surfaces; permission and all four collision
+  diagnostics; runtime-before-intake registration and cleanup; host handoff/presenters; the new
+  reflection, boundary, fake-HardwareMap, cleanup, and handoff tests; and the three guide diffs.
+  Robot hardware remains useful and required only when adopting/enabling this example: verify all
+  motor and Pinpoint identities/directions/placement/readiness, follower/path/route-time power and
+  braking behavior, transform/start/clearance/stopping distance, intake motion, repeatability, and
+  immediate physical STOP. No hardware run was performed or claimed by this software Gate 2.
+- **Resolved publication coordinates and Gate 2 stop:** the reviewed branch is
+  `codex/config-08-basic-pedro-profile-independence`, its unchanged base/HEAD/merge-base is
+  `origin/master@21f338849160d3a1a180f15b6bcc44ff36d1a12c`, the exact origin push URL is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and the target is `master`. After Android
+  Studio review, the exact reply is: **“CONFIG-08 looks good. Authorize committing the reviewed
+  CONFIG-08 diff on codex/config-08-basic-pedro-profile-independence, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** Gate 2 stops with every file unstaged; it does not publish or begin CONFIG-09.
+- **Manual verification and publication authorization (2026-08-17):** the user sent the exact
+  combined reply above after the Android Studio review handoff. CONFIG-08 is now **Done**; Gate 3
+  may stage only this reviewed 15-file diff, create its single item commit, push
+  `codex/config-08-basic-pedro-profile-independence` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. This authorization does not start CONFIG-09, EXAMPLE-04, or RUNTIME-03 and does not
+  claim robot-hardware validation.
 
 ### CONFIG-09 - Phoenix profile owner-section decomposition
 

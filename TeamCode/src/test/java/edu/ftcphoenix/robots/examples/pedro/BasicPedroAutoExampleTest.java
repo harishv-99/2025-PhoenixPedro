@@ -2,8 +2,6 @@ package edu.ftcphoenix.robots.examples.pedro;
 
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.qualcomm.robotcore.hardware.Gamepad;
-import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.After;
@@ -17,13 +15,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+import edu.ftcphoenix.fw.drive.route.RouteStatus;
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
-import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -76,7 +73,9 @@ public final class BasicPedroAutoExampleTest {
         assertTrue(events.contains("plant.stop"));
         assertTrue(events.contains("drive.stop"));
         assertEquals(TaskOutcome.CANCELLED, retainedRobot[0].rootOutcome());
+        assertEquals(RouteStatus.NOT_STARTED, retainedRobot[0].latestRouteStatus());
         assertTrue(telemetryKeys.contains("example.expectedPhysicalStartPedro"));
+        assertTrue(telemetryKeys.contains("example.routeStatus"));
         assertTrue(telemetryKeys.contains("example.rootComplete"));
         assertTrue(telemetryKeys.contains("example.rootOutcome"));
     }
@@ -113,15 +112,16 @@ public final class BasicPedroAutoExampleTest {
     }
 
     @Test
-    public void configureInvalidatesPendingPhoenixMatchHandoff() {
+    public void configureClearsPendingPhoenixMatchHandoffSoAnotherAutoCanPublish() {
+        PoseEstimate snapshot = new PoseEstimate(
+                new Pose3d(1.0, 2.0, 0.0, 0.3, 0.0, 0.0),
+                true,
+                1.0,
+                LoopTimestamp.unavailable()
+        );
         PhoenixMatchHandoff.publishFromAuto(
                 new EmptyOpMode(),
-                new PoseEstimate(
-                        new Pose3d(1.0, 2.0, 0.0, 0.3, 0.0, 0.0),
-                        true,
-                        1.0,
-                        LoopTimestamp.unavailable()
-                ),
+                snapshot,
                 PhoenixAlliance.RED
         );
         BasicPedroAutoExample mode = new BasicPedroAutoExample(
@@ -134,25 +134,12 @@ public final class BasicPedroAutoExampleTest {
 
         mode.init();
 
-        assertEquals(
-                PhoenixMatchHandoff.RestoreResult.MISSING,
-                PhoenixMatchHandoff.restoreForTeleOp(
-                        new EmptyOpMode(),
-                        uninitializedPhoenixRobot(),
-                        alliance -> { }
-                )
+        PhoenixMatchHandoff.publishFromAuto(
+                new EmptyOpMode(),
+                snapshot,
+                PhoenixAlliance.BLUE
         );
         mode.stop();
-    }
-
-    private static PhoenixRobot uninitializedPhoenixRobot() {
-        return new PhoenixRobot(
-                new HardwareMap(null, null),
-                inertTelemetry(),
-                new Gamepad(),
-                new Gamepad(),
-                PhoenixProfile.current()
-        );
     }
 
     private static Telemetry throwingOnUpdateAttemptTelemetry(

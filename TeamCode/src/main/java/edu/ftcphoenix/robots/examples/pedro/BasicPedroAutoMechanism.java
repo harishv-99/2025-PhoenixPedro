@@ -30,35 +30,26 @@ public final class BasicPedroAutoMechanism implements RobotProgram.Output {
     /** Data-only FTC wiring and command configuration for this example mechanism. */
     public static final class Config {
         /** FTC configuration name of the intake motor. */
-        public String intakeMotorName;
+        public String motorName;
 
         /** Physical direction of positive intake motor power. */
-        public Direction intakeMotorDirection;
+        public Direction direction;
 
-        /** Normalized finite collection power in {@code [-1, +1]}. */
+        /** Normalized finite, nonzero collection power in {@code [-1, +1]}. */
         public double collectPower;
 
         private Config() {
-            // Use of(...) so every caller supplies the three robot-specific facts.
-        }
-
-        private Config(Config source) {
-            intakeMotorName = source.intakeMotorName;
-            intakeMotorDirection = source.intakeMotorDirection;
-            collectPower = source.collectPower;
+            // Use defaults() to begin from a complete software-valid example.
         }
 
         /**
-         * Create the complete data-only configuration; this example has no truthful robot-wide
-         * defaults for its hardware name, direction, or collection power.
+         * Returns a fresh, complete software baseline; it is not a physical-safety claim.
          */
-        public static Config of(String intakeMotorName,
-                                Direction intakeMotorDirection,
-                                double collectPower) {
+        public static Config defaults() {
             Config config = new Config();
-            config.intakeMotorName = intakeMotorName;
-            config.intakeMotorDirection = intakeMotorDirection;
-            config.collectPower = collectPower;
+            config.motorName = "intakeMotor";
+            config.direction = Direction.FORWARD;
+            config.collectPower = 0.20;
             return config;
         }
     }
@@ -82,16 +73,16 @@ public final class BasicPedroAutoMechanism implements RobotProgram.Output {
      */
     public BasicPedroAutoMechanism(HardwareMap hardwareMap, Config config) {
         HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
-        Config snapshot = new Config(Objects.requireNonNull(config, "config"));
-        requireHardwareName(snapshot.intakeMotorName, "config.intakeMotorName");
-        Objects.requireNonNull(
-                snapshot.intakeMotorDirection,
-                "config.intakeMotorDirection"
-        );
-        requireCollectPower(snapshot.collectPower);
+        Config source = Objects.requireNonNull(config, "BasicPedroAutoMechanism.Config is required");
+        String motorName = source.motorName;
+        Direction direction = source.direction;
+        double copiedCollectPower = source.collectPower;
+        requireHardwareName(motorName);
+        requireDirection(direction);
+        requireCollectPower(copiedCollectPower);
 
         Plant builtPlant = FtcActuators.plant(requiredHardwareMap)
-                .motor(snapshot.intakeMotorName, snapshot.intakeMotorDirection)
+                .motor(motorName, direction)
                 .power()
                 .targetFromNewCommand(IDLE_POWER)
                 .build();
@@ -105,25 +96,26 @@ public final class BasicPedroAutoMechanism implements RobotProgram.Output {
         }
 
         intakePlant = builtPlant;
-        collectPower = snapshot.collectPower;
+        collectPower = copiedCollectPower;
     }
 
     /**
      * Creates the portable example capability around one normalized-power Plant with a command
      * target. This package-private constructor is the explicitly hardware-neutral test/portable
-     * seam, not the ordinary FTC mechanism construction path.
+     * seam, not the ordinary FTC mechanism construction path. Its collection power comes only from
+     * {@link Config#defaults()} so the completed Plant is its sole peer dependency.
      *
      * @param intakePlant source-driven Plant whose update/stop lifecycle this mechanism owns
-     * @param collectPower finite collection request in {@code [-1, +1]}
-     * @throws NullPointerException if the Plant is null or violates its command-target contract
-     * @throws IllegalArgumentException if the Plant has no command target or the power is invalid
+     * @throws NullPointerException if the Plant or its claimed command target is null
+     * @throws IllegalArgumentException if the Plant has no command target
      */
-    BasicPedroAutoMechanism(Plant intakePlant, double collectPower) {
+    BasicPedroAutoMechanism(Plant intakePlant) {
         this.intakePlant = requireCommandPlant(
                 Objects.requireNonNull(intakePlant, "intakePlant")
         );
-        requireCollectPower(collectPower);
-        this.collectPower = collectPower;
+        Config defaults = Config.defaults();
+        requireCollectPower(defaults.collectPower);
+        collectPower = defaults.collectPower;
     }
 
     /**
@@ -178,16 +170,32 @@ public final class BasicPedroAutoMechanism implements RobotProgram.Output {
     }
 
     private static void requireCollectPower(double collectPower) {
-        if (!Double.isFinite(collectPower) || collectPower < -1.0 || collectPower > 1.0) {
+        if (!Double.isFinite(collectPower)
+                || collectPower == 0.0
+                || collectPower < -1.0
+                || collectPower > 1.0) {
             throw new IllegalArgumentException(
-                    "collectPower must be finite and in [-1, +1], got " + collectPower
+                    "BasicPedroAutoMechanism.Config.collectPower must be finite, nonzero, and in "
+                            + "[-1.0, 1.0], got " + collectPower
             );
         }
     }
 
-    private static void requireHardwareName(String value, String name) {
+    private static void requireHardwareName(String value) {
         if (value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException(name + " must be a non-blank hardware name");
+            throw new IllegalArgumentException(
+                    "BasicPedroAutoMechanism.Config.motorName must be a non-blank FTC hardware "
+                            + "name, got "
+                            + (value == null ? "null" : "\"" + value + "\"")
+            );
+        }
+    }
+
+    private static void requireDirection(Direction direction) {
+        if (direction == null) {
+            throw new IllegalArgumentException(
+                    "BasicPedroAutoMechanism.Config.direction is required, got null"
+            );
         }
     }
 }
