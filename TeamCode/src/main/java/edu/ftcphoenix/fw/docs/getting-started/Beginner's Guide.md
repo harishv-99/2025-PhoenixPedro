@@ -48,7 +48,7 @@ disabled and requires no physical Pedro setup.
 You do not need to read all seven starter files at once. Each lesson opens only the next layer:
 
 ```text
-StarterProfile                     names, directions, and powers
+    StarterProfile                     intake Config + permission; drive Config + permission
        |
        +--> StarterAuto            first one-motor FTC entry
        |          |
@@ -72,7 +72,7 @@ The split keeps the OpModes short without hiding robot behavior in a robot-speci
 
 ## Safety contract for the course
 
-Before setting `hardwareConfigurationReviewed = true` or removing `@Disabled`:
+Before setting either motion permission or removing `@Disabled`:
 
 - match every configured name to the Robot Controller configuration;
 - isolate each new actuator in [`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>),
@@ -82,9 +82,16 @@ Before setting `hardwareConfigurationReviewed = true` or removing `@Disabled`:
 - leave enough clear floor space for any drive or Pedro test; and
 - keep one operator ready to press STOP.
 
-Enabling makes the first supervised motion test possible; it does not complete the physical review.
-During that test, keep wheels or mechanisms safely unloaded, verify every direction, and prove that
-FTC STOP removes motion before lowering the robot or increasing a limit.
+`StarterProfile.current()` supplies compiling, software-valid example values; those defaults are not
+evidence about your robot. For the intake-only Auto, set `allowIntakeMotion = true` only after
+reviewing that slice and leave `allowDriveMotion = false`. TeleOp requires both permissions after a
+separate drive review, including the explicit BRAKE/FLOAT choice. Clear a slice's permission whenever
+you edit it.
+
+These booleans record human acknowledgement; they do not prove the review or any physical fact.
+Enabling makes the first supervised motion test possible. During that test, keep wheels or
+mechanisms safely unloaded, verify every direction and response, and prove that FTC STOP removes
+motion before lowering the robot or increasing a limit.
 
 Compilation and unit tests verify software contracts. They cannot verify wiring, polarity,
 traction, calibration, physical placement, or safe travel.
@@ -123,8 +130,9 @@ You will not create a `LoopClock`, `TaskRunner`, manual FTC loop, or second hard
 
 **“The source looks larger than the code shown in a lesson.”**
 
-The complete source also contains configuration validation, safe cleanup, telemetry, and focused
-test seams. Learn the highlighted path first; return to those details when you own that subsystem.
+The complete source also contains owner-local configuration validation, safe cleanup, telemetry,
+and focused tests. Learn the highlighted hardware path first; each mechanism copies and validates
+the active Config it owns before looking up its hardware.
 
 **“When should I continue to Pedro?”**
 

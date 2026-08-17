@@ -51,7 +51,8 @@ Why this matters:
 
 A robot container is a class that:
 
-- retains FTC resources and a defensive robot-profile snapshot
+- retains FTC resources and synchronously consumes the active robot-profile slices
+- checks robot-level permissions and relationships that cross owner boundaries
 - constructs subsystems with `HardwareMap` plus their data-only config, and creates supervisors
 - defines gamepad bindings
 - immediately declares each lifecycle owner to the framework-created `RobotProgram`
@@ -63,8 +64,9 @@ OpModes. `RobotProgram` then owns the fixed update and cleanup order.
 
 A subsystem is responsible for:
 
-- receiving `HardwareMap` plus its data-only config, defensively copying the config, and constructing
-  and owning the mechanism hardware (Plants + sensor Sources)
+- receiving `HardwareMap` plus its data-only config, defensively copying and validating the complete
+  snapshot before its own hardware effects, and constructing and owning the mechanism hardware
+  (Plants + sensor Sources)
 - exposing **signals** (`BooleanSource`, `ScalarSource`, `PlantSources`) to the rest of the robot
 - owning **output queues** (`OutputTaskRunner`) when needed
 - computing the **final Plant target resolvers** (base + overrides) and updating the Plants each loop
@@ -152,8 +154,8 @@ When the mechanism grows (more sensors, more signals, more modes), extract a sub
 
 The subsystem:
 
-- receives `HardwareMap` and a robot-owned data-only config, copies the config, and constructs its
-  private Plant
+- receives `HardwareMap` and a robot-owned data-only config, copies and validates the config before
+  its own hardware effects, and constructs its private Plant
 - owns the state (`desiredPose`)
 - exposes semantic commands and applies the target each loop
 

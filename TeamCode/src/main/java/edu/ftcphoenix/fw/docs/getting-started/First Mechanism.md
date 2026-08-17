@@ -33,7 +33,8 @@ checkpoint before adding a drivetrain.
   an arm, lift, or other bounded mechanism.
 - Begin with a low nonzero power, keep one operator ready to press STOP, and verify that STOP
   immediately removes power.
-- Set `hardwareConfigurationReviewed = true` only after reviewing the values used by this Auto.
+- Set `allowIntakeMotion = true` only after reviewing the intake values used by this Auto. Keep
+  `allowDriveMotion = false` throughout this one-motor checkpoint.
 
 ## 1. Establish the motor direction in the generic wizard
 
@@ -58,30 +59,29 @@ a bounded or position-controlled mechanism.
 
 ## 2. Configure only the intake facts
 
-`StarterRobot.declareAuto(...)` calls `profile.requireReadyForAuto()`. That check requires the
-shared intake fields but does not require the unused mecanum configuration.
+`StarterRobot.declareAuto(...)` requires `allowIntakeMotion`, then gives only `profile.intake` to the
+intake owner. It never reads the unused drive slice or `allowDriveMotion`.
 
-Edit `StarterProfile.current()`:
+In `StarterProfile.current()`, edit only its intake block:
 
 ```java
-public static StarterProfile current() {
-    StarterProfile profile = new StarterProfile();
-
-    // Leave the checked-in drive placeholders unchanged for this one-motor Auto.
-
-    profile.intake.motorName = "YOUR_INTAKE_NAME";
-    profile.intake.direction = Direction.FORWARD;
-    profile.intake.collectPower = 0.20;
-    profile.intake.ejectPower = -0.20;
-    profile.hardwareConfigurationReviewed = true;
-    return profile;
-}
+profile.intake = StarterIntakeMechanism.Config.defaults();
+profile.intake.motorName = "YOUR_INTAKE_NAME";
+profile.intake.direction = Direction.FORWARD;
+profile.intake.collectPower = 0.20;
+profile.intake.ejectPower = -0.20;
+profile.allowIntakeMotion = true;
 ```
 
-Replace the name with the exact case-sensitive Robot Controller configuration name and replace
-`Direction.FORWARD` with the wizard's tested result. The powers above show the required value
-types; verify their semantic signs on your hardware. The two powers
-must be finite, nonzero, different, and inside `[-1.0, +1.0]`.
+Leave the checked-in software-valid drive block unchanged and keep
+`profile.allowDriveMotion = false`. This Auto neither authorizes nor inspects drive motion.
+
+Replace the checked-in example name with the exact case-sensitive Robot Controller configuration
+name and replace `Direction.FORWARD` with the wizard's tested result. The powers above show the
+required value types; verify their semantic signs on your hardware. The two powers must be finite,
+nonzero, different, and inside `[-1.0, +1.0]`. `StarterIntakeMechanism.Config.defaults()` and the
+values returned by `StarterProfile.current()` are software-valid examples, not evidence about your
+installed motor.
 
 ## 3. Read the capability before the motor code
 
@@ -104,8 +104,8 @@ available to both modes.
 
 ## 4. Follow the ownership chain
 
-The mechanism receives `HardwareMap` plus its data-only config, copies the config, and privately
-builds one normalized-power Plant:
+The mechanism receives `HardwareMap` plus its data-only config, copies and validates the complete
+snapshot before looking up hardware, and privately builds one normalized-power Plant:
 
 ```java
 plant = FtcActuators.plant(hardwareMap)
@@ -183,7 +183,7 @@ capability unchanged.
 
 ## Expected checkpoint
 
-- Auto initializes without requiring drive motor configuration.
+- Auto initializes without consulting the drive configuration or drive-motion permission.
 - The generic wizard established and reported the copied motor direction without endpoint claims.
 - INIT produces no motor motion.
 - START commands the reviewed collection direction for 0.75 seconds.
@@ -193,10 +193,15 @@ capability unchanged.
 
 ## Common problems
 
-**Auto reports that `StarterProfile` is not ready.**
+**Auto reports that intake motion is not allowed.**
 
-Read the complete issue list. For this mode it identifies `hardwareConfigurationReviewed` or an
-intake name, direction, or power. Drive placeholders do not block this Auto.
+Review the intake slice, then set `allowIntakeMotion = true`. Do not set `allowDriveMotion` for this
+checkpoint.
+
+**INIT reports an invalid `StarterIntakeMechanism.Config` field.**
+
+The intake owner rejected its copied name, direction, or power before its hardware lookup. Correct
+the named field and repeat INIT. The inactive drive slice cannot cause this Auto failure.
 
 **The motor name cannot be found.**
 

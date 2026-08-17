@@ -1,172 +1,293 @@
 package edu.ftcphoenix.robots.examples.starter;
 
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.Test;
 
-import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
+import edu.ftcphoenix.fw.ftc.RobotProgram;
 
+import static edu.ftcphoenix.robots.examples.starter.StarterTestHardware.fullTeleOpHardware;
+import static edu.ftcphoenix.robots.examples.starter.StarterTestHardware.prepare;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies starter configuration snapshots, declarations, and the managed TeleOp/Auto hosts. */
+/** Verifies starter configuration consumption, declarations, and managed lifecycle cleanup. */
 public final class StarterProfileAndRobotTest {
 
     @Test
-    public void profileCopyIsDeepAndManagedHostRetainsThatSnapshot() {
+    public void rootAndProductionHostsExposeOnlyTheApprovedConstructionSurface()
+            throws Exception {
+        assertTrue(Modifier.isPublic(StarterRobot.class.getModifiers()));
+        assertTrue(Modifier.isFinal(StarterRobot.class.getModifiers()));
+
+        Constructor<?>[] robotConstructors = StarterRobot.class.getDeclaredConstructors();
+        assertEquals(1, robotConstructors.length);
+        assertTrue(Modifier.isPublic(robotConstructors[0].getModifiers()));
+        assertEquals(
+                Arrays.asList(HardwareMap.class),
+                Arrays.asList(robotConstructors[0].getParameterTypes()));
+
+        Method teleOp = StarterRobot.class.getDeclaredMethod(
+                "declareTeleOp",
+                RobotProgram.class,
+                StarterProfile.class,
+                Gamepad.class);
+        assertTrue(Modifier.isPublic(teleOp.getModifiers()));
+        assertEquals(Void.TYPE, teleOp.getReturnType());
+        assertEquals(1, declaredMethodCount(StarterRobot.class, "declareTeleOp"));
+
+        Method auto = StarterRobot.class.getDeclaredMethod(
+                "declareAuto",
+                RobotProgram.class,
+                StarterProfile.class,
+                double.class);
+        assertTrue(Modifier.isPublic(auto.getModifiers()));
+        assertEquals(Void.TYPE, auto.getReturnType());
+        assertEquals(1, declaredMethodCount(StarterRobot.class, "declareAuto"));
+
+        Field[] rootFields = StarterRobot.class.getDeclaredFields();
+        assertEquals(1, rootFields.length);
+        assertEquals(HardwareMap.class, rootFields[0].getType());
+        assertTrue(Modifier.isPrivate(rootFields[0].getModifiers()));
+        assertTrue(Modifier.isFinal(rootFields[0].getModifiers()));
+
+        assertOnlyPublicNoArgConstructor(StarterTeleOp.class);
+        assertOnlyPublicNoArgConstructor(StarterAuto.class);
+        assertNoRetainedProfile(StarterTeleOp.class);
+        assertNoRetainedProfile(StarterAuto.class);
+    }
+
+    @Test
+    public void currentReturnsFreshCompleteSoftwareDefaultsWithMotionBlocked() {
+        StarterProfile first = StarterProfile.current();
+        StarterProfile second = StarterProfile.current();
+
+        assertNotSame(first.intake, second.intake);
+        assertNotSame(first.drive, second.drive);
+        assertNotSame(first.drive.wiring, second.drive.wiring);
+        assertNotSame(first.drive.drivebase, second.drive.drivebase);
+
+        assertEquals("intakeMotor", first.intake.motorName);
+        assertEquals(Direction.FORWARD, first.intake.direction);
+        assertEquals(0.20, first.intake.collectPower, 0.0);
+        assertEquals(-0.20, first.intake.ejectPower, 0.0);
+        assertFalse(first.allowIntakeMotion);
+
+        assertEquals("frontLeftMotor", first.drive.wiring.frontLeftName);
+        assertEquals("frontRightMotor", first.drive.wiring.frontRightName);
+        assertEquals("backLeftMotor", first.drive.wiring.backLeftName);
+        assertEquals("backRightMotor", first.drive.wiring.backRightName);
+        assertEquals(Direction.FORWARD, first.drive.wiring.frontLeftDirection);
+        assertEquals(Direction.REVERSE, first.drive.wiring.frontRightDirection);
+        assertEquals(Direction.FORWARD, first.drive.wiring.backLeftDirection);
+        assertEquals(Direction.REVERSE, first.drive.wiring.backRightDirection);
+        assertTrue(first.drive.enableZeroPowerBrake);
+        assertEquals(0.25, first.drive.drivebase.maxAxial, 0.0);
+        assertEquals(0.25, first.drive.drivebase.maxLateral, 0.0);
+        assertEquals(0.20, first.drive.drivebase.maxOmega, 0.0);
+        assertFalse(first.allowDriveMotion);
+    }
+
+    @Test
+    public void permissionsRepresentAllFourStatesAndAutoNeverReadsDrive() {
+        assertPermissionState(false, false);
+        assertPermissionState(false, true);
+        assertPermissionState(true, false);
+        assertPermissionState(true, true);
+    }
+
+    @Test
+    public void everyTrimEquivalentCrossOwnerCollisionFailsBeforeLookup() {
+        String[] drivePaths = {
+                "StarterProfile.drive.wiring.frontLeftName",
+                "StarterProfile.drive.wiring.frontRightName",
+                "StarterProfile.drive.wiring.backLeftName",
+                "StarterProfile.drive.wiring.backRightName"
+        };
+
+        for (int index = 0; index < drivePaths.length; index++) {
+            StarterProfile profile = readyProfile();
+            setDriveName(profile, index, "  intake  ");
+            StarterTestHardware.HardwareMapProbe hardwareMap =
+                    new StarterTestHardware.HardwareMapProbe();
+            TestStarterTeleOp mode = prepare(
+                    new TestStarterTeleOp(profile),
+                    hardwareMap,
+                    new StarterTestHardware.TelemetryProbe(),
+                    new Gamepad());
+
+            IllegalStateException failure = expectIllegalState(mode::init);
+
+            assertTrue(failure.getMessage().contains("StarterProfile.intake.motorName"));
+            assertTrue(failure.getMessage().contains(drivePaths[index]));
+            assertTrue(failure.getMessage().contains("\"intake\""));
+            assertEquals(0, hardwareMap.lookupCalls());
+        }
+    }
+
+    @Test
+    public void caseDifferentMotorNamesRemainDistinctFtcKeys() {
         StarterProfile profile = readyProfile();
-        StarterProfile copy = profile.copy();
-
-        assertNotSame(profile.drive, copy.drive);
-        assertNotSame(profile.drive.wiring, copy.drive.wiring);
-        assertNotSame(profile.drive.drivebase, copy.drive.drivebase);
-        assertNotSame(profile.intake, copy.intake);
-
-        profile.drive.wiring.frontLeftName = "changedDrive";
-        profile.intake.motorName = "changedIntake";
-        profile.intake.collectPower = -0.10;
-
-        assertEquals("frontLeft", copy.drive.wiring.frontLeftName);
-        assertEquals("intake", copy.intake.motorName);
-        assertEquals(0.65, copy.intake.collectPower, 0.0);
-
-        TestHardwareMap hardwareMap = new TestHardwareMap();
-        MotorProbe intakeMotor = hardwareMap.addMotor("intake");
-        RecordingTelemetry telemetry = new RecordingTelemetry();
-        StarterProfile source = readyProfile();
-        StarterAuto mode = prepare(
-                new StarterAuto(source),
+        profile.drive.wiring.frontLeftName = "Intake";
+        StarterTestHardware.HardwareMapProbe hardwareMap = fullTeleOpHardware(profile);
+        TestStarterTeleOp mode = prepare(
+                new TestStarterTeleOp(profile),
                 hardwareMap,
-                telemetry,
+                new StarterTestHardware.TelemetryProbe(),
                 new Gamepad());
 
-        source.intake.motorName = "missingAfterConstruction";
-        source.intake.collectPower = -0.90;
         mode.init();
+
+        assertEquals(5, hardwareMap.lookupCalls());
+        mode.stop();
+    }
+
+    @Test
+    public void activeIntakeOwnerSnapshotsItsConfigDuringInit() {
+        StarterProfile profile = readyProfile();
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe intakeMotor =
+                hardwareMap.addMotor(profile.intake.motorName);
+        TestStarterAuto mode = prepare(
+                new TestStarterAuto(profile),
+                hardwareMap,
+                new StarterTestHardware.TelemetryProbe(),
+                new Gamepad());
+
+        mode.init();
+        profile.intake.motorName = "changedAfterInit";
+        profile.intake.direction = Direction.REVERSE;
+        profile.intake.collectPower = -0.90;
         mode.start();
 
-        assertEquals(1, hardwareMap.lookupCalls);
-        assertEquals(0.65, intakeMotor.lastPower, 0.0);
+        assertEquals(1, hardwareMap.lookupCalls());
+        assertEquals(0.65, intakeMotor.lastPower(), 0.0);
         mode.stop();
     }
 
     @Test
-    public void invalidSharedAndTeleOpConfigurationFailBeforeHardwareLookup() {
-        StarterProfile invalidAuto = readyProfile();
-        invalidAuto.intake.collectPower = 0.0;
-        TestHardwareMap autoMap = new TestHardwareMap();
-        StarterAuto autoMode = prepare(
-                new StarterAuto(invalidAuto),
-                autoMap,
-                new RecordingTelemetry(),
-                new Gamepad());
-        assertEquals(0, autoMap.lookupCalls);
-
-        IllegalStateException autoFailure = expectIllegalState(autoMode::init);
-        assertTrue(autoFailure.getMessage().contains("intake.collectPower"));
-        assertTrue(autoFailure.getMessage().contains("nonzero"));
-        assertEquals(0, autoMap.lookupCalls);
-
-        StarterProfile invalidTeleOp = readyProfile();
-        invalidTeleOp.drive.wiring.frontLeftName = invalidTeleOp.intake.motorName;
-        TestHardwareMap teleOpMap = new TestHardwareMap();
-        StarterTeleOp teleOpMode = prepare(
-                new StarterTeleOp(invalidTeleOp),
-                teleOpMap,
-                new RecordingTelemetry(),
-                new Gamepad());
-
-        IllegalStateException teleOpFailure = expectIllegalState(
-                teleOpMode::init);
-        assertTrue(teleOpFailure.getMessage().contains("duplicates another starter motor name"));
-        assertEquals(0, teleOpMap.lookupCalls);
-    }
-
-    @Test
-    public void autoValidatesOnlyItsIntakeConfiguration() {
+    public void invalidLaterDriveConfigCleansRegisteredIntakeAndPreservesFailure() {
         StarterProfile profile = readyProfile();
-        profile.drive = null;
-        TestHardwareMap hardwareMap = new TestHardwareMap();
-        hardwareMap.addMotor(profile.intake.motorName);
-        StarterAuto mode = prepare(
-                new StarterAuto(profile),
+        profile.drive.drivebase.maxAxial = Double.NaN;
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe intakeMotor =
+                hardwareMap.addMotor(profile.intake.motorName);
+        TestStarterTeleOp mode = prepare(
+                new TestStarterTeleOp(profile),
                 hardwareMap,
-                new RecordingTelemetry(),
+                new StarterTestHardware.TelemetryProbe(),
                 new Gamepad());
 
-        mode.init();
+        IllegalArgumentException failure = expectIllegalArgument(mode::init);
 
-        assertEquals(1, hardwareMap.lookupCalls);
+        assertEquals(
+                "MecanumDrivebase.Config.maxAxial must be finite and in [0.0, 1.0], got NaN",
+                failure.getMessage());
+        assertEquals(1, hardwareMap.lookupCalls());
+        assertEquals(0.0, intakeMotor.lastPower(), 0.0);
+        assertEquals(1, intakeMotor.powerWrites());
+
+        mode.loop();
         mode.stop();
+        assertEquals(1, intakeMotor.powerWrites());
+    }
+
+    @Test
+    public void missingLaterDriveHardwareCleansRegisteredIntakeAndPreservesFailure() {
+        StarterProfile profile = readyProfile();
+        profile.drive.wiring.frontLeftName = "missingFrontLeft";
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe intakeMotor =
+                hardwareMap.addMotor(profile.intake.motorName);
+        TestStarterTeleOp mode = prepare(
+                new TestStarterTeleOp(profile),
+                hardwareMap,
+                new StarterTestHardware.TelemetryProbe(),
+                new Gamepad());
+
+        IllegalArgumentException failure = expectIllegalArgument(mode::init);
+
+        assertEquals("No test DcMotorEx named missingFrontLeft", failure.getMessage());
+        assertEquals(2, hardwareMap.lookupCalls());
+        assertEquals(0.0, intakeMotor.lastPower(), 0.0);
+        assertEquals(1, intakeMotor.powerWrites());
+
+        mode.loop();
+        mode.stop();
+        assertEquals(1, intakeMotor.powerWrites());
     }
 
     @Test
     public void teleOpDeclarationMapsControlsRealizesOutputsAndPresentsStatus() {
         StarterProfile profile = readyProfile();
         List<String> events = new ArrayList<String>();
-        TestHardwareMap hardwareMap = fullTeleOpHardware(profile, events);
-        RecordingTelemetry telemetry = new RecordingTelemetry(events);
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                fullTeleOpHardware(profile, events);
+        StarterTestHardware.TelemetryProbe telemetry =
+                new StarterTestHardware.TelemetryProbe(events);
         Gamepad driver = new Gamepad();
-        StarterTeleOp mode = prepare(
-                new StarterTeleOp(profile),
+        TestStarterTeleOp mode = prepare(
+                new TestStarterTeleOp(profile),
                 hardwareMap,
                 telemetry,
                 driver);
 
         mode.init();
-        assertEquals(5, hardwareMap.lookupCalls);
-        assertEquals(1, telemetry.updateCalls);
+        assertEquals(5, hardwareMap.lookupCalls());
+        assertEquals(1, telemetry.updateCalls());
         assertEquals(
                 Arrays.asList("intake.mode", "intake.appliedTargetPower"),
-                telemetry.lastFrameKeys);
-        assertEquals(2, telemetry.dataRowsAtLastUpdate);
+                telemetry.lastFrameKeys());
+        assertEquals(2, telemetry.dataRowsAtLastUpdate());
         assertEquals(0.0,
-                (Double) telemetry.dataValues.get("intake.appliedTargetPower"),
+                (Double) telemetry.dataValue("intake.appliedTargetPower"),
                 0.0);
 
         mode.start();
         mode.loop();
-        assertEquals(2, telemetry.updateCalls);
-        assertEquals(2, telemetry.dataRowsAtLastUpdate);
+        assertEquals(2, telemetry.updateCalls());
+        assertEquals(2, telemetry.dataRowsAtLastUpdate());
 
         events.clear();
         driver.a = true;
         driver.left_stick_y = -1.0f;
         mode.loop();
-        assertEquals(3, telemetry.updateCalls);
-        assertEquals(2, telemetry.dataRowsAtLastUpdate);
+        assertEquals(3, telemetry.updateCalls());
+        assertEquals(2, telemetry.dataRowsAtLastUpdate());
         assertEquals(
                 profile.intake.collectPower,
-                (Double) telemetry.dataValues.get("intake.appliedTargetPower"),
+                (Double) telemetry.dataValue("intake.appliedTargetPower"),
                 0.0);
         assertEquals(
                 StarterIntake.Mode.COLLECT,
-                telemetry.dataValues.get("intake.mode"));
+                telemetry.dataValue("intake.mode"));
         assertEquals(
                 profile.intake.collectPower,
-                hardwareMap.motor(profile.intake.motorName).lastPower,
+                hardwareMap.motor(profile.intake.motorName).lastPower(),
                 0.0);
         assertEventBefore(events, "power:intake:", "power:frontLeft:");
         assertEventBefore(events, "power:frontLeft:", "telemetry.row:intake.mode");
-        assertEventBefore(events, "telemetry.row:intake.appliedTargetPower", "telemetry.commit");
+        assertEventBefore(
+                events,
+                "telemetry.row:intake.appliedTargetPower",
+                "telemetry.commit");
 
         mode.stop();
         assertAllMotorsStopped(hardwareMap, profile);
@@ -175,23 +296,24 @@ public final class StarterProfileAndRobotTest {
         mode.stop();
         mode.loop();
         assertEquals(powerWritesAfterFirstStop, hardwareMap.totalPowerWrites());
-        assertEquals(3, telemetry.updateCalls);
+        assertEquals(3, telemetry.updateCalls());
     }
 
     @Test
     public void activeLoopFailureFailStopsEveryConstructedOutput() {
         StarterProfile profile = readyProfile();
-        TestHardwareMap hardwareMap = fullTeleOpHardware(profile);
-        RecordingTelemetry telemetry = new RecordingTelemetry();
-        StarterTeleOp mode = prepare(
-                new StarterTeleOp(profile),
+        StarterTestHardware.HardwareMapProbe hardwareMap = fullTeleOpHardware(profile);
+        StarterTestHardware.TelemetryProbe telemetry =
+                new StarterTestHardware.TelemetryProbe();
+        TestStarterTeleOp mode = prepare(
+                new TestStarterTeleOp(profile),
                 hardwareMap,
                 telemetry,
                 new Gamepad());
 
         mode.init();
         mode.start();
-        telemetry.failNextUpdate = true;
+        telemetry.failNextUpdate();
 
         IllegalStateException failure = expectIllegalState(mode::loop);
 
@@ -206,71 +328,109 @@ public final class StarterProfileAndRobotTest {
     public void autoDeclarationStartsOneFreshRootAndPresentsStatus() {
         StarterProfile profile = readyProfile();
         List<String> events = new ArrayList<String>();
-        TestHardwareMap hardwareMap = new TestHardwareMap(events);
-        MotorProbe intakeMotor = hardwareMap.addMotor(profile.intake.motorName);
-        RecordingTelemetry telemetry = new RecordingTelemetry(events);
-        StarterAuto mode = prepare(
-                new StarterAuto(profile),
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe(events);
+        StarterTestHardware.MotorProbe intakeMotor =
+                hardwareMap.addMotor(profile.intake.motorName);
+        StarterTestHardware.TelemetryProbe telemetry =
+                new StarterTestHardware.TelemetryProbe(events);
+        TestStarterAuto mode = prepare(
+                new TestStarterAuto(profile),
                 hardwareMap,
                 telemetry,
                 new Gamepad());
 
         mode.init();
-        assertEquals(1, telemetry.updateCalls);
+        assertEquals(1, telemetry.updateCalls());
         assertEquals(
                 Arrays.asList("intake.mode", "intake.appliedTargetPower", "auto.idle"),
-                telemetry.lastFrameKeys);
-        assertEquals(3, telemetry.dataRowsAtLastUpdate);
-        assertFalse((Boolean) telemetry.dataValues.get("auto.idle"));
+                telemetry.lastFrameKeys());
+        assertEquals(3, telemetry.dataRowsAtLastUpdate());
+        assertFalse((Boolean) telemetry.dataValue("auto.idle"));
 
         mode.start();
-        assertEquals(
-                profile.intake.collectPower,
-                intakeMotor.lastPower,
-                0.0);
+        assertEquals(profile.intake.collectPower, intakeMotor.lastPower(), 0.0);
 
         events.clear();
         mode.loop();
-        assertEquals(2, telemetry.updateCalls);
-        assertEquals(3, telemetry.dataRowsAtLastUpdate);
+        assertEquals(2, telemetry.updateCalls());
+        assertEquals(3, telemetry.dataRowsAtLastUpdate());
         assertEquals(
                 profile.intake.collectPower,
-                (Double) telemetry.dataValues.get("intake.appliedTargetPower"),
+                (Double) telemetry.dataValue("intake.appliedTargetPower"),
                 0.0);
-        assertFalse((Boolean) telemetry.dataValues.get("auto.idle"));
+        assertFalse((Boolean) telemetry.dataValue("auto.idle"));
         assertEventBefore(events, "power:intake:", "telemetry.row:intake.mode");
         assertEventBefore(events, "telemetry.row:auto.idle", "telemetry.commit");
 
         mode.stop();
-        assertEquals(0.0, intakeMotor.lastPower, 0.0);
-        int writesAfterFirstStop = intakeMotor.powerWrites;
+        assertEquals(0.0, intakeMotor.lastPower(), 0.0);
+        int writesAfterFirstStop = intakeMotor.powerWrites();
 
         mode.stop();
         mode.loop();
-        assertEquals(writesAfterFirstStop, intakeMotor.powerWrites);
-        assertEquals(2, telemetry.updateCalls);
+        assertEquals(writesAfterFirstStop, intakeMotor.powerWrites());
+        assertEquals(2, telemetry.updateCalls());
     }
 
-    private static <T extends FtcRobotOpMode> T prepare(
-            T mode,
-            HardwareMap hardwareMap,
-            RecordingTelemetry telemetry,
-            Gamepad gamepad1) {
-        mode.hardwareMap = hardwareMap;
-        mode.telemetry = telemetry.proxy();
-        mode.gamepad1 = gamepad1;
-        mode.gamepad2 = new Gamepad();
-        mode.resetRuntime();
-        return mode;
+    private static void assertPermissionState(boolean allowIntakeMotion,
+                                              boolean allowDriveMotion) {
+        StarterProfile autoProfile = readyProfile();
+        autoProfile.allowIntakeMotion = allowIntakeMotion;
+        autoProfile.allowDriveMotion = allowDriveMotion;
+        autoProfile.drive = null;
+        StarterTestHardware.HardwareMapProbe autoMap =
+                new StarterTestHardware.HardwareMapProbe();
+        autoMap.addMotor(autoProfile.intake.motorName);
+        TestStarterAuto autoMode = prepare(
+                new TestStarterAuto(autoProfile),
+                autoMap,
+                new StarterTestHardware.TelemetryProbe(),
+                new Gamepad());
+
+        if (allowIntakeMotion) {
+            autoMode.init();
+            assertEquals(1, autoMap.lookupCalls());
+            autoMode.stop();
+        } else {
+            IllegalStateException failure = expectIllegalState(autoMode::init);
+            assertTrue(failure.getMessage().contains("StarterProfile.allowIntakeMotion"));
+            assertEquals(0, autoMap.lookupCalls());
+        }
+
+        StarterProfile teleOpProfile = readyProfile();
+        teleOpProfile.allowIntakeMotion = allowIntakeMotion;
+        teleOpProfile.allowDriveMotion = allowDriveMotion;
+        StarterTestHardware.HardwareMapProbe teleOpMap = allowIntakeMotion && allowDriveMotion
+                ? fullTeleOpHardware(teleOpProfile)
+                : new StarterTestHardware.HardwareMapProbe();
+        TestStarterTeleOp teleOpMode = prepare(
+                new TestStarterTeleOp(teleOpProfile),
+                teleOpMap,
+                new StarterTestHardware.TelemetryProbe(),
+                new Gamepad());
+
+        if (allowIntakeMotion && allowDriveMotion) {
+            teleOpMode.init();
+            assertEquals(5, teleOpMap.lookupCalls());
+            teleOpMode.stop();
+        } else {
+            IllegalStateException failure = expectIllegalState(teleOpMode::init);
+            String blockedPermission = allowIntakeMotion
+                    ? "StarterProfile.allowDriveMotion"
+                    : "StarterProfile.allowIntakeMotion";
+            assertTrue(failure.getMessage().contains(blockedPermission));
+            assertEquals(0, teleOpMap.lookupCalls());
+        }
     }
 
     private static StarterProfile readyProfile() {
         StarterProfile profile = StarterProfile.current();
-        profile.hardwareConfigurationReviewed = true;
         profile.intake.motorName = "intake";
         profile.intake.direction = Direction.FORWARD;
         profile.intake.collectPower = 0.65;
         profile.intake.ejectPower = -0.45;
+        profile.allowIntakeMotion = true;
 
         profile.drive.wiring.frontLeftName = "frontLeft";
         profile.drive.wiring.frontRightName = "frontRight";
@@ -280,22 +440,54 @@ public final class StarterProfileAndRobotTest {
         profile.drive.wiring.frontRightDirection = Direction.REVERSE;
         profile.drive.wiring.backLeftDirection = Direction.FORWARD;
         profile.drive.wiring.backRightDirection = Direction.REVERSE;
+        profile.allowDriveMotion = true;
         return profile;
     }
 
-    private static TestHardwareMap fullTeleOpHardware(StarterProfile profile) {
-        return fullTeleOpHardware(profile, null);
+    private static void setDriveName(StarterProfile profile, int index, String name) {
+        switch (index) {
+            case 0:
+                profile.drive.wiring.frontLeftName = name;
+                return;
+            case 1:
+                profile.drive.wiring.frontRightName = name;
+                return;
+            case 2:
+                profile.drive.wiring.backLeftName = name;
+                return;
+            case 3:
+                profile.drive.wiring.backRightName = name;
+                return;
+            default:
+                throw new AssertionError("unsupported drive motor index " + index);
+        }
     }
 
-    private static TestHardwareMap fullTeleOpHardware(StarterProfile profile,
-                                                       List<String> events) {
-        TestHardwareMap hardwareMap = new TestHardwareMap(events);
-        hardwareMap.addMotor(profile.intake.motorName);
-        hardwareMap.addMotor(profile.drive.wiring.frontLeftName);
-        hardwareMap.addMotor(profile.drive.wiring.frontRightName);
-        hardwareMap.addMotor(profile.drive.wiring.backLeftName);
-        hardwareMap.addMotor(profile.drive.wiring.backRightName);
-        return hardwareMap;
+    private static void assertOnlyPublicNoArgConstructor(Class<?> type) {
+        assertTrue(Modifier.isPublic(type.getModifiers()));
+        assertTrue(Modifier.isFinal(type.getModifiers()));
+        Constructor<?>[] constructors = type.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertTrue(Modifier.isPublic(constructors[0].getModifiers()));
+        assertEquals(0, constructors[0].getParameterTypes().length);
+    }
+
+    private static void assertNoRetainedProfile(Class<?> type) {
+        for (Field field : type.getDeclaredFields()) {
+            assertTrue(
+                    type.getSimpleName() + " must not retain StarterProfile",
+                    field.getType() != StarterProfile.class);
+        }
+    }
+
+    private static int declaredMethodCount(Class<?> type, String name) {
+        int count = 0;
+        for (Method method : type.getDeclaredMethods()) {
+            if (method.getName().equals(name)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static void assertEventBefore(List<String> events,
@@ -318,13 +510,22 @@ public final class StarterProfileAndRobotTest {
         return -1;
     }
 
-    private static void assertAllMotorsStopped(TestHardwareMap hardwareMap,
-                                               StarterProfile profile) {
-        assertEquals(0.0, hardwareMap.motor(profile.intake.motorName).lastPower, 0.0);
-        assertEquals(0.0, hardwareMap.motor(profile.drive.wiring.frontLeftName).lastPower, 0.0);
-        assertEquals(0.0, hardwareMap.motor(profile.drive.wiring.frontRightName).lastPower, 0.0);
-        assertEquals(0.0, hardwareMap.motor(profile.drive.wiring.backLeftName).lastPower, 0.0);
-        assertEquals(0.0, hardwareMap.motor(profile.drive.wiring.backRightName).lastPower, 0.0);
+    private static void assertAllMotorsStopped(
+            StarterTestHardware.HardwareMapProbe hardwareMap,
+            StarterProfile profile) {
+        assertEquals(0.0, hardwareMap.motor(profile.intake.motorName).lastPower(), 0.0);
+        assertEquals(0.0,
+                hardwareMap.motor(profile.drive.wiring.frontLeftName).lastPower(),
+                0.0);
+        assertEquals(0.0,
+                hardwareMap.motor(profile.drive.wiring.frontRightName).lastPower(),
+                0.0);
+        assertEquals(0.0,
+                hardwareMap.motor(profile.drive.wiring.backLeftName).lastPower(),
+                0.0);
+        assertEquals(0.0,
+                hardwareMap.motor(profile.drive.wiring.backRightName).lastPower(),
+                0.0);
     }
 
     private static IllegalStateException expectIllegalState(Runnable action) {
@@ -337,229 +538,41 @@ public final class StarterProfileAndRobotTest {
         }
     }
 
-    /** In-memory FTC map with observable lookups and motor commands. */
-    private static final class TestHardwareMap extends HardwareMap {
-        private final Map<String, MotorProbe> motors = new HashMap<String, MotorProbe>();
-        private final List<String> events;
-        private int lookupCalls;
-
-        private TestHardwareMap() {
-            this(null);
+    private static IllegalArgumentException expectIllegalArgument(Runnable action) {
+        try {
+            action.run();
+            fail("Expected IllegalArgumentException");
+            throw new AssertionError("unreachable");
+        } catch (IllegalArgumentException expected) {
+            return expected;
         }
+    }
 
-        private TestHardwareMap(List<String> events) {
-            super(null, null);
-            this.events = events;
-        }
+    /** Test-only host that synchronously supplies a selected TeleOp profile during INIT. */
+    private static final class TestStarterTeleOp extends FtcRobotOpMode {
+        private final StarterProfile profile;
 
-        private MotorProbe addMotor(String name) {
-            MotorProbe probe = new MotorProbe(name, events);
-            motors.put(name.trim(), probe);
-            return probe;
-        }
-
-        private MotorProbe motor(String name) {
-            MotorProbe probe = motors.get(name.trim());
-            if (probe == null) {
-                throw new AssertionError("No test motor named " + name);
-            }
-            return probe;
-        }
-
-        private int totalPowerWrites() {
-            int total = 0;
-            for (MotorProbe probe : motors.values()) {
-                total += probe.powerWrites;
-            }
-            return total;
+        private TestStarterTeleOp(StarterProfile profile) {
+            this.profile = profile;
         }
 
         @Override
-        public <T> T get(Class<? extends T> type, String name) {
-            lookupCalls++;
-            MotorProbe probe = motors.get(name == null ? null : name.trim());
-            if (probe == null || !type.isInstance(probe.motor)) {
-                throw new IllegalArgumentException("No test " + type.getSimpleName()
-                        + " named " + name);
-            }
-            return type.cast(probe.motor);
+        protected void configure(RobotProgram program) {
+            new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
         }
     }
 
-    /** Dynamic SDK motor with enough behavior for direct-drive and power-Plant integration. */
-    private static final class MotorProbe implements InvocationHandler {
-        private final String label;
-        private final List<String> events;
-        private final DcMotorEx motor;
-        private DcMotor.RunMode mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER;
-        private DcMotorSimple.Direction direction = DcMotorSimple.Direction.FORWARD;
-        private DcMotor.ZeroPowerBehavior zeroPowerBehavior = DcMotor.ZeroPowerBehavior.FLOAT;
-        private double lastPower;
-        private int powerWrites;
+    /** Test-only host that synchronously supplies a selected Auto profile during INIT. */
+    private static final class TestStarterAuto extends FtcRobotOpMode {
+        private final StarterProfile profile;
 
-        private MotorProbe(String label, List<String> events) {
-            this.label = label;
-            this.events = events;
-            motor = (DcMotorEx) Proxy.newProxyInstance(
-                    DcMotorEx.class.getClassLoader(),
-                    new Class<?>[]{DcMotorEx.class},
-                    this);
+        private TestStarterAuto(StarterProfile profile) {
+            this.profile = profile;
         }
 
         @Override
-        public Object invoke(Object proxy, Method method, Object[] args) {
-            String name = method.getName();
-            if (method.getDeclaringClass() == Object.class) {
-                return objectMethod(proxy, name, args, label);
-            }
-            if ("setDirection".equals(name)) {
-                direction = (DcMotorSimple.Direction) args[0];
-                return null;
-            }
-            if ("getDirection".equals(name)) {
-                return direction;
-            }
-            if ("setMode".equals(name)) {
-                mode = (DcMotor.RunMode) args[0];
-                return null;
-            }
-            if ("getMode".equals(name)) {
-                return mode;
-            }
-            if ("setPower".equals(name)) {
-                lastPower = (Double) args[0];
-                powerWrites++;
-                if (events != null) {
-                    events.add("power:" + label + ":" + lastPower);
-                }
-                return null;
-            }
-            if ("getPower".equals(name)) {
-                return lastPower;
-            }
-            if ("setZeroPowerBehavior".equals(name)) {
-                zeroPowerBehavior = (DcMotor.ZeroPowerBehavior) args[0];
-                return null;
-            }
-            if ("getZeroPowerBehavior".equals(name)) {
-                return zeroPowerBehavior;
-            }
-            if ("getCurrentPosition".equals(name) || "getTargetPosition".equals(name)) {
-                return 0;
-            }
-            if ("getVelocity".equals(name)) {
-                return 0.0;
-            }
-            if ("isBusy".equals(name)) {
-                return false;
-            }
-            return defaultValue(method.getReturnType());
+        protected void configure(RobotProgram program) {
+            new StarterRobot(hardwareMap).declareAuto(program, profile, 0.75);
         }
-    }
-
-    /** Records complete-frame commits without imposing another production seam. */
-    private static final class RecordingTelemetry implements InvocationHandler {
-        private final Telemetry telemetry = (Telemetry) Proxy.newProxyInstance(
-                Telemetry.class.getClassLoader(),
-                new Class<?>[]{Telemetry.class},
-                this);
-        private final List<String> dataKeys = new ArrayList<String>();
-        private final List<String> lastFrameKeys = new ArrayList<String>();
-        private final Map<String, Object> dataValues = new HashMap<String, Object>();
-        private int updateCalls;
-        private int dataRowsAtLastUpdate;
-        private int committedDataRows;
-        private boolean failNextUpdate;
-        private final List<String> events;
-
-        private RecordingTelemetry() {
-            this(null);
-        }
-
-        private RecordingTelemetry(List<String> events) {
-            this.events = events;
-        }
-
-        private Telemetry proxy() {
-            return telemetry;
-        }
-
-        @Override
-        public Object invoke(Object proxy, Method method, Object[] args) {
-            if (method.getDeclaringClass() == Object.class) {
-                return objectMethod(proxy, method.getName(), args, "RecordingTelemetry");
-            }
-            if ("update".equals(method.getName())) {
-                if (events != null) {
-                    events.add("telemetry.commit");
-                }
-                if (failNextUpdate) {
-                    failNextUpdate = false;
-                    throw new IllegalStateException("telemetry update failed");
-                }
-                dataRowsAtLastUpdate = dataKeys.size() - committedDataRows;
-                lastFrameKeys.clear();
-                lastFrameKeys.addAll(dataKeys.subList(committedDataRows, dataKeys.size()));
-                committedDataRows = dataKeys.size();
-                updateCalls++;
-                return true;
-            }
-            if ("addData".equals(method.getName())) {
-                dataKeys.add((String) args[0]);
-                dataValues.put((String) args[0], args[1]);
-                if (events != null) {
-                    events.add("telemetry.row:" + args[0]);
-                }
-                return null;
-            }
-            return defaultValue(method.getReturnType());
-        }
-    }
-
-    private static Object objectMethod(Object proxy,
-                                       String methodName,
-                                       Object[] args,
-                                       String label) {
-        if ("equals".equals(methodName)) {
-            return proxy == args[0];
-        }
-        if ("hashCode".equals(methodName)) {
-            return System.identityHashCode(proxy);
-        }
-        if ("toString".equals(methodName)) {
-            return label;
-        }
-        return null;
-    }
-
-    private static Object defaultValue(Class<?> type) {
-        if (!type.isPrimitive()) {
-            return null;
-        }
-        if (type == boolean.class) {
-            return false;
-        }
-        if (type == byte.class) {
-            return (byte) 0;
-        }
-        if (type == short.class) {
-            return (short) 0;
-        }
-        if (type == int.class) {
-            return 0;
-        }
-        if (type == long.class) {
-            return 0L;
-        }
-        if (type == float.class) {
-            return 0.0f;
-        }
-        if (type == double.class) {
-            return 0.0;
-        }
-        if (type == char.class) {
-            return '\0';
-        }
-        return null;
     }
 }

@@ -232,12 +232,15 @@ not become a competing final Plant writer.
 
 ### Composition root
 
-The class that snapshots configuration, constructs owners, connects dependencies, and declares the
-program order without becoming the control script.
+The class that synchronously selects active profile slices, checks robot-level permissions and
+cross-owner relationships, constructs owners, connects dependencies, and declares program order
+without becoming the control script. Each long-lived owner snapshots its own retained Config.
 
 ### Profile
 
-Data-only robot hardware and tuning configuration. Long-lived owners defensively copy the slices
-they retain.
+Data-only robot hardware and tuning configuration. Long-lived owners defensively copy and validate
+the active slices they retain before their own effects. An explicit `allow...` field records human
+permission for a reviewed use; neither it nor a software-valid default proves installed hardware,
+physical behavior, or that the review occurred.
 
 [Cheat sheet](<Phoenix Cheat Sheet.md>) · [Reference index](<README.md>) · [Docs home](<../README.md>)

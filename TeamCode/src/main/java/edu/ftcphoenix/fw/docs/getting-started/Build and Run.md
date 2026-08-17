@@ -85,8 +85,10 @@ public final class StarterTeleOp extends FtcRobotOpMode {
 }
 ```
 
-Do not remove `@Disabled` until the next lesson has reviewed every hardware name, direction,
-mechanism power, and drive scale required by that mode.
+Do not remove `@Disabled` until the later lessons have reviewed every hardware name, direction,
+mechanism power, drive scale, and drive brake choice required by that mode. The checked-in profile
+is software-valid so it compiles, but `allowIntakeMotion` and `allowDriveMotion` are both false.
+Those defaults are examples, not proof that the configuration or motion is correct for your robot.
 
 The ready-made tester suite is separate from the disabled starter. It has exactly two entries:
 **FW: Testers (Driver Station)** for physical-gamepad input and **FW: Testers (Panels)** for
