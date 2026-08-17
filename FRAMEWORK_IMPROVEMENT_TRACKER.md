@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -178,7 +178,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Done | The reviewed effect-safe Pinpoint/composite configuration, READY-gated lifecycle, finite localization truth, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 92 | CONFIG-05 | Pedro runtime configuration ownership | Done | The reviewed owner-local Pedro snapshots, complete pre-effect validation, pure Phoenix mapper, exclusive native-tool path, narrow pose observation, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 93 | CONFIG-06 | Tool and tester configuration ownership | Done | The reviewed defaults-only tester Configs, explicit vision-factory behavior, production-aligned Pod evidence, corrected-localization naming, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 94 | CONFIG-07 | Starter profile simplification | Proposed | Replace the starter's aggregate copy-and-validation boilerplate with small owner configs and mode-specific composition checks. |
+| 94 | CONFIG-07 | Starter profile simplification | Done | The reviewed owner-local Starter profile, separate motion permissions, synchronous active-slice declarations, API removals, cleanup evidence, synchronized teaching, and destination-specific publication authorization are complete. |
 | 95 | CONFIG-08 | Basic Pedro profile independence | Proposed | Give the Pedro reference its own small reviewed profile and remove its dependency on Phoenix configuration and project constants. |
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Proposed | Move Phoenix configuration sections beside their owning services and mechanisms while retaining one small data-only aggregate. |
 | 97 | EXAMPLE-04 | Curated managed concept examples | Proposed | Rationalize the manual-loop examples into a smaller managed progression while preserving EXAMPLE-03's evidence-gated deferral. |
@@ -256,8 +256,10 @@ CONFIG-03 and CONFIG-04 have completed their separately approved implementations
 reviews, and GitHub publication. CONFIG-05 is **Done** after its approved implementation, automated
 verification, Android Studio review, and destination-specific publication authorization. CONFIG-06
 is **Done** after its separately approved implementation, automated verification, Android Studio
-review, and destination-specific publication authorization; CONFIG-07 through CONFIG-09 remain
-**Proposed**.
+review, and destination-specific publication authorization. CONFIG-07 is **Done** after its
+approved implementation, focused/full automated verification, strict Javadocs, documentation
+checks, independent adversarial review, Android Studio review, and destination-specific publication
+authorization; CONFIG-08 and CONFIG-09 remain **Proposed**.
 Recording the program neither approves the later implementations nor permits compatibility shims or
 mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
@@ -19437,37 +19439,239 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-07 - Starter profile simplification
 
-- **Status and intake boundary (2026-08-15):** **Proposed after framework/tool contracts.** The user
-  identified the current starter configuration itself as too complex for an example. This item
-  simplifies the existing drive-plus-intake starter before EXAMPLE-04 adds any mechanism or lesson.
-- **Confirmed current burden:** `StarterProfile` is 231 physical lines for a profile containing a
-  review flag, `FtcDrives.MecanumConfig`, and intake facts. Much of the file is an issue accumulator,
-  duplicated name/direction/scale checks already owned by FTC drive/actuator boundaries, manual deep
-  copying, and mode-wide validation. `StarterRobot` then copies the aggregate and calls separate
-  TeleOp/Auto validators even though Auto intentionally does not construct drive hardware.
-- **Leading hypothesis:** retain `StarterProfile.current()` as a short, fresh, obvious editing
-  surface, but move intake configuration beside `StarterIntakeMechanism` and let each effectful owner
-  validate/snapshot its own slice. Keep only genuinely robot-level checks in the composition root:
-  physical-review acknowledgement and active-mode cross-owner hardware-name collisions. Use small
-  named factories with software-valid conservative values plus an explicit unreviewed state; never
-  use blank/null/`NaN` placeholders or a boolean as proof of physical correctness.
-- **Mode and seam rules:** Auto consumes and validates only intake configuration; TeleOp consumes
-  drive plus intake. Unused future sections cannot block an earlier checkpoint. Ordinary mechanisms
-  still receive `HardwareMap` plus their data-only config and own their Plant; remove or explicitly
-  justify any completed-Plant test seam that receives configuration peers. Do not add a generic
-  profile validator, reflection copier, inheritance base, or checked-in stage packages.
-- **Measurable simplicity target:** reduce `StarterProfile` from 231 physical/roughly 178 code lines
-  to at most 110 physical/60 code lines, with no validation loops, issue accumulator, manual drive
-  copier, or nested config family. Treat those numbers as review evidence, not a formatting-game CI
-  rule. Keep each ordinary OpMode `configure(...)` at its existing declaration-only scale and the
-  documented reading path short.
-- **Future completion evidence:** test fresh-current and nested mutation isolation, review gating,
-  mode-specific construction, actionable owner errors, trimmed cross-owner duplicate detection
-  before lookup, partial construction cleanup, unchanged intake/drive behavior, and no hardware
-  access from unused sections. Update the beginner course, Modern Starter Robot, first TeleOp/
-  mechanism/Task guides, Javadocs, and source-shape tests; run full verification. Names, directions,
-  power signs, wiring, and physical stop remain adopting-robot review.
-- **Decision record:** _Pending. No implementation started._
+- **Gate 1 approval and implementation boundary (2026-08-17):** **In progress after explicit user
+  approval** on
+  `codex/config-07-starter-profile-simplification`, based directly on
+  `origin/master@6a0f79d1e128e8260936a50ddc104708b78c6d77`. The user requested the next task after CONFIG-06's
+  publication and cross-CONFIG rationalization. The Gate 1 audit changed only this tracker before
+  the approval stop. The user then replied **“proceed with implementation”**, a clear authorization
+  to implement the complete approved CONFIG-07 design below. This approval permits only the bounded
+  Starter Java, test, Javadoc, guide, and Gate 2 verification work; it does not authorize staging,
+  committing, publication, hardware-safety claims, CONFIG-08, CONFIG-09, or EXAMPLE-04.
+- **Complete current profile and construction inventory:** `StarterProfile` is 231 physical/roughly
+  178 code lines for three public fields (`boolean hardwareConfigurationReviewed`,
+  `FtcDrives.MecanumConfig drive`, and nested `StarterProfile.IntakeConfig intake`), one private
+  constructor, one public `current()`, package-private raw `copy()`, and package-private TeleOp/Auto
+  aggregate validators. `IntakeConfig` has four public fields, a private constructor, and only a
+  package-private copy. Public `StarterRobot(HardwareMap, StarterProfile)` copies the entire draft
+  and exposes two public member-returning methods,
+  `StarterIntake declareTeleOp(RobotProgram, Gamepad)` and
+  `StarterIntake declareAuto(RobotProgram, double)`, although every maintained caller discards both
+  returns. Package-private `StarterIntakeMechanism` has the ordinary
+  `(HardwareMap, StarterProfile.IntakeConfig)` constructor and the test-only
+  `(Plant, double, double)` constructor. `StarterTeleOp` and `StarterAuto` each have a public FTC
+  no-arg constructor plus a package-private profile constructor used only by tests; each retained
+  draft is copied again by `StarterRobot` during INIT. Production reaches this graph only through
+  those two FTC entries. The two focused starter tests are the only maintained construction callers
+  outside the package itself; maintained Markdown shows the same root, profile, and mechanism call
+  shapes.
+- **Confirmed defect rather than line-count taste:** one intake-only lesson currently sets the sole
+  `hardwareConfigurationReviewed` bit, so replacing sentinel fields with valid defaults would also
+  authorize an untouched drive when the student later enables TeleOp. Conversely, blank names,
+  null directions, and `NaN` powers make the software value itself unusable and force 150-plus lines
+  of aggregate copying, issue accumulation, and owner-rule duplication. The profile also leaves
+  full-scale `1.0` drive defaults and BRAKE/FLOAT policy implicit while its guide asks students to
+  review conservative first-motion limits. Two whole-profile copies exist only to support
+  test-injected hosts and dormant-drive Auto semantics. This is the configuration boilerplate the
+  program was opened to remove.
+- **Selected robot-level permissions:** replace the one review-claim field with exactly
+  `boolean allowIntakeMotion` and `boolean allowDriveMotion`, both false in checked-in data. These
+  are rare explicit permissions for a supervised run, using the Framework Principles' `allowX`
+  vocabulary; they acknowledge that a human performed the required review but do not claim that a
+  Boolean proves wiring, direction, braking, power safety, or physical response. Auto consults only
+  `allowIntakeMotion`. TeleOp requires both. Two independent permissions are the smallest value that
+  represents neither/intake-only/drive-only/both and prevents the first-mechanism checkpoint from
+  silently unlocking drive. A curriculum-stage enum, per-mode duplicate flags, default-difference
+  inference, a nested review object, or one flag plus instructions to remember to clear it is less
+  truthful. Editing either slice requires clearing its corresponding permission until the new facts
+  are reviewed.
+- **Exact selected `StarterProfile` surface and values:** keep the outer class public final with a
+  private constructor, exactly four public mutable fields in the source's teaching order—
+  `StarterIntakeMechanism.Config intake`, `boolean allowIntakeMotion`,
+  `FtcDrives.MecanumConfig drive`, and `boolean allowDriveMotion`—and exactly one public method,
+  `public static StarterProfile current()`. Remove outer `defaults()`, `copy()`, readiness/
+  validation methods, and the nested `IntakeConfig`. Each `current()` call returns a fresh complete
+  graph and visibly authors the software-valid baseline: intake name `"intakeMotor"`,
+  `Direction.FORWARD`, collect/eject `+0.20/-0.20`; drive names `"frontLeftMotor"`,
+  `"frontRightMotor"`, `"backLeftMotor"`, `"backRightMotor"`, directions F/R/F/R,
+  `enableZeroPowerBrake=true`, and conservative `maxAxial/maxLateral/maxOmega=0.25/0.25/0.20`.
+  Both permissions remain false. These are compiling software examples, not facts about an adopting
+  robot; the one visible `current()` section tells students to replace and physically review every
+  name, direction, power sign, brake choice, and scale before permitting motion.
+- **Exact owner-local intake API:** make `StarterIntakeMechanism` `public final`; otherwise the
+  public profile would expose an effectively inaccessible nested type. Add
+  `public static final StarterIntakeMechanism.Config` with exactly four public fields
+  (`String motorName`, `Direction direction`, `double collectPower`, `double ejectPower`), one
+  private no-arg constructor, and the sole public factory `public static Config defaults()` using
+  the same valid intake baseline above. Add no public copy, validated-copy, positional `of`, builder,
+  getter, or validator. The sole ordinary path is exactly
+  `public StarterIntakeMechanism(HardwareMap, Config)`: it privately copies all four authored
+  answers, validates the complete copy before hardware lookup, then constructs and owns the one
+  command-backed Plant. It rejects a null/trim-blank name, null direction, non-finite/zero/out-of-
+  `[-1,+1]` action power, or equal action powers with an owner-qualified field/domain/value error.
+- **Distinct hardware-neutral seam:** replace `(Plant, double, double)` with exactly one
+  package-private `StarterIntakeMechanism(Plant)`. It is the Framework Principles' explicit
+  completed-Plant-alone test/portable exception, not a second FTC recipe: it receives no Config,
+  target, or power peer, requires the Plant's command-target contract, and uses only
+  `Config.defaults()` action powers. It retains distinct evidence that mechanism Tasks and terminal
+  stop operate on the graph-owned command—including a hostile-command-target regression that an SDK
+  fake cannot express. Custom authored powers and every Config rejection are exercised through the
+  ordinary fake-`HardwareMap` constructor. Reflection must reject every `(Plant, ...)` overload.
+- **Exact root and FTC-host surface:** replace the root constructor with exactly
+  `public StarterRobot(HardwareMap)`; it retains only the FTC registry, never an aggregate draft.
+  Replace the declaration methods with
+  `public void declareTeleOp(RobotProgram, StarterProfile, Gamepad)` and
+  `public void declareAuto(RobotProgram, StarterProfile, double)`. The common argument prefix is the
+  managed declaration surface followed by the synchronously consumed profile; the final argument is
+  the mode-specific input. The methods return void because the complete graph already wires the
+  capability and all maintained callers ignore the old member escape. Remove the two package-private
+  profile constructors and profile fields from `StarterTeleOp`/`StarterAuto`; each retains exactly
+  its public FTC no-arg construction and calls fresh `StarterProfile.current()` inside INIT's
+  `configure(...)`. Focused lifecycle tests use test-owned `FtcRobotOpMode` hosts instead of adding
+  another production injection path.
+- **Ordinary call-site comparison:** the current root expression
+  `new StarterRobot(hardwareMap, profile).declareTeleOp(program, gamepad1)` becomes
+  `new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1)`; Auto is parallel with
+  `declareAuto(program, profile, collectDurationSec)`. The same three facts remain visible, with no
+  new builder, factory layer, mode enum, or copied aggregate. The profile is authored once and
+  consumed synchronously; the intake and drive owners capture only the active Config they retain.
+  This is simpler and more truthful than keeping a raw profile alias in a long-lived root.
+- **Exact active validation ownership:** `StarterRobot` owns only the mode-relevant `allow...Motion`
+  permissions and TeleOp's intake-versus-four-drive resource collision. Compare nonblank authored
+  names by the FTC SDK's case-sensitive, trim-equivalent key, report both exact profile paths plus
+  the effective key, and reject before any lookup. That comparison is null-safe and skips a
+  malformed/missing slice or name so the applicable owner remains the sole validator of that
+  malformed fact. Auto must not read `drive`,
+  `allowDriveMotion`, or any future unused section. The intake owner validates its own snapshot.
+  Preserve CONFIG-02's existing `FtcDrives` authority unchanged: `MecanumConfig.copy()` owns nested
+  presence and scales; the FTC motor group owns four name/direction and within-drive identity checks
+  before its own lookup. Do not add a Starter validator, issue accumulator, public preflight method,
+  raw outer drive copier, or another `FtcDrives` overload merely to recreate whole-graph validation.
+- **Intentional failure-timing and cleanup contract:** permissions and a readable cross-owner
+  collision fail before every tool/root hardware effect, and each owner rejects its own invalid
+  Config before that owner's effects. A bad later drive slice can now be discovered after the intake
+  was constructed and immediately registered, `GamepadDevice` sources were created, and callbacks
+  were declared. Keep that safe order: intake registration, controls/bindings, drive construction/
+  registration, presenter. On a later `RuntimeException`, `FtcRobotOpMode` terminalizes and
+  `RobotProgram` cancels Tasks, clears bindings, then stops the registered intake before rethrowing
+  the exact primary with cleanup failures suppressed. Do not continue claiming that every active
+  profile error precedes the first lookup. Construction cleanup is not transactional: if an FTC/
+  SDK constructor throws before returning an owner handle, already-applied direction or brake
+  configuration may remain; these paths submit no intended motion, and `Error` remains uncaught.
+- **Preserved behavior and lower layers:** intake meanings, A/B/X controls, source-driven drive,
+  Task freshness/timing/cancellation, output order, telemetry keys, no-active-INIT update, exact
+  START realization, runtime fail-stop, and repeated STOP stay unchanged. Preserve byte-for-byte API
+  shape for both `FtcDrives.mecanum(...)` overloads, all existing `MecanumConfig`/
+  `MecanumWiringConfig` fields and copy factories, the hardware-neutral five-argument
+  `MecanumDrivebase` constructor, `FtcActuators.plant(HardwareMap)`, and `StarterIntake`'s shared
+  capability/status vocabulary. CONFIG-07 adds no reusable framework type and does not alter Basic
+  Pedro or Phoenix configuration.
+- **Rejected alternatives:** retaining the aggregate validator/manual raw copier preserves the
+  strongest pre-effect story by duplicating every owner and keeps the 231-line beginner profile;
+  reject it. Removing `StarterProfile` scatters shared intake facts and permissions across two
+  OpModes; immutable tuples or a staged/mode-specific profile builder add more curriculum nouns than
+  four mutable fields; a generic Config base, validator DSL, reflection copier, annotation scheme,
+  inheritance base, or checked-in stage package has no polymorphic consumer. Making public copy/
+  validated-copy methods merely for the root recreates CONFIG-02's rejected validate/use race.
+  A single permission, a nullable stage enum, guessed change detection, and inactive-branch
+  validation are fail-open or overbroad. Removing the Plant seam loses distinct graph-owned-command
+  stop evidence, while retaining any Plant-plus-peer overload violates the completed-Plant-alone
+  boundary; the selected one-argument package seam is the narrow exception.
+- **Measurable simplicity and bounded implementation:** reduce `StarterProfile` from 231 physical/
+  roughly 178 code lines to at most 110 physical/60 code lines, with no validation loop, issue
+  accumulator, manual drive copier, or nested type. The complete seven-file production starter is
+  currently 632 physical/459 code lines; Gate 2 must report every file's final count and materially
+  reduce that total rather than move aggregate boilerplate into `StarterRobot` or the mechanism.
+  These are review measurements, not formatting-game unit tests. Expected production edits are only
+  `StarterProfile`, `StarterIntakeMechanism`, `StarterRobot`, `StarterTeleOp`, and `StarterAuto`;
+  `StarterIntake` and `StarterTeleOpControls` behavior remain untouched.
+- **Required Gate 2 evidence:** reflection-lock every class visibility, field name/type/count,
+  Config/private constructor/factory, the two exact mechanism constructors, the one root constructor,
+  both void declarations, the two FTC no-arg constructors, and every removed copy/validator/member-
+  return/profile-host/Plant-peer path. Prove two `current()` results have independent intake, drive,
+  wiring, and drivebase objects; exact defaults and false permissions; all four permission states;
+  Auto ignores null/hostile drive and drive permission; every intake null/blank/NaN/positive-
+  infinity/negative-infinity/zero/range/equality rejection occurs before lookup; and each of the
+  four trim-equivalent cross-owner collisions fails before lookup while case-different names remain
+  distinct. Prove owner post-construction mutation isolation, custom-power behavior through fake FTC
+  hardware, Plant-only Task/command/stop behavior, invalid-drive and missing-drive-hardware cleanup
+  of the already registered intake, unchanged TeleOp/Auto order and outputs, runtime fail-stop, and
+  repeated STOP. Reuse/extract one package-private test hardware fixture rather than adding a
+  production seam.
+- **Documentation and static verification:** synchronize Javadocs for the five changed production
+  classes and the maintained one-current-story surfaces: `Modern Starter Robot`, `Beginner's Guide`,
+  `Build and Run`, `Framework Overview`, `First Mechanism`, `First TeleOp`, `First Task and Auto`,
+  `Common Problems`, `Recommended Robot Design`, `FTC Actuators & Plants`, `FTC Sensors`,
+  `Tasks & Macros Quickstart`, `Glossary`, and `Supervisors & Pipelines`. Teach owner-local active
+  validation, both permissions, explicit brake review, the new root call, later-owner cleanup, and
+  defaults-as-software-only; keep the Plant-only seam out of beginner steps and label it advanced in
+  at most the Modern Starter reference. Run the two focused suites plus exact API/source-shape tests,
+  full `:TeamCode:testDebugUnitTest` and Java compilation, strict generated Javadocs, documentation
+  links/fences, stale field/signature/constructor scans, no-sleep scan, final line counts, whitespace,
+  and `git diff --check`.
+- **Robot-evidence boundary:** software can prove copied data, permissions, domains, resource-name
+  comparisons, owner order, submitted zero, cleanup calls, and unchanged Tasks/signals. It cannot
+  prove FTC motor identity, real direction, collect/eject sign, BRAKE/FLOAT behavior, safe scale or
+  motion, mechanical clearance, immediate physical STOP, or that a student actually performed the
+  review. Before enabling either entry, the adopting team must use the actuator tool, clear/unload
+  the robot, review the active slice, set only its motion permission, then verify small supervised
+  motion and physical STOP; the drive permission remains false during the intake-only checkpoint.
+- **Historical Gate 1 approval:** the requested approval wording was
+  **“Approve CONFIG-07 owner-local Starter configuration, separate motion permissions, synchronous
+  active-profile consumption, and redundant aggregate/test-host API removal design.”** On
+  2026-08-17 the user replied **“proceed with implementation”**, a clear equivalent that authorized
+  only the bounded Starter/test/Javadoc/guide implementation and Gate 2 verification above. It did
+  not authorize CONFIG-08, CONFIG-09, EXAMPLE-04, publication, or a hardware-safety claim.
+- **Gate 2 implementation and exact scope (2026-08-17):** at the Gate 2 stop, CONFIG-07 was
+  **Verifying** with an unstaged
+  **24-file** diff: five Starter production Java files, four Starter test Java files (including two
+  new focused fixtures/suites), fourteen maintained Markdown guides, and this tracker. The branch is
+  `codex/config-07-starter-profile-simplification`, based directly on
+  `origin/master@6a0f79d1e128e8260936a50ddc104708b78c6d77`; `HEAD`, `origin/master`, and their merge base
+  remain that exact commit. The resolved publication destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`. No file is staged.
+- **Implemented ownership/API result:** `StarterProfile` is the exact four-field fresh authoring
+  value, with independent intake/drive permissions and software-valid conservative examples.
+  `StarterIntakeMechanism` publicly owns its four-field defaults-only Config and sole ordinary
+  `(HardwareMap, Config)` construction; its only other constructor is the package-private
+  completed-`Plant` test seam. `StarterRobot` retains only `HardwareMap`, synchronously consumes the
+  selected profile through its two void declaration methods, checks only robot-owned permissions
+  and the trim-equivalent cross-owner collision, and leaves each active owner authoritative for its
+  own validation. The production OpModes now expose only their public FTC no-arg construction. Old
+  whole-profile copies/validators, nested intake Config, one review bit, member-returning
+  declarations, profile-retaining host constructors, and Plant-plus-peer construction are absent.
+- **Verification evidence:** the three focused Starter suites pass **28/28** tests; with
+  `DocumentationLinksTest` the focused lane passes **4 suites / 33 tests**. The final full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passes **191 suites / 1,798
+  tests**, with zero failures, errors, or skips; documentation links pass **5/5**. Strict
+  `:TeamCode:phoenixJavadocs` passes with doclint and warnings-as-errors. Only the repository's
+  existing JDK-21/source-8 deprecation warnings remain. `git diff --check`, tracked/untracked
+  trailing-whitespace/final-newline checks, stale API/caller scans, no-sleep scans, local-link and
+  Markdown-fence checks are clean. Independent cross-slice and final adversarial reviews found no
+  remaining behavior, API, test, documentation, or Framework-Principles blocker.
+- **Measured simplicity and review boundary:** `StarterProfile` is **66 physical / 35 code lines**,
+  down from **231 / roughly 178**. All seven Starter production files total **607 physical / 428
+  code lines**, down from **632 / 459**, so the profile reduction was not displaced into another
+  production type. Software still cannot prove installed motor identity/direction, action-power
+  signs, BRAKE/FLOAT behavior, safe drive limits, physical STOP, or mechanical clearance. Android
+  Studio review should inspect the four visible profile fields/defaults, both permission gates,
+  exact root/host/mechanism signatures, owner-local validation and later-drive cleanup tests, and
+  the first-mechanism/TeleOp/Auto teaching sequence before publication authorization.
+- **Combined review/publication authorization required:** after that inspection, the exact reply is
+  **“CONFIG-07 looks good. Authorize committing the reviewed CONFIG-07 diff on
+  codex/config-07-starter-profile-simplification, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** Gate 2 stops with this complete diff unstaged and does not start CONFIG-08.
+- **Manual verification and publication authorization (2026-08-17):** before publication, the user
+  asked whether the Starter's small validation helpers should become a generic framework API. A
+  read-only cross-framework audit found that FTC name retention, null/inactive-branch handling, and
+  normalized-power zero/cross-field rules differ by owner; the existing owner/package-private
+  validation pattern remains the smaller truthful design, so CONFIG-07 was not reopened and no file
+  changed. The user then completed the requested review and sent the exact combined authorization
+  above. CONFIG-07 is now **Done**; Gate 3 may stage only this reviewed 24-file diff, create its
+  single item commit, push `codex/config-07-starter-profile-simplification` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. This authorization does not start CONFIG-08, CONFIG-09, or EXAMPLE-04.
 
 ### CONFIG-08 - Basic Pedro profile independence
 

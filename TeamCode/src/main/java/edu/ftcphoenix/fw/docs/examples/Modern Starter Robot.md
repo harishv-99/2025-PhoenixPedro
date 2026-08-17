@@ -20,33 +20,43 @@ the complete starter fits together.
 
 | File | Job | What a student normally edits |
 |---|---|---|
-| [`StarterProfile.java`](<../../../robots/examples/starter/StarterProfile.java>) | Data-only, defensively copied hardware/tuning configuration | Fill and physically review `current()`. |
+| [`StarterProfile.java`](<../../../robots/examples/starter/StarterProfile.java>) | Fresh four-field intake/drive configuration and separate motion permissions | Replace and review the example facts in `current()`, then permit only the motion being tested. |
 | [`StarterIntake.java`](<../../../robots/examples/starter/StarterIntake.java>) | Shared mode-neutral capability vocabulary | Rename the capability and modes for the real robot. |
 | [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) | Privately owns the intake Plant and implements `RobotProgram.Output` | Change hardware realization and safe stop behavior. |
 | [`StarterTeleOpControls.java`](<../../../robots/examples/starter/StarterTeleOpControls.java>) | Declares button meanings and exposes the final manual `DriveSource` | Change driver meanings here. |
-| [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) | Validates, constructs, and declares the mode-specific graph | Add real owners and their declaration order. |
+| [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) | Checks robot-level permissions/relationships, then constructs and declares the mode-specific graph | Add real owners and their declaration order. |
 | [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) | Disabled one-method FTC TeleOp | Normally change only the name/profile selection. |
 | [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) | Disabled one-method Auto with one fresh root Task | Replace the routine expression. |
 
 The split is intentional. `FtcRobotOpMode` is not a season robot superclass and knows no intake,
 scoring, route, or strategy vocabulary. It owns only the reusable FTC callback/lifecycle contract.
 
-## Configure before constructing hardware
+## Configure only the active slices
 
-`StarterProfile.current()` is deliberately not runnable as checked in. Before enabling either
-OpMode, fill and review:
+Every `StarterProfile.current()` call returns a fresh, complete, software-valid graph with exactly
+four top-level fields: `intake`, `allowIntakeMotion`, `drive`, and `allowDriveMotion`. The checked-in
+names, directions, powers, brake choice, and conservative drive scales are examples, not facts about
+your robot. Both permissions are false, so the examples cannot run until a human reviews the motion
+being tested.
 
-- drive motor names/directions for TeleOp,
-- explicit, conservatively reduced first-motion values for `maxAxial`, `maxLateral`, and
-  `maxOmega` (the framework defaults are normalized software values, not reviewed physical limits),
-- intake motor name/direction,
-- distinct finite nonzero collect/eject powers in `[-1, +1]`, and
-- `hardwareConfigurationReviewed = true`.
+The baseline intake is `"intakeMotor"`, `FORWARD`, `+0.20` collect, and `-0.20` eject. The drive uses
+`"frontLeftMotor"`, `"frontRightMotor"`, `"backLeftMotor"`, and `"backRightMotor"`, directions
+F/R/F/R, `enableZeroPowerBrake = true`, and axial/lateral/omega scales `0.25/0.25/0.20`.
 
-`StarterRobot.declareTeleOp(...)` validates the complete TeleOp profile before its first hardware
-lookup. `declareAuto(...)` validates only the shared intake facts, so an unused drive configuration
-does not block the tiny Auto. The acknowledgement records human review; it does not prove wiring,
-polarity, traction, or safe physical motion.
+Before the intake-only Auto, replace and review the intake motor name/direction and distinct finite
+nonzero collect/eject powers in `[-1, +1]`, then set only `allowIntakeMotion = true`. Leave
+`allowDriveMotion = false`; Auto never reads the inactive drive slice or its permission.
+
+Before TeleOp, also replace and review all four drive names/directions, the explicit
+`enableZeroPowerBrake` choice, and conservative `maxAxial`, `maxLateral`, and `maxOmega` scales. Then
+set `allowDriveMotion = true`; TeleOp requires both permissions. Clear the corresponding permission
+again whenever you edit either slice.
+
+The root rejects missing mode permissions and TeleOp's trimmed intake-versus-drive name collision
+before any lookup. Each active hardware owner then copies and validates only its own configuration
+before that owner's lookup. These checks prove software shape and explicit human acknowledgement;
+they do not prove FTC device identity, wiring, polarity, braking behavior, traction, safe power, or
+physical motion.
 
 ## The entire FTC hosts
 
@@ -56,8 +66,8 @@ TeleOp has one ordinary override:
 public final class StarterTeleOp extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
-        new StarterRobot(hardwareMap, StarterProfile.current())
-                .declareTeleOp(program, gamepad1);
+        StarterProfile profile = StarterProfile.current();
+        new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
     }
 }
 ```
@@ -68,15 +78,17 @@ Auto is parallel:
 public final class StarterAuto extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
-        new StarterRobot(hardwareMap, StarterProfile.current())
-                .declareAuto(program, 0.75);
+        StarterProfile profile = StarterProfile.current();
+        new StarterRobot(hardwareMap)
+                .declareAuto(program, profile, 0.75);
     }
 }
 ```
 
-Neither file stores a clock, runner, lifecycle flags, robot field, or STOP method. The framework
-retains the program before configuration begins, freezes declarations when the method returns, and
-owns all later callbacks.
+Neither file stores a clock, runner, lifecycle flags, robot field, profile field, or STOP method.
+The declaration consumes the fresh profile synchronously; each constructed owner retains only its
+own copied slice. The framework retains the program before configuration begins, freezes
+declarations when the method returns, and owns all later callbacks.
 
 ## Declaration-only composition
 
@@ -102,10 +114,13 @@ program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
 The import identifies `GamepadDevice` as the FTC input edge. It converts the SDK gamepad into
 Phoenix sources through the starter's ordinary direct construction.
 
-Registration retains the same object immediately. If a later construction or declaration fails,
-the program still stops every already registered sibling. The source-driven drive joins output
-declaration order; it calls the sink heartbeat, samples the source, rejects non-finite components,
-clamps finite components, writes once, and stops the sink during cleanup.
+Registration retains the same object immediately. A malformed drive slice can therefore be found
+after the intake is registered and controls/bindings exist. If that later construction or
+declaration throws a `RuntimeException`, managed cleanup clears the bindings, stops the registered
+intake, and rethrows the exact primary failure; construction is not a transactional rollback of SDK
+configuration effects. The source-driven drive joins output declaration order; it calls the sink
+heartbeat, samples the source, rejects non-finite components, clamps finite components, writes once,
+and stops the sink during cleanup.
 
 Auto declares the same capability realization plus one fresh root:
 
@@ -121,11 +136,12 @@ both modes need.
 
 ## Mechanism and controls ownership
 
-`StarterIntakeMechanism` receives `HardwareMap` plus a data-only config, defensively copies it,
-constructs its final command-backed Plant, and implements the downstream role:
+`StarterIntakeMechanism` receives `HardwareMap` plus a data-only config, defensively copies and
+validates the complete snapshot before its first hardware lookup, constructs its final
+command-backed Plant, and implements the downstream role:
 
 ```java
-final class StarterIntakeMechanism
+public final class StarterIntakeMechanism
         implements StarterIntake, RobotProgram.Output {
     @Override
     public void update(LoopClock clock) {
@@ -139,8 +155,8 @@ final class StarterIntakeMechanism
 }
 ```
 
-The completed-Plant constructor remains package-private and explicitly hardware-neutral for tests.
-It is not a second ordinary construction path.
+For advanced hardware-neutral tests only, one package-private constructor accepts a completed Plant
+alone; ordinary robot code has only the `HardwareMap`-plus-`Config` path.
 
 The controls constructor creates stable input sources without changing the callback graph. Its
 explicit, one-shot `bind(...)` call receives `CallbackBindings` first and the capability second. It
@@ -184,7 +200,8 @@ owner rather than creating an unsafe registration gap.
 
 For a new robot:
 
-1. complete and review the profile's software facts and expected physical motion;
+1. replace and review each active configuration slice, including the drive brake choice, then set
+   only that slice's `allow...Motion` permission;
 2. rename the capability and modes to real robot meanings;
 3. keep Plant construction/update/stop in each mechanism output;
 4. construct the controls from inputs, then bind them once with
@@ -193,12 +210,13 @@ For a new robot:
 6. declare upstream computation as services and final realization as outputs; and
 7. keep `configure(program)` declarative rather than adding FTC lifecycle methods.
 
-The OpModes remain `@Disabled` until names, intended directions, reduced first-test limits, clear
-space, and an operator-on-STOP plan are reviewed. The first enabled test is supervised with wheels
-or mechanisms safely unloaded; it verifies physical direction and immediate STOP before the robot is
-lowered or limits are increased. Release sticks and triggers before INIT so `GamepadDevice`
-calibrates their physical neutral positions. Software tests prove declaration order, cancellation,
-and output-seam zero commands—not physical motion.
+The OpModes remain `@Disabled` until names, intended directions and power signs, the brake choice,
+reduced first-test limits, clear space, and an operator-on-STOP plan are reviewed. The first enabled
+test is supervised with wheels or mechanisms safely unloaded; it verifies physical direction,
+braking response, and immediate STOP before the robot is lowered or limits are increased. Release
+sticks and triggers before INIT so `GamepadDevice` calibrates their physical neutral positions.
+Software tests prove declaration order, cancellation, configuration domains, and output-seam zero
+commands—not physical motion or that the review happened.
 
 ## Related reading
 

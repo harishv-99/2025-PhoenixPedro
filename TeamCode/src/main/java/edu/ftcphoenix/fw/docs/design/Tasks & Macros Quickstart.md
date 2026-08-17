@@ -283,9 +283,10 @@ For mechanism commands and other writable numbers, start with
 creates its command inline:
 
 The builder below is a construction-time excerpt from the mechanism owner. In ordinary FTC robot
-code, that constructor receives `HardwareMap` and its data-only config, copies the config, and uses
-the copied hardware name and direction. The composition root constructs the mechanism, not this
-raw Plant. See the compiling
+code, that constructor receives `HardwareMap` and its active data-only config, copies and validates
+the complete snapshot before its own hardware lookup, and uses the copied hardware name and
+direction. The composition root owns cross-owner policy and constructs the mechanism, not this raw
+Plant. See the compiling
 [`StarterIntakeMechanism`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) for the
 complete owner.
 
@@ -624,7 +625,7 @@ private final OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
 private final OutputTaskFactory feedOne;
 private final Plant transferShooterPlant;
 
-// In the mechanism constructor, after copying config and creating sensor/behavior inputs:
+// In the mechanism constructor, after copying and validating config, then creating inputs:
 FeederConfig snapshot = Objects.requireNonNull(config, "config").copy();
 this.feedOne = Tasks.outputPulse("feedOne")
         .startWhen(fireAllowed)
@@ -657,7 +658,8 @@ transferShooterPlant.update(clock);
 ```
 
 Here `FeederConfig` is illustrative robot code, not a framework type; `snapshot` is the mechanism's
-defensive copy of that data-only config.
+defensive, owner-validated copy of that data-only config. A compiling default is not physical
+hardware or safe-motion evidence.
 `fireAllowed`, `requestShoot`, and `ballLeftGate` are long-lived mechanism/supervisor inputs created
 during construction; only their sampling, queue advancement, and Plant update happen each cycle.
 

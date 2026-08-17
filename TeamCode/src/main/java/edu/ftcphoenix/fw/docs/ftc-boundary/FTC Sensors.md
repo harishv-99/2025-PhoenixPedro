@@ -71,8 +71,9 @@ position at the FTC boundary, then uses the generic `ScalarSource.ratePerSecond(
 produce native ticks/second:
 
 The following Plant builder is an excerpt from the owning mechanism constructor. In a structured
-robot, the composition root passes that constructor `HardwareMap` plus its validated config rather
-than constructing this Plant itself.
+robot, the composition root passes that constructor `HardwareMap` plus its active data-only config.
+The mechanism snapshots and validates that config before its own hardware lookup rather than asking
+the root to duplicate owner rules or construct this Plant itself.
 
 ```java
 // Inside the mechanism constructor; flywheel is a private field.

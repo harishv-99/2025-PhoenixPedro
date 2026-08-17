@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetStatus;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
@@ -140,17 +141,16 @@ public final class StarterIntakeAndControlsTest {
                 .power(output)
                 .targetFromNewCommand(0.0)
                 .build();
-        StarterIntakeMechanism intake =
-                new StarterIntakeMechanism(plant, 0.65, -0.45);
+        StarterIntakeMechanism intake = new StarterIntakeMechanism(plant);
         ManualLoopClock time = new ManualLoopClock();
 
         assertMode(intake, time.clock(), StarterIntake.Mode.STOPPED, 0.0, output);
 
         intake.setMode(StarterIntake.Mode.COLLECT);
-        assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.COLLECT, 0.65, output);
+        assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.COLLECT, 0.20, output);
 
         intake.setMode(StarterIntake.Mode.EJECT);
-        assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.EJECT, -0.45, output);
+        assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.EJECT, -0.20, output);
 
         intake.setMode(StarterIntake.Mode.STOPPED);
         assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.STOPPED, 0.0, output);
@@ -161,7 +161,7 @@ public final class StarterIntakeAndControlsTest {
 
         assertEquals(1, output.stopCalls);
         assertEquals(0.0, output.commandedPower, 0.0);
-        assertEquals(-0.45, plant.commandTarget().get(), 0.0);
+        assertEquals(-0.20, plant.commandTarget().get(), 0.0);
         assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
 
         intake.setMode(StarterIntake.Mode.COLLECT);
@@ -180,7 +180,7 @@ public final class StarterIntakeAndControlsTest {
 
             @Override
             public double get() {
-                return 0.65;
+                return 0.20;
             }
         };
         RecordingPowerOutput output = new RecordingPowerOutput();
@@ -188,22 +188,12 @@ public final class StarterIntakeAndControlsTest {
                 Plants.fromOutputs()
                         .power(output)
                         .targetFromResolver(PlantTargets.exact(failingTarget))
-                        .build(),
-                0.65,
-                -0.45);
+                        .build());
 
         intake.stop();
 
         assertEquals(1, output.stopCalls);
         assertEquals(0.0, output.commandedPower, 0.0);
-    }
-
-    @Test
-    public void hardwareNeutralSeamRejectsAmbiguousActionPowers() {
-        assertInvalidActionPowers(0.0, -0.45);
-        assertInvalidActionPowers(0.65, 0.65);
-        assertInvalidActionPowers(Double.NaN, -0.45);
-        assertInvalidActionPowers(0.65, -1.01);
     }
 
     @Test
@@ -214,13 +204,55 @@ public final class StarterIntakeAndControlsTest {
                 .build();
 
         try {
-            new StarterIntakeMechanism(
-                    plant,
-                    0.65,
-                    -0.45);
+            new StarterIntakeMechanism(plant);
             fail("Expected Plant without command target to fail");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("command target"));
+        }
+    }
+
+    @Test
+    public void hardwareNeutralSeamRejectsClaimedButMissingCommandTarget() {
+        Plant plant = new Plant() {
+            @Override
+            public void update(edu.ftcphoenix.fw.core.time.LoopClock clock) {
+            }
+
+            @Override
+            public double getRequestedTarget() {
+                return 0.0;
+            }
+
+            @Override
+            public double getAppliedTarget() {
+                return 0.0;
+            }
+
+            @Override
+            public PlantTargetStatus getTargetStatus() {
+                return PlantTargetStatus.ACCEPTED;
+            }
+
+            @Override
+            public boolean hasCommandTarget() {
+                return true;
+            }
+
+            @Override
+            public ScalarTarget commandTarget() {
+                return null;
+            }
+
+            @Override
+            public void stop() {
+            }
+        };
+
+        try {
+            new StarterIntakeMechanism(plant);
+            fail("Expected null command target to fail");
+        } catch (NullPointerException expected) {
+            assertTrue(expected.getMessage().contains("plant.commandTarget()"));
         }
     }
 
@@ -231,9 +263,7 @@ public final class StarterIntakeAndControlsTest {
                 Plants.fromOutputs()
                         .power(output)
                         .targetFromNewCommand(0.0)
-                        .build(),
-                0.70,
-                -0.50);
+                        .build());
         ManualLoopClock time = new ManualLoopClock();
 
         Task first = intake.collectForSeconds(0.50);
@@ -242,13 +272,13 @@ public final class StarterIntakeAndControlsTest {
 
         first.start(time.clock());
         intake.update(time.clock());
-        assertEquals(0.70, output.commandedPower, 0.0);
+        assertEquals(0.20, output.commandedPower, 0.0);
         assertFalse(first.isComplete());
 
         first.update(time.nextCycle(0.49));
         intake.update(time.clock());
         assertFalse(first.isComplete());
-        assertEquals(0.70, output.commandedPower, 0.0);
+        assertEquals(0.20, output.commandedPower, 0.0);
 
         first.update(time.nextCycle(0.01));
         intake.update(time.clock());
@@ -259,7 +289,7 @@ public final class StarterIntakeAndControlsTest {
 
         second.start(time.nextCycle(0.02));
         intake.update(time.clock());
-        assertEquals(0.70, output.commandedPower, 0.0);
+        assertEquals(0.20, output.commandedPower, 0.0);
 
         second.cancel();
         second.cancel();
@@ -313,21 +343,6 @@ public final class StarterIntakeAndControlsTest {
             fail("Expected invalid collect duration to fail");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("durationSec"));
-        }
-    }
-
-    private static void assertInvalidActionPowers(double collectPower, double ejectPower) {
-        try {
-            new StarterIntakeMechanism(
-                    Plants.fromOutputs()
-                            .power(new RecordingPowerOutput())
-                            .targetFromNewCommand(0.0)
-                            .build(),
-                    collectPower,
-                    ejectPower);
-            fail("Expected invalid action powers to fail");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("Power"));
         }
     }
 

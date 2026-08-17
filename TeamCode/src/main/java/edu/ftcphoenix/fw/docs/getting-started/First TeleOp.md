@@ -30,9 +30,10 @@ to control the intake through robot meanings.
 - Release both sticks and all triggers before every INIT. `GamepadDevice` calibrates the current
   axis positions as neutral when it is constructed, so a held axis would teach it the wrong
   baseline. Reconfirm neutral controls before START.
-- Treat the drive configuration as a new review: set `hardwareConfigurationReviewed = false` while
-  editing, then return it to `true` only after reviewing the configured facts for all five motors
-  and the three drive limits. The raised-wheel steps perform the later physical direction check.
+- Treat the drive configuration as a new review: keep `allowIntakeMotion = true` from the mechanism
+  checkpoint, set `allowDriveMotion = false` while editing, then return it to `true` only after
+  reviewing all four drive motors, the brake choice, and the three drive limits. The raised-wheel
+  steps perform the later physical direction and response checks.
 
 ## 1. Add the four drive facts
 
@@ -50,31 +51,39 @@ profile.drive.wiring.frontRightDirection = Direction.REVERSE;
 profile.drive.wiring.backLeftDirection = Direction.FORWARD;
 profile.drive.wiring.backRightDirection = Direction.REVERSE;
 
+// Review this explicitly for your drivetrain.
+profile.drive.enableZeroPowerBrake = true;
+
 // Deliberately conservative first-motion limits.
 profile.drive.drivebase.maxAxial = 0.25;
 profile.drive.drivebase.maxLateral = 0.25;
 profile.drive.drivebase.maxOmega = 0.20;
 ```
 
-The directions show a common value shape, not facts about your drivetrain. Before enabling the
-starter, run either **FW: Testers (Driver Station) → HW: Actuator Bring-up** or
+The directions and `true` brake setting show a common value shape, not facts about your drivetrain.
+Before enabling the starter, run either **FW: Testers (Driver Station) → HW: Actuator Bring-up** or
 **FW: Testers (Panels) → HW: Actuator Bring-up** with the wheels raised and isolate each of the four
 configured motors. Test which temporary `Direction` makes that wheel's positive rotation contribute to
 robot-forward motion, then copy the four reported values here. All five starter motor names must be
 nonblank and distinct after trimming; matching
 is case-sensitive. The explicit scales keep a full stick request conservative during first motion;
-the framework defaults are valid normalized values, not reviewed physical limits for your robot.
-Increase one scale at a time only after controlled floor tests prove the current value safe.
+the framework defaults are valid software values, not reviewed physical facts or limits for your
+robot. Increase one scale at a time only after controlled floor tests prove the current value safe.
 
-After copying the isolated direction results and reviewing the names, three conservative scales,
-and intake from the mechanism checkpoint, set:
+After copying the isolated direction results and reviewing the names, brake choice, three
+conservative scales, and intake from the mechanism checkpoint, set:
 
 ```java
-profile.hardwareConfigurationReviewed = true;
+profile.allowIntakeMotion = true;
+profile.allowDriveMotion = true;
 ```
 
-`StarterRobot.declareTeleOp(...)` validates both the drive and intake before its first hardware
-lookup. The mode fails with one actionable issue list instead of starting a partial robot.
+The root checks both permissions and any trimmed intake-versus-drive name collision before every
+lookup. The intake mechanism then snapshots and validates its slice before its lookup and registers
+immediately. `FtcDrives` owns validation of the copied drive slice before drive lookup. A bad later
+drive slice can therefore fail after the intake and controls exist; managed `RuntimeException`
+cleanup clears bindings, stops the registered intake, and rethrows the exact primary error. It does
+not promise transactional rollback of SDK configuration effects.
 
 ## 2. Read the one-method FTC host
 
@@ -83,7 +92,8 @@ The complete robot-programming override is:
 ```java
 @Override
 protected void configure(RobotProgram program) {
-    new StarterRobot(hardwareMap, profile).declareTeleOp(program, gamepad1);
+    StarterProfile profile = StarterProfile.current();
+    new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
 }
 ```
 
@@ -216,10 +226,16 @@ semantic request and the Plant's retained applied target.
 
 ## Common problems
 
-**INIT reports that `StarterProfile` is not ready for TeleOp.**
+**INIT reports that intake or drive motion is not allowed.**
 
-Read the complete issue list. TeleOp requires both the reviewed intake and all four drive names,
-directions, and finite drive scales. Do not bypass validation.
+TeleOp requires both `allowIntakeMotion` and `allowDriveMotion`. Review the corresponding slice
+before setting each permission; the booleans acknowledge human review but cannot prove it.
+
+**INIT reports an invalid intake or drive configuration field.**
+
+Read the owner-qualified message and correct that field. A later drive failure may occur after the
+intake registered, but the managed failure path stops that intake before returning the original
+error.
 
 **A configured device cannot be found.**
 

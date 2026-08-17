@@ -11,9 +11,11 @@ This page covers the FTC boundary for Phoenix mechanism wiring:
 * how tolerances and FTC motor tuning interact
 
 The FTC boundary is where FTC SDK hardware names become Phoenix `Plant` objects. In ordinary robot
-code, the composition root passes `HardwareMap` and a validated, data-only profile slice to a
-mechanism constructor. That mechanism uses the builders on this page, keeps the resulting Plants
-private, and owns their update and stop lifecycle. Robot services, Tasks, and scalar planners use
+code, the composition root passes `HardwareMap` and the active data-only profile slice to a
+mechanism constructor. That mechanism defensively snapshots and validates its complete slice before
+its own hardware lookup, uses the builders on this page, keeps the resulting Plants private, and
+owns their update and stop lifecycle. A valid default proves only software shape, not the identity,
+direction, or safe response of installed hardware. Robot services, Tasks, and scalar planners use
 the mechanism's semantic API instead of touching either raw SDK devices or raw Plants directly.
 
 The compact builder snippets below are therefore **mechanism-constructor excerpts** unless a

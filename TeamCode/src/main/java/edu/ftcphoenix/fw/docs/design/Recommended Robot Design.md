@@ -82,11 +82,11 @@ Most examples in this document use real Phoenix types. A few route-library snipp
 intentionally conceptual, because the exact adapter API depends on the library you choose to wrap.
 
 For ordinary FTC mechanisms, the examples follow the same construction boundary as the
-[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>): the composition root validates the
-profile and calls `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism defensively copies
-that data-only configuration, constructs and privately owns its Plants and local sensors, and owns
-their update and stop lifecycle. A constructor that accepts a completed `Plant` is useful as a
-hardware-neutral test or custom-adapter seam, but it is not the normal robot-code constructor.
+[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>): the composition root checks the
+robot-level permissions and cross-owner relationships it owns, selects the active profile slice,
+and calls `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism defensively copies and
+validates that data-only configuration before its own hardware effects, constructs and privately
+owns its Plants and local sensors, and owns their update and stop lifecycle.
 If a proven FTC device-managed velocity Plant also needs live tuning, keep this exact production
 owner and declare the framework workflow described in
 [`Declare one framework tuner`](<../testing-calibration/Control Tuning Workflow.md#choose-the-workflow-that-matches-production>).
@@ -95,8 +95,9 @@ a second robot-specific mechanism or tuning-session object.
 Do not make live-tuning ceremony mandatory for ordinary checked-in configuration.
 
 The illustrative `WristConfig`, `LiftConfig`, and `IntakeConfig` types below are data-only profile
-slices with a `copy()` method. A real profile should also validate their names, directions, finite
-ranges, and gains before the composition root constructs any hardware.
+slices with a `copy()` method. Their owning mechanism should validate its copied names, directions,
+finite ranges, and gains before that owner's first hardware effect. A software-valid default is only
+an authoring baseline; it is not proof about installed hardware or safe motion.
 
 All Java snippets in this document use Java 8-compatible syntax so they match the FTC project
 environment. That means examples avoid newer language features such as records and switch
@@ -291,7 +292,8 @@ ordinary path it has no clock, Task runner, mode flags, FTC callback forwarding,
 It should usually own:
 
 - construction of stable FTC lanes and robot-owned mechanisms
-- the `HardwareMap` and validated profile slices passed into mechanism constructors
+- the `HardwareMap` and synchronously selected active profile slices passed into their owners
+- robot-level permissions and relationships that cross owner boundaries
 - supervisor construction
 - gamepad binding declarations
 - service/output declaration order
@@ -606,15 +608,16 @@ public final class Wrist {
 }
 ```
 
-After validating the profile, the composition root has one ordinary construction step:
+After selecting the active profile slice, the composition root has one ordinary construction step:
 
 ```java
 wrist = new Wrist(hardwareMap, profile.wrist);
 ```
 
-The mechanism constructs the Plant, keeps it private, and asks the Plant for `getAppliedTarget()`
-instead of keeping a second field that merely guesses what the Plant applied. After each
-`plant.update(clock)`, that readback reflects the bounds and guards the Plant actually applied.
+The mechanism copies and validates that slice before its own hardware lookup, constructs the Plant,
+keeps it private, and asks the Plant for `getAppliedTarget()` instead of keeping a second field that
+merely guesses what the Plant applied. After each `plant.update(clock)`, that readback reflects the
+bounds and guards the Plant actually applied.
 
 ### TeleOp interaction
 
@@ -656,8 +659,9 @@ a controller/regulator, and a feedback source packaged into one Plant owned by t
 
 ### Recommended subsystem shape
 
-The mechanism receives only FTC resources and its validated profile slice. It constructs the
-feedback source and regulated Plant together so they cannot be wired to different owners:
+The mechanism receives only FTC resources and its data-only profile slice. It copies and validates
+that slice before its own hardware effects, then constructs the feedback source and regulated Plant
+together so they cannot be wired to different owners:
 
 ```java
 public final class Lift {

@@ -49,9 +49,12 @@ Check all of these:
 - the Driver Station is connected to that Robot Controller; and
 - the annotation name is not being mistaken for the Java class name.
 
-Do not enable a starter until its profile acknowledgement, hardware names, intended directions,
-power limits, clear-space plan, and operator-on-STOP plan have been reviewed. Then use the first
-enabled, supervised, unloaded test to verify physical directions and immediate STOP behavior. Follow
+Do not enable a starter until the active slice's hardware names, intended directions, power limits,
+drive brake choice, clear-space plan, and operator-on-STOP plan have been reviewed. Set only its
+`allowIntakeMotion` or `allowDriveMotion` permission; TeleOp requires both, while the intake-only
+Auto deliberately leaves drive permission false. These booleans acknowledge human review but do not
+prove any physical fact. Then use the first enabled, supervised, unloaded test to verify physical
+directions, response, and immediate STOP behavior. Follow
 [`Build and run Phoenix`](<../getting-started/Build and Run.md>).
 
 ## INIT reports a hardware name problem
@@ -66,6 +69,25 @@ distinct names inside one homogeneous actuator or mecanum group before it resolv
 
 A group-local duplicate check does not prove physical device identity and does not prevent a
 separate read-only feedback adapter from intentionally using the same configured device.
+
+## INIT reports that starter motion is not allowed
+
+`StarterProfile.current()` returns software-valid example Configs with both permissions false.
+Review only the slice needed by the mode, replace its example facts, then set its permission. Auto
+requires only `allowIntakeMotion`; TeleOp requires both that permission and `allowDriveMotion`.
+Clear the corresponding permission whenever you edit a slice.
+
+## INIT reports an owner-qualified starter Config error
+
+The starter has no aggregate issue collector. Its root checks mode permissions and TeleOp's
+cross-owner name collision before every hardware lookup. Each active owner then copies and validates
+its own Config before that owner's lookup. Correct the exact field named by the intake or drive
+owner; do not treat compiling defaults or a true permission as hardware evidence.
+
+A later drive error can be discovered after the intake was registered and controls were bound.
+Managed `RuntimeException` cleanup clears those bindings and stops the registered intake before
+rethrowing the original failure. This fail-stop behavior is not a claim that earlier SDK
+configuration effects were transactionally rolled back.
 
 ## The Panels tester loses its client
 

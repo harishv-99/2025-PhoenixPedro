@@ -3,8 +3,6 @@ package edu.ftcphoenix.robots.examples.starter;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 
-import java.util.Objects;
-
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 
@@ -15,21 +13,15 @@ public final class StarterAuto extends FtcRobotOpMode {
 
     private static final double COLLECT_DURATION_SEC = 0.75;
 
-    private final StarterProfile profile;
-
     /** FTC construction path using the checked-in starter profile. */
     public StarterAuto() {
-        this(StarterProfile.current());
-    }
-
-    /** Package-private profile seam for focused host tests. */
-    StarterAuto(StarterProfile profile) {
-        this.profile = Objects.requireNonNull(profile, "profile").copy();
+        // FTC constructs OpModes through their public no-argument constructor.
     }
 
     @Override
     protected void configure(RobotProgram program) {
-        new StarterRobot(hardwareMap, profile)
-                .declareAuto(program, COLLECT_DURATION_SEC);
+        StarterProfile profile = StarterProfile.current();
+        new StarterRobot(hardwareMap)
+                .declareAuto(program, profile, COLLECT_DURATION_SEC);
     }
 }

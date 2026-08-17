@@ -10,7 +10,7 @@ blocking the robot loop.
 **Prerequisites:**
 
 - the safe one-motor Auto checkpoint from [`Your first mechanism`](<First Mechanism.md>);
-- the reviewed starter profile; and
+- the reviewed intake slice with `allowIntakeMotion = true`; and
 - the controls and ownership model from [`Your first TeleOp`](<First TeleOp.md>).
 
 **Files for this lesson:**
@@ -26,11 +26,12 @@ blocking the robot loop.
 
 - Secure the robot while keeping the unloaded intake clear and free to rotate, exactly as in the
   mechanism checkpoint. Never hold or stall the powered mechanism by hand.
-- Keep the reviewed low powers in `StarterProfile`.
+- Keep the reviewed low powers in `StarterProfile` and leave `allowDriveMotion = false`; this Auto
+  does not inspect or authorize drive.
 - Disable the starter TeleOp while running the Auto checkpoint so the Driver Station choice is
   unambiguous.
-- Keep one operator ready to press STOP. Active cancellation and mechanism stop both return the
-  checked-in intake request to zero.
+- Keep one operator ready to press STOP. Active Task cancellation returns the intake request to
+  zero; terminal mechanism stop applies hardware zero without rewriting that persistent request.
 
 ## 1. A Task describes behavior over time
 
@@ -105,8 +106,9 @@ private static final double COLLECT_DURATION_SEC = 0.75;
 
 @Override
 protected void configure(RobotProgram program) {
-    new StarterRobot(hardwareMap, profile)
-            .declareAuto(program, COLLECT_DURATION_SEC);
+    StarterProfile profile = StarterProfile.current();
+    new StarterRobot(hardwareMap)
+            .declareAuto(program, profile, COLLECT_DURATION_SEC);
 }
 ```
 

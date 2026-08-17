@@ -28,13 +28,15 @@ Your OpMode declares a robot once:
 public final class StarterTeleOp extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
-        new StarterRobot(hardwareMap, profile).declareTeleOp(program, gamepad1);
+        StarterProfile profile = StarterProfile.current();
+        new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
     }
 }
 ```
 
 `FtcRobotOpMode` then owns INIT, START, each active loop, STOP, one telemetry commit, and fail-stop
-cleanup. Ordinary robot code does not override those callbacks.
+cleanup. The fresh profile is consumed synchronously by this declaration; the root does not retain
+an editable aggregate. Ordinary robot code does not override those callbacks.
 
 ## The beginner mental model
 
@@ -100,9 +102,11 @@ the managed program advance it while the rest of the robot remains responsive.
 
 ### Keep hardware inside its owner
 
-An ordinary mechanism constructor receives `HardwareMap` plus data-only configuration, privately
-builds its Plants, and implements `RobotProgram.Output`. Controls and Auto call its capability
-methods instead of reaching into a Plant or FTC motor.
+An ordinary mechanism constructor receives `HardwareMap` plus data-only configuration, defensively
+copies and validates its active slice before its own hardware lookup, privately builds its Plants,
+and implements `RobotProgram.Output`. The composition root owns robot-level permissions and
+cross-owner relationships; controls and Auto call capability methods instead of reaching into a
+Plant or FTC motor.
 
 ### Create a fresh Task for every run
 
