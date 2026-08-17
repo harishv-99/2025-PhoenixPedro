@@ -33,7 +33,7 @@ public final class BasicPedroAutoRoutineTest {
         routine.update(fixture.time.clock());
 
         assertEquals(1, fixture.follower.followCount);
-        assertEquals(0.80, fixture.target.get(), 0.0);
+        assertEquals(0.20, fixture.target.get(), 0.0);
         assertFalse(routine.isComplete());
 
         routine.update(fixture.time.nextCycle(0.51));
@@ -98,7 +98,7 @@ public final class BasicPedroAutoRoutineTest {
                 .targetFromResolver(PlantTargets.exact(target))
                 .build();
         final BasicPedroAutoMechanism mechanism =
-                new BasicPedroAutoMechanism(plant, 0.80);
+                new BasicPedroAutoMechanism(plant);
         final FakeRouteExecution execution = new FakeRouteExecution();
         final FakeRouteFollower follower = new FakeRouteFollower(execution);
 

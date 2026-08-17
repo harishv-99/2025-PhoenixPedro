@@ -9,17 +9,18 @@ stable follower heartbeat, and deterministic cleanup. It is not the first-route 
 the canonical [`Phoenix docs hub`](<../README.md>) for the guided learning path.
 
 Start with the compiling [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>)
-entry. Its five-file example uses the ordinary `FtcRobotOpMode`/`RobotProgram` grammar and the
-project's pinned Pedro Pathing dependency. The disabled host borrows this repository's Phoenix
-hardware configuration only to make the example concrete. Production Phoenix Auto uses
-`PhoenixAutoOpMode`; this package is the independent reference for another robot.
+entry. Its six-file example uses the ordinary `FtcRobotOpMode`/`RobotProgram` grammar, one local
+data-only profile, and the project's pinned Pedro Pathing dependency. Production Phoenix Auto uses
+`PhoenixAutoOpMode`; this package has no `PhoenixProfile` or project `pedroPathing.Constants`
+configuration dependency and is the independent reference for another robot.
 
-## The five owner roles
+## The six reference roles
 
-| File | Owner role | Adapt for another robot |
+| File | Role | Adapt for another robot |
 |---|---|---|
-| [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) | Thin FTC host: constructs verified robot-specific configuration and adds read-only presenters. | Replace Phoenix profile wiring with that robot's runtime and mechanism configuration. |
-| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | Declaration root: registers the Pedro service, mechanism output, and one fresh root Task in safety-significant order. | Keep the managed role shape; add an owner only when it has a distinct lifecycle job. |
+| [`BasicPedroProfile.java`](<../../../robots/examples/pedro/BasicPedroProfile.java>) | Fresh local Pedro/runtime and intake configuration plus the false-by-default motion permission. | Replace and physically review every active fact, then permit only the complete supervised run. |
+| [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) | Thin FTC host: selects the local profile, invalidates stale match handoff, and adds read-only presenters. | Keep the host declarative; choose the adopting robot's profile here. |
+| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | Composition root: gates configuration, constructs/registers the runtime and mechanism, and declares one fresh root Task in safety-significant order. | Keep the managed role shape; add an owner only when it has a distinct lifecycle job. |
 | [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) | Geometry owner: declares the physical start pose and eagerly builds one fixed Pedro route. | Replace start/end poses and route geometry in Pedro field inches and radians. |
 | [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | Strategy owner: maps route success, timeout, and cancellation-like outcomes to explicit Task behavior. | Compose the robot's capability Tasks and state every non-success policy. |
 | [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | Mechanism output: snapshots data-only configuration, privately owns one Plant, and creates fresh cancellation-safe Tasks. | Prefer the robot's existing capability; otherwise build the real mechanism with the same ownership boundary. |
@@ -31,24 +32,43 @@ lifecycle, capability realization, and physical configuration stay with their ac
 
 ### INIT
 
-`BasicPedroAutoExample.configure(...)` creates one `PedroPathingRuntime` and one declaration root.
-Its Phoenix-backed host reaches the runtime's sole hardware boundary through a pure project mapping:
+`BasicPedroAutoExample.configure(...)` first invalidates any recent Phoenix match handoff, then
+selects one fresh local profile and invokes the sole ordinary composition-root construction path:
 
 ```java
-PedroPathingRuntime runtime = PedroPathingRuntime.create(
+robot = new BasicPedroAutoRobot(
+        program,
         hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(profile));
+        BasicPedroProfile.current());
 ```
 
-The mapper snapshots only the relevant Pinpoint and drivetrain profile slice and combines it with
-fresh checked-in Pedro tuning. It performs no hardware work. The runtime then deep-snapshots and
-validates the complete Config before lookup, the non-blocking Pinpoint reset request, motor output,
-Follower construction, or Pedro-static mutation. Later caller edits cannot retune the running
-graph.
+`BasicPedroProfile.current()` returns a fresh outer value, a fresh
+`PedroPathingRuntime.Config pedro` graph, a fresh `BasicPedroAutoMechanism.Config intake`, and
+`allowRobotMotion = false`. The checked-in data is a valid software baseline, not reviewed physical
+configuration. It includes explicit motor names/directions, an initial Mecanum `maxPower = 0.25`,
+brake mode enabled, and a `0.20` intake command. Pedro 2.1.2 restores its Follower's separate
+`globalMaxPower` to `1.0` when `followPath(...)` begins, so the initial `0.25` is not an autonomous
+route cap and is not a first-motion safety claim. The `useBrakeModeInTeleOp = true` baseline also
+does not define Auto route braking. Only the false permission blocks construction and route motion
+in the checked-in program; `@Disabled` separately hides the Driver Station entry.
+
+Before hardware effects, the root requires that explicit permission, requires both active Configs,
+and rejects an intake name that resolves to one of the four drive motor names. It then calls the
+sole `PedroPathingRuntime.create(hardwareMap, profile.pedro)` hardware boundary. The runtime
+deep-snapshots and validates the complete Config before lookup, the non-blocking Pinpoint reset
+request, motor output, Follower construction, or Pedro-static mutation. The intake mechanism later
+snapshots and validates only `profile.intake`. Later caller edits cannot retune either running
+owner.
 
 The root registers the Pedro service before building paths or constructing the mechanism, then
 registers the mechanism immediately after construction and declares one root Task. Construction
-does not start a route or actuate the mechanism.
+does not start a route or actuate the mechanism. If path or intake construction fails after runtime
+registration, managed failure cleanup best-effort stops the already-owned Pedro drive; a mechanism
+that completed its Plant before failing stops that Plant before ownership transfer.
+
+`PhoenixMatchHandoff.clear()` is the one deliberate Phoenix-specific exception. It is handoff
+safety, not hardware configuration: this generic diagnostic Auto must not leave a recent match
+snapshot for a later TeleOp.
 
 The framework advances only the clock and presenters during INIT. Placement and test warnings stay
 visible without creating a second hardware graph or selector retry path.
@@ -116,21 +136,23 @@ direct cancellation never manufactures a fallback action.
 ## Adaptation checklist
 
 1. Extend `FtcRobotOpMode` and override only `configure(RobotProgram)`.
-2. Start from `PedroPathingRuntime.Config.defaults()`, replace its Pinpoint, Follower, Mecanum,
-   path-constraint, and field-transform facts, then construct one runtime through
-   `PedroPathingRuntime.create(hardwareMap, config)`. A robot-specific pure mapper may author that
-   Config; it must not become another hardware factory.
-3. Replace `BasicPedroAutoPaths` geometry and display the exact required physical start pose.
-4. Keep fixed routes eager. Use `RouteTasks.followBuiltAtStart(...)` only when geometry genuinely
+2. Start from `BasicPedroProfile.current()`. Replace and physically review its Pinpoint, Follower,
+   Mecanum, path-constraint, field-transform, and intake facts. Keep `allowRobotMotion = false`
+   until the complete active graph is ready for one supervised test.
+3. Construct the reference only through
+   `new BasicPedroAutoRobot(program, hardwareMap, profile)`. Do not add a profile mapper or second
+   runtime factory; the runtime and intake owners snapshot and validate their own active Configs.
+4. Replace `BasicPedroAutoPaths` geometry and display the exact required physical start pose.
+5. Keep fixed routes eager. Use `RouteTasks.followBuiltAtStart(...)` only when geometry genuinely
    depends on a live fact at that route's start.
-5. Replace the example mechanism with existing mode-neutral capability Tasks when the robot has
+6. Replace the example mechanism with existing mode-neutral capability Tasks when the robot has
    them. Otherwise, pass `HardwareMap` plus data-only configuration to a mechanism that privately
    owns its Plant and implements `RobotProgram.Output`.
-6. Build a fresh root Task graph and state the strategy for success, timeout, and every
+7. Build a fresh root Task graph and state the strategy for success, timeout, and every
    cancellation-like route result.
-7. Register the Pedro service before dependent work, register outputs immediately after
+8. Register the Pedro service before dependent work, register outputs immediately after
    construction, and keep presenters read-only and additive.
-8. Keep raw `Follower` calls, lifecycle callbacks, private clocks/runners, and manual telemetry
+9. Keep raw `Follower` calls, lifecycle callbacks, private clocks/runners, and manual telemetry
    commits out of the OpMode. Build paths with `runtime.pathBuilder()` and use
    `runtime.currentPedroPose()` only when start-time geometry needs a defensive snapshot of the
    already-cached Pedro pose.
@@ -159,7 +181,9 @@ outcome without advancing those owners.
 
 - Verify all four drive motor names and directions with wheels safely raised.
 - Verify Pinpoint offsets, pod directions, resolution, yaw scalar, and field convention.
-- Use conservative follower speed and acceleration limits with clear space beyond the endpoint.
+- Review Pedro's Follower `globalMaxPower`, speed, acceleration, and completion constraints with
+  clear space beyond the endpoint. The profile's initial Mecanum `maxPower = 0.25` is overwritten
+  by the default route-time `globalMaxPower = 1.0` and is not a route limit.
 - Verify the mechanism direction, collection magnitude, and safe idle request.
 - Place the robot at the displayed physical start and keep an operator ready to press STOP.
 

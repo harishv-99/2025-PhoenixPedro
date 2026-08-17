@@ -23,6 +23,8 @@ the [`Phoenix Calibration Guide`](<../../../robots/phoenix/Phoenix Calibration G
 
 **Files for this lesson:**
 
+- [`BasicPedroProfile.java`](<../../../robots/examples/pedro/BasicPedroProfile.java>) — fresh local
+  Pedro and intake configuration plus the false-by-default motion permission;
 - [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) — physical
   start and fixed route;
 - [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) —
@@ -32,15 +34,19 @@ the [`Phoenix Calibration Guide`](<../../../robots/phoenix/Phoenix Calibration G
 - [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) —
   the reference action capability;
 - [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) —
-  disabled FTC host for this repository's Phoenix hardware configuration.
+  disabled FTC host that selects the local profile and adds read-only status.
 
 ## Safety
 
 - The checked-in path is a test route, not a match routine.
 - A declared start pose is a software coordinate fact. It does not prove where the robot was placed.
 - Keep the example `@Disabled` throughout this software walkthrough.
-- The checked-in host inherits the Phoenix robot's configured Pedro constraints; this lesson does
-  not claim that those values are conservative for another robot or first motion.
+- `BasicPedroProfile.current()` is a complete software baseline, not reviewed configuration for a
+  physical robot. Its `allowRobotMotion` permission remains false.
+- The checked-in Mecanum `maxPower = 0.25` is only initial drivetrain data. Pedro 2.1.2 restores
+  its Follower's separate `globalMaxPower` to `1.0` when `followPath(...)` starts, so `0.25` is not
+  an autonomous-route power cap. Only the false permission blocks checked-in route construction
+  and motion; `@Disabled` separately keeps the entry off the Driver Station list.
 - A runtime Config passing software validation does not prove motor direction, Pinpoint placement
   or readiness, follower tuning, field alignment, route clearance, stopping distance, or physical
   STOP.
@@ -144,34 +150,51 @@ Treat that class as the lifecycle template. The lesson does not require a separa
 manual follower update, or FTC callback. The managed program updates the service before the route
 Task and stops the output and drive owner during cleanup.
 
-## 5. Use the correct host boundary
+## 5. Review the local profile and use the one root boundary
 
-`BasicPedroAutoExample` is the only reference file tied to the Phoenix robot configuration in this
-repository. It builds the runtime with:
+`BasicPedroAutoExample` selects one fresh, local profile and gives the complete active
+configuration to the composition root:
 
 ```java
-PedroPathingRuntime builtRuntime = PedroPathingRuntime.create(
+robot = new BasicPedroAutoRobot(
+        program,
         hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(profile));
+        BasicPedroProfile.current());
 ```
 
-`Constants.phoenixAutoRuntimeConfig(profile)` is a pure project mapping step: it snapshots only the
-Phoenix Pinpoint and drivetrain facts needed here and combines them with fresh checked-in Pedro
-tuning. `PedroPathingRuntime.create(...)` is the one hardware boundary. It snapshots and validates
-the complete runtime Config before hardware lookup, the non-blocking Pinpoint reset request, motor
-output, or Follower construction. Invalid configuration therefore cannot leave a partially started
-graph; a later SDK/vendor construction failure is terminal for this OpMode and receives only the
-best-effort cleanup that the successfully returned resource handles permit.
+`BasicPedroProfile.current()` returns three fresh authored answers: the complete
+`PedroPathingRuntime.Config` in `pedro`, the example mechanism's Config in `intake`, and
+`allowRobotMotion = false`. The two long-lived owners, not the profile, defensively snapshot their
+own active Config. Later edits to the short-lived profile cannot retune either running owner.
 
-If a later robot-owned integration test uses that configuration-owning Phoenix robot, it must review
-the profile, runtime, placement, limits, and mechanism facts before enabling its host.
+The checked-in values are software-valid examples. They include the framework Pinpoint baseline,
+fresh Pedro follower/constraint/field-transform data, named Mecanum motors, the Pedro baseline
+left-REVERSE/right-FORWARD directions, initial `maxPower = 0.25`, brake mode enabled, and one
+`"intakeMotor"` at `Direction.FORWARD` with collection power `0.20`. Replace and physically review
+every active fact for the adopting robot. Pedro's route-time `globalMaxPower` reset means the
+initial `0.25` value does not limit `followPath(...)`; review and tune Pedro's actual route behavior
+before any motion test. The `useBrakeModeInTeleOp = true` baseline likewise does not define Auto
+route braking.
 
-For another robot, keep the path/routine/declaration pattern but replace this host with that robot's
-reviewed data-only `PedroPathingRuntime.Config` and existing mechanism capability. Start from
-`PedroPathingRuntime.Config.defaults()`, replace its Pinpoint, Follower, Mecanum, path-constraint,
-and field-transform facts, then pass it to the same sole `PedroPathingRuntime.create(...)` boundary.
-Do not import Phoenix hardware values or create a second mechanism owner merely to fit the
-reference.
+The root first requires the false-by-default permission and rejects an intake name that resolves to
+one of the four drive motor names. It then crosses the sole
+`PedroPathingRuntime.create(hardwareMap, profile.pedro)` hardware boundary. The runtime snapshots
+and validates its complete graph before hardware lookup, the non-blocking Pinpoint reset request,
+motor output, Follower construction, or Pedro-global mutation. It is registered with the managed
+program before path or intake construction, so a later intake failure receives best-effort managed
+drive cleanup. The intake owner separately snapshots and validates `profile.intake` before its own
+lookup.
+
+The host still calls `PhoenixMatchHandoff.clear()` first so this diagnostic Auto cannot leave a
+recent Phoenix match snapshot for a later TeleOp. That explicit handoff invalidation is the only
+Phoenix-specific exception; Basic Pedro configuration imports neither `PhoenixProfile` nor project
+`pedroPathing.Constants`.
+
+For another robot, keep the path/routine/declaration pattern and edit the local profile's Pinpoint,
+Follower, Mecanum, path-constraint, field-transform, and intake facts. Keep
+`allowRobotMotion = false` until the complete active graph has been reviewed for a supervised test.
+Do not create another runtime factory, import season hardware values, or create a second mechanism
+owner merely to fit the reference.
 
 ## 6. Compile while the host remains disabled
 
@@ -201,6 +224,8 @@ this generic reference into a motion test merely by removing `@Disabled`.
 
 - You can identify the start pose, route geometry, route timeout, success action, and timeout
   fallback without reading Pedro internals.
+- You can find every active runtime and intake configuration answer in `BasicPedroProfile.current()` and
+  explain why `allowRobotMotion` remains false.
 - The project compiles with one managed `FtcRobotOpMode` path.
 - Robot code does not manually update or break the raw follower.
 - The generic example remains disabled and no physical run is required.
@@ -215,6 +240,12 @@ That is the expected software-course result: the example is checked in with `@Di
 robot-owned integration test, not this walkthrough, owns any decision to expose a Driver Station
 entry after its complete readiness review.
 
+**INIT says `BasicPedroProfile.allowRobotMotion` must be true.**
+
+That is the expected checked-in result. Leave the permission false for this software walkthrough.
+A later robot-owned test may set it true only after replacing and reviewing the complete active
+runtime and intake configuration, route placement and clearance, and physical STOP plan.
+
 **A later integration test starts in the wrong place in software.**
 
 Confirm the declared Pedro start and exact-start pose application use the same coordinates and
@@ -223,7 +254,8 @@ heading. A software pose assignment does not correct physical placement.
 **A later integration test's physical motion does not match the drawn route.**
 
 Press STOP. Recheck motor directions, odometry directions and offsets, coordinate convention,
-follower constraints, and physical placement before changing route-policy code.
+Follower constraints and route-time `globalMaxPower`, and physical placement before changing
+route-policy code. The profile's initial Mecanum `maxPower = 0.25` is not a `followPath(...)` cap.
 
 Passing runtime Config validation is not evidence that those physical facts are correct. It proves
 only that the captured software values are complete, finite, mutually coherent, and representable

@@ -1235,25 +1235,28 @@ motor output, Follower construction, or Pedro-global mutation. It then privately
 Pinpoint, Follower, Mecanum, constraint, and transform graph. Do not retain a Config or nested Pedro
 constants as a live-tuning channel; edit checked-in data and reconstruct the OpMode instead.
 
-The checked-in Phoenix-backed basic reference reaches the same sole `create(...)` boundary through
-a pure project mapper, then gives the runtime to its declaration owner:
+The checked-in basic reference instead keeps its complete example configuration in one local,
+fresh profile and gives that short-lived value to its sole composition-root construction path:
 
 ```java
-PedroPathingRuntime pedro = PedroPathingRuntime.create(
-        hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(profile));
-BasicPedroAutoMechanism.Config mechanismConfig = BasicPedroAutoMechanism.Config.of(
-        profile.scoring.nameMotorIntake,
-        profile.scoring.directionMotorIntake,
-        profile.scoring.intakeMotorPower);
 BasicPedroAutoRobot robot = new BasicPedroAutoRobot(
         program,
-        pedro,
-        () -> new BasicPedroAutoMechanism(hardwareMap, mechanismConfig));
+        hardwareMap,
+        BasicPedroProfile.current());
 ```
 
-That mapper snapshots only the relevant Pinpoint and drivetrain profile slice and combines it with
-fresh project Pedro tuning; it creates no hardware and is not a second runtime factory.
+`BasicPedroProfile.current()` returns a fresh `PedroPathingRuntime.Config`, a fresh owner-local
+intake Config, and `allowRobotMotion = false`. The root checks that permission and the intake-versus-
+drive motor ownership collision before effects, creates and immediately registers the runtime, then
+constructs and registers the intake. Each long-lived owner snapshots only its own active Config, so
+the root retains no mutable profile and a later intake failure receives managed drive cleanup.
+
+The profile's explicit Mecanum `maxPower = 0.25` is initial software data, not a durable route cap:
+Pedro 2.1.2 restores the Follower's separate `globalMaxPower` to `1.0` when `followPath(...)`
+starts. Only the false permission blocks route motion in the checked-in construction; `@Disabled`
+separately hides its FTC entry. Every runtime, intake, route, placement, and STOP fact still requires
+physical review before enabling. The host's first `PhoenixMatchHandoff.clear()` is a deliberate
+handoff-safety exception, not a `PhoenixProfile` or project `Constants` configuration dependency.
 
 The registered service owns localization first and the recurring adapter heartbeat second. It owns
 `pedro.motionPredictor().update(clock)` followed by `pedro.driveAdapter().update(clock)` on every

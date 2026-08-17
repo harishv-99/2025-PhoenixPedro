@@ -1,6 +1,7 @@
 package edu.ftcphoenix.robots.examples.pedro;
 
 import com.pedropathing.geometry.Pose;
+import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -8,6 +9,7 @@ import java.util.function.Supplier;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
+import edu.ftcphoenix.fw.drive.route.RouteStatus;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -24,31 +26,50 @@ public final class BasicPedroAutoRobot {
 
     private final Pose pedroStartPose;
     private final Task rootTask;
+    private final Supplier<RouteStatus> latestRouteStatus;
 
     /**
-     * Declare the validated Pedro service, mechanism output, and one fresh routine root.
+     * Construct and declare the complete review-gated basic Pedro Auto graph.
      *
-     * <p>The service is registered before paths or mechanism construction so a later failure is
-     * cleanup-covered by the already-retained program. The mechanism factory is invoked exactly
-     * once only after that ownership transfer; it must construct an ordinary mechanism that cleans
-     * any internally created Plant if its own constructor fails.</p>
+     * <p>The profile is consumed synchronously and retained nowhere. Its motion permission and sole
+     * cross-owner motor collision are checked before hardware effects. The Pedro runtime snapshots
+     * and validates its own Config, then its service is registered before paths or intake
+     * construction so every later {@link RuntimeException} is covered by managed cleanup. The
+     * intake owner independently snapshots and validates its own Config.</p>
      *
      * @param program framework-created declaration surface received by the OpMode
-     * @param runtime validated Pedro runtime
-     * @param mechanismFactory one-shot factory for the privately Plant-owning mechanism
+     * @param hardwareMap FTC hardware registry used only by the two owner-local construction paths
+     * @param profile fresh complete basic Pedro configuration; retained nowhere
      */
     public BasicPedroAutoRobot(RobotProgram program,
-                               PedroPathingRuntime runtime,
-                               Supplier<BasicPedroAutoMechanism> mechanismFactory) {
+                               HardwareMap hardwareMap,
+                               BasicPedroProfile profile) {
         RobotProgram requiredProgram = Objects.requireNonNull(program, "program");
-        PedroPathingRuntime requiredRuntime = Objects.requireNonNull(runtime, "runtime");
+        HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
+        BasicPedroProfile activeProfile = Objects.requireNonNull(profile, "profile");
+        requireMotionAllowed(activeProfile.allowRobotMotion);
+
+        PedroPathingRuntime.Config pedroConfig = Objects.requireNonNull(
+                activeProfile.pedro,
+                "BasicPedroProfile.pedro is required"
+        );
+        BasicPedroAutoMechanism.Config intakeConfig = Objects.requireNonNull(
+                activeProfile.intake,
+                "BasicPedroProfile.intake is required"
+        );
+        requireDistinctMotorOwners(pedroConfig, intakeConfig);
+
+        PedroPathingRuntime runtime = PedroPathingRuntime.create(
+                requiredHardwareMap,
+                pedroConfig
+        );
 
         AbsolutePoseEstimator localization = Objects.requireNonNull(
-                requiredRuntime.motionPredictor(),
+                runtime.motionPredictor(),
                 "runtime.motionPredictor()"
         );
         DriveCommandSink autoDrive = Objects.requireNonNull(
-                requiredRuntime.driveAdapter(),
+                runtime.driveAdapter(),
                 "runtime.driveAdapter()"
         );
         PedroAutoService service = registerServiceOrStop(
@@ -56,10 +77,54 @@ public final class BasicPedroAutoRobot {
                 new PedroAutoService(localization, autoDrive)
         );
 
-        BasicPedroAutoPaths paths = new BasicPedroAutoPaths(requiredRuntime);
+        BasicPedroAutoPaths paths = new BasicPedroAutoPaths(runtime);
         Pose declaredStartPose = paths.pedroStartPose();
         service.applyStartingPoseWith(() ->
-                requiredRuntime.setStartingPose(copyPose(declaredStartPose)));
+                runtime.setStartingPose(copyPose(declaredStartPose)));
+
+        BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(
+                requiredHardwareMap,
+                intakeConfig
+        );
+        registerOutputOrStop(requiredProgram, mechanism);
+
+        Task declaredRoot = BasicPedroAutoRoutine.build(
+                runtime.driveAdapter(),
+                paths.practiceRoute(),
+                mechanism
+        );
+        requiredProgram.rootTask(declaredRoot);
+
+        pedroStartPose = copyPose(declaredStartPose);
+        rootTask = declaredRoot;
+        latestRouteStatus = runtime.driveAdapter()::getLatestRouteStatus;
+    }
+
+    /**
+     * Hardware-neutral component seam for deterministic lifecycle tests.
+     *
+     * <p>The service becomes program-owned before the mechanism factory is invoked exactly once.
+     * A later factory failure therefore exercises the same managed drive-cleanup boundary as the
+     * ordinary runtime path without creating a second FTC/runtime configuration recipe.</p>
+     */
+    BasicPedroAutoRobot(RobotProgram program,
+                        AbsolutePoseEstimator localization,
+                        DriveCommandSink autoDrive,
+                        Runnable applyStartingPose,
+                        Supplier<BasicPedroAutoMechanism> mechanismFactory,
+                        Task rootTask) {
+        RobotProgram requiredProgram = Objects.requireNonNull(program, "program");
+        DriveCommandSink requiredAutoDrive = Objects.requireNonNull(autoDrive, "autoDrive");
+        PedroAutoService service = registerServiceOrStop(
+                requiredProgram,
+                new PedroAutoService(
+                        Objects.requireNonNull(localization, "localization"),
+                        requiredAutoDrive
+                )
+        );
+        service.applyStartingPoseWith(
+                Objects.requireNonNull(applyStartingPose, "applyStartingPose")
+        );
 
         Supplier<BasicPedroAutoMechanism> requiredMechanismFactory =
                 Objects.requireNonNull(mechanismFactory, "mechanismFactory");
@@ -69,44 +134,11 @@ public final class BasicPedroAutoRobot {
         );
         registerOutputOrStop(requiredProgram, mechanism);
 
-        Task declaredRoot = BasicPedroAutoRoutine.build(
-                requiredRuntime.driveAdapter(),
-                paths.practiceRoute(),
-                mechanism
-        );
-        requiredProgram.rootTask(declaredRoot);
-
-        pedroStartPose = copyPose(declaredStartPose);
-        rootTask = declaredRoot;
-    }
-
-    /** Narrow component declaration seam retained package-private for deterministic fake tests. */
-    BasicPedroAutoRobot(RobotProgram program,
-                        AbsolutePoseEstimator localization,
-                        DriveCommandSink autoDrive,
-                        Runnable applyStartingPose,
-                        BasicPedroAutoMechanism mechanism,
-                        Task rootTask) {
-        RobotProgram requiredProgram = Objects.requireNonNull(program, "program");
-        PedroAutoService service = new PedroAutoService(
-                Objects.requireNonNull(localization, "localization"),
-                Objects.requireNonNull(autoDrive, "autoDrive")
-        );
-        service.applyStartingPoseWith(
-                Objects.requireNonNull(applyStartingPose, "applyStartingPose")
-        );
-        registerServiceOrStop(requiredProgram, service);
-
-        BasicPedroAutoMechanism requiredMechanism = Objects.requireNonNull(
-                mechanism,
-                "mechanism"
-        );
-        registerOutputOrStop(requiredProgram, requiredMechanism);
-
         Task requiredRootTask = Objects.requireNonNull(rootTask, "rootTask");
         requiredProgram.rootTask(requiredRootTask);
         pedroStartPose = new Pose(0.0, 0.0, 0.0);
         this.rootTask = requiredRootTask;
+        latestRouteStatus = () -> RouteStatus.NOT_STARTED;
     }
 
     /** Return a defensive copy of the declared Pedro-coordinate physical starting pose. */
@@ -125,6 +157,80 @@ public final class BasicPedroAutoRobot {
                 rootTask.getOutcome(),
                 "basic Pedro root Task returned null outcome"
         );
+    }
+
+    /** Return the latest retained route status for the same-package additive presenter. */
+    RouteStatus latestRouteStatus() {
+        return Objects.requireNonNull(
+                latestRouteStatus.get(),
+                "basic Pedro runtime returned null latest route status"
+        );
+    }
+
+    private static void requireMotionAllowed(boolean allowed) {
+        if (!allowed) {
+            throw new IllegalStateException(
+                    "BasicPedroProfile.allowRobotMotion must be true before Basic Pedro Auto may "
+                            + "construct motion-capable hardware owners. Review the complete active "
+                            + "physical configuration before permitting motion, then verify small "
+                            + "supervised motion and physical STOP."
+            );
+        }
+    }
+
+    private static void requireDistinctMotorOwners(
+            PedroPathingRuntime.Config pedro,
+            BasicPedroAutoMechanism.Config intake) {
+        if (pedro.mecanumConstants == null) {
+            return;
+        }
+        String intakeName = intake.motorName;
+        requireDistinctMotorOwner(
+                intakeName,
+                "BasicPedroProfile.intake.motorName",
+                pedro.mecanumConstants.leftFrontMotorName,
+                "BasicPedroProfile.pedro.mecanumConstants.leftFrontMotorName"
+        );
+        requireDistinctMotorOwner(
+                intakeName,
+                "BasicPedroProfile.intake.motorName",
+                pedro.mecanumConstants.leftRearMotorName,
+                "BasicPedroProfile.pedro.mecanumConstants.leftRearMotorName"
+        );
+        requireDistinctMotorOwner(
+                intakeName,
+                "BasicPedroProfile.intake.motorName",
+                pedro.mecanumConstants.rightFrontMotorName,
+                "BasicPedroProfile.pedro.mecanumConstants.rightFrontMotorName"
+        );
+        requireDistinctMotorOwner(
+                intakeName,
+                "BasicPedroProfile.intake.motorName",
+                pedro.mecanumConstants.rightRearMotorName,
+                "BasicPedroProfile.pedro.mecanumConstants.rightRearMotorName"
+        );
+    }
+
+    private static void requireDistinctMotorOwner(String firstName,
+                                                  String firstPath,
+                                                  String secondName,
+                                                  String secondPath) {
+        if (isBlank(firstName) || isBlank(secondName)) {
+            return;
+        }
+        String firstKey = firstName.trim();
+        String secondKey = secondName.trim();
+        if (firstKey.equals(secondKey)) {
+            throw new IllegalStateException(
+                    "Basic Pedro motor ownership collision: " + firstPath + " and " + secondPath
+                            + " both resolve to FTC hardware key \"" + firstKey
+                            + "\". Configure distinct motor names."
+            );
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private static PedroAutoService registerServiceOrStop(RobotProgram program,
