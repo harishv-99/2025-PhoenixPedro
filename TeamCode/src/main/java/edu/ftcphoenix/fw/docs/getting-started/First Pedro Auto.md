@@ -41,6 +41,9 @@ the [`Phoenix Calibration Guide`](<../../../robots/phoenix/Phoenix Calibration G
 - Keep the example `@Disabled` throughout this software walkthrough.
 - The checked-in host inherits the Phoenix robot's configured Pedro constraints; this lesson does
   not claim that those values are conservative for another robot or first motion.
+- A runtime Config passing software validation does not prove motor direction, Pinpoint placement
+  or readiness, follower tuning, field alignment, route clearance, stopping distance, or physical
+  STOP.
 - A later physical test needs its own reviewed start, heading, route, reduced first-test limits,
   odometry, stopping distance, clear space, and operator on STOP.
 - Never enable the host on another robot merely because the project compiles.
@@ -72,6 +75,8 @@ practiceRoute = requiredRuntime.pathBuilder()
 
 Fixed geometry is built during configuration. Route geometry that genuinely depends on a live
 fact uses the separately documented start-time route factory; this first route does not need it.
+Such a factory reads `runtime.currentPedroPose()` once for a defensive snapshot of Pedro's cached
+pose. It never obtains the mutable Follower or advances localization while building geometry.
 
 Before changing any number, draw the start, end, heading, robot's relevant physical boundary in its
 route-running mechanism state, and clear stopping area. Names ending in `INCHES` or `RAD` make the
@@ -145,18 +150,28 @@ Task and stops the output and drive owner during cleanup.
 repository. It builds the runtime with:
 
 ```java
-PedroPathingRuntime builtRuntime = Constants.createPhoenixAutoRuntime(
+PedroPathingRuntime builtRuntime = PedroPathingRuntime.create(
         hardwareMap,
-        profile
-);
+        Constants.phoenixAutoRuntimeConfig(profile));
 ```
+
+`Constants.phoenixAutoRuntimeConfig(profile)` is a pure project mapping step: it snapshots only the
+Phoenix Pinpoint and drivetrain facts needed here and combines them with fresh checked-in Pedro
+tuning. `PedroPathingRuntime.create(...)` is the one hardware boundary. It snapshots and validates
+the complete runtime Config before hardware lookup, the non-blocking Pinpoint reset request, motor
+output, or Follower construction. Invalid configuration therefore cannot leave a partially started
+graph; a later SDK/vendor construction failure is terminal for this OpMode and receives only the
+best-effort cleanup that the successfully returned resource handles permit.
 
 If a later robot-owned integration test uses that configuration-owning Phoenix robot, it must review
 the profile, runtime, placement, limits, and mechanism facts before enabling its host.
 
 For another robot, keep the path/routine/declaration pattern but replace this host with that robot's
-verified Pedro runtime factory and existing mechanism capability. Do not import Phoenix hardware
-values or create a second mechanism owner merely to fit the reference.
+reviewed data-only `PedroPathingRuntime.Config` and existing mechanism capability. Start from
+`PedroPathingRuntime.Config.defaults()`, replace its Pinpoint, Follower, Mecanum, path-constraint,
+and field-transform facts, then pass it to the same sole `PedroPathingRuntime.create(...)` boundary.
+Do not import Phoenix hardware values or create a second mechanism owner merely to fit the
+reference.
 
 ## 6. Compile while the host remains disabled
 
@@ -209,6 +224,10 @@ heading. A software pose assignment does not correct physical placement.
 
 Press STOP. Recheck motor directions, odometry directions and offsets, coordinate convention,
 follower constraints, and physical placement before changing route-policy code.
+
+Passing runtime Config validation is not evidence that those physical facts are correct. It proves
+only that the captured software values are complete, finite, mutually coherent, and representable
+by this pinned Pedro integration.
 
 **The route ends but the mechanism action does not start.**
 

@@ -115,6 +115,22 @@ Auto construction happens once during FTC INIT:
 6. declare one root Task;
 7. register additive presenters.
 
+A single expression performs step 3:
+
+```java
+PedroPathingRuntime pedroRuntime = PedroPathingRuntime.create(
+        hardwareMap,
+        Constants.phoenixAutoRuntimeConfig(profile));
+```
+
+`Constants.phoenixAutoRuntimeConfig(profile)` is a pure application-edge mapper, not a resource
+factory. It immediately snapshots only `localization.predictor`, `drive.wiring`, and
+`drive.enableZeroPowerBrake`, then combines those facts with fresh checked-in Phoenix Pedro tuning
+and the fixed field transform. It does not broadly copy or validate unrelated vision, scoring,
+targeting, Auto, or field sections and performs no hardware action. Every call returns an
+independent `PedroPathingRuntime.Config`; the runtime's `create(...)` method is the one production
+effect boundary and authoritative whole-Config validator.
+
 A construction/configuration failure is terminal for that OpMode instance. Correct the problem and
 restart the OpMode. The selector never retries or replaces a hardware graph.
 
@@ -183,6 +199,19 @@ policy—not a generic Task sequence—decides continue, fallback, or abort.
 `PedroPathingRuntime` owns one `PinpointOdometryPredictor` and exposes a passive Pedro localizer
 view of its snapshots. No second Pinpoint owner polls or resets the device.
 
+The runtime raw-copies its five-part Config—Pinpoint predictor configuration, Follower constants,
+Mecanum constants, path constraints, and field transform—then validates the complete captured
+graph before consulting hardware or Pedro process globals. It reconstructs every retained mutable
+vendor value as owner-local state. Invalid configuration therefore causes no hardware lookup,
+Pinpoint reset request, motor output, Follower construction, or vendor-static mutation, and later
+edits to the profile, Config draft, or nested Pedro constants cannot retune the running Auto.
+
+Phoenix path code receives only narrow runtime roles. It builds through `pathBuilder()`, starts and
+updates through `driveAdapter()`, and uses `currentPedroPose()` when a start-time return route needs
+one defensive copy of the Follower's cached Pedro pose. That observation performs no Follower
+update or hardware poll. The runtime and adapter expose no raw Follower, so route code cannot
+bypass retained execution status, same-cycle heartbeat ownership, or stop.
+
 Pinpoint construction issues one non-blocking reset. Pedro remains fail-stopped until a completed
 `READY` poll supplies current finite pose and velocity. Managed TeleOp similarly holds its final
 drive sink at physical zero until its owned predictor publishes the first current finite measured
@@ -209,6 +238,25 @@ Task runs. Route and guidance Tasks may call the same hook; the adapter deduplic
 
 The adapter's `stop()` applies physical zero immediately, including after reentrant callbacks. It
 does not merely stage zero for a future follower update.
+
+The public `PedroPathingDriveAdapter(completedFollower)` constructor remains an advanced seam for a
+custom/portable host that has already constructed a completed Follower and will route its lifecycle
+through the adapter; it creates no Phoenix Pinpoint or drivetrain hardware. Pedro's generated
+tuning OpModes and `PedroTest` use a different package-local
+native-Follower factory whose exclusive OpMode owns Pedro's native `PinpointLocalizer` and raw
+heartbeat. Neither seam is an alternate Phoenix production graph.
+
+Pre-effect validation is not transactional hardware construction. After a valid Config passes, the
+runtime constructs the stoppable drivetrain first and best-effort breaks it if a later step fails,
+preserving a distinct stop failure as suppressed evidence. It cannot stop a Mecanum constructor
+that throws before returning its handle, close or roll back Pinpoint, or undo Pedro statics already
+touched by a failing Follower. The OpMode therefore fails terminally rather than retrying a partly
+created graph.
+
+The software boundary proves only a complete, finite, internally coherent snapshot. It does not
+prove motor-port identity/direction, Pinpoint pod placement or READY behavior, follower/constraint
+tuning, field-transform alignment, path clearance, stopping distance, or physical STOP. Those
+remain adopting-robot evidence documented in the calibration guide.
 
 ## Targeting eligibility
 

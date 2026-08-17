@@ -36,6 +36,10 @@ final class PhoenixAutoProgram {
 
     private PhoenixPedroPathFactory.Paths paths;
 
+    /**
+     * Declare one Phoenix Auto graph, first mapping Pedro data without effects and then crossing
+     * the sole effectful {@link PedroPathingRuntime#create} hardware-construction boundary.
+     */
     PhoenixAutoProgram(PhoenixAutoOpMode host,
                        RobotProgram program,
                        PhoenixAutoSetup setup) {
@@ -60,7 +64,10 @@ final class PhoenixAutoProgram {
                 requiredHost.gamepad2,
                 profile
         );
-        pedroRuntime = Constants.createPhoenixAutoRuntime(requiredHost.hardwareMap, profile);
+        pedroRuntime = PedroPathingRuntime.create(
+                requiredHost.hardwareMap,
+                Constants.phoenixAutoRuntimeConfig(profile)
+        );
 
         if (requiredSetup.purpose() == PhoenixReadiness.AutoPurpose.MATCH_AUTO) {
             registerMatchHandoffOrStopPedro(requiredHost, requiredProgram);

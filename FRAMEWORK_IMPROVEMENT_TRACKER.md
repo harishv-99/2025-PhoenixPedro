@@ -176,7 +176,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 89 | MATH-01 | Finite interpolation calibration tables | Done | The reviewed finite-table and runtime-unavailability contract, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Done | The reviewed owner-local vision snapshots, canonical FTC tag-library capture, configured solver/estimator composition, synchronized callers/docs, and destination-specific publication authorization are complete. |
 | 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Done | The reviewed effect-safe Pinpoint/composite configuration, READY-gated lifecycle, finite localization truth, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 92 | CONFIG-05 | Pedro runtime configuration ownership | Proposed | Replace the production runtime's peer argument bundle with one owner-specific, deeply snapshotted Pedro configuration path. |
+| 92 | CONFIG-05 | Pedro runtime configuration ownership | Done | The reviewed owner-local Pedro snapshots, complete pre-effect validation, pure Phoenix mapper, exclusive native-tool path, narrow pose observation, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 93 | CONFIG-06 | Tool and tester configuration ownership | Proposed | Remove retained mutable aliases and constructor forests from maintained calibration and tester owners without changing their evidence roles. |
 | 94 | CONFIG-07 | Starter profile simplification | Proposed | Replace the starter's aggregate copy-and-validation boilerplate with small owner configs and mode-specific composition checks. |
 | 95 | CONFIG-08 | Basic Pedro profile independence | Proposed | Give the Pedro reference its own small reviewed profile and remove its dependency on Phoenix configuration and project constants. |
@@ -252,10 +252,10 @@ generic Config base, reflection copier, universal validation DSL, or units-syste
 ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, then EXAMPLE-04. At
 intake, each row was **Proposed** and required its own source/caller/construction-path decision gate.
 CONFIG-02, SPATIAL-01, and MATH-01 have since completed their separately approved publication;
-CONFIG-03 has now completed its separately approved implementation, Android Studio review, and
-GitHub publication; CONFIG-04 has completed its separately approved implementation and Android
-Studio review and is authorized for GitHub publication; CONFIG-05 through CONFIG-09 remain
-**Proposed**.
+CONFIG-03 and CONFIG-04 have completed their separately approved implementations, Android Studio
+reviews, and GitHub publication. CONFIG-05 is **Done** after its approved implementation, automated
+verification, Android Studio review, and destination-specific publication authorization; CONFIG-06
+through CONFIG-09 remain **Proposed**.
 Recording the program neither approves the later implementations nor permits compatibility shims or
 mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
@@ -18551,44 +18551,404 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-05 - Pedro runtime configuration ownership
 
-- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-04.** This is the production
-  Pedro graph's configuration/construction boundary, not route geometry, route outcome, or a second
-  follower lifecycle.
-- **Confirmed current path:** the sole production factory currently accepts `HardwareMap`, an
-  already-created `PinpointOdometryPredictor`, mutable Pedro `FollowerConstants`, mutable
-  `MecanumConstants`, `PathConstraints`, and `PedroFieldTransform` as six peers. It validates many
-  answers and copies path constraints, but the pinned vendor objects can be retained by Pedro after
-  construction. Project `org.firstinspires.ftc.teamcode.pedroPathing.Constants` assembles this graph,
-  while the basic Pedro reference reaches that project/Phoenix-specific path.
-- **Leading hypothesis:** replace the six-peer production entry with one
-  `PedroPathingRuntime.Config` and `create(HardwareMap, Config)`. The config owns an independent
-  `PinpointOdometryPredictor.Config`, field-for-field copies of the pinned vendor follower/mecanum
-  constants, independent path constraints, and immutable field transform. The runtime validates the
-  complete snapshot before constructing Pinpoint, drivetrain, follower, or global vendor state, then
-  owns the sole predictor/follower graph while the existing managed service retains the one ordered
-  localization-then-drive heartbeat. Remove the old production overload and migrate all callers in
-  the same item; keep any genuinely different native-Follower tester path explicitly tool-only.
-- **Vendor and API gate:** prove which Pedro 2.1.2 fields are retained, mutated, or process-global,
-  and lock full field coverage so a dependency upgrade cannot silently omit new constants.
-  `FollowerConstants` and `MecanumConstants` expose no copy/clone API, and follower tuning contains
-  mutable nested coefficient objects, so the boundary must reconstruct fresh vendor values field by
-  field rather than retain an alias. Compare one config factory against positional args and any
-  existing project `Constants` helper; remove mutable production constant globals while preserving
-  the separate native-Follower path only for vendor tools. Do not add a second facade or expose
-  vendor config types through protected core. Keep field transform and route/path constraints as
-  distinct facts even when one aggregate transports them.
-- **Preserved behavior and excluded scope:** retain same-cycle deduplicated updates, reentrant stop,
-  path-builder constraint repair, route execution truth, cancellation, and error cleanup from
-  PEDRO-01/02 and ROUTE items. Basic-Pedro profile independence belongs to CONFIG-08; Phoenix owner
-  decomposition belongs to CONFIG-09. No follower tuning values or physical path performance are
-  selected here.
-- **Future completion evidence:** mutation-isolation tests must distinguish every copied vendor and
-  nested field; invalid configs produce zero Pinpoint/motor/follower effects; partial construction
-  stops already-created drivetrain resources; one public production path and exact declared return
-  type remain. Migrate project Constants/Phoenix callers, synchronize Pedro docs/Javadocs, run all
-  Pedro/runtime/route tests and full verification. Hardware still owns motor names/directions,
-  Pinpoint calibration, follower tuning, and physical STOP evidence.
-- **Decision record:** _Pending. No implementation started._
+- **Historical Gate 1 approval boundary (2026-08-16):** **In progress after explicit design
+  approval.**
+  CONFIG-04 PR #92 merged into `master` at
+  `2d35663caaa87f60f6184a5be42b61f39ab277ea`; the user then directed the workflow to the next task.
+  CONFIG-05 is the sole active item on `codex/config-05-pedro-runtime-configuration`, branched
+  directly from that merged `origin/master`. Only this tracker record had changed at the approval
+  stop. The user approved the complete design below with the exact requested wording on 2026-08-16.
+  That approval authorizes CONFIG-05 Java, test, Javadoc, guide, and verification work on this
+  branch, but not staging, committing, pushing, opening a pull request, merging, or starting
+  CONFIG-06. This item owns the production Pedro graph's configuration, pre-effect validation,
+  stable owner-local capture, and public owner boundary; it does not own route geometry, a second
+  Follower lifecycle, or tuning choices.
+- **Complete current construction and caller inventory:** there are two public production
+  construction layers today, not one. Project
+  `Constants.createPhoenixAutoRuntime(HardwareMap, PhoenixProfile)` copies a broad profile,
+  validates part of the physical graph, constructs a `PinpointOdometryPredictor`, then delegates to
+  `PedroPathingRuntime.create(HardwareMap, PinpointOdometryPredictor, FollowerConstants,
+  MecanumConstants, PathConstraints, PedroFieldTransform)`. The latter is the runtime's sole public
+  factory; the runtime has no public constructor. `PhoenixAutoProgram` and the disabled maintained
+  `BasicPedroAutoExample` are the two facade callers. `PhoenixAutoProgram` serves the four current
+  Phoenix Pedro entries and passes the runtime's predictor, adapter, start-pose operation, and path
+  builder into the managed robot/routine graph. The basic example decomposes the same roles for its
+  smaller managed graph. `PhoenixPedroPathFactory` is the sole raw-runtime-Follower caller and uses
+  only `follower().getPose()` for one start-time route fact.
+- **Current public counts:** top-level `PedroPathingRuntime` has zero public constructors and six
+  declared public methods--the one static six-peer factory plus five instance operations, including
+  raw `follower()`. `PedroPathingDriveAdapter` has one public completed-Follower constructor and
+  seven declared public methods, again including raw `follower()`. Project `Constants` has two
+  public mutable fields and two public factory methods. These counts exclude the runtime's nested
+  repairing PathBuilder overrides and package-private test seams.
+- **Distinct non-production paths:** `new PedroPathingDriveAdapter(Follower)` is the one public
+  completed-Follower adapter seam used by tests and available to a custom/portable host that already
+  owns a Follower; it creates no Pinpoint or drivetrain and remains explicitly advanced. The
+  currently public `Constants.createToolOnlyNativeFollower(HardwareMap)` is called only by
+  Pedro's generated `Tuning`
+  menu and `PedroTest`, both in the same package. Those tools require Pedro's native
+  `PinpointLocalizer` and raw `Follower.update()` lifecycle and therefore cannot use the managed
+  runtime. The method becomes a package-private, explicitly tool-only path. It is not a second
+  production answer. Existing package-private passive-localizer and adapter constructors remain
+  focused test/internal seams. No legacy robot or FTC SDK sample is an architectural caller.
+- **Current test-path inventory and evidence gap:** `PedroPathingRuntimeValidationTest` calls only
+  package-private scalar validators and never the production factory; `ConstantsTest` exercises only
+  project mapping/validation helpers. `PedroPathingDriveAdapterTest` uses the public completed-
+  Follower constructor, while `PedroPathingPassiveLocalizerTest` uses package-private localizer,
+  adapter, and runtime path-builder-repair seams. `PhoenixPedroAutoRoutineFactoryTest` constructs a
+  fake Follower and reflectively
+  invokes the runtime's private role constructor only to test route composition; it is not a
+  supported construction path and must migrate with the private shape rather than earn a public
+  test constructor. Existing Basic/Phoenix tests exercise the managed decomposition but do not prove
+  whole-runtime pre-effect ordering or vendor-graph mutation isolation. CONFIG-05 must add those
+  missing owner-boundary tests while preserving the focused seams.
+- **Confirmed pre-effect defect:** the project facade validates/copies the profile and then the
+  Pinpoint constructor resolves hardware, writes calibration, and issues its mandatory nonblocking
+  reset. Only afterward does the six-peer runtime factory validate follower constants, drivetrain
+  constants, and path constraints. A non-finite or incoherent Pedro tuning value can therefore fail
+  after Pinpoint lookup/configuration/reset. A caller also has to manufacture one live stateful
+  owner before asking the runtime to own the complete graph, so no single boundary can preflight or
+  clean up the graph.
+- **Confirmed alias and repeated-answer defects:** project `Constants.followerConstants` and
+  `Constants.pathConstraints` are public process-static mutable drafts shared by future production
+  and tool construction. The runtime passes `FollowerConstants` and `MecanumConstants` directly to
+  Pedro. Pedro retains those exact references and their mutable leaves, so later caller mutation can
+  change a running robot. The effectful project facade and the generic runtime factory are two ways
+  to construct the same production capability. The six positional peers repeat graph ownership at
+  the call site, while an already-created predictor makes hardware timing invisible. Path
+  constraints happen to be copied, but that isolated success does not make the whole graph a
+  snapshot.
+- **Pinned Pedro 2.1.2 retention inventory:** the locally pinned source dependency is the authority
+  for this integration boundary. `FollowerConstants` has exactly 31 public instance fields: nine
+  mutable coefficient objects plus 16 doubles, five Booleans, and one integer, for 60 primitive
+  authored leaves after expanding six four-field `PIDFCoefficients`, two five-field
+  `FilteredPIDFCoefficients`, and one four-field `PredictiveBrakingCoefficients`.
+  `MecanumConstants` has 17 public mutable fields, including a mutable `Vector`, four motor names,
+  four directions, six doubles, and two Booleans. `PathConstraints` has eight private mutable values
+  and an independent `copy()`. `Follower`, `ErrorCalculator`, controllers, and `VectorCalculator`
+  retain/reread the follower graph; `Mecanum` retains/rereads its constants. Neither constants type
+  has a copy API. `FollowerConstants.defaults()` mutates an existing graph and omits some resets, the
+  filtered-coefficient constructor orders `T` before `F`, and Mecanum velocity setters do not
+  reconstruct `frontLeftVector`; none is a safe copier.
+- **Pinned vendor global-state boundary:** `VectorCalculator` writes six public static
+  PID-switch/secondary-enable fields at construction and before each vector calculation.
+  `PathConstraints.defaultConstraints` is public mutable process state, and
+  `FollowerBuilder.pathConstraints(...)` writes it; the builder also retains every supplied alias
+  and can construct hardware before `build()`. CONFIG-05 will continue using Pedro's direct
+  four-argument `Follower` constructor and will never use `FollowerBuilder` or the three-argument
+  global-default constructor. One managed production runtime is supported at a time; the native
+  tool Follower is exclusive to its separate OpMode. Because each Follower heartbeat rewrites the
+  six vector globals immediately before use, the pinned globals do not block this single-owner
+  design, but simultaneous Followers are not claimed to be isolated.
+- **Selected runtime configuration:** add one mutable, data-only nested final
+  `PedroPathingRuntime.Config` with a private constructor and exactly these five public fields:
+
+  ```text
+  PedroPathingRuntime.Config
+  |-- predictor: PinpointOdometryPredictor.Config
+  |-- followerConstants: FollowerConstants
+  |-- mecanumConstants: MecanumConstants
+  |-- pathConstraints: PathConstraints
+  `-- fieldTransform: PedroFieldTransform
+  ```
+
+  The types deliberately keep five different facts visible: Pinpoint hardware/calibration,
+  follower control tuning, drivetrain wiring/tuning, route completion/braking constraints, and the
+  immutable coordinate transform. Config has exactly three public methods: `defaults()`, raw deep
+  `copy()`, and `validatedCopy(String context)`. `defaults()` constructs fresh vendor values and
+  `new PathConstraints(0.995, 0.1, 0.1, 0.007, 100.0, 1.0, 10, 1.0)`; it never reads mutable
+  `PathConstraints.defaultConstraints`. `copy()` preserves null malformed drafts, independently
+  reconstructs every non-null mutable object and all 60 follower leaves, all 17 Mecanum fields plus
+  a fresh front-left `Vector` preserving its captured magnitude/theta semantics, all eight path
+  values, and the nested predictor Config, while retaining the immutable field-transform identity.
+  It does not validate. `validatedCopy` first takes that raw
+  snapshot and then validates the snapshot; a null/blank context falls back to the canonical
+  `PedroPathingRuntime.Config` diagnostic namespace. It is a deliberately advanced cross-package
+  preflight seam for the native Pedro tool factory; ordinary robot code uses `create` and does not
+  choose a validation path.
+- **One production creation path and owner surface:** replace the six-peer factory with exactly
+  `public static PedroPathingRuntime create(HardwareMap, PedroPathingRuntime.Config)`, declared to
+  return the concrete runtime; retain no public runtime constructor or compatibility overload. The
+  runtime takes its own validated snapshot and constructs/owns one Pinpoint predictor, passive
+  localizer, Mecanum drivetrain, Follower, adapter, copied path-builder defaults, and immutable field
+  transform. Retain `motionPredictor()`, `driveAdapter()`, `pathBuilder()`, and `setStartingPose(...)`
+  because each exposes a distinct narrow capability used by the managed composition root. Retain
+  the existing path-builder constraint-repair wrapper and the public completed-Follower adapter
+  constructor. Add no builder, positional `of`, generic Config base, validator DSL, runtime Config
+  getter, nullable-default path, or Phoenix mirror of the vendor's 60 tuning leaves.
+- **Selected public counts:** top-level runtime remains zero public constructors and six public
+  methods: sole static `create(HardwareMap, Config)` plus `motionPredictor()`, `driveAdapter()`,
+  `pathBuilder()`, `currentPedroPose()`, and `setStartingPose(Pose)`. The adapter remains one public
+  constructor and narrows to six public methods after raw `follower()` is removed. Project
+  `Constants` narrows to zero public fields and one public pure mapper; its native-Follower factory
+  is package-private. Config is the five-field/three-method/private-constructor type recorded above.
+- **Side-by-side call shapes and decisions:** let `P` mean Pinpoint configuration, `F` follower
+  tuning, `D` drivetrain configuration, `C` route constraints, `X` field transform, and `H` hardware
+  acquisition. The current generic shape constructs `P + H` before the owner and then passes five
+  more peers:
+
+  ```java
+  PinpointOdometryPredictor predictor = new PinpointOdometryPredictor(hw, predictorConfig); // P+H
+  PedroPathingRuntime.create(hw, predictor, follower, mecanum, constraints, transform);     // F/D/C/X/H
+  ```
+
+  The selected generic shape authors one reusable data value, then crosses the one effect boundary:
+
+  ```java
+  PedroPathingRuntime.Config config = PedroPathingRuntime.Config.defaults();
+  config.predictor = predictorConfig;          // P
+  config.followerConstants = followerTuning;   // F
+  config.mecanumConstants = driveTuning;       // D
+  config.pathConstraints = constraints;        // C
+  config.fieldTransform = transform;            // X
+  PedroPathingRuntime runtime = PedroPathingRuntime.create(hw, config); // H
+  ```
+
+  The selected maintained Phoenix shape is short without hiding a second resource owner:
+
+  ```java
+  PedroPathingRuntime runtime = PedroPathingRuntime.create(
+          hardwareMap,
+          Constants.phoenixAutoRuntimeConfig(profile));
+  ```
+
+  A staged builder repeats the same five decisions plus mutable stage/build lifetime and prevents no
+  invalid combination beyond owner validation; a positional five-argument config factory merely
+  renames the peer bundle and cannot live naturally in profiles. Both are rejected.
+- **Project `Constants` migration:** remove effectful public
+  `createPhoenixAutoRuntime(HardwareMap, PhoenixProfile)` and replace it with pure public
+  `phoenixAutoRuntimeConfig(PhoenixProfile)`. The transitional mapper requires the profile but does
+  not call broad `PhoenixProfile.copy()`: it reads and immediately snapshots only
+  `localization.predictor`, `drive.wiring`, and `drive.enableZeroPowerBrake`, then combines those
+  relevant facts with a fresh project-specific follower recipe, a fresh project-specific path-
+  constraint recipe, and the immutable field transform. An unrelated malformed vision, scoring,
+  targeting, Auto, or other profile section cannot block Pedro mapping. Beyond requiring the top-
+  level profile, this data translation remains raw/null-preserving: a missing relevant nested
+  section becomes the corresponding null runtime-Config field, null names/directions remain null,
+  and invalid numeric bits are copied for the runtime or tool `validatedCopy` boundary to diagnose.
+  The mapper constructs no
+  hardware, mutates no profile, retains no source draft or nested alias, and returns a fully
+  independent Config on every call. Remove the public mutable follower/path globals and replace
+  them with private fresh-value factories preserving the checked-in tuning values. The tool-only
+  native factory becomes package-private, obtains the same fresh Config, calls the Config's public
+  validated snapshot before any hardware effect, translates the captured Pinpoint data to Pedro's
+  native localizer, and receives fresh Follower/Mecanum/path objects on every call. After preflight,
+  it uses the same cleanup-friendly order--Mecanum, native Pinpoint localizer, then Follower--and
+  best-effort stops the returned drivetrain if either later construction step fails.
+  `PhoenixAutoProgram` and the basic example migrate to runtime `create` plus the pure mapper.
+  CONFIG-08, not this item, later removes the basic example's temporary Phoenix/project-Constants
+  dependency; CONFIG-09 later gives Phoenix its final narrow owner configuration.
+- **Complete pre-effect and construction order:** (1) require the `HardwareMap` and Config; (2) raw
+  deep-copy all non-null fields; (3) validate the complete captured Pinpoint, follower, Mecanum,
+  constraints, and transform graph without consulting hardware or vendor globals; (4) reconstruct
+  the private vendor snapshots and two independent path copies; (5) construct Mecanum first, then
+  Pinpoint, passive localizer, Follower, adapter, and runtime. Constructing the stoppable drivetrain
+  first lets every later failure best-effort `breakFollowing()` it; the runtime wraps the original
+  failure and suppresses a distinct stop failure. Invalid authored configuration therefore causes
+  zero hardware lookup, Pinpoint reset, motor write, Follower construction, or vendor-static change.
+  A valid-config SDK/vendor constructor can still fail after partial effects: a Mecanum constructor
+  that throws has returned no handle to stop, Pinpoint exposes no close/rollback, and a failed
+  Follower may already have written Pedro's six statics. The implementation must report these limits
+  truthfully rather than claim transactional hardware construction.
+- **Exact validation contract:** every missing required object or nested mutable collaborator fails
+  with `NullPointerException`; every invalid number, blank identity, or cross-field combination
+  fails with `IllegalArgumentException`. Runtime-owned diagnostics start at the canonical
+  `PedroPathingRuntime.Config` root. `validatedCopy` uses a supplied nonblank context as that root
+  and otherwise falls back to the canonical root; both append the same exact relative field path,
+  state the accepted domain, and include the received value. Cross-field failures include both
+  paths and values. Validation applies to the captured snapshot:
+
+  - every PID/PIDF leaf is finite; each filtered `T` is in `[0, 1]`;
+  - predictive-braking `P`, linear braking, and quadratic friction are finite and nonnegative,
+    `P` is strictly positive when predictive braking is enabled, and maximum braking power is in
+    `(0, 1]`;
+  - the three secondary-controller switches are finite and nonnegative and are strictly positive
+    when their corresponding secondary controller is enabled; hold-point scalings and centripetal
+    scaling are finite and nonnegative, and `centripetalScaling * mass` must remain finite in the
+    pinned force expression; both Follower and Path Bezier search limits are positive;
+  - turn-heading completion threshold and mass are finite and positive; forward/lateral zero-power
+    accelerations are finite and negative, matching the pinned vendor contract, and `2.0 *` each
+    acceleration must remain finite before the pinned Kinematics expressions; Kalman model/data
+    covariances are finite and nonnegative, at least one is positive, and the captured pair must
+    satisfy the pinned recurrence's finite-representability rule: a zero model covariance permits
+    any finite positive data covariance, while a positive model covariance requires finite
+    `modelCovariance + 2 * dataCovariance`;
+  - stuck velocity and timeout are finite and nonnegative; both stuck-T bounds are in `[0, 1]` and
+    low is strictly less than high;
+  - four Mecanum motor names are required/nonblank, preserved exactly for lookup, and distinct after
+    whitespace normalization under case-sensitive FTC identity; all four directions are non-null;
+    x/y velocity and nominal voltage are finite and positive, max power is in `(0, 1]`, motor-cache
+    threshold is in `[0, 1)` because the vendor's strict-difference write test makes `1` suppress a
+    normalized zero-to-full command, and static friction is in `[0, 1)`. When voltage compensation
+    is enabled, `nominalVoltage * nominalVoltage` must remain finite before the vendor's live-voltage
+    expression. The front-left vector has finite components plus a finite nonzero magnitude; after
+    the vendor's normalization/mirroring step, its two-wheel basis determinant must also be finite.
+    Its absolute value must be at least the owner-private numerical-conditioning floor
+    `64.0 * Math.ulp(4.0 * Math.PI)`, and the conservative inverse coefficient
+    `4.0 / Math.abs(determinant)` must remain finite. Pedro rotates each basis angle by a live heading:
+    the managed runtime supplies `[0, 2pi)`, while the maintained native Pinpoint tool path supplies
+    `[-pi, pi]`; either pre-modulo angle sum has magnitude below `4pi`. The ULP-derived floor rejects
+    parallel and antiparallel bases, keeps a distinct accepted pair from rounding together during
+    that addition, and leaves ample margin over the subsequent trigonometric/product/subtraction
+    rounding. This prevents a near-axis authored vector from passing initial inversion checks and
+    later producing a zero or numerically singular drive denominator at a finite heading;
+  - path T is in `(0, 1]`; velocity, translational, heading, timeout, and braking-start constraints
+    are finite and nonnegative; braking strength is finite and positive. For both forward and
+    lateral zero-power acceleration, the exact source-order scaled value
+    `acceleration * (brakingStrength * 4.0)` and then `2.0 * scaledAcceleration` must remain finite.
+    The configured Mecanum x/y velocities must each produce a finite source-order GLOBAL stopping
+    distance `abs((0.0 - velocity * velocity) / (2.0 * forwardAcceleration))`, and each such
+    distance times `brakingStart` must remain finite. These cross-checks apply to the default and
+    every later constraints value accepted by the runtime's repairing PathBuilder, using the owned
+    follower/Mecanum snapshots. The transform is non-null. Pinpoint uses its CONFIG-04 validated-
+    snapshot contract unchanged.
+- **Close the raw-Follower escape:** remove `PedroPathingRuntime.follower()` and
+  `PedroPathingDriveAdapter.follower()` without deprecated aliases. The returned mutable vendor
+  object exposes constants replacement, constraints replacement, drivetrain/localizer access,
+  update, route start, raw drive, pose reset, and stop; either getter can therefore mutate the
+  supposedly captured graph or bypass the adapter's one-heartbeat/status/stop boundary. The runtime
+  getter's only maintained consumer needs one observation, so replace it with exactly
+  `public Pose currentPedroPose()` on the runtime. Each call reads the Follower's current cached pose
+  without updating/polling hardware and returns a new Pose preserving x, y, heading, and coordinate
+  system. `PhoenixPedroPathFactory` uses that defensive start-time fact. Add no parallel adapter pose
+  method: a standalone adapter caller already owns the supplied Follower. External callers migrate
+  route construction to `runtime.pathBuilder()`, pose reads to `currentPedroPose()`, and lifecycle to
+  the adapter; a future diagnostic must earn a narrow snapshot rather than recover the mutable graph.
+- **Rejected alternatives:** deep-copying only inside the old six-peer factory leaves Pinpoint
+  effects before validation and retains six owner answers. Keeping the effectful Phoenix facade plus
+  the new runtime path preserves two production constructors. Passing `PhoenixProfile` into the
+  integration runtime inverts the application/framework boundary and accepts many unrelated robot
+  answers. Putting a completed predictor inside Config makes a data draft own behavior; adding
+  `withPredictor` creates a second ownership mode without a maintained need. Mirroring more than 50
+  Pedro leaves into Phoenix types duplicates the vendor schema and creates translation drift without
+  a second semantic model. Folding constraints into follower tuning or transform into localization
+  erases distinct route/frame facts. `FollowerBuilder` introduces aliases, early effects, and global
+  defaults. Retaining either raw Follower getter under a “read-only” Javadoc cannot constrain the
+  Java capability. Adding a Basic-specific profile now preempts CONFIG-08, and changing
+  `PhoenixProfile` ownership now preempts CONFIG-09.
+- **Preserved behavior and one-item boundary:** retain the exact managed localization-then-drive
+  heartbeat, same-cycle deduplication, route-per-start truth, endpoint/stall/timeout/failure status,
+  active cancellation, reentrant physical zero, path-builder constraint repair, field-coordinate
+  conversion, start-pose application, Phoenix Auto/TeleOp handoff, and current tuned numeric values.
+  Retain the native tools' different raw-Follower lifecycle without redesigning Pedro's generated
+  Tuning classes; CONFIG-06 owns broader tool/tester Config forests. Do not change route geometry,
+  routine selection, follower algorithms, PID values, motor/pod calibration, hardware names,
+  physical constraints, or legacy/sample architecture. CONFIG-08 owns the basic example's
+  independence and CONFIG-09 owns Phoenix profile decomposition.
+- **Documentation synchronization:** update `PedroPathingRuntime`, `PedroPathingDriveAdapter`,
+  `PhoenixPedroPathFactory`, `PhoenixAutoProgram`, `BasicPedroAutoExample`, and project `Constants`
+  Javadocs; `fw/integrations/pedro/README.md`;
+  `First Pedro Auto.md`; `Recommended Robot Design.md`; `Pedro Autonomous Reference.md`; Phoenix
+  Architecture; the Phoenix Pedro Auto README; and Phoenix Calibration Guide. Generic docs teach
+  `Config.defaults()` plus the sole `create` effect boundary. Current project/Phoenix snippets teach
+  the pure mapper. The docs must say that configuration validity does not prove motor direction,
+  Pinpoint placement/readiness, follower tuning, field alignment, route clearance, or physical stop.
+- **Required Gate 2 evidence:** reflection-lock the Config private constructor, five exact fields,
+  three exact public methods, sole runtime `create(HardwareMap, Config)` and concrete return, absence
+  of the old six-peer overload and both `follower()` getters, the retained one-argument advanced
+  adapter constructor, and the project Constants public/package-private surface. Lock exact pinned
+  field name/type sets for all 31 Follower fields, 17 Mecanum fields, the three nested coefficient
+  types, eight PathConstraints values, and six VectorCalculator statics so a dependency upgrade
+  forces review. Use distinct valid sentinels and raw-bit assertions for every public primitive and
+  nested coefficient leaf; separately prove fresh Vector identity, captured magnitude/theta, and
+  equivalent normalized-basis behavior;
+  specifically catch a swapped filtered `T/F`, omitted predictive maximum power, and omitted vector
+  copying. Prove raw null preservation, bidirectional source/copy isolation, post-construction
+  mutation isolation, two independent mapper/tool graphs, unchanged source profiles, unrelated
+  malformed profile sections not blocking slice-local mapping, relevant null/invalid profile facts
+  propagating without effects to the canonical owner diagnostic, defaults independent of and
+  construction never mutating `PathConstraints.defaultConstraints`, and invalid
+  config leaving all lookup/reset/motor/Follower counters and vendor-static values unchanged.
+  Exercise every null,
+  NaN, infinity, exact bound, cross-field rule, and owner-qualified diagnostic. Give the normalized
+  wheel-basis conditioning-floor/inverse at `Math.nextDown(floor)` and `floor`, including the
+  `new Vector(1.0, 1e-20)` basis that collapses at heading `1.0` and representative accepted
+  near-floor/default rotations at `0`, `1`, `pi`, and `Math.nextDown(2 * Math.PI)`, motor-cache upper bound,
+  enabled-voltage square, Kalman zero-
+  model and overflowing-recurrence branches, mass/centripetal product, doubled raw accelerations,
+  both default/later doubled path-braking products, endpoint-velocity squares/stopping distances,
+  and stopping-distance/braking-start products discriminating regressions. Prove valid
+  construction order, best-effort drivetrain stop/suppression after later failure, defensive
+  `currentPedroPose()` identity and no-poll behavior, and native-tool fresh-value/exclusive-lifecycle
+  behavior. Preserve adapter/passive-localizer/runtime/path/route/Phoenix/basic tests; run focused
+  suites, full TeamCode tests/compile, generated Phoenix Javadocs, documentation-link checks, diff
+  hygiene, and stale-symbol/global-state scans.
+- **Robot-evidence boundary:** software tests can prove snapshot identity, validation order, declared
+  API, lifecycle calls, and commanded zero. Only the adopting robot can verify motor identities and
+  directions, Pinpoint offsets/resolution/yaw/reset-to-READY behavior, voltage behavior, current
+  follower/constraint tuning, coordinate transform, path clearance/completion, and physical STOP.
+- **Gate 1 decision and approval stop:** select owner-local deep Pedro snapshots, one runtime Config
+  and one production effect boundary, a pure slice-local Phoenix Config mapper, the package-local
+  exclusive native-tool path, and narrow cached-pose observation with no raw Follower export. This
+  changes public production APIs, narrows a public tool method, and changes construction order, so
+  stop here. Required approval wording:
+  `Approve CONFIG-05 owner-local Pedro runtime snapshots, full Pedro 2.1.2 capture and pre-effect
+  validation, pure slice-local Phoenix config mapping, package-local exclusive native-tool
+  construction, defensive current-Pedro-pose observation with no raw Follower export, and redundant
+  production API plus mutable project-global removal design.`
+- **Approval (2026-08-16):** the user supplied the exact Gate 1 wording above. CONFIG-05 moved to
+  **In progress** with implementation bounded to this recorded design and its synchronized callers,
+  tests, Javadocs, and maintained guides.
+- **Gate 2 implementation (2026-08-16):** CONFIG-05 is **Verifying** with an exact **20-file**
+  unstaged diff: **six production Java files, six test Java files, seven maintained Markdown
+  guides/readmes, and this tracker**. `PedroPathingRuntime.Config` now owns the five approved data
+  answers and raw-deep-copies every pinned Pedro 2.1.2 `FollowerConstants`, nested coefficient,
+  `MecanumConstants`, `Vector`, `PathConstraints`, predictor, and transform fact. Its sole public
+  `create(HardwareMap, Config)` boundary validates the complete snapshot before construction, then
+  constructs Mecanum, Pinpoint, the passive localizer, Follower, adapter, and runtime in the recorded
+  order. A later construction failure best-effort stops the returned drivetrain and preserves a
+  distinct cleanup failure as suppressed; the documented partial-constructor/vendor-static limits
+  remain truthful. Every later constraints-bearing `PathBuilder` mutator now validates before
+  builder/path mutation with the same owner-local follower/Mecanum arithmetic facts.
+- **Owner/API, project, and documentation result (2026-08-16):** the old six-peer factory, effectful
+  Phoenix facade, both raw `follower()` getters, and project-global follower/constraints drafts are
+  removed without aliases. `currentPedroPose()` returns one fresh cached-pose observation without a
+  Follower update or Pinpoint poll. Project `Constants.phoenixAutoRuntimeConfig(profile)` is the one
+  public, pure, slice-local mapper; its native-Follower constructor is package-local and reserved for
+  Pedro's generated tools, where complete preflight precedes the exclusive Mecanum -> native
+  Pinpoint -> Follower lifecycle. Phoenix Auto, the basic reference, return-path geometry, Javadocs,
+  and all seven maintained Markdown surfaces use the selected Config/create vocabulary and retain
+  the CONFIG-08/09 decomposition boundaries.
+- **Automated verification (2026-08-16):** Android Studio JBR 21 production/unit-test compilation and
+  the focused Pedro/project/Phoenix matrix passed **16 suites / 142 tests / 0 failures / 0 errors /
+  0 skipped**. The exact final Java/docs tree then passed `:TeamCode:testDebugUnitTest` at **187
+  suites / 1,738 tests / 0 failures / 0 errors / 0 skipped**, including
+  `DocumentationLinksTest` at **5/5**. `:TeamCode:phoenixJavadocs` also completed **BUILD
+  SUCCESSFUL**. The only output was the repository's existing Java-8-on-JBR-21 and deprecation
+  warnings; no compile, test, link, or Javadoc failure remains.
+- **Independent and static evidence (2026-08-16):** separate pinned-runtime and docs/tests/API
+  adversarial reviews both returned PASS. Reflection closes the exact Config/runtime/adapter/project
+  surfaces plus all 31 Follower fields, 17 Mecanum fields, nested coefficient/constraint fields, and
+  six Pedro statics. Distinct raw-bit sentinels, null/non-finite/bound/cross-expression cases,
+  conditioning-floor rotations, public pre-effect failure, construction cleanup/suppression,
+  post-capture isolation, global-default isolation, every later builder mutation, defensive pose,
+  and native-tool freshness/exclusivity are covered. Production scans find no removed API, mutable
+  project-global, `FollowerBuilder` construction, raw Follower getter, or Pedro default-constraints
+  access. `git diff --check` is clean apart from informational LF-to-CRLF notices; all four new tests
+  have clean trailing whitespace/final newlines; nothing is staged, committed, or pushed.
+- **Gate 2 hardware and Android Studio audit point (2026-08-16):** inspect this exact diff on
+  `codex/config-05-pedro-runtime-configuration`, based directly on
+  `origin/master@2d35663caaa87f60f6184a5be42b61f39ab277ea`: (1) the five-field Config and complete Pedro 2.1.2
+  deep capture, (2) numeric/cross-field validation before Mecanum or Pinpoint effects plus the
+  Mecanum-to-Follower cleanup boundary, (3) pure Phoenix mapping and package-local native-tool
+  ownership with no project globals, (4) the narrow cached-pose/PathBuilder owner surface with no raw
+  Follower, and (5) migrated callers, tests, Javadocs, and guides. Software cannot verify motor
+  identities/directions, Pinpoint placement/resolution/yaw/reset readiness, voltage behavior,
+  follower/constraint tuning, field alignment, route clearance/completion, or physical STOP; those
+  remain adopting-robot checks. Gate 2 stops with this exact 20-file diff unstaged. After Android
+  Studio review, authorize publication only with:
+  `CONFIG-05 looks good. Authorize committing the reviewed CONFIG-05 diff on
+  codex/config-05-pedro-runtime-configuration, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`
+- **Manual verification and publication authorization (2026-08-17):** the user completed the
+  requested Android Studio review and sent the exact combined authorization above, then explicitly
+  directed the workflow to move to the next task after CONFIG-05 publication. CONFIG-05 is now
+  **Done**; Gate 3 may stage only this reviewed 20-file diff, create its single item commit, push
+  `codex/config-05-pedro-runtime-configuration` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. CONFIG-06 must remain outside this publication and may begin only after the merge is
+  fetched and verified.
 
 ### CONFIG-06 - Tool and tester configuration ownership
 

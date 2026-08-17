@@ -62,6 +62,10 @@ public final class BasicPedroAutoExample extends FtcRobotOpMode {
         program.presenter(this::presentRouteAndRootStatus);
     }
 
+    /**
+     * Build the production example by pure Config mapping followed by the sole effectful
+     * {@link PedroPathingRuntime#create} hardware-construction boundary.
+     */
     private BasicPedroAutoRobot createProductionRobot(RobotProgram program) {
         PhoenixProfile profile = PhoenixProfile.current().copy();
         BasicPedroAutoMechanism.Config mechanismConfig =
@@ -70,9 +74,9 @@ public final class BasicPedroAutoExample extends FtcRobotOpMode {
                         profile.scoring.directionMotorIntake,
                         profile.scoring.intakeMotorPower
                 );
-        PedroPathingRuntime builtRuntime = Constants.createPhoenixAutoRuntime(
+        PedroPathingRuntime builtRuntime = PedroPathingRuntime.create(
                 hardwareMap,
-                profile
+                Constants.phoenixAutoRuntimeConfig(profile)
         );
 
         // BasicPedroAutoRobot registers the runtime service before invoking this mechanism

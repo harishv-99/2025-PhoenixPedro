@@ -351,11 +351,28 @@ FtcOdometryAprilTagLocalizationLane localization =
 ```
 
 That constructor is the normal TeleOp/calibration path and creates the profile-configured Pinpoint
-predictor. Phoenix Pedro Auto instead creates one `PedroPathingRuntime` from the same profile and
-passes its predictor into `FtcOdometryAprilTagLocalizationLane.withPredictor(...)`; it must not
-construct Pedro's native Pinpoint localizer as a second production owner. Pedro's generated tuning
-menu uses the clearly named tool-only native factory, which derives the same hardware name, offsets,
-resolution, directions, and yaw scalar from this profile.
+predictor. Phoenix Pedro Auto instead maps the relevant profile slice to data and crosses the sole
+runtime hardware boundary:
+
+```java
+PedroPathingRuntime runtime = PedroPathingRuntime.create(
+        hardwareMap,
+        Constants.phoenixAutoRuntimeConfig(profile));
+```
+
+The pure mapper snapshots the predictor, drivetrain wiring, and brake choice and combines them with
+fresh checked-in Pedro tuning; it constructs no hardware. The runtime validates and owner-copies
+the complete graph before hardware lookup or its non-blocking Pinpoint reset request, then passes
+its sole predictor into `FtcOdometryAprilTagLocalizationLane.withPredictor(...)`. Phoenix must not
+construct Pedro's native Pinpoint localizer as a second production owner.
+
+Pedro's generated tuning menu and `PedroTest` use a package-local tool-only native factory instead.
+That exclusive OpMode graph derives the same hardware name, offsets, resolution, directions, and
+yaw scalar from the profile, but owns Pedro's native `PinpointLocalizer` and raw Follower heartbeat.
+It is not a production runtime option and must never coexist with Phoenix Auto. The separate public
+completed-Follower adapter constructor is only for an advanced custom/portable host that has
+already constructed the vendor graph and will route its lifecycle through the adapter; it acquires no
+Pinpoint hardware.
 
 The backend only changes which concrete AprilTag lane is created:
 
@@ -460,6 +477,11 @@ predictor.encoderResolution =
 
 Passing software validation proves only that the selected value is representable by the Pinpoint
 driver. Confirm the physical pod model or measured ticks-per-inch on the robot.
+
+Likewise, the Pedro runtime's full Config validation can prove only a complete, finite, internally
+coherent captured graph. It cannot prove the selected ports, motor directions, pod placement,
+reset-to-READY behavior, follower stability, field alignment, route clearance, stopping distance,
+or physical STOP. Those facts require the corresponding tester and a controlled robot run.
 
 Record completion after rerunning the tester and accepting the result:
 
