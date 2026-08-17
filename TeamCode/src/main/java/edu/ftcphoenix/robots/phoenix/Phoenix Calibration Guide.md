@@ -379,7 +379,8 @@ Custom multi-purpose vision keeps the concrete advanced owner in a robot realiza
 should consume one robot-owned immutable timestamped snapshot rather than FTC or Limelight result types.
 
 Phoenix can use Limelight's direct device field pose as an **optional** correction source through
-`PhoenixProfile.localization.correctionSource`, while the raw AprilTag path remains available.
+`PhoenixProfile.localization.estimation.correctionSource`, while the raw AprilTag path remains
+available.
 Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2 pose access.
 
 ### Phoenix notes
@@ -411,7 +412,7 @@ This tester reuses:
 ```java
 PhoenixProfile.current().vision.activeDeviceName()
 PhoenixProfile.current().vision.activeCameraMount()
-PhoenixProfile.current().localization.aprilTags
+PhoenixProfile.current().localization.estimation.aprilTags
 PhoenixProfile.current().field.fixedAprilTagLayout
 ```
 
@@ -429,6 +430,10 @@ Goal:
 
 - verify +X forward, +Y left, heading CCW+
 
+Keep the robot stationary while the constructor-requested Pinpoint reset is calibrating. The tester
+will not accept a sample until its cached device status is `READY` and a measured pose is available;
+there is no blocking reset delay hidden in the OpMode.
+
 Fix in code:
 
 ```java
@@ -436,6 +441,25 @@ PhoenixProfile.current().localization.predictor
 ```
 
 Specifically, correct pod direction fields before continuing.
+
+The encoder-resolution field is one tagged choice, so a custom value cannot silently override a
+second preset field. The default is the goBILDA 4-bar pod. Select exactly one form:
+
+```java
+PinpointOdometryPredictor.Config predictor =
+        PhoenixProfile.current().localization.predictor;
+predictor.encoderResolution =
+        PinpointOdometryPredictor.EncoderResolution.forGoBildaPod(
+                GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD
+        );
+
+// Or, for a genuinely custom encoder/pod whose calibration has been reviewed:
+predictor.encoderResolution =
+        PinpointOdometryPredictor.EncoderResolution.ticksPerInch(reviewedTicksPerInch);
+```
+
+Passing software validation proves only that the selected value is representable by the Pinpoint
+driver. Confirm the physical pod model or measured ticks-per-inch on the robot.
 
 Record completion after rerunning the tester and accepting the result:
 
@@ -459,16 +483,21 @@ Goal:
 
 - estimate the Pinpoint offsets that remove fake translation during rotation
 
+Automatic and stick-driven calibration motion fail-stops whenever the current Pinpoint poll lacks
+`READY` pose and velocity evidence. If that happens, keep the robot still and restart the sample
+after the status returns to `READY`.
+
 Paste result into:
 
 ```java
 PhoenixProfile.current().localization.predictor
 ```
 
-The tester prints the recommended:
+The tester prints the two recommended field assignments:
 
 ```java
-.withOffsets(forwardPodOffsetLeftInches, strafePodOffsetForwardInches)
+predictor.forwardPodOffsetLeftInches = forwardPodOffsetLeftInches;
+predictor.strafePodOffsetForwardInches = strafePodOffsetForwardInches;
 ```
 
 Record completion after copying the numbers and rerunning once to confirm they are stable:
@@ -519,9 +548,9 @@ Config involved:
 ```java
 PhoenixProfile.current().vision
 PhoenixProfile.current().localization.predictor
-PhoenixProfile.current().localization.aprilTags
-PhoenixProfile.current().localization.correctionSource
-PhoenixProfile.current().localization.correctionFusion
+PhoenixProfile.current().localization.estimation.aprilTags
+PhoenixProfile.current().localization.estimation.correctionSource
+PhoenixProfile.current().localization.estimation.correctionFusion
 PhoenixProfile.current().field.fixedAprilTagLayout
 ```
 
@@ -537,9 +566,9 @@ If you want the corrected/global estimator to use Limelight's direct device fiel
 
 ```java
 PhoenixProfile.current().vision.backend = PhoenixProfile.VisionConfig.Backend.LIMELIGHT;
-PhoenixProfile.current().localization.correctionSource.mode =
+PhoenixProfile.current().localization.estimation.correctionSource.mode =
         FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
-PhoenixProfile.current().localization.correctionSource.limelightFieldPose.mode =
+PhoenixProfile.current().localization.estimation.correctionSource.limelightFieldPose.mode =
         LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
 ```
 
@@ -575,8 +604,8 @@ Do this only after:
 Config involved:
 
 ```java
-PhoenixProfile.current().localization.correctionEkf
-PhoenixProfile.current().localization.correctedEstimatorMode
+PhoenixProfile.current().localization.estimation.correctionEkf
+PhoenixProfile.current().localization.estimation.correctedEstimatorMode
 ```
 
 Use the tester to compare behavior first. Only then consider changing the robot's default corrected estimator mode.

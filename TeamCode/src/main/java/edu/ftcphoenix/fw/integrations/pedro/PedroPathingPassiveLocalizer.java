@@ -27,6 +27,10 @@ final class PedroPathingPassiveLocalizer implements Localizer {
         Sample currentSnapshot();
 
         void setPose(Pose2d phoenixFieldToRobotPose);
+
+        default String lastDeviceStatusSummary() {
+            return "unavailable";
+        }
     }
 
     /** Internal immutable copy of the predictor values required by Pedro. */
@@ -255,20 +259,24 @@ final class PedroPathingPassiveLocalizer implements Localizer {
                     "Pedro requires a current Pinpoint snapshot for Phoenix cycle "
                             + expectedClock.cycle() + ", but found cycle " + next.cycle
                             + ". Update Phoenix localization with the shared LoopClock before the "
-                            + "Pedro drive heartbeat"
+                            + "Pedro drive heartbeat; Pinpoint lastDeviceStatus="
+                            + predictorAccess.lastDeviceStatusSummary()
             );
         }
         if (!next.hasPose) {
             throw new IllegalStateException(
                     "Pinpoint pose is unavailable for Phoenix cycle " + expectedClock.cycle()
-                            + "; Pedro drive output was stopped"
+                            + "; Pedro drive output was stopped; Pinpoint lastDeviceStatus="
+                            + predictorAccess.lastDeviceStatusSummary()
             );
         }
         if (!next.hasVelocity) {
             throw new IllegalStateException(
                     "Pinpoint physical velocity is unavailable for Phoenix cycle "
                             + expectedClock.cycle()
-                            + "; wait for a valid post-reset sample before driving Pedro"
+                            + "; wait for a valid post-reset sample before driving Pedro; "
+                            + "Pinpoint lastDeviceStatus="
+                            + predictorAccess.lastDeviceStatusSummary()
             );
         }
         requireFiniteSample(next, expectedClock);
@@ -388,6 +396,11 @@ final class PedroPathingPassiveLocalizer implements Localizer {
         @Override
         public void setPose(Pose2d phoenixFieldToRobotPose) {
             predictor.setPose(phoenixFieldToRobotPose);
+        }
+
+        @Override
+        public String lastDeviceStatusSummary() {
+            return predictor.lastDeviceStatus().name();
         }
     }
 }

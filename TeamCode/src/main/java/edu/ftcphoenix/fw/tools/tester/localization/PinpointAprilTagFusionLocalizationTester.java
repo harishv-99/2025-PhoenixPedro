@@ -1,5 +1,6 @@
 package edu.ftcphoenix.fw.tools.tester.localization;
 
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
@@ -259,20 +260,22 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         cfg.predictor = predictorCfg != null
                 ? predictorCfg.copy()
                 : PinpointOdometryPredictor.Config.defaults();
-        cfg.correctedEstimatorMode = estimatorMode == EstimatorMode.EKF
+        cfg.estimation.correctedEstimatorMode = estimatorMode == EstimatorMode.EKF
                 ? FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF
                 : FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
-        cfg.correctionFusion = fusionCfg != null
+        cfg.estimation.correctionFusion = fusionCfg != null
                 ? fusionCfg.copy()
                 : OdometryCorrectionFusionEstimator.Config.defaults();
-        cfg.correctionEkf = ekfCfg != null
+        cfg.estimation.correctionEkf = ekfCfg != null
                 ? ekfCfg.copy()
                 : OdometryCorrectionEkfEstimator.Config.defaults();
-        cfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+        cfg.estimation.correctionSource.mode =
+                FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
 
         if (aprilTagPoseOverride != null) {
-            cfg.aprilTags.maxDetectionAgeSec = aprilTagPoseOverride.maxDetectionAgeSec;
-            cfg.aprilTags.fieldPoseSolver = aprilTagPoseOverride.fieldPoseSolver != null
+            cfg.estimation.aprilTags.maxDetectionAgeSec = aprilTagPoseOverride.maxDetectionAgeSec;
+            cfg.estimation.aprilTags.fieldPoseSolver =
+                    aprilTagPoseOverride.fieldPoseSolver != null
                     ? aprilTagPoseOverride.fieldPoseSolver.copy()
                     : null;
         }
@@ -280,7 +283,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
     }
 
     private String correctionSourceLabel() {
-        switch (localizationConfigTemplate.correctionSource.mode) {
+        switch (localizationConfigTemplate.estimation.correctionSource.mode) {
             case LIMELIGHT_FIELD_POSE:
                 return "Pinpoint + Direct Limelight";
             case APRILTAG_POSE:
@@ -294,7 +297,8 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
      */
     @Override
     public String name() {
-        return localizationConfigTemplate.correctedEstimatorMode == FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF
+        return localizationConfigTemplate.estimation.correctedEstimatorMode
+                == FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF
                 ? "Loc: " + correctionSourceLabel() + " (EKF)"
                 : "Loc: " + correctionSourceLabel() + " (Fused)";
     }
@@ -655,7 +659,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
     }
 
     private double effectiveAprilTagMaxAgeSec() {
-        double maxAgeSec = localizationConfigTemplate.aprilTags.maxDetectionAgeSec;
+        double maxAgeSec = localizationConfigTemplate.estimation.aprilTags.maxDetectionAgeSec;
         return maxAgeSec > 0.0 ? maxAgeSec : DEFAULT_MAX_AGE_SEC;
     }
 
@@ -717,8 +721,20 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         if (activeVisionDescription != null && !activeVisionDescription.isEmpty()) {
             t.addData("Backend", activeVisionDescription);
         }
-        t.addData("Correction source", localizationConfigTemplate.correctionSource.mode);
-        t.addData("Global estimator", localizationConfigTemplate.correctedEstimatorMode);
+        t.addData("Correction source", localizationConfigTemplate.estimation.correctionSource.mode);
+        t.addData("Global estimator", localizationConfigTemplate.estimation.correctedEstimatorMode);
+        if (predictor instanceof PinpointOdometryPredictor) {
+            GoBildaPinpointDriver.DeviceStatus pinpointStatus =
+                    ((PinpointOdometryPredictor) predictor).lastDeviceStatus();
+            t.addData("Pinpoint status", pinpointStatus);
+            if (pinpointStatus != GoBildaPinpointDriver.DeviceStatus.READY
+                    || predictorPose == null
+                    || !predictorPose.hasPose) {
+                t.addLine(
+                        "Keep the robot stationary until Pinpoint READY publishes a measured pose."
+                );
+            }
+        }
         t.addData("Track [START]", trackAny ? "ANY" : "SINGLE");
         t.addData("Tag ID [Dpad L/R or Y/X]", selectedTagId);
         t.addData("Correction [B]", globalEstimator.isCorrectionEnabled() ? "ENABLED" : "DISABLED");
@@ -727,7 +743,10 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         t.addData("AprilTag MaxAge", "%.0f ms", effectiveAprilTagMaxAgeSec() * 1000.0);
 
         if (limelightEstimator != null) {
-            t.addData("Direct Limelight mode", localizationConfigTemplate.correctionSource.limelightFieldPose.mode);
+            t.addData(
+                    "Direct Limelight mode",
+                    localizationConfigTemplate.estimation.correctionSource.limelightFieldPose.mode
+            );
         }
 
         if (layout instanceof FtcGameTagLayout) {
@@ -773,7 +792,8 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             renderPose(t, "  Limelight direct", limelightPose);
         }
         renderPose(t, "  Active correction", correctionPose);
-        renderPose(t, localizationConfigTemplate.correctedEstimatorMode == FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF
+        renderPose(t, localizationConfigTemplate.estimation.correctedEstimatorMode
+                == FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF
                 ? "  EKF"
                 : "  Corrected", globalPose);
 

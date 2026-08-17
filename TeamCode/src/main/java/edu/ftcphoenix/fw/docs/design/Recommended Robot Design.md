@@ -1234,6 +1234,10 @@ still uses
 normally; the adapter makes their same-cycle update calls harmless. The runtime's passive Pedro
 localizer reads the same current-cycle predictor that Phoenix localization updates, so this also
 avoids a second odometry owner without adding another scheduler or pose API to student Auto code.
+Pinpoint construction requests its one reset without sleeping. Until a completed `READY` poll
+publishes current finite pose and velocity, the Pedro heartbeat throws through its fail-stop owner
+instead of driving on a commanded rebase or stale sample. Keep the robot stationary during that
+reset/calibration interval.
 
 The adapter also classifies each route's terminal state during that owned heartbeat, while the
 evidence still exists. Robot code must use the adapter and Phoenix Task cancellation seams for

@@ -183,6 +183,12 @@ policy—not a generic Task sequence—decides continue, fallback, or abort.
 `PedroPathingRuntime` owns one `PinpointOdometryPredictor` and exposes a passive Pedro localizer
 view of its snapshots. No second Pinpoint owner polls or resets the device.
 
+Pinpoint construction issues one non-blocking reset. Pedro remains fail-stopped until a completed
+`READY` poll supplies current finite pose and velocity. Managed TeleOp similarly holds its final
+drive sink at physical zero until its owned predictor publishes the first current finite measured
+pose after construction reset. That startup gate latches once; a later localization fault disables
+localization-dependent assists, but ordinary robot-centric manual drive remains available.
+
 At a permitted START:
 
 ```text

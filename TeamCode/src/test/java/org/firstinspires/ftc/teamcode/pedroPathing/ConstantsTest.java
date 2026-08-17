@@ -8,6 +8,7 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import org.junit.Test;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
@@ -36,16 +37,17 @@ public final class ConstantsTest {
         profile.localization.predictor.hardwareMapName = "profile-pinpoint";
         profile.localization.predictor.forwardPodOffsetLeftInches = 3.25;
         profile.localization.predictor.strafePodOffsetForwardInches = -4.5;
-        profile.localization.predictor.customEncoderResolutionTicksPerInch = 1234.5;
+        profile.localization.predictor.encoderResolution =
+                PinpointOdometryPredictor.EncoderResolution.ticksPerInch(1234.5);
         profile.localization.predictor.forwardPodDirection =
                 GoBildaPinpointDriver.EncoderDirection.REVERSED;
         profile.localization.predictor.strafePodDirection =
                 GoBildaPinpointDriver.EncoderDirection.FORWARD;
         profile.localization.predictor.yawScalar = 1.001;
 
-        Constants.validatePhysicalConfig(profile, true);
+        PinpointOdometryPredictor.Config predictor = Constants.validatePhysicalConfig(profile);
         MecanumConstants drive = Constants.mecanumConstantsFrom(profile);
-        PinpointConstants pinpoint = Constants.pinpointConstantsFrom(profile);
+        PinpointConstants pinpoint = Constants.pinpointConstantsFrom(predictor);
 
         assertEquals("profile-fl", drive.leftFrontMotorName);
         assertEquals("profile-fr", drive.rightFrontMotorName);
@@ -73,11 +75,16 @@ public final class ConstantsTest {
     @Test
     public void podPresetIsRetainedWhenNoCustomResolutionIsConfigured() {
         PhoenixProfile profile = PhoenixProfile.current().copy();
-        profile.localization.predictor.customEncoderResolutionTicksPerInch = null;
-        profile.localization.predictor.encoderPods =
-                GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_SWINGARM_POD;
+        profile.localization.predictor.encoderResolution =
+                PinpointOdometryPredictor.EncoderResolution.forGoBildaPod(
+                        GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_SWINGARM_POD
+                );
 
-        PinpointConstants pinpoint = Constants.pinpointConstantsFrom(profile);
+        PinpointConstants pinpoint = Constants.pinpointConstantsFrom(
+                profile.localization.predictor.validatedCopy(
+                        "PhoenixProfile.localization.predictor"
+                )
+        );
 
         assertFalse(pinpoint.customEncoderResolution.isPresent());
         assertEquals(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_SWINGARM_POD,
@@ -90,28 +97,21 @@ public final class ConstantsTest {
         duplicateMotor.drive.wiring.frontRightName =
                 duplicateMotor.drive.wiring.frontLeftName;
         assertRejects(
-                () -> Constants.validatePhysicalConfig(duplicateMotor, true),
+                () -> Constants.validatePhysicalConfig(duplicateMotor),
                 "duplicates motor hardware name"
-        );
-
-        PhoenixProfile noControlledReset = PhoenixProfile.current().copy();
-        noControlledReset.localization.predictor.enableResetOnInit = false;
-        assertRejects(
-                () -> Constants.validatePhysicalConfig(noControlledReset, true),
-                "enableResetOnInit=true"
         );
 
         PhoenixProfile blankPinpoint = PhoenixProfile.current().copy();
         blankPinpoint.localization.predictor.hardwareMapName = "  ";
         assertRejects(
-                () -> Constants.validatePhysicalConfig(blankPinpoint, true),
+                () -> Constants.validatePhysicalConfig(blankPinpoint),
                 "hardwareMapName"
         );
 
         PhoenixProfile invalidOffset = PhoenixProfile.current().copy();
         invalidOffset.localization.predictor.forwardPodOffsetLeftInches = Double.NaN;
         assertRejects(
-                () -> Constants.validatePhysicalConfig(invalidOffset, true),
+                () -> Constants.validatePhysicalConfig(invalidOffset),
                 "forwardPodOffsetLeftInches"
         );
     }

@@ -6,8 +6,11 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit;
 
 import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.DoubleConsumer;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
@@ -72,184 +75,148 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     private static final DistanceUnit CONFIG_DISTANCE_UNIT = DistanceUnit.INCH;
 
     /**
-     * Configuration for {@link PinpointOdometryPredictor}.
+     * One unambiguous Pinpoint encoder-resolution choice.
+     *
+     * <p>Use {@link #forGoBildaPod(GoBildaPinpointDriver.GoBildaOdometryPods)} for a vendor
+     * preset or {@link #ticksPerInch(double)} for a custom pod. The value is immutable, so a
+     * captured {@link Config} may retain it safely.</p>
      */
+    public static final class EncoderResolution {
+        private final GoBildaPinpointDriver.GoBildaOdometryPods goBildaPod;
+        private final double customTicksPerInch;
+
+        private EncoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods goBildaPod,
+                                  double customTicksPerInch) {
+            this.goBildaPod = goBildaPod;
+            this.customTicksPerInch = customTicksPerInch;
+        }
+
+        /** Return a choice backed by one goBILDA pod preset. */
+        public static EncoderResolution forGoBildaPod(
+                GoBildaPinpointDriver.GoBildaOdometryPods pod) {
+            return new EncoderResolution(
+                    Objects.requireNonNull(pod, "pod must not be null"),
+                    Double.NaN
+            );
+        }
+
+        /**
+         * Return a custom encoder-resolution choice.
+         *
+         * @param value finite positive encoder ticks per inch
+         * @throws IllegalArgumentException when {@code value} is not finite and positive
+         */
+        public static EncoderResolution ticksPerInch(double value) {
+            if (!Double.isFinite(value) || value <= 0.0) {
+                throw new IllegalArgumentException(
+                        "Pinpoint encoder resolution ticksPerInch must be finite and > 0, got "
+                                + value
+                );
+            }
+            return new EncoderResolution(null, value);
+        }
+
+        /**
+         * Dispatch this choice to exactly one supplied receiver.
+         *
+         * <p>Both receivers are required even though only the selected variant is invoked. This
+         * keeps FTC and integration translators exhaustive without exposing representation
+         * getters or requiring type inspection.</p>
+         */
+        public void applyTo(
+                Consumer<GoBildaPinpointDriver.GoBildaOdometryPods> podReceiver,
+                DoubleConsumer customReceiver) {
+            Consumer<GoBildaPinpointDriver.GoBildaOdometryPods> requiredPodReceiver =
+                    Objects.requireNonNull(podReceiver, "podReceiver must not be null");
+            DoubleConsumer requiredCustomReceiver =
+                    Objects.requireNonNull(customReceiver, "customReceiver must not be null");
+            if (goBildaPod != null) {
+                requiredPodReceiver.accept(goBildaPod);
+            } else {
+                requiredCustomReceiver.accept(customTicksPerInch);
+            }
+        }
+
+        /** Validate the exact float representation written by the FTC driver's custom path. */
+        private void requireVendorRepresentable(String fieldName) {
+            if (goBildaPod != null) {
+                return;
+            }
+            double ticksPerMillimetre = 1.0
+                    / CONFIG_DISTANCE_UNIT.toMm(1.0 / customTicksPerInch);
+            float vendorValue = (float) ticksPerMillimetre;
+            if (!Float.isFinite(vendorValue) || vendorValue <= 0.0f) {
+                throw new IllegalArgumentException(
+                        fieldName + " custom ticksPerInch must translate to a finite positive "
+                                + "Pinpoint float, got " + customTicksPerInch
+                );
+            }
+        }
+
+        @Override
+        public String toString() {
+            if (goBildaPod != null) {
+                return "EncoderResolution{goBildaPod=" + goBildaPod + '}';
+            }
+            return "EncoderResolution{ticksPerInch=" + customTicksPerInch + '}';
+        }
+    }
+
+    /** Mutable, data-only authoring configuration for {@link PinpointOdometryPredictor}. */
     public static final class Config {
 
         /**
-         * FTC hardware configuration name of the Pinpoint device (commonly {@code "odo"}).
+         * Exact FTC hardware configuration name of the Pinpoint device (commonly {@code "odo"}).
+         * Whitespace-only names are invalid; otherwise active capture preserves the authored name
+         * exactly for hardware lookup.
          */
         public String hardwareMapName = "odo";
 
-        /**
-         * Left/right offset of the forward (X) pod from the robot tracking point; +left, -right.
-         */
+        /** Left/right offset of the forward (X) pod; +left, -right, in inches. */
         public double forwardPodOffsetLeftInches = 0.0;
 
-        /**
-         * Forward/back offset of the strafe (Y) pod from the robot tracking point; +forward, -back.
-         */
+        /** Forward/back offset of the strafe (Y) pod; +forward, -back, in inches. */
         public double strafePodOffsetForwardInches = 0.0;
 
-        /**
-         * If true, reset Pinpoint pose + IMU during estimator construction.
-         */
-        public boolean enableResetOnInit = true;
+        /** The one selected vendor preset or custom encoder resolution. */
+        public EncoderResolution encoderResolution = EncoderResolution.forGoBildaPod(
+                GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD
+        );
 
-        /**
-         * Time to wait after reset (milliseconds).
-         */
-        public long resetWaitMs = 300;
-
-        /**
-         * Built-in goBILDA odometry pod preset.
-         */
-        public GoBildaPinpointDriver.GoBildaOdometryPods encoderPods =
-                GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD;
-
-        /**
-         * Custom encoder resolution in ticks per inch. If non-null, overrides {@link #encoderPods}.
-         */
-        public Double customEncoderResolutionTicksPerInch = null;
-
-        /**
-         * Direction for the forward (X) pod encoder.
-         */
+        /** Direction for the forward (X) pod encoder. */
         public GoBildaPinpointDriver.EncoderDirection forwardPodDirection =
                 GoBildaPinpointDriver.EncoderDirection.FORWARD;
 
-        /**
-         * Direction for the strafe (Y) pod encoder.
-         */
+        /** Direction for the strafe (Y) pod encoder. */
         public GoBildaPinpointDriver.EncoderDirection strafePodDirection =
                 GoBildaPinpointDriver.EncoderDirection.FORWARD;
 
-        /**
-         * Optional yaw scalar. If null, uses the driver default / factory calibration.
-         */
+        /** Optional positive yaw scalar; {@code null} retains the factory calibration. */
         public Double yawScalar = null;
 
-        /**
-         * Quality score used when publishing absolute pose and motion deltas (0..1).
-         */
+        /** Quality score published with pose and motion evidence, in {@code [0, 1]}. */
         public double quality = 0.75;
 
         private Config() {
         }
 
-        /**
-         * @return new config instance populated with framework defaults.
-         */
+        /** @return a new mutable authoring draft populated with software defaults */
         public static Config defaults() {
             return new Config();
         }
 
         /**
-         * Convenience factory for the common case.
-         */
-        public static Config of(String hardwareMapName,
-                                double forwardPodOffsetLeftInches,
-                                double strafePodOffsetForwardInches) {
-            Config c = defaults();
-            c.hardwareMapName = hardwareMapName;
-            c.forwardPodOffsetLeftInches = forwardPodOffsetLeftInches;
-            c.strafePodOffsetForwardInches = strafePodOffsetForwardInches;
-            return c;
-        }
-
-        /**
-         * Fluent helper: set the hardware map name.
-         */
-        public Config withHardwareMapName(String hardwareMapName) {
-            this.hardwareMapName = hardwareMapName;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set both pod offsets.
-         */
-        public Config withOffsets(double forwardPodOffsetLeftInches, double strafePodOffsetForwardInches) {
-            this.forwardPodOffsetLeftInches = forwardPodOffsetLeftInches;
-            this.strafePodOffsetForwardInches = strafePodOffsetForwardInches;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set whether to reset pose + IMU during construction.
-         */
-        public Config withResetOnInit(boolean enableResetOnInit) {
-            this.enableResetOnInit = enableResetOnInit;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set the wait time after a reset (milliseconds).
-         */
-        public Config withResetWaitMs(long resetWaitMs) {
-            this.resetWaitMs = resetWaitMs;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set the built-in goBILDA odometry pod preset.
-         */
-        public Config withEncoderPods(GoBildaPinpointDriver.GoBildaOdometryPods pods) {
-            this.encoderPods = pods;
-            return this;
-        }
-
-        /**
-         * Fluent helper: override encoder resolution in ticks per inch.
-         */
-        public Config withCustomEncoderResolutionTicksPerInch(Double ticksPerInch) {
-            this.customEncoderResolutionTicksPerInch = ticksPerInch;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set direction for the forward (X) pod encoder.
-         */
-        public Config withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection dir) {
-            this.forwardPodDirection = dir;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set direction for the strafe (Y) pod encoder.
-         */
-        public Config withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection dir) {
-            this.strafePodDirection = dir;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set a yaw scalar.
-         */
-        public Config withYawScalar(Double yawScalar) {
-            this.yawScalar = yawScalar;
-            return this;
-        }
-
-        /**
-         * Fluent helper: set the published quality score used by debug/fusion (0..1).
-         */
-        public Config withQuality(double quality) {
-            this.quality = quality;
-            return this;
-        }
-
-        /**
-         * @return deep copy of this config.
+         * Return a raw copy without activating or validating this draft.
+         *
+         * <p>Null authored values are deliberately preserved so aggregate Config copies remain
+         * mutation isolation rather than hidden active-owner validation.</p>
          */
         public Config copy() {
             Config c = defaults();
             c.hardwareMapName = this.hardwareMapName;
             c.forwardPodOffsetLeftInches = this.forwardPodOffsetLeftInches;
             c.strafePodOffsetForwardInches = this.strafePodOffsetForwardInches;
-            c.enableResetOnInit = this.enableResetOnInit;
-            c.resetWaitMs = this.resetWaitMs;
-            c.encoderPods = this.encoderPods;
-            c.customEncoderResolutionTicksPerInch = this.customEncoderResolutionTicksPerInch;
+            c.encoderResolution = this.encoderResolution;
             c.forwardPodDirection = this.forwardPodDirection;
             c.strafePodDirection = this.strafePodDirection;
             c.yawScalar = this.yawScalar;
@@ -258,28 +225,97 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         }
 
         /**
-         * Emits a compact debug summary of this config.
+         * Validate and snapshot this draft before any Pinpoint hardware effect.
+         *
+         * @param context diagnostic owner/field prefix; null or blank uses this Config's canonical
+         *                class name
+         * @return independent validated snapshot
+         * @throws NullPointerException for a required null field
+         * @throws IllegalArgumentException for any value outside its documented domain or exact
+         *                                  vendor float representation
          */
-        public void debugDump(DebugSink dbg, String prefix) {
-            if (dbg == null) {
-                return;
+        public Config validatedCopy(String context) {
+            String owner = normalizedContext(context);
+            Config c = copy();
+            if (c.hardwareMapName == null) {
+                throw new NullPointerException(owner + ".hardwareMapName must not be null");
             }
-            String p = (prefix == null || prefix.isEmpty()) ? "pinpoint" : prefix;
-            dbg.addData(p + ".hardwareMapName", hardwareMapName)
-                    .addData(p + ".forwardPodOffsetLeftInches", forwardPodOffsetLeftInches)
-                    .addData(p + ".strafePodOffsetForwardInches", strafePodOffsetForwardInches)
-                    .addData(p + ".enableResetOnInit", enableResetOnInit)
-                    .addData(p + ".resetWaitMs", resetWaitMs)
-                    .addData(p + ".encoderPods", encoderPods)
-                    .addData(p + ".customEncoderResolutionTicksPerInch", customEncoderResolutionTicksPerInch)
-                    .addData(p + ".forwardPodDirection", forwardPodDirection)
-                    .addData(p + ".strafePodDirection", strafePodDirection)
-                    .addData(p + ".yawScalar", yawScalar)
-                    .addData(p + ".quality", quality);
+            if (c.hardwareMapName.trim().isEmpty()) {
+                throw new IllegalArgumentException(
+                        owner + ".hardwareMapName must contain a non-whitespace FTC hardware name, got '"
+                                + c.hardwareMapName + "'"
+                );
+            }
+            requireOffsetRepresentable(
+                    c.forwardPodOffsetLeftInches,
+                    owner + ".forwardPodOffsetLeftInches"
+            );
+            requireOffsetRepresentable(
+                    c.strafePodOffsetForwardInches,
+                    owner + ".strafePodOffsetForwardInches"
+            );
+            c.encoderResolution = Objects.requireNonNull(
+                    c.encoderResolution,
+                    owner + ".encoderResolution must not be null"
+            );
+            c.encoderResolution.requireVendorRepresentable(owner + ".encoderResolution");
+            c.forwardPodDirection = Objects.requireNonNull(
+                    c.forwardPodDirection,
+                    owner + ".forwardPodDirection must not be null"
+            );
+            c.strafePodDirection = Objects.requireNonNull(
+                    c.strafePodDirection,
+                    owner + ".strafePodDirection must not be null"
+            );
+            if (c.yawScalar != null) {
+                requirePositiveFloatRepresentable(c.yawScalar, owner + ".yawScalar");
+            }
+            if (!Double.isFinite(c.quality) || c.quality < 0.0 || c.quality > 1.0) {
+                throw new IllegalArgumentException(
+                        owner + ".quality must be finite and in [0, 1], got " + c.quality
+                );
+            }
+            return c;
+        }
+
+        private static String normalizedContext(String context) {
+            return context == null || context.trim().isEmpty()
+                    ? Config.class.getCanonicalName()
+                    : context;
+        }
+
+        private static void requireOffsetRepresentable(double value, String fieldName) {
+            if (!Double.isFinite(value)) {
+                throw new IllegalArgumentException(
+                        fieldName + " must be finite inches, got " + value
+                );
+            }
+            float vendorMillimetres = (float) CONFIG_DISTANCE_UNIT.toMm(value);
+            if (!Float.isFinite(vendorMillimetres)
+                    || (value != 0.0 && vendorMillimetres == 0.0f)) {
+                throw new IllegalArgumentException(
+                        fieldName + " must remain finite and preserve a nonzero value when "
+                                + "translated to the Pinpoint millimetre float, got " + value
+                );
+            }
+        }
+
+        private static void requirePositiveFloatRepresentable(double value, String fieldName) {
+            float vendorValue = (float) value;
+            if (!Double.isFinite(value) || value <= 0.0
+                    || !Float.isFinite(vendorValue) || vendorValue <= 0.0f) {
+                throw new IllegalArgumentException(
+                        fieldName + " must be finite and > 0 and remain a finite positive Pinpoint "
+                                + "float, got " + value
+                );
+            }
         }
     }
 
-    private final GoBildaPinpointDriver odo;
+    private static final String CONFIG_CONTEXT =
+            PinpointOdometryPredictor.class.getCanonicalName() + ".Config";
+
+    private final PinpointDevice odo;
     private final Config cfg;
 
     private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
@@ -294,68 +330,87 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     private boolean hasPreviousPhysicalHeading;
     private double previousPhysicalHeadingRad;
     private double totalHeadingRad;
+    private GoBildaPinpointDriver.DeviceStatus lastDeviceStatus =
+            GoBildaPinpointDriver.DeviceStatus.NOT_READY;
 
     /**
      * Creates a Pinpoint-backed motion predictor.
      *
-     * <p>If {@code config} is {@code null}, {@link Config#defaults()} is used.</p>
+     * <p>The complete Config is validated and defensively captured before device lookup. After
+     * configuration, construction issues exactly one nonblocking pose/IMU reset and returns. The
+     * robot must remain stationary until a later {@link #update(LoopClock)} observes exact
+     * {@link GoBildaPinpointDriver.DeviceStatus#READY}; use {@link #lastDeviceStatus()} and the
+     * published pose availability rather than a delay.</p>
+     *
+     * @throws NullPointerException if {@code hardwareMap}, {@code config}, or a required Config
+     *                              field is null
+     * @throws IllegalArgumentException if a Config value is outside its documented domain or
+     *                                  exact vendor representation
      */
     public PinpointOdometryPredictor(HardwareMap hardwareMap, Config config) {
-        Objects.requireNonNull(hardwareMap, "hardwareMap");
+        this(hardwareLookup(hardwareMap), config);
+    }
 
-        Config base = (config != null) ? config : Config.defaults();
-        this.cfg = base.copy();
-
-        this.odo = hardwareMap.get(GoBildaPinpointDriver.class,
-                Objects.requireNonNull(this.cfg.hardwareMapName, "hardwareMapName"));
-
-        odo.setOffsets(
-                this.cfg.forwardPodOffsetLeftInches,
-                this.cfg.strafePodOffsetForwardInches,
-                CONFIG_DISTANCE_UNIT
+    /**
+     * Package-private deterministic seam for testing lookup/effect order without an I2C device.
+     */
+    PinpointOdometryPredictor(PinpointDeviceLookup deviceLookup, Config config) {
+        PinpointDeviceLookup lookup = Objects.requireNonNull(deviceLookup, "deviceLookup");
+        Config draft = Objects.requireNonNull(
+                config,
+                CONFIG_CONTEXT + " must not be null; call Config.defaults() explicitly"
         );
+        this.cfg = draft.validatedCopy(CONFIG_CONTEXT);
 
+        try {
+            this.odo = Objects.requireNonNull(
+                    lookup.get(this.cfg.hardwareMapName),
+                    "Pinpoint hardware lookup returned null for '" + this.cfg.hardwareMapName + "'"
+            );
+        } catch (RuntimeException failure) {
+            throw constructionFailure("device lookup", failure);
+        }
+
+        configureStage("pod-offset configuration", () -> odo.setOffsetsInches(
+                this.cfg.forwardPodOffsetLeftInches,
+                this.cfg.strafePodOffsetForwardInches
+        ));
         if (this.cfg.yawScalar != null) {
-            odo.setYawScalar(this.cfg.yawScalar);
+            configureStage("yaw-scalar configuration", () -> odo.setYawScalar(this.cfg.yawScalar));
         }
+        configureStage("encoder-resolution configuration", () ->
+                this.cfg.encoderResolution.applyTo(
+                        odo::setGoBildaEncoderResolution,
+                        odo::setCustomEncoderResolutionTicksPerInch
+                ));
+        configureStage("encoder-direction configuration", () -> odo.setEncoderDirections(
+                this.cfg.forwardPodDirection,
+                this.cfg.strafePodDirection
+        ));
+        configureStage("initial pose/IMU reset", odo::resetPosAndIMU);
+    }
 
-        if (this.cfg.customEncoderResolutionTicksPerInch != null) {
-            odo.setEncoderResolution(this.cfg.customEncoderResolutionTicksPerInch, CONFIG_DISTANCE_UNIT);
-        } else if (this.cfg.encoderPods != null) {
-            odo.setEncoderResolution(this.cfg.encoderPods);
-        }
+    private static PinpointDeviceLookup hardwareLookup(HardwareMap hardwareMap) {
+        HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
+        return hardwareMapName -> new SdkPinpointDevice(requiredHardwareMap.get(
+                GoBildaPinpointDriver.class,
+                hardwareMapName
+        ));
+    }
 
-        if (this.cfg.forwardPodDirection != null && this.cfg.strafePodDirection != null) {
-            odo.setEncoderDirections(this.cfg.forwardPodDirection, this.cfg.strafePodDirection);
-        }
-
-        if (this.cfg.enableResetOnInit) {
-            odo.resetPosAndIMU();
-            if (this.cfg.resetWaitMs > 0) {
-                try {
-                    Thread.sleep(this.cfg.resetWaitMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
+    private void configureStage(String stage, Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException failure) {
+            throw constructionFailure(stage, failure);
         }
     }
 
-    /**
-     * Exposes the underlying FTC driver in case advanced hardware access is needed.
-     */
-    public GoBildaPinpointDriver getDriver() {
-        return odo;
-    }
-
-    /**
-     * Returns a defensive copy of the hardware/configuration snapshot owned by this predictor.
-     *
-     * <p>Integration owners may use this to validate lifecycle assumptions such as a controlled
-     * INIT reset without acquiring or configuring the raw Pinpoint driver themselves.</p>
-     */
-    public Config config() {
-        return cfg.copy();
+    private IllegalStateException constructionFailure(String stage, RuntimeException failure) {
+        return new IllegalStateException(
+                "Pinpoint hardware '" + cfg.hardwareMapName + "' failed during " + stage,
+                failure
+        );
     }
 
     /**
@@ -391,8 +446,9 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
             updateFromHardware(currentClock.cycle(), currentClock.nowTimestamp());
         } catch (RuntimeException failure) {
             // A failed poll may have consumed only part of a hardware sample. Do not bridge a
-            // later motion delta across that unknown interval.
-            updateState.invalidateMotionBaseline();
+            // later motion delta or physical turn across that unknown interval. The status cache
+            // remains the status from the most recent completed vendor poll/status read.
+            invalidateMeasuredBaselines();
             throw updateState.recordFailure(failure);
         } finally {
             updateState.endUpdate();
@@ -402,17 +458,19 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     /** Perform the one physical poll for an already-claimed loop cycle. */
     private void updateFromHardware(long cycle, LoopTimestamp timestamp) {
         odo.update();
+        GoBildaPinpointDriver.DeviceStatus polledStatus = odo.getDeviceStatus();
+        lastDeviceStatus = polledStatus != null
+                ? polledStatus
+                : GoBildaPinpointDriver.DeviceStatus.NOT_READY;
+        if (lastDeviceStatus != GoBildaPinpointDriver.DeviceStatus.READY) {
+            publishUnavailableMeasuredState(cycle, timestamp);
+            return;
+        }
+
         Pose2D pos = odo.getPosition();
 
         if (pos == null) {
-            updateState.invalidateMotionBaseline();
-            lastEstimate = PoseEstimate.noPose(timestamp);
-            lastMotionDelta = MotionDelta.none(timestamp);
-            lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
-                    cycle,
-                    timestamp,
-                    totalHeadingRad
-            );
+            publishUnavailableMeasuredState(cycle, timestamp);
             return;
         }
 
@@ -421,32 +479,26 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         double headingRad = normalizeDriverHeadingRad(pos.getHeading(AngleUnit.RADIANS));
 
         if (!isFinite(xIn, yIn, headingRad)) {
-            updateState.invalidateMotionBaseline();
-            lastEstimate = PoseEstimate.noPose(timestamp);
-            lastMotionDelta = MotionDelta.none(timestamp);
-            lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
-                    cycle,
-                    timestamp,
-                    totalHeadingRad
-            );
+            publishUnavailableMeasuredState(cycle, timestamp);
             return;
         }
 
+        double nextTotalHeadingRad = totalHeadingRad;
         if (hasPreviousPhysicalHeading) {
-            totalHeadingRad = accumulateUnwrappedHeadingRad(
+            nextTotalHeadingRad = accumulateUnwrappedHeadingRad(
                     totalHeadingRad,
                     previousPhysicalHeadingRad,
                     headingRad
             );
+            if (!Double.isFinite(nextTotalHeadingRad)) {
+                publishUnavailableMeasuredState(cycle, timestamp);
+                return;
+            }
         }
-        previousPhysicalHeadingRad = headingRad;
-        hasPreviousPhysicalHeading = true;
 
-        double fieldVelocityXInchesPerSec = odo.getVelX(DistanceUnit.INCH);
-        double fieldVelocityYInchesPerSec = odo.getVelY(DistanceUnit.INCH);
-        double angularVelocityRadPerSec = odo.getHeadingVelocity(
-                AngleUnit.RADIANS.getUnnormalized()
-        );
+        double fieldVelocityXInchesPerSec = odo.getVelXInchesPerSec();
+        double fieldVelocityYInchesPerSec = odo.getVelYInchesPerSec();
+        double angularVelocityRadPerSec = odo.getHeadingVelocityRadPerSec();
         boolean hasVelocity = isFinite(
                 fieldVelocityXInchesPerSec,
                 fieldVelocityYInchesPerSec,
@@ -454,10 +506,9 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         );
 
         Pose3d pose = new Pose3d(xIn, yIn, 0.0, headingRad, 0.0, 0.0);
-        lastMotionDelta = updateState.observeMotion(pose, timestamp, cfg.quality);
-
-        lastEstimate = new PoseEstimate(pose, true, cfg.quality, timestamp);
-        lastKinematicSnapshot = PinpointKinematicSnapshot.sampled(
+        MotionDelta nextMotionDelta = updateState.observeMotion(pose, timestamp, cfg.quality);
+        PoseEstimate nextEstimate = new PoseEstimate(pose, true, cfg.quality, timestamp);
+        PinpointKinematicSnapshot nextKinematicSnapshot = PinpointKinematicSnapshot.sampled(
                 pose.toPose2d(),
                 hasVelocity,
                 cycle,
@@ -465,12 +516,45 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 fieldVelocityXInchesPerSec,
                 fieldVelocityYInchesPerSec,
                 angularVelocityRadPerSec,
+                nextTotalHeadingRad
+        );
+
+        previousPhysicalHeadingRad = headingRad;
+        hasPreviousPhysicalHeading = true;
+        totalHeadingRad = nextTotalHeadingRad;
+        lastMotionDelta = nextMotionDelta;
+        lastEstimate = nextEstimate;
+        lastKinematicSnapshot = nextKinematicSnapshot;
+    }
+
+    /** Publish one completed poll that did not provide READY finite measured evidence. */
+    private void publishUnavailableMeasuredState(long cycle, LoopTimestamp timestamp) {
+        invalidateMeasuredBaselines();
+        lastEstimate = PoseEstimate.noPose(timestamp);
+        lastMotionDelta = MotionDelta.none(timestamp);
+        lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
+                cycle,
+                timestamp,
                 totalHeadingRad
         );
     }
 
+    /** Clear baselines that may only span consecutive successful READY samples. */
+    private void invalidateMeasuredBaselines() {
+        updateState.invalidateMotionBaseline();
+        hasPreviousPhysicalHeading = false;
+        previousPhysicalHeadingRad = 0.0;
+    }
+
     /**
-     * Returns the most recent absolute odometry pose reported by Pinpoint.
+     * Returns the latest available Pinpoint-frame coordinate.
+     *
+     * <p>A successful finite {@code READY} poll publishes measured pose with that poll's timestamp.
+     * Non-READY or unusable polls publish no pose. A deliberate {@link #setPose(Pose2d)} may expose
+     * the commanded coordinate, but its timestamp is unavailable unless a surviving READY measured
+     * fact can be rebased. Evidence consumers must therefore check both {@link PoseEstimate#hasPose}
+     * and timestamp freshness; callers that specifically require physical device readiness must
+     * also inspect the cache-only {@link #lastDeviceStatus()}.</p>
      */
     @Override
     public PoseEstimate getEstimate() {
@@ -488,12 +572,25 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     /**
      * Returns the immutable kinematic sample produced by the latest physical Pinpoint poll.
      *
-     * <p>A deliberate {@link #setPose(Pose2d)} may rebase the snapshot pose afterward, but preserves
-     * the measured velocity, physical total heading, cycle, and poll timestamp. Callers that require
-     * current-loop data should also check {@link PinpointKinematicSnapshot#isCurrentFor(LoopClock)}.</p>
+     * <p>A deliberate {@link #setPose(Pose2d)} may rebase the snapshot pose afterward. It preserves
+     * measured velocity and poll time only while exact READY completed-poll baselines still exist;
+     * otherwise it exposes the commanded coordinate with unavailable measured timing. Physical
+     * total heading is never changed by the coordinate rebase. Callers that require current-loop
+     * data must also check {@link PinpointKinematicSnapshot#isCurrentFor(LoopClock)}.</p>
      */
     public PinpointKinematicSnapshot getKinematicSnapshot() {
         return lastKinematicSnapshot;
+    }
+
+    /**
+     * Return the status captured from the most recent completed Pinpoint poll.
+     *
+     * <p>This is a cache-only read. It never polls hardware. Construction, explicit pose/IMU
+     * reset, and explicit recalibration force {@link GoBildaPinpointDriver.DeviceStatus#NOT_READY}
+     * until a later {@link #update(LoopClock)} captures another status.</p>
+     */
+    public GoBildaPinpointDriver.DeviceStatus lastDeviceStatus() {
+        return lastDeviceStatus;
     }
 
     /**
@@ -501,18 +598,18 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
      *
      * <p>Published pose and motion are invalidated before the vendor operation. If that operation
      * throws after acting partially, callers therefore observe unavailable state rather than a
-     * replayable pre-reset delta.</p>
+     * replayable pre-reset delta. The call returns without waiting for calibration; keep the drive
+     * owner stopped until a later poll reports exact READY and publishes a measured sample.</p>
      */
     public void resetPosAndIMU() {
         // The vendor call is not transactional. Invalidate both internal and published state
         // first so a partial reset cannot leave pre-reset motion or pose available to a caller.
         LoopTimestamp timestamp = lastTimestamp();
-        updateState.invalidateMotionBaseline();
+        invalidateMeasuredBaselines();
         lastEstimate = PoseEstimate.noPose(timestamp);
         lastMotionDelta = MotionDelta.none(timestamp);
-        hasPreviousPhysicalHeading = false;
-        previousPhysicalHeadingRad = 0.0;
         totalHeadingRad = 0.0;
+        lastDeviceStatus = GoBildaPinpointDriver.DeviceStatus.NOT_READY;
         lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
                 lastKinematicSnapshot.cycle,
                 timestamp,
@@ -524,46 +621,44 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     /**
      * Recalibrates the IMU without resetting pose.
      *
-     * <p>The last pose is restored only after the vendor operation succeeds. A failure leaves pose,
-     * velocity, and motion unavailable until a later successful physical poll.</p>
+     * <p>The operation returns immediately and forces all measured pose, velocity, and motion
+     * unavailable. The robot must remain stationary until a later poll captures exact READY and
+     * establishes fresh physical baselines. Recalibration never restores an earlier cached pose as
+     * though calibration had completed.</p>
      */
     public void recalibrateIMU() {
-        // Preserve the last absolute pose on success, but publish no pose/motion while the
-        // nontransactional vendor operation is in progress or if it fails partway through.
         LoopTimestamp timestamp = lastTimestamp();
-        PoseEstimate previousEstimate = lastEstimate;
-        PinpointKinematicSnapshot previousSnapshot = lastKinematicSnapshot;
-        updateState.invalidateMotionBaseline();
+        long previousCycle = lastKinematicSnapshot.cycle;
+        invalidateMeasuredBaselines();
         lastEstimate = PoseEstimate.noPose(timestamp);
         lastMotionDelta = MotionDelta.none(timestamp);
-        hasPreviousPhysicalHeading = false;
+        lastDeviceStatus = GoBildaPinpointDriver.DeviceStatus.NOT_READY;
         lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
-                previousSnapshot.cycle,
+                previousCycle,
                 timestamp,
                 totalHeadingRad
         );
 
         odo.recalibrateIMU();
-
-        // Establish a new physical-heading baseline after calibration; a calibration jump is not motion.
-        lastEstimate = previousEstimate;
-        lastKinematicSnapshot = previousSnapshot.withoutVelocity();
     }
 
     /**
      * Snaps both the underlying Pinpoint device and this predictor's cached estimate to a known field pose.
      *
-     * <p>Published pose and motion fail closed before the vendor write. The requested pose becomes
-     * visible only after that write succeeds.</p>
+     * <p>Null, non-finite, or unrepresentable poses fail before any cache or vendor effect. After
+     * validation, published pose and motion fail closed before the nontransactional vendor write;
+     * the commanded coordinate becomes visible only after that write succeeds.</p>
+     *
+     * <p>A coordinate rebase does not change cached device status and does not prove physical
+     * readiness. If exact READY and corresponding completed-poll baselines still exist, the rebase
+     * preserves that measured timestamp, velocity, and accumulated physical heading while moving
+     * the baselines. Otherwise the commanded coordinate is published with an unavailable timestamp
+     * and no measured velocity/baseline. A later READY poll must establish fresh evidence before it
+     * can publish motion.</p>
      */
     @Override
     public void setPose(Pose2d pose) {
-        if (pose == null) {
-            return;
-        }
-        requireFinitePose(pose);
-        double headingRad = MathUtil.wrapToPi(pose.headingRad);
-        Pose2d rebasedPose = new Pose2d(pose.xInches, pose.yInches, headingRad);
+        Pose2d rebasedPose = requireVendorRepresentablePose(pose);
         Pose2D set = new Pose2D(
                 DistanceUnit.INCH,
                 rebasedPose.xInches,
@@ -574,11 +669,17 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         // The vendor call is not transactional. Fail closed before it starts so a partial pose
         // write cannot leave either the old motion interval or old coordinate snapshot visible.
         LoopTimestamp timestamp = lastTimestamp();
+        PoseEstimate previousEstimate = lastEstimate;
         PinpointKinematicSnapshot previousSnapshot = lastKinematicSnapshot;
-        updateState.invalidateMotionBaseline();
+        boolean canPreserveMeasuredEvidence =
+                lastDeviceStatus == GoBildaPinpointDriver.DeviceStatus.READY
+                        && previousEstimate.hasPose
+                        && previousSnapshot.hasPose
+                        && updateState.hasMotionBaseline()
+                        && hasPreviousPhysicalHeading;
+        invalidateMeasuredBaselines();
         lastEstimate = PoseEstimate.noPose(timestamp);
         lastMotionDelta = MotionDelta.none(timestamp);
-        hasPreviousPhysicalHeading = false;
         lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
                 previousSnapshot.cycle,
                 timestamp,
@@ -587,6 +688,9 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
 
         odo.setPosition(set);
 
+        LoopTimestamp publishedTimestamp = canPreserveMeasuredEvidence
+                ? previousEstimate.timestamp
+                : LoopTimestamp.unavailable();
         lastEstimate = new PoseEstimate(new Pose3d(
                 rebasedPose.xInches,
                 rebasedPose.yInches,
@@ -594,13 +698,24 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 rebasedPose.headingRad,
                 0.0,
                 0.0
-        ), true, cfg.quality, timestamp);
-        lastMotionDelta = MotionDelta.none(timestamp);
-        updateState.rebaseMotionBaseline(lastEstimate.fieldToRobotPose, timestamp);
-        // A coordinate correction is not physical motion; retain the last measured velocity/turn.
-        previousPhysicalHeadingRad = rebasedPose.headingRad;
-        hasPreviousPhysicalHeading = true;
-        lastKinematicSnapshot = previousSnapshot.withRebasedPose(rebasedPose);
+        ), true, cfg.quality, publishedTimestamp);
+        lastMotionDelta = MotionDelta.none(publishedTimestamp);
+        if (canPreserveMeasuredEvidence) {
+            updateState.rebaseMotionBaseline(
+                    lastEstimate.fieldToRobotPose,
+                    publishedTimestamp
+            );
+            // A coordinate correction is not physical motion; retain measured velocity/turn.
+            previousPhysicalHeadingRad = rebasedPose.headingRad;
+            hasPreviousPhysicalHeading = true;
+            lastKinematicSnapshot = previousSnapshot.withRebasedPose(rebasedPose);
+        } else {
+            lastKinematicSnapshot = PinpointKinematicSnapshot.commanded(
+                    rebasedPose,
+                    previousSnapshot.cycle,
+                    totalHeadingRad
+            );
+        }
     }
 
     private LoopTimestamp lastTimestamp() {
@@ -632,17 +747,54 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         return true;
     }
 
-    private static void requireFinitePose(Pose2d pose) {
-        if (!isFinite(pose.xInches, pose.yInches, pose.headingRad)) {
-            throw new IllegalArgumentException("Pinpoint pose must contain finite inches/radians: " + pose);
+    private static Pose2d requireVendorRepresentablePose(Pose2d pose) {
+        Pose2d requiredPose = Objects.requireNonNull(
+                pose,
+                "PinpointOdometryPredictor.setPose(pose) requires a non-null finite Pose2d"
+        );
+        requireFinitePoseComponent(requiredPose.xInches, "pose.xInches", "inches");
+        requireFinitePoseComponent(requiredPose.yInches, "pose.yInches", "inches");
+        requireFinitePoseComponent(requiredPose.headingRad, "pose.headingRad", "radians");
+
+        requireDistanceFloatRepresentable(requiredPose.xInches, "pose.xInches");
+        requireDistanceFloatRepresentable(requiredPose.yInches, "pose.yInches");
+        double wrappedHeadingRad = MathUtil.wrapToPi(requiredPose.headingRad);
+        float vendorHeadingRad = (float) wrappedHeadingRad;
+        if (!Float.isFinite(vendorHeadingRad)
+                || (wrappedHeadingRad != 0.0 && vendorHeadingRad == 0.0f)) {
+            throw new IllegalArgumentException(
+                    "PinpointOdometryPredictor.pose.headingRad must remain finite and preserve a "
+                            + "nonzero wrapped value in the Pinpoint float, got "
+                            + requiredPose.headingRad + " (wrapped " + wrappedHeadingRad + ")"
+            );
+        }
+        return new Pose2d(requiredPose.xInches, requiredPose.yInches, wrappedHeadingRad);
+    }
+
+    private static void requireFinitePoseComponent(double value, String fieldName, String units) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(
+                    "PinpointOdometryPredictor." + fieldName + " must be finite " + units
+                            + ", got " + value
+            );
+        }
+    }
+
+    private static void requireDistanceFloatRepresentable(double inches, String fieldName) {
+        float vendorMillimetres = (float) CONFIG_DISTANCE_UNIT.toMm(inches);
+        if (!Float.isFinite(vendorMillimetres)
+                || (inches != 0.0 && vendorMillimetres == 0.0f)) {
+            throw new IllegalArgumentException(
+                    "PinpointOdometryPredictor." + fieldName + " must remain finite and preserve "
+                            + "a nonzero value in the Pinpoint millimetre float, got " + inches
+            );
         }
     }
 
     /**
-     * Emits the cached predictor pose, last motion delta, and static config for telemetry/debugging.
+     * Emits only cached predictor state and the captured static configuration.
      *
-     * <p>The {@code driverStatus} row is one live, status-only read at this owned hardware boundary;
-     * it does not call the driver's pose update or acquire a new pose result.</p>
+     * <p>This method never polls Pinpoint or performs another live status read.</p>
      */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
@@ -651,12 +803,147 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         }
         String p = (prefix == null || prefix.isEmpty()) ? "pinpoint" : prefix;
         dbg.addData(p + ".class", getClass().getSimpleName())
-                .addData(p + ".driverStatus", odo.getDeviceStatus())
+                .addData(p + ".driverStatus", lastDeviceStatus)
                 .addData(p + ".lastEstimate", lastEstimate)
                 .addData(p + ".lastMotionDelta", lastMotionDelta)
                 .addData(p + ".lastKinematicSnapshot", lastKinematicSnapshot)
-                .addData(p + ".lastUpdateCycle", updateState.lastUpdateCycle());
-        cfg.debugDump(dbg, p + ".cfg");
+                .addData(p + ".lastUpdateCycle", updateState.lastUpdateCycle())
+                .addData(p + ".cfg.hardwareMapName", cfg.hardwareMapName)
+                .addData(p + ".cfg.forwardPodOffsetLeftInches",
+                        cfg.forwardPodOffsetLeftInches)
+                .addData(p + ".cfg.strafePodOffsetForwardInches",
+                        cfg.strafePodOffsetForwardInches)
+                .addData(p + ".cfg.encoderResolution", cfg.encoderResolution)
+                .addData(p + ".cfg.forwardPodDirection", cfg.forwardPodDirection)
+                .addData(p + ".cfg.strafePodDirection", cfg.strafePodDirection)
+                .addData(p + ".cfg.yawScalar", cfg.yawScalar)
+                .addData(p + ".cfg.quality", cfg.quality);
+    }
+
+    /** Package-private acquisition seam; production still exposes only the HardwareMap constructor. */
+    interface PinpointDeviceLookup {
+        PinpointDevice get(String hardwareMapName);
+    }
+
+    /** Small package-private device surface used to prove lifecycle behavior without raw export. */
+    interface PinpointDevice {
+        void setOffsetsInches(double forwardPodOffsetLeftInches,
+                              double strafePodOffsetForwardInches);
+
+        void setYawScalar(double yawScalar);
+
+        void setGoBildaEncoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods pod);
+
+        void setCustomEncoderResolutionTicksPerInch(double ticksPerInch);
+
+        void setEncoderDirections(GoBildaPinpointDriver.EncoderDirection forwardDirection,
+                                  GoBildaPinpointDriver.EncoderDirection strafeDirection);
+
+        void resetPosAndIMU();
+
+        void recalibrateIMU();
+
+        void update();
+
+        GoBildaPinpointDriver.DeviceStatus getDeviceStatus();
+
+        Pose2D getPosition();
+
+        double getVelXInchesPerSec();
+
+        double getVelYInchesPerSec();
+
+        double getHeadingVelocityRadPerSec();
+
+        void setPosition(Pose2D pose);
+    }
+
+    /** Exact FTC SDK translation kept private to the owned hardware boundary. */
+    private static final class SdkPinpointDevice implements PinpointDevice {
+        private final GoBildaPinpointDriver driver;
+
+        private SdkPinpointDevice(GoBildaPinpointDriver driver) {
+            this.driver = Objects.requireNonNull(driver, "driver");
+        }
+
+        @Override
+        public void setOffsetsInches(double forwardPodOffsetLeftInches,
+                                     double strafePodOffsetForwardInches) {
+            driver.setOffsets(
+                    forwardPodOffsetLeftInches,
+                    strafePodOffsetForwardInches,
+                    CONFIG_DISTANCE_UNIT
+            );
+        }
+
+        @Override
+        public void setYawScalar(double yawScalar) {
+            driver.setYawScalar(yawScalar);
+        }
+
+        @Override
+        public void setGoBildaEncoderResolution(
+                GoBildaPinpointDriver.GoBildaOdometryPods pod) {
+            driver.setEncoderResolution(pod);
+        }
+
+        @Override
+        public void setCustomEncoderResolutionTicksPerInch(double ticksPerInch) {
+            driver.setEncoderResolution(ticksPerInch, CONFIG_DISTANCE_UNIT);
+        }
+
+        @Override
+        public void setEncoderDirections(
+                GoBildaPinpointDriver.EncoderDirection forwardDirection,
+                GoBildaPinpointDriver.EncoderDirection strafeDirection) {
+            driver.setEncoderDirections(forwardDirection, strafeDirection);
+        }
+
+        @Override
+        public void resetPosAndIMU() {
+            driver.resetPosAndIMU();
+        }
+
+        @Override
+        public void recalibrateIMU() {
+            driver.recalibrateIMU();
+        }
+
+        @Override
+        public void update() {
+            driver.update();
+        }
+
+        @Override
+        public GoBildaPinpointDriver.DeviceStatus getDeviceStatus() {
+            return driver.getDeviceStatus();
+        }
+
+        @Override
+        public Pose2D getPosition() {
+            return driver.getPosition();
+        }
+
+        @Override
+        public double getVelXInchesPerSec() {
+            return driver.getVelX(DistanceUnit.INCH);
+        }
+
+        @Override
+        public double getVelYInchesPerSec() {
+            return driver.getVelY(DistanceUnit.INCH);
+        }
+
+        @Override
+        public double getHeadingVelocityRadPerSec() {
+            UnnormalizedAngleUnit radians = AngleUnit.RADIANS.getUnnormalized();
+            return driver.getHeadingVelocity(radians);
+        }
+
+        @Override
+        public void setPosition(Pose2D pose) {
+            driver.setPosition(pose);
+        }
     }
 
     /**
@@ -738,8 +1025,15 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 return MotionDelta.none(currentTimestamp);
             }
 
+            Pose3d deltaPose = motionBaselinePose.inverse().then(currentPose);
+            if (!isFinite(deltaPose.xInches, deltaPose.yInches, deltaPose.yawRad)) {
+                // Both samples were finite, but their relative transform exceeded representable
+                // planar arithmetic. Do not claim a delta and do not bridge this interval again.
+                rebaseMotionBaseline(currentPose, currentTimestamp);
+                return MotionDelta.none(currentTimestamp);
+            }
             MotionDelta result = new MotionDelta(
-                    motionBaselinePose.inverse().then(currentPose),
+                    deltaPose,
                     true,
                     quality,
                     motionBaselineTimestamp,
@@ -754,6 +1048,11 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
             motionBaselinePose = Objects.requireNonNull(pose, "pose");
             motionBaselineTimestamp = Objects.requireNonNull(timestamp, "timestamp");
             hasMotionBaseline = true;
+        }
+
+        /** Whether a completed READY sample or deliberate READY rebase owns a motion anchor. */
+        boolean hasMotionBaseline() {
+            return hasMotionBaseline;
         }
 
         /** Require the next valid sample to establish a fresh physical-motion baseline. */

@@ -113,8 +113,25 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         assertEquals(2, predictor.updateCalls);
         assertEquals(2, drive.updateCalls);
         assertEquals(2, drive.driveCalls);
-        assertTrue(Math.abs(drive.lastSignal.axial) > 0.0);
+        assertEquals(0.0, drive.lastSignal.axial, 0.0);
         assertEquals(commitsAfterInit + 1, telemetry.updateCalls);
+
+        events.clear();
+        host.runtimeSec = 20.04;
+        host.loop();
+        assertEquals(3, predictor.updateCalls);
+        assertEquals(3, drive.driveCalls);
+        assertTrue(Math.abs(drive.lastSignal.axial) > 0.0);
+        assertEquals(commitsAfterInit + 2, telemetry.updateCalls);
+
+        // Startup release is construction-only. A later localization loss disables assists in
+        // their own evidence paths but must not confiscate ordinary robot-centric manual drive.
+        events.clear();
+        host.runtimeSec = 20.06;
+        host.loop();
+        assertEquals(4, predictor.updateCalls);
+        assertEquals(4, drive.driveCalls);
+        assertTrue(Math.abs(drive.lastSignal.axial) > 0.0);
 
         events.clear();
         host.stop();
@@ -228,7 +245,7 @@ public final class PhoenixManagedTeleOpLifecycleTest {
                     predictor,
                     createdVision,
                     profile.field.fixedAprilTagLayout,
-                    profile.localization
+                    profile.localization.estimation
             );
         }
 
@@ -296,7 +313,15 @@ public final class PhoenixManagedTeleOpLifecycleTest {
             updateCalls++;
             events.add("localization.update");
             LoopTimestamp timestamp = clock.nowTimestamp();
-            estimate = new PoseEstimate(Pose3d.zero(), false, 0.0, timestamp);
+            Pose3d pose = updateCalls == 1
+                    ? new Pose3d(Double.NaN, 0.0, 0.0, 0.0, 0.0, 0.0)
+                    : Pose3d.zero();
+            estimate = new PoseEstimate(
+                    pose,
+                    updateCalls <= 3,
+                    updateCalls <= 3 ? 1.0 : 0.0,
+                    updateCalls == 2 ? LoopTimestamp.unavailable() : timestamp
+            );
             delta = MotionDelta.none(timestamp);
         }
 

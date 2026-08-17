@@ -1,9 +1,12 @@
 package edu.ftcphoenix.fw.tools.tester.calibration;
 
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
+
 import java.util.Locale;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.ftc.localization.PinpointKinematicSnapshot;
 import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
@@ -76,6 +79,8 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     private PinpointOdometryPredictor pinpoint;
 
     private Mode mode = Mode.IDLE;
+    private boolean resetRequested;
+    private Mode sampleToggleRequested;
     private Pose2d startPose = Pose2d.zero();
 
     // Unwrapped heading for the rotation sample.
@@ -114,10 +119,10 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         pinpoint = new PinpointOdometryPredictor(ctx.hw, cfg.pinpoint);
 
         // Controls.
-        bindings.onRise(gamepads.p1().x(), this::resetAndClear);
-        bindings.onRise(gamepads.p1().a(), () -> toggleSample(Mode.SAMPLE_FORWARD));
-        bindings.onRise(gamepads.p1().y(), () -> toggleSample(Mode.SAMPLE_LEFT));
-        bindings.onRise(gamepads.p1().b(), () -> toggleSample(Mode.SAMPLE_ROTATE));
+        bindings.onRise(gamepads.p1().x(), () -> resetRequested = true);
+        bindings.onRise(gamepads.p1().a(), () -> sampleToggleRequested = Mode.SAMPLE_FORWARD);
+        bindings.onRise(gamepads.p1().y(), () -> sampleToggleRequested = Mode.SAMPLE_LEFT);
+        bindings.onRise(gamepads.p1().b(), () -> sampleToggleRequested = Mode.SAMPLE_ROTATE);
 
         resetAndClear();
     }
@@ -130,6 +135,10 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         // before pressing Start.
         if (pinpoint != null) {
             pinpoint.update(clock);
+        }
+        consumeControlRequestsAfterCurrentPoll();
+        if (!pinpointReadyForSample()) {
+            mode = Mode.IDLE;
         }
 
         Pose2d pose = latestPose();
@@ -147,6 +156,10 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         // Keep Pinpoint updated.
         if (pinpoint != null) {
             pinpoint.update(clock);
+        }
+        consumeControlRequestsAfterCurrentPoll();
+        if (!pinpointReadyForSample()) {
+            mode = Mode.IDLE;
         }
 
         Pose2d pose = latestPose();
@@ -179,8 +192,28 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         }
     }
 
+    /** Consume binding-edge intent only after this cycle's Pinpoint poll has completed. */
+    private void consumeControlRequestsAfterCurrentPoll() {
+        boolean shouldReset = resetRequested;
+        Mode toggle = sampleToggleRequested;
+        resetRequested = false;
+        sampleToggleRequested = null;
+
+        if (shouldReset) {
+            resetAndClear();
+        }
+        if (toggle != null) {
+            toggleSample(toggle);
+        }
+    }
+
     private void toggleSample(Mode requested) {
         if (requested == null) return;
+
+        if (!pinpointReadyForSample()) {
+            mode = Mode.IDLE;
+            return;
+        }
 
         if (mode == requested) {
             // Stop sample.
@@ -244,6 +277,29 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         return est.toPose2d();
     }
 
+    private boolean pinpointReadyForSample() {
+        if (pinpoint == null) {
+            return false;
+        }
+        PinpointKinematicSnapshot snapshot = pinpoint.getKinematicSnapshot();
+        return hasReadyPoseForSample(
+                pinpoint.lastDeviceStatus(),
+                snapshot != null && snapshot.hasPose,
+                snapshot != null ? snapshot.cycle : PinpointKinematicSnapshot.NO_CYCLE,
+                clock.cycle()
+        );
+    }
+
+    /** Package-private pure readiness seam for the hand-motion sample gate. */
+    static boolean hasReadyPoseForSample(GoBildaPinpointDriver.DeviceStatus status,
+                                         boolean hasPose,
+                                         long snapshotCycle,
+                                         long currentCycle) {
+        return status == GoBildaPinpointDriver.DeviceStatus.READY
+                && hasPose
+                && snapshotCycle == currentCycle;
+    }
+
     private void render(Pose2d pose) {
         telemHeader("Pinpoint Axis Direction Check");
 
@@ -252,6 +308,13 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         ctx.telemetry.addLine("");
 
         ctx.telemetry.addData("Mode", mode);
+        ctx.telemetry.addData(
+                "Pinpoint status",
+                pinpoint != null ? pinpoint.lastDeviceStatus() : "NOT_CREATED"
+        );
+        if (!pinpointReadyForSample()) {
+            ctx.telemetry.addLine("Wait for Pinpoint READY before moving the robot or sampling.");
+        }
         ctx.telemetry.addData("Pose X", "%s in", fmt(pose.xInches));
         ctx.telemetry.addData("Pose Y", "%s in", fmt(pose.yInches));
         ctx.telemetry.addData("Pose heading", "%s deg", fmt(Math.toDegrees(pose.headingRad)));
@@ -319,7 +382,8 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             ctx.telemetry.addLine("  -> OK: +X is forward");
         } else {
             ctx.telemetry.addLine("  -> WRONG SIGN: forward produced negative X");
-            ctx.telemetry.addLine("     Suggest: cfg.pinpoint.withForwardPodDirection(REVERSE)");
+            ctx.telemetry.addLine("     Suggest: cfg.pinpoint.forwardPodDirection = "
+                    + "GoBildaPinpointDriver.EncoderDirection.REVERSED;");
         }
     }
 
@@ -342,7 +406,8 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             ctx.telemetry.addLine("  -> OK: +Y is left");
         } else {
             ctx.telemetry.addLine("  -> WRONG SIGN: left produced negative Y");
-            ctx.telemetry.addLine("     Suggest: cfg.pinpoint.withStrafePodDirection(REVERSE)");
+            ctx.telemetry.addLine("     Suggest: cfg.pinpoint.strafePodDirection = "
+                    + "GoBildaPinpointDriver.EncoderDirection.REVERSED;");
         }
     }
 
@@ -365,8 +430,8 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             ctx.telemetry.addLine("  -> OK: heading is CCW-positive");
         } else {
             ctx.telemetry.addLine("  -> WRONG SIGN: CCW rotation produced negative heading");
-            ctx.telemetry.addLine("     Check Pinpoint mounting orientation / IMU alignment.");
-            ctx.telemetry.addLine("     If supported, you can also try setting yawScalar to a negative value.");
+            ctx.telemetry.addLine("     Check Pinpoint mounting orientation, firmware axis settings,");
+            ctx.telemetry.addLine("     and IMU alignment; yawScalar must remain positive.");
         }
     }
 

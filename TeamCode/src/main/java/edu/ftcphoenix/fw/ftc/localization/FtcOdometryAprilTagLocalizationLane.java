@@ -7,6 +7,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -17,6 +18,7 @@ import edu.ftcphoenix.fw.localization.fusion.CorrectedPoseEstimator;
 import edu.ftcphoenix.fw.localization.fusion.OdometryCorrectionEkfEstimator;
 import edu.ftcphoenix.fw.localization.fusion.OdometryCorrectionFusionEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 
 /**
  * FTC-boundary owner for the common "predictor + AprilTag + corrected global pose" stack.
@@ -30,9 +32,9 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  *
  * <p>The ordinary FTC construction path creates and owns a configured
  * {@link PinpointOdometryPredictor}. Integrations that already own a predictor use
- * {@link #withPredictor(MotionPredictor, AprilTagVisionLane, TagLayout, Config)} so this lane and the
- * integration share that one backend-neutral source instead of creating a competing hardware
- * owner.</p>
+ * {@link #withPredictor(MotionPredictor, AprilTagVisionLane, TagLayout, EstimatorConfig)} so this
+ * lane and the integration share that one backend-neutral source instead of creating a competing
+ * hardware owner.</p>
  *
  * <p>The vision lane owns device identity, camera mount, and backend cleanup. This localization lane
  * owns the estimation strategy built on top of those resources: predictor wiring, AprilTag-only
@@ -86,7 +88,9 @@ public final class FtcOdometryAprilTagLocalizationLane {
         public AprilTagLocalizationConfig copy() {
             AprilTagLocalizationConfig c = new AprilTagLocalizationConfig();
             c.maxDetectionAgeSec = this.maxDetectionAgeSec;
-            c.fieldPoseSolver = this.fieldPoseSolver.copy();
+            c.fieldPoseSolver = this.fieldPoseSolver != null
+                    ? this.fieldPoseSolver.copy()
+                    : null;
             return c;
         }
 
@@ -115,7 +119,14 @@ public final class FtcOdometryAprilTagLocalizationLane {
         /** Which absolute correction source should be used for the corrected/global estimator. */
         public CorrectionSourceMode mode = CorrectionSourceMode.APRILTAG_POSE;
 
-        /** Direct Limelight field-pose tuning used when {@link #mode} is {@link CorrectionSourceMode#LIMELIGHT_FIELD_POSE}. */
+        /**
+         * Direct Limelight field-pose tuning.
+         *
+         * <p>This draft is active when {@link #mode} selects
+         * {@link CorrectionSourceMode#LIMELIGHT_FIELD_POSE}, and whenever the supplied vision lane
+         * is a Limelight backend because the composite also retains the direct field-pose estimator
+         * as a diagnostic view.</p>
+         */
         public LimelightFieldPoseEstimator.Config limelightFieldPose = LimelightFieldPoseEstimator.Config.defaults();
 
         private CorrectionSourceConfig() {
@@ -130,32 +141,21 @@ public final class FtcOdometryAprilTagLocalizationLane {
         public CorrectionSourceConfig copy() {
             CorrectionSourceConfig c = new CorrectionSourceConfig();
             c.mode = this.mode;
-            c.limelightFieldPose = this.limelightFieldPose.copy();
+            c.limelightFieldPose = this.limelightFieldPose != null
+                    ? this.limelightFieldPose.copy()
+                    : null;
             return c;
         }
     }
 
     /**
-     * Configuration for the FTC predictor + AprilTag localization lane.
+     * Estimation policy shared by both lane construction paths.
      *
-     * <p>The config groups the stable pieces of localization strategy: convenience-path Pinpoint
-     * tuning, AprilTag field-solve tuning, correction-source selection, corrected-estimator tuning,
-     * and which corrected/global estimator implementation to use. The camera rig itself is
-     * intentionally separate and belongs to the concrete vision-lane config owned by the active
-     * backend.</p>
+     * <p>This config deliberately excludes predictor hardware and calibration. An integration that
+     * already owns a predictor can therefore supply this complete estimator policy without also
+     * authoring an ignored Pinpoint subsection.</p>
      */
-    public static final class Config {
-
-        /**
-         * Motion-predictor configuration used only when the public {@link HardwareMap} constructor
-         * creates the lane-owned {@link PinpointOdometryPredictor}.
-         *
-         * <p>{@link FtcOdometryAprilTagLocalizationLane#withPredictor(MotionPredictor,
-         * AprilTagVisionLane, TagLayout, Config)} uses its supplied, already-configured predictor
-         * instead. All other fields in this config still apply to that injected-predictor path.</p>
-         */
-        public PinpointOdometryPredictor.Config predictor = PinpointOdometryPredictor.Config.defaults();
-
+    public static final class EstimatorConfig {
         /** AprilTag field-solve tuning for the raw AprilTag pose estimator. */
         public AprilTagLocalizationConfig aprilTags = AprilTagLocalizationConfig.defaults();
 
@@ -177,54 +177,129 @@ public final class FtcOdometryAprilTagLocalizationLane {
         /** Which corrected/global estimator implementation the lane should construct. */
         public GlobalEstimatorMode correctedEstimatorMode = GlobalEstimatorMode.FUSION;
 
-        private Config() {
+        private EstimatorConfig() {
         }
 
         /** @return new mutable config instance populated with framework defaults. */
-        public static Config defaults() {
-            return new Config();
+        public static EstimatorConfig defaults() {
+            return new EstimatorConfig();
         }
 
-        /** @return deep copy whose nested configs can be edited independently. */
-        public Config copy() {
-            Config c = new Config();
-            c.predictor = this.predictor.copy();
-            c.aprilTags = this.aprilTags.copy();
-            c.correctionSource = this.correctionSource.copy();
-            c.correctionFusion = this.correctionFusion.copy();
-            c.correctionEkf = this.correctionEkf.copy();
+        /**
+         * Returns a raw authoring copy.
+         *
+         * <p>Every non-null mutable nested draft is copied independently. A null draft remains null
+         * so an inactive branch can be copied without inventing a default or failing before the
+         * active owner selects its graph.</p>
+         *
+         * @return independent, nonvalidating authoring copy
+         */
+        public EstimatorConfig copy() {
+            EstimatorConfig c = new EstimatorConfig();
+            c.aprilTags = this.aprilTags != null ? this.aprilTags.copy() : null;
+            c.correctionSource = this.correctionSource != null
+                    ? this.correctionSource.copy()
+                    : null;
+            c.correctionFusion = this.correctionFusion != null
+                    ? this.correctionFusion.copy()
+                    : null;
+            c.correctionEkf = this.correctionEkf != null
+                    ? this.correctionEkf.copy()
+                    : null;
             c.correctedEstimatorMode = this.correctedEstimatorMode;
             return c;
         }
     }
 
-    private final Config cfg;
+    /**
+     * Complete configuration for the ordinary lane-owned Pinpoint path.
+     *
+     * <p>The lane owns both the Pinpoint predictor described by {@link #predictor} and the estimator
+     * graph described by {@link #estimation}. Camera hardware and trusted field facts remain owned
+     * by the supplied vision lane and {@link TagLayout}, respectively.</p>
+     */
+    public static final class Config {
+
+        /** Pinpoint identity and calibration owned by the ordinary {@link HardwareMap} path. */
+        public PinpointOdometryPredictor.Config predictor = PinpointOdometryPredictor.Config.defaults();
+
+        /** Estimation policy applied around the lane-owned predictor. */
+        public EstimatorConfig estimation = EstimatorConfig.defaults();
+
+        private Config() {
+        }
+
+        /** @return new mutable complete config populated with framework defaults. */
+        public static Config defaults() {
+            return new Config();
+        }
+
+        /**
+         * Returns a raw authoring copy whose non-null nested drafts are independent.
+         *
+         * <p>Null drafts remain null and are rejected only if the active construction path owns
+         * them.</p>
+         *
+         * @return independent, nonvalidating authoring copy
+         */
+        public Config copy() {
+            Config c = new Config();
+            c.predictor = this.predictor != null ? this.predictor.copy() : null;
+            c.estimation = this.estimation != null ? this.estimation.copy() : null;
+            return c;
+        }
+    }
+
     private final AprilTagVisionLane visionLane;
-    private final TagLayout fixedFieldTagLayout;
     private final MotionPredictor predictor;
     private final AprilTagPoseEstimator aprilTagPoseEstimator;
     private final LimelightFieldPoseEstimator limelightFieldPoseEstimator;
     private final AbsolutePoseEstimator correctionEstimator;
     private final CorrectedPoseEstimator globalEstimator;
+    private final CorrectionSourceMode correctionSourceMode;
+    private final GlobalEstimatorMode correctedEstimatorMode;
     private long lastUpdateCycle = Long.MIN_VALUE;
     private boolean updateInProgress;
     private RuntimeException lastUpdateFailure;
 
-    /** Validated, defensively copied constructor inputs prepared before hardware construction. */
+    /** Effect-free estimator inputs captured before owned Pinpoint acquisition. */
+    private static final class EstimatorInputs {
+        final AprilTagVisionLane visionLane;
+        final FtcLimelightAprilTagVisionLane limelightVisionLane;
+        final AprilTagPoseEstimator aprilTagPoseEstimator;
+        final LimelightFieldPoseEstimator.Config limelightFieldPoseConfig;
+        final OdometryCorrectionFusionEstimator.Config correctionFusionConfig;
+        final OdometryCorrectionEkfEstimator.Config correctionEkfConfig;
+        final CorrectionSourceMode correctionSourceMode;
+        final GlobalEstimatorMode correctedEstimatorMode;
+
+        EstimatorInputs(AprilTagVisionLane visionLane,
+                        FtcLimelightAprilTagVisionLane limelightVisionLane,
+                        AprilTagPoseEstimator aprilTagPoseEstimator,
+                        LimelightFieldPoseEstimator.Config limelightFieldPoseConfig,
+                        OdometryCorrectionFusionEstimator.Config correctionFusionConfig,
+                        OdometryCorrectionEkfEstimator.Config correctionEkfConfig,
+                        CorrectionSourceMode correctionSourceMode,
+                        GlobalEstimatorMode correctedEstimatorMode) {
+            this.visionLane = visionLane;
+            this.limelightVisionLane = limelightVisionLane;
+            this.aprilTagPoseEstimator = aprilTagPoseEstimator;
+            this.limelightFieldPoseConfig = limelightFieldPoseConfig;
+            this.correctionFusionConfig = correctionFusionConfig;
+            this.correctionEkfConfig = correctionEkfConfig;
+            this.correctionSourceMode = correctionSourceMode;
+            this.correctedEstimatorMode = correctedEstimatorMode;
+        }
+    }
+
+    /** Complete, validated constructor inputs after the applicable predictor is selected. */
     private static final class ConstructionInputs {
         final MotionPredictor predictor;
-        final AprilTagVisionLane visionLane;
-        final TagLayout fixedFieldTagLayout;
-        final Config config;
+        final EstimatorInputs estimation;
 
-        ConstructionInputs(MotionPredictor predictor,
-                           AprilTagVisionLane visionLane,
-                           TagLayout fixedFieldTagLayout,
-                           Config config) {
+        ConstructionInputs(MotionPredictor predictor, EstimatorInputs estimation) {
             this.predictor = predictor;
-            this.visionLane = visionLane;
-            this.fixedFieldTagLayout = fixedFieldTagLayout;
-            this.config = config;
+            this.estimation = estimation;
         }
     }
 
@@ -235,6 +310,18 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * <p>This is the ordinary FTC/TeleOp convenience path. The lane constructs the predictor from
      * {@link Config#predictor} and then owns its per-loop update as part of the corrected-localization
      * graph.</p>
+     *
+     * <p>Construction validates the complete active estimator branches, snapshots the fixed tag
+     * layout, and captures the vision lane's mount and sensor exactly once before Pinpoint device
+     * lookup, configuration, or reset. Invalid aggregate configuration therefore cannot begin the
+     * owned hardware graph.</p>
+     *
+     * @param hardwareMap FTC hardware registry used only after complete preflight
+     * @param visionLane shared AprilTag vision owner whose mount and sensor are captured once
+     * @param fixedFieldTagLayout fixed FTC-field tag facts snapshotted before hardware effects
+     * @param config complete predictor-plus-estimator authoring draft
+     * @throws NullPointerException for a required null owner, collaborator, or active Config field
+     * @throws IllegalArgumentException for an invalid active Config value
      */
     public FtcOdometryAprilTagLocalizationLane(HardwareMap hardwareMap,
                                                AprilTagVisionLane visionLane,
@@ -251,75 +338,56 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * optional Limelight motion gating, debug output, and {@link #predictor()}; the lane never
      * replaces it with a Pinpoint instance.</p>
      *
-     * <p>{@link Config#predictor} is deliberately not applied because doing so would imply that this
-     * lane may reconfigure an externally owned object. The caller must configure {@code predictor}
-     * before supplying it. The lane still defensively copies and applies every correction,
-     * AprilTag, and corrected-estimator setting in {@code config}.</p>
+     * <p>The supplied {@link EstimatorConfig} contains no Pinpoint subsection, so this path cannot
+     * accept or report hardware configuration that belongs to the external owner. Construction
+     * validates and snapshots the complete active estimator graph without sampling, resetting, or
+     * otherwise touching {@code predictor}.</p>
      *
      * @param predictor          already-configured predictor shared with the external integration
      * @param visionLane         shared AprilTag vision owner
      * @param fixedFieldTagLayout fixed FTC-field tag layout used for localization
-     * @param config             correction and estimator configuration snapshot
+     * @param estimation         correction and estimator configuration draft
      * @return localization lane using exactly {@code predictor}
      */
     public static FtcOdometryAprilTagLocalizationLane withPredictor(
             MotionPredictor predictor,
             AprilTagVisionLane visionLane,
             TagLayout fixedFieldTagLayout,
-            Config config) {
+            EstimatorConfig estimation) {
         return new FtcOdometryAprilTagLocalizationLane(injectedInputs(
                 predictor,
                 visionLane,
                 fixedFieldTagLayout,
-                config
+                estimation
         ));
     }
 
     /** Build the shared estimator graph around one already-created predictor. */
     private FtcOdometryAprilTagLocalizationLane(ConstructionInputs inputs) {
         this.predictor = inputs.predictor;
-        this.visionLane = inputs.visionLane;
-        this.fixedFieldTagLayout = inputs.fixedFieldTagLayout;
-        this.cfg = inputs.config;
+        EstimatorInputs estimation = inputs.estimation;
+        this.visionLane = estimation.visionLane;
+        this.aprilTagPoseEstimator = estimation.aprilTagPoseEstimator;
+        this.correctionSourceMode = estimation.correctionSourceMode;
+        this.correctedEstimatorMode = estimation.correctedEstimatorMode;
 
-        AprilTagPoseEstimator.Config aprilTagCfg =
-                this.cfg.aprilTags.toAprilTagPoseEstimatorConfig(this.visionLane.cameraMountConfig());
-        this.aprilTagPoseEstimator = new AprilTagPoseEstimator(
-                this.visionLane.tagSensor(),
-                this.fixedFieldTagLayout,
-                aprilTagCfg
+        this.limelightFieldPoseEstimator = estimation.limelightVisionLane != null
+                ? new LimelightFieldPoseEstimator(
+                        estimation.limelightVisionLane,
+                        this.predictor,
+                        estimation.limelightFieldPoseConfig
+                )
+                : null;
+        this.correctionEstimator = selectCorrectionEstimator(
+                this.correctionSourceMode,
+                this.aprilTagPoseEstimator,
+                this.limelightFieldPoseEstimator
         );
-
-        this.limelightFieldPoseEstimator = createLimelightFieldPoseEstimator();
-        this.correctionEstimator = createCorrectionEstimator();
-        this.globalEstimator = createGlobalEstimator(this.predictor, this.correctionEstimator);
-    }
-
-    /**
-     * Returns a defensive copy of the lane's estimator configuration.
-     *
-     * <p>For a lane created by {@link #withPredictor(MotionPredictor, AprilTagVisionLane, TagLayout,
-     * Config)}, the returned {@link Config#predictor} section is the retained convenience-path
-     * configuration and does not describe or reconfigure the injected predictor.</p>
-     *
-     * @return defensive copy of the lane config owned by this localization owner
-     */
-    public Config config() {
-        return cfg.copy();
-    }
-
-    /**
-     * @return shared vision lane backing this localization owner.
-     */
-    public AprilTagVisionLane visionLane() {
-        return visionLane;
-    }
-
-    /**
-     * @return fixed field layout trusted for localization and targeting.
-     */
-    public TagLayout fixedFieldTagLayout() {
-        return fixedFieldTagLayout;
+        this.globalEstimator = createGlobalEstimator(
+                this.predictor,
+                this.correctionEstimator,
+                estimation
+        );
     }
 
     /**
@@ -417,8 +485,8 @@ public final class FtcOdometryAprilTagLocalizationLane {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "localizationLane" : prefix;
-        dbg.addData(p + ".correctionSourceMode", cfg.correctionSource.mode)
-                .addData(p + ".correctedEstimatorMode", cfg.correctedEstimatorMode);
+        dbg.addData(p + ".correctionSourceMode", correctionSourceMode)
+                .addData(p + ".correctedEstimatorMode", correctedEstimatorMode);
         visionLane.debugDump(dbg, p + ".visionLane");
         predictor.debugDump(dbg, p + ".predictor");
         aprilTagPoseEstimator.debugDump(dbg, p + ".aprilTagPoseEstimator");
@@ -429,57 +497,65 @@ public final class FtcOdometryAprilTagLocalizationLane {
         globalEstimator.debugDump(dbg, p + ".globalEstimator");
     }
 
-    private LimelightFieldPoseEstimator createLimelightFieldPoseEstimator() {
-        if (!(visionLane instanceof FtcLimelightAprilTagVisionLane)) {
-            return null;
-        }
-        return new LimelightFieldPoseEstimator(
-                (FtcLimelightAprilTagVisionLane) visionLane,
-                predictor,
-                cfg.correctionSource.limelightFieldPose.copy()
-        );
-    }
-
-    private AbsolutePoseEstimator createCorrectionEstimator() {
-        switch (cfg.correctionSource.mode) {
+    /** Select the already-constructed absolute source after backend compatibility was preflighted. */
+    private static AbsolutePoseEstimator selectCorrectionEstimator(
+            CorrectionSourceMode mode,
+            AprilTagPoseEstimator aprilTags,
+            LimelightFieldPoseEstimator limelightFieldPose
+    ) {
+        switch (mode) {
             case APRILTAG_POSE:
-                return aprilTagPoseEstimator;
+                return aprilTags;
 
             case LIMELIGHT_FIELD_POSE:
-                if (limelightFieldPoseEstimator == null) {
-                    throw new IllegalArgumentException(
-                            "FtcOdometryAprilTagLocalizationLane.Config.correctionSource.mode is LIMELIGHT_FIELD_POSE, "
-                                    + "but the active vision lane is not FtcLimelightAprilTagVisionLane"
+                if (limelightFieldPose == null) {
+                    throw new IllegalStateException(
+                            "Limelight correction source passed preflight without a Limelight estimator"
                     );
                 }
-                return limelightFieldPoseEstimator;
+                return limelightFieldPose;
 
             default:
-                throw new IllegalStateException("Unsupported correction source mode: " + cfg.correctionSource.mode);
+                throw new IllegalStateException("Unsupported correction source mode: " + mode);
         }
     }
 
-    private CorrectedPoseEstimator createGlobalEstimator(MotionPredictor predictor,
-                                                         AbsolutePoseEstimator correction) {
-        switch (cfg.correctedEstimatorMode) {
+    /** Construct the selected corrected estimator from its already-validated active config. */
+    private static CorrectedPoseEstimator createGlobalEstimator(
+            MotionPredictor predictor,
+            AbsolutePoseEstimator correction,
+            EstimatorInputs estimation
+    ) {
+        switch (estimation.correctedEstimatorMode) {
             case EKF:
                 return new OdometryCorrectionEkfEstimator(
                         predictor,
                         correction,
-                        cfg.correctionEkf.validatedCopy("FtcOdometryAprilTagLocalizationLane.Config.correctionEkf")
+                        estimation.correctionEkfConfig
                 );
 
             case FUSION:
-            default:
                 return new OdometryCorrectionFusionEstimator(
                         predictor,
                         correction,
-                        cfg.correctionFusion.validatedCopy("FtcOdometryAprilTagLocalizationLane.Config.correctionFusion")
+                        estimation.correctionFusionConfig
+                );
+
+            default:
+                throw new IllegalStateException(
+                        "Unsupported corrected estimator mode: "
+                                + estimation.correctedEstimatorMode
                 );
         }
     }
 
-    /** Validate all stable inputs before creating the convenience-path Pinpoint hardware owner. */
+    /**
+     * Capture every authored input before creating the convenience-path Pinpoint hardware owner.
+     *
+     * <p>All configuration, backend, layout, and completed-vision facts are validated first. Only
+     * after that effect-free preflight succeeds may the Pinpoint constructor look up, configure,
+     * and reset its hardware device.</p>
+     */
     private static ConstructionInputs ownedPinpointInputs(HardwareMap hardwareMap,
                                                           AprilTagVisionLane visionLane,
                                                           TagLayout fixedFieldTagLayout,
@@ -490,30 +566,160 @@ public final class FtcOdometryAprilTagLocalizationLane {
         Config copiedConfig = Objects.requireNonNull(config, "config").copy();
         PinpointOdometryPredictor.Config predictorConfig = Objects.requireNonNull(
                 copiedConfig.predictor,
-                "config.predictor"
-        ).copy();
-        return new ConstructionInputs(
-                new PinpointOdometryPredictor(requiredHardwareMap, predictorConfig),
+                "FtcOdometryAprilTagLocalizationLane.Config.predictor"
+        ).validatedCopy("FtcOdometryAprilTagLocalizationLane.Config.predictor");
+        EstimatorInputs estimatorInputs = captureEstimatorInputs(
                 requiredVisionLane,
                 requiredLayout,
-                copiedConfig
+                Objects.requireNonNull(
+                        copiedConfig.estimation,
+                        "FtcOdometryAprilTagLocalizationLane.Config.estimation"
+                ),
+                "FtcOdometryAprilTagLocalizationLane.Config.estimation"
+        );
+
+        return new ConstructionInputs(
+                new PinpointOdometryPredictor(requiredHardwareMap, predictorConfig),
+                estimatorInputs
         );
     }
 
     /** Validate and copy the estimator graph inputs without constructing another predictor. */
     private static ConstructionInputs injectedInputs(MotionPredictor predictor,
-                                                     AprilTagVisionLane visionLane,
-                                                     TagLayout fixedFieldTagLayout,
-                                                     Config config) {
+                                                      AprilTagVisionLane visionLane,
+                                                      TagLayout fixedFieldTagLayout,
+                                                      EstimatorConfig config) {
         MotionPredictor requiredPredictor = Objects.requireNonNull(predictor, "predictor");
         AprilTagVisionLane requiredVisionLane = Objects.requireNonNull(visionLane, "visionLane");
         TagLayout requiredLayout = Objects.requireNonNull(fixedFieldTagLayout, "fixedFieldTagLayout");
-        Config copiedConfig = Objects.requireNonNull(config, "config").copy();
         return new ConstructionInputs(
                 requiredPredictor,
-                requiredVisionLane,
-                requiredLayout,
-                copiedConfig
+                captureEstimatorInputs(
+                        requiredVisionLane,
+                        requiredLayout,
+                        Objects.requireNonNull(config, "estimation"),
+                        "FtcOdometryAprilTagLocalizationLane.EstimatorConfig"
+                )
         );
+    }
+
+    /**
+     * Raw-copy, validate, and bind one estimator graph without sampling a predictor or hardware.
+     */
+    private static EstimatorInputs captureEstimatorInputs(
+            AprilTagVisionLane visionLane,
+            TagLayout fixedFieldTagLayout,
+            EstimatorConfig authoredConfig,
+            String context
+    ) {
+        EstimatorConfig config = authoredConfig.copy();
+        AprilTagLocalizationConfig aprilTags = captureAprilTagConfig(
+                Objects.requireNonNull(config.aprilTags, context + ".aprilTags"),
+                context + ".aprilTags"
+        );
+        CorrectionSourceConfig correctionSource = Objects.requireNonNull(
+                config.correctionSource,
+                context + ".correctionSource"
+        );
+        CorrectionSourceMode correctionSourceMode = Objects.requireNonNull(
+                correctionSource.mode,
+                context + ".correctionSource.mode"
+        );
+        GlobalEstimatorMode correctedEstimatorMode = Objects.requireNonNull(
+                config.correctedEstimatorMode,
+                context + ".correctedEstimatorMode"
+        );
+
+        OdometryCorrectionFusionEstimator.Config correctionFusion = null;
+        OdometryCorrectionEkfEstimator.Config correctionEkf = null;
+        switch (correctedEstimatorMode) {
+            case FUSION:
+                correctionFusion = Objects.requireNonNull(
+                        config.correctionFusion,
+                        context + ".correctionFusion"
+                ).validatedCopy(context + ".correctionFusion");
+                break;
+
+            case EKF:
+                correctionEkf = Objects.requireNonNull(
+                        config.correctionEkf,
+                        context + ".correctionEkf"
+                ).validatedCopy(context + ".correctionEkf");
+                break;
+
+            default:
+                throw new IllegalStateException(
+                        "Unsupported corrected estimator mode: " + correctedEstimatorMode
+                );
+        }
+
+        FtcLimelightAprilTagVisionLane limelightVisionLane =
+                visionLane instanceof FtcLimelightAprilTagVisionLane
+                        ? (FtcLimelightAprilTagVisionLane) visionLane
+                        : null;
+        boolean limelightConfigActive = limelightVisionLane != null
+                || correctionSourceMode == CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
+        LimelightFieldPoseEstimator.Config limelightFieldPoseConfig = null;
+        if (limelightConfigActive) {
+            limelightFieldPoseConfig = Objects.requireNonNull(
+                    correctionSource.limelightFieldPose,
+                    context + ".correctionSource.limelightFieldPose"
+            ).validatedCopy(context + ".correctionSource.limelightFieldPose");
+        }
+
+        if (correctionSourceMode == CorrectionSourceMode.LIMELIGHT_FIELD_POSE
+                && limelightVisionLane == null) {
+            throw new IllegalArgumentException(
+                    context + ".correctionSource.mode is LIMELIGHT_FIELD_POSE, but visionLane "
+                            + "must be FtcLimelightAprilTagVisionLane; received "
+                            + visionLane.getClass().getName()
+            );
+        }
+
+        TagLayout layoutSnapshot = TagLayouts.snapshot(fixedFieldTagLayout);
+        CameraMountConfig cameraMount = Objects.requireNonNull(
+                visionLane.cameraMountConfig(),
+                "visionLane.cameraMountConfig()"
+        );
+        AprilTagSensor tagSensor = Objects.requireNonNull(
+                visionLane.tagSensor(),
+                "visionLane.tagSensor()"
+        );
+        AprilTagPoseEstimator aprilTagPoseEstimator = new AprilTagPoseEstimator(
+                tagSensor,
+                layoutSnapshot,
+                aprilTags.toAprilTagPoseEstimatorConfig(cameraMount)
+        );
+
+        return new EstimatorInputs(
+                visionLane,
+                limelightVisionLane,
+                aprilTagPoseEstimator,
+                limelightFieldPoseConfig,
+                correctionFusion,
+                correctionEkf,
+                correctionSourceMode,
+                correctedEstimatorMode
+        );
+    }
+
+    /** Validate the active AprilTag policy without reading its later layout or vision inputs. */
+    private static AprilTagLocalizationConfig captureAprilTagConfig(
+            AprilTagLocalizationConfig config,
+            String context
+    ) {
+        if (!Double.isFinite(config.maxDetectionAgeSec) || config.maxDetectionAgeSec < 0.0) {
+            throw new IllegalArgumentException(
+                    context + ".maxDetectionAgeSec must be finite and >= 0; received "
+                            + config.maxDetectionAgeSec
+            );
+        }
+        FixedTagFieldPoseSolver.Config solverConfig = Objects.requireNonNull(
+                config.fieldPoseSolver,
+                context + ".fieldPoseSolver"
+        );
+        // Constructing the data-only solver validates and snapshots its complete active policy.
+        new FixedTagFieldPoseSolver(solverConfig);
+        return config;
     }
 }

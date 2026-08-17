@@ -293,7 +293,7 @@ public final class StandardTesters {
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> {
                     PinpointAxisDirectionTester.Config cfg = PinpointAxisDirectionTester.Config.defaults();
-                    cfg.pinpoint = PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName);
+                    cfg.pinpoint = pinpointConfig(hardwareName);
                     return new PinpointAxisDirectionTester(cfg);
                 }
         );
@@ -308,7 +308,7 @@ public final class StandardTesters {
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> {
                     PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
-                    cfg.pinpoint = PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName);
+                    cfg.pinpoint = pinpointConfig(hardwareName);
                     return new PinpointPodOffsetCalibrator(cfg);
                 }
         );
@@ -324,7 +324,7 @@ public final class StandardTesters {
                 hardwareName -> new PinpointAprilTagFusionLocalizationTester(
                         null,
                         null,
-                        PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName)
+                        pinpointConfig(hardwareName)
                 )
         );
     }
@@ -350,10 +350,16 @@ public final class StandardTesters {
     private static edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config buildLimelightFusionLocalizationConfig(String hardwareName) {
         edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config cfg =
                 edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config.defaults();
-        cfg.predictor = PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName);
-        cfg.correctedEstimatorMode = edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
-        cfg.correctionSource.mode = edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
-        cfg.correctionFusion = OdometryCorrectionFusionEstimator.Config.defaults();
+        cfg.predictor = pinpointConfig(hardwareName);
+        cfg.estimation.correctedEstimatorMode = edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+        cfg.estimation.correctionSource.mode = edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+        cfg.estimation.correctionFusion = OdometryCorrectionFusionEstimator.Config.defaults();
+        return cfg;
+    }
+
+    private static PinpointOdometryPredictor.Config pinpointConfig(String hardwareName) {
+        PinpointOdometryPredictor.Config cfg = PinpointOdometryPredictor.Config.defaults();
+        cfg.hardwareMapName = hardwareName;
         return cfg;
     }
 

@@ -7,12 +7,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
- * Immutable same-cycle planar pose and velocity sample from a Pinpoint odometry owner.
+ * Immutable planar pose/velocity snapshot from a Pinpoint odometry owner.
  *
  * <p>The pose and translational velocity use the Phoenix field frame. Distances are inches,
  * velocities are inches per second, and angular values are radians or radians per second. The
  * unwrapped {@link #totalHeadingRad} counts only measured physical turns; deliberate pose rebases
- * must not change it.</p>
+ * must not change it. A successful deliberate rebase may expose its commanded coordinate while
+ * measured evidence is unavailable; that snapshot carries {@link LoopTimestamp#unavailable()} and
+ * therefore is never current for a loop.</p>
  *
  * <p>{@link #hasPose} and {@link #hasVelocity} are separate because a deliberate hardware reset,
  * recalibration, or invalid sensor response can make motion unavailable without inventing a zero
@@ -26,7 +28,7 @@ public final class PinpointKinematicSnapshot {
     /** Latest robot pose in the Phoenix field frame; inspect {@link #hasPose} before using it. */
     public final Pose2d fieldToRobotPose;
 
-    /** Whether {@link #fieldToRobotPose} is valid. */
+    /** Whether {@link #fieldToRobotPose} is a valid measured or deliberately commanded coordinate. */
     public final boolean hasPose;
 
     /** Whether the three velocity fields contain a measured physical velocity. */
@@ -119,6 +121,25 @@ public final class PinpointKinematicSnapshot {
                 fieldVelocityXInchesPerSec,
                 fieldVelocityYInchesPerSec,
                 angularVelocityRadPerSec,
+                totalHeadingRad
+        );
+    }
+
+    /**
+     * Create an inspectable commanded coordinate without claiming measured pose timing or velocity.
+     */
+    static PinpointKinematicSnapshot commanded(Pose2d fieldToRobotPose,
+                                               long lastMeasuredCycle,
+                                               double totalHeadingRad) {
+        return new PinpointKinematicSnapshot(
+                fieldToRobotPose,
+                true,
+                false,
+                lastMeasuredCycle,
+                LoopTimestamp.unavailable(),
+                0.0,
+                0.0,
+                0.0,
                 totalHeadingRad
         );
     }

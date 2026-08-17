@@ -372,7 +372,7 @@ public final class PhoenixManagedAutoLifecycleTest {
                     motionPredictor,
                     createdVision,
                     profile.field.fixedAprilTagLayout,
-                    profile.localization
+                    profile.localization.estimation
             );
         }
 

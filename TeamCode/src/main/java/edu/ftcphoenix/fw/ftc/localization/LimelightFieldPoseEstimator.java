@@ -141,20 +141,19 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             return c;
         }
 
-        /**
-         * Validates the config and throws an actionable error when inconsistent.
-         */
-        public Config validatedCopy(String context) {
+        /** Same-package capture seam used by the composite localization owner. */
+        Config validatedCopy(String context) {
             Config c = copy();
             String p = (context != null && !context.trim().isEmpty())
                     ? context.trim()
                     : "LimelightFieldPoseEstimator.Config";
             if (c.mode == null) {
-                throw new IllegalArgumentException(p + ".mode must not be null");
+                throw new IllegalArgumentException(p + ".mode must not be null, got null");
             }
             requirePositive(c.maxResultAgeSec, p + ".maxResultAgeSec");
             if (c.minVisibleTags < 1) {
-                throw new IllegalArgumentException(p + ".minVisibleTags must be >= 1");
+                throw new IllegalArgumentException(
+                        p + ".minVisibleTags must be >= 1, got " + c.minVisibleTags);
             }
             requireUnitInterval(c.singleTagQuality, p + ".singleTagQuality");
             requireUnitInterval(c.multiTagQuality, p + ".multiTagQuality");
@@ -167,13 +166,14 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
 
         private static void requirePositive(double v, String name) {
             if (!Double.isFinite(v) || v <= 0.0) {
-                throw new IllegalArgumentException(name + " must be finite and > 0");
+                throw new IllegalArgumentException(name + " must be finite and > 0, got " + v);
             }
         }
 
         private static void requireUnitInterval(double v, String name) {
             if (!Double.isFinite(v) || v < 0.0 || v > 1.0) {
-                throw new IllegalArgumentException(name + " must be within [0, 1]");
+                throw new IllegalArgumentException(
+                        name + " must be finite and within [0, 1], got " + v);
             }
         }
     }
@@ -196,17 +196,26 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
     /**
      * Creates a direct Limelight field-pose estimator.
      *
+     * <p>{@code config} is required and is defensively validated and copied. Pass
+     * {@link Config#defaults()} explicitly to select the framework baseline.</p>
+     *
      * @param lane      owned Limelight vision lane; this estimator borrows the device owned by that lane
      * @param predictor optional motion predictor used for MegaTag 2 yaw input and motion-aware gating
-     * @param config    estimator config; defensively copied for the lifetime of this owner
+     * @param config    non-null estimator policy draft
+     * @throws NullPointerException if {@code lane} is null
+     * @throws IllegalArgumentException if {@code config} is null or invalid
      */
     public LimelightFieldPoseEstimator(FtcLimelightAprilTagVisionLane lane,
                                        MotionPredictor predictor,
                                        Config config) {
         this.lane = Objects.requireNonNull(lane, "lane");
         this.predictor = predictor;
-        Config base = (config != null) ? config : Config.defaults();
-        this.cfg = base.validatedCopy("LimelightFieldPoseEstimator.Config");
+        if (config == null) {
+            throw new IllegalArgumentException(
+                    "LimelightFieldPoseEstimator.Config must not be null; "
+                            + "use Config.defaults() for the framework baseline");
+        }
+        this.cfg = config.validatedCopy("LimelightFieldPoseEstimator.Config");
     }
 
     /**
@@ -221,6 +230,13 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      * the exact first {@link RuntimeException}, and recursive entry fails before another vendor
      * effect. Pipeline changes after the update become visible on the next cycle, preserving one
      * coherent pose-and-diagnostics snapshot for the complete cycle.</p>
+     *
+     * <p>A direct botpose is usable only when its {@link Pose3D}, {@link Position}, position unit,
+     * and {@link YawPitchRollAngles} are non-null and all converted x/y/z/yaw/pitch/roll components
+     * are finite. A claimed predictor motion delta must have finite planar components, quality in
+     * {@code [0, 1]}, coherent current-epoch timestamps, and positive duration. Invalid motion or
+     * predictor yaw publishes no pose for that cycle; non-finite yaw is never sent to Limelight and
+     * no invalid motion value is converted into a quality score.</p>
      */
     @Override
     public void update(LoopClock clock) {
@@ -264,7 +280,11 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         lastYawRateRadPerSec = 0.0;
 
         if (cfg.mode == Config.Mode.BOTPOSE_MT2) {
-            maybePushPredictorYawToLimelight();
+            if (!maybePushPredictorYawToLimelight()) {
+                lastRejectReason = "predictor reported a non-finite field yaw";
+                lastEstimate = PoseEstimate.noPose(nowTimestamp);
+                return;
+            }
         }
 
         FtcLimelightVisionLane.ResultSnapshot result = lane.confirmedAprilTagResult(clock);
@@ -304,14 +324,16 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
 
         Pose3D botpose = readBotpose(result, cfg.mode);
         if (botpose == null) {
-            lastRejectReason = "direct botpose was unavailable";
+            lastRejectReason = "direct botpose was unavailable or malformed: require non-null "
+                    + "position, position unit, orientation, and finite x/y/z/yaw/pitch/roll";
             lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
         Pose3d fieldToRobotPose = phoenixFieldPose(botpose);
         if (fieldToRobotPose == null) {
-            lastRejectReason = "could not decode botpose";
+            lastRejectReason = "direct botpose could not convert to finite inches and radians for "
+                    + "x/y/z/yaw/pitch/roll";
             lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
@@ -319,12 +341,36 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         lastBaseQuality = lastVisibleTagCount >= 2 ? cfg.multiTagQuality : cfg.singleTagQuality;
         double ageScale = MathUtil.clamp01(1.0 - (ageSec / cfg.maxResultAgeSec));
         double quality = MathUtil.clamp(lastBaseQuality * ageScale, 0.0, 1.0);
+        if (!Double.isFinite(ageScale) || !Double.isFinite(quality)) {
+            lastRejectReason = "direct-pose age or base quality produced a non-finite quality";
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
+            return;
+        }
 
         if (predictor != null) {
             MotionDelta delta = predictor.getLatestMotionDelta();
-            if (delta != null && delta.hasDelta && delta.durationSec() > 1e-6) {
-                lastTranslationSpeedInPerSec = delta.planarTranslationInches() / delta.durationSec();
-                lastYawRateRadPerSec = Math.abs(delta.planarYawDeltaRad()) / delta.durationSec();
+            if (delta != null && delta.hasDelta) {
+                if (!isUsablePredictorMotion(delta, clock)) {
+                    lastRejectReason = "predictor reported an invalid planar motion delta";
+                    lastEstimate = PoseEstimate.noPose(nowTimestamp);
+                    return;
+                }
+
+                double durationSec = delta.durationSec();
+                double translationInches = delta.planarTranslationInches();
+                double yawDeltaRad = Math.abs(delta.planarYawDeltaRad());
+                lastTranslationSpeedInPerSec = translationInches / durationSec;
+                lastYawRateRadPerSec = yawDeltaRad / durationSec;
+                if (!Double.isFinite(translationInches)
+                        || !Double.isFinite(yawDeltaRad)
+                        || !Double.isFinite(lastTranslationSpeedInPerSec)
+                        || !Double.isFinite(lastYawRateRadPerSec)) {
+                    lastTranslationSpeedInPerSec = 0.0;
+                    lastYawRateRadPerSec = 0.0;
+                    lastRejectReason = "predictor motion produced a non-finite speed or yaw rate";
+                    lastEstimate = PoseEstimate.noPose(nowTimestamp);
+                    return;
+                }
 
                 if (cfg.rejectWhenMovingTooFast
                         && (lastTranslationSpeedInPerSec > cfg.maxTranslationSpeedInPerSec
@@ -341,6 +387,15 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
                             lastYawRateRadPerSec / cfg.yawRateForZeroQualityRadPerSec);
                     lastMotionScale = MathUtil.clamp(Math.min(translationScale, yawScale), 0.0, 1.0);
                     quality = MathUtil.clamp(quality * lastMotionScale, 0.0, 1.0);
+                    if (!Double.isFinite(translationScale)
+                            || !Double.isFinite(yawScale)
+                            || !Double.isFinite(lastMotionScale)
+                            || !Double.isFinite(quality)) {
+                        lastMotionScale = 0.0;
+                        lastRejectReason = "predictor motion produced a non-finite quality scale";
+                        lastEstimate = PoseEstimate.noPose(nowTimestamp);
+                        return;
+                    }
                 }
             }
         }
@@ -390,15 +445,24 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
                 .addData(p + ".cfg.maxYawRateRadPerSec", cfg.maxYawRateRadPerSec);
     }
 
-    private void maybePushPredictorYawToLimelight() {
+    private boolean maybePushPredictorYawToLimelight() {
         if (predictor == null) {
-            return;
+            return true;
         }
         PoseEstimate predictorEst = predictor.getEstimate();
         if (predictorEst == null || !predictorEst.hasPose) {
-            return;
+            return true;
         }
-        lane.updateRobotFieldYawRad(predictorEst.fieldToRobotPose.yawRad);
+        if (predictorEst.fieldToRobotPose == null
+                || !Double.isFinite(predictorEst.fieldToRobotPose.yawRad)) {
+            return false;
+        }
+        double wrappedYawRad = MathUtil.wrapToPi(predictorEst.fieldToRobotPose.yawRad);
+        if (!Double.isFinite(wrappedYawRad)) {
+            return false;
+        }
+        lane.updateRobotFieldYawRad(wrappedYawRad);
+        return true;
     }
 
     private static Pose3d phoenixFieldPose(Pose3D botpose) {
@@ -406,24 +470,34 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             return null;
         }
         Position position = botpose.getPosition();
-        if (position == null) {
+        YawPitchRollAngles ypr = botpose.getOrientation();
+        if (position == null || position.unit == null || ypr == null) {
             return null;
         }
         Position inches = position.toUnit(DistanceUnit.INCH);
-        YawPitchRollAngles ypr = botpose.getOrientation();
-        double yawRad = 0.0;
-        double pitchRad = 0.0;
-        double rollRad = 0.0;
-        if (ypr != null) {
-            yawRad = ypr.getYaw(AngleUnit.RADIANS);
-            pitchRad = ypr.getPitch(AngleUnit.RADIANS);
-            rollRad = ypr.getRoll(AngleUnit.RADIANS);
+        if (inches == null) {
+            return null;
+        }
+        double yawRad = ypr.getYaw(AngleUnit.RADIANS);
+        double pitchRad = ypr.getPitch(AngleUnit.RADIANS);
+        double rollRad = ypr.getRoll(AngleUnit.RADIANS);
+        if (!Double.isFinite(inches.x)
+                || !Double.isFinite(inches.y)
+                || !Double.isFinite(inches.z)
+                || !Double.isFinite(yawRad)
+                || !Double.isFinite(pitchRad)
+                || !Double.isFinite(rollRad)) {
+            return null;
+        }
+        double wrappedYawRad = MathUtil.wrapToPi(yawRad);
+        if (!Double.isFinite(wrappedYawRad)) {
+            return null;
         }
         return new Pose3d(
                 inches.x,
                 inches.y,
                 inches.z,
-                MathUtil.wrapToPi(yawRad),
+                wrappedYawRad,
                 pitchRad,
                 rollRad
         );
@@ -441,5 +515,39 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             }
         }
         return result.botpose();
+    }
+
+    private static boolean isUsablePredictorMotion(MotionDelta delta, LoopClock clock) {
+        if (delta == null || !delta.hasDelta || delta.deltaPose == null) {
+            return false;
+        }
+        Pose3d pose = delta.deltaPose;
+        if (!Double.isFinite(pose.xInches)
+                || !Double.isFinite(pose.yInches)
+                || !Double.isFinite(pose.yawRad)
+                || !Double.isFinite(delta.quality)
+                || delta.quality < 0.0
+                || delta.quality > 1.0
+                || !isTimestampCurrent(delta.startTimestamp, clock)
+                || !isTimestampCurrent(delta.endTimestamp, clock)) {
+            return false;
+        }
+        try {
+            double durationSec = delta.durationSec();
+            return Double.isFinite(durationSec) && durationSec > 0.0;
+        } catch (IllegalArgumentException differentClock) {
+            return false;
+        }
+    }
+
+    private static boolean isTimestampCurrent(LoopTimestamp timestamp, LoopClock clock) {
+        if (timestamp == null) {
+            return false;
+        }
+        try {
+            return Double.isFinite(timestamp.ageSec(clock));
+        } catch (IllegalArgumentException differentClock) {
+            return false;
+        }
     }
 }

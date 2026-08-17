@@ -212,8 +212,10 @@ public final class PhoenixRobotTesters {
                 activeVisionPickerTitle(p),
                 activeVisionLaneFactoryBuilder(p),
                 p.field.fixedAprilTagLayout,
-                p.localization.aprilTags.toAprilTagPoseEstimatorConfig(p.vision.activeCameraMount()),
-                p.localization.aprilTags.maxDetectionAgeSec
+                p.localization.estimation.aprilTags.toAprilTagPoseEstimatorConfig(
+                        p.vision.activeCameraMount()
+                ),
+                p.localization.estimation.aprilTags.maxDetectionAgeSec
         );
     }
 
@@ -278,7 +280,7 @@ public final class PhoenixRobotTesters {
         FtcOdometryAprilTagLocalizationLane.Config cfg = localizationCfg != null
                 ? localizationCfg.copy()
                 : FtcOdometryAprilTagLocalizationLane.Config.defaults();
-        cfg.correctedEstimatorMode = estimatorMode != null
+        cfg.estimation.correctedEstimatorMode = estimatorMode != null
                 ? estimatorMode
                 : FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
 

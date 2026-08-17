@@ -55,6 +55,12 @@ the configured bounded interval; if a target is still unavailable, the scoring p
 timeout and `PhoenixPedroPreParkTask` takes the explicit return/park fallback. A pre-reset INIT
 timestamp is never carried across the START clock epoch.
 
+Constructing the Pinpoint owner issues one mandatory reset request and returns immediately; it does
+not sleep for calibration. Keep the robot stationary until a later poll reports exact `READY` and
+publishes finite measured pose and velocity. The Pedro heartbeat fail-stops drive output whenever
+that same-cycle evidence is absent, and its diagnostic reports the predictor's cached device status
+without performing a second hardware poll.
+
 Phoenix constructs targeting from the full defensive profile. TeleOp and Auto each supply the same
 singleton shape mapped from their own START-frozen `PhoenixAlliance`. Eligibility is validated and
 applied before preview/sticky selection, so an opposite-alliance tag can still support localization

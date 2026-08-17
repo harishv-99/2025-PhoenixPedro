@@ -82,7 +82,8 @@ public final class PedroPathingRuntime {
      * Pedro constructs or configures drivetrain hardware.</p>
      *
      * @param hardwareMap FTC hardware registry used only to construct the native Pedro drivetrain
-     * @param motionPredictor already-created sole Pinpoint owner with controlled INIT reset enabled
+     * @param motionPredictor already-created sole Pinpoint owner whose constructor issued the
+     *                        required non-blocking reset
      * @param followerConstants Pedro controller/follower tuning
      * @param mecanumConstants Pedro drivetrain tuning plus physical motor wiring
      * @param pathConstraints Pedro route completion/braking constraints
@@ -117,7 +118,6 @@ public final class PedroPathingRuntime {
                 "fieldTransform"
         );
 
-        validatePredictorConfig(requiredPredictor.config());
         validateFollowerConstants(requiredFollowerConstants);
         validateMecanumConstants(requiredMecanumConstants);
         validatePathConstraints(requiredPathConstraints);
@@ -333,50 +333,6 @@ public final class PedroPathingRuntime {
         Pose requiredPose = Objects.requireNonNull(pedroStartPose, "pedroStartPose");
         passiveLocalizer.requireStartingPoseAllowed(requiredPose);
         follower.setStartingPose(requiredPose);
-    }
-
-    static void validatePredictorConfig(PinpointOdometryPredictor.Config config) {
-        PinpointOdometryPredictor.Config value = Objects.requireNonNull(
-                config,
-                "motionPredictor.config()"
-        );
-        requireHardwareName(value.hardwareMapName, "motionPredictor.config().hardwareMapName");
-        if (!value.enableResetOnInit) {
-            throw new IllegalArgumentException(
-                    "Pedro production Auto requires motionPredictor.config().enableResetOnInit=true "
-                            + "so Phoenix performs the one controlled Pinpoint INIT reset before "
-                            + "Pedro consumes its constructor reset"
-            );
-        }
-        if (value.resetWaitMs < 0L) {
-            throw new IllegalArgumentException(
-                    "motionPredictor.config().resetWaitMs must be >= 0, got " + value.resetWaitMs
-            );
-        }
-        requireFinite(value.forwardPodOffsetLeftInches,
-                "motionPredictor.config().forwardPodOffsetLeftInches");
-        requireFinite(value.strafePodOffsetForwardInches,
-                "motionPredictor.config().strafePodOffsetForwardInches");
-        requireRange(value.quality, 0.0, 1.0, "motionPredictor.config().quality");
-        Objects.requireNonNull(
-                value.forwardPodDirection,
-                "motionPredictor.config().forwardPodDirection"
-        );
-        Objects.requireNonNull(
-                value.strafePodDirection,
-                "motionPredictor.config().strafePodDirection"
-        );
-        if (value.customEncoderResolutionTicksPerInch != null) {
-            requirePositive(
-                    value.customEncoderResolutionTicksPerInch,
-                    "motionPredictor.config().customEncoderResolutionTicksPerInch"
-            );
-        } else {
-            Objects.requireNonNull(value.encoderPods, "motionPredictor.config().encoderPods");
-        }
-        if (value.yawScalar != null) {
-            requirePositive(value.yawScalar, "motionPredictor.config().yawScalar");
-        }
     }
 
     /**

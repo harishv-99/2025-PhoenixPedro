@@ -155,7 +155,7 @@ public final class PhoenixRobot {
                             motionPredictor,
                             vision,
                             profile.field.fixedAprilTagLayout,
-                            profile.localization
+                            profile.localization.estimation
                     );
                 }
 
@@ -200,6 +200,7 @@ public final class PhoenixRobot {
             VisionReadiness.notReady("Phoenix TeleOp has not reached FTC START");
     private boolean teleOpStartBoundaryReached;
     private boolean teleOpOrdinaryLoopReached;
+    private boolean teleOpDriveStartupReleased;
     private boolean teleOpProfileCycleActive;
     private boolean teleOpPresenterCreated;
 
@@ -310,6 +311,7 @@ public final class PhoenixRobot {
         );
         beginMode(RuntimeMode.MANAGED_TELEOP, "declareTeleOp");
         loopPhaseProfiler.reset();
+        teleOpDriveStartupReleased = false;
 
         teleOpControls = new PhoenixTeleOpControls(
                 gamepads,
@@ -543,7 +545,7 @@ public final class PhoenixRobot {
                                              BooleanSource aimOverrideSource) {
         return new PhoenixTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 vision.tagSensor(),
                 vision.cameraMountConfig(),
                 localization.globalEstimator(),
@@ -772,11 +774,13 @@ public final class PhoenixRobot {
         @Override
         public void start(LoopClock clock) {
             ownedLocalization.update(clock);
+            updateTeleOpDriveStartupGate(clock);
         }
 
         @Override
         public void update(LoopClock clock) {
             ownedLocalization.update(clock);
+            updateTeleOpDriveStartupGate(clock);
             finishTeleOpProfilePhase("localization");
         }
 
@@ -870,13 +874,39 @@ public final class PhoenixRobot {
 
         @Override
         public void drive(DriveSignal signal) {
-            ownedSink.drive(signal);
+            ownedSink.drive(teleOpDriveStartupReleased ? signal : DriveSignal.zero());
             finishTeleOpProfilePhase("drive");
         }
 
         @Override
         public void stop() {
             ownedSink.stop();
+        }
+    }
+
+    /**
+     * Releases ordinary TeleOp drive once after the owned Pinpoint startup reset publishes one
+     * current finite measured pose. Later localization loss disables localization-dependent
+     * assists through their own evidence checks, but does not take robot-centric manual drive away.
+     */
+    private void updateTeleOpDriveStartupGate(LoopClock clock) {
+        if (teleOpDriveStartupReleased) {
+            return;
+        }
+        PoseEstimate estimate = localization.predictor().getEstimate();
+        if (estimate == null || !estimate.hasPose || estimate.fieldToRobotPose == null) {
+            return;
+        }
+        if (!Double.isFinite(estimate.fieldToRobotPose.xInches)
+                || !Double.isFinite(estimate.fieldToRobotPose.yInches)
+                || !Double.isFinite(estimate.fieldToRobotPose.yawRad)) {
+            return;
+        }
+        try {
+            teleOpDriveStartupReleased = estimate.timestamp != null
+                    && estimate.timestamp.isFresh(clock, 0.0);
+        } catch (IllegalArgumentException incompatibleTimestamp) {
+            teleOpDriveStartupReleased = false;
         }
     }
 

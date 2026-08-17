@@ -10,6 +10,11 @@ Construct one `PedroPathingRuntime` during `FtcRobotOpMode.configure(program)`. 
 `MotionPredictor` is the only Pinpoint hardware owner, and its `PedroPathingDriveAdapter` is the
 only Follower heartbeat and drivetrain writer.
 
+Pinpoint construction requests one reset without sleeping. Until a completed poll reports `READY`
+and publishes current finite pose and velocity, the passive localizer rejects the heartbeat and the
+adapter fail-stops drive. Its diagnostic includes the predictor's cached last device status; it
+never polls the device through a second owner.
+
 ```java
 PedroPathingRuntime pedro =
         Constants.createPhoenixAutoRuntime(hardwareMap, profile);
