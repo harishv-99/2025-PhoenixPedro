@@ -32,6 +32,20 @@ lifecycle, capability realization, and physical configuration stay with their ac
 ### INIT
 
 `BasicPedroAutoExample.configure(...)` creates one `PedroPathingRuntime` and one declaration root.
+Its Phoenix-backed host reaches the runtime's sole hardware boundary through a pure project mapping:
+
+```java
+PedroPathingRuntime runtime = PedroPathingRuntime.create(
+        hardwareMap,
+        Constants.phoenixAutoRuntimeConfig(profile));
+```
+
+The mapper snapshots only the relevant Pinpoint and drivetrain profile slice and combines it with
+fresh checked-in Pedro tuning. It performs no hardware work. The runtime then deep-snapshots and
+validates the complete Config before lookup, the non-blocking Pinpoint reset request, motor output,
+Follower construction, or Pedro-static mutation. Later caller edits cannot retune the running
+graph.
+
 The root registers the Pedro service before building paths or constructing the mechanism, then
 registers the mechanism immediately after construction and declares one root Task. Construction
 does not start a route or actuate the mechanism.
@@ -78,6 +92,13 @@ The same fail-stop path handles configuration, START, loop, presenter, or teleme
 Owners registered before a later construction failure are already covered by program cleanup, and
 constructors clean resources that fail before ownership transfer completes.
 
+That cleanup is best effort rather than transactional hardware rollback. Once a valid Config has
+entered SDK/vendor construction, a Mecanum constructor can throw without returning a stoppable
+handle, Pinpoint has no close/rollback operation, and a failed Follower may already have touched
+Pedro's static controller switches. The runtime breaks a successfully returned drivetrain if a
+later construction step fails and preserves any stop failure as suppressed evidence. Correct the
+cause and restart the OpMode rather than retrying construction in place.
+
 ## Route-result policy
 
 `BasicPedroAutoRoutine` follows one route with a four-second Task timeout and branches on the
@@ -95,8 +116,10 @@ direct cancellation never manufactures a fallback action.
 ## Adaptation checklist
 
 1. Extend `FtcRobotOpMode` and override only `configure(RobotProgram)`.
-2. Construct one Pedro runtime from verified motor names, directions, localization configuration,
-   field transforms, follower tuning, and path constraints.
+2. Start from `PedroPathingRuntime.Config.defaults()`, replace its Pinpoint, Follower, Mecanum,
+   path-constraint, and field-transform facts, then construct one runtime through
+   `PedroPathingRuntime.create(hardwareMap, config)`. A robot-specific pure mapper may author that
+   Config; it must not become another hardware factory.
 3. Replace `BasicPedroAutoPaths` geometry and display the exact required physical start pose.
 4. Keep fixed routes eager. Use `RouteTasks.followBuiltAtStart(...)` only when geometry genuinely
    depends on a live fact at that route's start.
@@ -108,7 +131,15 @@ direct cancellation never manufactures a fallback action.
 7. Register the Pedro service before dependent work, register outputs immediately after
    construction, and keep presenters read-only and additive.
 8. Keep raw `Follower` calls, lifecycle callbacks, private clocks/runners, and manual telemetry
-   commits out of the OpMode.
+   commits out of the OpMode. Build paths with `runtime.pathBuilder()` and use
+   `runtime.currentPedroPose()` only when start-time geometry needs a defensive snapshot of the
+   already-cached Pedro pose.
+
+The public `PedroPathingDriveAdapter(completedFollower)` constructor is reserved for an advanced
+custom/portable host that has already constructed the completed vendor graph and will route its
+lifecycle through the adapter. Pedro's generated native tuning tools use a separate package-local
+factory and exclusive raw-Follower/Pinpoint lifecycle. Neither is a second ordinary runtime
+construction answer.
 
 ## Expected result
 
@@ -133,7 +164,8 @@ outcome without advancing those owners.
 - Place the robot at the displayed physical start and keep an operator ready to press STOP.
 
 Compilation and fake tests cannot prove wiring, calibration, traction, stopping distance, or
-physical placement.
+physical placement. Runtime Config validation likewise cannot prove motor direction, Pinpoint
+placement/readiness, follower stability, field alignment, route clearance, or physical STOP.
 
 ## Related reading
 

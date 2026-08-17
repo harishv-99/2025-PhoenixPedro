@@ -1213,10 +1213,31 @@ robot path factory; do not move them into the follower adapter or write a custom
 site.
 
 For a stateful adapter such as Pedro, register one robot-owned service during program
-configuration. That service owns localization first and the recurring adapter heartbeat second:
+configuration. Author one data-only Config, then cross one production effect boundary:
 
 ```java
-PedroPathingRuntime pedro = Constants.createPhoenixAutoRuntime(hardwareMap, profile);
+PedroPathingRuntime.Config pedroConfig = PedroPathingRuntime.Config.defaults();
+pedroConfig.predictor = robotPinpointConfig;
+pedroConfig.followerConstants = robotFollowerConstants;
+pedroConfig.mecanumConstants = robotMecanumConstants;
+pedroConfig.pathConstraints = robotPathConstraints;
+pedroConfig.fieldTransform = robotFieldTransform;
+
+PedroPathingRuntime pedro = PedroPathingRuntime.create(hardwareMap, pedroConfig);
+```
+
+The runtime snapshots and validates the complete Config before hardware lookup, Pinpoint reset,
+motor output, Follower construction, or Pedro-global mutation. It then privately owns the captured
+Pinpoint, Follower, Mecanum, constraint, and transform graph. Do not retain a Config or nested Pedro
+constants as a live-tuning channel; edit checked-in data and reconstruct the OpMode instead.
+
+The checked-in Phoenix-backed basic reference reaches the same sole `create(...)` boundary through
+a pure project mapper, then gives the runtime to its declaration owner:
+
+```java
+PedroPathingRuntime pedro = PedroPathingRuntime.create(
+        hardwareMap,
+        Constants.phoenixAutoRuntimeConfig(profile));
 BasicPedroAutoMechanism.Config mechanismConfig = BasicPedroAutoMechanism.Config.of(
         profile.scoring.nameMotorIntake,
         profile.scoring.directionMotorIntake,
@@ -1227,13 +1248,17 @@ BasicPedroAutoRobot robot = new BasicPedroAutoRobot(
         () -> new BasicPedroAutoMechanism(hardwareMap, mechanismConfig));
 ```
 
-The registered service owns `pedro.motionPredictor().update(clock)` followed by
-`pedro.driveAdapter().update(clock)` on every Auto loop, then its final drive stop. The routine
-still uses
+That mapper snapshots only the relevant Pinpoint and drivetrain profile slice and combines it with
+fresh project Pedro tuning; it creates no hardware and is not a second runtime factory.
+
+The registered service owns localization first and the recurring adapter heartbeat second. It owns
+`pedro.motionPredictor().update(clock)` followed by `pedro.driveAdapter().update(clock)` on every
+Auto loop, then its final drive stop. The routine still uses
 `RouteTasks.follow("cycle", pedro.driveAdapter(), route, routeTimeoutSec)` and guidance Tasks
 normally; the adapter makes their same-cycle update calls harmless. The runtime's passive Pedro
 localizer reads the same current-cycle predictor that Phoenix localization updates, so this also
-avoids a second odometry owner without adding another scheduler or pose API to student Auto code.
+avoids a second odometry owner without adding another scheduler to student Auto code.
+
 Pinpoint construction requests its one reset without sleeping. Until a completed `READY` poll
 publishes current finite pose and velocity, the Pedro heartbeat throws through its fail-stop owner
 instead of driving on a commanded rebase or stale sample. Keep the robot stationary during that
@@ -1242,7 +1267,24 @@ reset/calibration interval.
 The adapter also classifies each route's terminal state during that owned heartbeat, while the
 evidence still exists. Robot code must use the adapter and Phoenix Task cancellation seams for
 start, replacement, interruption, and cancellation; raw Pedro Follower lifecycle calls are
-unsupported because they bypass the execution status.
+unsupported because they bypass the execution status. The runtime exports no raw Follower: use
+`pathBuilder()` for route construction and `currentPedroPose()` for one defensive, no-poll snapshot
+when start-time geometry needs the Follower's cached Pedro pose.
+
+The public `PedroPathingDriveAdapter(completedFollower)` constructor is an advanced seam for a
+custom or portable host that has already constructed a complete Follower and will route its
+lifecycle through the adapter; it does not acquire Pinpoint or drivetrain hardware. Pedro's
+generated tuning OpModes use a different package-local factory for a native Follower because those
+exclusive tools require their own `PinpointLocalizer` and raw
+Follower heartbeat. Neither seam is a parallel production construction path.
+
+After a valid Config crosses the effect boundary, SDK/vendor construction can still fail after
+partial effects. The runtime best-effort breaks a successfully constructed drivetrain when a later
+step fails, but it cannot stop a Mecanum constructor that never returned a handle, close/rollback
+Pinpoint, or undo vendor statics already touched by a failing Follower. Treat such a failure as
+terminal for that OpMode. Software validation also cannot prove motor identity/direction, pod
+placement/readiness, tuning stability, field alignment, route clearance, stopping distance, or
+physical STOP; those remain adopting-robot evidence.
 
 ### What still stays common
 

@@ -4,19 +4,27 @@ import com.pedropathing.drivetrain.Drivetrain;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.follower.FollowerConstants;
 import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.CoordinateSystem;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.math.Vector;
+import com.pedropathing.paths.Path;
+import com.pedropathing.paths.PathBuilder;
 import com.pedropathing.paths.PathChain;
 import com.pedropathing.paths.PathConstraints;
 
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -290,6 +298,243 @@ public final class PedroPathingPassiveLocalizerTest {
         assertEquals(0.6, secondDefaults.getBrakingStart(), EPSILON);
     }
 
+    @Test
+    public void runtimePathBuilderRejectsObjectConstraintDraftsBeforeMutation() {
+        Fixture fixture = new Fixture();
+        PathConstraints defaults = new PathConstraints(0.91, 42.0, 1.3, 0.8);
+        Path first = new Path(
+                new BezierLine(new Pose(), new Pose(12.0, 0.0, 0.0)),
+                defaults
+        );
+        PathBuilder builder = PedroPathingRuntime.newPathBuilder(fixture.follower, defaults)
+                .addPath(first);
+
+        assertNullContaining(() -> builder.setConstraints(null), "pathConstraints");
+        assertNullContaining(() -> builder.setConstraintsForAll(null), "pathConstraints");
+        assertNullContaining(() -> builder.setConstraintsForLast(null), "pathConstraints");
+
+        PathConstraints invalid = defaults.copy();
+        invalid.setHeadingConstraint(Double.POSITIVE_INFINITY);
+        assertInvalidContaining(() -> builder.setConstraints(invalid), "headingConstraint");
+        assertInvalidContaining(() -> builder.setConstraintsForAll(invalid), "headingConstraint");
+        assertInvalidContaining(() -> builder.setConstraintsForLast(invalid), "headingConstraint");
+
+        PathConstraints invalidSearchLimit = defaults.copy();
+        invalidSearchLimit.setBEZIER_CURVE_SEARCH_LIMIT(0);
+        assertInvalidContaining(
+                () -> builder.setConstraints(invalidSearchLimit),
+                "BEZIER_CURVE_SEARCH_LIMIT"
+        );
+        assertInvalidContaining(
+                () -> builder.setConstraintsForAll(invalidSearchLimit),
+                "BEZIER_CURVE_SEARCH_LIMIT"
+        );
+        assertInvalidContaining(
+                () -> builder.setConstraintsForLast(invalidSearchLimit),
+                "BEZIER_CURVE_SEARCH_LIMIT"
+        );
+
+        assertEquals(0.007, first.getPathEndHeadingConstraint(), EPSILON);
+        assertEquals(
+                defaults.getBEZIER_CURVE_SEARCH_LIMIT(),
+                first.getConstraints().getBEZIER_CURVE_SEARCH_LIMIT()
+        );
+        PathChain built = builder
+                .addPath(new BezierLine(
+                        new Pose(12.0, 0.0, 0.0),
+                        new Pose(24.0, 0.0, 0.0)
+                ))
+                .build();
+        assertEquals(0.91, built.getPath(0).getPathEndTValueConstraint(), EPSILON);
+        assertEquals(0.91, built.getPath(1).getPathEndTValueConstraint(), EPSILON);
+    }
+
+    @Test
+    public void runtimePathBuilderRejectsEveryScalarConstraintBeforeMutation() {
+        Fixture fixture = new Fixture();
+        PathConstraints defaults = new PathConstraints(0.91, 42.0, 1.3, 0.8);
+        Path path = new Path(
+                new BezierLine(new Pose(), new Pose(12.0, 0.0, 0.0)),
+                defaults
+        );
+        PathBuilder builder = PedroPathingRuntime.newPathBuilder(fixture.follower, defaults)
+                .addPath(path);
+
+        assertInvalidContaining(() -> builder.setBrakingStrength(0.0), "brakingStrength");
+        assertInvalidContaining(() -> builder.setBrakingStart(-1.0), "brakingStart");
+        assertInvalidContaining(() -> builder.setVelocityConstraint(-1.0), "velocityConstraint");
+        assertInvalidContaining(
+                () -> builder.setTranslationalConstraint(-1.0),
+                "translationalConstraint"
+        );
+        assertInvalidContaining(() -> builder.setHeadingConstraint(-1.0), "headingConstraint");
+        assertInvalidContaining(() -> builder.setTValueConstraint(0.0), "tValueConstraint");
+        assertInvalidContaining(() -> builder.setTimeoutConstraint(-1.0), "timeoutConstraint");
+
+        assertEquals(1.3, path.getBrakingStrength(), EPSILON);
+        assertEquals(0.1, path.getPathEndVelocityConstraint(), EPSILON);
+        assertEquals(0.1, path.getPathEndTranslationalConstraint(), EPSILON);
+        assertEquals(0.007, path.getPathEndHeadingConstraint(), EPSILON);
+        assertEquals(0.91, path.getPathEndTValueConstraint(), EPSILON);
+        assertEquals(42.0, path.getPathEndTimeoutConstraint(), EPSILON);
+        assertEquals(0.8, defaults.getBrakingStart(), EPSILON);
+        PathChain built = builder.build();
+        assertEquals(0.8, built.getPath(0).getBrakingStartMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void runtimePathBuilderChecksLaterBrakingArithmeticAndGlobalRollback() {
+        FakePredictorAccess access = new FakePredictorAccess();
+        PedroPathingPassiveLocalizer localizer = passiveLocalizer(access);
+        FollowerConstants constants = new FollowerConstants();
+        constants.forwardZeroPowerAcceleration = -1.0;
+        constants.lateralZeroPowerAcceleration = -100.0;
+        Follower follower = new Follower(
+                constants,
+                localizer,
+                new FakeDrivetrain(),
+                PathConstraints.defaultConstraints.copy()
+        );
+        localizer.completeFollowerConstruction();
+        PathConstraints defaults = new PathConstraints(0.91, 42.0, 1.3, 0.8);
+        Path path = new Path(
+                new BezierLine(new Pose(), new Pose(12.0, 0.0, 0.0)),
+                defaults
+        );
+        PathBuilder builder = PedroPathingRuntime.newPathBuilder(follower, defaults)
+                .addPath(path);
+
+        assertInvalidContaining(
+                () -> builder.setBrakingStrength(Double.MAX_VALUE),
+                "must remain finite"
+        );
+        double forwardAcceleration = Math.abs(
+                follower.getConstants().forwardZeroPowerAcceleration
+        );
+        double doubledOnlyOverflow =
+                (Double.MAX_VALUE / (forwardAcceleration * 4.0)) * 0.75;
+        assertInvalidContaining(
+                () -> builder.setBrakingStrength(doubledOnlyOverflow),
+                "2.0 *",
+                "forwardZeroPowerAcceleration",
+                "brakingStrength"
+        );
+        double lateralAcceleration = Math.abs(
+                follower.getConstants().lateralZeroPowerAcceleration
+        );
+        double lateralOnlyOverflow =
+                (Double.MAX_VALUE / (lateralAcceleration * 4.0)) * 1.05;
+        assertInvalidContaining(
+                () -> builder.setBrakingStrength(lateralOnlyOverflow),
+                "lateralZeroPowerAcceleration",
+                "brakingStrength",
+                "must remain finite"
+        );
+        double lateralDoubledOnlyOverflow =
+                (Double.MAX_VALUE / (lateralAcceleration * 4.0)) * 0.75;
+        assertInvalidContaining(
+                () -> builder.setBrakingStrength(lateralDoubledOnlyOverflow),
+                "2.0 *",
+                "lateralZeroPowerAcceleration",
+                "brakingStrength"
+        );
+        assertInvalidContaining(
+                () -> builder.setBrakingStart(Double.MAX_VALUE),
+                "times"
+        );
+        assertInvalidContaining(
+                () -> builder.setGlobalDeceleration(Double.MAX_VALUE),
+                "times"
+        );
+
+        PathChain built = builder.build();
+        assertEquals(PathChain.DecelerationType.LAST_PATH, built.getDecelerationType());
+        assertEquals(1.3, built.getPath(0).getBrakingStrength(), EPSILON);
+        assertEquals(0.8, built.getPath(0).getBrakingStartMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void runtimePathBuilderChecksLaterLateralStoppingDistanceBeforeMutation() {
+        FakePredictorAccess access = new FakePredictorAccess();
+        PedroPathingPassiveLocalizer localizer = passiveLocalizer(access);
+        Follower follower = new Follower(
+                new FollowerConstants(),
+                localizer,
+                new FakeDrivetrain(Double.MIN_VALUE, 1e154),
+                PathConstraints.defaultConstraints.copy()
+        );
+        localizer.completeFollowerConstruction();
+        PathConstraints defaults = new PathConstraints(0.91, 42.0, 1.3, 0.8);
+        PathBuilder builder = PedroPathingRuntime.newPathBuilder(follower, defaults)
+                .addPath(new BezierLine(new Pose(), new Pose(12.0, 0.0, 0.0)));
+
+        assertInvalidContaining(
+                () -> builder.setBrakingStart(1e10),
+                "yVelocity",
+                "brakingStart",
+                "times"
+        );
+
+        assertEquals(0.8, builder.build().getPath(0).getBrakingStartMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void runtimeCurrentPedroPoseIsDefensiveAndNeverPollsPredictor() throws Exception {
+        FakePredictorAccess access = new FakePredictorAccess();
+        PedroPathingPassiveLocalizer localizer = passiveLocalizer(access);
+        CoordinateSystem coordinateSystem = new CoordinateSystem() {
+            @Override
+            public Pose convertToPedro(Pose pose) {
+                return pose;
+            }
+
+            @Override
+            public Pose convertFromPedro(Pose pose) {
+                return pose;
+            }
+        };
+        Pose cached = new Pose(18.25, -7.5, 0.375, coordinateSystem);
+        CountingPoseFollower follower = new CountingPoseFollower(
+                localizer,
+                new FakeDrivetrain(),
+                cached
+        );
+        localizer.completeFollowerConstruction();
+        Constructor<PedroPathingRuntime> constructor = PedroPathingRuntime.class
+                .getDeclaredConstructor(
+                        PinpointOdometryPredictor.class,
+                        PedroPathingPassiveLocalizer.class,
+                        Follower.class,
+                        PedroPathingDriveAdapter.class,
+                        PathConstraints.class
+                );
+        constructor.setAccessible(true);
+        PedroPathingRuntime runtime = constructor.newInstance(
+                null,
+                localizer,
+                follower,
+                null,
+                PathConstraints.defaultConstraints.copy()
+        );
+        int predictorReadsBefore = access.readCount;
+
+        Pose first = runtime.currentPedroPose();
+        Pose second = runtime.currentPedroPose();
+
+        assertEquals(2, follower.poseReadCount);
+        assertNotSame(cached, first);
+        assertNotSame(first, second);
+        assertEquals(cached.getX(), first.getX(), 0.0);
+        assertEquals(cached.getY(), first.getY(), 0.0);
+        assertEquals(cached.getHeading(), first.getHeading(), 0.0);
+        assertSame(cached.getCoordinateSystem(), first.getCoordinateSystem());
+        assertEquals(cached.getX(), second.getX(), 0.0);
+        assertEquals(cached.getY(), second.getY(), 0.0);
+        assertEquals(cached.getHeading(), second.getHeading(), 0.0);
+        assertSame(cached.getCoordinateSystem(), second.getCoordinateSystem());
+        assertEquals(predictorReadsBefore, access.readCount);
+    }
+
     private static PedroPathingPassiveLocalizer passiveLocalizer(
             FakePredictorAccess access) {
         return new PedroPathingPassiveLocalizer(
@@ -323,6 +568,38 @@ public final class PedroPathingPassiveLocalizerTest {
             action.run();
             fail("Expected failure containing: " + java.util.Arrays.toString(expectedMessages));
         } catch (IllegalStateException expected) {
+            for (String expectedMessage : expectedMessages) {
+                assertTrue(
+                        "Expected message containing '" + expectedMessage + "' but got: "
+                                + expected.getMessage(),
+                        expected.getMessage().contains(expectedMessage)
+                );
+            }
+        }
+    }
+
+    private static void assertInvalidContaining(Runnable action, String... expectedMessages) {
+        try {
+            action.run();
+            fail("Expected invalid value containing: "
+                    + java.util.Arrays.toString(expectedMessages));
+        } catch (IllegalArgumentException expected) {
+            for (String expectedMessage : expectedMessages) {
+                assertTrue(
+                        "Expected message containing '" + expectedMessage + "' but got: "
+                                + expected.getMessage(),
+                        expected.getMessage().contains(expectedMessage)
+                );
+            }
+        }
+    }
+
+    private static void assertNullContaining(Runnable action, String... expectedMessages) {
+        try {
+            action.run();
+            fail("Expected null value containing: "
+                    + java.util.Arrays.toString(expectedMessages));
+        } catch (NullPointerException expected) {
             for (String expectedMessage : expectedMessages) {
                 assertTrue(
                         "Expected message containing '" + expectedMessage + "' but got: "
@@ -396,8 +673,45 @@ public final class PedroPathingPassiveLocalizerTest {
         }
     }
 
+    private static final class CountingPoseFollower extends Follower {
+        private Pose cachedPose;
+        int poseReadCount;
+
+        CountingPoseFollower(PedroPathingPassiveLocalizer localizer,
+                             Drivetrain drivetrain,
+                             Pose cachedPose) {
+            super(
+                    new FollowerConstants(),
+                    localizer,
+                    drivetrain,
+                    PathConstraints.defaultConstraints.copy()
+            );
+            this.cachedPose = cachedPose;
+        }
+
+        @Override
+        public Pose getPose() {
+            if (cachedPose == null) {
+                return super.getPose();
+            }
+            poseReadCount++;
+            return cachedPose;
+        }
+    }
+
     private static final class FakeDrivetrain extends Drivetrain {
         int breakCount;
+        double xVelocity;
+        double yVelocity;
+
+        FakeDrivetrain() {
+            this(80.0, 65.0);
+        }
+
+        FakeDrivetrain(double xVelocity, double yVelocity) {
+            this.xVelocity = xVelocity;
+            this.yVelocity = yVelocity;
+        }
 
         @Override
         public double[] calculateDrive(Vector correctivePower,
@@ -434,22 +748,22 @@ public final class PedroPathingPassiveLocalizerTest {
 
         @Override
         public double xVelocity() {
-            return 80.0;
+            return xVelocity;
         }
 
         @Override
         public double yVelocity() {
-            return 65.0;
+            return yVelocity;
         }
 
         @Override
         public void setXVelocity(double xMovement) {
-            // No hardware in the JVM test.
+            xVelocity = xMovement;
         }
 
         @Override
         public void setYVelocity(double yMovement) {
-            // No hardware in the JVM test.
+            yVelocity = yMovement;
         }
 
         @Override

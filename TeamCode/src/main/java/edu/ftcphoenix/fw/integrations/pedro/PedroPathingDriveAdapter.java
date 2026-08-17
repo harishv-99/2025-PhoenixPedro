@@ -37,8 +37,10 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  *
  * <p>Production Phoenix Auto transfers this adapter into the ordinary managed program:</p>
  * <pre>{@code
- * PedroPathingRuntime runtime =
- *         Constants.createPhoenixAutoRuntime(hardwareMap, profile);
+ * PedroPathingRuntime runtime = PedroPathingRuntime.create(
+ *         hardwareMap,
+ *         Constants.phoenixAutoRuntimeConfig(profile)
+ * );
  * PedroPathingDriveAdapter adapter = runtime.driveAdapter();
  * robot.declareAuto(
  *         program,
@@ -92,6 +94,11 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
     /**
      * Creates a Phoenix adapter around one Pedro {@link Follower} instance.
      *
+     * <p>This is the advanced completed-Follower seam for a custom or portable host that already
+     * owns construction of the complete vendor graph. It acquires no hardware and creates no
+     * Pinpoint owner. The host must route every recurring Follower heartbeat and final physical
+     * stop through this adapter to preserve same-cycle deduplication and route status.</p>
+     *
      * @param follower Pedro follower to wrap
      */
     public PedroPathingDriveAdapter(Follower follower) {
@@ -109,16 +116,6 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
                              HeartbeatPreparation heartbeatPreparation) {
         this.follower = Objects.requireNonNull(follower, "follower");
         this.heartbeatPreparation = heartbeatPreparation;
-    }
-
-    /**
-     * Returns the wrapped Pedro follower for route building or read-only advanced inspection.
-     *
-     * <p>Runtime lifecycle calls such as follow, manual drive, update, cancellation, and stop must
-     * go through this adapter so its one-heartbeat and stopped-state guarantees remain intact.</p>
-     */
-    public Follower follower() {
-        return follower;
     }
 
     /**

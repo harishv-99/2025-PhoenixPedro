@@ -252,7 +252,7 @@ public final class PhoenixPedroPathFactory {
     }
 
     /**
-     * Build a return path from a one-time snapshot of the Follower's current Pedro pose.
+     * Build a return path from a one-time snapshot of the runtime's current Pedro pose.
      *
      * <p>This operation is intended for a start-time route factory. It reads the current pose once,
      * copies both endpoints, and builds through {@link PedroPathingRuntime#pathBuilder()} so the
@@ -263,12 +263,7 @@ public final class PhoenixPedroPathFactory {
      * @return newly built path from the sampled current pose to {@code pedroReturnPose}
      */
     public PathChain buildReturnFromCurrentPose(Pose pedroReturnPose) {
-        Pose currentPose = snapshotPose(
-                Objects.requireNonNull(
-                        pedroRuntime.follower().getPose(),
-                        "Pedro Follower current pose"
-                )
-        );
+        Pose currentPose = snapshotPose(pedroRuntime.currentPedroPose());
         Pose returnPose = snapshotPose(
                 Objects.requireNonNull(pedroReturnPose, "pedroReturnPose")
         );

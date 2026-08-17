@@ -34,8 +34,37 @@ The parallel selector factory is
    selection;
 7. register additive presenters.
 
+The runtime construction in step 3 has one effect boundary:
+
+```java
+PedroPathingRuntime runtime = PedroPathingRuntime.create(
+        hardwareMap,
+        Constants.phoenixAutoRuntimeConfig(profile));
+```
+
+`Constants.phoenixAutoRuntimeConfig(profile)` is pure. It snapshots only Phoenix's Pinpoint and
+drivetrain configuration slice, combines that with fresh checked-in Pedro follower/constraint
+tuning and the field transform, and returns an independent `PedroPathingRuntime.Config`. It creates
+no hardware and does not make unrelated profile sections part of Pedro configuration validation.
+
+`PedroPathingRuntime.create(...)` raw-copies and validates the complete captured Config before
+hardware lookup, the Pinpoint reset request, motor output, Follower construction, or Pedro-static
+mutation. It then owns independent retained vendor values, so later edits to the profile or tuning
+draft cannot alter the running graph. The runtime exports narrow predictor, adapter, path-builder,
+starting-pose, and cached-pose operations rather than its mutable Follower.
+
 The hardware graph is never reconstructed inside the same OpMode. A construction/configuration
 error requires correcting the configuration and restarting the OpMode; it is not a selector retry.
+
+After valid configuration enters SDK/vendor construction, cleanup is necessarily best effort. The
+runtime breaks a successfully returned drivetrain if a later construction step fails, but a
+Mecanum constructor that throws may return no handle, Pinpoint has no rollback/close operation, and
+a failed Follower may already have changed Pedro statics. Those limits are another reason the
+OpMode never retries construction in place.
+
+Pedro's completed-Follower adapter constructor remains an advanced custom-host seam, while the
+project's package-local native-Follower factory exists only for exclusive generated tuning tools
+and `PedroTest`. Phoenix Auto uses neither alternate seam.
 
 INIT selection changes only `PhoenixAutoSpec` data: alliance, start position, and strategy. The
 last choice opens a read-only summary; it does not create a second confirmation state. On FTC START,
@@ -66,11 +95,20 @@ singleton shape mapped from their own START-frozen `PhoenixAlliance`. Eligibilit
 applied before preview/sticky selection, so an opposite-alliance tag can still support localization
 through the complete fixed layout but cannot become either mode's scoring target.
 
+Passing runtime Config validation proves only that the authored software graph is complete, finite,
+and internally coherent. It does not prove motor identity/direction, Pinpoint placement or READY
+behavior, follower tuning, field alignment, route clearance, stopping distance, or physical STOP;
+those remain Phoenix calibration and on-robot evidence.
+
 ## Geometry and routines
 
 `PhoenixPedroPathFactory` is the only owner of Pedro path geometry and route-maturity facts.
 `PhoenixPedroAutoRoutineFactory` maps a frozen `PhoenixAutoSpec` to one Task graph over
 `PhoenixCapabilities`.
+
+The path factory builds through `runtime.pathBuilder()`. When a return route depends on the live
+start-time pose, it obtains exactly one defensive `runtime.currentPedroPose()` snapshot. It never
+receives the raw Follower or polls hardware while interpreting geometry.
 
 Fixed entries build fixed paths eagerly. A selector defers only its root Task construction with
 `Tasks.buildAtStart(...)`, after the spec freezes. Later route phases that depend on live pose keep
