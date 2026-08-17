@@ -29,6 +29,22 @@ For the best experience:
 - bring a laptop open to `RobotConfig` so you can paste values immediately
 - change one thing at a time, then rerun the relevant tester
 
+Vision/calibration tools take one explicit data-only Config plus, when they use AprilTags, one
+backend-neutral lane-factory builder. The tool validates and snapshots its active data and fixed-tag
+layout before it uses its child context or opens hardware; the builder separately captures the
+webcam or Limelight recipe and must stay stable for the tool's lifetime and clean picker retries.
+Facts that depend on the returned lane—its actual subtype, mount/sensor accessors, and asynchronous
+readiness—can only be checked after `open()`. A null contract fact or a `RuntimeException` from those
+checks detaches the published lane and closes it exactly once when cleanup succeeds; `NOT_READY` is
+normal pending state, not a failure. An `Error` propagates immediately without promised cleanup. If
+the lane remains published and STOP is later invoked, that boundary closes the still-retained owner.
+
+The snapshotted layout display deliberately keeps the FTC game-policy summary plus captured IDs and
+poses, rather than retaining the mutable source layout for richer per-key debug rows. An empty layout
+is preserved as empty: raw detections can remain visible, but no fixed-layout calibration sample or
+AprilTag correction is invented. Software defaults establish a valid authoring grammar; they do not
+prove the selected camera, mount, printed tag size, field placement, Pinpoint geometry, or drivetrain.
+
 ## Actuator direction and safe endpoints
 
 The canonical runbook is [`Actuator bring-up`](<Actuator Bring-up.md>). It distinguishes motor
@@ -418,11 +434,15 @@ Run this after:
 ### Procedure
 
 1. Start from a still robot.
-2. Use a manual sample or an auto sample, depending on whether the project provides drivetrain wiring.
-3. Rotate roughly 180 degrees in place.
-4. Let the tester compute the recommended offsets.
-5. Paste the two printed offset field assignments into your Pinpoint config.
-6. Rerun the tester and confirm the recommendation stabilizes instead of wandering wildly.
+2. During successful ordinary INIT, confirm the tool configures and polls evidence without commanding
+   drive power. Failed-init rollback and an explicit STOP may still command physical zero.
+3. Press Driver Station START; this is the first ordinary drive-zero command boundary.
+4. Use a manual sample or an auto sample, depending on whether the project provides drivetrain wiring.
+5. Rotate roughly 180 degrees in place. Automatic motion requires exact current-cycle Pinpoint
+   `READY` pose and velocity evidence and fail-stops when that evidence disappears.
+6. Let the tester compute the recommended offsets.
+7. Paste the two printed offset field assignments into your Pinpoint config.
+8. Rerun the tester and confirm the recommendation stabilizes instead of wandering wildly.
 
 ### What “good” looks like
 

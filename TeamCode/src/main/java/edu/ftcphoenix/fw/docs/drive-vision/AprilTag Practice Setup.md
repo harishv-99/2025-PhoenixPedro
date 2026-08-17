@@ -97,18 +97,45 @@ a new owner when the practice layout changes.
 
 ## 4) Use the layout/library with Phoenix testers
 
-The testers that use AprilTags support:
+Keep the two facts with their actual owners: put the trusted fixed-tag `layout` and localization
+policy in the tester Config, while the webcam backend Config owns `lib` and the camera mount. Pass
+the backend recipe separately as behavior:
 
-- A **tag layout override** (e.g. `SimpleTagLayout`)
-- A **tag library override** (e.g. `FtcAprilTags.singleTagLibrary(...)`)
+```java
+FtcWebcamAprilTagVisionLane.Config webcamTemplate =
+        FtcWebcamAprilTagVisionLane.Config.defaults();
+webcamTemplate.tagLibrary = lib;
+webcamTemplate.cameraMount = solvedCameraMount;
 
-That includes:
+Function<String, AprilTagVisionLaneFactory> webcamBuilder = selectedName -> {
+    FtcWebcamAprilTagVisionLane.Config backend = webcamTemplate.copy();
+    backend.webcamName = selectedName;
+    return AprilTagVisionLaneFactories.webcam(backend);
+};
 
-- `AprilTagLocalizationTester`
-- `PinpointAprilTagFusionLocalizationTester`
-- `CameraMountCalibrator`
+AprilTagLocalizationTester.Config april =
+        AprilTagLocalizationTester.Config.defaults();
+april.fixedTagLayout = layout;
+april.aprilTags = FtcOdometryAprilTagLocalizationLane
+        .AprilTagLocalizationConfig.defaults();
+new AprilTagLocalizationTester(april, webcamBuilder);
+```
 
-If you want to run outside a full game field, pass your custom `layout` and `lib` into the tester's constructor/config.
+The same one-Config-plus-builder shape applies to all four AprilTag tools:
+
+- `CameraMountCalibrator.Config.fixedTagLayout` supplies the calibration landmarks.
+- `AprilTagLocalizationTester.Config` supplies the layout and mount-free age/solver policy.
+- `PinpointAprilTagCorrectedLocalizationTester.Config` supplies the layout and complete corrected-
+  localization policy.
+- `PinpointPodOffsetCalibrator.Config` supplies the layout and the same mount-free AprilTag policy;
+  passing a non-null builder enables its optional assist path.
+
+None of those tool Configs has a second camera-mount or tag-library answer. A tester snapshots its
+active Config and layout. The deferred builder may be applied again after a clean picker retry, so
+keep `webcamTemplate` and the borrowed SDK `lib` stable for the tester's full lifetime. Each factory
+`open(...)` still returns a fresh lane owner. An empty layout remains an honest empty snapshot: raw
+detections may still be visible, but no fixed-layout calibration sample or AprilTag field correction
+can be produced.
 
 
 ## 5) Related calibration docs

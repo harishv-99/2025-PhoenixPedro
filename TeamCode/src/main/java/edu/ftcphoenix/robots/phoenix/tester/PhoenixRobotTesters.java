@@ -20,7 +20,7 @@ import edu.ftcphoenix.fw.tools.tester.calibration.CameraMountCalibrator;
 import edu.ftcphoenix.fw.tools.tester.calibration.PinpointAxisDirectionTester;
 import edu.ftcphoenix.fw.tools.tester.calibration.PinpointPodOffsetCalibrator;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
-import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocalizationTester;
+import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagCorrectedLocalizationTester;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
@@ -30,6 +30,12 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
  * the higher-level tester menu robot-owned. All AprilTag-facing testers are wired through the active
  * Phoenix vision backend so the same calibration and localization flows work for either a webcam or
  * a Limelight-backed rig.</p>
+ *
+ * <p>Each factory maps the current profile into one fresh tool-owned Config and supplies backend
+ * behavior separately through an {@link AprilTagVisionLaneFactory} builder. The builder captures the
+ * selected backend template immediately instead of rereading the broad mutable profile on a later
+ * picker retry; a borrowed custom SDK tag library must therefore remain stable for the tester's
+ * complete lifetime.</p>
  */
 public final class PhoenixRobotTesters {
 
@@ -60,18 +66,22 @@ public final class PhoenixRobotTesters {
 
     private static Function<String, AprilTagVisionLaneFactory> activeVisionLaneFactoryBuilder(PhoenixProfile p) {
         switch (p.vision.backend) {
-            case WEBCAM:
+            case WEBCAM: {
+                final FtcWebcamAprilTagVisionLane.Config template = p.vision.webcam.copy();
                 return hardwareName -> {
-                    FtcWebcamAprilTagVisionLane.Config cfg = p.vision.webcam.copy();
+                    FtcWebcamAprilTagVisionLane.Config cfg = template.copy();
                     cfg.webcamName = hardwareName;
                     return AprilTagVisionLaneFactories.webcam(cfg);
                 };
-            case LIMELIGHT:
+            }
+            case LIMELIGHT: {
+                final FtcLimelightAprilTagVisionLane.Config template = p.vision.limelight.copy();
                 return hardwareName -> {
-                    FtcLimelightAprilTagVisionLane.Config cfg = p.vision.limelight.copy();
+                    FtcLimelightAprilTagVisionLane.Config cfg = template.copy();
                     cfg.hardwareName = hardwareName;
                     return AprilTagVisionLaneFactories.limelight(cfg);
                 };
+            }
             default:
                 throw new IllegalArgumentException("Unsupported vision backend: " + p.vision.backend);
         }
@@ -189,14 +199,12 @@ public final class PhoenixRobotTesters {
      */
     public static TeleOpTester cameraMountCalibrator() {
         PhoenixProfile p = profile();
-        return new CameraMountCalibrator(
-                p.vision.activeDeviceName(),
-                activeVisionDeviceType(p),
-                activeVisionPickerTitle(p),
-                activeVisionLaneFactoryBuilder(p),
-                null,
-                0.35
-        );
+        CameraMountCalibrator.Config cfg = CameraMountCalibrator.Config.defaults();
+        cfg.preferredVisionDeviceName = p.vision.activeDeviceName();
+        cfg.visionDeviceType = activeVisionDeviceType(p);
+        cfg.visionPickerTitle = activeVisionPickerTitle(p);
+        cfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        return new CameraMountCalibrator(cfg, activeVisionLaneFactoryBuilder(p));
     }
 
     /**
@@ -206,17 +214,13 @@ public final class PhoenixRobotTesters {
      */
     public static TeleOpTester aprilTagLocalization() {
         PhoenixProfile p = profile();
-        return new AprilTagLocalizationTester(
-                p.vision.activeDeviceName(),
-                activeVisionDeviceType(p),
-                activeVisionPickerTitle(p),
-                activeVisionLaneFactoryBuilder(p),
-                p.field.fixedAprilTagLayout,
-                p.localization.estimation.aprilTags.toAprilTagPoseEstimatorConfig(
-                        p.vision.activeCameraMount()
-                ),
-                p.localization.estimation.aprilTags.maxDetectionAgeSec
-        );
+        AprilTagLocalizationTester.Config cfg = AprilTagLocalizationTester.Config.defaults();
+        cfg.preferredVisionDeviceName = p.vision.activeDeviceName();
+        cfg.visionDeviceType = activeVisionDeviceType(p);
+        cfg.visionPickerTitle = activeVisionPickerTitle(p);
+        cfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        cfg.aprilTags = p.localization.estimation.aprilTags.copy();
+        return new AprilTagLocalizationTester(cfg, activeVisionLaneFactoryBuilder(p));
     }
 
     /**
@@ -242,14 +246,17 @@ public final class PhoenixRobotTesters {
         cfg.pinpoint = p.localization.predictor.copy();
         cfg.mecanum = p.drive.copy();
         cfg.targetTurnRad = Math.PI;
-        cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.activeCameraMount());
         cfg.autoComputeAfterAutoSample = true;
         cfg.preferredVisionDeviceName = p.vision.activeDeviceName();
         cfg.visionDeviceType = activeVisionDeviceType(p);
         cfg.visionPickerTitle = activeVisionPickerTitle(p);
-        cfg.visionLaneFactoryBuilder = activeVisionLaneFactoryBuilder(p);
-        cfg.cameraMount = p.vision.activeCameraMount();
-        return new PinpointPodOffsetCalibrator(cfg);
+        cfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        cfg.aprilTags = p.localization.estimation.aprilTags.copy();
+        Function<String, AprilTagVisionLaneFactory> visionFactoryBuilder =
+                CalibrationChecks.canUseAprilTagAssist(p.vision.activeCameraMount())
+                        ? activeVisionLaneFactoryBuilder(p)
+                        : null;
+        return new PinpointPodOffsetCalibrator(cfg, visionFactoryBuilder);
     }
 
     /**
@@ -260,7 +267,11 @@ public final class PhoenixRobotTesters {
     public static TeleOpTester pinpointAprilTagFusion() {
         PhoenixProfile p = profile();
         FtcOdometryAprilTagLocalizationLane.Config cfg = p.localization.copy();
-        return configuredLocalizationTester(cfg, FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION);
+        return configuredLocalizationTester(
+                p,
+                cfg,
+                FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION
+        );
     }
 
     /**
@@ -271,12 +282,16 @@ public final class PhoenixRobotTesters {
     public static TeleOpTester pinpointAprilTagEkf() {
         PhoenixProfile p = profile();
         FtcOdometryAprilTagLocalizationLane.Config cfg = p.localization.copy();
-        return configuredLocalizationTester(cfg, FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF);
+        return configuredLocalizationTester(
+                p,
+                cfg,
+                FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF
+        );
     }
 
-    private static TeleOpTester configuredLocalizationTester(FtcOdometryAprilTagLocalizationLane.Config localizationCfg,
+    private static TeleOpTester configuredLocalizationTester(PhoenixProfile p,
+                                                             FtcOdometryAprilTagLocalizationLane.Config localizationCfg,
                                                              FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode estimatorMode) {
-        PhoenixProfile p = profile();
         FtcOdometryAprilTagLocalizationLane.Config cfg = localizationCfg != null
                 ? localizationCfg.copy()
                 : FtcOdometryAprilTagLocalizationLane.Config.defaults();
@@ -284,13 +299,16 @@ public final class PhoenixRobotTesters {
                 ? estimatorMode
                 : FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
 
-        return new PinpointAprilTagFusionLocalizationTester(
-                p.vision.activeDeviceName(),
-                activeVisionDeviceType(p),
-                activeVisionPickerTitle(p),
-                activeVisionLaneFactoryBuilder(p),
-                cfg,
-                p.field.fixedAprilTagLayout
+        PinpointAprilTagCorrectedLocalizationTester.Config toolCfg =
+                PinpointAprilTagCorrectedLocalizationTester.Config.defaults();
+        toolCfg.preferredVisionDeviceName = p.vision.activeDeviceName();
+        toolCfg.visionDeviceType = activeVisionDeviceType(p);
+        toolCfg.visionPickerTitle = activeVisionPickerTitle(p);
+        toolCfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        toolCfg.localization = cfg;
+        return new PinpointAprilTagCorrectedLocalizationTester(
+                toolCfg,
+                activeVisionLaneFactoryBuilder(p)
         );
     }
 

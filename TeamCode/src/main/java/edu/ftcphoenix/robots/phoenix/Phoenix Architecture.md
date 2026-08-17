@@ -96,6 +96,19 @@ behavior. After `PhoenixCapabilities` exists, `PhoenixRobot` calls
 callback-graph mutation out of constructors while the managed program retains the only binding
 heartbeat.
 
+Phoenix calibration entries follow the same ownership rule without becoming production services.
+`PhoenixRobotTesters` maps one fresh defaults-based tool Config from the relevant profile slice and
+passes an explicit backend-neutral AprilTag-lane builder as behavior. The builder captures the
+selected webcam/Limelight template immediately; the tester snapshots its active policy and fixed
+layout, and every successful factory open owns a fresh lane. Mount/library answers remain solely in
+the backend Config. Intrinsic Config errors precede portal/Pinpoint effects; subtype, accessor, and
+readiness facts remain post-open checks. Null facts and `RuntimeException` failures cleanly detach
+and close a published lane when cleanup succeeds; an `Error` propagates without promised cleanup,
+although a later STOP closes any still-retained published owner. The Pinpoint pod tool maps production's
+layout and AprilTag age/solver policy, keeps a successful ordinary INIT drive-silent, and permits
+motion only after START with current-cycle `READY` pose and velocity evidence. Software defaults and
+snapshots do not establish physical calibration.
+
 `PhoenixRobot` is constructed once for one mode. `declareTeleOp(...)` or `declareAuto(...)` may be
 called once. Both modes retain the complete defensive `PhoenixProfile`; neither constructs an
 alliance-filtered hardware profile. Their prestart owners instead supply a source that becomes one

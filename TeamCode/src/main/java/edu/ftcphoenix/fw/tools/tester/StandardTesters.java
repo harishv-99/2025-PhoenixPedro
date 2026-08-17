@@ -9,6 +9,7 @@ import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.fusion.OdometryCorrectionFusionEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.tools.tester.calibration.CameraMountCalibrator;
@@ -19,7 +20,7 @@ import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorPowerTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorVelocityTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.NormalizedColorSensorTester;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
-import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocalizationTester;
+import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagCorrectedLocalizationTester;
 
 /**
  * Registers the standard Phoenix framework testers.
@@ -38,6 +39,10 @@ import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocaliz
  * <p>Both paths expose the same ordinary actuator entry: one device-first bring-up wizard. Typed
  * motor diagnostics with genuinely different evidence remain under an explicitly advanced menu;
  * they are not parallel beginner recipes.</p>
+ *
+ * <p>Vision entries author one fresh data-only tester Config and pass one explicit backend-neutral
+ * lane-factory builder. The tester snapshots its data; the builder owns the deferred webcam or
+ * Limelight recipe and must remain stable for that tester's lifetime and any clean retry.</p>
  */
 public final class StandardTesters {
 
@@ -207,13 +212,13 @@ public final class StandardTesters {
         suite.add(
                 "Loc: Pinpoint + Field Corrections (Webcam)",
                 "Choose the Pinpoint device name at runtime. The tester still provides a webcam picker and uses raw AprilTag correction with an identity camera mount until calibrated.",
-                StandardTesters::createGenericPinpointAprilTagFusionTesterWebcam
+                StandardTesters::createGenericPinpointAprilTagCorrectedTesterWebcam
         );
 
         suite.add(
                 "Loc: Pinpoint + Field Corrections (Limelight)",
                 "Choose the Pinpoint device name at runtime. The tester provides a Limelight picker and uses raw AprilTag correction with an identity camera mount until calibrated.",
-                StandardTesters::createGenericPinpointAprilTagFusionTesterLimelight
+                StandardTesters::createGenericPinpointAprilTagCorrectedTesterLimelight
         );
 
         return suite;
@@ -254,34 +259,27 @@ public final class StandardTesters {
     }
 
     private static TeleOpTester createGenericWebcamCameraMountTester() {
-        return new CameraMountCalibrator();
+        CameraMountCalibrator.Config cfg = CameraMountCalibrator.Config.defaults();
+        return new CameraMountCalibrator(cfg, webcamLaneFactoryBuilder());
     }
 
     private static TeleOpTester createGenericLimelightCameraMountTester() {
-        return new CameraMountCalibrator(
-                null,
-                Limelight3A.class,
-                "Select Limelight",
-                limelightLaneFactoryBuilder(),
-                null,
-                0.35
-        );
+        CameraMountCalibrator.Config cfg = CameraMountCalibrator.Config.defaults();
+        cfg.visionDeviceType = Limelight3A.class;
+        cfg.visionPickerTitle = "Select Limelight";
+        return new CameraMountCalibrator(cfg, limelightLaneFactoryBuilder());
     }
 
     private static TeleOpTester createGenericWebcamAprilTagLocalizationTester() {
-        return new AprilTagLocalizationTester();
+        AprilTagLocalizationTester.Config cfg = AprilTagLocalizationTester.Config.defaults();
+        return new AprilTagLocalizationTester(cfg, webcamLaneFactoryBuilder());
     }
 
     private static TeleOpTester createGenericLimelightAprilTagLocalizationTester() {
-        return new AprilTagLocalizationTester(
-                null,
-                Limelight3A.class,
-                "Select Limelight",
-                limelightLaneFactoryBuilder(),
-                null,
-                null,
-                0.35
-        );
+        AprilTagLocalizationTester.Config cfg = AprilTagLocalizationTester.Config.defaults();
+        cfg.visionDeviceType = Limelight3A.class;
+        cfg.visionPickerTitle = "Select Limelight";
+        return new AprilTagLocalizationTester(cfg, limelightLaneFactoryBuilder());
     }
 
     private static TeleOpTester createGenericPinpointAxisCheckTester() {
@@ -309,45 +307,52 @@ public final class StandardTesters {
                 hardwareName -> {
                     PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
                     cfg.pinpoint = pinpointConfig(hardwareName);
-                    return new PinpointPodOffsetCalibrator(cfg);
+                    return new PinpointPodOffsetCalibrator(cfg, null);
                 }
         );
     }
 
-    private static TeleOpTester createGenericPinpointAprilTagFusionTesterWebcam() {
+    private static TeleOpTester createGenericPinpointAprilTagCorrectedTesterWebcam() {
         return new HardwareSelectingTester(
                 "Pinpoint + Field Corrections (Webcam)",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
                 "Dpad: highlight | A: choose | X: refresh",
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
-                hardwareName -> new PinpointAprilTagFusionLocalizationTester(
-                        null,
-                        null,
-                        pinpointConfig(hardwareName)
-                )
+                hardwareName -> {
+                    PinpointAprilTagCorrectedLocalizationTester.Config cfg =
+                            PinpointAprilTagCorrectedLocalizationTester.Config.defaults();
+                    cfg.localization = buildCorrectedLocalizationConfig(hardwareName);
+                    return new PinpointAprilTagCorrectedLocalizationTester(
+                            cfg,
+                            webcamLaneFactoryBuilder()
+                    );
+                }
         );
     }
 
-    private static TeleOpTester createGenericPinpointAprilTagFusionTesterLimelight() {
+    private static TeleOpTester createGenericPinpointAprilTagCorrectedTesterLimelight() {
         return new HardwareSelectingTester(
                 "Pinpoint + Field Corrections (Limelight)",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
                 "Dpad: highlight | A: choose | X: refresh",
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
-                hardwareName -> new PinpointAprilTagFusionLocalizationTester(
-                        null,
-                        Limelight3A.class,
-                        "Select Limelight",
-                        limelightLaneFactoryBuilder(),
-                        buildLimelightFusionLocalizationConfig(hardwareName),
-                        null
-                )
+                hardwareName -> {
+                    PinpointAprilTagCorrectedLocalizationTester.Config cfg =
+                            PinpointAprilTagCorrectedLocalizationTester.Config.defaults();
+                    cfg.visionDeviceType = Limelight3A.class;
+                    cfg.visionPickerTitle = "Select Limelight";
+                    cfg.localization = buildCorrectedLocalizationConfig(hardwareName);
+                    return new PinpointAprilTagCorrectedLocalizationTester(
+                            cfg,
+                            limelightLaneFactoryBuilder()
+                    );
+                }
         );
     }
 
-    private static edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config buildLimelightFusionLocalizationConfig(String hardwareName) {
+    private static edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config buildCorrectedLocalizationConfig(String hardwareName) {
         edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config cfg =
                 edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config.defaults();
         cfg.predictor = pinpointConfig(hardwareName);
@@ -355,6 +360,16 @@ public final class StandardTesters {
         cfg.estimation.correctionSource.mode = edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
         cfg.estimation.correctionFusion = OdometryCorrectionFusionEstimator.Config.defaults();
         return cfg;
+    }
+
+    private static Function<String, AprilTagVisionLaneFactory> webcamLaneFactoryBuilder() {
+        return hardwareName -> {
+            FtcWebcamAprilTagVisionLane.Config cfg =
+                    FtcWebcamAprilTagVisionLane.Config.defaults();
+            cfg.webcamName = hardwareName;
+            cfg.cameraMount = CameraMountConfig.identity();
+            return AprilTagVisionLaneFactories.webcam(cfg);
+        };
     }
 
     private static PinpointOdometryPredictor.Config pinpointConfig(String hardwareName) {

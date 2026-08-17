@@ -125,6 +125,115 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
     }
 
     @Test
+    public void aprilTagPolicyValidatedCopyPreservesZeroAndOwnsSolverDiagnostics() {
+        FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig source =
+                FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig.defaults();
+        source.maxDetectionAgeSec = 0.0;
+        source.fieldPoseSolver.maxAbsBearingRad = 0.7;
+
+        FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig captured =
+                source.validatedCopy("  tool.aprilTags  ");
+
+        assertNotSame(source, captured);
+        assertNotSame(source.fieldPoseSolver, captured.fieldPoseSolver);
+        assertEquals(0.0, captured.maxDetectionAgeSec, 0.0);
+        assertEquals(0.7, captured.fieldPoseSolver.maxAbsBearingRad, 0.0);
+
+        source.maxDetectionAgeSec = 0.4;
+        source.fieldPoseSolver.maxAbsBearingRad = 0.2;
+        assertEquals(0.0, captured.maxDetectionAgeSec, 0.0);
+        assertEquals(0.7, captured.fieldPoseSolver.maxAbsBearingRad, 0.0);
+
+        source.fieldPoseSolver.rangeSoftnessInches = Double.NaN;
+        RuntimeException solverFailure = captureFailure(
+                () -> source.validatedCopy("  tool.aprilTags  ")
+        );
+        assertTrue(solverFailure.getMessage().contains(
+                "tool.aprilTags.fieldPoseSolver.rangeSoftnessInches"
+        ));
+        assertTrue(solverFailure.getMessage().contains("NaN"));
+
+        FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig invalidAge =
+                FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig.defaults();
+        invalidAge.maxDetectionAgeSec = Double.POSITIVE_INFINITY;
+        RuntimeException canonicalFailure = captureFailure(
+                () -> invalidAge.validatedCopy("  ")
+        );
+        assertTrue(canonicalFailure.getMessage().contains(
+                FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig.class
+                        .getCanonicalName() + ".maxDetectionAgeSec"
+        ));
+    }
+
+    @Test
+    public void outerValidatedCopyChecksOnlyIntrinsicActiveBranchesAndIsIndependent() {
+        FtcOdometryAprilTagLocalizationLane.Config source =
+                FtcOdometryAprilTagLocalizationLane.Config.defaults();
+        source.estimation.correctedEstimatorMode =
+                FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+        source.estimation.correctionFusion.correctionPositionGain = 0.23;
+        source.estimation.correctionEkf = null;
+        source.estimation.correctionSource.mode =
+                FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+        source.estimation.correctionSource.limelightFieldPose.maxResultAgeSec = Double.NaN;
+
+        FtcOdometryAprilTagLocalizationLane.Config captured =
+                source.validatedCopy("  robot.localization  ");
+
+        assertNotSame(source, captured);
+        assertNotSame(source.predictor, captured.predictor);
+        assertNotSame(source.estimation, captured.estimation);
+        assertNotSame(source.estimation.aprilTags, captured.estimation.aprilTags);
+        assertNotSame(
+                source.estimation.correctionSource,
+                captured.estimation.correctionSource
+        );
+        assertNotSame(
+                source.estimation.correctionSource.limelightFieldPose,
+                captured.estimation.correctionSource.limelightFieldPose
+        );
+        assertNull(captured.estimation.correctionEkf);
+        assertEquals(
+                0.23,
+                captured.estimation.correctionFusion.correctionPositionGain,
+                0.0
+        );
+        assertTrue(Double.isNaN(
+                captured.estimation.correctionSource.limelightFieldPose.maxResultAgeSec
+        ));
+
+        source.estimation.correctionFusion.correctionPositionGain = 0.71;
+        source.estimation.correctionSource.limelightFieldPose.maxResultAgeSec = 0.2;
+        assertEquals(
+                0.23,
+                captured.estimation.correctionFusion.correctionPositionGain,
+                0.0
+        );
+        assertTrue(Double.isNaN(
+                captured.estimation.correctionSource.limelightFieldPose.maxResultAgeSec
+        ));
+
+        FtcOdometryAprilTagLocalizationLane.Config direct =
+                FtcOdometryAprilTagLocalizationLane.Config.defaults();
+        direct.estimation.correctionSource.mode =
+                FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
+        direct.estimation.correctionSource.limelightFieldPose.maxResultAgeSec = Double.NaN;
+        RuntimeException directFailure = captureFailure(
+                () -> direct.validatedCopy("  robot.localization  ")
+        );
+        assertTrue(directFailure.getMessage().contains(
+                "robot.localization.estimation.correctionSource.limelightFieldPose.maxResultAgeSec"
+        ));
+
+        FtcOdometryAprilTagLocalizationLane.Config ekf =
+                FtcOdometryAprilTagLocalizationLane.Config.defaults();
+        ekf.estimation.correctedEstimatorMode =
+                FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF;
+        ekf.estimation.correctionFusion = null;
+        assertNull(ekf.validatedCopy(null).estimation.correctionFusion);
+    }
+
+    @Test
     public void injectedPathAcceptsNullInactiveDraftsAndTouchesNoPredictorAtConstruction() {
         RecordingPredictor predictor = new RecordingPredictor();
         FtcOdometryAprilTagLocalizationLane.EstimatorConfig cfg =
@@ -408,8 +517,14 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
                 publicFieldNames(FtcOdometryAprilTagLocalizationLane.Config.class)
         );
         assertEquals(
-                Arrays.asList("copy", "defaults"),
+                Arrays.asList("copy", "defaults", "validatedCopy"),
                 publicDeclaredMethodNames(FtcOdometryAprilTagLocalizationLane.Config.class)
+        );
+        assertEquals(
+                Arrays.asList("copy", "defaults", "toAprilTagPoseEstimatorConfig", "validatedCopy"),
+                publicDeclaredMethodNames(
+                        FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig.class
+                )
         );
         assertEquals(
                 Arrays.asList(
@@ -426,6 +541,25 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
                 publicDeclaredMethodNames(
                         FtcOdometryAprilTagLocalizationLane.EstimatorConfig.class
                 )
+        );
+
+        Method aprilTagValidatedCopy =
+                FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig.class.getMethod(
+                        "validatedCopy",
+                        String.class
+                );
+        assertSame(
+                FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig.class,
+                aprilTagValidatedCopy.getReturnType()
+        );
+        Method outerValidatedCopy =
+                FtcOdometryAprilTagLocalizationLane.Config.class.getMethod(
+                        "validatedCopy",
+                        String.class
+                );
+        assertSame(
+                FtcOdometryAprilTagLocalizationLane.Config.class,
+                outerValidatedCopy.getReturnType()
         );
 
         Constructor<?>[] publicConstructors =

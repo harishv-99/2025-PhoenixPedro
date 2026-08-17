@@ -32,7 +32,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.tools.tester.calibration.CameraMountCalibrator;
 import edu.ftcphoenix.fw.tools.tester.calibration.PinpointPodOffsetCalibrator;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
-import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocalizationTester;
+import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagCorrectedLocalizationTester;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -60,7 +60,7 @@ public final class SelectableVisionTesterLifecycleTest {
             assertSame(kind.toString(), firstFailure, retainedFailure(owner));
             assertFalse(kind + " should allow leaving after confirmed cleanup", owner.onBackPressed());
 
-            invokeEnsure(kind, owner);
+            retryFreshSelection(kind, owner);
 
             assertEquals(kind.toString(), 2, opener.openCount);
             assertEquals(kind.toString(), 1, secondLane.closeCount);
@@ -217,7 +217,7 @@ public final class SelectableVisionTesterLifecycleTest {
             pending.readiness = VisionReadiness.notReady("camera is still opening");
             OpenProbe opener;
             TeleOpTester owner;
-            if (kind == OwnerKind.PINPOINT_FUSION) {
+            if (kind == OwnerKind.PINPOINT_CORRECTED) {
                 // This tester also owns real Pinpoint hardware, which is outside this pure-JVM
                 // fixture. Initialize its context through the existing post-open failure seam,
                 // then install the retained pending camera owner and clear that unrelated failure.
@@ -261,7 +261,7 @@ public final class SelectableVisionTesterLifecycleTest {
             active.readiness = VisionReadiness.notReady("camera is still opening");
             OpenProbe opener;
             TeleOpTester owner;
-            if (kind == OwnerKind.PINPOINT_FUSION) {
+            if (kind == OwnerKind.PINPOINT_CORRECTED) {
                 opener = new OpenProbe(LaneProbe.failingSetup(
                         new IllegalStateException("fixture stops before Pinpoint lookup"), null));
                 owner = kind.create(opener);
@@ -295,10 +295,219 @@ public final class SelectableVisionTesterLifecycleTest {
     }
 
     @Test
+    public void cleanFactoryOpenFailureHasNoOwnerToCloseAndAllowsFreshSelection() {
+        for (OwnerKind kind : OwnerKind.values()) {
+            RuntimeException failure = new IllegalStateException(kind + " open failed");
+            OpenProbe opener = OpenProbe.failingOpen(failure);
+            TeleOpTester owner = kind.create(opener);
+
+            owner.init(context());
+
+            assertEquals(kind.toString(), 1, opener.openCount);
+            assertSame(kind.toString(), failure, retainedFailure(owner));
+            assertSame(kind + " must not publish an owner when open throws",
+                    null, field(owner, kind.laneField));
+            assertFalse(kind + " clean unpublished failure must allow replacement",
+                    booleanField(owner, "visionCleanupFailed"));
+
+            RuntimeException replacementFailure =
+                    new IllegalArgumentException(kind + " replacement setup failed");
+            LaneProbe replacement = LaneProbe.failingSetup(replacementFailure, null);
+            opener.openFailure = null;
+            opener.lanes.addLast(replacement);
+            retryFreshSelection(kind, owner);
+
+            assertEquals(kind.toString(), 2, opener.openCount);
+            assertSame(kind.toString(), replacementFailure, retainedFailure(owner));
+            assertEquals(kind.toString(), 1, replacement.closeCount);
+            owner.stop();
+            assertEquals(kind.toString(), 1, replacement.closeCount);
+        }
+    }
+
+    @Test
+    public void pickerBuilderFailureOrNullFactoryNeverInvokesOpen() {
+        for (OwnerKind kind : OwnerKind.values()) {
+            RuntimeException failure = new IllegalStateException(kind + " builder failed");
+            BuilderProbe throwingBuilder = BuilderProbe.failing(failure);
+            TeleOpTester throwingOwner = kind.createPicker(throwingBuilder.builder());
+
+            throwingOwner.init(context());
+            selectPickerName(kind, throwingOwner);
+
+            assertEquals(kind.toString(), 1, throwingBuilder.applyCount);
+            assertEquals(kind.toString(), 0, throwingBuilder.opener.openCount);
+            assertSame(kind.toString(), failure, retainedFailure(throwingOwner));
+            assertSame(kind.toString(), null, field(throwingOwner, kind.laneField));
+            assertFalse(kind + " builder failure has no uncertain resource",
+                    booleanField(throwingOwner, "visionCleanupFailed"));
+
+            BuilderProbe nullBuilder = BuilderProbe.returningNull();
+            TeleOpTester nullOwner = kind.createPicker(nullBuilder.builder());
+
+            nullOwner.init(context());
+            selectPickerName(kind, nullOwner);
+
+            assertEquals(kind.toString(), 1, nullBuilder.applyCount);
+            assertEquals(kind.toString(), 0, nullBuilder.opener.openCount);
+            assertSame(kind.toString(), null, field(nullOwner, kind.laneField));
+            assertFalse(kind + " null factory has no uncertain resource",
+                    booleanField(nullOwner, "visionCleanupFailed"));
+            assertTrue(kind.toString(), retainedFailure(nullOwner).getMessage().contains("null"));
+        }
+    }
+
+    @Test
+    public void factoryOpenReturningNullHasOneOpenAndNoOwnerToClose() {
+        for (OwnerKind kind : OwnerKind.values()) {
+            OpenProbe opener = OpenProbe.returningNull();
+            TeleOpTester owner = kind.create(opener);
+
+            owner.init(context());
+
+            assertEquals(kind.toString(), 1, opener.openCount);
+            assertSame(kind + " must not publish a null lane", null,
+                    field(owner, kind.laneField));
+            assertFalse(kind + " has no returned owner whose cleanup can be uncertain",
+                    booleanField(owner, "visionCleanupFailed"));
+            assertTrue(kind.toString(), retainedFailure(owner).getMessage().contains("returned null"));
+        }
+    }
+
+    @Test
+    public void nullFactoryDescriptionIsALegalTelemetryOmission() {
+        for (OwnerKind kind : Arrays.asList(
+                OwnerKind.CAMERA_MOUNT,
+                OwnerKind.APRILTAG_LOCALIZATION
+        )) {
+            LaneProbe lane = LaneProbe.open(null);
+            TeleOpTester owner = kind.create(OpenProbe.withDescription(null, lane));
+
+            owner.init(context());
+
+            assertTrue(kind.toString(), booleanField(owner, kind.readyField));
+            assertSame(kind.toString(), null, field(owner, "activeVisionDescription"));
+            assertEquals(kind.toString(), 0, lane.closeCount);
+            owner.stop();
+            assertEquals(kind.toString(), 1, lane.closeCount);
+        }
+
+        LaneProbe correctedLane = LaneProbe.open(null);
+        OpenProbe correctedOpener = OpenProbe.withDescription(null, correctedLane);
+        PinpointAprilTagCorrectedLocalizationTester.Config cfg =
+                PinpointAprilTagCorrectedLocalizationTester.Config.defaults();
+        cfg.preferredVisionDeviceName = "vision";
+        cfg.visionDeviceType = HardwareDevice.class;
+        cfg.visionPickerTitle = "Vision";
+        cfg.fixedTagLayout = new SimpleTagLayout();
+        cfg.localization.estimation.correctionSource.mode =
+                FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
+        TeleOpTester corrected = new PinpointAprilTagCorrectedLocalizationTester(
+                cfg,
+                ignored -> correctedOpener.factory()
+        );
+
+        corrected.init(context());
+
+        assertEquals(1, correctedOpener.openCount);
+        assertEquals(1, correctedLane.closeCount);
+        assertTrue(retainedFailure(corrected).getMessage().contains("LIMELIGHT_FIELD_POSE"));
+        assertFalse(retainedFailure(corrected).getMessage().contains("description"));
+    }
+
+    @Test
+    public void throwingFactoryDescriptionClosesThePublishedLaneOnce() {
+        for (OwnerKind kind : OwnerKind.values()) {
+            RuntimeException descriptionFailure =
+                    new IllegalStateException(kind + " description failed");
+            LaneProbe lane = LaneProbe.open(null);
+            TeleOpTester owner = kind.create(
+                    OpenProbe.failingDescription(descriptionFailure, lane));
+
+            owner.init(context());
+
+            assertSame(kind.toString(), descriptionFailure, retainedFailure(owner));
+            assertEquals(kind.toString(), 1, lane.closeCount);
+            assertSame(kind.toString(), null, field(owner, kind.laneField));
+        }
+    }
+
+    @Test
+    public void nullReadinessIsAContractFailureForEveryVisionOwner() {
+        for (OwnerKind kind : OwnerKind.values()) {
+            LaneProbe lane = LaneProbe.open(null);
+            lane.readiness = null;
+            TeleOpTester owner;
+            if (kind == OwnerKind.PINPOINT_CORRECTED) {
+                owner = kind.create(new OpenProbe(LaneProbe.failingSetup(
+                        new IllegalStateException("fixture stops before Pinpoint lookup"), null)));
+                owner.init(context());
+                setField(owner, kind.laneField, lane);
+                setBooleanField(owner, kind.readyField, false);
+                setField(owner, "visionFailure", null);
+                setField(owner, "initError", null);
+                invokePrivate(owner, "refreshVisionReadiness", new Class<?>[0]);
+            } else {
+                owner = kind.create(new OpenProbe(lane));
+                owner.init(context());
+            }
+
+            assertEquals(kind.toString(), 1, lane.closeCount);
+            assertSame(kind + " must detach a lane that violates readiness contract",
+                    null, field(owner, kind.laneField));
+            assertFalse(kind + " clean close permits a later picker selection",
+                    booleanField(owner, "visionCleanupFailed"));
+            RuntimeException failure = retainedFailure(owner);
+            assertTrue(kind.toString(), failure.getMessage().contains("readiness"));
+        }
+    }
+
+    @Test
+    public void nullTagSensorClosesEveryPublishedOwnerExactlyOnce() {
+        for (OwnerKind kind : OwnerKind.values()) {
+            LaneProbe lane = LaneProbe.open(null);
+            lane.returnNullSensor = true;
+            OpenProbe opener = new OpenProbe(lane);
+            TeleOpTester owner = kind.create(opener);
+
+            owner.init(context());
+
+            assertEquals(kind.toString(), 1, opener.openCount);
+            assertEquals(kind.toString(), 1, lane.closeCount);
+            assertSame(kind.toString(), null, field(owner, kind.laneField));
+            assertTrue(kind.toString(), retainedFailure(owner).getMessage()
+                    .toLowerCase(java.util.Locale.ROOT).contains("sensor"));
+            owner.stop();
+            assertEquals(kind + " detached owner must not close twice", 1, lane.closeCount);
+        }
+    }
+
+    @Test
+    public void nullCameraMountClosesAprilAndCorrectedOwnersExactlyOnce() {
+        for (OwnerKind kind : Arrays.asList(
+                OwnerKind.APRILTAG_LOCALIZATION,
+                OwnerKind.PINPOINT_CORRECTED
+        )) {
+            LaneProbe lane = LaneProbe.open(null);
+            lane.returnNullCameraMount = true;
+            OpenProbe opener = new OpenProbe(lane);
+            TeleOpTester owner = kind.create(opener);
+
+            owner.init(context());
+
+            assertEquals(kind.toString(), 1, opener.openCount);
+            assertEquals(kind.toString(), 1, lane.closeCount);
+            assertSame(kind.toString(), null, field(owner, kind.laneField));
+            assertTrue(kind.toString(), retainedFailure(owner).getMessage()
+                    .toLowerCase(java.util.Locale.ROOT).contains("mount"));
+            owner.stop();
+            assertEquals(kind + " detached owner must not close twice", 1, lane.closeCount);
+        }
+    }
+
+    @Test
     public void pinpointPodOffsetAssistBlocksReplacementWhenFailedOwnerCannotClose() {
-        PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
-        cfg.enableAprilTagAssist = true;
-        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(cfg);
+        PinpointPodOffsetCalibrator owner = newPodOwnerWithAssist();
         RuntimeException readinessFailure = new IllegalStateException("readiness failed");
         RuntimeException closeFailure = new IllegalArgumentException("close failed");
         LaneProbe lane = LaneProbe.open(closeFailure);
@@ -340,7 +549,7 @@ public final class SelectableVisionTesterLifecycleTest {
 
     @Test
     public void pinpointPodOffsetNullReadinessClosesAndOffersInitRetryWithCause() {
-        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator();
+        PinpointPodOffsetCalibrator owner = newPodOwnerWithAssist();
         LaneProbe lane = LaneProbe.open(null);
         lane.readiness = null;
         TesterContext ctx = context();
@@ -375,7 +584,7 @@ public final class SelectableVisionTesterLifecycleTest {
 
     @Test
     public void pinpointPodOffsetActiveReadinessFailureRequiresReopenInsteadOfHiddenPicker() {
-        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator();
+        PinpointPodOffsetCalibrator owner = newPodOwnerWithAssist();
         RuntimeException readinessFailure = new IllegalStateException("USB disconnected");
         LaneProbe lane = LaneProbe.open(null);
         lane.readinessFailure = readinessFailure;
@@ -416,13 +625,11 @@ public final class SelectableVisionTesterLifecycleTest {
         final int[] openCalls = {0};
 
         PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
-        cfg.enableAprilTagAssist = true;
-        cfg.cameraMount = CameraMountConfig.of(1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-        cfg.visionLaneFactoryBuilder = ignored -> hardwareMap -> {
+        Function<String, AprilTagVisionLaneFactory> builder = ignored -> hardwareMap -> {
             openCalls[0]++;
             throw primary;
         };
-        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(cfg);
+        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(cfg, builder);
         setField(owner, "ctx", context());
         setField(owner, "selectedVisionDeviceName", "vision");
 
@@ -450,7 +657,7 @@ public final class SelectableVisionTesterLifecycleTest {
 
     @Test
     public void pinpointPodOffsetFinalStopDetachesBeforeExactOnceClose() {
-        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator();
+        PinpointPodOffsetCalibrator owner = newPodOwnerWithAssist();
         RuntimeException cleanup = new IllegalStateException("final close failed");
         LaneProbe lane = LaneProbe.open(cleanup);
         setField(owner, "visionLane", lane);
@@ -472,7 +679,7 @@ public final class SelectableVisionTesterLifecycleTest {
 
     @Test
     public void pinpointPodOffsetFinalStopPreservesDriveFailureAndStillClosesVision() {
-        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator();
+        PinpointPodOffsetCalibrator owner = newPodOwnerWithAssist();
         RuntimeException driveFailure = new IllegalStateException("drive stop failed");
         RuntimeException visionFailure = new IllegalArgumentException("vision close failed");
         PowerProbe failingOutput = new PowerProbe(driveFailure);
@@ -531,7 +738,7 @@ public final class SelectableVisionTesterLifecycleTest {
     private enum OwnerKind {
         CAMERA_MOUNT("ensureVisionReady", "visionLane", "visionReady"),
         APRILTAG_LOCALIZATION("ensureVisionReady", "visionLane", "visionReady"),
-        PINPOINT_FUSION("ensureReady", "visionLane", "ready");
+        PINPOINT_CORRECTED("openSelectedVision", "visionLane", "ready");
 
         private final String ensureMethod;
         private final String laneField;
@@ -545,45 +752,88 @@ public final class SelectableVisionTesterLifecycleTest {
         }
 
         TeleOpTester create(OpenProbe opener) {
-            Function<String, AprilTagVisionLaneFactory> builder = ignored -> opener.factory();
+            return create("vision", ignored -> opener.factory());
+        }
+
+        TeleOpTester createPicker(
+                Function<String, AprilTagVisionLaneFactory> builder
+        ) {
+            return create(null, builder);
+        }
+
+        private TeleOpTester create(
+                String preferredName,
+                Function<String, AprilTagVisionLaneFactory> builder
+        ) {
             switch (this) {
                 case CAMERA_MOUNT:
-                    return new CameraMountCalibrator(
-                            "vision",
-                            HardwareDevice.class,
-                            "Vision",
-                            builder,
-                            new SimpleTagLayout(),
-                            0.35
-                    );
+                    CameraMountCalibrator.Config camera =
+                            CameraMountCalibrator.Config.defaults();
+                    camera.preferredVisionDeviceName = preferredName;
+                    camera.visionDeviceType = HardwareDevice.class;
+                    camera.visionPickerTitle = "Vision";
+                    camera.fixedTagLayout = new SimpleTagLayout();
+                    return new CameraMountCalibrator(camera, builder);
                 case APRILTAG_LOCALIZATION:
-                    return new AprilTagLocalizationTester(
-                            "vision",
-                            HardwareDevice.class,
-                            "Vision",
-                            builder,
-                            new SimpleTagLayout(),
-                            null,
-                            0.35
-                    );
-                case PINPOINT_FUSION:
-                    return new PinpointAprilTagFusionLocalizationTester(
-                            "vision",
-                            HardwareDevice.class,
-                            "Vision",
-                            builder,
-                            FtcOdometryAprilTagLocalizationLane.Config.defaults(),
-                            new SimpleTagLayout()
-                    );
+                    AprilTagLocalizationTester.Config april =
+                            AprilTagLocalizationTester.Config.defaults();
+                    april.preferredVisionDeviceName = preferredName;
+                    april.visionDeviceType = HardwareDevice.class;
+                    april.visionPickerTitle = "Vision";
+                    april.fixedTagLayout = new SimpleTagLayout();
+                    return new AprilTagLocalizationTester(april, builder);
+                case PINPOINT_CORRECTED:
+                    PinpointAprilTagCorrectedLocalizationTester.Config corrected =
+                            PinpointAprilTagCorrectedLocalizationTester.Config.defaults();
+                    corrected.preferredVisionDeviceName = preferredName;
+                    corrected.visionDeviceType = HardwareDevice.class;
+                    corrected.visionPickerTitle = "Vision";
+                    corrected.localization =
+                            FtcOdometryAprilTagLocalizationLane.Config.defaults();
+                    corrected.fixedTagLayout = new SimpleTagLayout();
+                    return new PinpointAprilTagCorrectedLocalizationTester(corrected, builder);
                 default:
                     throw new AssertionError(this);
             }
         }
     }
 
+    private static final class BuilderProbe {
+        private final OpenProbe opener = new OpenProbe();
+        private final RuntimeException failure;
+        private final boolean returnNull;
+        private int applyCount;
+
+        private BuilderProbe(RuntimeException failure, boolean returnNull) {
+            this.failure = failure;
+            this.returnNull = returnNull;
+        }
+
+        static BuilderProbe failing(RuntimeException failure) {
+            return new BuilderProbe(failure, false);
+        }
+
+        static BuilderProbe returningNull() {
+            return new BuilderProbe(null, true);
+        }
+
+        Function<String, AprilTagVisionLaneFactory> builder() {
+            return ignored -> {
+                applyCount++;
+                if (failure != null) {
+                    throw failure;
+                }
+                return returnNull ? null : opener.factory();
+            };
+        }
+    }
+
     private static final class OpenProbe {
         private final Deque<LaneProbe> lanes;
         private RuntimeException openFailure;
+        private RuntimeException descriptionFailure;
+        private String description = "test AprilTag vision";
+        private boolean returnNull;
         private int openCount;
 
         OpenProbe(LaneProbe... lanes) {
@@ -596,17 +846,52 @@ public final class SelectableVisionTesterLifecycleTest {
             return probe;
         }
 
+        static OpenProbe returningNull() {
+            OpenProbe probe = new OpenProbe();
+            probe.returnNull = true;
+            return probe;
+        }
+
+        static OpenProbe withDescription(String description, LaneProbe... lanes) {
+            OpenProbe probe = new OpenProbe(lanes);
+            probe.description = description;
+            return probe;
+        }
+
+        static OpenProbe failingDescription(
+                RuntimeException descriptionFailure,
+                LaneProbe... lanes
+        ) {
+            OpenProbe probe = new OpenProbe(lanes);
+            probe.descriptionFailure = descriptionFailure;
+            return probe;
+        }
+
         AprilTagVisionLaneFactory factory() {
-            return hardwareMap -> {
-                openCount++;
-                if (openFailure != null) {
-                    throw openFailure;
+            return new AprilTagVisionLaneFactory() {
+                @Override
+                public AprilTagVisionLane open(HardwareMap hardwareMap) {
+                    openCount++;
+                    if (openFailure != null) {
+                        throw openFailure;
+                    }
+                    if (returnNull) {
+                        return null;
+                    }
+                    LaneProbe lane = lanes.pollFirst();
+                    if (lane == null) {
+                        throw new IllegalStateException("No queued test lane");
+                    }
+                    return lane;
                 }
-                LaneProbe lane = lanes.pollFirst();
-                if (lane == null) {
-                    throw new IllegalStateException("No queued test lane");
+
+                @Override
+                public String description() {
+                    if (descriptionFailure != null) {
+                        throw descriptionFailure;
+                    }
+                    return description;
                 }
-                return lane;
             };
         }
     }
@@ -619,6 +904,8 @@ public final class SelectableVisionTesterLifecycleTest {
         private Runnable duringClose;
         private VisionReadiness readiness = VisionReadiness.ready();
         private RuntimeException readinessFailure;
+        private boolean returnNullSensor;
+        private boolean returnNullCameraMount;
 
         private LaneProbe(RuntimeException setupFailure,
                           Error setupError,
@@ -649,12 +936,15 @@ public final class SelectableVisionTesterLifecycleTest {
             if (setupFailure != null) {
                 throw setupFailure;
             }
+            if (returnNullSensor) {
+                return null;
+            }
             return clock -> AprilTagDetections.none();
         }
 
         @Override
         public CameraMountConfig cameraMountConfig() {
-            return CameraMountConfig.identity();
+            return returnNullCameraMount ? null : CameraMountConfig.identity();
         }
 
         @Override
@@ -699,6 +989,14 @@ public final class SelectableVisionTesterLifecycleTest {
         public double getCommandedPower() {
             return commandedPower;
         }
+    }
+
+    private static PinpointPodOffsetCalibrator newPodOwnerWithAssist() {
+        PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
+        Function<String, AprilTagVisionLaneFactory> builder = ignored -> hardwareMap -> {
+            throw new AssertionError("test did not provide an AprilTag lane");
+        };
+        return new PinpointPodOffsetCalibrator(cfg, builder);
     }
 
     private static TesterContext context() {
@@ -751,6 +1049,24 @@ public final class SelectableVisionTesterLifecycleTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
+    }
+
+    private static void retryFreshSelection(OwnerKind kind, TeleOpTester owner) {
+        if (kind == OwnerKind.PINPOINT_CORRECTED) {
+            setField(owner, "selectedVisionDeviceName", "vision");
+            invokeEnsure(kind, owner);
+            return;
+        }
+        invokePrivate(
+                owner,
+                "preparePickerSelection",
+                new Class<?>[]{String.class},
+                "vision"
+        );
+    }
+
+    private static void selectPickerName(OwnerKind kind, TeleOpTester owner) {
+        retryFreshSelection(kind, owner);
     }
 
     private static void invokePrivate(
