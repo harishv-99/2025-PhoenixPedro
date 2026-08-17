@@ -176,6 +176,38 @@ When `FtcWebcamAprilTagVisionLane` also owns custom processors, its
 robot-owned mode realization control the built-in AprilTag processor without exposing that SDK
 processor instance.
 
+### 3.1 Selectable calibration and localization tools
+
+`CameraMountCalibrator`, `AprilTagLocalizationTester`,
+`PinpointAprilTagCorrectedLocalizationTester`, and the optional-assist path of
+`PinpointPodOffsetCalibrator` use one construction story. Author a fresh tool Config, put the fixed
+layout and mount-free localization policy there, and pass a
+`Function<String, AprilTagVisionLaneFactory>` separately. The webcam/Limelight backend Config—not
+the tool Config—owns camera mount and detector-library answers. See
+[`AprilTag Practice Setup`](<AprilTag Practice Setup.md>) for the complete call shape.
+
+The tool constructor validates and snapshots active data before using a child context. A preferred
+device applies the builder immediately; a picker applies it once per confirmed selection. The
+deferred factory then opens a fresh lane owner. The builder/template and any borrowed custom SDK tag
+library must remain stable for the tester's whole lifetime because a clean picker retry may apply the
+builder again. Tool defaults are valid software baselines, not evidence that a camera, mount, library,
+or field placement is physically correct.
+
+The shared AprilTag policy and corrected-localization Configs expose context-aware validated copies
+so intrinsic age, solver, predictor, source-selection, and selected Fusion/EKF facts fail before a
+portal or Pinpoint effect. Actual lane subtype, mount/sensor accessors, and readiness remain honest
+post-open facts. A non-null `NOT_READY` retains the owner for another poll; a null contract fact or
+`RuntimeException` detaches and closes the published lane once when cleanup succeeds. An `Error`
+propagates immediately without promised cleanup. If the lane remains published and STOP is later
+invoked, that boundary closes the still-retained owner.
+
+Each tool snapshots `fixedTagLayout` with one IDs read and one pose read per ID. For an FTC game
+layout it retains the immutable policy summary plus the captured IDs/poses, but deliberately does
+not retain the mutable source merely to reproduce richer per-key debug rows. An empty layout stays
+empty: it can show raw detections, but cannot publish a fixed-layout mount sample or AprilTag field
+correction. Pinpoint prediction or configured direct-Limelight correction remains governed by its
+own evidence.
+
 Both expose the same shared resources above the FTC boundary:
 
 ```java

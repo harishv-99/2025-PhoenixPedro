@@ -177,7 +177,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Done | The reviewed owner-local vision snapshots, canonical FTC tag-library capture, configured solver/estimator composition, synchronized callers/docs, and destination-specific publication authorization are complete. |
 | 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Done | The reviewed effect-safe Pinpoint/composite configuration, READY-gated lifecycle, finite localization truth, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 92 | CONFIG-05 | Pedro runtime configuration ownership | Done | The reviewed owner-local Pedro snapshots, complete pre-effect validation, pure Phoenix mapper, exclusive native-tool path, narrow pose observation, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 93 | CONFIG-06 | Tool and tester configuration ownership | Proposed | Remove retained mutable aliases and constructor forests from maintained calibration and tester owners without changing their evidence roles. |
+| 93 | CONFIG-06 | Tool and tester configuration ownership | Done | The reviewed defaults-only tester Configs, explicit vision-factory behavior, production-aligned Pod evidence, corrected-localization naming, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 94 | CONFIG-07 | Starter profile simplification | Proposed | Replace the starter's aggregate copy-and-validation boilerplate with small owner configs and mode-specific composition checks. |
 | 95 | CONFIG-08 | Basic Pedro profile independence | Proposed | Give the Pedro reference its own small reviewed profile and remove its dependency on Phoenix configuration and project constants. |
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Proposed | Move Phoenix configuration sections beside their owning services and mechanisms while retaining one small data-only aggregate. |
@@ -254,8 +254,10 @@ intake, each row was **Proposed** and required its own source/caller/constructio
 CONFIG-02, SPATIAL-01, and MATH-01 have since completed their separately approved publication;
 CONFIG-03 and CONFIG-04 have completed their separately approved implementations, Android Studio
 reviews, and GitHub publication. CONFIG-05 is **Done** after its approved implementation, automated
-verification, Android Studio review, and destination-specific publication authorization; CONFIG-06
-through CONFIG-09 remain **Proposed**.
+verification, Android Studio review, and destination-specific publication authorization. CONFIG-06
+is **Done** after its separately approved implementation, automated verification, Android Studio
+review, and destination-specific publication authorization; CONFIG-07 through CONFIG-09 remain
+**Proposed**.
 Recording the program neither approves the later implementations nor permits compatibility shims or
 mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
@@ -18952,38 +18954,486 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-06 - Tool and tester configuration ownership
 
-- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-05.** This item applies the
-  selected ownership contract to maintained measurement tools without changing what any tool is
-  allowed to infer or promoting diagnostic setup into ordinary robot architecture.
-- **Confirmed defects and duplication:** `PinpointAxisDirectionTester` and
-  `PinpointPodOffsetCalibrator` retain caller-owned Config objects; the pod-offset copy is shallow for
-  nested `pinpoint` configuration and omits `autoComputeAfterAutoSample`, while initialization
-  mutates an AprilTag-assist flag on the retained caller state. Numeric settings also have uneven
-  validation.
-  `CameraMountCalibrator`, `AprilTagLocalizationTester`, and
-  `PinpointAprilTagFusionLocalizationTester` expose constructor forests with repeated peer answers
-  instead of one auditable owner input.
-- **Leading hypothesis:** give each maintained tool with multiple cohesive answers one owner-specific
-  Config, one ordinary factory/constructor, a complete deep copy, and pre-effect validation. Remove
-  redundant overloads and migrate Phoenix/tool hosts/tests together; retain a no-argument path only
-  when it represents truthful software defaults rather than hidden hardware facts. Ensure tool
-  initialization never writes back into the caller's config. Keep
-  `AprilTagVisionLaneFactory`/backend-neutral factory construction as an explicit dependency beside
-  the data config: the current pod-offset Config's
-  `Function<String, AprilTagVisionLaneFactory>` carries behavior and violates the data-only boundary.
-- **Boundary and alternatives:** preserve TESTER-01/02/03 lifecycle, Driver Station/Panels consoles,
-  CAL measurement semantics, raw evidence, explicit user confirmation, and cleanup. Do not create a
-  `TesterConfig` base, generic screen/schema DSL, config registry, or production fallback based on a
-  calibration result. Do not fold Phoenix-specific tester values into framework configs merely to
-  reduce constructor count.
-- **Future completion evidence:** enumerate every constructor/factory and caller first; prove every
-  retained field is independently copied, invalid values fail before hardware/portal/Panel effects,
-  INIT does not mutate caller state, partial setup cleans up, and restart/STOP/evidence behavior is
-  unchanged. Reflection tests should lock the one selected construction layer and field coverage.
-  Synchronize calibration/tester guides and run focused tester suites, full TeamCode verification,
-  strict docs/Javadocs, stale-overload scans, and whitespace checks. Physical measurements remain
-  mandatory where each tool already requires them.
-- **Decision record:** _Pending. No implementation started._
+- **Status and intake boundary (2026-08-17):** **Done after review and publication authorization** on
+  `codex/config-06-tool-tester-configuration`, based directly on
+  `origin/master@91b3500ae57c2297d16e882230d1a8bf88e44206`. This item applies the selected ownership
+  contract to maintained measurement tools without changing their calibration equations or
+  promoting diagnostic setup into ordinary robot architecture. The user approved the exact Gate 1
+  design on 2026-08-17; implementation may now change only the CONFIG-06 production, caller, test,
+  Javadoc, guide, and tracker surfaces recorded below. Staging, publication, and later-item work are
+  not authorized.
+- **Gate 1 audit authority and bounded scope:** the read-only audit covered all five maintained
+  measurement owners named by this item, their Configs, `BaseTeleOpTester`/suite/session lifecycle,
+  every maintained production and test construction, the Pinpoint/direct-mecanum/vision/localization
+  owners they compose, the current tester and Phoenix calibration guides, and the CONFIG-03/04
+  ownership contracts those tools must consume. At Gate 1, no source or test implementation had
+  started. This
+  item may rationalize only these tool-facing configuration and setup boundaries plus the two narrow
+  shared validated-copy seams required to reuse CONFIG-04 policy. It does not decompose
+  `PhoenixProfile`, redesign the tester host/menu, or change production localization algorithms.
+- **Historical public construction inventory:** the five concrete tools currently expose eighteen
+  public constructors plus two public exact-return factories:
+
+  | owner | current public construction | selected public construction |
+  |---|---|---|
+  | `PinpointAxisDirectionTester` | `()` and `(Config)` | `(Config)` |
+  | `PinpointPodOffsetCalibrator` | `()` and `(Config)` | `(Config, Function<String, AprilTagVisionLaneFactory>)` |
+  | `CameraMountCalibrator` | `()`, `(String)`, `(String, TagLayout, double)`, `(String, TagLayout, AprilTagLibrary, double)`, and `(String, Class<? extends HardwareDevice>, String, Function<String, AprilTagVisionLaneFactory>, TagLayout, double)` | `(Config, Function<String, AprilTagVisionLaneFactory>)` |
+  | `AprilTagLocalizationTester` | `()`, `(String, CameraMountConfig)`, `(String, CameraMountConfig, double)`, `(String, CameraMountConfig, TagLayout, AprilTagLibrary, AprilTagPoseEstimator.Config, double)`, and `(String, Class<? extends HardwareDevice>, String, Function<String, AprilTagVisionLaneFactory>, TagLayout, AprilTagPoseEstimator.Config, double)` | `(Config, Function<String, AprilTagVisionLaneFactory>)` |
+  | `PinpointAprilTagFusionLocalizationTester` | constructors `(String, CameraMountConfig, PinpointOdometryPredictor.Config)`, the same plus `OdometryCorrectionFusionEstimator.Config`, the seven-peer webcam form adding `TagLayout`, `AprilTagLibrary`, and `AprilTagPoseEstimator.Config`, and `(String, Class<? extends HardwareDevice>, String, Function<String, AprilTagVisionLaneFactory>, FtcOdometryAprilTagLocalizationLane.Config, TagLayout)`; plus `ekf(...)` forms with `(String, CameraMountConfig, PinpointOdometryPredictor.Config, OdometryCorrectionEkfEstimator.Config)` and the seven-peer form, both returning exactly `PinpointAprilTagFusionLocalizationTester` | renamed `PinpointAprilTagCorrectedLocalizationTester(Config, Function<String, AprilTagVisionLaneFactory>)` |
+
+  The selected public owner surface is therefore exactly five constructors and zero public owner
+  factories. Remove every no-argument and positional convenience constructor, both `ekf(...)`
+  factories, and the zero-caller public tester-local `EstimatorMode`, which duplicates
+  `FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode`. A software-valid default is not by
+  itself a distinct construction capability: `StandardTesters` already owns the generic webcam/
+  picker recipe, while direct callers should see the backend behavior dependency they are giving the
+  owner. Retained declared instance operations do not change: Axis and Pod each declare only
+  `name(): String`; Camera, April-only, and corrected localization each declare `name(): String` and
+  `onBackPressed(): boolean`; the inherited final tester lifecycle remains the only init/start/loop/
+  stop path. No forwarding/deprecated aliases remain. Rename the corrected-localization class to
+  `PinpointAprilTagCorrectedLocalizationTester`: every constructor and all four maintained callers
+  already migrate in this breaking item, while the old `Fusion` noun falsely excludes its supported
+  EKF mode and has no external compatibility evidence in this repository.
+- **Complete maintained caller inventory:** Axis has two production constructor sites, both already
+  Config-form: the private generic helper in `StandardTesters` and public
+  `PhoenixRobotTesters.pinpointAxisCheck(): TeleOpTester`. Pod has two production Config-form sites
+  in the same owners plus six direct lifecycle-test constructions (four no-arg, two Config).
+  Camera and April-only each have three production sites (generic webcam, generic Limelight, and
+  Phoenix) plus one lifecycle-test site. Corrected localization has three source constructor sites:
+  Standard webcam, Standard Limelight, and the shared Phoenix helper used by the two distinct public
+  Fusion/EKF menu roles; it has one lifecycle-test site. No maintained caller uses either `ekf(...)`
+  factory or the tester-local enum. Config answers are local/inline and consumed once; no caller
+  independently validates or reads a tool Config after construction. Retain the six public
+  Phoenix tester facades declared as `TeleOpTester`, the three public Standard suite factories, their
+  private `TeleOpTester` helpers, and `TesterSuite`'s `Supplier<TeleOpTester>` storage: they add robot
+  mapping or menu composition, not duplicate concrete-owner construction.
+- **Confirmed alias, omitted-field, and caller-mutation defects:** Axis and Pod store the exact
+  caller Config; post-construction edits can change the future owner. Pod's alleged deep copy retains
+  the Pinpoint, behavior, mount, layout, and library aliases and omits
+  `autoComputeAfterAutoSample`, so authored `false` silently becomes `true`. Pod `onInit()` also
+  writes `cfg.enableAprilTagAssist = false` when mount facts look unsuitable, mutating caller state.
+  Camera, April-only, and corrected-localization retain caller layouts until or after FTC setup;
+  later source mutation can change the graph. Null Config/type/title/factory inputs silently invent
+  defaults in several paths, leaving the active branch and its failure timing unclear.
+- **Confirmed ignored and repeated answers:** camera mount and `AprilTagLibrary` are vision-owner
+  answers, yet current convenience paths repeat them solely to build a webcam lane. April-only
+  accepts a full `AprilTagPoseEstimator.Config` whose mount is later overwritten by the opened lane,
+  accepts a peer maximum age that is ignored whenever that pose Config exists, and then forcibly
+  sets `fieldPoseSolver.maxAbsBearingRad = 0.0` despite claiming to exercise supplied/production
+  tuning. Corrected localization repeats mount/library/predictor/mode composition already owned by
+  its vision and localization configs; its valid configured AprilTag age `0.0` is silently replaced
+  with `0.35` for selection even while the estimator uses exact zero. Pod currently uses its own
+  `0.20` age and a hidden default solver and fails to receive Phoenix's fixed layout, so its assist
+  can accept different evidence than the configured production `0.50`/solver/layout policy.
+- **Selected one-clear-call model:** every owner receives one mutable data-only Config; the four
+  vision-using owners also receive the exact borrowed behavior peer
+  `Function<String, AprilTagVisionLaneFactory>`. That function is not Config data and is never
+  copied. Each selection invokes it for the normalized hardware name and requires a non-null deferred
+  factory whose every `open` creates a fresh independently captured lane; factory object identity
+  itself need not be new or unique. Its constructor Javadocs require `apply` to bind/capture only and
+  perform no hardware lookup, portal open, or other FTC resource effect.
+  Camera mount and library exist only in the chosen backend Config/factory; after `open`, the lane's
+  `cameraMountConfig()` is the sole mount answer. Pod uses a nullable behavior peer as its sole
+  assist switch: null means AprilTag assist is inactive while the independently selected hand or
+  motor-driven Pinpoint workflow remains available; non-null means AprilTag assist. Remove
+  the separate `enableAprilTagAssist` Boolean rather than retain two answers to the same branch.
+  If Pod later receives an identity-looking lane mount, preserve its current safety meaning without
+  mutating Config: detach/close that assist owner, record an uncalibrated-mount notice in runtime
+  state, and continue the non-vision Pinpoint workflow. Camera-mount calibration needs no prior mount;
+  April-only/corrected diagnostics may display identity-mount evidence but must retain their explicit
+  not-calibrated warning rather than call it field truth.
+  Configs are `public static final`, have private constructors, and expose exactly one public method:
+  `defaults()`. Every maintained caller authors its Config locally and consumes it once, so a
+  public copier adds no distinct capability. Remove Pod's zero-caller broken `copy()` and do not add
+  symmetry-only copies to the other four Configs. Each tester instead performs one private,
+  hardware-free capture of its active data in the constructor: every active mutable nested Config
+  becomes independent, every scalar/String/Class answer is retained, and an active borrowed
+  `TagLayout` is immediately replaced with `TagLayouts.snapshot(...)`. Tool-level dormant drafts are
+  not inspected or allowed to affect behavior. Nested CONFIG-04 drafts needed by a possible later
+  lane-dependent branch are defensively copied but not validated until that branch is active; no
+  source alias can activate or change them after construction.
+- **Exact selected Config data:** the five tool Configs contain exactly these 37 public fields:
+
+  | Config | exact cohesive fields |
+  |---|---|
+  | `PinpointAxisDirectionTester.Config` (3) | `PinpointOdometryPredictor.Config pinpoint`, `double minTranslationInches`, `double minRotationDeg` |
+  | `PinpointPodOffsetCalibrator.Config` (19) | `PinpointOdometryPredictor.Config pinpoint`, nullable `FtcDrives.MecanumConfig mecanum`, `double manualOmegaScale`, `double autoOmegaCmd`, `double targetTurnRad`, `boolean autoComputeAfterAutoSample`, `boolean enableAutoTagSearchAtStart`, `double tagSearchMaxTurnRad`, `double tagSearchOmegaCmd`, `int tagSearchStableFrames`, `boolean enableAutoTagSearchAtEnd`, `double tagEndSearchMaxExtraTurnRad`, `boolean enablePostRotateRecenter`, `double recenterTranslationScale`, `String preferredVisionDeviceName`, `Class<? extends HardwareDevice> visionDeviceType`, `String visionPickerTitle`, `TagLayout fixedTagLayout`, `AprilTagLocalizationConfig aprilTags` |
+  | `CameraMountCalibrator.Config` (5) | `String preferredVisionDeviceName`, `Class<? extends HardwareDevice> visionDeviceType`, `String visionPickerTitle`, `TagLayout fixedTagLayout`, `double maxDetectionAgeSec` |
+  | `AprilTagLocalizationTester.Config` (5) | `String preferredVisionDeviceName`, `Class<? extends HardwareDevice> visionDeviceType`, `String visionPickerTitle`, `TagLayout fixedTagLayout`, `AprilTagLocalizationConfig aprilTags` |
+  | `PinpointAprilTagCorrectedLocalizationTester.Config` (5) | `String preferredVisionDeviceName`, `Class<? extends HardwareDevice> visionDeviceType`, `String visionPickerTitle`, `TagLayout fixedTagLayout`, `FtcOdometryAprilTagLocalizationLane.Config localization` |
+
+  Common vision defaults are exactly `preferredVisionDeviceName=null`,
+  `visionDeviceType=WebcamName.class`, `visionPickerTitle="Select Camera"`, and
+  `FtcGameTagLayout.currentGameFieldFixed()`. Camera and April-only retain
+  `maxDetectionAgeSec=0.35`; April-only builds
+  that value into a fresh mount-free `AprilTagLocalizationConfig` while preserving the shared solver
+  defaults. Corrected localization retains that shared Config's `0.50` default. `fixedTagLayout`
+  remains explicit, and a null active value is rejected rather than converted later.
+  Pod replaces scalar `maxTagAgeSec` with the same mount-free `AprilTagLocalizationConfig`, so age
+  and fixed-tag solver are one policy bundle and the opened lane supplies only the mount. Generic Pod
+  defaults use the shared localization defaults, dormant while its factory peer is null. Phoenix
+  maps `p.localization.estimation.aprilTags.copy()` and `p.field.fixedAprilTagLayout`, deliberately
+  correcting the old `0.20`/default-solver/current-game mismatch. Do not use
+  `AprilTagPoseEstimator.Config` here because it would reintroduce an ignored mount answer.
+- **Owner capture and supporting-API disposition:** private Axis/Pod capture preserves every active
+  scalar and Boolean, especially `autoComputeAfterAutoSample=false`, and independently captures
+  Pinpoint and AprilTag policy. A non-null Pod Mecanum branch is active, so private capture uses the
+  existing validating `MecanumConfig.copy()` directly: null nested sections and invalid drivebase
+  scales fail in the Java tester constructor before builder application. A null hand-motion branch is
+  preserved without inventing or validating drive answers. `FtcDrives.mecanum(...)` then owns the complete names/
+  directions/trim-equivalent identity check, which occurs
+  before its first lookup. That authoritative whole-group check is deliberately the first onInit
+  resource step rather than duplicated in the Java tester constructor; wrap its failure with the
+  Pod `Config.mecanum` context. It may follow an effect-free deferred-factory capture but precedes
+  every `HardwareMap`, Pinpoint, portal, motor-power, telemetry, or Panels effect. Do not change
+  `FtcDrives`, `MecanumConfig`, or
+  `MecanumDrivebase.Config`, and do not add a public Mecanum validator solely for this tool.
+- **Exact retained defaults:** Axis retains a fresh `PinpointOdometryPredictor.Config.defaults()`,
+  `minTranslationInches=6.0`, and `minRotationDeg=20.0`. Pod retains predictor defaults,
+  `mecanum=null`, `manualOmegaScale=0.6`, `autoOmegaCmd=0.35`, `targetTurnRad=Math.PI`,
+  `autoComputeAfterAutoSample=true`, start/end search enabled, `tagSearchMaxTurnRad=4*Math.PI`,
+  `tagSearchOmegaCmd=0.25`, `tagSearchStableFrames=3`,
+  `tagEndSearchMaxExtraTurnRad=2*Math.PI`, recenter enabled, and
+  `recenterTranslationScale=0.6`, plus the common vision/layout and shared AprilTag defaults above.
+  All other selected defaults remain bit-for-bit/source-identity compatible unless this record names
+  an intentional correction. Gate 2 locks every primitive, Boolean, nested-Config, class, String, and
+  nullable default. Two `defaults()` calls require distinct outer and mutable nested Configs, not new
+  identities for immutable `Class`/String facts or the borrowed current-game layout.
+- **Two necessary shared validated-copy seams:** add only
+  `public AprilTagLocalizationConfig validatedCopy(String context)` to
+  `AprilTagLocalizationConfig` and `public Config validatedCopy(String context)` to the outer
+  `FtcOdometryAprilTagLocalizationLane.Config`. The first owns the
+  shared age-plus-solver contract used by April-only, Pod, and the composite. The second raw-copies
+  and intrinsically preflights predictor, estimator shell, AprilTag policy, selection enums,
+  selected Fusion/EKF branch, and Limelight policy when direct Limelight correction is selected.
+  The two shared Configs retain their existing raw `copy()` methods; the ordinary lane requires an
+  already-open lane, and duplicating CONFIG-04's branch selection in a tool would create a second
+  validation answer. Add no
+  `validate()` alias, public `EstimatorConfig` validator, snapshot type, or public Limelight leaf
+  promotion; the same-package aggregate calls its existing package-private leaf capture. Both new
+  methods follow the existing estimator convention: a null/blank context falls back to that Config's
+  canonical class name, a nonblank context is trimmed for diagnostics, and the return is an
+  independent validated snapshot. The resulting declared public method counts are exactly four on
+  `AprilTagLocalizationConfig` (`defaults`, `copy`, `validatedCopy(String)`, and
+  `toAprilTagPoseEstimatorConfig`) and three on the outer localization `Config` (`defaults`, `copy`,
+  `validatedCopy(String)`). `LimelightFieldPoseEstimator.Config` stays at public `defaults`/`copy`
+  only; its existing validated capture remains package-private.
+- **Common vision selection and layout contract:** an active Config is non-null; Camera, April-only,
+  and corrected localization require a non-null factory-builder, while Pod's null builder is its
+  selected no-assist branch. `preferredVisionDeviceName == null` alone means show the picker; any
+  non-null value must contain a non-whitespace character and is normalized to the same trimmed device name already used
+  by `HardwareNamePicker` and both CONFIG-03 vision owners. Camera, April-only, and corrected
+  localization always capture a replacement-picker contract, so their `visionDeviceType` is non-null
+  and their `visionPickerTitle` is trimmed/nonblank even when a preferred name is present. Pod
+  validates those picker facts only when its active assist branch has no preferred name; its preferred
+  path never transitions to a hidden picker on the same owner. Neither the declared type nor title
+  proves what backend an arbitrary Function returns or that it honored the selected name. The active
+  `fixedTagLayout` is non-null and captured once with `TagLayouts.snapshot`: one `ids()` read, one
+  pose read per ID, non-null/nonnegative IDs, non-null finite six-component poses, immutable result,
+  and idempotence for an existing snapshot. An empty layout remains structurally valid rather than
+  inventing field facts, but it cannot produce a fixed-layout mount sample or AprilTag field-pose
+  correction. Raw diagnostics, Pinpoint prediction, and a configured direct-Limelight correction may
+  remain available according to their own evidence. Before replacing an authored
+  `FtcGameTagLayout`, capture its immutable `policySummaryLine()` without another `ids()` read; render
+  that policy summary with the snapshotted IDs/poses. Deliberately retire the richer per-key
+  source/excluded/official-ID debug rows rather than retain the mutable source-layout alias. Every
+  validation error wraps the canonical tool/field context. Later source-layout edits cannot change
+  the tester.
+- **Exact Axis validation:** Config and `pinpoint` are non-null; capture predictor through
+  `validatedCopy("PinpointAxisDirectionTester.Config.pinpoint")`. Both thresholds are finite and
+  strictly positive. Zero/negative/NaN can classify noise as evidence; infinity makes the named
+  sample impossible. The constructor accepts no null-to-default shortcut. Initial state clearing
+  does not issue a second `setPose(0)` after Pinpoint's mandatory nonblocking construction reset;
+  operator X remains an explicit later rebase after the current poll.
+- **Exact Pod active-branch validation:** Config and predictor are always active and non-null;
+  predictor capture uses the Pod-qualified context. `mecanum == null` is the valid hand-motion
+  branch. When drive exists, `manualOmegaScale` is finite in `[0,1]`, `autoOmegaCmd` finite in
+  `(0,1]`, and `targetTurnRad` finite with configured solve denominator
+  `4 * sin(targetTurnRad / 2)^2 >= 0.5`; a negative target remains a meaningful clockwise choice.
+  When recentering is enabled with drive, `recenterTranslationScale` is finite in `[0,1]`.
+  Factory presence makes assist active: preferred-name normalization, picker-only type/title rules
+  when the preferred name is null, and the layout rules apply;
+  `aprilTags`, its solver, and its finite age `>=0` are required and effect-free validated. With
+  assist plus drive, search omega is finite with `0 < abs(tagSearchOmegaCmd) <= 1` (its sign selects
+  search direction under the documented CCW-positive contract), and stable frames are `>=1` when either
+  search is enabled; start/end rotation budgets are finite and strictly positive only for their
+  enabled branch. No drive means command/target/search/recenter numerics are dormant; no factory
+  means picker/layout/AprilTag/search drafts are dormant. A future caller cannot activate a dormant
+  branch by mutating the source after capture.
+- **Exact AprilTag and corrected-localization policy:** `maxDetectionAgeSec` is finite `>=0`; zero is
+  exact and inclusive for selection and estimation. April-only requires its nested policy and
+  solver, validates all CONFIG-03 solver domains, and preserves every leaf, including
+  `maxAbsBearingRad` and `preferObservationFieldPose`; it composes only
+  `aprilTags.toAprilTagPoseEstimatorConfig(visionLane.cameraMountConfig())` after open. Corrected
+  localization intrinsically validates only its selected global-estimator branch; malformed/null
+  inactive Fusion versus EKF drafts remain copyable. Direct Limelight correction makes its field-
+  pose tuning intrinsically active. Every error names the supplied owner context, exact field/domain,
+  and received value; missing objects name the exact field. No empirical physical caps are added.
+- **Intrinsic versus post-open truth:** tool-owned scalar/nested-policy validation and layout capture
+  complete in the Java tester constructor before that child receives or uses `TesterContext`, picker
+  refresh, `HardwareMap`, builder invocation, portal, Pinpoint, motor-power, or child-owned telemetry/
+  Panels effects. An already-running suite/host may have prior UI effects and must report a child-
+  factory failure. Pod's complete
+  direct-drive wiring identity is the one deliberate exception: the existing FtcDrives owner checks
+  it during the first onInit resource step, still before its first lookup or any other effect. A
+  standard builder validates and captures its
+  backend Config when `apply(selectedName)` creates the deferred factory, still before `open`. A
+  preferred-name owner applies the builder exactly once in its Java constructor, after all intrinsic
+  Config validation/capture and before `onInit` can acquire any resource. Camera, April-only, and
+  corrected-localization picker owners apply it once per confirmed selection before portal open and,
+  for corrected localization, before Pinpoint. Picker-based Pod applies it once per confirmed
+  selection before portal open, but may already own the deliberately earlier drive and Pinpoint. Pod
+  with a null builder skips vision setup entirely and initializes drive then Pinpoint in `onInit`.
+  Clean retry discards the prior deferred factory and invokes the builder again; no test or contract
+  requires the returned factory object identity to differ. A webcam authoring `Config.copy()` may
+  still borrow its custom SDK library until `AprilTagVisionLaneFactories.webcam(...)` is invoked, so
+  the builder's Javadoc requires that borrowed library/template remain stable for the tester's full
+  lifetime and every possible retry application; the tester cannot deep-copy an arbitrary Function.
+  An arbitrary untyped function cannot truthfully prove it
+  honored the name/type or reveal the actual lane subtype, null/throwing mount or sensor accessors,
+  asynchronous readiness, or vendor failures before `open`. In corrected localization, an actual
+  Limelight backend can also activate diagnostic direct-pose tuning even when raw AprilTag correction
+  was selected. Those collaborator-dependent addenda remain post-open checks. Reject a new public
+  backend-capability descriptor merely to move that runtime fact earlier.
+- **Post-open failure and cleanup truth:** a builder `apply` RuntimeException or null result has zero
+  opens and zero closes; a preferred-path failure propagates during tester construction, and a hosted
+  parent suite records it through the child-factory error path. `factory.open` returning null has one open call and zero
+  closes. An open RuntimeException likewise has no returned lane to close; a suppressed exception
+  marks the factory's internal rollback uncertain and blocks replacement. Publish a non-null returned
+  lane before reading subtype, mount, sensor, description, or readiness. A null description remains
+  a legal telemetry omission; a thrown description call is a post-publication failure. A null/throwing accessor or
+  null/throwing readiness result is a contract failure and closes that published lane once; a non-null
+  `VisionReadiness.notReady(...)` is normal pending state, retains the lane, and is polled later.
+  RuntimeException cleanup is best effort: preserve the primary RuntimeException and suppress a
+  distinct RuntimeException cleanup failure; block replacement when close fails or rollback is
+  uncertain. `Error` propagates immediately, so the failing callback does not promise later cleanup
+  actions; a subsequently invoked STOP still closes any retained published owner.
+- **Exact vision retry ownership:** Camera, April-only, and corrected localization clear the choice
+  after a picker-path builder null/RuntimeException, clean/unsuppressed open null/RuntimeException,
+  clean published-lane setup/readiness failure, or clean active BACK; they expose the retained
+  replacement picker with the last name highlighted and invoke the builder again only after a new A
+  selection. BACK with no retained lane exits the child. Failed/uncertain cleanup consumes BACK and
+  requires a fresh OpMode. Pod permits clean INIT retry only on its explicit picker path; preferred or
+  active failures use its existing terminal/BACK-reopen path and never reveal a hidden picker. The
+  identity-looking mount heuristic is the sole automatic Pod degradation: after one confirmed clean
+  assist close, set only owner-local `assist unavailable` state, never mutate Config or reopen each
+  INIT loop, and continue the non-vision Pinpoint workflow. Preserve the existing exact heuristic:
+  all six robot-to-camera pose components have absolute magnitude below `1e-6`. A close failure blocks
+  fallback/replacement under the uncertain-cleanup rule. Null/throwing
+  accessors/readiness/backend failures do not silently take that identity-only fallback.
+  Corrected-localization's existing composite checks backend/layout/mount/sensor and selected policy
+  before its first Pinpoint lookup/reset, so a post-open backend mismatch closes vision with zero
+  Pinpoint effects. Pod may already own its drive/Pinpoint before a builder or post-open assist
+  failure; do not claim those prior effects vanished.
+- **Pod hardware/effect order and confirmed INIT defect:** current Pod constructs/resets Pinpoint
+  before discovering invalid drive/assist setup, mutates Config, then calls `resetAndClear()`, whose
+  `drive.drive(DriveSignal.zero())` performs raw-power-mode and motor-power effects during INIT.
+  INIT button paths can repeat that write or retain an armed phase. A preferred deferred factory has
+  already been captured in the Java constructor. Every Pod `onInit` then constructs and immediately
+  publishes the optional direct Mecanum first and validated Pinpoint second. A preferred factory opens
+  vision last; a picker path keeps those two non-vision owners while waiting, then applies its builder
+  and opens vision after selection. A null builder never creates vision.
+  Invalid Mecanum identity therefore causes zero Pinpoint effects, while later Pinpoint/setup failure
+  can detach and best-effort stop a returned drive, suppressing a distinct RuntimeException stop
+  failure on the primary RuntimeException. A vendor
+  constructor that throws before returning an owner and a partially configured Pinpoint expose no
+  rollback/close API; instruct a fresh OpMode rather than claiming restoration.
+- **No drive command during successful ordinary INIT:** Pod gains an explicit started gate. INIT may configure motor
+  direction/brake, poll/reset Pinpoint, select/open vision, and render evidence, but it issues zero
+  `getMode`, `setMode`, or `setPower` operations. INIT A/Y motion intent is discarded and cannot arm
+  a later phase; X may explicitly rebase the sensor after the current poll without writing drive;
+  B clears internal phase without a drive command. Because any configured drive is published during
+  `onInit`, START clears pending motion state and must issue that drive's first explicit zero. Picker
+  selection after START can open vision but never constructs a replacement drive. Only RUN with exact
+  cached `READY` plus current-cycle pose and velocity
+  may command nonzero; readiness loss aborts and zeros during RUN. STOP detaches owners and attempts
+  physical drive zero plus vision close even if START never occurred. Failed-onInit rollback of an
+  already returned drive and STOP-before-START are the deliberate cleanup exceptions to the
+  successful ordinary-INIT no-command rule. For RuntimeException failures
+  it retains the first and suppresses later distinct cleanup failures; an Error propagates immediately
+  without an Error-safe aggregation promise. Initial internal clear no longer repeats the
+  constructor's mandatory Pinpoint reset. Same-instance restart remains unsupported; suite suppliers
+  create a fresh child.
+- **Ordinary selected call shapes:** the five tools now ask each conceptual question once:
+
+  ```java
+  PinpointAxisDirectionTester.Config axis = PinpointAxisDirectionTester.Config.defaults();
+  axis.pinpoint = selectedPinpoint;
+  new PinpointAxisDirectionTester(axis);
+
+  PinpointPodOffsetCalibrator.Config pod = PinpointPodOffsetCalibrator.Config.defaults();
+  pod.pinpoint = profile.localization.predictor.copy();
+  pod.mecanum = profile.drive.copy();
+  pod.fixedTagLayout = profile.field.fixedAprilTagLayout;
+  pod.aprilTags = profile.localization.estimation.aprilTags.copy();
+  new PinpointPodOffsetCalibrator(pod, activeVisionFactoryBuilder);
+
+  AprilTagLocalizationTester.Config april = AprilTagLocalizationTester.Config.defaults();
+  april.fixedTagLayout = fieldLayout;
+  april.aprilTags = localizationPolicy;
+  new AprilTagLocalizationTester(april, visionFactoryBuilder);
+
+  PinpointAprilTagCorrectedLocalizationTester.Config corrected =
+          PinpointAprilTagCorrectedLocalizationTester.Config.defaults();
+  corrected.localization = localizationConfig;
+  corrected.fixedTagLayout = fieldLayout;
+  new PinpointAprilTagCorrectedLocalizationTester(corrected, visionFactoryBuilder);
+  ```
+
+  Camera uses the same five-field Config-plus-builder shape without an estimator policy. Compared
+  with six/seven positional peers or six corrected-localization construction choices, the selected
+  call exposes data once by name and behavior once as a peer. Standard suite users still select a
+  one-click menu item; its private helper spells the generic webcam recipe.
+- **Maintained migration:** Standard constructs explicit Configs and private webcam/Limelight
+  builders for Camera, April-only, and corrected localization; its outer Pinpoint picker writes only
+  the selected predictor name. Standard Pod passes a null builder for non-vision Pinpoint pod
+  calibration. Phoenix
+  maps active name/type/title, fixed layout, and copied owner policy, and its builder must capture a
+  selected webcam/Limelight template rather than reread the broad mutable profile when a later picker
+  callback fires; because an arbitrary builder cannot be copied, any borrowed template/custom SDK
+  library must remain stable for the tester's full lifetime and every retry application. Phoenix Pod passes the builder only when
+  `CalibrationChecks.canUseAprilTagAssist(...)` is true; otherwise null. Phoenix Fusion/EKF roles copy
+  localization and changes only `correctedEstimatorMode`. All six public Phoenix return types/menu
+  roles and Standard/Phoenix walkthrough labels remain. Migrate all nine direct lifecycle-test
+  constructions; do not add test-only public compatibility paths.
+- **Required Gate 2 evidence:** reflection-lock all five exact constructors, Config finality/private
+  constructors, exact field names/types/order and defaults-only method counts, both shared
+  `validatedCopy(String)` signatures, and absence of every removed no-arg/positional overload,
+  `ekf(...)`, public tester enum, tool-Config `copy()`, behavior/mount/library fields, and scalar Pod
+  age and the old Fusion-named class. Prove two independent fresh defaults, private active capture of
+  every primitive/Boolean/String/Class sentinel and nested policy, acceptance/noninspection plus alias
+  isolation of malformed dormant drafts (including retained CONFIG-04 lane-dependent drafts),
+  `autoComputeAfterAutoSample=false`, post-construction source mutation isolation, and one-read/
+  one-pose layout capture with later mutation inert. Lock captured `FtcGameTagLayout` policy-summary
+  provenance and the deliberate absence of the old rich per-key debug rows. Accept an empty layout
+  without substituting defaults and prove no fixed-layout mount sample/AprilTag correction is
+  published while independent raw/Pinpoint/direct-Limelight evidence remains truthful. Table-test null/blank/NaN/infinity/domain/
+  target-denominator exact boundaries, signed search-omega `-1/+1` acceptance and zero rejection,
+  configured solver policy, active/dormant branches, selected/
+  unselected Fusion/EKF/Limelight policy, exact zero age, and owner-qualified diagnostics.
+- **Required effect/lifecycle evidence:** invalid scalar/nested-policy/layout Config produces zero
+  tool-owned builder, picker, `HardwareMap`, factory-open, Pinpoint reset, motor mode/power, telemetry,
+  and Panel calls before constructor failure; a containing suite may report that failure. Invalid
+  active Pod Mecanum null wiring/null drivebase or any of its three invalid drivebase scales fails
+  with Pod-qualified context in the constructor before builder application. Invalid direct-drive names/directions/
+  trim-equivalent identity may follow one contractually effect-free preferred factory
+  capture, but fails with Pod-qualified context and still produces zero lookup/open/Pinpoint/motor/
+  child-UI effects. Invalid standard
+  backend Config fails at builder application with zero opens; after picker-based Pod selection this
+  does not erase its earlier drive/Pinpoint effects. Distinguish builder throw/null (zero open/close),
+  open-null or open-throw (one open/zero close), and returned-lane mismatch/null accessor/null
+  readiness (one open/one close); valid NOT_READY retains the owner. For corrected localization, a
+  returned-lane mismatch still has zero Pinpoint effects. Prove clean Camera/April/corrected picker
+  retry, Pod's narrower retry/terminal split, RuntimeException cleanup suppression/replacement block,
+  null Pod builder zero vision calls, and identity-mount exact-once close/owner-local fallback without
+  Config mutation or repeated reopen. Prove Mecanum-before-Pinpoint order,
+  drive-success/Pinpoint-failure exact-once rollback stop and suppression (including its allowed
+  pre-START zero/mode/power calls), the documented partial-constructor limit, and Pod
+  INIT/START/RUN/STOP behavior including zero successful ordinary-INIT power/mode calls, no armed
+  phase, first START zero, proof that picker selection cannot replace/publish a drive, READY/current-cycle
+  gating, loss fail-stop, and cleanup STOP before START. Preserve both
+  `PinpointTesterReadinessTest` cases and all sixteen `SelectableVisionTesterLifecycleTest` lifecycle,
+  retry, BACK, reentrant-close, terminal-cleanup, and `Error` cases.
+- **Documentation and verification:** synchronize all five class/Config/constructor Javadocs,
+  `StandardTesters`, `PhoenixRobotTesters`, `PhoenixCalibrationWalkthrough` and its shape test, both
+  new shared validated-copy contracts, Robot Calibration Tutorials, Guided Calibration Walkthroughs,
+  AprilTag Practice Setup, AprilTag Localization & Fixed Layouts, Phoenix Calibration Guide, and
+  Phoenix Architecture where they state ownership/setup. Practice Setup must cover Camera, April-only,
+  corrected-localization, and Pod-assist construction: put field layout/policy in the tool Config and
+  custom library/mount in the explicit backend factory Config. Explain one owner snapshot,
+  factory-builder stability, the deliberate narrower snapshotted layout debug rows, exact pre-open
+  versus post-open truth, no successful ordinary-INIT drive command (with failed-init rollback and
+  cleanup STOP still allowed to zero),
+  and software-defaults-not-calibration. Run the focused
+  tester/config/vision/localization suites, full TeamCode unit tests and compile, generated Phoenix
+  Javadocs, documentation-link checks, stale API/field/constructor scans, `git diff --check`, and
+  untracked whitespace/final-newline checks. No robot run is a substitute for these software proofs.
+- **Physical evidence boundary:** adopting-robot runs still must prove Pinpoint identity, offsets,
+  resolution, directions, yaw and RESET-to-READY transition; motor identity/direction/brake and actual
+  physical zero; safe turn/search/recenter clearances and signs; camera identity/backend, mount,
+  library/tag size/IDs/placement, lighting/focus/latency and release; layout alignment, solver/age and
+  Fusion/EKF tuning; repeatable offset convergence; Driver Station/Panels presentation; and immediate
+  B/BACK/STOP behavior. Measurements remain raw recommendations requiring human review and explicit
+  profile edits; the tool never applies them automatically.
+- **Rejected alternatives and later-item boundary:** docs-only or copy-only fixes leave repeated APIs,
+  hidden precedence, caller mutation, and INIT effects. Retaining no-args merely because defaults are
+  valid hides behavior and hardware choices without a new capability. Reject a generic
+  `TesterConfig` base/schema/registry, staged-builder forest, backend enum/facade, Config-held
+  Function, completed-lane injection that breaks fresh picker ownership, duplicate solver-plus-age
+  type, `AprilTagPoseEstimator.Config` with ignored mount, validation of every inactive branch, public
+  Mecanum validator, new pre-open backend-capability grammar, or a forwarding alias for the removed
+  Fusion-named tester. The corrected-localization rename is part of the one current story, not a
+  parallel compatibility path. CONFIG-07 owns Starter simplification, CONFIG-08 Basic Pedro independence, CONFIG-09 broad
+  Phoenix profile decomposition, and EXAMPLE-04 curriculum curation. Do not consume those items or
+  change calibration mathematics, estimator gains/noise, menu host architecture, or production
+  fallback policy here.
+- **Decision record and implementation authorization:** three independent read-only audits and final
+  internal-consistency review returned PASS. On 2026-08-17 the user approved exactly: **"Approve
+  CONFIG-06 defaults-only owner-local tester configuration capture, five one-clear construction paths,
+  explicit backend-neutral vision-factory behavior, shared localization policy preflight,
+  production-aligned Pod AprilTag evidence, successful-INIT drive silence, corrected-localization
+  naming, and redundant API removal design."** Gate 2 implementation is authorized on this branch;
+  publication remains forbidden until the later combined Android Studio review/publication approval.
+- **Gate 2 implementation (2026-08-17):** CONFIG-06 is **Verifying** with an exact **23-file**
+  unstaged diff: **ten production Java paths, six test Java files, six maintained Markdown guides,
+  and this tracker**. The five tester owners now expose exactly the approved five constructors and
+  defaults-only Config authoring surfaces. Every owner privately captures its active policy;
+  Camera, April-only, Pod assist, and corrected localization receive backend behavior as an explicit
+  deferred factory peer. The old positional/no-argument forests, Pod behavior/mount/library/age
+  fields, tester-local mode/factories, and Fusion-named corrected tester are removed without aliases.
+  The two shared localization Configs expose only the approved context-aware validated-copy seams.
+- **Owner, lifecycle, and caller result (2026-08-17):** Pod captures production's exact layout plus
+  AprilTag age/solver policy, constructs a configured drive before Pinpoint, and preserves a
+  command-silent successful ordinary INIT. START owns the first explicit zero; RUN motion remains
+  exact-cycle `READY` pose-and-velocity gated; failed-init rollback and STOP-before-START retain
+  their truthful cleanup-zero boundary. Vision owners distinguish builder/open/published-owner
+  failures, retain valid `NOT_READY`, block replacement after uncertain cleanup, and preserve any
+  still-published owner for a later STOP after an `Error` without promising cleanup. Layouts are
+  snapshotted once with their FTC policy summary, empty layouts remain empty, and all selected
+  Standard/Phoenix callers, walkthrough text, Javadocs, and six maintained guides use the one
+  current corrected-localization and Config-plus-factory vocabulary.
+- **Automated verification (2026-08-17):** Android Studio JBR 21 production/unit-test compilation
+  and the focused CONFIG-06 matrix passed **7 suites / 83 tests / 0 failures / 0 errors / 0
+  skipped**. The exact final Java/docs tree then passed `:TeamCode:testDebugUnitTest` at **190 suites
+  / 1,786 tests / 0 failures / 0 errors / 0 skipped**, including `DocumentationLinksTest` at
+  **5/5**. `:TeamCode:phoenixJavadocs` completed **BUILD SUCCESSFUL** with its strict doclint and
+  warning-as-error configuration. Output was limited to the repository's existing Java-8-on-JBR-21
+  and SDK deprecation warnings; no compile, test, link, or Javadoc failure remains.
+- **Independent and static evidence (2026-08-17):** separate Camera/April, Pinpoint/Pod, corrected-
+  localization/shared-policy, and full API/docs adversarial reviews found no remaining production or
+  evidence blocker after the documented `Error` boundary was corrected. Reflection locks every
+  selected constructor, Config field/method count, shared validation seam, and removed path.
+  Focused probes cover active/dormant validation, post-capture isolation, layout provenance,
+  builder/open/null/readiness/cleanup taxonomy, direct-drive pre-effect failure, INIT/START/RUN/STOP,
+  current-loop tag evidence, terminal gating, identity-mount fallback, and later-STOP ownership.
+  Removed-name/overload/field and blocking-wait scans are clean. `git diff --check` is clean apart
+  from informational LF-to-CRLF notices; all four untracked Java files have clean trailing
+  whitespace and final newlines; nothing is staged, committed, or pushed. The branch and merge base
+  are exactly `origin/master@91b3500ae57c2297d16e882230d1a8bf88e44206`; the divergent local
+  `master` ref remains preserved and untouched as required by the workflow.
+- **Gate 2 hardware and Android Studio audit point (2026-08-17):** inspect this exact diff on
+  `codex/config-06-tool-tester-configuration`: (1) the five exact defaults-only owner Configs and
+  explicit backend-neutral factory peer, (2) the renamed corrected-localization owner and shared
+  active-policy preflight, (3) Pod's drive-before-Pinpoint setup, successful-INIT silence, current-
+  evidence motion gates, and cleanup boundaries, (4) exact vision retry/cleanup and snapshotted-
+  layout evidence, and (5) migrated Standard/Phoenix callers, tests, Javadocs, and guides. Software
+  cannot verify physical camera identity/mount/library/tag placement, Pinpoint placement/resolution/
+  direction/reset-to-READY, motor identities/directions/brake/physical zero, safe search/recenter
+  motion, field alignment, solver/noise tuning, or measured offset convergence; those remain
+  adopting-robot checks. Gate 2 stops with this exact 23-file diff unstaged. After Android Studio
+  review, authorize publication only with:
+  `CONFIG-06 looks good. Authorize committing the reviewed CONFIG-06 diff on
+  codex/config-06-tool-tester-configuration, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`
+- **Manual verification and publication authorization (2026-08-17):** the user completed the
+  requested Android Studio review and sent the exact combined authorization above. CONFIG-06 is
+  now **Done**; Gate 3 may stage only this reviewed 23-file diff, create its single item commit, push
+  `codex/config-06-tool-tester-configuration` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. The requested cross-CONFIG rationalization is read-only follow-up and does not start
+  CONFIG-07 or authorize starter/example adoption changes.
 
 ### CONFIG-07 - Starter profile simplification
 

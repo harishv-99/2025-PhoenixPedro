@@ -95,6 +95,34 @@ public final class FtcOdometryAprilTagLocalizationLane {
         }
 
         /**
+         * Validates and snapshots the shared AprilTag-localization policy without touching vision
+         * or hardware.
+         *
+         * @param context diagnostic owner/field prefix; null or blank uses this Config's canonical
+         *                class name
+         * @return independent validated snapshot
+         * @throws NullPointerException if the active solver draft is null
+         * @throws IllegalArgumentException if the age or any solver value is outside its
+         *                                  documented domain
+         */
+        public AprilTagLocalizationConfig validatedCopy(String context) {
+            String owner = normalizedContext(context, AprilTagLocalizationConfig.class);
+            AprilTagLocalizationConfig c = copy();
+            if (!Double.isFinite(c.maxDetectionAgeSec) || c.maxDetectionAgeSec < 0.0) {
+                throw new IllegalArgumentException(
+                        owner + ".maxDetectionAgeSec must be finite and >= 0; received "
+                                + c.maxDetectionAgeSec
+                );
+            }
+            FixedTagFieldPoseSolver.Config solverConfig = Objects.requireNonNull(
+                    c.fieldPoseSolver,
+                    owner + ".fieldPoseSolver must not be null"
+            );
+            validateFieldPoseSolver(solverConfig, owner + ".fieldPoseSolver");
+            return c;
+        }
+
+        /**
          * Builds a raw {@link AprilTagPoseEstimator.Config} authoring copy by combining this
          * localization tuning with the specific camera mount from a shared vision lane.
          *
@@ -246,6 +274,36 @@ public final class FtcOdometryAprilTagLocalizationLane {
             Config c = new Config();
             c.predictor = this.predictor != null ? this.predictor.copy() : null;
             c.estimation = this.estimation != null ? this.estimation.copy() : null;
+            return c;
+        }
+
+        /**
+         * Validates and snapshots every intrinsically active branch before FTC resource effects.
+         *
+         * <p>The selected Fusion/EKF policy and a directly selected Limelight correction policy
+         * are active here. A Limelight diagnostic policy that becomes active only when an opened
+         * lane is actually Limelight remains a post-open check in the aggregate owner.</p>
+         *
+         * @param context diagnostic owner/field prefix; null or blank uses this Config's canonical
+         *                class name
+         * @return independent validated snapshot
+         * @throws NullPointerException for a required null active field
+         * @throws IllegalArgumentException for an invalid active value
+         */
+        public Config validatedCopy(String context) {
+            String owner = normalizedContext(context, Config.class);
+            Config c = copy();
+            c.predictor = Objects.requireNonNull(
+                    c.predictor,
+                    owner + ".predictor must not be null"
+            ).validatedCopy(owner + ".predictor");
+            c.estimation = captureIntrinsicEstimatorConfig(
+                    Objects.requireNonNull(
+                            c.estimation,
+                            owner + ".estimation must not be null"
+                    ),
+                    owner + ".estimation"
+            );
             return c;
         }
     }
@@ -563,11 +621,10 @@ public final class FtcOdometryAprilTagLocalizationLane {
         HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
         AprilTagVisionLane requiredVisionLane = Objects.requireNonNull(visionLane, "visionLane");
         TagLayout requiredLayout = Objects.requireNonNull(fixedFieldTagLayout, "fixedFieldTagLayout");
-        Config copiedConfig = Objects.requireNonNull(config, "config").copy();
-        PinpointOdometryPredictor.Config predictorConfig = Objects.requireNonNull(
-                copiedConfig.predictor,
-                "FtcOdometryAprilTagLocalizationLane.Config.predictor"
-        ).validatedCopy("FtcOdometryAprilTagLocalizationLane.Config.predictor");
+        Config copiedConfig = Objects.requireNonNull(config, "config").validatedCopy(
+                FtcOdometryAprilTagLocalizationLane.class.getCanonicalName() + ".Config"
+        );
+        PinpointOdometryPredictor.Config predictorConfig = copiedConfig.predictor;
         EstimatorInputs estimatorInputs = captureEstimatorInputs(
                 requiredVisionLane,
                 requiredLayout,
@@ -612,11 +669,8 @@ public final class FtcOdometryAprilTagLocalizationLane {
             EstimatorConfig authoredConfig,
             String context
     ) {
-        EstimatorConfig config = authoredConfig.copy();
-        AprilTagLocalizationConfig aprilTags = captureAprilTagConfig(
-                Objects.requireNonNull(config.aprilTags, context + ".aprilTags"),
-                context + ".aprilTags"
-        );
+        EstimatorConfig config = captureIntrinsicEstimatorConfig(authoredConfig, context);
+        AprilTagLocalizationConfig aprilTags = config.aprilTags;
         CorrectionSourceConfig correctionSource = Objects.requireNonNull(
                 config.correctionSource,
                 context + ".correctionSource"
@@ -630,28 +684,14 @@ public final class FtcOdometryAprilTagLocalizationLane {
                 context + ".correctedEstimatorMode"
         );
 
-        OdometryCorrectionFusionEstimator.Config correctionFusion = null;
-        OdometryCorrectionEkfEstimator.Config correctionEkf = null;
-        switch (correctedEstimatorMode) {
-            case FUSION:
-                correctionFusion = Objects.requireNonNull(
-                        config.correctionFusion,
-                        context + ".correctionFusion"
-                ).validatedCopy(context + ".correctionFusion");
-                break;
-
-            case EKF:
-                correctionEkf = Objects.requireNonNull(
-                        config.correctionEkf,
-                        context + ".correctionEkf"
-                ).validatedCopy(context + ".correctionEkf");
-                break;
-
-            default:
-                throw new IllegalStateException(
-                        "Unsupported corrected estimator mode: " + correctedEstimatorMode
-                );
-        }
+        OdometryCorrectionFusionEstimator.Config correctionFusion =
+                correctedEstimatorMode == GlobalEstimatorMode.FUSION
+                        ? config.correctionFusion
+                        : null;
+        OdometryCorrectionEkfEstimator.Config correctionEkf =
+                correctedEstimatorMode == GlobalEstimatorMode.EKF
+                        ? config.correctionEkf
+                        : null;
 
         FtcLimelightAprilTagVisionLane limelightVisionLane =
                 visionLane instanceof FtcLimelightAprilTagVisionLane
@@ -703,23 +743,82 @@ public final class FtcOdometryAprilTagLocalizationLane {
         );
     }
 
-    /** Validate the active AprilTag policy without reading its later layout or vision inputs. */
-    private static AprilTagLocalizationConfig captureAprilTagConfig(
-            AprilTagLocalizationConfig config,
+    /** Copy and validate branches known to be active before an actual vision backend is opened. */
+    private static EstimatorConfig captureIntrinsicEstimatorConfig(
+            EstimatorConfig authoredConfig,
             String context
     ) {
-        if (!Double.isFinite(config.maxDetectionAgeSec) || config.maxDetectionAgeSec < 0.0) {
-            throw new IllegalArgumentException(
-                    context + ".maxDetectionAgeSec must be finite and >= 0; received "
-                            + config.maxDetectionAgeSec
-            );
-        }
-        FixedTagFieldPoseSolver.Config solverConfig = Objects.requireNonNull(
-                config.fieldPoseSolver,
-                context + ".fieldPoseSolver"
+        EstimatorConfig config = Objects.requireNonNull(
+                authoredConfig,
+                context + " must not be null"
+        ).copy();
+        config.aprilTags = Objects.requireNonNull(
+                config.aprilTags,
+                context + ".aprilTags must not be null"
+        ).validatedCopy(context + ".aprilTags");
+        config.correctionSource = Objects.requireNonNull(
+                config.correctionSource,
+                context + ".correctionSource must not be null"
         );
-        // Constructing the data-only solver validates and snapshots its complete active policy.
-        new FixedTagFieldPoseSolver(solverConfig);
+        config.correctionSource.mode = Objects.requireNonNull(
+                config.correctionSource.mode,
+                context + ".correctionSource.mode must not be null"
+        );
+        config.correctedEstimatorMode = Objects.requireNonNull(
+                config.correctedEstimatorMode,
+                context + ".correctedEstimatorMode must not be null"
+        );
+
+        switch (config.correctedEstimatorMode) {
+            case FUSION:
+                config.correctionFusion = Objects.requireNonNull(
+                        config.correctionFusion,
+                        context + ".correctionFusion must not be null"
+                ).validatedCopy(context + ".correctionFusion");
+                break;
+
+            case EKF:
+                config.correctionEkf = Objects.requireNonNull(
+                        config.correctionEkf,
+                        context + ".correctionEkf must not be null"
+                ).validatedCopy(context + ".correctionEkf");
+                break;
+
+            default:
+                throw new IllegalStateException(
+                        context + ".correctedEstimatorMode is unsupported: "
+                                + config.correctedEstimatorMode
+                );
+        }
+
+        if (config.correctionSource.mode == CorrectionSourceMode.LIMELIGHT_FIELD_POSE) {
+            config.correctionSource.limelightFieldPose = Objects.requireNonNull(
+                    config.correctionSource.limelightFieldPose,
+                    context + ".correctionSource.limelightFieldPose must not be null"
+            ).validatedCopy(context + ".correctionSource.limelightFieldPose");
+        }
         return config;
+    }
+
+    /** Validate the existing solver owner and translate its canonical field prefix to this owner. */
+    private static void validateFieldPoseSolver(FixedTagFieldPoseSolver.Config config,
+                                                String context) {
+        try {
+            new FixedTagFieldPoseSolver(config);
+        } catch (IllegalArgumentException failure) {
+            String message = failure.getMessage();
+            String translated = message == null
+                    ? context + " is invalid"
+                    : message.replace("FixedTagFieldPoseSolver.Config", context);
+            throw new IllegalArgumentException(translated, failure);
+        }
+    }
+
+    /** Normalize one optional diagnostic prefix without preserving accidental surrounding spaces. */
+    private static String normalizedContext(String context, Class<?> configType) {
+        if (context == null || context.trim().isEmpty()) {
+            return configType.getCanonicalName();
+        }
+        return context.trim();
     }
 }

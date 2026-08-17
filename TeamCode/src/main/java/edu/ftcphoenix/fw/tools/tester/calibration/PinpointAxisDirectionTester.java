@@ -3,6 +3,7 @@ package edu.ftcphoenix.fw.tools.tester.calibration;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 
 import java.util.Locale;
+import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
@@ -36,23 +37,22 @@ import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
  */
 public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
 
-    /**
-     * Configuration for the tester.
-     */
+    /** Mutable, data-only authoring configuration for the tester. */
     public static final class Config {
 
         /**
-         * Pinpoint estimator configuration (device name, offsets, pod directions, etc).
+         * Required Pinpoint estimator configuration (device name, offsets, pod directions, etc).
          */
         public PinpointOdometryPredictor.Config pinpoint = PinpointOdometryPredictor.Config.defaults();
 
         /**
-         * Minimum translation (inches) required to treat a sample as valid.
+         * Minimum translation (inches) required to treat a sample as valid; finite and {@code > 0}.
          */
         public double minTranslationInches = 6.0;
 
         /**
-         * Minimum rotation (degrees) required to treat the rotation sample as valid.
+         * Minimum rotation (degrees) required to treat the rotation sample as valid; finite and
+         * {@code > 0}.
          */
         public double minRotationDeg = 20.0;
 
@@ -60,7 +60,10 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         }
 
         /**
-         * Returns a new config initialized with the tester defaults.
+         * Returns a new mutable authoring draft initialized with software defaults.
+         *
+         * <p>Defaults do not establish the physical Pinpoint identity, mounting, directions, or
+         * calibration. The tester validates and snapshots the active draft when constructed.</p>
          */
         public static Config defaults() {
             return new Config();
@@ -93,17 +96,35 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     private SampleResult rotateResult = null;
 
     /**
-     * Creates the tester with the default configuration.
+     * Creates the tester from one explicit, owner-local configuration snapshot.
+     *
+     * <p>All validation and defensive capture complete before FTC context, hardware, controls, or
+     * telemetry are touched. Mutating the supplied draft after this constructor returns has no
+     * effect on the tester.</p>
+     *
+     * @param config complete mutable authoring draft; start from {@link Config#defaults()}
+     * @throws NullPointerException if {@code config} or its Pinpoint config is null
+     * @throws IllegalArgumentException if a Pinpoint value or evidence threshold is invalid
      */
-    public PinpointAxisDirectionTester() {
-        this(Config.defaults());
-    }
-
-    /**
-     * Creates the tester with an explicit configuration bundle.
-     */
-    public PinpointAxisDirectionTester(Config cfg) {
-        this.cfg = (cfg != null) ? cfg : Config.defaults();
+    public PinpointAxisDirectionTester(Config config) {
+        Config draft = Objects.requireNonNull(
+                config,
+                "PinpointAxisDirectionTester.Config must not be null; call Config.defaults() explicitly"
+        );
+        Config captured = Config.defaults();
+        captured.pinpoint = Objects.requireNonNull(
+                draft.pinpoint,
+                "PinpointAxisDirectionTester.Config.pinpoint must not be null"
+        ).validatedCopy("PinpointAxisDirectionTester.Config.pinpoint");
+        captured.minTranslationInches = requirePositiveFinite(
+                draft.minTranslationInches,
+                "PinpointAxisDirectionTester.Config.minTranslationInches"
+        );
+        captured.minRotationDeg = requirePositiveFinite(
+                draft.minRotationDeg,
+                "PinpointAxisDirectionTester.Config.minRotationDeg"
+        );
+        this.cfg = captured;
     }
 
     /**
@@ -124,7 +145,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         bindings.onRise(gamepads.p1().y(), () -> sampleToggleRequested = Mode.SAMPLE_LEFT);
         bindings.onRise(gamepads.p1().b(), () -> sampleToggleRequested = Mode.SAMPLE_ROTATE);
 
-        resetAndClear();
+        clearResults(false);
     }
 
 
@@ -178,6 +199,10 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     // ---------------------------------------------------------------------------------------------
 
     private void resetAndClear() {
+        clearResults(true);
+    }
+
+    private void clearResults(boolean rebasePose) {
         mode = Mode.IDLE;
         startPose = Pose2d.zero();
         headingUnwrapper.reset(0.0);
@@ -187,9 +212,16 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         leftResult = null;
         rotateResult = null;
 
-        if (pinpoint != null) {
+        if (rebasePose && pinpoint != null) {
             pinpoint.setPose(Pose2d.zero());
         }
+    }
+
+    private static double requirePositiveFinite(double value, String context) {
+        if (!Double.isFinite(value) || value <= 0.0) {
+            throw new IllegalArgumentException(context + " must be finite and > 0, got " + value);
+        }
+        return value;
     }
 
     /** Consume binding-edge intent only after this cycle's Pinpoint poll has completed. */

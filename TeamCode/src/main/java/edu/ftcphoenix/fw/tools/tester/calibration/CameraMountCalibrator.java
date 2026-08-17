@@ -4,21 +4,20 @@ import com.qualcomm.robotcore.hardware.HardwareDevice;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Locale;
+import java.util.Objects;
 import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
-import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -35,9 +34,10 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *
  * <h2>Camera selection</h2>
  * <p>
- * If constructed without a preferred hardware name (or if the preferred device cannot be
- * initialized), this tester shows a picker for the configured vision-device type and lets you
- * choose one before calibration begins.
+ * A {@code null} preferred hardware name shows the configured vision-device picker. A valid
+ * preferred name is attempted first; a clean open/setup failure exposes that same replacement
+ * picker with the failed name highlighted. Blank preferred names are rejected as configuration
+ * errors.
  * </p>
  *
  * <h2>Core math</h2>
@@ -64,22 +64,62 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  */
 public final class CameraMountCalibrator extends BaseTeleOpTester {
 
-    // Defaults
     private static final double DEFAULT_MAX_AGE_SEC = 0.35;
     private static final int DEFAULT_TAG_ID = 1;
-
     private static final Pose3d DEFAULT_P_FIELD_TO_ROBOT = Pose3d.zero();
 
-    // Injected configuration
-    private final String preferredCameraName;   // may be null/empty to trigger picker
-    private final Class<? extends HardwareDevice> cameraDeviceType;
-    private final String cameraPickerTitle;
-    private final Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder;
-    private final TagLayout layoutOverride;     // may be null => framework current-game fixed layout
-    private final double maxAgeSec;
+    /** Mutable, data-only authoring configuration for one camera-mount calibration owner. */
+    public static final class Config {
+
+        /** Preferred configured vision-device name, or {@code null} to show the picker. */
+        public String preferredVisionDeviceName;
+
+        /** Hardware type enumerated by the replacement picker. */
+        public Class<? extends HardwareDevice> visionDeviceType;
+
+        /** Nonblank title shown by the replacement picker. */
+        public String visionPickerTitle;
+
+        /** Fixed field-tag facts used by the mount solve. */
+        public TagLayout fixedTagLayout;
+
+        /** Maximum accepted detection-frame age in seconds. */
+        public double maxDetectionAgeSec;
+
+        private Config() {
+        }
+
+        /**
+         * Returns a fresh software-valid authoring draft.
+         *
+         * <p>The current-game layout is a borrowed field-fact source. The calibrator snapshots it
+         * when constructed; defaults do not claim that the selected camera, mount, or field setup
+         * has been physically verified.</p>
+         */
+        public static Config defaults() {
+            Config c = new Config();
+            c.preferredVisionDeviceName = null;
+            c.visionDeviceType = WebcamName.class;
+            c.visionPickerTitle = "Select Camera";
+            c.fixedTagLayout = FtcGameTagLayout.currentGameFieldFixed();
+            c.maxDetectionAgeSec = DEFAULT_MAX_AGE_SEC;
+            return c;
+        }
+    }
+
+    // Captured owner configuration
+    private final String preferredVisionDeviceName;
+    private final Class<? extends HardwareDevice> visionDeviceType;
+    private final String visionPickerTitle;
+    private final Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder;
+    private final TagLayout layout;
+    private final String layoutPolicySummary;
+    private final double maxDetectionAgeSec;
+
+    /** Factory captured for the initial preferred-name attempt; picker attempts replace it. */
+    private AprilTagVisionLaneFactory pendingVisionLaneFactory;
 
     // Runtime state
-    private TagLayout layout;
     private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
 
@@ -122,106 +162,134 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
     private final PoseAverager avg = new PoseAverager();
 
-    // Construction
-
     /**
-     * Create a calibrator with default settings.
+     * Creates one backend-neutral camera-mount calibration owner.
      *
-     * <p>This constructor does not force a specific camera name. The tester will present a camera
-     * picker menu of configured webcams so you can choose one.</p>
-     */
-    public CameraMountCalibrator() {
-        this(null, null, null, DEFAULT_MAX_AGE_SEC);
-    }
+     * <p>The constructor defensively captures and validates all data before invoking
+     * {@code visionLaneFactoryBuilder}. A non-null preferred name is trimmed and causes exactly one
+     * effect-free builder application here; {@code null} selects the replacement picker. A blank
+     * preferred name is invalid. The builder must only capture backend configuration and return a
+     * deferred factory: it must not inspect the hardware map, open a portal, or acquire another FTC
+     * resource. Every later picker selection applies the builder once for that normalized name.
+     * The returned factory must open a fresh, independently owned lane for every attempt; the
+     * factory object itself need not have a new identity. Any backend template or custom SDK
+     * library borrowed by the builder must remain stable for this tester's full lifetime and every
+     * possible retry.</p>
 
-    /**
-     * Create a calibrator that prefers a specific camera name.
+     * <p>The picker type is only an enumeration contract; it cannot prove which backend an
+     * arbitrary function returns or that the function honored the selected name. Lane accessors,
+     * description, and asynchronous readiness remain post-open facts.</p>
      *
-     * <p>If {@code cameraName} is null/blank, the tester will fall back to the camera picker menu.</p>
+     * <p>The factory's lane supplies detection ownership. Its camera-mount answer is deliberately
+     * irrelevant to this calibration workflow because the mount is the fact being measured.</p>
      *
-     * @param cameraName configured webcam name in the FTC Robot Configuration (nullable)
+     * @param config mutable authoring draft captured by this owner
+     * @param visionLaneFactoryBuilder effect-free selected-name-to-factory behavior
+     * @throws NullPointerException if an active object answer is null
+     * @throws IllegalArgumentException if a name, title, layout, or age is invalid
      */
-    public CameraMountCalibrator(String cameraName) {
-        this(cameraName, null, null, DEFAULT_MAX_AGE_SEC);
-    }
+    public CameraMountCalibrator(
+            Config config,
+            Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder
+    ) {
+        Config source = Objects.requireNonNull(config, "CameraMountCalibrator.Config must not be null");
 
-    /**
-     * Create a calibrator with full configuration control.
-     *
-     * @param cameraName     configured webcam name in the FTC Robot Configuration (nullable/blank to use picker)
-     * @param layoutOverride optional field {@link TagLayout}; if null, the framework's current-game fixed layout is used
-     * @param maxAgeSec      maximum age (seconds) for tag observations before they are treated as stale
-     */
-    public CameraMountCalibrator(String cameraName, TagLayout layoutOverride, double maxAgeSec) {
-        this(cameraName, layoutOverride, null, maxAgeSec);
-    }
+        this.preferredVisionDeviceName = normalizePreferredName(
+                source.preferredVisionDeviceName,
+                "CameraMountCalibrator.Config.preferredVisionDeviceName"
+        );
+        this.visionDeviceType = Objects.requireNonNull(
+                source.visionDeviceType,
+                "CameraMountCalibrator.Config.visionDeviceType must not be null"
+        );
+        this.visionPickerTitle = requireTrimmedNonblank(
+                source.visionPickerTitle,
+                "CameraMountCalibrator.Config.visionPickerTitle"
+        );
+        TagLayout authoredLayout = Objects.requireNonNull(
+                source.fixedTagLayout,
+                "CameraMountCalibrator.Config.fixedTagLayout must not be null"
+        );
+        this.layoutPolicySummary = policySummary(authoredLayout);
+        this.layout = snapshotLayout(
+                authoredLayout,
+                "CameraMountCalibrator.Config.fixedTagLayout"
+        );
+        this.maxDetectionAgeSec = requireFiniteNonnegative(
+                source.maxDetectionAgeSec,
+                "CameraMountCalibrator.Config.maxDetectionAgeSec"
+        );
+        this.visionLaneFactoryBuilder = Objects.requireNonNull(
+                visionLaneFactoryBuilder,
+                "CameraMountCalibrator visionLaneFactoryBuilder must not be null"
+        );
 
-    /**
-     * Creates a camera mount calibration tester with an optional tag layout + tag library override.
-     *
-     * <p>This is useful when calibrating in a non-game environment using a printed tag (custom ID/size),
-     * while still reusing Phoenix's calibrator flow.</p>
-     *
-     * @param cameraName         camera name in the hardware map (or {@code null} to pick at runtime)
-     * @param layoutOverride     optional tag layout to use instead of the framework current-game fixed layout
-     * @param tagLibraryOverride optional AprilTag library override (controls tag size/IDs for detection)
-     * @param maxAgeSec          maximum acceptable tag observation age in seconds
-     */
-    public CameraMountCalibrator(String cameraName,
-                                 TagLayout layoutOverride,
-                                 AprilTagLibrary tagLibraryOverride,
-                                 double maxAgeSec) {
-        this(cameraName,
-                WebcamName.class,
-                "Select Camera",
-                defaultWebcamLaneFactoryBuilder(tagLibraryOverride),
-                layoutOverride,
-                maxAgeSec);
-    }
-
-    /**
-     * Creates a backend-neutral camera-mount calibrator.
-     *
-     * <p>This constructor is the one Phoenix and future smart-camera adopters should prefer. The
-     * tester remains responsible only for the calibration workflow; the caller decides which FTC
-     * hardware type to enumerate and how to open the concrete AprilTag lane once a device name has
-     * been chosen.</p>
-     *
-     * @param preferredCameraName      preferred hardware-map name for the active vision device (nullable)
-     * @param cameraDeviceType         FTC hardware type to enumerate in the picker (for example {@link WebcamName})
-     * @param cameraPickerTitle        telemetry title for the picker screen
-     * @param cameraLaneFactoryBuilder builder that turns a chosen hardware-map name into an opener
-     * @param layoutOverride           optional fixed-tag layout override (nullable)
-     * @param maxAgeSec                maximum acceptable tag observation age in seconds
-     */
-    public CameraMountCalibrator(String preferredCameraName,
-                                 Class<? extends HardwareDevice> cameraDeviceType,
-                                 String cameraPickerTitle,
-                                 Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder,
-                                 TagLayout layoutOverride,
-                                 double maxAgeSec) {
-        this.preferredCameraName = preferredCameraName;
-        this.cameraDeviceType = cameraDeviceType != null ? cameraDeviceType : WebcamName.class;
-        this.cameraPickerTitle = (cameraPickerTitle == null || cameraPickerTitle.trim().isEmpty())
-                ? "Select Vision Device"
-                : cameraPickerTitle;
-        this.cameraLaneFactoryBuilder = cameraLaneFactoryBuilder != null
-                ? cameraLaneFactoryBuilder
-                : defaultWebcamLaneFactoryBuilder(null);
-        this.layoutOverride = layoutOverride;
-        if (maxAgeSec < 0.0) {
-            throw new IllegalArgumentException("maxAgeSec must be non-negative");
+        if (!layout.ids().isEmpty()) {
+            selectedTagId = layout.ids().iterator().next();
         }
-        this.maxAgeSec = maxAgeSec;
+        selectedCameraName = preferredVisionDeviceName;
+        if (preferredVisionDeviceName != null) {
+            pendingVisionLaneFactory = requireVisionFactory(
+                    this.visionLaneFactoryBuilder.apply(preferredVisionDeviceName),
+                    preferredVisionDeviceName
+            );
+        }
     }
 
-    private static Function<String, AprilTagVisionLaneFactory> defaultWebcamLaneFactoryBuilder(AprilTagLibrary tagLibraryOverride) {
-        return cameraName -> {
-            FtcWebcamAprilTagVisionLane.Config cfg = FtcWebcamAprilTagVisionLane.Config.defaults();
-            cfg.webcamName = cameraName;
-            cfg.tagLibrary = tagLibraryOverride;
-            return AprilTagVisionLaneFactories.webcam(cfg);
-        };
+    private static String normalizePreferredName(String value, String context) {
+        if (value == null) {
+            return null;
+        }
+        return requireTrimmedNonblank(value, context);
+    }
+
+    private static String requireTrimmedNonblank(String value, String context) {
+        Objects.requireNonNull(value, context + " must not be null");
+        String normalized = value.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(
+                    context + " must contain a non-whitespace character; received '" + value + "'"
+            );
+        }
+        return normalized;
+    }
+
+    private static double requireFiniteNonnegative(double value, String context) {
+        if (!Double.isFinite(value) || value < 0.0) {
+            throw new IllegalArgumentException(
+                    context + " must be finite and >= 0; received " + value
+            );
+        }
+        return value;
+    }
+
+    private static TagLayout snapshotLayout(TagLayout layout, String context) {
+        try {
+            return TagLayouts.snapshot(layout);
+        } catch (RuntimeException failure) {
+            throw new IllegalArgumentException(
+                    context + " is invalid: " + String.valueOf(failure.getMessage()),
+                    failure
+            );
+        }
+    }
+
+    private static String policySummary(TagLayout layout) {
+        return layout instanceof FtcGameTagLayout
+                ? ((FtcGameTagLayout) layout).policySummaryLine()
+                : null;
+    }
+
+    private static AprilTagVisionLaneFactory requireVisionFactory(
+            AprilTagVisionLaneFactory factory,
+            String selectedName
+    ) {
+        if (factory == null) {
+            throw new IllegalStateException(
+                    "visionLaneFactoryBuilder returned null for " + selectedName
+            );
+        }
+        return factory;
     }
 
     /**
@@ -237,24 +305,10 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      */
     @Override
     protected void onInit() {
-        // Layout
-        this.layout = (layoutOverride != null)
-                ? layoutOverride
-                : FtcGameTagLayout.currentGameFieldFixed();
-
-        if (layout != null && !layout.ids().isEmpty()) {
-            selectedTagId = layout.ids().iterator().next();
-        }
-
-        // Camera selection setup
-        selectedCameraName = (preferredCameraName == null || preferredCameraName.trim().isEmpty())
-                ? null
-                : preferredCameraName.trim();
-
         cameraPicker = new HardwareNamePicker(
                 ctx.hw,
-                cameraDeviceType,
-                cameraPickerTitle,
+                visionDeviceType,
+                visionPickerTitle,
                 "Dpad: highlight | A: choose | X: refresh"
         );
         cameraPicker.refresh();
@@ -271,8 +325,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 gamepads.p1().x(),
                 () -> visionLane == null && !visionClosingOrTerminal && !visionCleanupFailed,
                 chosen -> {
-                    selectedCameraName = chosen;
-                    ensureVisionReady();
+                    preparePickerSelection(chosen);
                 }
         );
 
@@ -372,6 +425,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         // Return to the camera picker. This allows you to re-select the active vision
         // device without leaving the tester suite.
         visionReady = false;
+        pendingVisionLaneFactory = null;
         visionReadiness = VisionReadiness.notReady("No vision device is open");
         visionInitError = null;
 
@@ -404,6 +458,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         visionTerminalRequested = true;
+        pendingVisionLaneFactory = null;
         visionReady = false;
         visionReadiness = VisionReadiness.notReady("Vision tester is stopping");
         tagSensor = null;
@@ -448,6 +503,33 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     // Vision init / camera enumeration
     // ---------------------------------------------------------------------------------------------
 
+    /** Captures one picker selection before opening its deferred owner. */
+    private void preparePickerSelection(String chosenName) {
+        if (visionLane != null || visionClosingOrTerminal || visionCleanupFailed) {
+            return;
+        }
+
+        String normalized;
+        try {
+            normalized = requireTrimmedNonblank(
+                    chosenName,
+                    "CameraMountCalibrator selected vision device name"
+            );
+            selectedCameraName = normalized;
+            AprilTagVisionLaneFactory selectedFactory = requireVisionFactory(
+                    visionLaneFactoryBuilder.apply(normalized),
+                    normalized
+            );
+            pendingVisionLaneFactory = selectedFactory;
+        } catch (RuntimeException failure) {
+            pendingVisionLaneFactory = null;
+            recordCleanSelectionFailure("Failed to configure AprilTag camera", failure);
+            return;
+        }
+
+        ensureVisionReady();
+    }
+
     private void ensureVisionReady() {
         if (visionLane != null) {
             refreshVisionReadiness();
@@ -455,26 +537,26 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         }
         if (visionClosingOrTerminal) return;
         if (visionCleanupFailed) return;
-        if (selectedCameraName == null || selectedCameraName.isEmpty()) return;
+        AprilTagVisionLaneFactory factory = pendingVisionLaneFactory;
+        if (factory == null) return;
+        pendingVisionLaneFactory = null;
 
         visionFailure = null;
         boolean ownerPublished = false;
         try {
-            AprilTagVisionLaneFactory factory = cameraLaneFactoryBuilder.apply(selectedCameraName);
-            if (factory == null) {
-                throw new IllegalStateException("cameraLaneFactoryBuilder returned null for " + selectedCameraName);
-            }
-
-            visionLane = factory.open(ctx.hw);
-            if (visionLane == null) {
+            AprilTagVisionLane openedLane = factory.open(ctx.hw);
+            if (openedLane == null) {
                 throw new IllegalStateException(
                         "vision lane factory returned null for " + selectedCameraName);
             }
+            visionLane = openedLane;
             ownerPublished = true;
-            tagSensor = visionLane.tagSensor();
+            tagSensor = Objects.requireNonNull(
+                    visionLane.tagSensor(),
+                    "AprilTag vision lane returned a null tag sensor"
+            );
             activeVisionDescription = factory.description();
 
-            // Layout selection happens in onInit(); do not rebuild it here.
             visionReady = false;
             visionReadiness = VisionReadiness.notReady("Vision device is opening");
             visionInitError = null;
@@ -514,9 +596,12 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         }
         try {
             VisionReadiness current = lane.readiness(ctx.clock);
-            visionReadiness = current != null
-                    ? current
-                    : VisionReadiness.notReady("Vision lane returned no readiness result");
+            if (current == null) {
+                throw new IllegalStateException(
+                        "AprilTag vision lane returned a null readiness result"
+                );
+            }
+            visionReadiness = current;
             visionReady = visionReadiness.isReady();
         } catch (RuntimeException failure) {
             visionReady = false;
@@ -536,6 +621,20 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             }
             visionInitError = visionFailureMessage("Vision readiness failed", failure);
         }
+    }
+
+    /** Records an effect-free builder/selection failure and returns to the same picker. */
+    private void recordCleanSelectionFailure(String prefix, RuntimeException failure) {
+        visionFailure = failure;
+        tagSensor = null;
+        activeVisionDescription = null;
+        visionReady = false;
+        visionReadiness = VisionReadiness.notReady("Vision initialization failed");
+        if (!visionTerminalRequested) {
+            visionClosingOrTerminal = false;
+            resetCameraPickerChoice();
+        }
+        visionInitError = visionFailureMessage(prefix, failure);
     }
 
     private void resetCameraPickerChoice() {
@@ -636,7 +735,11 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     }
 
     private void updateSolveAndTelemetry() {
-        AprilTagObservation obs = tagSensor.get(ctx.clock).forId(ctx.clock, selectedTagId, maxAgeSec);
+        AprilTagObservation obs = tagSensor.get(ctx.clock).forId(
+                ctx.clock,
+                selectedTagId,
+                maxDetectionAgeSec
+        );
         lastObservedCameraToTag = (obs.hasTarget) ? obs.cameraToTagPose : null;
 
         lastRobotToCameraSample = null;
@@ -680,7 +783,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         t.addData(editableFieldLabel(EditField.ROBOT_Y, "Dpad U/D"), "%.2f in", fieldToRobotPose.yInches);
         t.addData(editableFieldLabel(EditField.ROBOT_YAW, "LB/RB"), "%.1f°", Math.toDegrees(fieldToRobotPose.yawRad));
         t.addData("Samples [A capture | B clear]", avg.count());
-        t.addData("MaxAge", "%.0f ms", maxAgeSec * 1000.0);
+        t.addData("MaxAge", "%.0f ms", maxDetectionAgeSec * 1000.0);
 
         t.addLine("");
         t.addLine("Units: inches (angles shown in degrees)");
@@ -703,6 +806,9 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             t.addLine("  (tag not present in layout)");
         } else {
             addPoseLine(t, "fieldToTagPose(layout)", selectedTagPose);
+        }
+        if (layoutPolicySummary != null) {
+            t.addData("Layout policy", layoutPolicySummary);
         }
         FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(t), "layout");
 

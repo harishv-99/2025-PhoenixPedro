@@ -385,6 +385,23 @@ FTC webcam tag library as borrowed draft data, while the active webcam owner can
 units and deep-snapshots its mutable metadata. Change the checked-in profile and restart the OpMode
 to adopt different metadata or solver tuning; neither is a live-tuning surface.
 
+Phoenix's tester factories map the relevant profile facts into one fresh tool Config and pass the
+active backend recipe separately as a `Function<String, AprilTagVisionLaneFactory>`. That function
+captures the selected webcam or Limelight template immediately; a later picker retry does not reread
+the broad mutable profile. The tester snapshots the fixed layout, while the backend Config remains
+the sole camera-mount and detector-library owner. Keep any borrowed custom SDK tag library stable for
+the complete tester lifetime and every clean retry.
+
+Intrinsic layout, AprilTag policy, predictor, source-selection, and selected Fusion/EKF errors fail
+before portal or Pinpoint effects. Actual returned-lane subtype, accessors, and readiness can only be
+checked after open. Non-null `NOT_READY` remains pending; a null contract fact or `RuntimeException`
+closes the published lane once when cleanup succeeds. An `Error` propagates immediately and leaves
+no cleanup guarantee. If the lane remains published and STOP is later invoked, that boundary closes
+the still-retained owner. The layout display retains the FTC policy summary and
+captured IDs/poses, deliberately not a mutable source alias for richer per-key rows. An empty layout
+stays empty and cannot produce a fixed-layout sample or raw-AprilTag field correction. These software
+checks still do not prove the physical camera, mount, library, field placement, or calibration.
+
 That does not make the devices identical. A webcam portal may run its construction-time processor
 set concurrently; a Limelight runs one onboard pipeline and must confirm a fresh result after each
 requested change. Phoenix displays `vision.componentReadiness` and `vision.readinessReason` every
@@ -528,7 +545,14 @@ Record completion after copying the numbers and rerunning once to confirm they a
 PhoenixProfile.current().calibration.pinpointPodOffsetsCalibrated = true;
 ```
 
-Phoenix enables AprilTag assist for this tester automatically once the active backend's camera mount looks solved enough to trust.
+Phoenix enables AprilTag assist for this tester only once the active backend's camera mount looks
+solved enough to trust. The assist then uses the same checked-in fixed layout, detection-age limit,
+and fixed-tag solver policy as production localization rather than a tool-local fallback.
+
+During successful ordinary INIT the tester may configure the drivetrain and poll/reset Pinpoint, but
+it does not read/write drive mode or power. Driver Station START issues the first ordinary zero;
+only a later RUN loop with exact current-cycle `READY` pose and velocity evidence may command motion.
+A failed-init rollback or STOP-before-START may still command physical zero as cleanup.
 
 Until this acknowledgement is true, match Auto remains blocked and both pose-dependent TeleOp
 assists remain unavailable. The explicitly named Pedro integration-test OpMode may still run after
@@ -568,6 +592,7 @@ Goal:
 Config involved:
 
 ```java
+PinpointAprilTagCorrectedLocalizationTester.Config.defaults()
 PhoenixProfile.current().vision
 PhoenixProfile.current().localization.predictor
 PhoenixProfile.current().localization.estimation.aprilTags

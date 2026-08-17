@@ -35,6 +35,18 @@ The framework should own the generic menu/status mechanics. Robot code should ma
 - the current robot config objects
 - any explicit human-acknowledgement booleans
 
+For a vision-backed step, map only the relevant robot facts into a fresh tester Config and pass the
+backend-neutral vision-factory builder separately. Capture the selected webcam/Limelight template
+when building that function; do not let a later picker callback reread a broad mutable robot profile.
+The suite stores a `Supplier<TeleOpTester>`, so each entry creates a fresh owner with one immutable
+Config/layout snapshot. A borrowed custom SDK tag library must remain stable for that owner's full
+lifetime and any clean retry.
+
+For a motor-capable calibration step such as Pinpoint pod offsets, teach the lifecycle boundary too:
+successful ordinary INIT may configure hardware and collect evidence but does not command the drive;
+START/RUN and cleanup STOP are the command boundaries. A failed-init rollback can still write
+physical zero before START.
+
 ## Framework helpers
 
 ### `CalibrationStatus`

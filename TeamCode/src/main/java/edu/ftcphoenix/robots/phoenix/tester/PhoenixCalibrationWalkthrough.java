@@ -57,7 +57,7 @@ public final class PhoenixCalibrationWalkthrough {
 
         guide.addStep(
                 "Calib: Pinpoint Pod Offsets",
-                "Rotate in place to estimate Pinpoint pod offsets. AprilTag assist auto-enables once the active camera mount is solved.",
+                "Rotate in place to estimate Pinpoint pod offsets. Once the active camera mount is solved, AprilTag assist uses Phoenix's production field layout, freshness, and solver policy; successful INIT does not command the drive before START.",
                 PhoenixRobotTesters::pinpointOffsetsStatus,
                 PhoenixRobotTesters::pinpointPodOffsets
         );

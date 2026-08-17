@@ -4,9 +4,9 @@ import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Locale;
+import java.util.Objects;
 import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
@@ -17,16 +17,16 @@ import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
+import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig;
 import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.ftc.localization.PinpointKinematicSnapshot;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
-import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
@@ -52,14 +52,20 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *   <li><b>Right stick X</b>: Manual rotate (when drive is configured)</li>
  * </ul>
  *
- * <p><b>Important:</b> robot movement only happens after you start the OpMode.
- * In <b>INIT</b> (before START), this tester can still show status and (optionally) let you select an
- * AprilTag vision device for assist, but it will not command the motors.</p>
+ * <p><b>Important:</b> a successful ordinary <b>INIT</b> can configure motor direction/brake,
+ * poll/reset Pinpoint, and select/open vision, but does not invoke the drive command path. START
+ * clears pending motion intent and sends the drive's first explicit zero before RUN can move.
+ * Failed-initialization rollback and STOP-before-START are deliberate cleanup exceptions: either
+ * may command physical zero while releasing an already returned drive owner.</p>
  *
- * <p>Optional: enable AprilTag assist to subtract real translation while sampling. This is useful if the
- * robot doesn't rotate perfectly in place (carpet slip, uneven pod preload, etc.).</p>
+ * <p>Optional: supply a backend-neutral AprilTag vision-factory builder to subtract real
+ * translation while sampling. A null builder explicitly keeps the independent Pinpoint workflow
+ * vision-free. Put fixed field facts and mount-free solver/age policy in {@link Config}; the opened
+ * vision lane remains the sole owner of camera hardware, its tag library, and camera mount.</p>
  */
 public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
+
+    private static final String CONFIG_CONTEXT = "PinpointPodOffsetCalibrator.Config";
 
     /**
      * Minimum solve denominator (a^2 + b^2) required to produce a stable result.
@@ -73,33 +79,35 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
      */
     private static final double MIN_SOLVE_DENOM = 0.5;
 
-    /**
-     * Configuration for the tester.
-     */
+    /** Mutable, data-only authoring configuration for the tester. */
     public static final class Config {
 
         /**
-         * Pinpoint estimator config (includes current pod offsets).
+         * Required Pinpoint estimator config (includes current pod offsets).
          */
         public PinpointOdometryPredictor.Config pinpoint = PinpointOdometryPredictor.Config.defaults();
 
         /**
-         * Optional complete mecanum construction config. If null, the tester won't drive the robot.
+         * Optional complete mecanum construction config. Null selects a hand-motion workflow and
+         * leaves every drive-command tuning field dormant.
          */
         public FtcDrives.MecanumConfig mecanum = null;
 
         /**
-         * Manual rotation scale when using the right stick X.
+         * Manual rotation scale when using the right stick X. With a drive, this must be finite in
+         * the inclusive range {@code [0, 1]}.
          */
         public double manualOmegaScale = 0.6;
 
         /**
-         * Auto rotation omega command (+ is CCW).
+         * Auto rotation omega magnitude. With a drive, this must be finite in {@code (0, 1]};
+         * {@link #targetTurnRad}'s sign selects clockwise or counter-clockwise motion.
          */
         public double autoOmegaCmd = 0.35;
 
         /**
-         * Target rotation (radians) for auto samples. Defaults to 180 degrees.
+         * Target rotation in radians for auto samples. With a drive, it must be finite and satisfy
+         * {@code 4 * sin(targetTurnRad / 2)^2 >= 0.5}; its sign selects turn direction.
          */
         public double targetTurnRad = Math.PI;
 
@@ -124,12 +132,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         /**
          * If AprilTag assist is enabled and no tag is currently visible, the tester can
-         * auto-rotate to search for any known-pose tag (as defined by {@link #tagLayout}).
+         * auto-rotate to search for any known-pose tag (as defined by {@link #fixedTagLayout}).
          */
         public boolean enableAutoTagSearchAtStart = true;
 
         /**
-         * Maximum amount of rotation (radians) to spend searching for a tag.
+         * Maximum amount of rotation (radians) to spend searching for a tag. When start search,
+         * drive, and AprilTag assist are active, this must be finite and {@code > 0}.
          *
          * <p>Defaults to ~2 full turns. If a tag isn't found within this rotation, the
          * sample will proceed without tag assist.</p>
@@ -137,12 +146,15 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public double tagSearchMaxTurnRad = 4.0 * Math.PI;
 
         /**
-         * Rotation omega command used while searching for a tag.
+         * Rotation omega command used while searching for a tag. When drive, assist, and either
+         * search branch are active, it must be finite with {@code 0 < abs(value) <= 1}; its sign
+         * directly selects search direction.
          */
         public double tagSearchOmegaCmd = 0.25;
 
         /**
          * Number of consecutive loops with a valid tag pose before we consider the tag "found".
+         * With drive and assist this must be at least one whenever either search branch is enabled.
          */
         public int tagSearchStableFrames = 3;
 
@@ -153,7 +165,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public boolean enableAutoTagSearchAtEnd = true;
 
         /**
-         * Maximum extra rotation (radians) allowed while searching for a tag at the end of auto-sample.
+         * Maximum extra rotation (radians) allowed while searching for a tag at the end of an
+         * auto-sample. When that search, drive, and assist are active, it must be finite and
+         * {@code > 0}.
          */
         public double tagEndSearchMaxExtraTurnRad = 2.0 * Math.PI;
 
@@ -167,122 +181,75 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public boolean enablePostRotateRecenter = true;
 
         /**
-         * Manual translation scale in recenter mode.
+         * Manual translation scale in recenter mode. When recentering and drive are active, this
+         * must be finite in the inclusive range {@code [0, 1]}.
          */
         public double recenterTranslationScale = 0.6;
-
-        /**
-         * If true, use AprilTags to estimate and subtract real translation during the sample.
-         */
-        public boolean enableAprilTagAssist = false;
 
         /**
          * Preferred FTC hardware-map name for the AprilTag vision device used by assist.
          *
          * <p>When {@code null}, the tester shows a runtime hardware picker for the configured
-         * {@link #visionDeviceType}.</p>
+         * {@link #visionDeviceType}. A non-null value must be nonblank and is trimmed before it is
+         * passed once to the vision-factory builder.</p>
          */
         public String preferredVisionDeviceName = null;
 
         /**
          * FTC hardware type to enumerate when {@link #preferredVisionDeviceName} is not supplied.
          *
-         * <p>The default is {@link WebcamName} so existing webcam-assisted flows work with no extra
-         * setup. Limelight-backed robot projects should switch this to the FTC Limelight device type
-         * and provide a matching {@link #visionLaneFactoryBuilder}.</p>
+         * <p>The default is {@link WebcamName}. This field is active only when the preferred name is
+         * {@code null} and the constructor receives a vision-factory builder.</p>
          */
         public Class<? extends HardwareDevice> visionDeviceType = WebcamName.class;
 
         /**
-         * Title shown above the AprilTag vision-device picker when assist needs a runtime selection.
+         * Nonblank title shown above the AprilTag vision-device picker when assist needs a runtime
+         * selection. It is dormant when a preferred name or null builder selects no picker.
          */
         public String visionPickerTitle = "Select Camera";
 
         /**
-         * Optional factory builder that opens a shared AprilTag vision lane for one chosen FTC
-         * hardware-map name.
-         *
-         * <p>When left {@code null}, the tester falls back to the framework webcam-backed lane using
-         * {@link #cameraMount} and {@link #tagLibrary}. Supplying this builder is the standard way for
-         * robot projects to plug in Limelight-backed AprilTag assist without changing the rest of the
-         * calibrator.</p>
+         * Fixed field-tag facts used to interpret AprilTag observations. Required and snapshotted
+         * when assist is selected. An empty layout is structurally valid but cannot publish a
+         * fixed-layout field-pose correction.
          */
-        public Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder = null;
+        public TagLayout fixedTagLayout = FtcGameTagLayout.currentGameFieldFixed();
 
         /**
-         * Required when {@link #enableAprilTagAssist} is true.
+         * Mount-free AprilTag age and fixed-tag solver policy used by assist. The age must be finite
+         * and {@code >= 0}; the opened vision lane remains the sole camera-mount owner.
          */
-        public CameraMountConfig cameraMount = null;
-
-        /**
-         * Tag layout. If null and AprilTag assist is enabled, defaults to the framework-owned current-game fixed layout.
-         */
-        public TagLayout tagLayout = null;
-
-        /**
-         * Tag library override (sizes/IDs). If null, the current game tag library is used.
-         */
-        public AprilTagLibrary tagLibrary = null;
-
-        /**
-         * Max age (seconds) for AprilTag detections used by the estimator.
-         */
-        public double maxTagAgeSec = 0.2;
+        public AprilTagLocalizationConfig aprilTags = AprilTagLocalizationConfig.defaults();
 
         private Config() {
             // Defaults assigned in field initializers.
         }
 
         /**
-         * Create a new config instance with Phoenix defaults.
+         * Returns a new mutable authoring draft initialized with software defaults.
+         *
+         * <p>Defaults do not prove motor wiring, Pinpoint calibration, camera mounting, field setup,
+         * or safe motion. The tester snapshots only the branches selected by its constructor.</p>
          */
         public static Config defaults() {
             return new Config();
         }
-
-        /**
-         * Deep copy of this config (note: references are copied as-is).
-         */
-        public Config copy() {
-            Config c = new Config();
-            c.pinpoint = this.pinpoint;
-            c.mecanum = this.mecanum == null ? null : this.mecanum.copy();
-
-            c.manualOmegaScale = this.manualOmegaScale;
-            c.autoOmegaCmd = this.autoOmegaCmd;
-            c.targetTurnRad = this.targetTurnRad;
-
-            c.enableAutoTagSearchAtStart = this.enableAutoTagSearchAtStart;
-            c.tagSearchMaxTurnRad = this.tagSearchMaxTurnRad;
-            c.tagSearchOmegaCmd = this.tagSearchOmegaCmd;
-            c.tagSearchStableFrames = this.tagSearchStableFrames;
-            c.enableAutoTagSearchAtEnd = this.enableAutoTagSearchAtEnd;
-            c.tagEndSearchMaxExtraTurnRad = this.tagEndSearchMaxExtraTurnRad;
-            c.enablePostRotateRecenter = this.enablePostRotateRecenter;
-            c.recenterTranslationScale = this.recenterTranslationScale;
-
-            c.enableAprilTagAssist = this.enableAprilTagAssist;
-            c.preferredVisionDeviceName = this.preferredVisionDeviceName;
-            c.visionDeviceType = this.visionDeviceType;
-            c.visionPickerTitle = this.visionPickerTitle;
-            c.visionLaneFactoryBuilder = this.visionLaneFactoryBuilder;
-            c.cameraMount = this.cameraMount;
-            c.tagLayout = this.tagLayout;
-            c.tagLibrary = this.tagLibrary;
-            c.maxTagAgeSec = this.maxTagAgeSec;
-            return c;
-        }
     }
 
     private final Config cfg;
+    private final Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder;
+    private final String fixedTagLayoutPolicySummary;
 
     private PinpointOdometryPredictor pinpoint;
     private MecanumDrivebase drive;
+    private boolean started;
 
     // AprilTag assist
     private HardwareNamePicker visionPicker;
     private String selectedVisionDeviceName;
-    private TagLayout layout;
+    private AprilTagVisionLaneFactory pendingVisionFactory;
+    private final TagLayout layout;
     private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
     private AprilTagPoseEstimator tagEstimator;
@@ -290,6 +257,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private String aprilTagAssistNotice;
     private boolean visionCleanupFailed;
     private boolean visionTerminalRequested;
+    private boolean visionRetryBlocked;
+    private boolean aprilTagAssistUnavailable;
     private RuntimeException visionFailure;
     private VisionReadiness visionReadiness = VisionReadiness.notReady("No vision device is open");
 
@@ -342,10 +311,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private Pose2d startPinpointPose = Pose2d.zero();
     private Pose2d startTagPose = null;
 
-    // If AprilTag assist is enabled, we cache the most recent valid tag pose during the sample.
-    // This makes the assist robust to brief dropouts (motion blur, occlusion, etc.).
-    private Pose2d endTagPose = null;
-
     private double startHeadingRad = 0.0;
     private double startHeadingUnwrappedRad = 0.0;
     private final AngleUnwrapper headingUnwrapper = new AngleUnwrapper();
@@ -373,17 +338,281 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private boolean lastHadTagEnd = false;
 
     /**
-     * Creates the calibrator with the default configuration.
+     * Creates the calibrator from one explicit configuration and optional AprilTag behavior peer.
+     *
+     * <p>The mutable Config is validated and defensively captured before any FTC context, hardware,
+     * picker, telemetry, or Panels effect. A null {@code visionFactoryBuilder} explicitly selects
+     * the non-vision Pinpoint workflow; no vision draft is then inspected. A non-null builder must
+     * only validate and capture backend configuration when applied: it must not look up hardware,
+     * open a portal, or otherwise acquire an FTC resource. Each factory opening must create a fresh
+     * independently owned lane. Keep any template or custom SDK tag library borrowed by the builder
+     * stable for this tester's lifetime and every possible picker retry.</p>
+     *
+     * <p>When a preferred device name is configured, the builder is applied exactly once here,
+     * after intrinsic validation. With a picker it is applied once only after each confirmed
+     * selection. Real hardware remains deferred to {@link #onInit()} or a later selection loop.</p>
+     *
+     * <p>Successful ordinary INIT constructs resources without a drive command. START owns the
+     * first explicit zero and gates all later motion. Failed-init rollback and final cleanup may
+     * still stop an already returned drive before START; those are safety/lifecycle effects, not
+     * ordinary INIT behavior.</p>
+     *
+     * @param config complete mutable authoring draft; start from {@link Config#defaults()}
+     * @param visionFactoryBuilder nullable backend-neutral deferred-factory builder; null disables
+     *                             AprilTag assist
+     * @throws NullPointerException if the Config or an active required field is null
+     * @throws IllegalArgumentException if an active Config value is outside its documented domain
+     * @throws RuntimeException if a preferred-name builder cannot capture a deferred factory
      */
-    public PinpointPodOffsetCalibrator() {
-        this(Config.defaults());
+    public PinpointPodOffsetCalibrator(
+            Config config,
+            Function<String, AprilTagVisionLaneFactory> visionFactoryBuilder) {
+        ConfigCapture capture = captureConfig(config, visionFactoryBuilder != null);
+        this.cfg = capture.config;
+        this.visionLaneFactoryBuilder = visionFactoryBuilder;
+        this.layout = capture.layout;
+        this.fixedTagLayoutPolicySummary = capture.layoutPolicySummary;
+        this.selectedVisionDeviceName = this.cfg.preferredVisionDeviceName;
+        this.pendingVisionFactory = selectedVisionDeviceName != null
+                ? applyVisionFactoryBuilder(selectedVisionDeviceName)
+                : null;
     }
 
-    /**
-     * Creates the calibrator with an explicit configuration bundle.
-     */
-    public PinpointPodOffsetCalibrator(Config cfg) {
-        this.cfg = (cfg != null) ? cfg : Config.defaults();
+    private static ConfigCapture captureConfig(Config config, boolean assistSelected) {
+        Config draft = Objects.requireNonNull(
+                config,
+                CONFIG_CONTEXT + " must not be null; call Config.defaults() explicitly"
+        );
+        Config captured = Config.defaults();
+        captured.pinpoint = Objects.requireNonNull(
+                draft.pinpoint,
+                CONFIG_CONTEXT + ".pinpoint must not be null"
+        ).validatedCopy(CONFIG_CONTEXT + ".pinpoint");
+
+        boolean hasDrive = draft.mecanum != null;
+        if (hasDrive) {
+            try {
+                captured.mecanum = draft.mecanum.copy();
+            } catch (RuntimeException failure) {
+                throw invalidConfig(CONFIG_CONTEXT + ".mecanum", failure);
+            }
+            captured.manualOmegaScale = requireFiniteRange(
+                    draft.manualOmegaScale,
+                    0.0,
+                    1.0,
+                    CONFIG_CONTEXT + ".manualOmegaScale"
+            );
+            captured.autoOmegaCmd = requireFiniteRange(
+                    draft.autoOmegaCmd,
+                    0.0,
+                    1.0,
+                    CONFIG_CONTEXT + ".autoOmegaCmd",
+                    false,
+                    true
+            );
+            captured.targetTurnRad = requireStableTargetTurn(draft.targetTurnRad);
+            if (draft.enablePostRotateRecenter) {
+                captured.recenterTranslationScale = requireFiniteRange(
+                        draft.recenterTranslationScale,
+                        0.0,
+                        1.0,
+                        CONFIG_CONTEXT + ".recenterTranslationScale"
+                );
+            }
+        } else {
+            captured.mecanum = null;
+        }
+
+        captured.autoComputeAfterAutoSample = draft.autoComputeAfterAutoSample;
+        captured.enableAutoTagSearchAtStart = draft.enableAutoTagSearchAtStart;
+        captured.enableAutoTagSearchAtEnd = draft.enableAutoTagSearchAtEnd;
+        captured.enablePostRotateRecenter = draft.enablePostRotateRecenter;
+
+        TagLayout capturedLayout = null;
+        String policySummary = null;
+        if (assistSelected) {
+            if (draft.preferredVisionDeviceName == null) {
+                captured.preferredVisionDeviceName = null;
+                captured.visionDeviceType = Objects.requireNonNull(
+                        draft.visionDeviceType,
+                        CONFIG_CONTEXT + ".visionDeviceType must not be null when preferredVisionDeviceName is null"
+                );
+                captured.visionPickerTitle = requireNonBlankTrimmed(
+                        draft.visionPickerTitle,
+                        CONFIG_CONTEXT + ".visionPickerTitle"
+                );
+            } else {
+                captured.preferredVisionDeviceName = requireNonBlankTrimmed(
+                        draft.preferredVisionDeviceName,
+                        CONFIG_CONTEXT + ".preferredVisionDeviceName"
+                );
+            }
+
+            TagLayout authoredLayout = Objects.requireNonNull(
+                    draft.fixedTagLayout,
+                    CONFIG_CONTEXT + ".fixedTagLayout must not be null when AprilTag assist is selected"
+            );
+            if (authoredLayout instanceof FtcGameTagLayout) {
+                policySummary = ((FtcGameTagLayout) authoredLayout).policySummaryLine();
+            }
+            try {
+                capturedLayout = TagLayouts.snapshot(authoredLayout);
+            } catch (RuntimeException failure) {
+                throw invalidConfig(CONFIG_CONTEXT + ".fixedTagLayout", failure);
+            }
+            captured.fixedTagLayout = capturedLayout;
+            captured.aprilTags = Objects.requireNonNull(
+                    draft.aprilTags,
+                    CONFIG_CONTEXT + ".aprilTags must not be null when AprilTag assist is selected"
+            ).validatedCopy(CONFIG_CONTEXT + ".aprilTags");
+
+            if (hasDrive
+                    && (draft.enableAutoTagSearchAtStart
+                    || draft.enableAutoTagSearchAtEnd)) {
+                captured.tagSearchOmegaCmd = requireSignedNormalizedNonzero(
+                        draft.tagSearchOmegaCmd,
+                        CONFIG_CONTEXT + ".tagSearchOmegaCmd"
+                );
+                if (draft.tagSearchStableFrames < 1) {
+                    throw new IllegalArgumentException(
+                            CONFIG_CONTEXT + ".tagSearchStableFrames must be >= 1 when tag search is enabled, got "
+                                    + draft.tagSearchStableFrames
+                    );
+                }
+                captured.tagSearchStableFrames = draft.tagSearchStableFrames;
+                if (draft.enableAutoTagSearchAtStart) {
+                    captured.tagSearchMaxTurnRad = requirePositiveFinite(
+                            draft.tagSearchMaxTurnRad,
+                            CONFIG_CONTEXT + ".tagSearchMaxTurnRad"
+                    );
+                }
+                if (draft.enableAutoTagSearchAtEnd) {
+                    captured.tagEndSearchMaxExtraTurnRad = requirePositiveFinite(
+                            draft.tagEndSearchMaxExtraTurnRad,
+                            CONFIG_CONTEXT + ".tagEndSearchMaxExtraTurnRad"
+                    );
+                }
+            }
+        } else {
+            captured.preferredVisionDeviceName = null;
+            captured.fixedTagLayout = null;
+            captured.aprilTags = null;
+        }
+
+        return new ConfigCapture(captured, capturedLayout, policySummary);
+    }
+
+    private AprilTagVisionLaneFactory applyVisionFactoryBuilder(String selectedName) {
+        final AprilTagVisionLaneFactory factory;
+        try {
+            factory = visionLaneFactoryBuilder.apply(selectedName);
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException(
+                    CONFIG_CONTEXT + " vision factory builder failed for device '"
+                            + selectedName + "': " + primaryFailureSummary(failure),
+                    failure
+            );
+        }
+        if (factory == null) {
+            throw new IllegalStateException(
+                    CONFIG_CONTEXT + " vision factory builder returned null for device '"
+                            + selectedName + "'"
+            );
+        }
+        return factory;
+    }
+
+    private static IllegalArgumentException invalidConfig(String context, RuntimeException failure) {
+        return new IllegalArgumentException(
+                context + " is invalid: " + failureSummary(failure),
+                failure
+        );
+    }
+
+    private static String requireNonBlankTrimmed(String value, String context) {
+        if (value == null) {
+            throw new NullPointerException(context + " must not be null");
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(
+                    context + " must contain a non-whitespace value, got '" + value + "'"
+            );
+        }
+        return normalized;
+    }
+
+    private static double requireFiniteRange(
+            double value,
+            double min,
+            double max,
+            String context) {
+        return requireFiniteRange(value, min, max, context, true, true);
+    }
+
+    private static double requireFiniteRange(
+            double value,
+            double min,
+            double max,
+            String context,
+            boolean includeMin,
+            boolean includeMax) {
+        boolean below = includeMin ? value < min : value <= min;
+        boolean above = includeMax ? value > max : value >= max;
+        if (!Double.isFinite(value) || below || above) {
+            String domain = (includeMin ? "[" : "(") + min + ", " + max
+                    + (includeMax ? "]" : ")");
+            throw new IllegalArgumentException(
+                    context + " must be finite and in " + domain + ", got " + value
+            );
+        }
+        return value;
+    }
+
+    private static double requirePositiveFinite(double value, String context) {
+        if (!Double.isFinite(value) || value <= 0.0) {
+            throw new IllegalArgumentException(context + " must be finite and > 0, got " + value);
+        }
+        return value;
+    }
+
+    private static double requireSignedNormalizedNonzero(double value, String context) {
+        if (!Double.isFinite(value) || value == 0.0 || Math.abs(value) > 1.0) {
+            throw new IllegalArgumentException(
+                    context + " must be finite with 0 < abs(value) <= 1, got " + value
+            );
+        }
+        return value;
+    }
+
+    private static double requireStableTargetTurn(double targetTurnRad) {
+        if (!Double.isFinite(targetTurnRad)) {
+            throw new IllegalArgumentException(
+                    CONFIG_CONTEXT + ".targetTurnRad must be finite radians, got " + targetTurnRad
+            );
+        }
+        double halfTurnSin = Math.sin(targetTurnRad / 2.0);
+        double denominator = 4.0 * halfTurnSin * halfTurnSin;
+        if (denominator < MIN_SOLVE_DENOM) {
+            throw new IllegalArgumentException(
+                    CONFIG_CONTEXT + ".targetTurnRad must produce 4 * sin(targetTurnRad / 2)^2 >= "
+                            + MIN_SOLVE_DENOM + ", got targetTurnRad=" + targetTurnRad
+                            + " and denominator=" + denominator
+            );
+        }
+        return targetTurnRad;
+    }
+
+    private static final class ConfigCapture {
+        final Config config;
+        final TagLayout layout;
+        final String layoutPolicySummary;
+
+        ConfigCapture(Config config, TagLayout layout, String layoutPolicySummary) {
+            this.config = config;
+            this.layout = layout;
+            this.layoutPolicySummary = layoutPolicySummary;
+        }
     }
 
     /**
@@ -396,42 +625,42 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     @Override
     protected void onInit() {
-        // Pinpoint is required
-        pinpoint = new PinpointOdometryPredictor(ctx.hw, cfg.pinpoint);
-
-        // Optional drive
+        // The optional drive is deliberately the first resource. FtcDrives validates the complete
+        // wiring group before lookup and construction performs no drive command or run-mode access.
         if (cfg.mecanum != null) {
-            drive = FtcDrives.mecanum(ctx.hw, cfg.mecanum);
-        }
-
-        // Optional AprilTag assist
-        if (cfg.enableAprilTagAssist) {
-            // AprilTag assistance relies on a calibrated robot->camera mount. If it isn't available,
-            // degrade gracefully: run without assist and tell the driver what to calibrate first.
-            if (cfg.cameraMount == null) {
-                cfg.enableAprilTagAssist = false;
-                aprilTagAssistNotice = "Disabled: cfg.cameraMount not set";
-            } else if (isLikelyIdentity(cfg.cameraMount)) {
-                cfg.enableAprilTagAssist = false;
-                aprilTagAssistNotice = "Disabled: camera mount looks uncalibrated";
+            try {
+                drive = FtcDrives.mecanum(ctx.hw, cfg.mecanum);
+            } catch (RuntimeException failure) {
+                throw new IllegalStateException(
+                        CONFIG_CONTEXT + ".mecanum construction failed before Pinpoint setup; "
+                                + "no returned drive owner is available for rollback, so restart this OpMode "
+                                + "if device construction or configuration began: "
+                                + failureSummary(failure),
+                        failure
+                );
             }
         }
 
-        if (cfg.enableAprilTagAssist) {
+        try {
+            pinpoint = new PinpointOdometryPredictor(ctx.hw, cfg.pinpoint);
+        } catch (RuntimeException failure) {
+            RuntimeException primary = new IllegalStateException(
+                    CONFIG_CONTEXT + ".pinpoint construction failed after drive setup; "
+                            + "stop and restart this OpMode because a partially configured vendor owner "
+                            + "has no rollback seam: " + failureSummary(failure),
+                    failure
+            );
+            throw rollbackDriveAfterInitializationFailure(primary);
+        }
 
-            layout = (cfg.tagLayout != null)
-                    ? cfg.tagLayout
-                    : FtcGameTagLayout.currentGameFieldFixed();
-
-            selectedVisionDeviceName = cfg.preferredVisionDeviceName;
+        if (visionLaneFactoryBuilder != null) {
             if (selectedVisionDeviceName == null) {
-                Class<? extends HardwareDevice> deviceType = cfg.visionDeviceType != null
-                        ? cfg.visionDeviceType
-                        : WebcamName.class;
-                String pickerTitle = (cfg.visionPickerTitle == null || cfg.visionPickerTitle.trim().isEmpty())
-                        ? "Select Vision Device"
-                        : cfg.visionPickerTitle;
-                visionPicker = new HardwareNamePicker(ctx.hw, deviceType, pickerTitle, "Dpad: highlight | A: choose | X: refresh");
+                visionPicker = new HardwareNamePicker(
+                        ctx.hw,
+                        cfg.visionDeviceType,
+                        cfg.visionPickerTitle,
+                        "Dpad: highlight | A: choose | X: refresh"
+                );
                 visionPicker.bind(
                         bindings,
                         gamepads.p1().dpadUp(),
@@ -440,24 +669,22 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                         gamepads.p1().x(),
                         () -> visionLane == null
                                 && !visionCleanupFailed
+                                && !visionRetryBlocked
                                 && !visionTerminalRequested,
-                        name -> selectedVisionDeviceName = name
+                        name -> {
+                            selectedVisionDeviceName = name;
+                            pendingVisionFactory = null;
+                        }
                 );
+                visionPicker.refresh();
             }
-        }
-
-        // If AprilTag assist is disabled because the camera mount is still identity,
-        // surface that clearly in telemetry so users know which calibration to run next.
-        if (!cfg.enableAprilTagAssist && aprilTagAssistNotice == null
-                && cfg.cameraMount != null && isLikelyIdentity(cfg.cameraMount)) {
-            aprilTagAssistNotice = "Tip: run Calib: Camera Mount to enable AprilTag assist";
         }
 
         // Keep picker-reused calibration actions separate from a vision-device picker that uses
         // A and X. Abort stays on the always-eligible root so an active drive phase can still be
         // stopped if a vision readiness failure deactivates the calibration context.
         Bindings.ControlContext calibrationControls = bindings.contextWhen(
-                BooleanSource.of(() -> visionPicker == null || selectedVisionDeviceName != null),
+                BooleanSource.of(this::calibrationControlsEligible),
                 Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
         );
         calibrationControls.onRise(gamepads.p1().x(), () -> resetRequested = true);
@@ -465,8 +692,33 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         calibrationControls.onRise(gamepads.p1().y(), () -> autoStartRequested = true);
         bindings.onRise(gamepads.p1().b(), this::abortSample);
 
-        // Start in a clean state
-        resetAndClear();
+        // Construction already issued Pinpoint's mandatory nonblocking reset. Clear only internal
+        // state here, without a duplicate pose reset or an INIT drive command.
+        clearState(false);
+
+        // A preferred factory was captured before any resource. Open it only after drive and
+        // Pinpoint have been published. Picker-based owners wait for an explicit selection.
+        ensureAprilTagAssistReady(true);
+    }
+
+    private RuntimeException rollbackDriveAfterInitializationFailure(RuntimeException primary) {
+        MecanumDrivebase ownedDrive = drive;
+        drive = null;
+        if (ownedDrive == null) {
+            return primary;
+        }
+        return CleanupActions.attemptAllAfterFailure(primary, ownedDrive::stop);
+    }
+
+    @Override
+    protected void onStart() {
+        started = true;
+        clearPendingMotionIntent();
+        if (drive != null) {
+            // This is the first ordinary drive command. Construction/INIT configured direction and
+            // brake only, so raw-power-mode preflight and explicit physical zero begin at START.
+            drive.drive(DriveSignal.zero());
+        }
     }
 
     @Override
@@ -475,7 +727,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         // Keep estimators warm in init so the first sample isn't stale.
         updateSensors(true);
-        consumeControlRequestsAfterCurrentPoll();
+        consumeControlRequestsAfterCurrentPoll(false);
 
         renderTelemetry(true);
     }
@@ -485,7 +737,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         ensureAprilTagAssistReady(false);
 
         updateSensors(false);
-        consumeControlRequestsAfterCurrentPoll();
+        if (!started) {
+            // A malformed/custom host cannot bypass START by invoking RUN directly.
+            consumeControlRequestsAfterCurrentPoll(false);
+            renderTelemetry(false);
+            return;
+        }
+        consumeControlRequestsAfterCurrentPoll(true);
 
         if (!pinpointReadyForMotion()) {
             abortSample();
@@ -541,17 +799,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         tagSearchUnwrapper.update(latestPinpointPose.headingRad);
         double turned = Math.abs(tagSearchUnwrapper.getUnwrappedRad() - tagSearchStartUnwrappedRad);
 
-        PoseEstimate tagEst = tagEstimator.getEstimate();
-        if (tagEst.hasPose) {
+        if (latestTagPose != null) {
             tagStableFrames++;
         } else {
             tagStableFrames = 0;
         }
 
-        if (tagEst.hasPose && tagStableFrames >= cfg.tagSearchStableFrames) {
+        if (latestTagPose != null && tagStableFrames >= cfg.tagSearchStableFrames) {
             // Found a stable tag pose; align and start the actual sample.
             drive.drive(DriveSignal.zero());
-            startSampleInternal(autoSample, tagEst.toPose2d());
+            startSampleInternal(autoSample, latestTagPose);
             return;
         }
 
@@ -598,14 +855,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         tagSearchUnwrapper.update(latestPinpointPose.headingRad);
         double turnedExtra = Math.abs(tagSearchUnwrapper.getUnwrappedRad() - tagSearchStartUnwrappedRad);
 
-        PoseEstimate tagEst = tagEstimator.getEstimate();
-        if (tagEst.hasPose) {
+        if (latestTagPose != null) {
             tagStableFrames++;
         } else {
             tagStableFrames = 0;
         }
 
-        if (tagEst.hasPose && tagStableFrames >= cfg.tagSearchStableFrames) {
+        if (latestTagPose != null && tagStableFrames >= cfg.tagSearchStableFrames) {
             transitionToPostRecenterOrFinish();
             return;
         }
@@ -615,8 +871,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             return;
         }
 
-        double omega = Math.signum(cfg.targetTurnRad) * cfg.tagSearchOmegaCmd;
-        drive.drive(new DriveSignal(0.0, 0.0, omega));
+        drive.drive(new DriveSignal(0.0, 0.0, cfg.tagSearchOmegaCmd));
     }
 
     private void updatePostRecenter() {
@@ -632,34 +887,30 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void resetAndClear() {
-        phase = Phase.IDLE;
-        autoSample = false;
-        tagStableFrames = 0;
+        clearState(true);
+    }
 
-        lastDxFieldInches = null;
-        lastDyFieldInches = null;
-        lastDeltaHeadingRad = null;
-        lastXErrorInches = null;
-        lastYErrorInches = null;
-        lastRecommendedStrafePodOffsetForwardInches = null;
-        lastRecommendedForwardPodOffsetLeftInches = null;
-        lastHadTagStart = false;
-        lastHadTagEnd = false;
-        lastSolveNote = null;
+    private void clearState(boolean rebasePinpoint) {
+        clearPendingMotionIntent();
+
+        clearLastResults();
 
         startTagPose = null;
         latestTagPose = null;
-
-        endTagPose = null;
-
-        // Reset pose to something deterministic
-        pinpoint.setPose(Pose2d.zero());
+        if (rebasePinpoint && pinpoint != null) {
+            pinpoint.setPose(Pose2d.zero());
+        }
         headingUnwrapper.reset(0.0);
         tagSearchUnwrapper.reset(0.0);
+    }
 
-        if (drive != null) {
-            drive.drive(DriveSignal.zero());
-        }
+    private void clearPendingMotionIntent() {
+        phase = Phase.IDLE;
+        autoSample = false;
+        tagStableFrames = 0;
+        resetRequested = false;
+        primaryActionRequested = false;
+        autoStartRequested = false;
     }
 
     private void onAPress() {
@@ -686,7 +937,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     /** Consume binding-edge intent only after this cycle's Pinpoint/vision update. */
-    private void consumeControlRequestsAfterCurrentPoll() {
+    private void consumeControlRequestsAfterCurrentPoll(boolean runPhase) {
         boolean shouldReset = resetRequested;
         boolean shouldRunPrimaryAction = primaryActionRequested;
         boolean shouldStartAuto = autoStartRequested;
@@ -694,8 +945,19 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         primaryActionRequested = false;
         autoStartRequested = false;
 
+        if (terminalVisionFailureBlocksCalibration()) {
+            // Identity-mount fallback explicitly clears this block through its unavailable state.
+            // Every other terminal assist failure requires BACK/reopen and must discard even a
+            // request captured earlier in the same cycle as the failure.
+            clearPendingMotionIntent();
+            return;
+        }
         if (shouldReset) {
             resetAndClear();
+        }
+        if (!runPhase) {
+            // INIT observes reset intent only. A/Y can never arm a motion phase that survives START.
+            return;
         }
         if (!pinpointReadyForMotion()) {
             if (shouldRunPrimaryAction || shouldStartAuto) {
@@ -726,7 +988,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         phase = Phase.IDLE;
         autoSample = false;
         tagStableFrames = 0;
-        if (drive != null) {
+        if (started && drive != null) {
             drive.drive(DriveSignal.zero());
         }
     }
@@ -745,22 +1007,21 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void requestStartSample(boolean auto) {
-        if (phase != Phase.IDLE || !pinpointReadyForMotion()) return;
+        if (terminalVisionFailureBlocksCalibration()
+                || phase != Phase.IDLE
+                || !pinpointReadyForMotion()) return;
 
         autoSample = auto;
         clearLastResults();
 
         // Prefer to align Pinpoint to a vision pose if we have one.
-        if (cfg.enableAprilTagAssist && tagEstimator != null) {
-            PoseEstimate tagEst = tagEstimator.getEstimate();
-            if (tagEst.hasPose) {
-                startSampleInternal(auto, tagEst.toPose2d());
-                return;
-            }
+        if (aprilTagAssistEnabled() && tagEstimator != null && latestTagPose != null) {
+            startSampleInternal(auto, latestTagPose);
+            return;
         }
 
         // If no tag right now, optionally auto-search for one.
-        if (cfg.enableAprilTagAssist
+        if (aprilTagAssistEnabled()
                 && cfg.enableAutoTagSearchAtStart
                 && drive != null
                 && tagEstimator != null) {
@@ -781,8 +1042,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         startTagPose = startTagPoseOrNull;
         lastHadTagStart = (startTagPose != null);
         lastHadTagEnd = false;
-
-        endTagPose = null;
 
         // Align Pinpoint's field frame so deltas are comparable.
         if (startTagPose != null) {
@@ -809,16 +1068,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private void transitionAfterRotation() {
         // If this was an auto sample and we want to reacquire a tag at the end, do that first.
         if (autoSample
-                && cfg.enableAprilTagAssist
+                && aprilTagAssistEnabled()
                 && cfg.enableAutoTagSearchAtEnd
                 && drive != null
                 && tagEstimator != null
                 && startTagPose != null) {
-            PoseEstimate tagEst = tagEstimator.getEstimate();
-            if (tagEst.hasPose) {
-                endTagPose = tagEst.toPose2d();
-            }
-            if (!tagEst.hasPose) {
+            if (latestTagPose == null) {
                 phase = Phase.SEARCH_TAG_END;
                 tagStableFrames = 0;
                 tagSearchUnwrapper.reset(latestPinpointPose.headingRad);
@@ -835,9 +1090,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         // produced a start+end tag pose, compute immediately (no extra button presses).
         if (autoSample
                 && cfg.autoComputeAfterAutoSample
-                && cfg.enableAprilTagAssist
+                && aprilTagAssistEnabled()
                 && startTagPose != null
-                && endTagPose != null) {
+                && latestTagPose != null) {
             if (drive != null) {
                 drive.drive(DriveSignal.zero());
             }
@@ -873,8 +1128,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         // AprilTag assist: subtract real translation (tag-measured) so we isolate odometry drift
         // caused by pod-offset misconfiguration, not carpet slip or an imperfect pivot.
-        if (cfg.enableAprilTagAssist && startTagPose != null) {
-            Pose2d end = (endTagPose != null) ? endTagPose : latestTagPose;
+        if (aprilTagAssistEnabled() && startTagPose != null) {
+            Pose2d end = latestTagPose;
             if (end != null) {
                 double dxTrue = end.xInches - startTagPose.xInches;
                 double dyTrue = end.yInches - startTagPose.yInches;
@@ -931,54 +1186,115 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void ensureAprilTagAssistReady(boolean initPhase) {
-        if (!cfg.enableAprilTagAssist) return;
+        if (!aprilTagAssistEnabled()) return;
         if (visionLane != null) return;
         if (visionCleanupFailed) return;
         if (visionTerminalRequested) return;
+        if (visionRetryBlocked) return;
         if (selectedVisionDeviceName == null) return;
 
-        Function<String, AprilTagVisionLaneFactory> builder = cfg.visionLaneFactoryBuilder;
-        if (builder == null) {
-            final CameraMountConfig mount = (cfg.cameraMount != null)
-                    ? cfg.cameraMount
-                    : CameraMountConfig.identity();
-            final AprilTagLibrary tagLibrary = cfg.tagLibrary;
-            builder = cameraName -> {
-                FtcWebcamAprilTagVisionLane.Config vCfg = FtcWebcamAprilTagVisionLane.Config.defaults();
-                vCfg.webcamName = cameraName;
-                vCfg.cameraMount = mount;
-                vCfg.tagLibrary = tagLibrary;
-                return AprilTagVisionLaneFactories.webcam(vCfg);
-            };
+        if (pendingVisionFactory == null) {
+            try {
+                pendingVisionFactory = applyVisionFactoryBuilder(selectedVisionDeviceName);
+            } catch (RuntimeException failure) {
+                // Builder application is contractually effect-free. Its own suppressed failures do
+                // not imply an opened vision owner or uncertain camera rollback.
+                recordVisionFailure(
+                        failure,
+                        "Vision factory capture failed",
+                        initPhase,
+                        false
+                );
+                return;
+            }
         }
 
+        AprilTagVisionLaneFactory factory = pendingVisionFactory;
+        pendingVisionFactory = null;
         try {
-            AprilTagVisionLaneFactory factory = builder.apply(selectedVisionDeviceName);
-            if (factory == null) {
+            AprilTagVisionLane openedLane = factory.open(ctx.hw);
+            if (openedLane == null) {
                 throw new IllegalStateException(
-                        "visionLaneFactoryBuilder returned null for "
-                                + selectedVisionDeviceName);
+                        "vision lane factory returned null for device '"
+                                + selectedVisionDeviceName + "'");
             }
 
-            visionLane = factory.open(ctx.hw);
-            if (visionLane == null) {
-                throw new IllegalStateException(
-                        "vision lane factory returned null for "
-                                + selectedVisionDeviceName);
+            // Publish immediately so any later accessor/readiness failure has one closeable owner.
+            visionLane = openedLane;
+            CameraMountConfig cameraMount = Objects.requireNonNull(
+                    visionLane.cameraMountConfig(),
+                    "vision lane cameraMountConfig() must not return null"
+            );
+            if (isLikelyIdentity(cameraMount)) {
+                disableIdentityMountAssist();
+                return;
             }
-            tagSensor = visionLane.tagSensor();
+
+            tagSensor = Objects.requireNonNull(
+                    visionLane.tagSensor(),
+                    "vision lane tagSensor() must not return null"
+            );
             activeVisionDescription = factory.description();
+            VisionReadiness initialReadiness = visionLane.readiness(ctx.clock);
+            if (initialReadiness == null) {
+                throw new IllegalStateException("vision lane returned a null readiness result");
+            }
 
-            AprilTagPoseEstimator.Config estCfg = AprilTagPoseEstimator.Config.defaults();
-            estCfg.cameraMount = visionLane.cameraMountConfig();
-            estCfg.maxDetectionAgeSec = cfg.maxTagAgeSec;
+            AprilTagPoseEstimator.Config estCfg =
+                    cfg.aprilTags.toAprilTagPoseEstimatorConfig(cameraMount);
             tagEstimator = new AprilTagPoseEstimator(tagSensor, layout, estCfg);
             aprilTagAssistNotice = null;
             visionFailure = null;
-            visionReadiness = VisionReadiness.notReady("Vision device is opening");
+            visionReadiness = initialReadiness;
         } catch (RuntimeException failure) {
             handleVisionFailure(failure, "Vision setup failed", initPhase);
         }
+    }
+
+    private boolean aprilTagAssistEnabled() {
+        return visionLaneFactoryBuilder != null && !aprilTagAssistUnavailable;
+    }
+
+    private boolean terminalVisionFailureBlocksCalibration() {
+        return visionLaneFactoryBuilder != null
+                && !aprilTagAssistUnavailable
+                && (visionRetryBlocked || visionCleanupFailed);
+    }
+
+    private boolean calibrationControlsEligible() {
+        return !terminalVisionFailureBlocksCalibration()
+                && (visionPicker == null
+                || selectedVisionDeviceName != null
+                || aprilTagAssistUnavailable);
+    }
+
+    private void disableIdentityMountAssist() {
+        AprilTagVisionLane identityLane = visionLane;
+        visionLane = null;
+        tagSensor = null;
+        tagEstimator = null;
+        activeVisionDescription = null;
+        pendingVisionFactory = null;
+        selectedVisionDeviceName = null;
+
+        try {
+            identityLane.close();
+        } catch (RuntimeException cleanupFailure) {
+            visionCleanupFailed = true;
+            visionRetryBlocked = true;
+            visionFailure = cleanupFailure;
+            aprilTagAssistNotice = "AprilTag assist camera mount looks uncalibrated, but vision "
+                    + "cleanup also failed: " + failureSummary(cleanupFailure)
+                    + "; stop and restart this OpMode";
+            visionReadiness = VisionReadiness.notReady(aprilTagAssistNotice);
+            return;
+        }
+
+        aprilTagAssistUnavailable = true;
+        visionRetryBlocked = true;
+        visionFailure = null;
+        aprilTagAssistNotice = "Disabled: camera mount looks uncalibrated; run Calib: Camera Mount";
+        visionReadiness = VisionReadiness.notReady(aprilTagAssistNotice);
     }
 
     /** Samples dynamic camera readiness while leaving the non-vision calibration path available. */
@@ -1006,14 +1322,44 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             String context,
             boolean initPhase
     ) {
+        recordVisionFailure(failure, context, initPhase, true);
+    }
+
+    private void recordVisionFailure(
+            RuntimeException failure,
+            String context,
+            boolean initPhase,
+            boolean suppressedFailureMeansUncertainRollback
+    ) {
         AprilTagVisionLane failedLane = visionLane;
-        visionLane = null;
+        boolean uncertainFactoryRollback = failedLane == null
+                && suppressedFailureMeansUncertainRollback
+                && failure.getSuppressed().length > 0;
         tagSensor = null;
         tagEstimator = null;
         activeVisionDescription = null;
+        pendingVisionFactory = null;
         selectedVisionDeviceName = null;
 
-        if (failedLane != null) {
+        if (!initPhase) {
+            // Publish the terminal gate before the safety zero. If that callback throws Error,
+            // leave the already-published lane reachable so a later STOP can still close it.
+            visionRetryBlocked = true;
+            try {
+                // An active assist failure is terminal for this tester activation. Do not let a
+                // previously armed calibration phase continue moving without its selected evidence.
+                abortSample();
+            } catch (RuntimeException driveZeroFailure) {
+                if (driveZeroFailure != failure) {
+                    failure.addSuppressed(driveZeroFailure);
+                }
+            }
+        }
+
+        if (failedLane != null && visionLane == failedLane) {
+            // Detach immediately before close. A reentrant STOP may already have detached and
+            // closed this lane while the drive zero callback was running.
+            visionLane = null;
             try {
                 failedLane.close();
             } catch (RuntimeException cleanupFailure) {
@@ -1022,12 +1368,17 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     failure.addSuppressed(cleanupFailure);
                 }
             }
-        } else if (failure.getSuppressed().length > 0) {
+        } else if (uncertainFactoryRollback) {
             // A framework factory can fail before publishing its lane and attach a failed
             // rollback/close attempt. There is no safe owner reference to close again.
             visionCleanupFailed = true;
         }
-        if (!visionCleanupFailed && !visionTerminalRequested) {
+
+        boolean canRetryInPicker = !visionCleanupFailed
+                && !visionTerminalRequested
+                && initPhase
+                && visionPicker != null;
+        if (canRetryInPicker) {
             try {
                 resetVisionPickerChoice();
             } catch (RuntimeException pickerFailure) {
@@ -1038,9 +1389,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             }
         }
 
+        if (visionCleanupFailed || !canRetryInPicker) {
+            visionRetryBlocked = true;
+        }
+
         String recovery = visionCleanupFailed
                 ? "vision cleanup failed; stop and restart this OpMode before selecting another device"
-                : initPhase && visionPicker != null
+                : canRetryInPicker
                 ? "select the vision device again to create a fresh owner"
                 : "press BACK and reopen this tester to create a fresh owner";
         visionFailure = failure;
@@ -1049,9 +1404,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private static String failureSummary(RuntimeException failure) {
-        String message = failure.getMessage();
-        String summary = failure.getClass().getSimpleName()
-                + ((message == null || message.trim().isEmpty()) ? "" : ": " + message.trim());
+        String summary = primaryFailureSummary(failure);
         Throwable[] suppressed = failure.getSuppressed();
         if (suppressed.length == 0) {
             return summary;
@@ -1062,6 +1415,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 + ((cleanupMessage == null || cleanupMessage.trim().isEmpty())
                 ? ""
                 : ": " + cleanupMessage.trim());
+    }
+
+    private static String primaryFailureSummary(RuntimeException failure) {
+        String message = failure.getMessage();
+        return failure.getClass().getSimpleName()
+                + ((message == null || message.trim().isEmpty()) ? "" : ": " + message.trim());
     }
 
     private void resetVisionPickerChoice() {
@@ -1082,9 +1441,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
             PoseEstimate tagEst = tagEstimator.getEstimate();
             latestTagPose = tagEst.hasPose ? tagEst.toPose2d() : null;
-            if (isSampleActive() && latestTagPose != null) {
-                endTagPose = latestTagPose;
-            }
         } else {
             latestTagPose = null;
         }
@@ -1132,8 +1488,23 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                             + "publishes current pose and velocity."
             );
         }
-        ctx.telemetry.addData("Manual sample [A]", phase == Phase.IDLE ? "start / stop" : (autoSample ? "not active" : "press A to finish / skip"));
-        ctx.telemetry.addData("Auto sample [Y]", drive != null ? (autoSample ? "ACTIVE" : "start 180° turn") : "unavailable (no drive)");
+        boolean terminalVisionBlock = terminalVisionFailureBlocksCalibration();
+        ctx.telemetry.addData(
+                "Manual sample [A]",
+                terminalVisionBlock
+                        ? "unavailable (press BACK and reopen)"
+                        : phase == Phase.IDLE
+                        ? "start / stop"
+                        : (autoSample ? "not active" : "press A to finish / skip")
+        );
+        ctx.telemetry.addData(
+                "Auto sample [Y]",
+                terminalVisionBlock
+                        ? "unavailable (press BACK and reopen)"
+                        : drive != null
+                        ? (autoSample ? "ACTIVE" : "start configured turn")
+                        : "unavailable (no drive)"
+        );
         ctx.telemetry.addData("Abort [B]", isSampleActive() ? "cancel current sample" : "idle");
         ctx.telemetry.addData("Reset [X]", "zero pose + clear results");
         if (drive != null) {
@@ -1146,7 +1517,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             ctx.telemetry.addData("Tag search stable", String.format(Locale.US, "%d/%d", tagStableFrames, cfg.tagSearchStableFrames));
         }
 
-        if (cfg.enableAprilTagAssist) {
+        if (aprilTagAssistEnabled()) {
             String device = (selectedVisionDeviceName != null) ? selectedVisionDeviceName : "<select vision device>";
             ctx.telemetry.addData("Tag assist", true);
             ctx.telemetry.addData("Vision device", device);
@@ -1159,6 +1530,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             );
             ctx.telemetry.addData("Vision status", visionReadiness.reason());
             ctx.telemetry.addData("Tag pose", latestTagPose != null ? latestTagPose.toString() : "<none>");
+            if (fixedTagLayoutPolicySummary != null) {
+                ctx.telemetry.addData("layout.policy", fixedTagLayoutPolicySummary);
+            }
             FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(ctx.telemetry), "layout");
             if (initPhase && visionPicker != null && selectedVisionDeviceName == null
                     && !visionCleanupFailed) {
@@ -1222,12 +1596,18 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
         switch (phase) {
             case IDLE:
+                if (terminalVisionBlock) {
+                    ctx.telemetry.addLine(
+                            "Vision ownership failed; press BACK and reopen before calibrating."
+                    );
+                    break;
+                }
                 ctx.telemetry.addLine("Manual sample [A]: rotate in place, then press A again to compute.");
                 ctx.telemetry.addLine("Auto sample [Y]: rotate automatically to the target heading when a drive config exists.");
                 if (drive == null) {
                     ctx.telemetry.addLine("(No drive configured) Manual samples are by hand only.");
                 }
-                if (cfg.enableAprilTagAssist) {
+                if (aprilTagAssistEnabled()) {
                     ctx.telemetry.addLine("Tip: if a known-pose tag is visible, the tester can align Pinpoint to it.");
                 }
                 break;
@@ -1239,7 +1619,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
             case ROTATING:
                 if (autoSample) {
-                    if (cfg.enableAprilTagAssist && cfg.autoComputeAfterAutoSample) {
+                    if (aprilTagAssistEnabled() && cfg.autoComputeAfterAutoSample) {
                         ctx.telemetry.addLine("Auto sample [Y] is rotating now and will auto-compute at the end.");
                     } else {
                         ctx.telemetry.addLine("Auto sample [Y] is rotating now. Abort [B] if needed.");
@@ -1251,7 +1631,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                         ctx.telemetry.addLine("Rotate the robot by hand, then finish [A].");
                     }
                 }
-                if (autoSample && cfg.enableAprilTagAssist && cfg.autoComputeAfterAutoSample) {
+                if (autoSample && aprilTagAssistEnabled() && cfg.autoComputeAfterAutoSample) {
                     ctx.telemetry.addLine("Tip: with tag assist, results can compute automatically after the turn.");
                 } else if (cfg.enablePostRotateRecenter) {
                     ctx.telemetry.addLine("After rotation you can recenter, then finish [A] to compute.");
@@ -1272,7 +1652,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 } else {
                     ctx.telemetry.addLine("(No drive configured) You can physically reposition the robot.");
                 }
-                if (cfg.enableAprilTagAssist && startTagPose != null && latestTagPose != null) {
+                if (aprilTagAssistEnabled() && startTagPose != null && latestTagPose != null) {
                     double dxToStart = startTagPose.xInches - latestTagPose.xInches;
                     double dyToStart = startTagPose.yInches - latestTagPose.yInches;
                     ctx.telemetry.addData(
@@ -1296,7 +1676,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     String.format(Locale.US, "%.1f", Math.toDegrees(lastDeltaHeadingRad))
             );
 
-            if (cfg.enableAprilTagAssist) {
+            if (aprilTagAssistEnabled()) {
                 ctx.telemetry.addData("  Tag start/end", (lastHadTagStart ? "Y" : "N") + "/" + (lastHadTagEnd ? "Y" : "N"));
             }
 
@@ -1342,10 +1722,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         visionTerminalRequested = true;
+        visionRetryBlocked = true;
+        started = false;
         MecanumDrivebase ownedDrive = drive;
         AprilTagVisionLane ownedVision = visionLane;
         drive = null;
-        visionLane = null;
+        pendingVisionFactory = null;
         visionReadiness = VisionReadiness.notReady("Vision tester is stopping");
         tagSensor = null;
         tagEstimator = null;
@@ -1358,9 +1740,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     }
                 },
                 () -> {
-                    if (ownedVision == null) {
+                    if (ownedVision == null || visionLane != ownedVision) {
                         return;
                     }
+                    // Detach immediately before close so a reentrant STOP cannot close twice. If
+                    // an earlier drive cleanup throws Error, this action is never reached and the
+                    // still-published lane remains available to a later STOP attempt.
+                    visionLane = null;
                     try {
                         ownedVision.close();
                     } catch (RuntimeException cleanupFailure) {
