@@ -578,7 +578,7 @@ FtcOdometryAprilTagLocalizationLane localization =
                 autoRuntime.motionPredictor(),
                 vision,
                 profile.field.fixedAprilTagLayout,
-                profile.localization
+                profile.localization.estimation
         );
 ```
 
@@ -590,6 +590,12 @@ and each predictor/estimator protects direct or shared use with the same cycle i
 the call cannot poll Pinpoint, solve a camera frame, advance Fusion/EKF, or write Limelight yaw
 twice. Timestamp checks independently prevent a predictor interval retained into a later cycle from
 being consumed again.
+
+The ordinary Config separates `predictor` from `estimation`. The hardware-owning path preflights
+both active branches before it looks up Pinpoint. The injected-predictor path accepts only
+`estimation`, so no completed owner carries an ignored physical-device config. Pinpoint reset is a
+mandatory non-blocking request: non-`READY` polls publish unavailable measured facts, and a later
+`READY` poll starts fresh motion and heading baselines.
 
 This split is intentional:
 

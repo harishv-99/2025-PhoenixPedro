@@ -146,6 +146,28 @@ public final class PinpointKinematicSnapshotTest {
     }
 
     @Test
+    public void commandedCoordinateIsInspectableButNeverCurrentMeasuredEvidence() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        manualClock.nextCycle(0.25);
+
+        PinpointKinematicSnapshot commanded = PinpointKinematicSnapshot.commanded(
+                new Pose2d(20.0, -10.0, 0.7),
+                manualClock.clock().cycle(),
+                4.5
+        );
+
+        assertTrue(commanded.hasPose);
+        assertFalse(commanded.hasVelocity);
+        assertFalse(commanded.hasUsableKinematics());
+        assertFalse(commanded.timestamp.isAvailable());
+        assertFalse(commanded.isCurrentFor(manualClock.clock()));
+        assertEquals(20.0, commanded.fieldToRobotPose.xInches, EPSILON);
+        assertEquals(-10.0, commanded.fieldToRobotPose.yInches, EPSILON);
+        assertEquals(0.7, commanded.fieldToRobotPose.headingRad, EPSILON);
+        assertEquals(4.5, commanded.totalHeadingRad, EPSILON);
+    }
+
+    @Test
     public void unwrappedHeadingUsesShortestSignedTurnAcrossWrap() {
         double forwardAcrossWrap = PinpointOdometryPredictor.accumulateUnwrappedHeadingRad(
                 10.0,

@@ -74,6 +74,37 @@ public final class PhoenixDriveAssistServiceTest {
     }
 
     @Test
+    public void laterLocalizationLossDropsBraceButPreservesManualRobotCentricDrive() {
+        ManualLoopClock time = new ManualLoopClock();
+        MutablePoseEstimator estimator = new MutablePoseEstimator(new PoseEstimate(
+                new Pose3d(9.0, -4.0, 0.0, 0.5, 0.0, 0.0),
+                true,
+                1.0,
+                time.clock().nowTimestamp()
+        ));
+        DriveSignal manualSignal = new DriveSignal(0.40, -0.20, 0.30);
+        PhoenixDriveAssistService service = new PhoenixDriveAssistService(
+                new PhoenixProfile.DriveAssistConfig(),
+                clock -> manualSignal,
+                ScalarSource.constant(0.0),
+                Source.constant(scoringStatus(true)),
+                BooleanSource.constant(false),
+                true,
+                estimator,
+                clock -> DriveOverlayOutput.zero()
+        );
+
+        DriveSignal braced = service.driveSource().get(time.clock());
+        assertSignalEquals(new DriveSignal(0.0, 0.0, 0.30), braced);
+
+        time.nextCycle(0.02);
+        estimator.estimate = PoseEstimate.noPose(time.clock().nowTimestamp());
+        DriveSignal afterFault = service.driveSource().get(time.clock());
+
+        assertSignalEquals(manualSignal, afterFault);
+    }
+
+    @Test
     public void finalDriveReadPublishesOneCurrentScoringSnapshotPerCycle() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingAimOverlay aimOverlay = new RecordingAimOverlay();
@@ -210,6 +241,24 @@ public final class PhoenixDriveAssistServiceTest {
                     new DriveSignal(-1.0, -1.0, 0.90),
                     DriveOverlayMask.ALL
             );
+        }
+    }
+
+    private static final class MutablePoseEstimator implements AbsolutePoseEstimator {
+        private PoseEstimate estimate;
+
+        private MutablePoseEstimator(PoseEstimate estimate) {
+            this.estimate = estimate;
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            // Test controls the immutable published estimate directly.
+        }
+
+        @Override
+        public PoseEstimate getEstimate() {
+            return estimate;
         }
     }
 }

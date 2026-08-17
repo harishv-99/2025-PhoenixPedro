@@ -418,7 +418,7 @@ public final class PhoenixScoringCleanupTest {
             int scoringTagId = profile.autoAim.scoringTagIds().iterator().next();
             targeting = new PhoenixTargeting(
                     profile.autoAim,
-                    profile.localization.aprilTags.fieldPoseSolver,
+                    profile.localization.estimation.aprilTags.fieldPoseSolver,
                     new CurrentFrameAprilTagSensor(scoringTagId),
                     CameraMountConfig.identity(),
                     new NoPoseEstimator(),
@@ -462,7 +462,7 @@ public final class PhoenixScoringCleanupTest {
     private static PhoenixTargeting targetingFor(PhoenixProfile profile) {
         return new PhoenixTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),

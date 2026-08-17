@@ -17,6 +17,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
+import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
@@ -621,6 +622,9 @@ public class FtcLimelightVisionLane implements AutoCloseable {
 
     /**
      * Sends Phoenix field-frame yaw to Limelight for algorithms such as MegaTag 2.
+     * Finite yaw is first wrapped to Phoenix's canonical {@code (-pi, pi]} representative and only
+     * then converted to degrees, so a huge finite equivalent angle cannot overflow the vendor
+     * orientation update.
      *
      * @param fieldYawRad Phoenix field-frame yaw, counter-clockwise positive, in radians
      * @return whether Limelight accepted the orientation update
@@ -628,9 +632,17 @@ public class FtcLimelightVisionLane implements AutoCloseable {
     public final synchronized boolean updateRobotFieldYawRad(double fieldYawRad) {
         requireUsable();
         if (!Double.isFinite(fieldYawRad)) {
-            throw new IllegalArgumentException("fieldYawRad must be finite");
+            throw new IllegalArgumentException(
+                    "fieldYawRad must be finite, got " + fieldYawRad);
         }
-        return device.updateRobotOrientationDegrees(Math.toDegrees(fieldYawRad));
+        double wrappedYawRad = MathUtil.wrapToPi(fieldYawRad);
+        double fieldYawDegrees = Math.toDegrees(wrappedYawRad);
+        if (!Double.isFinite(wrappedYawRad) || !Double.isFinite(fieldYawDegrees)) {
+            throw new IllegalArgumentException(
+                    "fieldYawRad must have a finite wrapped degree representation, got "
+                            + fieldYawRad);
+        }
+        return device.updateRobotOrientationDegrees(fieldYawDegrees);
     }
 
     /** @return whether a close was requested, regardless of the device cleanup result. */
@@ -942,7 +954,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         }
         Position position = source.getPosition();
         YawPitchRollAngles orientation = source.getOrientation();
-        if (position == null || orientation == null) {
+        if (position == null || position.unit == null || orientation == null) {
             return false;
         }
         double yawRad = orientation.getYaw(AngleUnit.RADIANS);

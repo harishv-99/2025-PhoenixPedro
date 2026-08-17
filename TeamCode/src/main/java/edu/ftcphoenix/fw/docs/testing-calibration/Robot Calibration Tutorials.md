@@ -380,7 +380,7 @@ Odometry sign mistakes poison every later localization step. Fix them before tun
 
 ### Procedure
 
-1. Zero the tester.
+1. Keep the robot still until the tester reports Pinpoint `READY`, then zero the tester.
 2. Start the forward sample, push the robot forward by hand, then stop the sample.
 3. Start the left sample, push the robot left by hand, then stop the sample.
 4. Start the rotation sample, rotate the robot CCW by hand, then stop the sample.
@@ -421,7 +421,7 @@ Run this after:
 2. Use a manual sample or an auto sample, depending on whether the project provides drivetrain wiring.
 3. Rotate roughly 180 degrees in place.
 4. Let the tester compute the recommended offsets.
-5. Paste the printed `.withOffsets(...)` numbers into your Pinpoint config.
+5. Paste the two printed offset field assignments into your Pinpoint config.
 6. Rerun the tester and confirm the recommendation stabilizes instead of wandering wildly.
 
 ### What “good” looks like

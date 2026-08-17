@@ -6,8 +6,6 @@ import com.pedropathing.paths.PathConstraints;
 
 import org.junit.Test;
 
-import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
-
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -15,23 +13,9 @@ public final class PedroPathingRuntimeValidationTest {
 
     @Test
     public void validPinnedDefaultsPassBoundaryValidation() {
-        PedroPathingRuntime.validatePredictorConfig(
-                PinpointOdometryPredictor.Config.defaults()
-        );
         PedroPathingRuntime.validateFollowerConstants(new FollowerConstants());
         PedroPathingRuntime.validateMecanumConstants(new MecanumConstants());
         PedroPathingRuntime.validatePathConstraints(PathConstraints.defaultConstraints.copy());
-    }
-
-    @Test
-    public void productionRequiresControlledPredictorInitReset() {
-        PinpointOdometryPredictor.Config config =
-                PinpointOdometryPredictor.Config.defaults().withResetOnInit(false);
-
-        assertRejects(
-                () -> PedroPathingRuntime.validatePredictorConfig(config),
-                "enableResetOnInit=true"
-        );
     }
 
     @Test

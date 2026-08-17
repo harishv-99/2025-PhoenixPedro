@@ -9,17 +9,24 @@ import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.junit.Test;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+import edu.ftcphoenix.fw.field.SimpleTagLayout;
+import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.localization.LimelightFieldPoseEstimator;
 import edu.ftcphoenix.fw.localization.MotionDelta;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
@@ -28,6 +35,8 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -506,6 +515,44 @@ public final class FtcLimelightVisionLaneTest {
         assertFalse(estimate.hasPose);
         assertEquals(0.0, estimate.timestamp.ageSec(manual.clock()), 1e-9);
 
+        expectFailure(IllegalArgumentException.class,
+                () -> new LimelightFieldPoseEstimator(lane, null, null));
+        assertEquals(1, LimelightFieldPoseEstimator.class.getConstructors().length);
+        Class<?>[] constructorParameters =
+                LimelightFieldPoseEstimator.class.getConstructors()[0].getParameterTypes();
+        assertTrue(Arrays.equals(
+                new Class<?>[]{
+                        FtcLimelightAprilTagVisionLane.class,
+                        MotionPredictor.class,
+                        LimelightFieldPoseEstimator.Config.class
+                },
+                constructorParameters));
+        Set<String> publicConfigMethods = new HashSet<String>();
+        int publicConfigMethodCount = 0;
+        for (Method method : LimelightFieldPoseEstimator.Config.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers()) && !method.isSynthetic()) {
+                publicConfigMethodCount++;
+                publicConfigMethods.add(method.getName());
+            }
+        }
+        assertEquals(2, publicConfigMethodCount);
+        assertEquals(
+                new HashSet<String>(Arrays.asList("defaults", "copy")),
+                publicConfigMethods);
+        try {
+            Method validatedCopy = LimelightFieldPoseEstimator.Config.class
+                    .getDeclaredMethod("validatedCopy", String.class);
+            int modifiers = validatedCopy.getModifiers();
+            assertFalse(Modifier.isPublic(modifiers));
+            assertFalse(Modifier.isProtected(modifiers));
+            assertFalse(Modifier.isPrivate(modifiers));
+            assertEquals(
+                    LimelightFieldPoseEstimator.Config.class,
+                    validatedCopy.getReturnType());
+        } catch (NoSuchMethodException missingValidatedCopy) {
+            throw new AssertionError(missingValidatedCopy);
+        }
+
         estimatorCfg.mode = null;
         expectFailure(IllegalArgumentException.class,
                 () -> new LimelightFieldPoseEstimator(lane, null, estimatorCfg));
@@ -514,6 +561,392 @@ public final class FtcLimelightVisionLaneTest {
         zeroAgeCfg.maxResultAgeSec = 0.0;
         expectFailure(IllegalArgumentException.class,
                 () -> new LimelightFieldPoseEstimator(lane, null, zeroAgeCfg));
+        lane.close();
+    }
+
+    @Test
+    public void directPoseConfigCoversEveryNumericDomainBoundaryAndSnapshot() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device));
+        LimelightNumericCase[] cases = new LimelightNumericCase[]{
+                new LimelightNumericCase("maxResultAgeSec", 0.0,
+                        (config, value) -> config.maxResultAgeSec = value),
+                new LimelightNumericCase("singleTagQuality", -1.0,
+                        (config, value) -> config.singleTagQuality = value),
+                new LimelightNumericCase("multiTagQuality", -1.0,
+                        (config, value) -> config.multiTagQuality = value),
+                new LimelightNumericCase("translationSpeedForZeroQualityInPerSec", 0.0,
+                        (config, value) ->
+                                config.translationSpeedForZeroQualityInPerSec = value),
+                new LimelightNumericCase("yawRateForZeroQualityRadPerSec", 0.0,
+                        (config, value) -> config.yawRateForZeroQualityRadPerSec = value),
+                new LimelightNumericCase("maxTranslationSpeedInPerSec", 0.0,
+                        (config, value) -> config.maxTranslationSpeedInPerSec = value),
+                new LimelightNumericCase("maxYawRateRadPerSec", 0.0,
+                        (config, value) -> config.maxYawRateRadPerSec = value)
+        };
+        Set<String> coveredDoubleFields = new HashSet<String>();
+        for (LimelightNumericCase numericCase : cases) {
+            coveredDoubleFields.add(numericCase.fieldName);
+            for (double nonFinite : new double[]{
+                    Double.NaN,
+                    Double.POSITIVE_INFINITY,
+                    Double.NEGATIVE_INFINITY
+            }) {
+                assertLimelightNumericFailure(lane, numericCase, nonFinite);
+            }
+            assertLimelightNumericFailure(lane, numericCase, numericCase.domainInvalidValue);
+        }
+        Set<String> publicDoubleFields = new HashSet<String>();
+        for (Field field : LimelightFieldPoseEstimator.Config.class.getDeclaredFields()) {
+            if (Modifier.isPublic(field.getModifiers()) && field.getType() == double.class) {
+                publicDoubleFields.add(field.getName());
+            }
+        }
+        assertEquals(publicDoubleFields, coveredDoubleFields);
+
+        assertLimelightNumericFailure(
+                lane,
+                new LimelightNumericCase(
+                        "singleTagQuality",
+                        Math.nextUp(1.0),
+                        (config, value) -> config.singleTagQuality = value),
+                Math.nextUp(1.0));
+        assertLimelightNumericFailure(
+                lane,
+                new LimelightNumericCase(
+                        "multiTagQuality",
+                        Math.nextUp(1.0),
+                        (config, value) -> config.multiTagQuality = value),
+                Math.nextUp(1.0));
+
+        LimelightFieldPoseEstimator.Config invalidCount =
+                LimelightFieldPoseEstimator.Config.defaults();
+        invalidCount.minVisibleTags = 0;
+        RuntimeException invalidCountFailure = captureFailure(
+                () -> new LimelightFieldPoseEstimator(lane, null, invalidCount));
+        assertTrue(invalidCountFailure instanceof IllegalArgumentException);
+        assertEquals(
+                "LimelightFieldPoseEstimator.Config.minVisibleTags must be >= 1, got 0",
+                invalidCountFailure.getMessage());
+
+        LimelightFieldPoseEstimator.Config invalidMode =
+                LimelightFieldPoseEstimator.Config.defaults();
+        invalidMode.mode = null;
+        RuntimeException invalidModeFailure = captureFailure(
+                () -> new LimelightFieldPoseEstimator(lane, null, invalidMode));
+        assertTrue(invalidModeFailure instanceof IllegalArgumentException);
+        assertEquals(
+                "LimelightFieldPoseEstimator.Config.mode must not be null, got null",
+                invalidModeFailure.getMessage());
+
+        LimelightFieldPoseEstimator.Config boundaries =
+                LimelightFieldPoseEstimator.Config.defaults();
+        boundaries.minVisibleTags = 1;
+        boundaries.singleTagQuality = 0.0;
+        boundaries.multiTagQuality = 0.0;
+        new LimelightFieldPoseEstimator(lane, null, boundaries);
+        boundaries.singleTagQuality = 1.0;
+        boundaries.multiTagQuality = 1.0;
+        new LimelightFieldPoseEstimator(lane, null, boundaries);
+
+        FtcOdometryAprilTagLocalizationLane.EstimatorConfig aggregate =
+                FtcOdometryAprilTagLocalizationLane.EstimatorConfig.defaults();
+        aggregate.correctionSource.limelightFieldPose.multiTagQuality = Double.NaN;
+        RuntimeException namespacedFailure = captureFailure(
+                () -> FtcOdometryAprilTagLocalizationLane.withPredictor(
+                        new RecordingMotionPredictor(),
+                        lane,
+                        new SimpleTagLayout(),
+                        aggregate));
+        assertTrue(namespacedFailure instanceof IllegalArgumentException);
+        assertEquals(
+                "FtcOdometryAprilTagLocalizationLane.EstimatorConfig.correctionSource"
+                        + ".limelightFieldPose.multiTagQuality must be finite and within [0, 1],"
+                        + " got NaN",
+                namespacedFailure.getMessage());
+
+        LimelightFieldPoseEstimator.Config authored =
+                LimelightFieldPoseEstimator.Config.defaults();
+        authored.mode = LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+        authored.maxResultAgeSec = 0.6;
+        authored.minVisibleTags = 2;
+        authored.singleTagQuality = 0.2;
+        authored.multiTagQuality = 0.7;
+        authored.degradeWhenMoving = false;
+        authored.translationSpeedForZeroQualityInPerSec = 10.0;
+        authored.yawRateForZeroQualityRadPerSec = 11.0;
+        authored.rejectWhenMovingTooFast = true;
+        authored.maxTranslationSpeedInPerSec = 12.0;
+        authored.maxYawRateRadPerSec = 13.0;
+        LimelightFieldPoseEstimator.Config authoredCopy = authored.copy();
+        assertNotSame(authored, authoredCopy);
+        assertEquals(authored.mode, authoredCopy.mode);
+        assertEquals(authored.maxResultAgeSec, authoredCopy.maxResultAgeSec, 0.0);
+        assertEquals(authored.minVisibleTags, authoredCopy.minVisibleTags);
+        assertEquals(authored.singleTagQuality, authoredCopy.singleTagQuality, 0.0);
+        assertEquals(authored.multiTagQuality, authoredCopy.multiTagQuality, 0.0);
+        assertEquals(authored.degradeWhenMoving, authoredCopy.degradeWhenMoving);
+        assertEquals(
+                authored.translationSpeedForZeroQualityInPerSec,
+                authoredCopy.translationSpeedForZeroQualityInPerSec,
+                0.0);
+        assertEquals(
+                authored.yawRateForZeroQualityRadPerSec,
+                authoredCopy.yawRateForZeroQualityRadPerSec,
+                0.0);
+        assertEquals(authored.rejectWhenMovingTooFast, authoredCopy.rejectWhenMovingTooFast);
+        assertEquals(
+                authored.maxTranslationSpeedInPerSec,
+                authoredCopy.maxTranslationSpeedInPerSec,
+                0.0);
+        assertEquals(authored.maxYawRateRadPerSec, authoredCopy.maxYawRateRadPerSec, 0.0);
+
+        LimelightFieldPoseEstimator.Config retainedDraft =
+                LimelightFieldPoseEstimator.Config.defaults();
+        retainedDraft.singleTagQuality = 0.2;
+        LimelightFieldPoseEstimator retained =
+                new LimelightFieldPoseEstimator(lane, null, retainedDraft);
+        retainedDraft.mode = LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+        retainedDraft.minVisibleTags = 2;
+        retainedDraft.singleTagQuality = 0.9;
+        ManualLoopClock time = new ManualLoopClock(5.0);
+        device.result = resultWithPoseAndOneFiducial(
+                101,
+                0.01,
+                100.0,
+                0.0,
+                0.0,
+                pose(1.0, 2.0, 0.0, 0.1, 0.0, 0.0));
+
+        retained.update(time.clock());
+
+        assertTrue(retained.getEstimate().hasPose);
+        RecordingDebugSink debug = new RecordingDebugSink();
+        retained.debugDump(debug, "direct");
+        assertEquals(LimelightFieldPoseEstimator.Config.Mode.BOTPOSE,
+                debug.value("direct.mode"));
+        assertEquals(0.2, (Double) debug.value("direct.baseQuality"), 0.0);
+        assertEquals(0.2, (Double) debug.value("direct.cfg.singleTagQuality"), 0.0);
+        lane.close();
+    }
+
+    @Test
+    public void compositeValidatesLimelightDiagnosticConfigWithAprilTagCorrection() {
+        FtcLimelightAprilTagVisionLane visionLane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(new FakeDevice()));
+        RecordingMotionPredictor predictor = new RecordingMotionPredictor();
+
+        FtcOdometryAprilTagLocalizationLane.EstimatorConfig nullDraft =
+                FtcOdometryAprilTagLocalizationLane.EstimatorConfig.defaults();
+        assertEquals(
+                FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE,
+                nullDraft.correctionSource.mode);
+        nullDraft.correctionSource.limelightFieldPose = null;
+        expectFailureContaining(
+                NullPointerException.class,
+                "FtcOdometryAprilTagLocalizationLane.EstimatorConfig"
+                        + ".correctionSource.limelightFieldPose",
+                () -> FtcOdometryAprilTagLocalizationLane.withPredictor(
+                        predictor,
+                        visionLane,
+                        new SimpleTagLayout(),
+                        nullDraft));
+
+        FtcOdometryAprilTagLocalizationLane.EstimatorConfig invalidDraft =
+                FtcOdometryAprilTagLocalizationLane.EstimatorConfig.defaults();
+        invalidDraft.correctionSource.limelightFieldPose.maxResultAgeSec = 0.0;
+        expectFailureContaining(
+                IllegalArgumentException.class,
+                "FtcOdometryAprilTagLocalizationLane.EstimatorConfig"
+                        + ".correctionSource.limelightFieldPose.maxResultAgeSec"
+                        + " must be finite and > 0, got 0.0",
+                () -> FtcOdometryAprilTagLocalizationLane.withPredictor(
+                        predictor,
+                        visionLane,
+                        new SimpleTagLayout(),
+                        invalidDraft));
+
+        FtcOdometryAprilTagLocalizationLane localization =
+                FtcOdometryAprilTagLocalizationLane.withPredictor(
+                        predictor,
+                        visionLane,
+                        new SimpleTagLayout(),
+                        FtcOdometryAprilTagLocalizationLane.EstimatorConfig.defaults());
+        assertNotNull(localization.limelightFieldPoseEstimator());
+        visionLane.close();
+    }
+
+    @Test
+    public void malformedBotposesAndInvalidPredictorMotionFailClosed() {
+        Position missingUnit = new Position(null, 1.0, 2.0, 3.0, 0);
+        YawPitchRollAngles orientation =
+                new YawPitchRollAngles(AngleUnit.RADIANS, 0.1, 0.2, 0.3, 0);
+        assertFalse(FtcLimelightVisionLane.isUsableSdkPose(
+                new Pose3D(missingUnit, orientation)));
+        assertFalse(FtcLimelightVisionLane.isUsableSdkPose(
+                new Pose3D(
+                        new Position(DistanceUnit.INCH, 1.0, 2.0, 3.0, 0),
+                        null)));
+        assertFalse(FtcLimelightVisionLane.isUsableSdkPose(
+                pose(Double.POSITIVE_INFINITY, 2.0, 3.0, 0.1, 0.2, 0.3)));
+        assertFalse(FtcLimelightVisionLane.isUsableSdkPose(
+                pose(1.0, 2.0, 3.0, 0.1, Double.NaN, 0.3)));
+
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device));
+        ManualLoopClock time = new ManualLoopClock(3.0);
+        RecordingMotionPredictor predictor = new RecordingMotionPredictor();
+        predictor.publish(0.0, time.clock().nowTimestamp());
+        predictor.delta = new MotionDelta(
+                new Pose3d(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                true,
+                Double.NaN,
+                time.clock().timestampSecondsAgo(0.1),
+                time.clock().nowTimestamp());
+        device.result = resultWithPoseAndOneFiducial(
+                101,
+                0.01,
+                100.0,
+                0.0,
+                0.0,
+                pose(1.0, 2.0, 0.0, 0.1, 0.0, 0.0));
+        LimelightFieldPoseEstimator estimator = new LimelightFieldPoseEstimator(
+                lane,
+                predictor,
+                LimelightFieldPoseEstimator.Config.defaults());
+
+        estimator.update(time.clock());
+
+        assertFalse(estimator.getEstimate().hasPose);
+        RecordingDebugSink debug = new RecordingDebugSink();
+        estimator.debugDump(debug, "direct");
+        assertTrue(String.valueOf(debug.value("direct.rejectReason"))
+                .contains("invalid planar motion"));
+        lane.close();
+    }
+
+    @Test
+    public void directPoseEstimatorRejectsMissingUnitAndOrientationThroughFullLanePath() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device));
+        ManualLoopClock time = new ManualLoopClock(3.0);
+        LimelightFieldPoseEstimator estimator = new LimelightFieldPoseEstimator(
+                lane,
+                null,
+                LimelightFieldPoseEstimator.Config.defaults());
+        String malformedReason = "direct botpose was unavailable or malformed: require non-null "
+                + "position, position unit, orientation, and finite x/y/z/yaw/pitch/roll";
+
+        Pose3D missingUnit = new Pose3D(
+                new Position(null, 1.0, 2.0, 3.0, 0),
+                new YawPitchRollAngles(AngleUnit.RADIANS, 0.1, 0.2, 0.3, 0));
+        device.result = resultWithPoseAndOneFiducial(
+                101,
+                0.01,
+                100.0,
+                0.0,
+                0.0,
+                missingUnit);
+
+        estimator.update(time.clock());
+
+        assertFalse(estimator.getEstimate().hasPose);
+        RecordingDebugSink debug = new RecordingDebugSink();
+        estimator.debugDump(debug, "direct");
+        assertEquals(malformedReason, debug.value("direct.rejectReason"));
+        assertEquals(0, device.orientationCalls);
+
+        time.nextCycle(0.02);
+        Pose3D missingOrientation = new Pose3D(
+                new Position(DistanceUnit.INCH, 1.0, 2.0, 3.0, 0),
+                null);
+        device.result = resultWithPoseAndOneFiducial(
+                102,
+                0.01,
+                120.0,
+                0.0,
+                0.0,
+                missingOrientation);
+
+        estimator.update(time.clock());
+
+        assertFalse(estimator.getEstimate().hasPose);
+        debug = new RecordingDebugSink();
+        estimator.debugDump(debug, "direct");
+        assertEquals(malformedReason, debug.value("direct.rejectReason"));
+        assertEquals(0, device.orientationCalls);
+        lane.close();
+    }
+
+    @Test
+    public void hugeFinitePredictorYawIsWrappedBeforeVendorPublication() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device));
+        ManualLoopClock time = new ManualLoopClock(8.0);
+        RecordingMotionPredictor predictor = new RecordingMotionPredictor();
+        predictor.publish(Double.MAX_VALUE, time.clock().nowTimestamp());
+        device.result = resultWithMt2PoseAndOneFiducial(
+                101,
+                0.01,
+                900.0,
+                0.0,
+                0.0,
+                pose(1.0, 2.0, 0.0, 0.1, 0.0, 0.0));
+        LimelightFieldPoseEstimator.Config config =
+                LimelightFieldPoseEstimator.Config.defaults();
+        config.mode = LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+        LimelightFieldPoseEstimator estimator =
+                new LimelightFieldPoseEstimator(lane, predictor, config);
+
+        estimator.update(time.clock());
+
+        assertTrue(estimator.getEstimate().hasPose);
+        assertEquals(1, device.orientationCalls);
+        assertTrue(Double.isFinite(device.lastYawDegrees));
+        assertTrue(Math.abs(device.lastYawDegrees) <= 180.0);
+        lane.close();
+    }
+
+    @Test
+    public void nonFinitePredictorYawFailsClosedBeforeVendorPublication() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device));
+        ManualLoopClock time = new ManualLoopClock(8.0);
+        RecordingMotionPredictor predictor = new RecordingMotionPredictor();
+        predictor.publish(Double.NaN, time.clock().nowTimestamp());
+        device.result = resultWithMt2PoseAndOneFiducial(
+                101,
+                0.01,
+                900.0,
+                0.0,
+                0.0,
+                pose(1.0, 2.0, 0.0, 0.1, 0.0, 0.0));
+        LimelightFieldPoseEstimator.Config config =
+                LimelightFieldPoseEstimator.Config.defaults();
+        config.mode = LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+        LimelightFieldPoseEstimator estimator =
+                new LimelightFieldPoseEstimator(lane, predictor, config);
+
+        estimator.update(time.clock());
+
+        assertFalse(estimator.getEstimate().hasPose);
+        assertEquals(0, device.orientationCalls);
+        RecordingDebugSink debug = new RecordingDebugSink();
+        estimator.debugDump(debug, "direct");
+        assertTrue(String.valueOf(debug.value("direct.rejectReason"))
+                .contains("non-finite field yaw"));
         lane.close();
     }
 
@@ -851,9 +1284,12 @@ public final class FtcLimelightVisionLaneTest {
         FtcLimelightVisionLane lane = open(device);
         assertTrue(lane.updateRobotFieldYawRad(Math.PI / 2.0));
         assertEquals(90.0, device.lastYawDegrees, 1e-9);
+        assertTrue(lane.updateRobotFieldYawRad(Double.MAX_VALUE));
+        assertTrue(Double.isFinite(device.lastYawDegrees));
+        assertTrue(Math.abs(device.lastYawDegrees) <= 180.0);
         expectFailure(IllegalArgumentException.class,
                 () -> lane.updateRobotFieldYawRad(Double.NaN));
-        assertEquals(1, device.orientationCalls);
+        assertEquals(2, device.orientationCalls);
 
         RuntimeException stopFailure = new IllegalStateException("stop failed");
         RuntimeException closeFailure = new IllegalArgumentException("close failed");
@@ -1106,6 +1542,42 @@ public final class FtcLimelightVisionLaneTest {
         } catch (RuntimeException failure) {
             return failure;
         }
+    }
+
+    private interface LimelightNumericMutation {
+        void apply(LimelightFieldPoseEstimator.Config config, double value);
+    }
+
+    private static final class LimelightNumericCase {
+        final String fieldName;
+        final double domainInvalidValue;
+        final LimelightNumericMutation mutation;
+
+        LimelightNumericCase(String fieldName,
+                             double domainInvalidValue,
+                             LimelightNumericMutation mutation) {
+            this.fieldName = fieldName;
+            this.domainInvalidValue = domainInvalidValue;
+            this.mutation = mutation;
+        }
+    }
+
+    private static void assertLimelightNumericFailure(
+            FtcLimelightAprilTagVisionLane lane,
+            LimelightNumericCase numericCase,
+            double value
+    ) {
+        LimelightFieldPoseEstimator.Config config =
+                LimelightFieldPoseEstimator.Config.defaults();
+        numericCase.mutation.apply(config, value);
+        RuntimeException failure = captureFailure(
+                () -> new LimelightFieldPoseEstimator(lane, null, config));
+        assertTrue(failure instanceof IllegalArgumentException);
+        assertTrue(
+                failure.getMessage(),
+                failure.getMessage().contains(
+                        "LimelightFieldPoseEstimator.Config." + numericCase.fieldName));
+        assertTrue(failure.getMessage(), failure.getMessage().contains("got " + value));
     }
 
     private static final class RecordingFactory implements FtcLimelightVisionLane.DeviceFactory {

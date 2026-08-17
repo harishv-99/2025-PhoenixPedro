@@ -56,7 +56,7 @@ public final class PhoenixTargetingSourceTest {
         }
         PhoenixTargeting targeting = new PhoenixTargeting(
                 autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 tagSensor,
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
@@ -192,7 +192,7 @@ public final class PhoenixTargetingSourceTest {
 
         PhoenixTargeting targeting = new PhoenixTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
@@ -393,7 +393,7 @@ public final class PhoenixTargetingSourceTest {
 
         PhoenixTargeting targeting = new PhoenixTargeting(
                 autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 tagSensor,
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
@@ -498,7 +498,7 @@ public final class PhoenixTargetingSourceTest {
         FailOncePoseEstimator poseEstimator = new FailOncePoseEstimator(injectedFailure);
         PhoenixTargeting targeting = new PhoenixTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new CurrentFrameMultipleAprilTagSensor(firstTagId, secondTagId),
                 CameraMountConfig.identity(),
                 poseEstimator,
@@ -774,7 +774,7 @@ public final class PhoenixTargetingSourceTest {
                                                   Source<Set<Integer>> eligibleTagIds) {
         return new PhoenixTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 tagSensor,
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),

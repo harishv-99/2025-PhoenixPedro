@@ -512,71 +512,78 @@ public final class PhoenixProfile {
 
     private static FtcOdometryAprilTagLocalizationLane.Config defaultLocalizationConfig() {
         FtcOdometryAprilTagLocalizationLane.Config cfg = FtcOdometryAprilTagLocalizationLane.Config.defaults();
-        cfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
-        cfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+        cfg.estimation.correctedEstimatorMode =
+                FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+        cfg.estimation.correctionSource.mode =
+                FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
 
-        cfg.predictor = cfg.predictor
-                .withHardwareMapName("pinPoint")
-                .withOffsets(0.0, 0.0)
-                .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
-                .withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
+        cfg.predictor.hardwareMapName = "pinPoint";
+        cfg.predictor.forwardPodOffsetLeftInches = 0.0;
+        cfg.predictor.strafePodOffsetForwardInches = 0.0;
+        cfg.predictor.forwardPodDirection = GoBildaPinpointDriver.EncoderDirection.FORWARD;
+        cfg.predictor.strafePodDirection = GoBildaPinpointDriver.EncoderDirection.FORWARD;
 
-        cfg.aprilTags.maxDetectionAgeSec = 0.50;
-        cfg.aprilTags.fieldPoseSolver.maxAbsBearingRad = 0.0;
-        cfg.aprilTags.fieldPoseSolver.preferObservationFieldPose = true;
-        cfg.aprilTags.fieldPoseSolver.observationFieldPoseMaxDeltaInches = 8.0;
-        cfg.aprilTags.fieldPoseSolver.observationFieldPoseMaxDeltaHeadingRad = Math.toRadians(12.0);
-        cfg.aprilTags.fieldPoseSolver.rangeSoftnessInches = 36.0;
-        cfg.aprilTags.fieldPoseSolver.minObservationWeight = 0.05;
-        cfg.aprilTags.fieldPoseSolver.outlierPositionGateInches = 18.0;
-        cfg.aprilTags.fieldPoseSolver.outlierHeadingGateRad = Math.toRadians(25.0);
-        cfg.aprilTags.fieldPoseSolver.plausibleFieldRegion = FtcFieldRegions.fullField();
-        cfg.aprilTags.fieldPoseSolver.maxOutsidePlausibleFieldRegionInches = 3.0;
+        cfg.estimation.aprilTags.maxDetectionAgeSec = 0.50;
+        cfg.estimation.aprilTags.fieldPoseSolver.maxAbsBearingRad = 0.0;
+        cfg.estimation.aprilTags.fieldPoseSolver.preferObservationFieldPose = true;
+        cfg.estimation.aprilTags.fieldPoseSolver.observationFieldPoseMaxDeltaInches = 8.0;
+        cfg.estimation.aprilTags.fieldPoseSolver.observationFieldPoseMaxDeltaHeadingRad =
+                Math.toRadians(12.0);
+        cfg.estimation.aprilTags.fieldPoseSolver.rangeSoftnessInches = 36.0;
+        cfg.estimation.aprilTags.fieldPoseSolver.minObservationWeight = 0.05;
+        cfg.estimation.aprilTags.fieldPoseSolver.outlierPositionGateInches = 18.0;
+        cfg.estimation.aprilTags.fieldPoseSolver.outlierHeadingGateRad = Math.toRadians(25.0);
+        cfg.estimation.aprilTags.fieldPoseSolver.plausibleFieldRegion = FtcFieldRegions.fullField();
+        cfg.estimation.aprilTags.fieldPoseSolver.maxOutsidePlausibleFieldRegionInches = 3.0;
 
-        cfg.correctionSource.limelightFieldPose.mode = edu.ftcphoenix.fw.ftc.localization.LimelightFieldPoseEstimator.Config.Mode.BOTPOSE;
-        cfg.correctionSource.limelightFieldPose.maxResultAgeSec = 0.25;
-        cfg.correctionSource.limelightFieldPose.minVisibleTags = 1;
-        cfg.correctionSource.limelightFieldPose.singleTagQuality = 0.55;
-        cfg.correctionSource.limelightFieldPose.multiTagQuality = 0.85;
-        cfg.correctionSource.limelightFieldPose.degradeWhenMoving = true;
-        cfg.correctionSource.limelightFieldPose.translationSpeedForZeroQualityInPerSec = 72.0;
-        cfg.correctionSource.limelightFieldPose.yawRateForZeroQualityRadPerSec = Math.toRadians(360.0);
-        cfg.correctionSource.limelightFieldPose.rejectWhenMovingTooFast = false;
-        cfg.correctionSource.limelightFieldPose.maxTranslationSpeedInPerSec = 120.0;
-        cfg.correctionSource.limelightFieldPose.maxYawRateRadPerSec = Math.toRadians(720.0);
+        cfg.estimation.correctionSource.limelightFieldPose.mode =
+                edu.ftcphoenix.fw.ftc.localization.LimelightFieldPoseEstimator.Config.Mode.BOTPOSE;
+        cfg.estimation.correctionSource.limelightFieldPose.maxResultAgeSec = 0.25;
+        cfg.estimation.correctionSource.limelightFieldPose.minVisibleTags = 1;
+        cfg.estimation.correctionSource.limelightFieldPose.singleTagQuality = 0.55;
+        cfg.estimation.correctionSource.limelightFieldPose.multiTagQuality = 0.85;
+        cfg.estimation.correctionSource.limelightFieldPose.degradeWhenMoving = true;
+        cfg.estimation.correctionSource.limelightFieldPose.translationSpeedForZeroQualityInPerSec =
+                72.0;
+        cfg.estimation.correctionSource.limelightFieldPose.yawRateForZeroQualityRadPerSec =
+                Math.toRadians(360.0);
+        cfg.estimation.correctionSource.limelightFieldPose.rejectWhenMovingTooFast = false;
+        cfg.estimation.correctionSource.limelightFieldPose.maxTranslationSpeedInPerSec = 120.0;
+        cfg.estimation.correctionSource.limelightFieldPose.maxYawRateRadPerSec =
+                Math.toRadians(720.0);
 
-        cfg.correctionFusion.maxCorrectionAgeSec = 0.35;
-        cfg.correctionFusion.minCorrectionQuality = 0.10;
-        cfg.correctionFusion.correctionPositionGain = 0.25;
-        cfg.correctionFusion.correctionHeadingGain = 0.35;
-        cfg.correctionFusion.maxCorrectionPositionJumpIn = 24.0;
-        cfg.correctionFusion.maxCorrectionHeadingJumpRad = Math.toRadians(60.0);
-        cfg.correctionFusion.enableLatencyCompensation = true;
-        cfg.correctionFusion.predictorHistorySec = 1.0;
+        cfg.estimation.correctionFusion.maxCorrectionAgeSec = 0.35;
+        cfg.estimation.correctionFusion.minCorrectionQuality = 0.10;
+        cfg.estimation.correctionFusion.correctionPositionGain = 0.25;
+        cfg.estimation.correctionFusion.correctionHeadingGain = 0.35;
+        cfg.estimation.correctionFusion.maxCorrectionPositionJumpIn = 24.0;
+        cfg.estimation.correctionFusion.maxCorrectionHeadingJumpRad = Math.toRadians(60.0);
+        cfg.estimation.correctionFusion.enableLatencyCompensation = true;
+        cfg.estimation.correctionFusion.predictorHistorySec = 1.0;
 
-        cfg.correctionEkf.maxCorrectionAgeSec = 0.35;
-        cfg.correctionEkf.minCorrectionQuality = 0.10;
-        cfg.correctionEkf.maxCorrectionPositionInnovationIn = 24.0;
-        cfg.correctionEkf.maxCorrectionHeadingInnovationRad = Math.toRadians(60.0);
-        cfg.correctionEkf.maxCorrectionMahalanobisSq = 14.0;
-        cfg.correctionEkf.enableLatencyCompensation = true;
-        cfg.correctionEkf.predictorHistorySec = 1.0;
-        cfg.correctionEkf.initialPositionStdIn = 6.0;
-        cfg.correctionEkf.initialHeadingStdRad = Math.toRadians(12.0);
-        cfg.correctionEkf.manualPosePositionStdIn = 3.0;
-        cfg.correctionEkf.manualPoseHeadingStdRad = Math.toRadians(6.0);
-        cfg.correctionEkf.predictorProcessPositionStdFloorIn = 0.20;
-        cfg.correctionEkf.predictorProcessPositionStdPerIn = 0.03;
-        cfg.correctionEkf.predictorProcessPositionStdPerRad = 0.55;
-        cfg.correctionEkf.predictorProcessHeadingStdFloorRad = Math.toRadians(0.35);
-        cfg.correctionEkf.predictorProcessHeadingStdPerIn = Math.toRadians(0.06);
-        cfg.correctionEkf.predictorProcessHeadingStdPerRad = 0.06;
-        cfg.correctionEkf.correctionPositionStdFloorIn = 1.75;
-        cfg.correctionEkf.correctionPositionStdScaleIn = 6.0;
-        cfg.correctionEkf.correctionHeadingStdFloorRad = Math.toRadians(3.0);
-        cfg.correctionEkf.correctionHeadingStdScaleRad = Math.toRadians(10.0);
-        cfg.correctionEkf.projectedCorrectionPositionStdPerSec = 18.0;
-        cfg.correctionEkf.projectedCorrectionHeadingStdPerSec = Math.toRadians(30.0);
+        cfg.estimation.correctionEkf.maxCorrectionAgeSec = 0.35;
+        cfg.estimation.correctionEkf.minCorrectionQuality = 0.10;
+        cfg.estimation.correctionEkf.maxCorrectionPositionInnovationIn = 24.0;
+        cfg.estimation.correctionEkf.maxCorrectionHeadingInnovationRad = Math.toRadians(60.0);
+        cfg.estimation.correctionEkf.maxCorrectionMahalanobisSq = 14.0;
+        cfg.estimation.correctionEkf.enableLatencyCompensation = true;
+        cfg.estimation.correctionEkf.predictorHistorySec = 1.0;
+        cfg.estimation.correctionEkf.initialPositionStdIn = 6.0;
+        cfg.estimation.correctionEkf.initialHeadingStdRad = Math.toRadians(12.0);
+        cfg.estimation.correctionEkf.manualPosePositionStdIn = 3.0;
+        cfg.estimation.correctionEkf.manualPoseHeadingStdRad = Math.toRadians(6.0);
+        cfg.estimation.correctionEkf.predictorProcessPositionStdFloorIn = 0.20;
+        cfg.estimation.correctionEkf.predictorProcessPositionStdPerIn = 0.03;
+        cfg.estimation.correctionEkf.predictorProcessPositionStdPerRad = 0.55;
+        cfg.estimation.correctionEkf.predictorProcessHeadingStdFloorRad = Math.toRadians(0.35);
+        cfg.estimation.correctionEkf.predictorProcessHeadingStdPerIn = Math.toRadians(0.06);
+        cfg.estimation.correctionEkf.predictorProcessHeadingStdPerRad = 0.06;
+        cfg.estimation.correctionEkf.correctionPositionStdFloorIn = 1.75;
+        cfg.estimation.correctionEkf.correctionPositionStdScaleIn = 6.0;
+        cfg.estimation.correctionEkf.correctionHeadingStdFloorRad = Math.toRadians(3.0);
+        cfg.estimation.correctionEkf.correctionHeadingStdScaleRad = Math.toRadians(10.0);
+        cfg.estimation.correctionEkf.projectedCorrectionPositionStdPerSec = 18.0;
+        cfg.estimation.correctionEkf.projectedCorrectionHeadingStdPerSec = Math.toRadians(30.0);
 
         return cfg;
     }

@@ -1,5 +1,6 @@
 package edu.ftcphoenix.fw.tools.tester.calibration;
 
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
@@ -21,6 +22,7 @@ import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
+import edu.ftcphoenix.fw.ftc.localization.PinpointKinematicSnapshot;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
@@ -321,6 +323,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private Phase phase = Phase.IDLE;
+    private boolean resetRequested;
+    private boolean primaryActionRequested;
+    private boolean autoStartRequested;
 
     /**
      * True if the current sample was started in auto-rotate mode (Y).
@@ -455,9 +460,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 BooleanSource.of(() -> visionPicker == null || selectedVisionDeviceName != null),
                 Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
         );
-        calibrationControls.onRise(gamepads.p1().x(), this::resetAndClear);
-        calibrationControls.onRise(gamepads.p1().a(), this::onAPress);
-        calibrationControls.onRise(gamepads.p1().y(), this::onYPress);
+        calibrationControls.onRise(gamepads.p1().x(), () -> resetRequested = true);
+        calibrationControls.onRise(gamepads.p1().a(), () -> primaryActionRequested = true);
+        calibrationControls.onRise(gamepads.p1().y(), () -> autoStartRequested = true);
         bindings.onRise(gamepads.p1().b(), this::abortSample);
 
         // Start in a clean state
@@ -470,6 +475,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         // Keep estimators warm in init so the first sample isn't stale.
         updateSensors(true);
+        consumeControlRequestsAfterCurrentPoll();
 
         renderTelemetry(true);
     }
@@ -479,6 +485,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         ensureAprilTagAssistReady(false);
 
         updateSensors(false);
+        consumeControlRequestsAfterCurrentPoll();
+
+        if (!pinpointReadyForMotion()) {
+            abortSample();
+            renderTelemetry(false);
+            return;
+        }
 
         // Update heading unwrapper for phases where a sample is active.
         if (isSampleActive()) {
@@ -672,6 +685,32 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
     }
 
+    /** Consume binding-edge intent only after this cycle's Pinpoint/vision update. */
+    private void consumeControlRequestsAfterCurrentPoll() {
+        boolean shouldReset = resetRequested;
+        boolean shouldRunPrimaryAction = primaryActionRequested;
+        boolean shouldStartAuto = autoStartRequested;
+        resetRequested = false;
+        primaryActionRequested = false;
+        autoStartRequested = false;
+
+        if (shouldReset) {
+            resetAndClear();
+        }
+        if (!pinpointReadyForMotion()) {
+            if (shouldRunPrimaryAction || shouldStartAuto) {
+                abortSample();
+            }
+            return;
+        }
+        if (shouldRunPrimaryAction) {
+            onAPress();
+        }
+        if (shouldStartAuto) {
+            onYPress();
+        }
+    }
+
     private void onYPress() {
         if (drive == null) {
             // No drive available; telemetry will explain.
@@ -706,7 +745,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void requestStartSample(boolean auto) {
-        if (phase != Phase.IDLE) return;
+        if (phase != Phase.IDLE || !pinpointReadyForMotion()) return;
 
         autoSample = auto;
         clearLastResults();
@@ -1051,12 +1090,48 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
     }
 
+    private boolean pinpointReadyForMotion() {
+        if (pinpoint == null) {
+            return false;
+        }
+        PinpointKinematicSnapshot snapshot = pinpoint.getKinematicSnapshot();
+        return snapshot != null && hasCurrentReadyKinematics(
+                pinpoint.lastDeviceStatus(),
+                snapshot.hasPose,
+                snapshot.hasVelocity,
+                snapshot.cycle,
+                ctx.clock.cycle()
+        );
+    }
+
+    /** Package-private pure readiness seam for every motion-producing calibration path. */
+    static boolean hasCurrentReadyKinematics(GoBildaPinpointDriver.DeviceStatus status,
+                                             boolean hasPose,
+                                             boolean hasVelocity,
+                                             long snapshotCycle,
+                                             long currentCycle) {
+        return status == GoBildaPinpointDriver.DeviceStatus.READY
+                && hasPose
+                && hasVelocity
+                && snapshotCycle == currentCycle;
+    }
+
     private void renderTelemetry(boolean initPhase) {
         ctx.telemetry.clearAll();
         ctx.telemetry.addLine("=== " + name() + " ===");
 
         // Quick status + primary controls.
         ctx.telemetry.addData("Phase", phase);
+        ctx.telemetry.addData(
+                "Pinpoint status",
+                pinpoint != null ? pinpoint.lastDeviceStatus() : "NOT_CREATED"
+        );
+        if (!pinpointReadyForMotion()) {
+            ctx.telemetry.addLine(
+                    "Keep the robot stationary; motion stays disabled until Pinpoint READY "
+                            + "publishes current pose and velocity."
+            );
+        }
         ctx.telemetry.addData("Manual sample [A]", phase == Phase.IDLE ? "start / stop" : (autoSample ? "not active" : "press A to finish / skip"));
         ctx.telemetry.addData("Auto sample [Y]", drive != null ? (autoSample ? "ACTIVE" : "start 180° turn") : "unavailable (no drive)");
         ctx.telemetry.addData("Abort [B]", isSampleActive() ? "cancel current sample" : "idle");
@@ -1129,7 +1204,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     "Paste into config",
                     String.format(
                             Locale.US,
-                            ".withOffsets(%.3f, %.3f)",
+                            "forwardPodOffsetLeftInches = %.3f; strafePodOffsetForwardInches = %.3f;",
                             lastRecommendedForwardPodOffsetLeftInches,
                             lastRecommendedStrafePodOffsetForwardInches
                     )

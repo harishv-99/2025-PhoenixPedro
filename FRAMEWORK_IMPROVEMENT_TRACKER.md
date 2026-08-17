@@ -175,7 +175,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 88 | SPATIAL-01 | Finite authored spatial geometry | Done | The reviewed finite authored-geometry, immutable-layout, dormant-API replacement, rectangle-in-box, and frozen heading-selection implementation is complete and authorized for publication. |
 | 89 | MATH-01 | Finite interpolation calibration tables | Done | The reviewed finite-table and runtime-unavailability contract, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 90 | CONFIG-03 | FTC vision and AprilTag configuration boundaries | Done | The reviewed owner-local vision snapshots, canonical FTC tag-library capture, configured solver/estimator composition, synchronized callers/docs, and destination-specific publication authorization are complete. |
-| 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Proposed | Validate and snapshot Pinpoint, absolute-pose, fusion, and composite-lane configuration before hardware or estimator effects. |
+| 91 | CONFIG-04 | Pinpoint and composite localization configuration boundaries | Done | The reviewed effect-safe Pinpoint/composite configuration, READY-gated lifecycle, finite localization truth, synchronized callers/docs, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 92 | CONFIG-05 | Pedro runtime configuration ownership | Proposed | Replace the production runtime's peer argument bundle with one owner-specific, deeply snapshotted Pedro configuration path. |
 | 93 | CONFIG-06 | Tool and tester configuration ownership | Proposed | Remove retained mutable aliases and constructor forests from maintained calibration and tester owners without changing their evidence roles. |
 | 94 | CONFIG-07 | Starter profile simplification | Proposed | Replace the starter's aggregate copy-and-validation boilerplate with small owner configs and mode-specific composition checks. |
@@ -253,7 +253,9 @@ ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, t
 intake, each row was **Proposed** and required its own source/caller/construction-path decision gate.
 CONFIG-02, SPATIAL-01, and MATH-01 have since completed their separately approved publication;
 CONFIG-03 has now completed its separately approved implementation, Android Studio review, and
-destination-specific publication authorization; CONFIG-04 through CONFIG-09 remain **Proposed**.
+GitHub publication; CONFIG-04 has completed its separately approved implementation and Android
+Studio review and is authorized for GitHub publication; CONFIG-05 through CONFIG-09 remain
+**Proposed**.
 Recording the program neither approves the later implementations nor permits compatibility shims or
 mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
@@ -18138,44 +18140,414 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-04 - Pinpoint and composite localization configuration boundaries
 
-- **Status and intake boundary (2026-08-15):** **Proposed after CONFIG-03.** This item regularizes
-  motion-predictor, absolute-pose, correction-estimator, and composite-lane configuration without
-  changing the one-heartbeat/one-pose-authority contracts established by PEDRO-02 and CYCLE-02.
-- **Confirmed defects and controls:** `PinpointOdometryPredictor.Config` is copied but does not
-  validate blank hardware identity, non-finite pod offsets/yaw/resolution values, wait timing, or
-  quality domains before hardware lookup/configuration. `FtcOdometryAprilTagLocalizationLane.Config`
-  deep-copies but lacks one complete outer preflight, so invalid nested choices can fail generically
-  or after the Pinpoint boundary is crossed. `LimelightFieldPoseEstimator.Config` joins this owner
-  family. Fusion/EKF configs already provide validated copies and should be audited/preserved rather
-  than rewritten for symmetry.
-- **Confirmed ignored-answer defect:** the distinct
-  `FtcOdometryAprilTagLocalizationLane.withPredictor(...)` seam correctly uses an externally owned
-  predictor, but it still accepts/copies the full Config and deliberately ignores its `predictor`
-  subsection. `config()` then returns that retained convenience-path subsection even though it does
-  not describe the active predictor. This is documented but remains a misleading accepted answer.
-- **Leading hypothesis:** give `PinpointOdometryPredictor.Config` one authoritative validated snapshot
-  path used by the predictor, composite lane, Pedro boundary, and maintained tools. Have the
-  composite lane capture and preflight every nested config, backend/mode combination, field layout,
-  and ownership choice before constructing the first effectful resource. Reuse SPATIAL-01's finite
-  leaves/layout snapshot and CONFIG-03's already-snapshotted vision inputs. Preserve the injected-
-  predictor capability but supply it only estimator/correction answers, or otherwise redesign the
-  split so every accepted and reported Config field is meaningful on that path.
-- **Construction and ownership gate:** inventory all public constructors, supplied-predictor versus
-  internally-created paths, reset/start-pose methods, factory helpers, and declared return types.
-  Retain a supplied predictor only if it is a materially distinct shared-owner seam; otherwise choose
-  one owner and migrate callers. Audit `PinpointOdometryPredictor.Config.of(...)`, public validated-
-  copy layers, and nullable defaults for distinct caller value; remove redundant paths only with
-  complete migration. Do not hide Pinpoint, webcam, tag layout, or estimator ownership in a
-  universal `LocalizationConfig` or silently add a second heartbeat.
-- **Future completion evidence:** every invalid primitive, nested null, mode/backend mismatch, and
-  mutable alias fails before hardware/device/estimator effects; valid configs are deeply independent
-  and defaults retain current software behavior. Preserve one update per cycle, INIT reset,
-  timestamp/replay, predictor-versus-corrected status, correction statistics, failure retention,
-  and partial construction cleanup; the separately supplied vision owner retains its CONFIG-03
-  close responsibility. Update localization/Pinpoint guides and Javadocs, run focused FTC/fusion/
-  cycle tests plus full verification, and leave pod directions/offsets/noise and physical correction
-  tuning to robot validation.
-- **Decision record:** _Pending. No implementation started._
+- **Gate 2 authorization (2026-08-16):** the user approved exactly: “Approve CONFIG-04 split
+  predictor/estimator-policy configuration, tagged
+  Pinpoint resolution, mandatory non-blocking reset with cached READY gating, active-branch
+  preflight, owner-local finite localization evidence, and redundant API removal design.” This
+  authorizes only the bounded CONFIG-04 implementation and verification recorded below; it does not
+  authorize CONFIG-05 work or publication.
+- **Historical Gate 1 boundary (2026-08-16):** CONFIG-03 PR #91 merged into `master` at
+  `fc686a9256f2e013558063784822129f9021b781`; the user then directed the workflow to move to the
+  next task. CONFIG-04 is the sole active item on
+  `codex/config-04-composite-localization-config`, branched directly from that merged
+  `origin/master`. The complete source, caller, construction-path, lifecycle, test, and maintained-
+  documentation audit below was tracker-only at the approval stop; no Java, test, Javadoc, guide,
+  commit, push, pull request, or merge work had started then.
+- **Historical Gate 1 owner and caller inventory:** at approval, the composite exposed one ordinary
+  public
+  `(HardwareMap, AprilTagVisionLane, TagLayout, Config)` constructor and one exact-return
+  `withPredictor(MotionPredictor, AprilTagVisionLane, TagLayout, Config)` factory. Phoenix TeleOp and
+  `PinpointAprilTagFusionLocalizationTester` use the owned-Pinpoint path; Phoenix Pedro Auto uses the
+  injected predictor. The four maintained direct `PinpointOdometryPredictor` constructions are the
+  composite lane, `PinpointAxisDirectionTester`, `PinpointPodOffsetCalibrator`, and project Pedro
+  `Constants`. `StandardTesters`, `PhoenixProfile`, `PhoenixRobotTesters`, `PhoenixTelemetryPresenter`,
+  `PhoenixTargeting`, `CalibrationChecks`, `PedroPathingRuntime`, the project constants, and their
+  tests consume the same nested facts. Only the composite constructs `LimelightFieldPoseEstimator`
+  in production. The composite constructs one selected
+  `OdometryCorrectionFusionEstimator` or `OdometryCorrectionEkfEstimator`; their direct maintained
+  callers are tests and documented advanced examples. These are the full maintained paths; legacy
+  robot and SDK sample code is not an architectural caller.
+- **Confirmed pre-effect and alias defects:** `PinpointOdometryPredictor` accepts a null Config as
+  hidden defaults, copies without validation, resolves hardware, writes offsets/yaw/resolution/
+  directions, optionally resets, and then calls `Thread.sleep(resetWaitMs)`. Blank identity,
+  non-finite values, null directions, and an incomplete resolution choice can therefore reach or
+  silently skip vendor effects. The composite copies its aggregate, but constructs/configures/
+  resets Pinpoint before it detects malformed layouts, null vision facts, a Limelight/backend
+  mismatch, or invalid active Fusion/EKF policy. Its raw nested copies also throw generic null
+  failures before active-mode selection. SPATIAL-01 snapshots the layout inside later owners, but
+  the composite itself retains and re-exports the authored alias.
+- **Confirmed ignored and repeated answers:** the injected-predictor factory accepts a complete
+  Config, ignores `Config.predictor`, and lets `config()` later report that unused draft as though it
+  described the active predictor. Pinpoint separately exposes `encoderPods` and nullable
+  `customEncoderResolutionTicksPerInch`; when both are populated, the custom value silently wins.
+  `enableResetOnInit=false` has no maintained caller, every ordinary owner uses the true/default
+  path, Pedro rejects false, and the supported Auto-to-TeleOp handoff resets then explicitly rebases
+  the saved pose. The reset Boolean therefore describes no supported second construction contract.
+  `resetWaitMs` is a guessed delay rather than device readiness evidence.
+- **Selected outer configuration split:** keep the ordinary lane's one complete data-only Config,
+  but separate the estimator-only part used with an already-owned predictor:
+
+  ```text
+  FtcOdometryAprilTagLocalizationLane.Config
+  |-- predictor: PinpointOdometryPredictor.Config
+  `-- estimation: EstimatorConfig
+      |-- aprilTags
+      |-- correctionSource
+      |-- correctionFusion
+      |-- correctionEkf
+      `-- correctedEstimatorMode
+  ```
+
+  The ordinary path remains one `HardwareMap` plus one complete owner Config. The injected factory's
+  final parameter becomes `EstimatorConfig`, so it cannot accept, retain, validate, or report a
+  Pinpoint answer that belongs to the external owner. Both Config types keep `defaults()` and raw
+  `copy()`; every copy preserves a null inactive draft and independently copies every non-null
+  mutable nested draft. Validation happens only when a fresh active owner captures the selected
+  graph.
+- **Side-by-side ordinary call shapes and student decisions:** the owned path answers one owned
+  hardware identity/calibration bundle plus estimator policy:
+
+  ```java
+  FtcOdometryAprilTagLocalizationLane.Config localization =
+          FtcOdometryAprilTagLocalizationLane.Config.defaults();
+  localization.predictor.hardwareMapName = "pinPoint";
+  localization.estimation.correctionSource.mode = CorrectionSourceMode.APRILTAG_POSE;
+  FtcOdometryAprilTagLocalizationLane lane =
+          new FtcOdometryAprilTagLocalizationLane(hw, vision, layout, localization);
+  ```
+
+  The advanced injected path answers only predictor identity/ownership plus the same estimator
+  policy; it has no ignored Pinpoint subsection:
+
+  ```java
+  FtcOdometryAprilTagLocalizationLane lane =
+          FtcOdometryAprilTagLocalizationLane.withPredictor(
+                  autoRuntime.motionPredictor(), vision, layout, localization.estimation);
+  ```
+
+  Making the lane Config estimator-only and adding a peer Pinpoint Config to the ordinary
+  constructor was rejected: it gives a beginner two adjacent configuration arguments, makes the
+  composition root assemble a child owner's answers, and preempts Phoenix-profile decomposition in
+  CONFIG-09. Retaining the current full Config on the injected path was rejected because it accepts
+  a provably unused answer.
+- **Active-branch capture contract:** `aprilTags`, `correctionSource`, both selection enums, and the
+  chosen global-estimator Config are active. Limelight field-pose tuning is active whenever the
+  supplied backend is Limelight because the lane publishes that diagnostic estimator, and is
+  required when direct Limelight correction is selected. An unused malformed Limelight draft does
+  not block a webcam/AprilTag owner; an unused EKF draft does not block Fusion and vice versa. A
+  future owner that selects either branch validates it then. Raw copy is mutation isolation for
+  authoring drafts, not prevalidation.
+- **Complete owned-path preflight order:** (1) require the applicable `HardwareMap` or injected
+  predictor, the vision lane, field layout, and outer Config or EstimatorConfig, then raw-copy the
+  applicable configuration without sampling borrowed owners; (2) take validated copies of the
+  complete Pinpoint Config and every active
+  estimator Config; (3) reject `LIMELIGHT_FIELD_POSE` unless the supplied backend is
+  `FtcLimelightAprilTagVisionLane`; (4) call `TagLayouts.snapshot(...)`, enumerating IDs once and one
+  pose per ID; (5) read `cameraMountConfig()` and `tagSensor()` exactly once, require both non-null,
+  and retain those exact completed-owner facts; (6) construct the effect-free AprilTag estimator
+  and capture the selected correction/global-estimator inputs; only then (7) look up, configure, and
+  reset the owned Pinpoint device; and (8) assemble the remaining estimator graph around that
+  predictor. Invalid authored configuration, layout, backend selection, or vision accessor result
+  therefore causes zero Pinpoint lookup/write/reset effects. The injected path performs the same
+  estimator preflight without touching its borrowed predictor.
+- **Partial effect truth:** a vision lane or injected predictor is already owned by another caller,
+  so this lane cannot erase its prior effects and never closes/reconfigures it. After valid preflight,
+  a vendor Pinpoint setter may still fail after an earlier vendor write. The checked-in SDK exposes
+  no Pinpoint rollback or close operation; stop at the first failure, do not issue reset, and wrap the
+  exact hardware name/configuration stage without claiming transactionality. Phoenix and maintained
+  tester failure paths keep their existing separately-owned vision cleanup. CONFIG-09 retains the
+  wider cross-owner Phoenix preflight question.
+- **Selected Pinpoint Config and encoder choice:** replace the preset-plus-override pair with one
+  immutable nested `EncoderResolution` value stored in one `Config.encoderResolution` field.
+  `EncoderResolution.forGoBildaPod(GoBildaOdometryPods)` and
+  `EncoderResolution.ticksPerInch(double)` are the only construction choices; a private tagged
+  representation makes both/neither impossible. The pod factory rejects null immediately; the
+  custom factory rejects every non-finite or non-positive value immediately, while active Config
+  capture additionally proves the exact vendor float translation. Its advanced
+  `applyTo(Consumer<GoBildaOdometryPods>, DoubleConsumer)` bridge requires both receivers and invokes
+  exactly one, so the FTC owner and Pedro's tool-only `PinpointConstants` translation can consume
+  the same choice without public getters, casts, or a second grammar. As an immutable stable value,
+  it has a compact configuration-bearing `toString()`. The default remains the goBILDA 4-bar pod
+  preset.
+- **Pinpoint validation boundary and exact domains:** keep a private Config constructor, explicit
+  `defaults()`, raw `copy()`, and one public `validatedCopy(String context)` for effect-free
+  composite/Pedro preflight; do not expose a parallel public `validate()`. A null/blank context uses
+  the canonical Config class name rather than weakening diagnostics. Active construction requires
+  non-null Config; `copy()` remains nonvalidating. Require an exact nonblank hardware name;
+  finite signed pod offsets whose exact inch-to-millimetre float writes stay finite and preserve a
+  nonzero authored value; non-null encoder resolution and both encoder directions; custom ticks per
+  inch finite and `> 0` with a positive finite vendor float translation; optional yaw scalar finite
+  and `> 0` with a positive finite float cast; and quality finite in `[0, 1]`. Zero offset and either
+  sign remain valid. Do not invent empirical offset, resolution, or yaw limits. Errors name the
+  owner, field, accepted domain, and received value before `HardwareMap.get(...)`.
+- **Nonblocking Pinpoint lifecycle and status truth:** remove `enableResetOnInit`, `resetWaitMs`, and
+  their withers. Every successfully configured predictor issues exactly one controlled
+  `resetPosAndIMU()` request and returns immediately; no constructor sleep, busy wait, timeout, or
+  independent clock is added. After each one-per-cycle `odo.update()`, use the driver's cached
+  `DeviceStatus`; only exact `READY` may publish measured pose, motion, or velocity. `NOT_READY`,
+  `CALIBRATING`, and every fault status publish unavailable measured snapshots and invalidate the
+  motion baseline. A null cached vendor status is treated as `NOT_READY`, never as usable evidence.
+  Each non-READY poll also clears the physical-heading baseline while retaining the already-earned
+  total heading. A later `READY` poll establishes fresh motion and physical-heading baselines and
+  publishes no cross-gap `MotionDelta` or turn rather than bridging across calibration/fault time.
+- **One status surface, not a second readiness model:** add exactly
+  `GoBildaPinpointDriver.DeviceStatus lastDeviceStatus()` to return the status from the most recent
+  completed Pinpoint poll, or `NOT_READY` after construction/reset/recalibration. It performs no
+  hardware read. `PoseEstimate.hasPose` and `PinpointKinematicSnapshot.hasPose/hasVelocity` remain
+  the functional availability facts; no `isReady()` alias or `PinpointReadiness` type is added.
+  `PedroPathingPassiveLocalizer` uses the cached status in its unavailable pose/velocity diagnostic,
+  and `debugDump()` reports the cache instead of calling the driver. A thrown update preserves the
+  last completed-poll status and existing same-cycle failure replay, but clears both measured
+  baselines; it does not fabricate a vendor status.
+- **Reset, rebase, and first-sample semantics:** `resetPosAndIMU()` and `recalibrateIMU()` invalidate
+  published measured state and force cached status to `NOT_READY`; recalibration no longer restores
+  the prior pose as though calibration had completed. `setPose(...)` remains the one explicit
+  coordinate-rebase operation used by `PoseResetter`, match handoff, corrected estimators, and Pedro.
+  A successful finite set-pose publishes that commanded coordinate immediately so the required
+  reset-then-start-pose handshake remains observable. It preserves an already-measured cached
+  velocity/total-heading fact but never creates one when unavailable, and it does not change or
+  claim device `READY`. It may preserve the measured timestamp and rebase measured motion/heading
+  baselines only when the cached status is `READY` **and** the corresponding completed-poll measured
+  snapshot/baselines still exist; a READY poll whose later pose read/conversion failed leaves those
+  facts absent. Otherwise set-pose publishes the commanded coordinate with
+  `LoopTimestamp.unavailable()` and leaves measured velocity/baselines unavailable. The coordinate
+  remains inspectable for the Pedro/start-pose handshake but cannot masquerade as fresh sensor
+  evidence, so reset-then-set-pose-then-READY, NOT_READY-correction-push, and
+  READY-read-failure-then-set-pose cannot clear a motion gate or manufacture a delta/turn. A later
+  non-READY physical poll publishes unavailable state.
+- **Stationary-reset consumer policy:** the pinned SDK requires the robot to remain stationary while
+  reset/IMU calibration is incomplete; publishing status alone cannot stop an unrelated drivetrain.
+  The maintained Phoenix TeleOp final drive sink therefore latches physical zero after construction
+  reset until the lane's backend-neutral predictor view publishes `hasPose=true`, finite x/y/yaw,
+  and a timestamp fresh at the inclusive zero-age boundary of the shared clock. The owned Pinpoint
+  can publish that fact only after a `READY` poll, and Phoenix reads it through the retained
+  `MotionPredictor.getEstimate()` capability, so it needs neither a concrete cast nor another lane
+  readiness API; velocity remains irrelevant to manual robot-centric startup motion. This Phoenix
+  latch is construction-startup-only because Phoenix has no maintained later reset/recalibration
+  caller. If a future Phoenix capability exposes either operation, that same robot-owned operation
+  must stop/re-arm its drive gate until new READY-derived pose evidence arrives; status loss alone
+  does not identify the cause. After the latch has cleared, an ordinary later localization fault
+  disables localization-dependent assists but does not silently remove robot-centric manual
+  driving; any broader drive-stop policy remains Phoenix-owned. Pedro fail-stops follower output
+  whenever its exact-cycle pose or velocity is unavailable and now reports the cached status.
+  `PinpointPodOffsetCalibrator` refuses drive commands and
+  `PinpointAxisDirectionTester` refuses to begin or continue a motion sample whenever their
+  required current evidence is absent. `PinpointAprilTagFusionLocalizationTester` owns no drive
+  command path; it reports the cached status and stationary instruction while measured Pinpoint
+  pose is absent. Direct
+  custom hosts and callers of the retained explicit reset/recalibration methods must stop their own
+  drive owner until a later READY finite sample. Software tests prove these maintained gates; robot
+  evidence still verifies the real calibration transition.
+- **Finite pose and correction truth included at this owner boundary:** update `PoseResetter`'s
+  contract and Pinpoint/Fusion/EKF implementations so a null or non-finite authored `setPose` fails
+  before cache, history, predictor, or vendor effects. Pinpoint additionally preflights its exact
+  vendor writes: x/y must remain finite and preserve every nonzero authored coordinate through
+  inch-to-millimetre float conversion, while the wrapped heading must remain finite and preserve a
+  nonzero wrapped value through its float cast (an authored full turn may truthfully wrap to zero).
+  This is representation safety, not a field-size bound. Fusion/EKF stage and finite-check every
+  local result, invoke a configured `PoseResetter` before their no-fail local commit, and therefore
+  let a Pinpoint boundary reject an unrepresentable push without partially committing estimator
+  state or creating a protected-core dependency on FTC. A finite Pinpoint sample whose derived
+  planar delta overflows publishes `MotionDelta.none(currentTimestamp)` and rebases the motion
+  baseline to that current pose; it never publishes `hasDelta=true` with non-finite components or
+  repeatedly bridges the unsafe interval.
+- **Limelight structural/live-evidence contract:** a usable SDK botpose requires non-null `Pose3D`,
+  `Position`, `Position.unit`, and `YawPitchRollAngles`. Convert position to inches and read
+  orientation in radians, then require finite x/y/z/yaw/pitch/roll; missing orientation is
+  unavailable, never fabricated as zero. Any invalid botpose becomes `noPose` with an exact reject
+  reason. A finite predictor yaw is canonically wrapped in radians before conversion to degrees, so
+  even a huge finite equivalent heading cannot overflow the value sent through
+  `FtcLimelightVisionLane.updateRobotFieldYawRad(...)`; non-finite predictor yaw or invalid motion is
+  unavailable rather than sent to the vendor or turned into NaN quality. Derived
+  speed/rate/quality must be finite before publication.
+- **Planar Fusion/EKF evidence contract:** these estimators deliberately consume x/y/yaw and drop
+  z/pitch/roll, so they require the three consumed pose or delta components to be finite without
+  claiming that ignored 6DOF components are valid for another consumer. A predictor PoseEstimate
+  also needs a current-epoch timestamp. Gain-based Fusion clamps its finite predictor quality to
+  `[0, 1]` for fused output and treats non-finite quality as `0` without discarding an otherwise
+  usable pose. EKF confidence remains deliberately covariance-derived; predictor quality is not a
+  second confidence-combination policy for that estimator.
+  `MotionDelta.hasDelta=false` is valid absence and does not invalidate an otherwise coherent
+  predictor PoseEstimate (including a first READY, zero-time, or reset sample). Only a claimed
+  delta requires finite x/y/yaw, quality in `[0, 1]`, coherent same-epoch start/end timestamps,
+  finite positive duration, and a current end timestamp. An invalid predictor pose does not
+  initialize, enter history, or rebase state. An invalid claimed delta is ignored without applying
+  or marking that interval covered and does not discard an otherwise valid current predictor pose;
+  it cannot change fused state or become the basis of a later bridged delta. `hasPose=false` is
+  absence of a correction candidate and remains skipped, not a rejection on every cycle. A distinct
+  `hasPose=true` correction candidate with a structurally valid current-epoch timestamp requires
+  finite x/y/yaw and quality in `[0, 1]`; if it then fails freshness, finite evidence, quality, or an
+  estimator gate, it is one evaluated rejection with no predictor push. Derived pose and every
+  available/computed innovation, statistic, quality, covariance, and committed state must be finite
+  before publication; retain documented `NaN` only as the unavailable/no-evaluation sentinel of existing
+  EKF diagnostic getters. Shared `PoseEstimate`/`MotionDelta` constructors are not globally changed
+  because callers require different fail-fast, unavailable, and rejected-evidence responses.
+- **Timestamp and estimator-domain corrections:** in Fusion and EKF, `maxCorrectionAgeSec=0` means
+  an inclusive zero-age bound; it no longer silently disables freshness. First require finite
+  `ageSec(clock)` for a present correction candidate, which excludes unavailable, wrong-epoch, and
+  materially future timestamps without changing the watermark or rejection count. Against the
+  existing watermark, only the first or a strictly newer candidate beyond the established runtime
+  timestamp epsilon advances and evaluates. Duplicate and out-of-order candidates retain their
+  existing skip counters and never move the watermark. Only after accepting that newer evaluation
+  identity apply `isFresh(clock, maxCorrectionAgeSec)` and the remaining gates, so a newer-but-stale
+  candidate is rejected once rather than on every retained-camera cycle. Absence or a
+  future/invalid timestamp cannot poison later evaluation. Keep `LoopTimestamp`'s one-microsecond
+  current-time tolerance and the estimators' runtime ordering/replay epsilon. Remove only the
+  configuration-time `+ 1e-6` shortcut:
+  latency-compensation history must satisfy exact
+  `predictorHistorySec >= maxCorrectionAgeSec`. Bound Fusion's wrapped heading-jump gate to finite
+  `[0, pi]` and EKF's to finite `(0, pi]`; larger answers are behaviorally ignored after wrapping.
+  Preserve the remaining established finite/nonnegative/positive/unit-interval domains, but add the
+  received value to every diagnostic. Guard finite derived commits rather than inventing field-size
+  caps or promising accurate arithmetic near `Double.MAX_VALUE`.
+- **EKF representable-covariance preflight:** finite positive standard deviations alone are not
+  sufficient where the implementation deterministically squares them. The initial-position,
+  initial-heading, manual-anchor, and predictor-process-floor standard deviations must each have a
+  finite square, and each deterministic initialization/manual-anchor covariance plus the worst
+  accepted correction standard deviation
+  (`floor + qualityScale + projectedPerSec * maxCorrectionAgeSec`) must remain finite and square to a
+  finite variance. Each position/heading process floor plus its per-radian rate times `pi` must also
+  remain finite and square to a finite variance because wrapped runtime heading change is bounded by
+  `pi`. Per-inch live-motion process rates remain finite/nonnegative rather than receiving a
+  misleading standalone-square bound: their product and sum depend on unbounded runtime
+  translation. Reject an incoherent active EKF Config before Pinpoint effects with the exact
+  field/cross-field values. Translation-dependent process sigma/covariance can still overflow for
+  extreme finite live displacement, so the runtime finite-commit guard remains the fail-closed
+  boundary; no physical field or motion cap is invented.
+- **Public-layer rationalization:** Pinpoint Config shrinks from eleven public fields/fourteen public
+  methods to eight cohesive fields and exactly `defaults()`, raw `copy()`, and
+  `validatedCopy(context)`; `Config.of(...)`, all ten mutating `withX` methods, and public Config
+  `debugDump(...)` are removed. The predictor keeps its sole public `(HardwareMap, Config)`
+  constructor, requires that Config explicitly, removes zero-caller raw `getDriver()` and broad
+  `config()`, and moves from ten public instance operations to nine: add cache-only
+  `lastDeviceStatus()` while retaining `update`, `getEstimate`, `getLatestMotionDelta`,
+  `getKinematicSnapshot`, `setPose`, `resetPosAndIMU`, `recalibrateIMU`, and owner `debugDump`.
+  Pedro no longer re-reads a broad active Config; project
+  `Constants` preflights the source Pinpoint draft through the authoritative validated copy before
+  its wider physical graph and translates the same encoder-resolution value.
+- **Estimator and composite public counts:** Fusion and EKF each move from two public constructors
+  to one explicit-config constructor, and each Config moves from four public methods to
+  `defaults()`, raw `copy()`, and public `validatedCopy(context)`; the latter is the distinct
+  cross-package aggregate-preflight seam. Limelight keeps one explicit-config constructor, while its
+  Config moves from three public methods to `defaults()` and raw `copy()` with package-private
+  validated capture for its same-package composite. All estimator constructors reject null Config
+  instead of hiding defaults. The composite retains its two materially different creation paths,
+  but removes `config()`, `visionLane()`, and `fixedFieldTagLayout()`; they have no production value
+  and re-export borrowed or false configuration. Retain the five semantic views `predictor()`,
+  `aprilTagPoseEstimator()`, `limelightFieldPoseEstimator()`, `correctionEstimator()`, and
+  `globalEstimator()`, plus the distinct mount-binding
+  `AprilTagLocalizationConfig.toAprilTagPoseEstimatorConfig(...)` conversion.
+- **Rejected alternatives:** no universal `LocalizationConfig`, Config base, reflection copier,
+  validator DSL, builder, immutable mirror, positional Pinpoint constructor, nullable default
+  shortcut, raw driver escape, or public validate/validated-copy pair is added. Validation only in
+  Phoenix/Pedro was rejected because direct tools and the ordinary composite remain effectful.
+  Retaining the two encoder fields with precedence was rejected because one accepted answer is
+  ignored; two whole-Config factories were rejected because an encoder choice should not become a
+  competing owner-construction path. A sleep, fixed readiness timeout, or finite-first-sample guess
+  was rejected because the pinned SDK exposes the actual device status.
+- **Compatibility, documentation, and later-item boundary:** this deliberately breaks external
+  callers of removed withers/factories/getters/defaulting constructors and the injected full-Config
+  signature; all maintained callers migrate together without aliases. Synchronize Pinpoint,
+  composite, Fusion/EKF, Limelight, `PoseResetter`, and Pedro Javadocs; AprilTag Localization & Fixed
+  Layouts, Framework Lanes & Robot Controls, Recommended Robot Design, Phoenix Architecture,
+  Phoenix Calibration Guide, Robot Calibration Tutorials, Pedro Auto README, tool prompts, and
+  examples. Correct the axis-direction tester's negative-yaw suggestion: direction/mount diagnosis
+  must not teach an invalid positive calibration scalar. CONFIG-05 still owns the larger Pedro
+  runtime aggregate/vendor snapshot, CONFIG-06 the tool constructor/retained-alias forest, and
+  CONFIG-09 Phoenix profile decomposition and wider owner preflight. No estimator-mode policy,
+  estimator gain/noise value, physical calibration value, camera ownership, tag fact, or second
+  heartbeat is chosen here; only the bounded validation, freshness, and fail-closed truth rules
+  recorded above change estimator behavior.
+- **Required software evidence:** add reflection/API tests for every count and removal; exhaustive
+  Config tests for nulls, blanks, active/inactive nested drafts, exact bounds, NaN/infinities,
+  float overflow and nonzero underflow, resolution variant dispatch, history cross-fields, error
+  namespaces, raw-copy independence, and post-construction mutation isolation. Prove every invalid
+  owned-lane input causes zero Pinpoint lookup/write/reset; layout is snapshotted with one ID read and
+  one pose read per ID; vision mount/sensor access occurs exactly once; later source mutation cannot
+  change the graph; injected predictor identity is preserved and no predictor Config can be passed.
+  Exercise every Pinpoint status, reset/recalibration/rebase, READY recovery, cross-gap motion/
+  heading suppression, derived-delta overflow/rebase, set-pose float overflow/nonzero underflow,
+  NOT_READY/fault/READY-read-failure same-cycle set-pose latch retention, READY measured-timestamp
+  rebase, staged predictor-push failure, finite/non-finite pose, null Limelight units/
+  orientation, huge-finite wrapped Limelight yaw, correction quality/rejection, future/stale
+  timestamp/watermark, zero-age, exact-pi, direct/per-radian/worst-correction EKF covariance bounds,
+  translation-dependent runtime overflow fail-closed, cycle-dedupe/reentry/failure
+  replay, latency replay, correction statistics, every maintained stationary-motion gate, Phoenix
+  lifecycle/cleanup, Pedro start-pose/heartbeat, and tool path. Run focused localization/vision/
+  Pedro/Phoenix tests, both module compiles, strict Javadocs, maintained documentation-link checks,
+  the full TeamCode suite, removed-symbol/no-sleep scans, and diff/whitespace hygiene.
+- **Hardware evidence boundary:** software can prove configuration capture, no-effect rejection,
+  lifecycle ordering, and status gating. It cannot prove hardware names, pod directions/offsets,
+  preset/custom resolution, yaw scalar, actual CALIBRATING-to-READY time, camera field pose,
+  correction noise, or Fusion/EKF tuning. Those remain explicit adopting-robot checks; no software
+  default or `READY` status is described as physical calibration proof.
+- **Historical Gate 1 decision record (2026-08-16):** **Approved before implementation.** The audit
+  selected owner-local validated snapshots, split owned/injected configuration, one tagged encoder
+  answer, one nonblocking reset with cached device-status gating, owner-specific finite pose truth,
+  and removal of redundant public paths. Gate 2 was required to remain inside this exact approved
+  boundary and stop unstaged for Android Studio review.
+- **Gate 2 implementation (2026-08-16):** the completed diff contains exactly **46 files**:
+  **19 production Java files, 18 test Java files, eight maintained Markdown guides/readmes, and
+  this tracker**. `PinpointOdometryPredictor.Config` now has one tagged immutable
+  `EncoderResolution`, owner-local validated capture, exact FTC float-write representability, and no
+  positional factory, mutating wither forest, nullable-default shortcut, raw-driver/config export,
+  reset switch, guessed delay, or sleep. Construction issues one mandatory nonblocking reset. Each
+  completed poll caches device status; only exact `READY` plus finite evidence publishes measured
+  pose/velocity/motion, while reset, recalibration, faults, conversion failure, and cross-gap
+  recovery invalidate measured provenance and establish fresh baselines before later publication.
+- **Composite, estimator, and consumer result (2026-08-16):** the ordinary composite Config now
+  separates predictor data from `EstimatorConfig`, while the injected factory accepts only estimator
+  policy. Active branches, layout, camera mount, and sensor are validated/snapshotted before owned
+  Pinpoint lookup/reset; inactive drafts remain raw and ignored. Fusion, EKF, and Limelight require
+  explicit Configs, capture them at their owners, enforce the approved finite/timestamp/covariance
+  domains, stage predictor pushes before local commits with exact rollback, and publish current
+  localization truth rather than rejuvenated state. Phoenix holds manual drive only through the
+  startup READY-derived pose latch and later disables assists without removing robot-centric manual
+  drive; Pedro fail-stops on missing current pose/velocity; Pinpoint calibration tools consume
+  binding intent only after their current-cycle poll. All maintained callers, prompts, Javadocs, and
+  the eight documentation files use the selected vocabulary; CONFIG-05/06/09 remain untouched.
+- **Automated verification (2026-08-16):** explicit production/unit-test compilation passed first.
+  The final coordinated CONFIG-04 matrix passed **23 suites / 205 tests / 0 failures / 0 errors /
+  0 skipped**; after the last exhaustive Limelight Config/retention proof was added, its focused
+  suite passed **29 tests / 0 failures / 0 errors / 0 skipped**. The exact final tree then passed
+  `:TeamCode:testDebugUnitTest`: **183 suites / 1,701 tests / 0 failures / 0 errors / 0 skipped**,
+  including `DocumentationLinksTest` at **5/5**. `:TeamCode:phoenixJavadocs` also completed
+  **BUILD SUCCESSFUL**. These runs compiled both `FtcRobotController` and `TeamCode`; output contained
+  only the repository's existing Java-8-on-JBR-21 and deprecation warnings. Early integration runs
+  exposed one missing test import and four test-oracle/message mismatches; all were corrected and
+  rerun before these final passes, with no production failure left unresolved.
+- **Independent review and static evidence (2026-08-16):** separate production/integration and
+  docs/tests/tracker adversarial reviews found no remaining blocker. Reflection closes every
+  retained constructor/method/field count and removed API, while focused tests cover every Pinpoint
+  status, active/inactive preflight, source isolation, vendor representation boundary, finite
+  evidence/timestamp/covariance rule, exact rollback/recovery, startup and later-fault behavior,
+  Pedro/tool ordering, and Limelight structure/config domain recorded above. Production scans find
+  no removed Pinpoint wither/factory/export/reset-delay path, invalid `REVERSE` prompt, or
+  `Thread.sleep(...)` call. `git diff --check` is clean apart from informational LF-to-CRLF notices;
+  all five new test files have clean trailing whitespace and final newlines; nothing is staged,
+  committed, or pushed.
+- **Historical Gate 2 hardware and Android Studio audit point (2026-08-16):** at the review stop,
+  CONFIG-04 was **Verifying** on `codex/config-04-composite-localization-config`, based exactly on merged
+  `origin/master@fc686a9256f2e013558063784822129f9021b781`. Inspect (1) the one tagged encoder answer
+  and exact Pinpoint Config capture/effect order, (2) mandatory nonblocking reset plus cached READY
+  provenance across update/reset/recalibration/set-pose, (3) owned versus injected composite Config
+  shape and no-effect active-branch preflight, (4) Fusion/EKF/Limelight finite evidence, timestamp,
+  covariance, rollback, and current-publication truth, and (5) Phoenix/Pedro/tool behavior plus the
+  synchronized guides and deliberately removed APIs. Software cannot verify the authored hardware
+  name, pod directions/offsets/resolution, yaw scalar, physical CALIBRATING-to-READY transition,
+  camera geometry, or Fusion/EKF thresholds/noise; those remain adopting-robot checks. Gate 2 stops
+  with this exact 46-file diff unstaged. After Android Studio review, publication requires one
+  combined authorization naming this branch, push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target branch `master`.
+- **Gate 3 review and publication authorization (2026-08-16):** the user completed the Android
+  Studio review and replied with the exact combined authorization: **“CONFIG-04 looks good.
+  Authorize committing the reviewed CONFIG-04 diff on
+  codex/config-04-composite-localization-config, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** CONFIG-04 is **Done**. This authorizes staging only the reviewed 46-file diff,
+  committing it on the named branch, pushing it to the named origin, opening the pull request, and
+  merging it into `master`; it does not authorize CONFIG-05 implementation or include any
+  CONFIG-05 content in this commit.
 
 ### CONFIG-05 - Pedro runtime configuration ownership
 

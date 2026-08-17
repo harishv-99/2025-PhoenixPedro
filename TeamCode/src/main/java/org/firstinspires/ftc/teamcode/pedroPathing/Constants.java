@@ -59,13 +59,14 @@ public final class Constants {
                                                                PhoenixProfile profile) {
         HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
         PhoenixProfile profileSnapshot = Objects.requireNonNull(profile, "profile").copy();
-        validatePhysicalConfig(profileSnapshot, true);
+        PinpointOdometryPredictor.Config predictorConfig =
+                validatePhysicalConfig(profileSnapshot);
 
         PinpointOdometryPredictor predictor;
         try {
             predictor = new PinpointOdometryPredictor(
                     requiredHardwareMap,
-                    profileSnapshot.localization.predictor
+                    predictorConfig
             );
         } catch (RuntimeException setupFailure) {
             throw new IllegalStateException(
@@ -97,13 +98,14 @@ public final class Constants {
     public static Follower createToolOnlyNativeFollower(HardwareMap hardwareMap) {
         HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
         PhoenixProfile profileSnapshot = PhoenixProfile.current().copy();
-        validatePhysicalConfig(profileSnapshot, false);
+        PinpointOdometryPredictor.Config predictorConfig =
+                validatePhysicalConfig(profileSnapshot);
 
         PinpointLocalizer localizer;
         try {
             localizer = new PinpointLocalizer(
                     requiredHardwareMap,
-                    pinpointConstantsFrom(profileSnapshot)
+                    pinpointConstantsFrom(predictorConfig)
             );
         } catch (RuntimeException setupFailure) {
             throw new IllegalStateException(
@@ -169,8 +171,13 @@ public final class Constants {
     }
 
     /** Profile-owned Pinpoint calibration translated only for Pedro's standalone native tools. */
-    static PinpointConstants pinpointConstantsFrom(PhoenixProfile profile) {
-        PinpointOdometryPredictor.Config source = profile.localization.predictor;
+    static PinpointConstants pinpointConstantsFrom(
+            PinpointOdometryPredictor.Config validatedPredictorConfig
+    ) {
+        PinpointOdometryPredictor.Config source = Objects.requireNonNull(
+                validatedPredictorConfig,
+                "validatedPredictorConfig"
+        );
         PinpointConstants target = new PinpointConstants()
                 .forwardPodY(source.forwardPodOffsetLeftInches)
                 .strafePodX(source.strafePodOffsetForwardInches)
@@ -179,11 +186,10 @@ public final class Constants {
                 .forwardEncoderDirection(source.forwardPodDirection)
                 .strafeEncoderDirection(source.strafePodDirection);
 
-        if (source.customEncoderResolutionTicksPerInch != null) {
-            target.customEncoderResolution(source.customEncoderResolutionTicksPerInch);
-        } else {
-            target.encoderResolution(source.encoderPods);
-        }
+        source.encoderResolution.applyTo(
+                target::encoderResolution,
+                target::customEncoderResolution
+        );
         if (source.yawScalar != null) {
             target.yawScalar(source.yawScalar);
         }
@@ -191,7 +197,7 @@ public final class Constants {
     }
 
     /** Fail before acquiring hardware when the physical profile cannot name one coherent graph. */
-    static void validatePhysicalConfig(PhoenixProfile profile, boolean productionAuto) {
+    static PinpointOdometryPredictor.Config validatePhysicalConfig(PhoenixProfile profile) {
         Objects.requireNonNull(profile.drive, "PhoenixProfile.drive");
         FtcDrives.MecanumWiringConfig wiring = Objects.requireNonNull(
                 profile.drive.wiring,
@@ -216,54 +222,9 @@ public final class Constants {
         PinpointOdometryPredictor.Config predictor = Objects.requireNonNull(
                 profile.localization.predictor,
                 "PhoenixProfile.localization.predictor"
-        );
-        requireHardwareName(
-                predictor.hardwareMapName,
-                "PhoenixProfile.localization.predictor.hardwareMapName"
-        );
-        requireFinite(predictor.forwardPodOffsetLeftInches,
-                "PhoenixProfile.localization.predictor.forwardPodOffsetLeftInches");
-        requireFinite(predictor.strafePodOffsetForwardInches,
-                "PhoenixProfile.localization.predictor.strafePodOffsetForwardInches");
-        requireFinite(predictor.quality, "PhoenixProfile.localization.predictor.quality");
-        if (predictor.quality < 0.0 || predictor.quality > 1.0) {
-            throw new IllegalArgumentException(
-                    "PhoenixProfile.localization.predictor.quality must be in [0, 1]"
-            );
-        }
-        if (predictor.resetWaitMs < 0L) {
-            throw new IllegalArgumentException(
-                    "PhoenixProfile.localization.predictor.resetWaitMs must be >= 0"
-            );
-        }
-        if (productionAuto && !predictor.enableResetOnInit) {
-            throw new IllegalArgumentException(
-                    "Phoenix Pedro Auto requires "
-                            + "PhoenixProfile.localization.predictor.enableResetOnInit=true so the "
-                            + "single Pinpoint owner performs the controlled INIT reset"
-            );
-        }
-        Objects.requireNonNull(predictor.forwardPodDirection,
-                "PhoenixProfile.localization.predictor.forwardPodDirection");
-        Objects.requireNonNull(predictor.strafePodDirection,
-                "PhoenixProfile.localization.predictor.strafePodDirection");
-        if (predictor.customEncoderResolutionTicksPerInch != null) {
-            requireFinitePositive(
-                    predictor.customEncoderResolutionTicksPerInch,
-                    "PhoenixProfile.localization.predictor.customEncoderResolutionTicksPerInch"
-            );
-        } else {
-            Objects.requireNonNull(
-                    predictor.encoderPods,
-                    "PhoenixProfile.localization.predictor.encoderPods"
-            );
-        }
-        if (predictor.yawScalar != null) {
-            requireFinitePositive(
-                    predictor.yawScalar,
-                    "PhoenixProfile.localization.predictor.yawScalar"
-            );
-        }
+        ).validatedCopy("PhoenixProfile.localization.predictor");
+        profile.localization.predictor = predictor;
+        return predictor;
     }
 
     private static void requireUniqueHardwareName(String name,

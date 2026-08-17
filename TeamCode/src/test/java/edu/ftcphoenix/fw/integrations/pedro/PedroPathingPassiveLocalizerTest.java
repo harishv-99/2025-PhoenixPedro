@@ -99,6 +99,7 @@ public final class PedroPathingPassiveLocalizerTest {
         assertTrue(stale.drivetrain.breakCount > breaksBeforeStaleUpdate);
 
         Fixture noPose = new Fixture();
+        noPose.access.statusSummary = "CALIBRATING";
         noPose.access.sample = new PedroPathingPassiveLocalizer.Sample(
                 Pose2d.zero(),
                 false,
@@ -112,7 +113,8 @@ public final class PedroPathingPassiveLocalizerTest {
         );
         assertFailsContaining(
                 () -> noPose.adapter.update(noPose.clock.clock()),
-                "pose is unavailable"
+                "pose is unavailable",
+                "Pinpoint lastDeviceStatus=CALIBRATING"
         );
 
         Fixture noVelocity = new Fixture();
@@ -316,16 +318,18 @@ public final class PedroPathingPassiveLocalizerTest {
         );
     }
 
-    private static void assertFailsContaining(Runnable action, String expectedMessage) {
+    private static void assertFailsContaining(Runnable action, String... expectedMessages) {
         try {
             action.run();
-            fail("Expected failure containing: " + expectedMessage);
+            fail("Expected failure containing: " + java.util.Arrays.toString(expectedMessages));
         } catch (IllegalStateException expected) {
-            assertTrue(
-                    "Expected message containing '" + expectedMessage + "' but got: "
-                            + expected.getMessage(),
-                    expected.getMessage().contains(expectedMessage)
-            );
+            for (String expectedMessage : expectedMessages) {
+                assertTrue(
+                        "Expected message containing '" + expectedMessage + "' but got: "
+                                + expected.getMessage(),
+                        expected.getMessage().contains(expectedMessage)
+                );
+            }
         }
     }
 
@@ -356,6 +360,7 @@ public final class PedroPathingPassiveLocalizerTest {
             implements PedroPathingPassiveLocalizer.PredictorAccess {
         PedroPathingPassiveLocalizer.Sample sample =
                 PedroPathingPassiveLocalizer.Sample.unavailable();
+        String statusSummary = "unavailable";
         int readCount;
         int setPoseCount;
 
@@ -363,6 +368,11 @@ public final class PedroPathingPassiveLocalizerTest {
         public PedroPathingPassiveLocalizer.Sample currentSnapshot() {
             readCount++;
             return sample;
+        }
+
+        @Override
+        public String lastDeviceStatusSummary() {
+            return statusSummary;
         }
 
         @Override

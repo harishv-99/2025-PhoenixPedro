@@ -303,8 +303,10 @@ AprilTagVisionLane vision = new FtcWebcamAprilTagVisionLane(hardwareMap, camCfg)
 FtcOdometryAprilTagLocalizationLane.Config locCfg =
         FtcOdometryAprilTagLocalizationLane.Config.defaults();
 locCfg.predictor.hardwareMapName = "pinPoint";
-locCfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
-locCfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+locCfg.estimation.correctionSource.mode =
+        FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+locCfg.estimation.correctedEstimatorMode =
+        FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
 
 FtcOdometryAprilTagLocalizationLane localization =
         new FtcOdometryAprilTagLocalizationLane(
@@ -337,8 +339,10 @@ AprilTagVisionLane vision = new FtcLimelightAprilTagVisionLane(hardwareMap, llCf
 FtcOdometryAprilTagLocalizationLane.Config locCfg =
         FtcOdometryAprilTagLocalizationLane.Config.defaults();
 locCfg.predictor.hardwareMapName = "pinPoint";
-locCfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
-locCfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+locCfg.estimation.correctionSource.mode =
+        FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+locCfg.estimation.correctedEstimatorMode =
+        FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
 ```
 
 Everything above `AprilTagVisionLane` still consumes the same `AprilTagSensor` seam.
@@ -351,13 +355,15 @@ If you want corrected/global localization to trust the Limelight's direct full-f
 FtcOdometryAprilTagLocalizationLane.Config locCfg =
         FtcOdometryAprilTagLocalizationLane.Config.defaults();
 locCfg.predictor.hardwareMapName = "pinPoint";
-locCfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
-locCfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
-locCfg.correctionSource.limelightFieldPose.mode =
+locCfg.estimation.correctionSource.mode =
+        FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
+locCfg.estimation.correctedEstimatorMode =
+        FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+locCfg.estimation.correctionSource.limelightFieldPose.mode =
         LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
-locCfg.correctionSource.limelightFieldPose.maxResultAgeSec = 0.20;
-locCfg.correctionSource.limelightFieldPose.minVisibleTags = 2;
-locCfg.correctionSource.limelightFieldPose.degradeWhenMoving = true;
+locCfg.estimation.correctionSource.limelightFieldPose.maxResultAgeSec = 0.20;
+locCfg.estimation.correctionSource.limelightFieldPose.minVisibleTags = 2;
+locCfg.estimation.correctionSource.limelightFieldPose.degradeWhenMoving = true;
 ```
 
 This gives you two absolute pose views side by side:
@@ -378,14 +384,20 @@ FtcOdometryAprilTagLocalizationLane localization =
                 autoRuntime.motionPredictor(),
                 vision,
                 fixedFieldTagLayout,
-                locCfg
+                locCfg.estimation
         );
 ```
 
-`locCfg.predictor` applies only to the ordinary `HardwareMap` constructor; the injected path assumes
-the external owner already configured that predictor. All AprilTag, correction-source, and
-corrected-estimator configuration still applies. Phoenix Pedro Auto uses this path so Pinpoint is
-configured, reset, polled, and corrected by one owner while Pedro consumes a passive converted view.
+`locCfg.predictor` applies only to the ordinary `HardwareMap` constructor. The injected path takes
+only `locCfg.estimation`, so it cannot retain or report an ignored Pinpoint answer. Phoenix Pedro
+Auto uses this path so Pinpoint is configured, reset, polled, and corrected by one owner while
+Pedro consumes a passive converted view.
+
+Pinpoint construction always requests one non-blocking reset. A poll whose cached device status is
+not `READY` publishes unavailable measured pose, velocity, and motion; the first later `READY`
+sample establishes fresh baselines instead of bridging across calibration. Keep the robot still
+during reset/recalibration and gate motion-producing calibration or Pedro heartbeats on current
+pose and velocity evidence. There is no constructor sleep or guessed reset delay.
 
 ### 5.5 Which one should I start with?
 
@@ -430,7 +442,7 @@ When localization and guidance should deliberately share the same weighting, out
 plausibility policy, author one solver Config and construct the configured solver explicitly:
 
 ```java
-AprilTagPoseEstimator.Config tagCfg = profile.localization.aprilTags
+AprilTagPoseEstimator.Config tagCfg = profile.localization.estimation.aprilTags
         .toAprilTagPoseEstimatorConfig(profile.vision.activeCameraMount());
 
 AprilTagPoseEstimator tagLocalizer = new AprilTagPoseEstimator(tags, fixedLayout, tagCfg);
@@ -485,7 +497,7 @@ Typical fusion setup:
 OdometryCorrectionFusionEstimator.Config fusionCfg =
         OdometryCorrectionFusionEstimator.Config.defaults();
 fusionCfg.maxCorrectionAgeSec = 0.35;
-fusionCfg.predictorHistorySec = 1.0;  // should cover maxCorrectionAgeSec when latency compensation is enabled
+fusionCfg.predictorHistorySec = 1.0;  // must cover maxCorrectionAgeSec when latency compensation is enabled
 
 OdometryCorrectionFusionEstimator corrected =
         new OdometryCorrectionFusionEstimator(predictor, absoluteCorrection, fusionCfg);
@@ -505,11 +517,20 @@ CorrectedPoseEstimator corrected =
 
 Notes:
 
-- `predictorHistorySec` should be at least `maxCorrectionAgeSec` when latency compensation is enabled.
+- `predictorHistorySec` must be at least `maxCorrectionAgeSec` when latency compensation is enabled;
+  active configuration rejects a shorter history rather than silently accepting unreplayable frames.
 - corrected estimators consume an explicit `MotionDelta` from the predictor instead of
   reverse-engineering motion from two unrelated pose snapshots.
 - repeated same-cycle updates cannot apply that delta or EKF process covariance twice, and a retained
   equal/older predictor timestamp does not clear valid replay history.
+- predictor pose evidence must be current and finite. A claimed `MotionDelta` additionally needs
+  finite planar components/quality, positive coherent duration, and a current end timestamp;
+  `hasDelta == false` remains valid absence. Without current predictor evidence or a correction
+  accepted in that update, the estimators may retain internal recovery state but publish no pose.
+- correction timestamps must belong to the current clock epoch. Unavailable/materially-future
+  timestamps do not advance the watermark; duplicate/out-of-order frames retain their skip
+  classification; a strictly newer stale frame is rejected once. `maxCorrectionAgeSec == 0`
+  inclusively accepts only a current-time correction.
 - every accepted/manual pose anchor excludes predictor motion from before that anchor. When the
   corrected pose is pushed into the predictor, both baselines move together. With push-back
   disabled, the estimator derives the first later motion from a predictor pose captured at or
@@ -544,6 +565,12 @@ Phoenix's direct Limelight field-pose estimator is intentionally conservative:
 The FTC SDK returns an exact all-zero `Pose3D` when a Limelight pose array is absent. The Phoenix
 owner treats that sentinel as unavailable, rather than accepting it as a confident field-origin or
 camera-to-tag measurement.
+
+A usable SDK botpose also requires a non-null position, distance unit, and orientation, with all
+six components finite after conversion to inches/radians. Missing or non-finite structure publishes
+no pose. For MT2, Phoenix wraps a finite predictor yaw before translating it to vendor degrees; a
+non-finite yaw publishes no pose and performs no orientation write. Invalid optional predictor
+motion is treated as unavailable rather than fabricated into a quality gate.
 
 If direct Limelight field pose is unstable while moving:
 

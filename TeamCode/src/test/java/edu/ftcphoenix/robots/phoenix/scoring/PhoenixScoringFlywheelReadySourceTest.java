@@ -110,7 +110,7 @@ public final class PhoenixScoringFlywheelReadySourceTest {
     private static PhoenixTargeting targetingFor(PhoenixProfile profile) {
         return new PhoenixTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver,
+                profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),

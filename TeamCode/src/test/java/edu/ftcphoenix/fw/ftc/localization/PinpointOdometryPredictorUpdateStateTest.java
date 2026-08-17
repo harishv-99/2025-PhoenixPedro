@@ -190,6 +190,40 @@ public final class PinpointOdometryPredictorUpdateStateTest {
         assertEquals(0.5, afterRebase.durationSec(), EPSILON);
     }
 
+    @Test
+    public void nonFiniteDerivedPlanarDeltaIsUnavailableAndRebasesUnsafeInterval() {
+        ManualLoopClock time = new ManualLoopClock();
+        PinpointOdometryPredictor.UpdateState state =
+                new PinpointOdometryPredictor.UpdateState();
+
+        assertFalse(state.observeMotion(
+                poseAtX(Double.MAX_VALUE),
+                time.clock().nowTimestamp(),
+                0.8
+        ).hasDelta);
+
+        time.nextCycle(1.0);
+        MotionDelta overflow = state.observeMotion(
+                poseAtX(-Double.MAX_VALUE),
+                time.clock().nowTimestamp(),
+                0.8
+        );
+        assertFalse(overflow.hasDelta);
+
+        time.nextCycle(1.0);
+        MotionDelta afterRebase = state.observeMotion(
+                poseAtX(-Double.MAX_VALUE / 2.0),
+                time.clock().nowTimestamp(),
+                0.8
+        );
+        assertTrue(afterRebase.hasDelta);
+        assertTrue(Double.isFinite(afterRebase.deltaPose.xInches));
+        assertEquals(Double.MAX_VALUE / 2.0,
+                afterRebase.deltaPose.xInches,
+                Double.MAX_VALUE * 1e-15);
+        assertEquals(1.0, afterRebase.durationSec(), EPSILON);
+    }
+
     private static Pose3d poseAtX(double xInches) {
         return new Pose3d(xInches, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
