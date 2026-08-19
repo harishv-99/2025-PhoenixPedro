@@ -6,6 +6,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
+import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
@@ -20,17 +21,26 @@ import edu.ftcphoenix.fw.task.Task;
  * and calls
  * {@link Telemetry#update()} after every contributor has rendered.</p>
  */
-public final class PhoenixTelemetryPresenter {
+final class PhoenixTelemetryPresenter {
 
-    private final PhoenixProfile profile;
+    private final FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode estimatorMode;
+    private final FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode correctionSourceMode;
 
     /**
-     * Creates a telemetry presenter bound only to one Phoenix profile snapshot.
+     * Creates a presenter bound only to the two localization display facts it retains.
      *
-     * @param profile profile snapshot used to label values such as estimator mode
+     * @param estimatorMode configured global estimator mode
+     * @param correctionSourceMode configured absolute-correction source mode
      */
-    public PhoenixTelemetryPresenter(PhoenixProfile profile) {
-        this.profile = Objects.requireNonNull(profile, "profile").copy();
+    PhoenixTelemetryPresenter(
+            FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode estimatorMode,
+            FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode correctionSourceMode
+    ) {
+        this.estimatorMode = Objects.requireNonNull(estimatorMode, "estimatorMode");
+        this.correctionSourceMode = Objects.requireNonNull(
+                correctionSourceMode,
+                "correctionSourceMode"
+        );
     }
 
     /**
@@ -40,14 +50,14 @@ public final class PhoenixTelemetryPresenter {
      *
      * @param telemetry FTC telemetry sink to write into; when {@code null}, emission is a no-op
      */
-    public void emitTeleOp(Telemetry telemetry,
-                           PhoenixCapabilities.ScoringStatus scoring,
-                           PhoenixCapabilities.TargetingStatus targeting,
-                           PhoenixDriveAssistService.Status driveAssist,
-                           PhoenixReadiness.Result poseAssistReadiness,
-                           VisionReadiness visionReadiness,
-                           PoseEstimate globalPose,
-                           PoseEstimate odomPose) {
+    void emitTeleOp(Telemetry telemetry,
+                    PhoenixCapabilities.ScoringStatus scoring,
+                    PhoenixCapabilities.TargetingStatus targeting,
+                    PhoenixDriveAssistService.Status driveAssist,
+                    PhoenixReadiness.Result poseAssistReadiness,
+                    VisionReadiness visionReadiness,
+                    PoseEstimate globalPose,
+                    PoseEstimate odomPose) {
         if (telemetry == null) {
             return;
         }
@@ -95,13 +105,13 @@ public final class PhoenixTelemetryPresenter {
      *
      * @param telemetry FTC telemetry sink to write into; when {@code null}, emission is a no-op
      */
-    public void emitAuto(Telemetry telemetry,
-                         PhoenixCapabilities.ScoringStatus scoring,
-                         PhoenixCapabilities.TargetingStatus targeting,
-                         Task installedAutoRoutine,
-                         VisionReadiness visionReadiness,
-                         PoseEstimate globalPose,
-                         PoseEstimate odomPose) {
+    void emitAuto(Telemetry telemetry,
+                  PhoenixCapabilities.ScoringStatus scoring,
+                  PhoenixCapabilities.TargetingStatus targeting,
+                  Task installedAutoRoutine,
+                  VisionReadiness visionReadiness,
+                  PoseEstimate globalPose,
+                  PoseEstimate odomPose) {
         if (telemetry == null) {
             return;
         }
@@ -211,11 +221,11 @@ public final class PhoenixTelemetryPresenter {
             telemetry.addData("pose.global", globalPose);
             telemetry.addData(
                     "pose.global.mode",
-                    profile.localization.estimation.correctedEstimatorMode
+                    estimatorMode
             );
             telemetry.addData(
                     "pose.global.correctionSource",
-                    profile.localization.estimation.correctionSource.mode
+                    correctionSourceMode
             );
         }
         if (odomPose != null) {

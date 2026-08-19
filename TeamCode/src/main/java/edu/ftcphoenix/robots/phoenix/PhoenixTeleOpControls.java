@@ -30,13 +30,50 @@ import edu.ftcphoenix.fw.input.binding.CallbackBindings;
  */
 public final class PhoenixTeleOpControls {
 
-    private final PhoenixProfile.TeleOpControlsConfig cfg;
+    /** Mutable data-only tuning for Phoenix's TeleOp control layer. */
+    public static final class Config {
+
+        /** Stick shaping and scaling for the base manual drive source. */
+        public GamepadDriveSource.Config manualDrive = GamepadDriveSource.Config.defaults();
+
+        /** Translation scale applied while the driver holds slow mode. */
+        public double slowTranslateScale = 0.35;
+
+        /** Maximum axial command change per second. */
+        public double maxAxialRatePerSec = 4.0;
+
+        /** Maximum lateral command change per second. */
+        public double maxLateralRatePerSec = 4.0;
+
+        /** Maximum rotational command change per second. */
+        public double maxOmegaRatePerSec = 6.0;
+
+        /** Rotation scale applied while the driver holds slow mode. */
+        public double slowOmegaScale = 0.20;
+
+        /** Step used when the operator nudges the selected flywheel velocity. */
+        public double selectedVelocityStepNative = 25.0;
+
+        private Config() {
+        }
+
+        /**
+         * Returns a fresh complete software-valid Phoenix controls draft.
+         *
+         * @return fresh mutable controls configuration
+         */
+        public static Config defaults() {
+            return new Config();
+        }
+    }
+
     private final DriveSource manualDrive;
     private final ScalarSource manualTranslateMagnitude;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverride;
     private final GamepadDevice driver;
     private final GamepadDevice operator;
+    private final double selectedVelocityStepNative;
     private boolean bindAttempted;
 
     /**
@@ -48,31 +85,62 @@ public final class PhoenixTeleOpControls {
      * once the shared robot capability families exist.
      * </p>
      *
-     * @param gamepads         wrapped gamepad sources used to map driver/operator controls
-     * @param config           TeleOp control-layer config; defensively copied for local ownership
+     * @param gamepads wrapped gamepad sources used to map driver/operator controls
+     * @param config TeleOp control-layer draft; retained scalar values are captured, and the
+     *               framework manual-drive owner defensively copies its nested draft
+     * @throws NullPointerException if an argument or {@link Config#manualDrive} is {@code null}
+     * @throws IllegalArgumentException if an outer scalar is non-finite or outside its documented
+     *                                  domain, or the nested manual-drive draft is invalid
      */
-    public PhoenixTeleOpControls(Gamepads gamepads,
-                                 PhoenixProfile.TeleOpControlsConfig config) {
-        Objects.requireNonNull(gamepads, "gamepads");
-        this.cfg = Objects.requireNonNull(config, "config").copy();
+    public PhoenixTeleOpControls(Gamepads gamepads, Config config) {
+        Gamepads requiredGamepads = Objects.requireNonNull(gamepads, "gamepads");
+        Config draft = Objects.requireNonNull(config, "PhoenixTeleOpControls.Config");
+        GamepadDriveSource.Config manualDriveConfig = Objects.requireNonNull(
+                draft.manualDrive,
+                "PhoenixTeleOpControls.Config.manualDrive"
+        );
+        double slowTranslateScale = requireFiniteUnitInterval(
+                "slowTranslateScale",
+                draft.slowTranslateScale
+        );
+        double maxAxialRatePerSec = requireFinitePositive(
+                "maxAxialRatePerSec",
+                draft.maxAxialRatePerSec
+        );
+        double maxLateralRatePerSec = requireFinitePositive(
+                "maxLateralRatePerSec",
+                draft.maxLateralRatePerSec
+        );
+        double maxOmegaRatePerSec = requireFinitePositive(
+                "maxOmegaRatePerSec",
+                draft.maxOmegaRatePerSec
+        );
+        double slowOmegaScale = requireFiniteUnitInterval(
+                "slowOmegaScale",
+                draft.slowOmegaScale
+        );
+        this.selectedVelocityStepNative = requireFinitePositive(
+                "selectedVelocityStepNative",
+                draft.selectedVelocityStepNative
+        );
 
-        this.driver = gamepads.p1();
-        this.operator = gamepads.p2();
+        this.driver = requiredGamepads.p1();
+        this.operator = requiredGamepads.p2();
         this.manualTranslateMagnitude = driver.leftStickMagnitude().memoized();
 
         manualDrive = new GamepadDriveSource(
                 driver.leftX(),
                 driver.leftY(),
                 driver.rightX(),
-                this.cfg.drive.manualDrive
+                manualDriveConfig
         ).scaledWhen(
                 driver.rightBumper(),
-                this.cfg.drive.slowTranslateScale,
-                this.cfg.drive.slowOmegaScale
+                slowTranslateScale,
+                slowOmegaScale
         ).rateLimited(
-                this.cfg.drive.maxAxialRatePerSec,
-                this.cfg.drive.maxLateralRatePerSec,
-                this.cfg.drive.maxOmegaRatePerSec
+                maxAxialRatePerSec,
+                maxLateralRatePerSec,
+                maxOmegaRatePerSec
         );
 
         autoAimEnabled = operator.leftBumper().memoized();
@@ -129,9 +197,29 @@ public final class PhoenixTeleOpControls {
         requiredCallbacks.nudgeOnRise(
                 operator.dpadUp(),
                 operator.dpadDown(),
-                cfg.selectedVelocityStepNative,
+                selectedVelocityStepNative,
                 scoring::adjustSelectedVelocityNative
         );
+    }
+
+    private static double requireFiniteUnitInterval(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+            throw new IllegalArgumentException(
+                    "PhoenixTeleOpControls.Config." + fieldName
+                            + " must be finite and in [0.0, 1.0], got " + value
+            );
+        }
+        return value;
+    }
+
+    private static double requireFinitePositive(String fieldName, double value) {
+        if (!Double.isFinite(value) || value <= 0.0) {
+            throw new IllegalArgumentException(
+                    "PhoenixTeleOpControls.Config." + fieldName
+                            + " must be finite and > 0.0, got " + value
+            );
+        }
+        return value;
     }
 
     private void claimBind() {

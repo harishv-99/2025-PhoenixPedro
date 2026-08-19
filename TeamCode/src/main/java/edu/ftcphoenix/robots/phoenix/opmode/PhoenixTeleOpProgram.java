@@ -20,23 +20,25 @@ final class PhoenixTeleOpProgram {
                 defaultAlliance,
                 "defaultAlliance"
         );
-        PhoenixProfile profile = PhoenixProfile.current().copy();
+        PhoenixProfile profile = PhoenixProfile.current();
 
         PhoenixTeleOpPrestart prestart = requiredProgram.prestart(
                 new PhoenixTeleOpPrestart(
-                        profile,
+                        profile.targeting,
+                        profile.fixedAprilTagLayout,
                         requiredHost.gamepad1,
                         requiredDefaultAlliance
                 )
         );
-        PhoenixRobot robot = new PhoenixRobot(
-                requiredHost.hardwareMap,
-                requiredHost.telemetry,
+        PhoenixHardwareOwnershipPreflight.requireDistinctMotorOwners(profile);
+        PhoenixRobot robot = new PhoenixRobot(requiredHost.hardwareMap);
+        robot.declareTeleOp(
+                requiredProgram,
+                profile,
                 requiredHost.gamepad1,
                 requiredHost.gamepad2,
-                profile
+                prestart.eligibleScoringTagIds()
         );
-        robot.declareTeleOp(requiredProgram, prestart.eligibleScoringTagIds());
 
         // Consume only after declareTeleOp has installed localization's pre-START restore seam.
         // A fresh alliance is merely a visible draft seed; PhoenixTeleOpPrestart remains the one

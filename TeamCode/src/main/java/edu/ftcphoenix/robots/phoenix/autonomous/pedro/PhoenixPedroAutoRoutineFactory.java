@@ -7,6 +7,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.drive.route.RouteTask;
 import edu.ftcphoenix.fw.drive.route.RouteTasks;
 import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoTasks;
 
@@ -40,51 +41,60 @@ public final class PhoenixPedroAutoRoutineFactory {
      */
     public static Task build(PhoenixPedroAutoContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
+        PhoenixAutoConfig autoConfig = ctx.autoConfig();
         PhoenixAutoStrategyId strategy = ctx.spec().strategy;
         switch (strategy) {
             case SAFE_PRELOAD:
-                return safePreload(ctx);
+                return safePreload(ctx, autoConfig);
             case PRELOAD_AND_PARK:
-                return preloadAndPark(ctx);
+                return preloadAndPark(ctx, autoConfig);
             case PARTNER_AWARE_CYCLE:
-                return partnerAwareCycle(ctx);
+                return partnerAwareCycle(ctx, autoConfig);
             case PEDRO_INTEGRATION_TEST:
             default:
-                return pedroIntegrationTest(ctx);
+                return pedroIntegrationTest(ctx, autoConfig);
         }
     }
 
-    private static Task safePreload(PhoenixPedroAutoContext ctx) {
+    private static Task safePreload(PhoenixPedroAutoContext ctx,
+                                    PhoenixAutoConfig autoConfig) {
         return buildRoutine(
                 ctx,
+                autoConfig,
                 "phoenix.safePreload",
                 "phoenix.safePreload.outbound",
                 "phoenix.safePreload.returnOrPark"
         );
     }
 
-    private static Task preloadAndPark(PhoenixPedroAutoContext ctx) {
+    private static Task preloadAndPark(PhoenixPedroAutoContext ctx,
+                                       PhoenixAutoConfig autoConfig) {
         return buildRoutine(
                 ctx,
+                autoConfig,
                 "phoenix.preloadAndPark",
                 "phoenix.preloadAndPark.outbound",
                 "phoenix.preloadAndPark.parkPlaceholder"
         );
     }
 
-    private static Task partnerAwareCycle(PhoenixPedroAutoContext ctx) {
+    private static Task partnerAwareCycle(PhoenixPedroAutoContext ctx,
+                                          PhoenixAutoConfig autoConfig) {
         // Structure exists now; real partner-aware lane geometry belongs in PhoenixPedroPathFactory.
         return buildRoutine(
                 ctx,
+                autoConfig,
                 "phoenix.partnerAware",
                 "phoenix.partnerAware.outbound",
                 "phoenix.partnerAware.safeReturnPlaceholder"
         );
     }
 
-    private static Task pedroIntegrationTest(PhoenixPedroAutoContext ctx) {
+    private static Task pedroIntegrationTest(PhoenixPedroAutoContext ctx,
+                                             PhoenixAutoConfig autoConfig) {
         return buildRoutine(
                 ctx,
+                autoConfig,
                 "pedro.integrationTest",
                 "pedro.outbound12in",
                 "pedro.returnToStart"
@@ -93,20 +103,26 @@ public final class PhoenixPedroAutoRoutineFactory {
 
     /** Construct the private policy owners behind the existing one-method public routine factory. */
     private static Task buildRoutine(PhoenixPedroAutoContext ctx,
+                                     PhoenixAutoConfig autoConfig,
                                      String routineName,
                                      String outboundDebugName,
                                      String returnDebugName) {
-        double parkTakeoverElapsedSec = requireParkTakeoverElapsedSec(
-                ctx.profile().auto.parkTakeoverElapsedSec,
-                routineName
+        RoutineConfig auto = RoutineConfig.capture(autoConfig, routineName);
+        RouteTask<PathChain> outbound = followOutbound(
+                ctx,
+                outboundDebugName,
+                auto.routeTimeoutSec
         );
-        RouteTask<PathChain> outbound = followOutbound(ctx, outboundDebugName);
         Task scoringAttempt = PhoenixAutoTasks.aimAndShootOne(
                 ctx.capabilities(),
                 ctx.driveAdapter(),
-                ctx.profile().auto
+                autoConfig
         );
-        RouteTask<PathChain> returnOrPark = followReturn(ctx, returnDebugName);
+        RouteTask<PathChain> returnOrPark = followReturn(
+                ctx,
+                returnDebugName,
+                auto.routeTimeoutSec
+        );
         PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
                 routineName,
                 outbound,
@@ -117,38 +133,68 @@ public final class PhoenixPedroAutoRoutineFactory {
         return new PhoenixPedroAutoRoutineTask(
                 routineName,
                 prePark,
-                parkTakeoverElapsedSec,
+                auto.parkTakeoverElapsedSec,
                 returnOrPark
         );
     }
 
     /** Follow the fixed INIT-built outbound path through the normal eager route helper. */
     private static RouteTask<PathChain> followOutbound(PhoenixPedroAutoContext ctx,
-                                                       String debugName) {
+                                                       String debugName,
+                                                       double routeTimeoutSec) {
         return RouteTasks.follow(debugName,
                 ctx.driveAdapter(),
                 ctx.paths().outboundPath,
-                ctx.profile().auto.routeTimeoutSec);
+                routeTimeoutSec);
     }
 
     /** Build the return path from the current Pedro pose when this Task actually starts. */
     private static RouteTask<PathChain> followReturn(PhoenixPedroAutoContext ctx,
-                                                     String debugName) {
+                                                     String debugName,
+                                                     double routeTimeoutSec) {
         return RouteTasks.followBuiltAtStart(debugName,
                 ctx.driveAdapter(),
                 () -> ctx.pathFactory().buildReturnFromCurrentPose(ctx.paths().pedroStartPose),
-                ctx.profile().auto.routeTimeoutSec);
+                routeTimeoutSec);
     }
 
-    /** Reject a disabled or malformed match cutoff before allocating any Task graph. */
-    private static double requireParkTakeoverElapsedSec(double value, String routineName) {
+    /** Immutable routine-policy slice captured before any route or scoring Task is allocated. */
+    private static final class RoutineConfig {
+        final double parkTakeoverElapsedSec;
+        final double routeTimeoutSec;
+
+        private RoutineConfig(double parkTakeoverElapsedSec, double routeTimeoutSec) {
+            this.parkTakeoverElapsedSec = parkTakeoverElapsedSec;
+            this.routeTimeoutSec = routeTimeoutSec;
+        }
+
+        /** Capture both retained primitives, then validate them in PhoenixAutoConfig source order. */
+        static RoutineConfig capture(PhoenixAutoConfig source, String routineName) {
+            PhoenixAutoConfig required = Objects.requireNonNull(
+                    source,
+                    "Phoenix Pedro routine '" + routineName + "' autoConfig is required"
+            );
+            double parkTakeoverElapsedSec = required.parkTakeoverElapsedSec;
+            double routeTimeoutSec = required.routeTimeoutSec;
+
+            requireFinitePositive(
+                    "parkTakeoverElapsedSec",
+                    parkTakeoverElapsedSec,
+                    routineName
+            );
+            requireFinitePositive("routeTimeoutSec", routeTimeoutSec, routineName);
+            return new RoutineConfig(parkTakeoverElapsedSec, routeTimeoutSec);
+        }
+    }
+
+    private static void requireFinitePositive(String fieldName,
+                                              double value,
+                                              String routineName) {
         if (!Double.isFinite(value) || value <= 0.0) {
             throw new IllegalArgumentException(
-                    "Phoenix Pedro routine '" + routineName
-                            + "' requires profile.auto.parkTakeoverElapsedSec to be finite and "
-                            + "> 0 seconds, got " + value
+                    "Phoenix Pedro routine '" + routineName + "' requires PhoenixAutoConfig."
+                            + fieldName + " to be finite and > 0, got " + value
             );
         }
-        return value;
     }
 }

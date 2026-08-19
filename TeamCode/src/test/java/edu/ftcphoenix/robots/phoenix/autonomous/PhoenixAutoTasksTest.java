@@ -12,8 +12,8 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.fw.task.TaskRunner;
+import edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -41,7 +41,7 @@ public final class PhoenixAutoTasksTest {
         FakeScoring scoring = new FakeScoring();
         ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
         FakeTargeting targeting = new FakeTargeting(true, aim);
-        Task attempt = buildFactoryAttempt(scoring, targeting, new PhoenixProfile.AutoConfig());
+        Task attempt = buildFactoryAttempt(scoring, targeting, PhoenixAutoConfig.defaults());
         LoopClock clock = clockAt(1.0);
 
         attempt.start(clock);
@@ -141,7 +141,7 @@ public final class PhoenixAutoTasksTest {
         FakeScoring scoring = new FakeScoring();
         ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
         FakeTargeting targeting = new FakeTargeting(false, aim);
-        PhoenixProfile.AutoConfig auto = new PhoenixProfile.AutoConfig();
+        PhoenixAutoConfig auto = PhoenixAutoConfig.defaults();
         auto.waitForTargetSec = 0.5;
         Task attempt = buildFactoryAttempt(scoring, targeting, auto);
         LoopClock clock = clockAt(0.0);
@@ -169,7 +169,7 @@ public final class PhoenixAutoTasksTest {
         Task attempt = buildFactoryAttempt(
                 scoring,
                 new FakeTargeting(true, aim),
-                new PhoenixProfile.AutoConfig()
+                PhoenixAutoConfig.defaults()
         );
         LoopClock clock = clockAt(2.0);
 
@@ -186,7 +186,7 @@ public final class PhoenixAutoTasksTest {
     @Test
     public void shotDrainTimeoutRemainsTimeoutAndCancelsOwnedTransientShot() {
         FakeScoring scoring = new FakeScoring();
-        PhoenixProfile.AutoConfig auto = new PhoenixProfile.AutoConfig();
+        PhoenixAutoConfig auto = PhoenixAutoConfig.defaults();
         auto.waitForShotCompleteSec = 0.5;
         Task attempt = buildFactoryAttempt(
                 scoring,
@@ -215,7 +215,7 @@ public final class PhoenixAutoTasksTest {
         Task attempt = buildFactoryAttempt(
                 scoring,
                 new FakeTargeting(true, ControlledTask.finishingWith(TaskOutcome.SUCCESS)),
-                new PhoenixProfile.AutoConfig()
+                PhoenixAutoConfig.defaults()
         );
         LoopClock clock = clockAt(3.0);
 
@@ -346,6 +346,141 @@ public final class PhoenixAutoTasksTest {
         assertEquals(TaskOutcome.UNKNOWN, attempt.getOutcome());
         assertEquals(1, scoring.requestCount);
         assertEquals(1, scoring.cancelTransientCount);
+    }
+
+    @Test
+    public void autoPolicyIsRequiredBeforeAimTaskConstruction() {
+        FakeScoring scoring = new FakeScoring();
+        FakeTargeting targeting = new FakeTargeting(
+                true,
+                ControlledTask.finishingWith(TaskOutcome.SUCCESS)
+        );
+
+        try {
+            buildFactoryAttempt(scoring, targeting, null);
+            fail("Expected explicit Auto policy requirement");
+        } catch (NullPointerException expected) {
+            assertTrue(expected.getMessage().contains("autoConfig"));
+        }
+
+        assertEquals(0, targeting.aimTaskCallCount);
+        assertEquals(0, scoring.captureCount);
+    }
+
+    @Test
+    public void invalidTaskPolicyUsesSourceOrderBeforeAimTaskConstruction() {
+        PhoenixAutoConfig auto = PhoenixAutoConfig.defaults();
+        auto.aimHeadingToleranceDeg = -1.0;
+        auto.aimTimeoutSec = 0.0;
+        auto.aimMaxNoGuidanceSec = 0.0;
+        auto.waitForTargetSec = -1.0;
+        auto.waitForShotCompleteSec = -1.0;
+        assertFactoryRejects(auto, "aimHeadingToleranceDeg");
+
+        auto.aimHeadingToleranceDeg = 0.0;
+        assertFactoryRejects(auto, "aimTimeoutSec");
+
+        auto.aimTimeoutSec = Double.MIN_VALUE;
+        assertFactoryRejects(auto, "aimMaxNoGuidanceSec");
+
+        auto.aimMaxNoGuidanceSec = Double.MIN_VALUE;
+        assertFactoryRejects(auto, "waitForTargetSec");
+
+        auto.waitForTargetSec = 0.0;
+        assertFactoryRejects(auto, "waitForShotCompleteSec");
+    }
+
+    @Test
+    public void activeTaskPolicyRejectsEveryNonfiniteValue() throws Exception {
+        for (String fieldName : new String[]{
+                "aimHeadingToleranceDeg",
+                "aimTimeoutSec",
+                "aimMaxNoGuidanceSec",
+                "waitForTargetSec",
+                "waitForShotCompleteSec"
+        }) {
+            for (double invalid : new double[]{
+                    Double.NaN,
+                    Double.NEGATIVE_INFINITY,
+                    Double.POSITIVE_INFINITY
+            }) {
+                PhoenixAutoConfig auto = PhoenixAutoConfig.defaults();
+                PhoenixAutoConfig.class.getField(fieldName).setDouble(auto, invalid);
+                assertFactoryRejects(auto, fieldName);
+            }
+        }
+    }
+
+    @Test
+    public void zeroHeadingAndWaitsRemainAcceptedBoundaries() {
+        FakeScoring scoring = new FakeScoring();
+        FakeTargeting targeting = new FakeTargeting(
+                false,
+                ControlledTask.finishingWith(TaskOutcome.SUCCESS)
+        );
+        PhoenixAutoConfig auto = PhoenixAutoConfig.defaults();
+        auto.aimHeadingToleranceDeg = 0.0;
+        auto.aimTimeoutSec = Double.MIN_VALUE;
+        auto.aimMaxNoGuidanceSec = Double.MIN_VALUE;
+        auto.waitForTargetSec = 0.0;
+        auto.waitForShotCompleteSec = 0.0;
+
+        Task attempt = buildFactoryAttempt(scoring, targeting, auto);
+        LoopClock clock = clockAt(0.0);
+        attempt.start(clock);
+        tick(attempt, clock, 0.0);
+
+        assertTrue(attempt.isComplete());
+        assertEquals(TaskOutcome.TIMEOUT, attempt.getOutcome());
+        assertEquals(1, targeting.aimTaskCallCount);
+        assertEquals(0.0, targeting.lastAimConfig.headingTolRad, 0.0);
+        assertEquals(Double.MIN_VALUE, targeting.lastAimConfig.timeoutSec, 0.0);
+        assertEquals(Double.MIN_VALUE, targeting.lastAimConfig.maxNoGuidanceSec, 0.0);
+        assertEquals(0, scoring.captureCount);
+    }
+
+    @Test
+    public void taskConstructionCapturesTranslatedPolicyAgainstLaterMutation() {
+        FakeScoring scoring = new FakeScoring();
+        FakeTargeting targeting = new FakeTargeting(
+                false,
+                ControlledTask.finishingWith(TaskOutcome.SUCCESS)
+        );
+        PhoenixAutoConfig auto = PhoenixAutoConfig.defaults();
+        auto.aimHeadingToleranceDeg = 12.5;
+        auto.aimTimeoutSec = 3.25;
+        auto.aimMaxNoGuidanceSec = 1.5;
+        auto.waitForTargetSec = 0.5;
+        auto.waitForShotCompleteSec = 0.625;
+
+        Task attempt = buildFactoryAttempt(scoring, targeting, auto);
+        auto.aimHeadingToleranceDeg = 90.0;
+        auto.aimTimeoutSec = 100.0;
+        auto.aimMaxNoGuidanceSec = 100.0;
+        auto.waitForTargetSec = 100.0;
+        auto.waitForShotCompleteSec = 100.0;
+
+        assertEquals(Math.toRadians(12.5), targeting.lastAimConfig.headingTolRad, 0.0);
+        assertEquals(3.25, targeting.lastAimConfig.timeoutSec, 0.0);
+        assertEquals(1.5, targeting.lastAimConfig.maxNoGuidanceSec, 0.0);
+
+        LoopClock clock = clockAt(10.0);
+        attempt.start(clock);
+        tick(attempt, clock, 10.49);
+        assertFalse(attempt.isComplete());
+        tick(attempt, clock, 10.5);
+        assertEquals(TaskOutcome.TIMEOUT, attempt.getOutcome());
+    }
+
+    @Test
+    public void aimConfigIsNotPartOfThePublicMacroSurface() {
+        for (java.lang.reflect.Method method : PhoenixAutoTasks.class.getDeclaredMethods()) {
+            assertFalse(
+                    "aimConfig must remain a private translation detail",
+                    method.getName().equals("aimConfig")
+                            && java.lang.reflect.Modifier.isPublic(method.getModifiers())
+            );
+        }
     }
 
     @Test
@@ -592,12 +727,28 @@ public final class PhoenixAutoTasksTest {
 
     private static Task buildFactoryAttempt(FakeScoring scoring,
                                             FakeTargeting targeting,
-                                            PhoenixProfile.AutoConfig auto) {
+                                            PhoenixAutoConfig auto) {
         return PhoenixAutoTasks.aimAndShootOne(
                 new PhoenixCapabilities(scoring, targeting),
                 NOOP_DRIVE,
                 auto
         );
+    }
+
+    private static void assertFactoryRejects(PhoenixAutoConfig auto, String fieldName) {
+        FakeScoring scoring = new FakeScoring();
+        FakeTargeting targeting = new FakeTargeting(
+                true,
+                ControlledTask.finishingWith(TaskOutcome.SUCCESS)
+        );
+        try {
+            buildFactoryAttempt(scoring, targeting, auto);
+            fail("Expected invalid " + fieldName + " to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("PhoenixAutoConfig." + fieldName));
+        }
+        assertEquals(0, targeting.aimTaskCallCount);
+        assertEquals(0, scoring.captureCount);
     }
 
     private static LoopClock clockAt(double nowSec) {
@@ -662,6 +813,8 @@ public final class PhoenixAutoTasksTest {
     private static final class FakeTargeting implements PhoenixCapabilities.Targeting {
         private final boolean hasSelection;
         private final Task aimTask;
+        int aimTaskCallCount;
+        DriveGuidanceTask.Config lastAimConfig;
 
         FakeTargeting(boolean hasSelection, Task aimTask) {
             this.hasSelection = hasSelection;
@@ -675,6 +828,8 @@ public final class PhoenixAutoTasksTest {
 
         @Override
         public Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg) {
+            aimTaskCallCount++;
+            lastAimConfig = cfg;
             return aimTask;
         }
     }

@@ -1,22 +1,17 @@
 package edu.ftcphoenix.robots.phoenix.opmode;
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-
-import java.lang.reflect.Proxy;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
 
 import static org.junit.Assert.assertEquals;
@@ -62,30 +57,7 @@ public final class PhoenixTestersOpModeTest {
     }
 
     private static PhoenixRobot uninitializedRobot() {
-        return new PhoenixRobot(
-                new HardwareMap(null, null),
-                inertTelemetry(),
-                new Gamepad(),
-                new Gamepad(),
-                PhoenixProfile.current()
-        );
-    }
-
-    private static Telemetry inertTelemetry() {
-        return (Telemetry) Proxy.newProxyInstance(
-                Telemetry.class.getClassLoader(),
-                new Class<?>[]{Telemetry.class},
-                (proxy, method, args) -> {
-                    Class<?> returnType = method.getReturnType();
-                    if (returnType == boolean.class) {
-                        return true;
-                    }
-                    if (returnType == int.class) {
-                        return 0;
-                    }
-                    return null;
-                }
-        );
+        return new PhoenixRobot(new HardwareMap(null, null));
     }
 
     private static final class EmptyOpMode extends OpMode {

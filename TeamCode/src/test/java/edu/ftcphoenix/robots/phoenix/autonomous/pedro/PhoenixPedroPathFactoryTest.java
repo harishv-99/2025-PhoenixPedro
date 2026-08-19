@@ -157,16 +157,25 @@ public final class PhoenixPedroPathFactoryTest {
         assertEquals(15.0, end.getX(), EPSILON);
         assertEquals(4.0, end.getY(), EPSILON);
         assertEquals(0.5, end.getHeading(), EPSILON);
+        Pose positiveBoundary = PhoenixPedroPathFactory.integrationPlaceholderEndPose(
+                new Pose(0.0, 0.0, 0.0),
+                Double.MIN_VALUE
+        );
+        assertEquals(Double.MIN_VALUE, positiveBoundary.getX(), 0.0);
 
-        assertIntegrationDistanceRejected(0.0, "must be > 0");
-        assertIntegrationDistanceRejected(-1.0, "must be > 0");
+        assertIntegrationDistanceRejected(0.0, "PhoenixAutoConfig.pedroIntegrationTestDistanceIn");
+        assertIntegrationDistanceRejected(-1.0, "PhoenixAutoConfig.pedroIntegrationTestDistanceIn");
         assertIntegrationDistanceRejected(
                 Double.NaN,
-                "pedroIntegrationTestDistanceIn must be finite"
+                "PhoenixAutoConfig.pedroIntegrationTestDistanceIn must be finite"
+        );
+        assertIntegrationDistanceRejected(
+                Double.NEGATIVE_INFINITY,
+                "PhoenixAutoConfig.pedroIntegrationTestDistanceIn must be finite"
         );
         assertIntegrationDistanceRejected(
                 Double.POSITIVE_INFINITY,
-                "pedroIntegrationTestDistanceIn must be finite"
+                "PhoenixAutoConfig.pedroIntegrationTestDistanceIn must be finite"
         );
 
         try {

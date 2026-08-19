@@ -2,18 +2,33 @@
 
 This is the Phoenix-specific bring-up path.
 
-Use it when you want the exact Phoenix menu names and the exact `PhoenixProfile` fields to edit while bringing up a fresh robot.
+Use it when you want the exact Phoenix menu names and checked-in owner recipes to edit while
+bringing up a fresh robot.
+
+`PhoenixProfile.current()` returns a fresh data graph on every call. It is not a mutable project
+global, has no public `defaults()` or `copy()`, and is not the permanent home for every value. For a
+one-run override, assign one local profile, edit it, and pass that same object to the declaration.
+For reviewed robot values, edit the named owner recipe below and rebuild.
 
 ---
 
 ## 1. Ownership map
 
-Phoenix keeps calibration ownership intentionally clean:
+Phoenix keeps calibration ownership intentionally clean. `PhoenixProfile.current()` assembles these
+fresh sections for one declaration; long-lived owners capture only the active section they use:
 
-- `PhoenixProfile.drive` -> drivetrain hardware/wiring/brake tuning
-- `PhoenixProfile.vision` -> active vision backend plus backend-specific rig config
-- `PhoenixProfile.localization` -> predictor, AprilTag-localization tuning, correction-source choice, and corrected-global estimator tuning
-- `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
+- `PhoenixDriveConfiguration.current()` -> drivetrain hardware names, directions, wiring, and brake policy
+- `PhoenixVisionFactory.Config.defaults()` -> active vision backend plus its webcam/Limelight rig draft
+- `PhoenixLocalizationConfiguration.current()` -> predictor, AprilTag-localization tuning,
+  correction-source choice, and corrected-global estimator tuning
+- `FtcGameTagLayout.currentGameFieldFixed()` -> shared fixed AprilTag layout
+- `PhoenixTeleOpControls.Config.defaults()` -> TeleOp input and manual-drive configuration
+- `PhoenixDriveAssistService.Config.defaults()` -> TeleOp assist policy
+- `PhoenixScoring.Config.defaults()` -> scoring hardware, controller, readiness, and feed policy
+- `PhoenixTargeting.Config.defaults()` -> scoring-target catalog, alliance mapping, aim policy, and
+  `PhoenixShotVelocityCalibration.currentTable()`
+- `PhoenixAutoConfig.defaults()` -> autonomous timing and scoring budgets
+- `PhoenixCalibrationConfiguration.current()` -> human-reviewed physical acknowledgements
 - `PhoenixCapabilities` -> shared mode-neutral robot API and public status snapshots used by TeleOp and Auto
 - `PhoenixTeleOpControls` -> TeleOp stick/button semantics
 - `.scoring.PhoenixScoring` -> scoring requests, policy, all scoring Plants, update order, and status production
@@ -22,20 +37,24 @@ Phoenix keeps calibration ownership intentionally clean:
 - `PhoenixRobot` -> composition root; declares managed TeleOp or Auto roles
 - `RobotProgram` -> managed mode clock, phase order, prestart policy, telemetry commit, and cleanup
 
-That ownership split matters during bring-up because fixes should land in the owner of the behavior:
+That ownership split matters during bring-up because fixes should land in the owner of the behavior,
+not in an aggregate copy:
 
-- drivetrain wiring / brake / drive tuning -> `PhoenixProfile.drive`
-- backend choice + active camera rig -> `PhoenixProfile.vision`
-- webcam name / VisionPortal-backed rig config -> `PhoenixProfile.vision.webcam`
-- Limelight hardware name / pipeline / poll rate -> `PhoenixProfile.vision.limelight`
-- predictor, AprilTag solve, and corrected-global localization tuning -> `PhoenixProfile.localization`
-- field-fixed tag policy or practice-field overrides -> `PhoenixProfile.field`
+- drivetrain wiring / brake / drive tuning -> `PhoenixDriveConfiguration.current()`
+- backend choice, device names, pipeline, poll rate, and camera mount ->
+  `PhoenixVisionFactory.Config.defaults()` and its private backend recipes
+- predictor, AprilTag solve, and corrected-global localization tuning ->
+  `PhoenixLocalizationConfiguration.current()`
+- field-fixed tag policy or practice-field overrides -> `FtcGameTagLayout.currentGameFieldFixed()`
+- axes/offset acknowledgements -> `PhoenixCalibrationConfiguration.current()`, only after the
+  corresponding physical procedure
 
 
 ### Actuator mapping facts
 
 Phoenix's shooter-transfer CR-servo group keeps one
-`PhoenixProfile.scoring.shooterTransferLeftScale` value. It is a configured dimensionless speed ratio
+`PhoenixScoring.Config.shooterTransferLeftScale` value authored by
+`PhoenixScoring.Config.defaults()`. It is a configured dimensionless speed ratio
 for the last-added left child, after the two `Direction` values account for physical mounting. There
 is no transfer bias field: normalized power zero must map to exact zero for both CR servos, while a
 nonzero additive offset would make an active zero command disagree with stop.
@@ -57,10 +76,10 @@ positions; the framework Plant owns the public plant coordinate and the hardware
 
 Recommended builder flow inside the owning mechanism/service constructor:
 
-`PhoenixRobot` should pass that owner `HardwareMap` plus its validated `PhoenixProfile` slice. The
-owner constructs and keeps the Plant; `PhoenixRobot` should not construct the Plant and inject it
-back into the owner. The compact fragment below omits that surrounding constructor so the
-calibration stages remain visible.
+`PhoenixRobot` should pass that owner `HardwareMap` plus its active data-only Config. The owner
+captures and validates that slice, constructs and keeps the Plant, and owns its update/stop;
+`PhoenixRobot` should not construct the Plant and inject it back into the owner. The compact fragment
+below omits that surrounding constructor so the calibration stages remain visible.
 
 ```java
 // Inside the mechanism constructor; lift is a private field.
@@ -177,8 +196,8 @@ Goal:
   already-backed-off safe native endpoints when the mechanism is genuinely bounded
 
 Follow the canonical [`actuator bring-up runbook`](<../../fw/docs/testing-calibration/Actuator Bring-up.md>).
-Copy its result into `PhoenixProfile` or the owning mechanism config, then rebuild. The tool does not
-edit Phoenix code, choose Plant units, establish an incremental encoder's runtime zero, or tune
+Copy its result into the owning mechanism's checked-in Config recipe, then rebuild. The tool does
+not edit Phoenix code, choose Plant units, establish an incremental encoder's runtime zero, or tune
 PIDF.
 
 ---
@@ -191,19 +210,22 @@ Menu entry:
 
 Goal:
 
-- verify that the motor names and directions already stored in the Phoenix profile select the
+- verify that the motor names and directions already stored in Phoenix's drive recipe select the
   expected wheel and make positive power contribute to robot-forward motion
 
 Before this Phoenix-specific check, complete the preceding canonical
 [`HW: Actuator Bring-up`](<../../fw/docs/testing-calibration/Actuator Bring-up.md>) tool to establish
-each raw motor's FTC `Direction`. Copy those facts into the profile and rebuild. The configured
-drivetrain verifier does not discover direction and does not edit the profile.
+each raw motor's FTC `Direction`. Copy those facts into `PhoenixDriveConfiguration.current()` and
+rebuild. The configured drivetrain verifier does not discover direction and does not edit code.
 
 Fix in code:
 
 ```java
-PhoenixProfile.current().drive.wiring
+PhoenixDriveConfiguration.current()
 ```
+
+Edit the checked-in assignments inside that package-private recipe; do not call
+`PhoenixProfile.current()` repeatedly and expect mutations to persist.
 
 Run the verification safely:
 
@@ -222,6 +244,11 @@ motors under controlled software conditions. Real hardware observation is still 
 final drivetrain integration verification, keep every wheel raised, run the production Phoenix
 TeleOp, and test forward, strafe, and turn separately. That final check exercises the real TeleOp
 controls, mecanum mixing, configured drivetrain, and output path together.
+
+Both ordinary Phoenix programs also run one centralized pre-effect check that the configured intake
+and flywheel motor names do not exactly collide with any of the four drive names. That catches a
+cross-owner software conflict; it does not prove that any name maps to the intended physical port,
+that directions are correct, or that the mechanism is safe to move.
 
 ---
 
@@ -280,33 +307,36 @@ inside the tuner. Record several shots for one segment, then press A for a new s
 or gains change.
 
 After the team reviews the trials, sort only the accepted finite rows by strictly increasing
-distance and replace the checked-in Phoenix shot table:
+distance and replace the `CURRENT` rows in `PhoenixShotVelocityCalibration`; its
+`currentTable()` method supplies those reviewed rows to targeting:
 
 ```java
-PhoenixProfile.current().autoAim.shotVelocityTable =
+private static final InterpolatingTable1D CURRENT =
         InterpolatingTable1D.ofSortedPairs(
                 28.0, 1500.0,
                 36.0, 1430.0,
                 50.0, 1450.0);
 ```
 
-Each adjacent pair is `(rangeInches, flywheelVelocityNative)`. The table owns validation of every
-finite value and rejects duplicate or out-of-order distances when Phoenix constructs the profile;
-do not add a profile-local validation loop. During a match, a fresh tag alone does not prove that
-its derived range is finite. Phoenix publishes a shot suggestion only when the table result is
+Each adjacent pair is `(rangeInches, flywheelVelocityNative)`. The table constructor validates every
+finite value and rejects duplicate or out-of-order distances while loading the checked-in recipe;
+do not add a duplicate robot-local validation loop. During a match, a fresh tag alone does not prove
+that its derived range is finite. Phoenix publishes a shot suggestion only when the table result is
 finite, so unavailable live geometry cannot masquerade as a clamped endpoint shot.
 
 The FTC controller may quantize gains, so copy the displayed **readback values** into:
 
 ```java
-PhoenixProfile.current().scoring.applyFlywheelVelocityPIDF = true;
-PhoenixProfile.current().scoring.flywheelVelKp = /* displayed readback */;
-PhoenixProfile.current().scoring.flywheelVelKi = /* displayed readback */;
-PhoenixProfile.current().scoring.flywheelVelKd = /* displayed readback */;
-PhoenixProfile.current().scoring.flywheelVelKf = /* displayed readback */;
+// Inside PhoenixScoring's defaults recipe:
+config.applyFlywheelVelocityPIDF = true;
+config.flywheelVelKp = /* displayed readback */;
+config.flywheelVelKi = /* displayed readback */;
+config.flywheelVelKd = /* displayed readback */;
+config.flywheelVelKf = /* displayed readback */;
 ```
 
-Then stop the tuner, review and commit those profile edits, rebuild, and start a fresh production
+Then stop the tuner, review and commit those `PhoenixScoring.Config.defaults()` recipe edits,
+rebuild, and start a fresh production
 TeleOp or Auto. Production never reads Configurables. BACK, STOP, disconnect, or failure
 terminally stops the flywheel Plant and best-effort restores the controller configuration captured
 for the tuning session, but no software restore can undo physical motion or prove controller
@@ -325,50 +355,66 @@ Goal:
 
 - solve the active AprilTag vision device pose relative to the robot
 
-Paste result into:
+Paste the result into the shared `currentCameraMount()` recipe used by
+`PhoenixVisionFactory.Config.defaults()`:
 
 ```java
-PhoenixProfile.current().vision.webcam.cameraMount    // when backend = WEBCAM
-PhoenixProfile.current().vision.limelight.cameraMount // when backend = LIMELIGHT
+private static CameraMountConfig currentCameraMount() {
+    return CameraMountConfig.ofDegrees(
+            measuredForwardInches,
+            measuredLeftInches,
+            measuredUpInches,
+            measuredRollDegrees,
+            measuredPitchDegrees,
+            measuredYawDegrees);
+}
 ```
 
-The tester prints both `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly into the active backend config.
+The tester prints both `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one
+of those directly into that owner recipe. If a future robot intentionally uses different mounts for
+the two backends, keep each answer in the corresponding private webcam/Limelight defaults recipe.
 
 ### How webcam and Limelight are used so far
 
 For Phoenix's current AprilTag use case, both backends expose the same narrow seam:
 
 ```java
-AprilTagVisionLane vision = PhoenixVisionFactory.create(hardwareMap, PhoenixProfile.current().vision);
+PhoenixProfile profile = PhoenixProfile.current();
+AprilTagVisionLane vision = PhoenixVisionFactory.create(hardwareMap, profile.vision);
 
 FtcOdometryAprilTagLocalizationLane localization =
         new FtcOdometryAprilTagLocalizationLane(
                 hardwareMap,
                 vision,
-                PhoenixProfile.current().field.fixedAprilTagLayout,
-                PhoenixProfile.current().localization
+                profile.fixedAprilTagLayout,
+                profile.localization
         );
 ```
 
 That constructor is the normal TeleOp/calibration path and creates the profile-configured Pinpoint
-predictor. Phoenix Pedro Auto instead maps the relevant profile slice to data and crosses the sole
+predictor. This illustration deliberately creates the fresh profile once; each constructed owner
+captures only its active slice. Phoenix Pedro Auto instead maps narrow data and crosses the sole
 runtime hardware boundary:
 
 ```java
 PedroPathingRuntime runtime = PedroPathingRuntime.create(
         hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(profile));
+        Constants.phoenixAutoRuntimeConfig(
+                profile.localization.predictor,
+                profile.drive.wiring,
+                profile.drive.enableZeroPowerBrake));
 ```
 
-The pure mapper snapshots the predictor, drivetrain wiring, and brake choice and combines them with
-fresh checked-in Pedro tuning; it constructs no hardware. The runtime validates and owner-copies
+The pure mapper raw-copies the predictor, drivetrain wiring, and brake choice and combines them with
+fresh checked-in Pedro tuning; it accepts no aggregate profile and constructs no hardware. The
+runtime validates and owner-copies
 the complete graph before hardware lookup or its non-blocking Pinpoint reset request, then passes
 its sole predictor into `FtcOdometryAprilTagLocalizationLane.withPredictor(...)`. Phoenix must not
 construct Pedro's native Pinpoint localizer as a second production owner.
 
 Pedro's generated tuning menu and `PedroTest` use a package-local tool-only native factory instead.
 That exclusive OpMode graph derives the same hardware name, offsets, resolution, directions, and
-yaw scalar from the profile, but owns Pedro's native `PinpointLocalizer` and raw Follower heartbeat.
+yaw scalar from the checked-in localization recipe, but owns Pedro's native `PinpointLocalizer` and raw Follower heartbeat.
 It is not a production runtime option and must never coexist with Phoenix Auto. The separate public
 completed-Follower adapter constructor is only for an advanced custom/portable host that has
 already constructed the vendor graph and will route its lifecycle through the adapter; it acquires no
@@ -380,15 +426,15 @@ The backend only changes which concrete AprilTag lane is created:
 - `Backend.LIMELIGHT` -> `FtcLimelightAprilTagVisionLane`
 
 The selected concrete owner validates and snapshots its full backend Config before device lookup;
-the inactive profile branch is not opened or treated as calibrated. Profile copies keep a custom
-FTC webcam tag library as borrowed draft data, while the active webcam owner canonicalizes its
-units and deep-snapshots its mutable metadata. Change the checked-in profile and restart the OpMode
+the inactive backend branch is not opened, validated, or treated as calibrated. A custom FTC webcam
+tag library remains borrowed draft data until the active webcam owner canonicalizes its units and
+deep-snapshots its mutable metadata. Change `PhoenixVisionFactory.Config.defaults()` and restart the OpMode
 to adopt different metadata or solver tuning; neither is a live-tuning surface.
 
 Phoenix's tester factories map the relevant profile facts into one fresh tool Config and pass the
 active backend recipe separately as a `Function<String, AprilTagVisionLaneFactory>`. That function
 captures the selected webcam or Limelight template immediately; a later picker retry does not reread
-the broad mutable profile. The tester snapshots the fixed layout, while the backend Config remains
+an aggregate profile. The tester snapshots the fixed layout, while the backend Config remains
 the sole camera-mount and detector-library owner. Keep any borrowed custom SDK tag library stable for
 the complete tester lifetime and every clean retry.
 
@@ -413,13 +459,14 @@ Custom multi-purpose vision keeps the concrete advanced owner in a robot realiza
 should consume one robot-owned immutable timestamped snapshot rather than FTC or Limelight result types.
 
 Phoenix can use Limelight's direct device field pose as an **optional** correction source through
-`PhoenixProfile.localization.estimation.correctionSource`, while the raw AprilTag path remains
+`PhoenixLocalizationConfiguration.current()`, while the raw AprilTag path remains
 available.
 Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2 pose access.
 
 ### Phoenix notes
 
-- the preferred AprilTag device name is `PhoenixProfile.current().vision.activeDeviceName()`
+- the preferred AprilTag device name comes from
+  `PhoenixVisionFactory.Config.defaults().activeDeviceName()`
 - the walkthrough status turns `OK` once the active backend's camera mount no longer looks like the identity placeholder
 
 ---
@@ -444,13 +491,14 @@ What to watch:
 This tester reuses:
 
 ```java
-PhoenixProfile.current().vision.activeDeviceName()
-PhoenixProfile.current().vision.activeCameraMount()
-PhoenixProfile.current().localization.estimation.aprilTags
-PhoenixProfile.current().field.fixedAprilTagLayout
+PhoenixVisionFactory.Config.defaults()
+PhoenixLocalizationConfiguration.current().estimation.aprilTags
+FtcGameTagLayout.currentGameFieldFixed()
 ```
 
-So the practice tool should match production AprilTag-solving math closely.
+The vision Config supplies both `activeDeviceName()` and `activeCameraMount()`. The tool snapshots
+only those selected facts and the fixed layout, so the practice tool should match production
+AprilTag-solving math closely without retaining the aggregate profile.
 
 ---
 
@@ -471,17 +519,17 @@ there is no blocking reset delay hidden in the OpMode.
 Fix in code:
 
 ```java
-PhoenixProfile.current().localization.predictor
+PhoenixLocalizationConfiguration.current()
 ```
 
-Specifically, correct pod direction fields before continuing.
+Specifically, correct the pod direction fields in that recipe's predictor setup before continuing.
 
 The encoder-resolution field is one tagged choice, so a custom value cannot silently override a
-second preset field. The default is the goBILDA 4-bar pod. Select exactly one form:
+second preset field. Edit the `predictor` passed into
+`PhoenixLocalizationConfiguration.configurePredictor(...)`. The framework default is the goBILDA
+4-bar pod; select exactly one form in that checked-in recipe:
 
 ```java
-PinpointOdometryPredictor.Config predictor =
-        PhoenixProfile.current().localization.predictor;
 predictor.encoderResolution =
         PinpointOdometryPredictor.EncoderResolution.forGoBildaPod(
                 GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD
@@ -503,8 +551,12 @@ or physical STOP. Those facts require the corresponding tester and a controlled 
 Record completion after rerunning the tester and accepting the result:
 
 ```java
-PhoenixProfile.current().calibration.pinpointAxesVerified = true;
+// Inside PhoenixCalibrationConfiguration.current():
+config.pinpointAxesVerified = true;
 ```
+
+This package-private recipe is the exact acknowledgement edit location. Do not set the flag from a
+software-only test or in a one-run profile override; software cannot establish the physical axes.
 
 Until this acknowledgement is true, Phoenix keeps TeleOp auto-aim and shoot-brace unavailable and
 blocks every Pedro Auto, including the dedicated integration test. Manual TeleOp drive and
@@ -529,7 +581,7 @@ after the status returns to `READY`.
 Paste result into:
 
 ```java
-PhoenixProfile.current().localization.predictor
+PhoenixLocalizationConfiguration.current()
 ```
 
 The tester prints the two recommended field assignments:
@@ -542,8 +594,12 @@ predictor.strafePodOffsetForwardInches = strafePodOffsetForwardInches;
 Record completion after copying the numbers and rerunning once to confirm they are stable:
 
 ```java
-PhoenixProfile.current().calibration.pinpointPodOffsetsCalibrated = true;
+// Inside PhoenixCalibrationConfiguration.current():
+config.pinpointPodOffsetsCalibrated = true;
 ```
+
+Set this acknowledgement only after the measured offsets have been copied into
+`PhoenixLocalizationConfiguration.current()` and the physical rerun supports the claim.
 
 Phoenix enables AprilTag assist for this tester only once the active backend's camera mount looks
 solved enough to trust. The assist then uses the same checked-in fixed layout, detection-age limit,
@@ -562,7 +618,8 @@ bounded calibration work; it does not make the route or localization match-ready
 ### Readiness shown by production OpModes
 
 Phoenix TeleOp and Auto both require their selected alliance scoring tag in
-`PhoenixProfile.autoAim.scoringTargets` and `PhoenixProfile.field.fixedAprilTagLayout`. Match Auto
+`PhoenixTargeting.Config.defaults().scoringTargets` and
+`FtcGameTagLayout.currentGameFieldFixed()`. Match Auto
 additionally requires route geometry deliberately classified `MATCH_READY` by
 `PhoenixPedroPathFactory`. Current checked-in placeholder geometry is `INTEGRATION_ONLY`, so static
 match entries and the selector correctly show `BLOCKED` even after localization calibration is
@@ -593,13 +650,15 @@ Config involved:
 
 ```java
 PinpointAprilTagCorrectedLocalizationTester.Config.defaults()
-PhoenixProfile.current().vision
-PhoenixProfile.current().localization.predictor
-PhoenixProfile.current().localization.estimation.aprilTags
-PhoenixProfile.current().localization.estimation.correctionSource
-PhoenixProfile.current().localization.estimation.correctionFusion
-PhoenixProfile.current().field.fixedAprilTagLayout
+PhoenixVisionFactory.Config.defaults()
+PhoenixLocalizationConfiguration.current()
+FtcGameTagLayout.currentGameFieldFixed()
 ```
+
+The tester maps only the selected backend, predictor, AprilTag source, selected corrected-estimator
+policy, and layout into its own defaults-based tool Config. An invalid dormant vision backend or
+inactive Fusion/EKF alternative does not block the selected path; the active owners validate their
+captured slices before effects.
 
 Phoenix defaults to:
 
@@ -612,10 +671,13 @@ Phoenix defaults to:
 If you want the corrected/global estimator to use Limelight's direct device field pose instead of the raw AprilTag field solve:
 
 ```java
-PhoenixProfile.current().vision.backend = PhoenixProfile.VisionConfig.Backend.LIMELIGHT;
-PhoenixProfile.current().localization.estimation.correctionSource.mode =
+// In PhoenixVisionFactory.Config; defaults() returns a fresh Config:
+public Backend backend = Backend.LIMELIGHT;
+
+// In PhoenixLocalizationConfiguration.current():
+config.estimation.correctionSource.mode =
         FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
-PhoenixProfile.current().localization.estimation.correctionSource.limelightFieldPose.mode =
+config.estimation.correctionSource.limelightFieldPose.mode =
         LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
 ```
 
@@ -651,8 +713,9 @@ Do this only after:
 Config involved:
 
 ```java
-PhoenixProfile.current().localization.estimation.correctionEkf
-PhoenixProfile.current().localization.estimation.correctedEstimatorMode
+// Inside PhoenixLocalizationConfiguration.current():
+config.estimation.correctionEkf
+config.estimation.correctedEstimatorMode
 ```
 
 Use the tester to compare behavior first. Only then consider changing the robot's default corrected estimator mode.
@@ -671,7 +734,7 @@ That split keeps each extension at the role whose contract it satisfies.
 
 The raw AprilTag estimator composes camera freshness/mount data with a
 `FixedTagFieldPoseSolver.Config`. Phoenix targeting constructs its own configured
-`FixedTagFieldPoseSolver` from the same profile policy before building guidance plans. The two
+`FixedTagFieldPoseSolver` from the same authored policy before building guidance plans. The two
 runtime owners therefore use the same authored policy without sharing a mutable Config.
 
 Other additions that fit this model include:

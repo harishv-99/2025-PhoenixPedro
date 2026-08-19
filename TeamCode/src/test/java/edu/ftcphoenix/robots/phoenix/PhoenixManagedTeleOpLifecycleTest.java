@@ -26,6 +26,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
+import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
@@ -190,16 +192,15 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         protected void configure(RobotProgram program) {
             PhoenixRobot robot = new PhoenixRobot(
                     hardwareMap,
-                    telemetry,
-                    gamepad1,
-                    gamepad2,
-                    profile,
                     assembly
             );
             robot.declareTeleOp(
                     program,
+                    profile,
+                    gamepad1,
+                    gamepad2,
                     Source.constant(Collections.singleton(
-                            profile.autoAim.scoringTagIdFor(PhoenixAlliance.RED)
+                            profile.targeting.scoringTagIdFor(PhoenixAlliance.RED)
                     ))
             );
             program.presenter(robot.teleOpPresenter(PhoenixMatchHandoff.RestoreResult.MISSING));
@@ -230,7 +231,7 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         @Override
         public AprilTagVisionLane createVision(
                 HardwareMap hardwareMap,
-                PhoenixProfile profile
+                PhoenixVisionFactory.Config visionConfig
         ) {
             return vision;
         }
@@ -239,29 +240,30 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         public FtcOdometryAprilTagLocalizationLane createLocalization(
                 HardwareMap hardwareMap,
                 AprilTagVisionLane createdVision,
-                PhoenixProfile profile
+                TagLayout fixedAprilTagLayout,
+                FtcOdometryAprilTagLocalizationLane.Config localizationConfig
         ) {
             return FtcOdometryAprilTagLocalizationLane.withPredictor(
                     predictor,
                     createdVision,
-                    profile.field.fixedAprilTagLayout,
-                    profile.localization.estimation
+                    fixedAprilTagLayout,
+                    localizationConfig.estimation
             );
         }
 
         @Override
         public PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
-                PhoenixProfile profile,
+                PhoenixScoring.Config scoringConfig,
                 PhoenixTargeting targeting
         ) {
-            return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
+            return new PhoenixScoring(hardwareMap, scoringConfig, targeting);
         }
 
         @Override
         public DriveCommandSink createDrive(
                 HardwareMap hardwareMap,
-                PhoenixProfile profile
+                FtcDrives.MecanumConfig driveConfig
         ) {
             return drive;
         }
@@ -387,7 +389,7 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         }
 
         private static TestHardwareMap forScoring(
-                PhoenixProfile.ScoringConfig config,
+                PhoenixScoring.Config config,
                 List<String> events
         ) {
             TestHardwareMap map = new TestHardwareMap(events);

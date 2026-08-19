@@ -57,11 +57,14 @@ protected void configure(RobotProgram program) {
 }
 ```
 
-The entry makes its standalone default explicit. The package-private program owner copies
-`PhoenixProfile`, installs one visible `PhoenixTeleOpPrestart`, constructs `PhoenixRobot`, and calls
-`declareTeleOp(program, prestart.eligibleScoringTagIds())`. It then consumes the optional match
-snapshot after localization exists, using its alliance only to seed the still-editable INIT menu.
-The prestart's value at FTC START is the sole frozen targeting-eligibility authority.
+The entry makes its standalone default explicit. The package-private program owner creates one
+fresh `PhoenixProfile.current()` graph, installs one visible `PhoenixTeleOpPrestart`, performs the
+ordinary cross-owner motor preflight, constructs `new PhoenixRobot(hardwareMap)`, and calls
+`declareTeleOp(program, profile, gamepad1, gamepad2, prestart.eligibleScoringTagIds())`. It then
+consumes the optional match snapshot after localization exists, using its alliance only to seed the
+still-editable INIT menu. The profile and Gamepads are mode-active declaration inputs; the root does
+not retain them as an aggregate. The prestart's value at FTC START is the sole frozen
+targeting-eligibility authority.
 
 Every production or diagnostic Phoenix-season Auto extends `PhoenixAutoOpMode` and returns only a
 setup:
@@ -109,40 +112,56 @@ layout and AprilTag age/solver policy, keeps a successful ordinary INIT drive-si
 motion only after START with current-cycle `READY` pose and velocity evidence. Software defaults and
 snapshots do not establish physical calibration.
 
-`PhoenixRobot` is constructed once for one mode. `declareTeleOp(...)` or `declareAuto(...)` may be
-called once. Both modes retain the complete defensive `PhoenixProfile`; neither constructs an
-alliance-filtered hardware profile. Their prestart owners instead supply a source that becomes one
-singleton scoring-tag set after their `PhoenixAlliance` freezes. The ordinary Phoenix Auto host
-supplies always-enabled aim and no override, while the same single `declareAuto(...)` boundary
-retains clock-aware enable and override sources for an advanced direct assembly; neither choice
-owns a second lifecycle.
+`PhoenixRobot` is constructed once for one mode from `HardwareMap` alone. `declareTeleOp(...)` or
+`declareAuto(...)` may be called once and synchronously routes the selected profile slices and
+mode-active dependencies to their owners. Each long-lived owner captures only the configuration it
+uses; neither the root nor a mode owner retains or copies the complete `PhoenixProfile`. TeleOp
+receives both Gamepads at its declaration boundary; Auto receives no dormant Gamepad dependency.
+The prestart owners supply a source that becomes one singleton scoring-tag set after their
+`PhoenixAlliance` freezes. The ordinary Phoenix Auto host supplies always-enabled aim and no
+override, while the same single `declareAuto(...)` boundary retains clock-aware enable and override
+sources for an advanced direct assembly; neither choice owns a second lifecycle.
+
+Both ordinary programs call the package-private
+`PhoenixHardwareOwnershipPreflight.requireDistinctMotorOwners(profile)` before any Phoenix hardware
+owner is constructed. It checks the scoring intake and flywheel names against all four drivetrain
+names so two owners cannot claim the same motor. Auto's earlier `PhoenixMatchHandoff.clear()` is a
+deliberate in-memory safety exception, not a hardware effect. Individual owners still validate
+their own names and active configuration in source order. An advanced direct caller that supplies
+an opaque drive sink remains responsible for exclusive hardware ownership; the root cannot infer
+that sink's device identity.
 
 Auto construction happens once during FTC INIT:
 
-1. invalidate an old Phoenix match handoff and snapshot `PhoenixProfile`;
+1. invalidate an old Phoenix match handoff, create one fresh `PhoenixProfile.current()` graph, run
+   the ordinary cross-owner motor preflight, and raw-copy the Auto policy;
 2. register one data-only `PhoenixAutoPrestart`;
-3. construct one `PedroPathingRuntime`;
-4. register the final-pose-plus-frozen-alliance match handoff transaction when applicable;
-5. transfer the Pedro drive owner into Phoenix's managed service and construct vision,
+3. construct the resource-only `PhoenixRobot(hardwareMap)` root;
+4. construct one `PedroPathingRuntime`;
+5. register the final-pose-plus-frozen-alliance match handoff transaction when applicable;
+6. transfer the Pedro drive owner into Phoenix's managed service and construct vision,
    localization, targeting, and scoring once;
-6. declare one root Task;
-7. register additive presenters.
+7. declare one root Task;
+8. register additive presenters.
 
-A single expression performs step 3:
+A single expression performs step 4:
 
 ```java
 PedroPathingRuntime pedroRuntime = PedroPathingRuntime.create(
         hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(profile));
+        Constants.phoenixAutoRuntimeConfig(
+                profile.localization.predictor,
+                profile.drive.wiring,
+                profile.drive.enableZeroPowerBrake));
 ```
 
-`Constants.phoenixAutoRuntimeConfig(profile)` is a pure application-edge mapper, not a resource
-factory. It immediately snapshots only `localization.predictor`, `drive.wiring`, and
-`drive.enableZeroPowerBrake`, then combines those facts with fresh checked-in Phoenix Pedro tuning
-and the fixed field transform. It does not broadly copy or validate unrelated vision, scoring,
-targeting, Auto, or field sections and performs no hardware action. Every call returns an
-independent `PedroPathingRuntime.Config`; the runtime's `create(...)` method is the one production
-effect boundary and authoritative whole-Config validator.
+`Constants.phoenixAutoRuntimeConfig(predictor, wiring, enableZeroPowerBrake)` is a pure,
+narrow application-edge mapper, not a resource factory. It raw-copies exactly those three inputs,
+then combines them with fresh checked-in Phoenix Pedro tuning and the fixed field transform. It
+does not accept or retain `PhoenixProfile`, validate unrelated vision, scoring, targeting, Auto, or
+field sections, or perform hardware action. Every call returns an independent
+`PedroPathingRuntime.Config`; the runtime's `create(...)` method is the one production effect
+boundary and authoritative whole-Config validator.
 
 A construction/configuration failure is terminal for that OpMode instance. Correct the problem and
 restart the OpMode. The selector never retries or replaces a hardware graph.
@@ -200,6 +219,13 @@ Later route phases whose geometry depends on current pose use
 `RouteTasks.followBuiltAtStart(...)`. That narrower factory samples live geometry once when that
 route Task starts. `PhoenixPedroPathFactory` remains the one owner of Pedro geometry, route labels,
 declared starting poses, and route maturity.
+
+`PhoenixPedroAutoContext` receives `PhoenixAutoConfig`, stores one raw snapshot, and returns a
+defensive raw copy from `autoConfig()`. It exposes no `PhoenixProfile` or `profile()` reach-through.
+This is the one justified public copy among Phoenix's owner Configs: path/task/routine
+collaborators across packages retain and consume the cohesive eight-field Auto policy. The path and
+Task owners still validate the finite route endpoints and timing domains they actually use before
+effects; `copy()` itself preserves draft evidence and performs no validation.
 
 Each route start has one retained execution identity. The integration classifies endpoint success,
 follower timeout/stall, interruption, replacement, failure, and unknown terminal state. `RouteTask`
@@ -290,10 +316,11 @@ candidate preview and sticky selection, so an opposite-alliance tag cannot becom
 scoring target. This does not filter localization: its solver still owns the complete fixed tag
 layout. `reset()` begins a new targeting session and requires a fresh drive graph.
 
-The profile retains data-only `FixedTagFieldPoseSolver.Config` tuning. `PhoenixTargeting` validates
-and captures it once as a configured `FixedTagFieldPoseSolver`, then passes that completed policy
-into each guidance plan. Localization independently captures the nested solver Config in its
-`AprilTagPoseEstimator`. Later edits to either profile draft cannot change a running solve policy.
+The localization Config contains data-only `FixedTagFieldPoseSolver.Config` tuning. The root passes
+that selected nested fact to `PhoenixTargeting`, which validates and captures it once as a completed
+`FixedTagFieldPoseSolver` for its guidance plans. Localization independently captures the same
+authored Config in its `AprilTagPoseEstimator`. Later edits to the short-lived profile draft cannot
+change either running solve policy.
 
 Target visibility is handled inside the routine. The scoring attempt waits for its bounded
 `waitForTargetSec`; timeout is retained truthfully, and `PhoenixPedroPreParkTask` selects the
@@ -332,8 +359,9 @@ on status types owned by either implementation class.
 Requests, execution policy, and realization remain visible as private field/method sections inside
 that one class; they are not separate layer or flywheel-owner objects.
 This keeps the conceptual layers without making a student assemble or navigate an object per layer.
-`PhoenixScoring` receives `HardwareMap` plus a defensively copied `ScoringConfig`, builds its private
-Plants, and exposes only the `PhoenixCapabilities.Scoring` vocabulary.
+`PhoenixScoring` receives `HardwareMap` plus `PhoenixScoring.Config`, captures and validates its
+active control-mode slice before hardware effects, builds its private Plants, and exposes only the
+`PhoenixCapabilities.Scoring` vocabulary.
 
 Feedback-aware Tasks name both command target and Plant because they write the target while the
 Plant supplies completion feedback/provenance. Ordinary exact mechanisms retain only their Plant
@@ -362,9 +390,10 @@ diagnostic, and declare the generic velocity or position workflow in a thin OpMo
 generic tunable-regulator interface or registry, and mechanisms without a proven live-tuning need
 add no tuning API.
 
-Production TeleOp and Auto copy `PhoenixProfile` and never read Configurables. The tuning entry
-starts from the checked-in scoring configuration, then captures the motor controller's resulting
-session baseline. Panels **Update All** changes only mutable draft fields. After Update All finishes
+Production TeleOp and Auto create a fresh current profile, synchronously distribute its active
+slices, and never read Configurables. The tuning entry starts from
+`PhoenixScoring.Config.defaults()`, then captures the motor controller's resulting session baseline.
+Panels **Update All** changes only mutable draft fields. After Update All finishes
 and the operator verifies the displayed values, an A press causes the single OpMode heartbeat to
 read all fields after a short best-effort quiescence interval and validate the resulting complete
 tuple before any effect. Configurables provides no atomic batch marker, so the interval filters
@@ -443,17 +472,30 @@ pose and visible RED draft unchanged.
 
 ## Profile shape
 
-`PhoenixProfile` is data-only and copied by long-lived owners. Major sections include:
+`PhoenixProfile` is a short-lived, data-only composition draft. Its sole public factory,
+`current()`, returns a fresh graph on every call; it has no public `defaults()` or `copy()`. Create
+one local value, make any run-specific edits on that value, and pass that same value into the mode
+declaration. Long-lived owners capture only their active slices. The public fields are:
 
 - `drive`: drivetrain hardware and scaling;
 - `vision`: selected backend and camera rig;
 - `localization`: predictor, AprilTag solve, and corrected-estimator policy;
-- `field`: fixed field facts and tag layout;
-- `autoAim`: alliance-to-scoring-tag mapping, complete target catalog, and targeting tolerances;
+- `fixedAprilTagLayout`: fixed field tag facts;
+- `targeting`: alliance-to-scoring-tag mapping, complete target catalog, and targeting tolerances;
 - `auto`: route/scoring budgets and fallback timing;
 - `scoring`: mechanism hardware, Plants, readiness, and feed timing;
 - `controls` and `driveAssist`: operator mapping and assist policy;
 - `calibration`: explicit calibration acknowledgements.
+
+Checked-in values live with their owners: drivetrain and localization recipes in
+`PhoenixDriveConfiguration.current()` and `PhoenixLocalizationConfiguration.current()`; physical
+acknowledgements in `PhoenixCalibrationConfiguration.current()`; the fixed layout in
+`FtcGameTagLayout.currentGameFieldFixed()`; shot-table rows in
+`PhoenixShotVelocityCalibration.currentTable()`; and software baselines in each public owner
+`Config.defaults()` (`PhoenixVisionFactory`, `PhoenixTeleOpControls`, `PhoenixDriveAssistService`,
+`PhoenixScoring`, `PhoenixTargeting`, and `PhoenixAutoConfig`). Defaults and successful software
+validation do not prove the installed wiring, camera mount, odometry calibration, mechanism tuning,
+route clearance, or physical STOP behavior.
 
 Alliance, route choice, and strategy are not mutable profile filters. Auto carries all three in its
 frozen `PhoenixAutoSpec`; TeleOp freezes its own `PhoenixAlliance` through
@@ -467,6 +509,7 @@ Do not:
 - construct a second Phoenix/Pedro hardware graph after INIT selection;
 - override raw FTC callbacks in a Phoenix Auto entry;
 - keep a private Auto clock, runner, telemetry commit, or cleanup path;
+- retain or broadly copy `PhoenixProfile` in the composition root;
 - make route Tasks the only Pedro heartbeat owner;
 - filter the complete profile to choose an alliance target;
 - let opposite-alliance observations enter preview/sticky target selection;

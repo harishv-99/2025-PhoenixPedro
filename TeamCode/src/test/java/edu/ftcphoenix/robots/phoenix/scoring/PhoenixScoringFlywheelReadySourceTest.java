@@ -36,8 +36,8 @@ public final class PhoenixScoringFlywheelReadySourceTest {
 
     @Test
     public void readinessIsDisabledDebouncedCycleStableAndStopIsTerminalIdempotent() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
-        PhoenixProfile.ScoringConfig config = profile.scoring.copy();
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
         config.readyPredictLeadSec = 0.0;
         config.readyStableSec = 0.05;
 
@@ -107,18 +107,44 @@ public final class PhoenixScoringFlywheelReadySourceTest {
         }
     }
 
+    @Test
+    public void predictiveOverflowPublishesNanAndUnreadyWithoutFalsifyingRawPlantTruth() {
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
+        config.readyPredictLeadSec = Double.MAX_VALUE;
+        config.readyStableSec = 0.0;
+
+        TestHardwareMap hardwareMap = TestHardwareMap.forScoring(config);
+        PhoenixScoring scoring = new PhoenixScoring(hardwareMap, config, targetingFor(profile));
+        LoopClock clock = new LoopClock();
+        clock.reset(0.0);
+        scoring.setFlywheelEnabled(true);
+        scoring.setSelectedVelocityNative(config.velocityMin);
+        hardwareMap.setShooterVelocity(0.0);
+        scoring.update(clock);
+
+        clock.update(1.0);
+        hardwareMap.setShooterVelocity(config.velocityMin);
+        scoring.update(clock);
+
+        assertTrue("the independent Plant tolerance fact remains truthful",
+                scoring.status().flywheelAtTarget);
+        assertTrue(Double.isNaN(scoring.status().predictedFlywheelAbsNative));
+        assertTrue(Double.isNaN(scoring.status().predictedFlywheelErrorNative));
+        assertFalse(scoring.status().ready);
+    }
+
     private static PhoenixTargeting targetingFor(PhoenixProfile profile) {
         return new PhoenixTargeting(
-                profile.autoAim,
+                profile.targeting,
                 profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
-                profile.field.fixedAprilTagLayout,
-                Source.constant(profile.autoAim.scoringTagIds()),
+                profile.fixedAprilTagLayout,
+                Source.constant(profile.targeting.scoringTargets.keySet()),
                 BooleanSource.constant(true),
-                BooleanSource.constant(false),
-                profile.autoAim.shotVelocityTable
+                BooleanSource.constant(false)
         );
     }
 
@@ -153,7 +179,7 @@ public final class PhoenixScoringFlywheelReadySourceTest {
             super(null, null);
         }
 
-        static TestHardwareMap forScoring(PhoenixProfile.ScoringConfig config) {
+        static TestHardwareMap forScoring(PhoenixScoring.Config config) {
             TestHardwareMap map = new TestHardwareMap();
             map.devices.put(config.nameMotorIntake, deviceProxy(DcMotorEx.class, "intake", new DeviceState()));
             map.shooterState = new DeviceState();

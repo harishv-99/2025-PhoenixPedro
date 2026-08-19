@@ -42,29 +42,25 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void lateCalculationFailureDoesNotAdvanceAimReadinessAndCanRetrySameCycle() {
         PhoenixProfile profile = PhoenixProfile.current();
-        PhoenixProfile.AutoAimConfig autoAim = profile.autoAim.copy();
+        PhoenixTargeting.Config autoAim = PhoenixTargeting.Config.defaults();
         autoAim.aimReadyDebounceSec = 0.5;
-
-        int scoringTagId = autoAim.scoringTagIds().iterator().next();
-        CurrentFrameAprilTagSensor tagSensor = new CurrentFrameAprilTagSensor(scoringTagId);
-        LateFailingTagLayout fieldLayout = new LateFailingTagLayout(
-                profile.field.fixedAprilTagLayout
-        );
-        int runtimeSetupHasCalls = autoAim.scoringTagIds().size();
-        if (!fieldLayout.ids().equals(autoAim.scoringTagIds())) {
-            runtimeSetupHasCalls += autoAim.scoringTagIds().size();
-        }
+        int scoringTagId = autoAim.scoringTargets.keySet().iterator().next();
+        int[] eligibilityReads = {0};
+        RuntimeException injectedFailure = new RuntimeException("injected guidance failure");
+        FailOncePoseEstimator poseEstimator = new FailOncePoseEstimator(injectedFailure);
         PhoenixTargeting targeting = new PhoenixTargeting(
                 autoAim,
                 profile.localization.estimation.aprilTags.fieldPoseSolver,
-                tagSensor,
+                new CurrentFrameAprilTagSensor(scoringTagId),
                 CameraMountConfig.identity(),
-                new NoPoseEstimator(),
-                fieldLayout,
-                Source.constant(autoAim.scoringTagIds()),
+                poseEstimator,
+                profile.fixedAprilTagLayout,
+                Source.of(clock -> {
+                    eligibilityReads[0]++;
+                    return Collections.singleton(scoringTagId);
+                }),
                 BooleanSource.constant(true),
-                BooleanSource.constant(false),
-                autoAim.shotVelocityTable
+                BooleanSource.constant(false)
         );
 
         LoopClock clock = new LoopClock();
@@ -72,12 +68,6 @@ public final class PhoenixTargetingSourceTest {
         PhoenixCapabilities.TargetingStatus initial = targeting.status();
         assertFalse(initial.selection.hasSelection);
         clock.update(0.25);
-        RuntimeException injectedFailure =
-                new RuntimeException("injected late field-layout failure");
-        fieldLayout.failDirectHasAfter(
-                runtimeSetupHasCalls,
-                injectedFailure
-        );
 
         try {
             targeting.update(clock);
@@ -87,8 +77,8 @@ public final class PhoenixTargetingSourceTest {
         }
         assertSame("a failed update must retain the prior published snapshot",
                 initial, targeting.status());
+        assertEquals(1, eligibilityReads[0]);
 
-        clock.update(0.5);
         targeting.update(clock);
         PhoenixCapabilities.TargetingStatus recovered = targeting.status();
         assertTrue(recovered.selection.hasSelection);
@@ -96,42 +86,19 @@ public final class PhoenixTargetingSourceTest {
         assertTrue(recovered.aimStatus.omegaWithin(Math.toRadians(autoAim.aimReadyToleranceDeg)));
         assertFalse("the failed prior cycle must not contribute its dt to readiness", recovered.aimReady);
         assertSame(recovered, targeting.status());
+        assertEquals("the committed runtime must freeze eligibility across retry", 1,
+                eligibilityReads[0]);
 
         clock.update(0.75);
         targeting.update(clock);
         assertTrue("two successful ready cycles should satisfy the configured debounce",
                 targeting.status().aimReady);
-
-        targeting.reset();
-        PhoenixCapabilities.TargetingStatus resetStatus = targeting.status();
-        assertFalse(resetStatus.selection.hasSelection);
-        clock.update(1.0);
-        RuntimeException sameCycleFailure =
-                new RuntimeException("injected late same-cycle retry failure");
-        fieldLayout.failDirectHasAfter(
-                runtimeSetupHasCalls,
-                sameCycleFailure
-        );
-        try {
-            targeting.update(clock);
-            fail("expected injected late same-cycle retry failure");
-        } catch (RuntimeException actual) {
-            assertSame(sameCycleFailure, actual);
-        }
-        assertSame(resetStatus, targeting.status());
-
-        targeting.update(clock);
-        PhoenixCapabilities.TargetingStatus sameCycleRecovered = targeting.status();
-        assertTrue(sameCycleRecovered.selection.hasSelection);
-        assertTrue(sameCycleRecovered.aimStatus.hasOmegaError);
-        assertFalse(sameCycleRecovered.aimReady);
-        assertSame(sameCycleRecovered, targeting.status());
     }
 
     @Test
     public void freshObservationWithNonFiniteRangePublishesNoSuggestedVelocity() {
         PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
         PhoenixTargeting targeting = targetingFor(
                 profile,
                 new CurrentFrameNonFiniteRangeAprilTagSensor(selectedTagId),
@@ -155,7 +122,7 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void freshObservationWithFiniteRangePublishesFiniteSuggestedVelocity() {
         PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
         PhoenixTargeting targeting = targetingFor(
                 profile,
                 new CurrentFrameAprilTagSensor(selectedTagId),
@@ -171,7 +138,7 @@ public final class PhoenixTargetingSourceTest {
         assertTrue(status.hasSuggestedVelocity);
         assertTrue(Double.isFinite(status.suggestedVelocityNative));
         assertEquals(
-                profile.autoAim.shotVelocityTable.interpolate(36.0),
+                profile.targeting.shotVelocityTable.interpolate(36.0),
                 status.suggestedVelocityNative,
                 0.0
         );
@@ -191,16 +158,15 @@ public final class PhoenixTargetingSourceTest {
         });
 
         PhoenixTargeting targeting = new PhoenixTargeting(
-                profile.autoAim,
+                profile.targeting,
                 profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
-                profile.field.fixedAprilTagLayout,
-                Source.constant(profile.autoAim.scoringTagIds()),
+                profile.fixedAprilTagLayout,
+                Source.constant(profile.targeting.scoringTargets.keySet()),
                 BooleanSource.constant(true),
-                failOnceOverride,
-                profile.autoAim.shotVelocityTable
+                failOnceOverride
         );
         LoopClock clock = new LoopClock();
         clock.update(1.0);
@@ -241,7 +207,8 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void eligibleTargetsFreezeBeforeStickyPolicyAndRefreshOnlyAfterOwnerReset() {
         PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds = profile.autoAim.scoringTagIds().toArray(new Integer[0]);
+        Integer[] configuredTagIds =
+                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
         assertTrue("Phoenix test profile must contain both alliance targets",
                 configuredTagIds.length >= 2);
         int firstTagId = configuredTagIds[0];
@@ -284,13 +251,13 @@ public final class PhoenixTargetingSourceTest {
                 targeting.status().selection.selectedTagId
         );
         assertEquals(
-                profile.autoAim.targetProfileForTag(firstTagId).label,
+                profile.targeting.scoringTargets.get(firstTagId).label,
                 targeting.status().targetLabel
         );
         assertEquals(
                 "target eligibility must not mutate the full configured scoring catalog",
                 configuredTagIds.length,
-                profile.autoAim.scoringTagIds().size()
+                profile.targeting.scoringTargets.size()
         );
         assertEquals("eligibility must be sampled once per targeting session", 1, eligibilityReads[0]);
 
@@ -312,12 +279,13 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void inactiveCatalogTagMissingFromFixedLayoutDoesNotBlockExactEligibleRuntime() {
         PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds = profile.autoAim.scoringTagIds().toArray(new Integer[0]);
+        Integer[] configuredTagIds =
+                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
         assertTrue("Phoenix test profile must contain both alliance targets",
                 configuredTagIds.length >= 2);
         int eligibleTagId = configuredTagIds[0];
         int inactiveTagId = configuredTagIds[1];
-        assertTrue(profile.field.fixedAprilTagLayout.has(eligibleTagId));
+        assertTrue(profile.fixedAprilTagLayout.has(eligibleTagId));
 
         CountingCurrentFrameMultipleAprilTagSensor tagSensor =
                 new CountingCurrentFrameMultipleAprilTagSensor(eligibleTagId, inactiveTagId);
@@ -325,7 +293,7 @@ public final class PhoenixTargetingSourceTest {
         PhoenixTargeting targeting = targetingFor(
                 profile,
                 tagSensor,
-                new OmittingTagLayout(profile.field.fixedAprilTagLayout, inactiveTagId),
+                new OmittingTagLayout(profile.fixedAprilTagLayout, inactiveTagId),
                 Source.of(clock -> {
                     eligibilityReads[0]++;
                     return Collections.singleton(eligibleTagId);
@@ -353,13 +321,13 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void selectedTagMissingFromFixedLayoutFailsBeforeSensorRead() {
         PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
         CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
         int[] eligibilityReads = {0};
         PhoenixTargeting targeting = targetingFor(
                 profile,
                 tagSensor,
-                new OmittingTagLayout(profile.field.fixedAprilTagLayout, selectedTagId),
+                new OmittingTagLayout(profile.fixedAprilTagLayout, selectedTagId),
                 Source.of(clock -> {
                     eligibilityReads[0]++;
                     return Collections.singleton(selectedTagId);
@@ -386,7 +354,7 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void missingCatalogDefersToPrestartAndFailsActionablyBeforeSensorRead() {
         PhoenixProfile profile = PhoenixProfile.current();
-        PhoenixProfile.AutoAimConfig autoAim = profile.autoAim.copy();
+        PhoenixTargeting.Config autoAim = PhoenixTargeting.Config.defaults();
         autoAim.scoringTargets = null;
         CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
         int[] eligibilityReads = {0};
@@ -397,14 +365,13 @@ public final class PhoenixTargetingSourceTest {
                 tagSensor,
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
-                profile.field.fixedAprilTagLayout,
+                profile.fixedAprilTagLayout,
                 Source.of(clock -> {
                     eligibilityReads[0]++;
                     return Collections.singleton(autoAim.redAllianceScoringTagId);
                 }),
                 BooleanSource.constant(true),
-                BooleanSource.constant(false),
-                autoAim.shotVelocityTable
+                BooleanSource.constant(false)
         );
 
         assertEquals("constructor must leave the missing catalog to managed prestart", 0,
@@ -418,12 +385,12 @@ public final class PhoenixTargetingSourceTest {
             targeting.update(clock);
             fail("expected a missing catalog to fail if targeting update is improperly reached");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("PhoenixProfile.autoAim.scoringTargets"));
-            assertTrue(expected.getMessage().contains("prestart readiness"));
+            assertTrue(expected.getMessage().contains("PhoenixTargeting.Config.scoringTargets"));
+            assertTrue(expected.getMessage().contains("readiness"));
             assertTrue(expected.getMessage().contains("block START"));
         }
 
-        assertEquals("catalog validation must precede mode-selection sampling", 0,
+        assertEquals("eligible ids are sampled and validated before selected catalog lookup", 1,
                 eligibilityReads[0]);
         assertEquals("catalog validation must precede sensor selection", 0, tagSensor.reads);
     }
@@ -431,7 +398,8 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void eligibleTargetsFreezeOnceEvenWhenFirstSensorCalculationFails() {
         PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds = profile.autoAim.scoringTagIds().toArray(new Integer[0]);
+        Integer[] configuredTagIds =
+                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
         assertTrue("Phoenix test profile must contain both alliance targets",
                 configuredTagIds.length >= 2);
         int firstTagId = configuredTagIds[0];
@@ -485,7 +453,8 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void eligibleTargetsFreezeOnceEvenWhenFirstGuidanceQueryFails() {
         PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds = profile.autoAim.scoringTagIds().toArray(new Integer[0]);
+        Integer[] configuredTagIds =
+                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
         assertTrue("Phoenix test profile must contain both alliance targets",
                 configuredTagIds.length >= 2);
         int firstTagId = configuredTagIds[0];
@@ -497,19 +466,18 @@ public final class PhoenixTargetingSourceTest {
         RuntimeException injectedFailure = new RuntimeException("injected first query failure");
         FailOncePoseEstimator poseEstimator = new FailOncePoseEstimator(injectedFailure);
         PhoenixTargeting targeting = new PhoenixTargeting(
-                profile.autoAim,
+                profile.targeting,
                 profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new CurrentFrameMultipleAprilTagSensor(firstTagId, secondTagId),
                 CameraMountConfig.identity(),
                 poseEstimator,
-                profile.field.fixedAprilTagLayout,
+                profile.fixedAprilTagLayout,
                 Source.of(clock -> {
                     eligibilityReads[0]++;
                     return eligibleTagIds;
                 }),
                 BooleanSource.constant(true),
-                BooleanSource.constant(false),
-                profile.autoAim.shotVelocityTable
+                BooleanSource.constant(false)
         );
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
@@ -545,7 +513,7 @@ public final class PhoenixTargetingSourceTest {
                 profile,
                 new EmptyAprilTagSensor(),
                 Source.constant(Collections.singleton(
-                        profile.autoAim.scoringTagIds().iterator().next()
+                        profile.targeting.scoringTargets.keySet().iterator().next()
                 ))
         );
         DriveOverlay overlay = targeting.aimOverlay();
@@ -630,7 +598,7 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void aimTaskSnapshotsRequestedMaskBeforeDeferredStart() {
         PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
         PhoenixTargeting targeting = targetingFor(
                 profile,
                 new CurrentFrameAprilTagSensor(selectedTagId),
@@ -657,7 +625,7 @@ public final class PhoenixTargetingSourceTest {
     @Test
     public void resetRequiresFreshOverlayWithoutPoisoningTheNextSession() {
         PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
         PhoenixTargeting targeting = targetingFor(
                 profile,
                 new CurrentFrameAprilTagSensor(selectedTagId),
@@ -709,9 +677,6 @@ public final class PhoenixTargetingSourceTest {
             assertTrue(expected.getMessage().contains("eligibleScoringTagIds"));
             assertTrue(expected.getMessage().contains("scoringTargets"));
             assertTrue(expected.getMessage().contains(Integer.toString(unknownTagId)));
-            for (Integer configuredTagId : profile.autoAim.scoringTagIds()) {
-                assertTrue(expected.getMessage().contains(configuredTagId.toString()));
-            }
         }
         assertEquals("eligibility must be validated before reading detections", 0, tagSensor.reads);
         assertFalse(targeting.status().selection.hasSelection);
@@ -763,7 +728,7 @@ public final class PhoenixTargetingSourceTest {
         return targetingFor(
                 profile,
                 tagSensor,
-                profile.field.fixedAprilTagLayout,
+                profile.fixedAprilTagLayout,
                 eligibleTagIds
         );
     }
@@ -773,7 +738,7 @@ public final class PhoenixTargetingSourceTest {
                                                   TagLayout fieldTagLayout,
                                                   Source<Set<Integer>> eligibleTagIds) {
         return new PhoenixTargeting(
-                profile.autoAim,
+                profile.targeting,
                 profile.localization.estimation.aprilTags.fieldPoseSolver,
                 tagSensor,
                 CameraMountConfig.identity(),
@@ -781,8 +746,7 @@ public final class PhoenixTargetingSourceTest {
                 fieldTagLayout,
                 eligibleTagIds,
                 BooleanSource.constant(true),
-                BooleanSource.constant(false),
-                profile.autoAim.shotVelocityTable
+                BooleanSource.constant(false)
         );
     }
 
@@ -792,7 +756,7 @@ public final class PhoenixTargetingSourceTest {
                                                             double correctedValue,
                                                             ConfigAnswer answer) {
         PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.autoAim.scoringTagIds().iterator().next();
+        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
         PhoenixTargeting targeting = targetingFor(
                 profile,
                 new CurrentFrameAprilTagSensor(selectedTagId),
@@ -989,45 +953,6 @@ public final class PhoenixTargetingSourceTest {
         @Override
         public Set<Integer> get(LoopClock clock) {
             return null;
-        }
-    }
-
-    private static final class LateFailingTagLayout implements TagLayout {
-        private final TagLayout delegate;
-        private RuntimeException nextDirectHasFailure;
-        private int successfulDirectHasCallsBeforeFailure;
-
-        LateFailingTagLayout(TagLayout delegate) {
-            this.delegate = delegate;
-        }
-
-        void failDirectHasAfter(int successfulCalls, RuntimeException failure) {
-            successfulDirectHasCallsBeforeFailure = successfulCalls;
-            nextDirectHasFailure = failure;
-        }
-
-        @Override
-        public Pose3d getFieldToTagPose(int id) {
-            return delegate.getFieldToTagPose(id);
-        }
-
-        @Override
-        public Set<Integer> ids() {
-            return delegate.ids();
-        }
-
-        @Override
-        public boolean has(int id) {
-            if (nextDirectHasFailure != null) {
-                if (successfulDirectHasCallsBeforeFailure > 0) {
-                    successfulDirectHasCallsBeforeFailure--;
-                    return getFieldToTagPose(id) != null;
-                }
-                RuntimeException failure = nextDirectHasFailure;
-                nextDirectHasFailure = null;
-                throw failure;
-            }
-            return getFieldToTagPose(id) != null;
         }
     }
 

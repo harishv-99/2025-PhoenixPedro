@@ -5,10 +5,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.geometry.Pose2d;
+import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
 import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
 
 /**
  * Evaluates Phoenix-specific readiness rules without owning FTC UI or runtime lifecycle.
@@ -173,13 +176,12 @@ public final class PhoenixReadiness {
      * <p>Manual TeleOp remains a separate mode-client decision; this report applies only to pose
      * assists. Both Pinpoint axis direction and pod-offset acknowledgements are required.</p>
      *
-     * @param profile Phoenix profile that would configure TeleOp
+     * @param calibration Phoenix calibration acknowledgements active for pose assists
      * @return immutable readiness report
      */
-    public static Result teleOpPoseAssists(PhoenixProfile profile) {
-        Objects.requireNonNull(profile, "profile");
+    public static Result teleOpPoseAssists(PhoenixCalibrationConfig calibration) {
         List<Issue> issues = new ArrayList<Issue>();
-        addCalibrationIssues(issues, profile, AutoPurpose.MATCH_AUTO);
+        addCalibrationIssues(issues, calibration, AutoPurpose.MATCH_AUTO);
         return new Result(issues);
     }
 
@@ -191,17 +193,23 @@ public final class PhoenixReadiness {
      * requires the selected scoring tag to be visible during INIT.</p>
      *
      * @param alliance selected match alliance
-     * @param profile profile snapshot to validate
+     * @param targeting targeting catalog draft used for this selection
+     * @param fixedAprilTagLayout fixed field facts used for this selection
      * @return immutable readiness report for the selected alliance's scoring target
      */
     public static Result allianceScoringTarget(
             PhoenixAlliance alliance,
-            PhoenixProfile profile
+            PhoenixTargeting.Config targeting,
+            TagLayout fixedAprilTagLayout
     ) {
         Objects.requireNonNull(alliance, "alliance");
-        Objects.requireNonNull(profile, "profile");
         List<Issue> issues = new ArrayList<Issue>();
-        addAllianceScoringTargetIssues(issues, alliance, profile);
+        addAllianceScoringTargetIssues(
+                issues,
+                alliance,
+                targeting,
+                fixedAprilTagLayout
+        );
         return new Result(issues);
     }
 
@@ -213,25 +221,33 @@ public final class PhoenixReadiness {
      * route-maturity rules. Issues are returned in deterministic policy order.</p>
      *
      * @param spec selected autonomous setup
-     * @param profile profile snapshot to validate
+     * @param calibration Phoenix calibration acknowledgements active for Auto
+     * @param targeting targeting catalog draft used for this selection
+     * @param fixedAprilTagLayout fixed field facts used for this selection
      * @param purpose Driver Station entry requesting the routine
      * @return immutable readiness report
      */
     public static Result pedroAuto(
             PhoenixAutoSpec spec,
-            PhoenixProfile profile,
+            PhoenixCalibrationConfig calibration,
+            PhoenixTargeting.Config targeting,
+            TagLayout fixedAprilTagLayout,
             AutoPurpose purpose
     ) {
         Objects.requireNonNull(spec, "spec");
-        Objects.requireNonNull(profile, "profile");
         Objects.requireNonNull(purpose, "purpose");
         PhoenixPedroPathFactory.RouteAvailability routeAvailability =
                 PhoenixPedroPathFactory.routeAvailabilityFor(spec);
 
         List<Issue> issues = new ArrayList<Issue>();
         addPurposeIssues(issues, spec, purpose);
-        addCalibrationIssues(issues, profile, purpose);
-        addAllianceScoringTargetIssues(issues, spec.alliance, profile);
+        addCalibrationIssues(issues, calibration, purpose);
+        addAllianceScoringTargetIssues(
+                issues,
+                spec.alliance,
+                targeting,
+                fixedAprilTagLayout
+        );
         addRouteIssues(issues, routeAvailability, purpose);
         return new Result(issues);
     }
@@ -295,19 +311,19 @@ public final class PhoenixReadiness {
     }
 
     private static void addCalibrationIssues(List<Issue> issues,
-                                             PhoenixProfile profile,
+                                             PhoenixCalibrationConfig calibration,
                                              AutoPurpose purpose) {
-        if (profile.calibration == null) {
+        if (calibration == null) {
             issues.add(issue(
                     "pose.calibration_config_missing",
                     Severity.BLOCKING,
                     "PhoenixProfile.calibration is missing.",
-                    "Restore a PhoenixProfile.CalibrationConfig and complete its Pinpoint checks."
+                    "Restore PhoenixCalibrationConfiguration.current() and complete its Pinpoint checks."
             ));
             return;
         }
 
-        if (!profile.calibration.pinpointAxesVerified) {
+        if (!calibration.pinpointAxesVerified) {
             issues.add(issue(
                     "pose.pinpoint_axes_unverified",
                     Severity.BLOCKING,
@@ -316,7 +332,7 @@ public final class PhoenixReadiness {
             ));
         }
 
-        if (!profile.calibration.pinpointPodOffsetsCalibrated) {
+        if (!calibration.pinpointPodOffsetsCalibrated) {
             Severity severity = purpose == AutoPurpose.PEDRO_INTEGRATION_TEST
                     ? Severity.WARNING
                     : Severity.BLOCKING;
@@ -331,18 +347,19 @@ public final class PhoenixReadiness {
 
     private static void addAllianceScoringTargetIssues(List<Issue> issues,
                                                        PhoenixAlliance alliance,
-                                                       PhoenixProfile profile) {
-        if (profile.autoAim == null) {
+                                                       PhoenixTargeting.Config targeting,
+                                                       TagLayout fixedAprilTagLayout) {
+        if (targeting == null) {
             issues.add(issue(
                     "targeting.config_missing",
                     Severity.BLOCKING,
-                    "PhoenixProfile.autoAim is missing, so the selected alliance scoring AprilTag cannot be resolved.",
-                    "Restore a PhoenixProfile.AutoAimConfig with its alliance scoring tag ids and target catalog."
+                    "PhoenixProfile.targeting is missing, so the selected alliance scoring AprilTag cannot be resolved.",
+                    "Restore PhoenixTargeting.Config.defaults() with its alliance tag ids and target catalog."
             ));
             return;
         }
 
-        int tagId = profile.autoAim.scoringTagIdFor(alliance);
+        int tagId = targeting.scoringTagIdFor(alliance);
         String tagField = selectedAllianceTagField(alliance);
 
         if (tagId < 0) {
@@ -355,42 +372,134 @@ public final class PhoenixReadiness {
             return;
         }
 
-        if (profile.autoAim.scoringTargets == null) {
+        PhoenixTargeting.ScoringTarget selectedTarget = null;
+        if (targeting.scoringTargets == null) {
             issues.add(issue(
                     "targeting.scoring_target_catalog_missing",
                     Severity.BLOCKING,
-                    "PhoenixProfile.autoAim.scoringTargets is missing.",
+                    "PhoenixProfile.targeting.scoringTargets is missing.",
                     "Restore the scoring-target catalog and add the selected alliance tag id " + tagId + "."
             ));
         } else {
-            if (profile.autoAim.scoringTargets.get(tagId) == null) {
+            selectedTarget = targeting.scoringTargets.get(tagId);
+            if (selectedTarget == null) {
                 issues.add(issue(
                         "targeting.selected_scoring_tag_missing",
                         Severity.BLOCKING,
                         "Selected " + alliance.label() + " alliance scoring tag id " + tagId
-                                + " (" + tagField + ") is not in PhoenixProfile.autoAim.scoringTargets.",
+                                + " (" + tagField + ") is not in PhoenixProfile.targeting.scoringTargets.",
                         "Add a scoring-target entry keyed by tag id " + tagId
                                 + ", or correct " + tagField + "."
                 ));
             }
         }
 
-        TagLayout fixedLayout = profile.field == null ? null : profile.field.fixedAprilTagLayout;
-        if (fixedLayout == null) {
+        if (selectedTarget != null) {
+            addSelectedTargetValueIssues(issues, tagId, selectedTarget);
+        }
+
+        Pose3d fieldToTag = null;
+        if (fixedAprilTagLayout == null) {
             issues.add(issue(
                     "targeting.fixed_tag_layout_missing",
                     Severity.BLOCKING,
-                    "PhoenixProfile.field.fixedAprilTagLayout is missing.",
+                    "PhoenixProfile.fixedAprilTagLayout is missing.",
                     "Configure a fixed-field TagLayout containing the selected alliance scoring tag id "
                             + tagId + "."
             ));
-        } else if (!fixedLayout.has(tagId)) {
+        } else {
+            fieldToTag = fixedAprilTagLayout.getFieldToTagPose(tagId);
+            if (fieldToTag == null) {
+                issues.add(issue(
+                        "targeting.selected_scoring_tag_not_fixed",
+                        Severity.BLOCKING,
+                        "Selected " + alliance.label() + " alliance scoring tag id " + tagId
+                                + " is not in PhoenixProfile.fixedAprilTagLayout.",
+                        "Use the correct season/practice fixed-tag layout, or correct " + tagField + "."
+                ));
+            }
+        }
+
+        if (selectedTarget != null
+                && selectedTarget.aimOffset != null
+                && finite(selectedTarget.aimOffset.forwardInches)
+                && finite(selectedTarget.aimOffset.leftInches)
+                && fieldToTag != null) {
+            addSelectedTargetPoseIssues(issues, tagId, fieldToTag, selectedTarget.aimOffset);
+        }
+    }
+
+    private static void addSelectedTargetValueIssues(
+            List<Issue> issues,
+            int tagId,
+            PhoenixTargeting.ScoringTarget target
+    ) {
+        if (target.label == null || target.label.trim().isEmpty()) {
             issues.add(issue(
-                    "targeting.selected_scoring_tag_not_fixed",
+                    "targeting.selected_scoring_target_label_invalid",
                     Severity.BLOCKING,
-                    "Selected " + alliance.label() + " alliance scoring tag id " + tagId
-                            + " is not in PhoenixProfile.field.fixedAprilTagLayout.",
-                    "Use the correct season/practice fixed-tag layout, or correct " + tagField + "."
+                    "PhoenixProfile.targeting.scoringTargets[" + tagId
+                            + "].label must be non-blank.",
+                    "Name the selected scoring target in PhoenixTargeting.Config.defaults()."
+            ));
+        }
+        if (target.aimOffset == null) {
+            issues.add(issue(
+                    "targeting.selected_scoring_target_offset_missing",
+                    Severity.BLOCKING,
+                    "PhoenixProfile.targeting.scoringTargets[" + tagId
+                            + "].aimOffset is missing.",
+                    "Configure a finite forward/left AimOffset for the selected scoring target."
+            ));
+            return;
+        }
+        if (!finite(target.aimOffset.forwardInches)
+                || !finite(target.aimOffset.leftInches)) {
+            issues.add(issue(
+                    "targeting.selected_scoring_target_offset_nonfinite",
+                    Severity.BLOCKING,
+                    "PhoenixProfile.targeting.scoringTargets[" + tagId
+                            + "].aimOffset must have finite forwardInches and leftInches.",
+                    "Replace the selected target offset with measured finite inches."
+            ));
+        }
+    }
+
+    private static void addSelectedTargetPoseIssues(
+            List<Issue> issues,
+            int tagId,
+            Pose3d fieldToTag,
+            PhoenixTargeting.AimOffset offset
+    ) {
+        if (!finite(fieldToTag.xInches)
+                || !finite(fieldToTag.yInches)
+                || !finite(fieldToTag.zInches)
+                || !finite(fieldToTag.yawRad)
+                || !finite(fieldToTag.pitchRad)
+                || !finite(fieldToTag.rollRad)) {
+            issues.add(issue(
+                    "targeting.selected_scoring_tag_pose_nonfinite",
+                    Severity.BLOCKING,
+                    "PhoenixProfile.fixedAprilTagLayout tag id " + tagId
+                            + " has a non-finite field pose.",
+                    "Restore finite fixed-field position and orientation facts for that tag."
+            ));
+            return;
+        }
+        Pose2d fieldToAim = new Pose2d(
+                fieldToTag.xInches,
+                fieldToTag.yInches,
+                fieldToTag.yawRad
+        ).then(new Pose2d(offset.forwardInches, offset.leftInches, 0.0));
+        if (!finite(fieldToAim.xInches)
+                || !finite(fieldToAim.yInches)
+                || !finite(fieldToAim.headingRad)) {
+            issues.add(issue(
+                    "targeting.selected_scoring_aim_pose_nonfinite",
+                    Severity.BLOCKING,
+                    "Selected tag id " + tagId
+                            + " and its aim offset compose to a non-finite field pose.",
+                    "Correct the fixed tag pose or target offset so their composed pose is finite."
             ));
         }
     }
@@ -424,9 +533,9 @@ public final class PhoenixReadiness {
     private static String selectedAllianceTagField(PhoenixAlliance alliance) {
         switch (alliance) {
             case RED:
-                return "PhoenixProfile.autoAim.redAllianceScoringTagId";
+                return "PhoenixProfile.targeting.redAllianceScoringTagId";
             case BLUE:
-                return "PhoenixProfile.autoAim.blueAllianceScoringTagId";
+                return "PhoenixProfile.targeting.blueAllianceScoringTagId";
             default:
                 throw new IllegalArgumentException("Unsupported Phoenix alliance: " + alliance);
         }
@@ -445,5 +554,9 @@ public final class PhoenixReadiness {
             throw new IllegalArgumentException(name + " must not be blank");
         }
         return text;
+    }
+
+    private static boolean finite(double value) {
+        return Double.isFinite(value);
     }
 }

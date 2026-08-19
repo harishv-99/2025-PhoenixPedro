@@ -49,6 +49,34 @@ import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
  */
 public final class PhoenixDriveAssistService {
 
+    /** Mutable data-only tuning for Phoenix's shoot-brace drive-assist policy. */
+    public static final class Config {
+
+        /** Translation magnitude at or below which shoot-brace may latch on. */
+        public double shootBraceEnterTranslateMagnitude = 0.06;
+
+        /** Translation magnitude at or above which shoot-brace must drop out. */
+        public double shootBraceExitTranslateMagnitude = 0.10;
+
+        /** Translation proportional gain used by the shoot-brace pose lock. */
+        public double shootBraceTranslateKp = 0.08;
+
+        /** Maximum translation command magnitude contributed by shoot-brace. */
+        public double shootBraceMaxTranslateCmd = 0.35;
+
+        private Config() {
+        }
+
+        /**
+         * Returns a fresh complete software-valid Phoenix drive-assist draft.
+         *
+         * @return fresh mutable drive-assist configuration
+         */
+        public static Config defaults() {
+            return new Config();
+        }
+    }
+
     /**
      * Immutable status snapshot for Phoenix's robot-specific drive-assist service.
      */
@@ -91,7 +119,8 @@ public final class PhoenixDriveAssistService {
     /**
      * Creates the Phoenix drive-assist service.
      *
-     * @param config                      robot-specific drive-assist tuning snapshot copied for local ownership
+     * @param config                      robot-specific drive-assist draft whose retained scalar
+     *                                    values are captured for local ownership
      * @param manualDrive                 base manual drive source from the controls owner
      * @param manualTranslateMagnitude    source describing the driver's current translation-stick magnitude
      * @param scoringStatusSource         current scoring snapshot source sampled as part of the final drive read
@@ -99,8 +128,11 @@ public final class PhoenixDriveAssistService {
      * @param poseAssistsAvailable        whether checked-in localization calibration permits pose-dependent assists
      * @param globalAbsolutePoseEstimator shared global pose estimator used by the shoot-brace pose lock
      * @param autoAimOverlay              scoring-targeting overlay that controls robot omega while auto aim is active
+     * @throws NullPointerException if a required object is {@code null}
+     * @throws IllegalArgumentException if a Config scalar is non-finite or outside its documented
+     *                                  domain, or the enter magnitude exceeds the exit magnitude
      */
-    public PhoenixDriveAssistService(PhoenixProfile.DriveAssistConfig config,
+    public PhoenixDriveAssistService(Config config,
                                      DriveSource manualDrive,
                                      ScalarSource manualTranslateMagnitude,
                                      Source<PhoenixCapabilities.ScoringStatus> scoringStatusSource,
@@ -108,7 +140,33 @@ public final class PhoenixDriveAssistService {
                                      boolean poseAssistsAvailable,
                                      AbsolutePoseEstimator globalAbsolutePoseEstimator,
                                      DriveOverlay autoAimOverlay) {
-        PhoenixProfile.DriveAssistConfig cfg = Objects.requireNonNull(config, "config").copy();
+        Config draft = Objects.requireNonNull(config, "PhoenixDriveAssistService.Config");
+        double shootBraceEnterTranslateMagnitude = requireFiniteUnitInterval(
+                "shootBraceEnterTranslateMagnitude",
+                draft.shootBraceEnterTranslateMagnitude
+        );
+        double shootBraceExitTranslateMagnitude = requireFiniteUnitInterval(
+                "shootBraceExitTranslateMagnitude",
+                draft.shootBraceExitTranslateMagnitude
+        );
+        if (shootBraceEnterTranslateMagnitude > shootBraceExitTranslateMagnitude) {
+            throw new IllegalArgumentException(
+                    "PhoenixDriveAssistService.Config.shootBraceEnterTranslateMagnitude must be "
+                            + "<= PhoenixDriveAssistService.Config."
+                            + "shootBraceExitTranslateMagnitude, got enter="
+                            + shootBraceEnterTranslateMagnitude + " and exit="
+                            + shootBraceExitTranslateMagnitude
+            );
+        }
+        double shootBraceTranslateKp = requireFiniteNonnegative(
+                "shootBraceTranslateKp",
+                draft.shootBraceTranslateKp
+        );
+        double shootBraceMaxTranslateCmd = requireFiniteUnitInterval(
+                "shootBraceMaxTranslateCmd",
+                draft.shootBraceMaxTranslateCmd
+        );
+
         Objects.requireNonNull(manualDrive, "manualDrive");
         this.manualTranslateMagnitude = Objects.requireNonNull(manualTranslateMagnitude, "manualTranslateMagnitude");
         this.scoringStatusSource = Objects.requireNonNull(
@@ -124,10 +182,9 @@ public final class PhoenixDriveAssistService {
         Objects.requireNonNull(globalAbsolutePoseEstimator, "globalAbsolutePoseEstimator");
         Objects.requireNonNull(autoAimOverlay, "autoAimOverlay");
 
-        PhoenixProfile.DriveAssistConfig.ShootBraceConfig shootBrace = cfg.shootBrace;
         this.shootBraceLatch = HysteresisBoolean.onWhenBelowOffWhenAbove(
-                shootBrace.enterTranslateMagnitude,
-                shootBrace.exitTranslateMagnitude
+                shootBraceEnterTranslateMagnitude,
+                shootBraceExitTranslateMagnitude
         );
 
         this.statusSource = Source.of(this::calculateStatus).memoized();
@@ -141,8 +198,8 @@ public final class PhoenixDriveAssistService {
                         DriveGuidance.poseLock(
                                 globalAbsolutePoseEstimator,
                                 DriveGuidancePlan.Tuning.defaults()
-                                        .withTranslateKp(shootBrace.translateKp)
-                                        .withMaxTranslateCmd(shootBrace.maxTranslateCmd)
+                                        .withTranslateKp(shootBraceTranslateKp)
+                                        .withMaxTranslateCmd(shootBraceMaxTranslateCmd)
                         ),
                         DriveOverlayMask.TRANSLATION_ONLY
                 )
@@ -192,6 +249,26 @@ public final class PhoenixDriveAssistService {
                 assistedDrive.debugDump(dbg, p + ".assisted");
             }
         };
+    }
+
+    private static double requireFiniteUnitInterval(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+            throw new IllegalArgumentException(
+                    "PhoenixDriveAssistService.Config." + fieldName
+                            + " must be finite and in [0.0, 1.0], got " + value
+            );
+        }
+        return value;
+    }
+
+    private static double requireFiniteNonnegative(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0) {
+            throw new IllegalArgumentException(
+                    "PhoenixDriveAssistService.Config." + fieldName
+                            + " must be finite and >= 0.0, got " + value
+            );
+        }
+        return value;
     }
 
     /**

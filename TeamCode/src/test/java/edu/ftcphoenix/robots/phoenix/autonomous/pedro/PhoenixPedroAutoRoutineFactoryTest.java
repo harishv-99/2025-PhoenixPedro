@@ -19,11 +19,12 @@ import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
+import edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -76,10 +77,20 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
 
     @Test
     public void invalidMatchTakeoverThresholdFailsBeforeRoutineConstruction() throws Exception {
-        double[] invalid = {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY};
+        double[] invalid = {
+                0.0,
+                -1.0,
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY
+        };
         for (double value : invalid) {
-            PhoenixPedroAutoContext context = contextFor(PhoenixAutoStrategyId.SAFE_PRELOAD);
-            context.profile().auto.parkTakeoverElapsedSec = value;
+            PhoenixAutoConfig autoConfig = PhoenixAutoConfig.defaults();
+            autoConfig.parkTakeoverElapsedSec = value;
+            PhoenixPedroAutoContext context = contextFor(
+                    PhoenixAutoStrategyId.SAFE_PRELOAD,
+                    autoConfig
+            );
 
             try {
                 PhoenixPedroAutoRoutineFactory.build(context);
@@ -92,7 +103,195 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
         }
     }
 
+    @Test
+    public void invalidRouteTimeoutFailsAfterValidParkPolicy() throws Exception {
+        double[] invalid = {
+                0.0,
+                -1.0,
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY
+        };
+        for (double value : invalid) {
+            PhoenixAutoConfig autoConfig = PhoenixAutoConfig.defaults();
+            autoConfig.routeTimeoutSec = value;
+            PhoenixPedroAutoContext context = contextFor(
+                    PhoenixAutoStrategyId.SAFE_PRELOAD,
+                    autoConfig
+            );
+
+            try {
+                PhoenixPedroAutoRoutineFactory.build(context);
+                fail("expected invalid route timeout " + value);
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage().contains("PhoenixAutoConfig.routeTimeoutSec"));
+                assertTrue(expected.getMessage().contains("finite"));
+                assertTrue(expected.getMessage().contains("> 0"));
+            }
+        }
+    }
+
+    @Test
+    public void routinePolicyValidationUsesPhoenixAutoConfigSourceOrder() throws Exception {
+        PhoenixAutoConfig autoConfig = PhoenixAutoConfig.defaults();
+        autoConfig.parkTakeoverElapsedSec = 0.0;
+        autoConfig.routeTimeoutSec = 0.0;
+        PhoenixPedroAutoContext context = contextFor(
+                PhoenixAutoStrategyId.SAFE_PRELOAD,
+                autoConfig
+        );
+
+        try {
+            PhoenixPedroAutoRoutineFactory.build(context);
+            fail("expected first invalid routine-policy field");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains(
+                    "PhoenixAutoConfig.parkTakeoverElapsedSec"
+            ));
+        }
+    }
+
+    @Test
+    public void pathFactoryRequiresAndValidatesItsActiveAutoSlice() throws Exception {
+        try {
+            contextFor(PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST, null);
+            fail("expected explicit path Auto policy requirement");
+        } catch (NullPointerException expected) {
+            assertTrue(expected.getMessage().contains("autoConfig"));
+        }
+
+        for (double invalid : new double[]{
+                0.0,
+                -1.0,
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY
+        }) {
+            PhoenixAutoConfig autoConfig = PhoenixAutoConfig.defaults();
+            autoConfig.pedroIntegrationTestDistanceIn = invalid;
+            try {
+                contextFor(PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST, autoConfig);
+                fail("expected invalid integration distance " + invalid);
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage().contains(
+                        "PhoenixAutoConfig.pedroIntegrationTestDistanceIn"
+                ));
+                assertTrue(expected.getMessage().contains("finite"));
+                assertTrue(expected.getMessage().contains("> 0"));
+            }
+        }
+    }
+
+    @Test
+    public void pathFactoryCapturesOnlyItsDistanceBeforeLaterSourceMutation() throws Exception {
+        PhoenixAutoConfig source = PhoenixAutoConfig.defaults();
+        source.pedroIntegrationTestDistanceIn = 18.25;
+        PhoenixPedroAutoContext context = contextFor(
+                PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST,
+                source
+        );
+
+        source.pedroIntegrationTestDistanceIn = 99.0;
+        Field capturedDistance = PhoenixPedroPathFactory.class.getDeclaredField(
+                "pedroIntegrationTestDistanceIn"
+        );
+        capturedDistance.setAccessible(true);
+        assertEquals(18.25, capturedDistance.getDouble(context.pathFactory()), 0.0);
+        for (Field field : PhoenixPedroPathFactory.class.getDeclaredFields()) {
+            assertTrue(
+                    "path factory must not retain the broad Auto policy",
+                    field.getType() != PhoenixAutoConfig.class
+            );
+        }
+    }
+
+    @Test
+    public void contextSnapshotsAutoPolicyAndReturnsOnlyDefensiveCopies() throws Exception {
+        PhoenixAutoConfig source = PhoenixAutoConfig.defaults();
+        source.parkTakeoverElapsedSec = 23.5;
+        source.routeTimeoutSec = 3.25;
+        PhoenixPedroAutoContext context = contextFor(
+                PhoenixAutoStrategyId.PRELOAD_AND_PARK,
+                source
+        );
+
+        source.parkTakeoverElapsedSec = 1.0;
+        source.routeTimeoutSec = 1.0;
+        PhoenixAutoConfig first = context.autoConfig();
+        assertEquals(23.5, first.parkTakeoverElapsedSec, 0.0);
+        assertEquals(3.25, first.routeTimeoutSec, 0.0);
+
+        first.parkTakeoverElapsedSec = 2.0;
+        first.routeTimeoutSec = 2.0;
+        PhoenixAutoConfig second = context.autoConfig();
+        assertNotSame(first, second);
+        assertEquals(23.5, second.parkTakeoverElapsedSec, 0.0);
+        assertEquals(3.25, second.routeTimeoutSec, 0.0);
+
+        try {
+            PhoenixPedroAutoContext.class.getMethod("profile");
+            fail("context must not export the broad Phoenix profile");
+        } catch (NoSuchMethodException expected) {
+            // Exact narrow context surface.
+        }
+    }
+
+    @Test
+    public void contextRequiresAnExplicitAutoPolicy() throws Exception {
+        PhoenixPedroAutoContext valid = contextFor(PhoenixAutoStrategyId.SAFE_PRELOAD);
+        try {
+            new PhoenixPedroAutoContext(
+                    valid.spec(),
+                    null,
+                    valid.capabilities(),
+                    valid.driveAdapter(),
+                    valid.pathFactory(),
+                    valid.paths()
+            );
+            fail("context must not invent a default Auto policy");
+        } catch (NullPointerException expected) {
+            assertTrue(expected.getMessage().contains("autoConfig"));
+        }
+    }
+
+    @Test
+    public void routineCapturesPositiveBoundaryValuesFromOneContextSnapshot() throws Exception {
+        PhoenixAutoConfig autoConfig = PhoenixAutoConfig.defaults();
+        autoConfig.parkTakeoverElapsedSec = Double.MIN_VALUE;
+        autoConfig.routeTimeoutSec = Double.MIN_VALUE;
+        PhoenixPedroAutoContext context = contextFor(
+                PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST,
+                autoConfig
+        );
+
+        Task routine = PhoenixPedroAutoRoutineFactory.build(context);
+        assertEquals(
+                Double.MIN_VALUE,
+                ((Double) role(routine, "parkTakeoverElapsedSec")).doubleValue(),
+                0.0
+        );
+        Object prePark = role(routine, "prePark");
+        assertEquals(
+                Double.MIN_VALUE,
+                ((Double) routeRole(preParkRole(prePark, "outboundRoute"), "taskTimeoutSec"))
+                        .doubleValue(),
+                0.0
+        );
+        assertEquals(
+                Double.MIN_VALUE,
+                ((Double) routeRole(role(routine, "returnOrParkRoute"), "taskTimeoutSec"))
+                        .doubleValue(),
+                0.0
+        );
+    }
+
     private static PhoenixPedroAutoContext contextFor(PhoenixAutoStrategyId strategy)
+            throws Exception {
+        return contextFor(strategy, PhoenixAutoConfig.defaults());
+    }
+
+    private static PhoenixPedroAutoContext contextFor(PhoenixAutoStrategyId strategy,
+                                                       PhoenixAutoConfig autoConfig)
             throws Exception {
         PathConstraints constraints = PathConstraints.defaultConstraints.copy();
         Follower follower = new Follower(
@@ -107,7 +306,6 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
                 adapter,
                 constraints.copy()
         );
-        PhoenixProfile profile = PhoenixProfile.defaults();
         PhoenixCapabilities capabilities = new PhoenixCapabilities(
                 new FactoryScoring(),
                 new FactoryTargeting()
@@ -115,11 +313,11 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
         PhoenixAutoSpec spec = PhoenixAutoSpec.builder()
                 .strategy(strategy)
                 .build();
-        PhoenixPedroPathFactory pathFactory = new PhoenixPedroPathFactory(runtime, profile.auto);
+        PhoenixPedroPathFactory pathFactory = new PhoenixPedroPathFactory(runtime, autoConfig);
         PhoenixPedroPathFactory.Paths paths = pathFactory.build(spec, capabilities);
         return new PhoenixPedroAutoContext(
                 spec,
-                profile,
+                autoConfig,
                 capabilities,
                 adapter,
                 pathFactory,
@@ -158,6 +356,12 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
         Field field = PhoenixPedroPreParkTask.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(prePark);
+    }
+
+    private static Object routeRole(Object route, String fieldName) throws Exception {
+        Field field = route.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(route);
     }
 
     private static String expectedRoutineName(PhoenixAutoStrategyId strategy) {

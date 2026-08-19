@@ -40,7 +40,7 @@ public final class PhoenixTeleOpControlsTest {
         Constructor<?>[] constructors = PhoenixTeleOpControls.class.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertEquals(
-                Arrays.asList(Gamepads.class, PhoenixProfile.TeleOpControlsConfig.class),
+                Arrays.asList(Gamepads.class, PhoenixTeleOpControls.Config.class),
                 Arrays.asList(constructors[0].getParameterTypes()));
 
         Method bind = PhoenixTeleOpControls.class.getDeclaredMethod(
@@ -52,7 +52,7 @@ public final class PhoenixTeleOpControlsTest {
 
         PhoenixTeleOpControls controls = new PhoenixTeleOpControls(
                 Gamepads.create(new Gamepad(), new Gamepad()),
-                new PhoenixProfile.TeleOpControlsConfig());
+                PhoenixTeleOpControls.Config.defaults());
         RecordingCallbackBindings callbackBindings = new RecordingCallbackBindings();
 
         assertTrue(controls.manualDriveSource() != null);
@@ -64,12 +64,13 @@ public final class PhoenixTeleOpControlsTest {
     public void simultaneousSuggestedVelocityCapturePrecedesStudentNudge() {
         Gamepad driver = new Gamepad();
         Gamepad operator = new Gamepad();
-        PhoenixProfile.TeleOpControlsConfig config = new PhoenixProfile.TeleOpControlsConfig();
+        PhoenixTeleOpControls.Config config = PhoenixTeleOpControls.Config.defaults();
         config.selectedVelocityStepNative = 40.0;
 
         RecordingCallbackBindings callbackBindings = new RecordingCallbackBindings();
         PhoenixTeleOpControls controls = new PhoenixTeleOpControls(
                 Gamepads.create(driver, operator), config);
+        config.selectedVelocityStepNative = 400.0;
         RecordingScoring scoring = new RecordingScoring(2_000.0);
         controls.bind(callbackBindings, capabilities(scoring));
         Bindings bindingRoot = callbackBindings.root();
@@ -91,7 +92,7 @@ public final class PhoenixTeleOpControlsTest {
     public void bindValidatesArgumentsBeforeClaimingTheOneShotAttempt() {
         PhoenixTeleOpControls controls = new PhoenixTeleOpControls(
                 Gamepads.create(new Gamepad(), new Gamepad()),
-                new PhoenixProfile.TeleOpControlsConfig());
+                PhoenixTeleOpControls.Config.defaults());
         RecordingCallbackBindings callbackBindings = new RecordingCallbackBindings();
         PhoenixCapabilities capabilities = capabilities(new RecordingScoring(2_000.0));
 
@@ -107,7 +108,7 @@ public final class PhoenixTeleOpControlsTest {
     public void secondBindFailsBeforeMutatingAnotherCallbackSurface() {
         PhoenixTeleOpControls controls = new PhoenixTeleOpControls(
                 Gamepads.create(new Gamepad(), new Gamepad()),
-                new PhoenixProfile.TeleOpControlsConfig());
+                PhoenixTeleOpControls.Config.defaults());
         PhoenixCapabilities capabilities = capabilities(new RecordingScoring(2_000.0));
         RecordingCallbackBindings first = new RecordingCallbackBindings();
         RecordingCallbackBindings second = new RecordingCallbackBindings();
@@ -123,7 +124,7 @@ public final class PhoenixTeleOpControlsTest {
     public void partialRegistrationFailureConsumesBindAndRetryAddsNothing() {
         PhoenixTeleOpControls controls = new PhoenixTeleOpControls(
                 Gamepads.create(new Gamepad(), new Gamepad()),
-                new PhoenixProfile.TeleOpControlsConfig());
+                PhoenixTeleOpControls.Config.defaults());
         PhoenixCapabilities capabilities = capabilities(new RecordingScoring(2_000.0));
         RecordingCallbackBindings failing = new RecordingCallbackBindings(3);
 
@@ -141,6 +142,82 @@ public final class PhoenixTeleOpControlsTest {
         assertEquals(0, retry.registrationAttempts());
     }
 
+    @Test
+    public void manualDriveIsRequiredBeforeOuterScalarValidation() {
+        PhoenixTeleOpControls.Config config = PhoenixTeleOpControls.Config.defaults();
+        config.manualDrive = null;
+        config.slowTranslateScale = Double.NaN;
+
+        try {
+            createControls(config);
+            fail("Expected missing manual-drive draft to fail");
+        } catch (NullPointerException expected) {
+            assertTrue(expected.getMessage().contains("PhoenixTeleOpControls.Config.manualDrive"));
+        }
+    }
+
+    @Test
+    public void outerScalarValidationPrecedesNestedFrameworkValidation() {
+        PhoenixTeleOpControls.Config config = PhoenixTeleOpControls.Config.defaults();
+        config.manualDrive.deadband = Double.NaN;
+        config.slowTranslateScale = Double.POSITIVE_INFINITY;
+
+        expectInvalidConfig(config, "slowTranslateScale");
+    }
+
+    @Test
+    public void outerScalarsRejectEveryDocumentedInvalidDomain() {
+        PhoenixTeleOpControls.Config slowTranslation = PhoenixTeleOpControls.Config.defaults();
+        slowTranslation.slowTranslateScale = -0.01;
+        expectInvalidConfig(slowTranslation, "slowTranslateScale");
+
+        PhoenixTeleOpControls.Config axialRate = PhoenixTeleOpControls.Config.defaults();
+        axialRate.maxAxialRatePerSec = 0.0;
+        expectInvalidConfig(axialRate, "maxAxialRatePerSec");
+
+        PhoenixTeleOpControls.Config lateralRate = PhoenixTeleOpControls.Config.defaults();
+        lateralRate.maxLateralRatePerSec = Double.NaN;
+        expectInvalidConfig(lateralRate, "maxLateralRatePerSec");
+
+        PhoenixTeleOpControls.Config omegaRate = PhoenixTeleOpControls.Config.defaults();
+        omegaRate.maxOmegaRatePerSec = Double.POSITIVE_INFINITY;
+        expectInvalidConfig(omegaRate, "maxOmegaRatePerSec");
+
+        PhoenixTeleOpControls.Config slowOmega = PhoenixTeleOpControls.Config.defaults();
+        slowOmega.slowOmegaScale = 1.01;
+        expectInvalidConfig(slowOmega, "slowOmegaScale");
+
+        PhoenixTeleOpControls.Config velocityStep = PhoenixTeleOpControls.Config.defaults();
+        velocityStep.selectedVelocityStepNative = 0.0;
+        expectInvalidConfig(velocityStep, "selectedVelocityStepNative");
+    }
+
+    @Test
+    public void validOuterScalarsDelegateNestedValidationToGamepadDriveSource() {
+        PhoenixTeleOpControls.Config config = PhoenixTeleOpControls.Config.defaults();
+        config.manualDrive.deadband = Double.NaN;
+
+        try {
+            createControls(config);
+            fail("Expected invalid nested manual-drive config");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("GamepadDriveSource.Config.deadband"));
+        }
+    }
+
+    @Test
+    public void outerScalarsAcceptTheirInclusiveAndPositiveBoundaries() {
+        PhoenixTeleOpControls.Config config = PhoenixTeleOpControls.Config.defaults();
+        config.slowTranslateScale = 0.0;
+        config.maxAxialRatePerSec = Double.MIN_VALUE;
+        config.maxLateralRatePerSec = Double.MIN_VALUE;
+        config.maxOmegaRatePerSec = Double.MIN_VALUE;
+        config.slowOmegaScale = 1.0;
+        config.selectedVelocityStepNative = Double.MIN_VALUE;
+
+        assertTrue(createControls(config) != null);
+    }
+
     private static void update(Bindings bindingRoot, ManualLoopClock manualClock) {
         manualClock.nextCycle(0.02);
         bindingRoot.update(manualClock.clock());
@@ -148,6 +225,27 @@ public final class PhoenixTeleOpControlsTest {
 
     private static PhoenixCapabilities capabilities(RecordingScoring scoring) {
         return new PhoenixCapabilities(scoring, new UnusedTargeting());
+    }
+
+    private static PhoenixTeleOpControls createControls(PhoenixTeleOpControls.Config config) {
+        return new PhoenixTeleOpControls(
+                Gamepads.create(new Gamepad(), new Gamepad()),
+                config
+        );
+    }
+
+    private static void expectInvalidConfig(
+            PhoenixTeleOpControls.Config config,
+            String expectedField
+    ) {
+        try {
+            createControls(config);
+            fail("Expected invalid controls config field " + expectedField);
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains(
+                    "PhoenixTeleOpControls.Config." + expectedField
+            ));
+        }
     }
 
     private static int declaredMethodCount(Class<?> type, String name) {

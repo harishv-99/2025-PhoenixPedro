@@ -83,10 +83,12 @@ intentionally conceptual, because the exact adapter API depends on the library y
 
 For ordinary FTC mechanisms, the examples follow the same construction boundary as the
 [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>): the composition root checks the
-robot-level permissions and cross-owner relationships it owns, selects the active profile slice,
-and calls `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism defensively copies and
+robot-level permissions and cross-owner relationships it owns, then passes the selected active
+Config to `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism defensively captures and
 validates that data-only configuration before its own hardware effects, constructs and privately
-owns its Plants and local sensors, and owns their update and stop lifecycle.
+owns its Plants and local sensors, and owns their update and stop lifecycle. A short-lived aggregate
+profile need not be copied or retained by the composition root; one fresh `current()` graph can be
+synchronously distributed to the owners selected by the mode.
 If a proven FTC device-managed velocity Plant also needs live tuning, keep this exact production
 owner and declare the framework workflow described in
 [`Declare one framework tuner`](<../testing-calibration/Control Tuning Workflow.md#choose-the-workflow-that-matches-production>).
@@ -97,7 +99,8 @@ Do not make live-tuning ceremony mandatory for ordinary checked-in configuration
 The illustrative `WristConfig`, `LiftConfig`, and `IntakeConfig` types below are data-only profile
 slices with a `copy()` method. Their owning mechanism should validate its copied names, directions,
 finite ranges, and gains before that owner's first hardware effect. A software-valid default is only
-an authoring baseline; it is not proof about installed hardware or safe motion.
+an authoring baseline; it is not proof about installed hardware or safe motion. These proven
+owner-local copies do not imply that the outer robot profile also needs a public `copy()`.
 
 All Java snippets in this document use Java 8-compatible syntax so they match the FTC project
 environment. That means examples avoid newer language features such as records and switch
@@ -292,7 +295,8 @@ ordinary path it has no clock, Task runner, mode flags, FTC callback forwarding,
 It should usually own:
 
 - construction of stable FTC lanes and robot-owned mechanisms
-- the `HardwareMap` and synchronously selected active profile slices passed into their owners
+- the stable `HardwareMap` resource and synchronous routing of selected active profile slices into
+  their owners
 - robot-level permissions and relationships that cross owner boundaries
 - supervisor construction
 - gamepad binding declarations
@@ -308,6 +312,14 @@ It should usually **not** own:
 
 A robot container is the place where it should be obvious what exists on the robot. It is not the
 place where each mechanism's Plant graph or detailed behavior should live.
+
+For a mode-asymmetric robot, keep the root constructor resource-only and put mode inputs at the
+declaration boundary. Phoenix uses the sole `PhoenixRobot(HardwareMap)` constructor, then passes one
+fresh `PhoenixProfile.current()` value plus both Gamepads to `declareTeleOp(...)`, or the profile plus
+Auto-only runtime roles to `declareAuto(...)`. Each ordinary program performs its centralized
+drive-versus-scoring motor collision preflight before hardware effects. Neither mode retains or
+broadly copies the aggregate, and Auto has no unused Gamepad dependency. A custom caller supplying
+an opaque drive sink must enforce its own exclusive hardware ownership.
 
 ### Coordinated cleanup is automatic for declared program owners
 

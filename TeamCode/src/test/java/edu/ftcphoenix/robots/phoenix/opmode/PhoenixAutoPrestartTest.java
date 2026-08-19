@@ -36,8 +36,8 @@ public final class PhoenixAutoPrestartTest {
 
     @Test
     public void initSelectionFreezesOnceAtStartAndPublishesOnlyTheFrozenAlliance() {
-        PhoenixProfile suppliedProfile = PhoenixProfile.defaults();
-        int expectedBlueTagId = suppliedProfile.autoAim.blueAllianceScoringTagId;
+        PhoenixProfile suppliedProfile = PhoenixProfile.current();
+        int expectedBlueTagId = suppliedProfile.targeting.blueAllianceScoringTagId;
         PhoenixAutoSpec defaultSpec = integrationSpec(PhoenixAlliance.RED);
         PhoenixAutoSetup setup = PhoenixAutoSetup.fromInitSelection(
                 defaultSpec,
@@ -75,8 +75,8 @@ public final class PhoenixAutoPrestartTest {
         // Long-lived prestart policy must not observe later mutation of the supplied profile.
         suppliedProfile.calibration = null;
         suppliedProfile.auto = null;
-        suppliedProfile.autoAim = null;
-        suppliedProfile.field = null;
+        suppliedProfile.targeting = null;
+        suppliedProfile.fixedAprilTagLayout = null;
 
         host.runtimeSec = 1.0;
         host.start();
@@ -102,11 +102,11 @@ public final class PhoenixAutoPrestartTest {
 
     @Test
     public void currentStructuralReadinessBlocksWithActionableDataOnlyPresentation() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
+        PhoenixProfile profile = PhoenixProfile.current();
         profile.calibration.pinpointAxesVerified = true;
         profile.calibration.pinpointPodOffsetsCalibrated = true;
         PhoenixAutoSpec spec = PhoenixAutoSpec.audienceSafe(PhoenixAlliance.RED);
-        PhoenixAutoPrestart prestart = new PhoenixAutoPrestart(
+        PhoenixAutoPrestart prestart = newPrestart(
                 PhoenixAutoSetup.fromFixedSpec(
                         spec,
                         PhoenixReadiness.AutoPurpose.MATCH_AUTO
@@ -143,7 +143,7 @@ public final class PhoenixAutoPrestartTest {
 
     @Test
     public void onlyFixedSetupExposesAnEagerSpec() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
+        PhoenixProfile profile = PhoenixProfile.current();
         PhoenixAutoSpec spec = integrationSpec(PhoenixAlliance.RED);
         PhoenixAutoSetup fixedSetup = PhoenixAutoSetup.fromFixedSpec(
                 spec,
@@ -153,13 +153,13 @@ public final class PhoenixAutoPrestartTest {
                 spec,
                 PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST
         );
-        PhoenixAutoPrestart fixed = new PhoenixAutoPrestart(
+        PhoenixAutoPrestart fixed = newPrestart(
                 fixedSetup,
                 profile,
                 new Gamepad(),
                 new Gamepad()
         );
-        PhoenixAutoPrestart selectable = new PhoenixAutoPrestart(
+        PhoenixAutoPrestart selectable = newPrestart(
                 selectableSetup,
                 profile,
                 new Gamepad(),
@@ -179,7 +179,7 @@ public final class PhoenixAutoPrestartTest {
 
     @Test
     public void selectorUsesOnlyRealChoicesAndShowsAReadOnlyStartSummary() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
+        PhoenixProfile profile = PhoenixProfile.current();
         profile.calibration.pinpointAxesVerified = true;
         PhoenixAutoSetup setup = PhoenixAutoSetup.fromInitSelection(
                 integrationSpec(PhoenixAlliance.RED),
@@ -218,7 +218,7 @@ public final class PhoenixAutoPrestartTest {
 
     @Test
     public void wholeModeBlockerRemainsVisibleWithoutDisablingTheValidStrategyRow() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
+        PhoenixProfile profile = PhoenixProfile.current();
         profile.calibration.pinpointAxesVerified = false;
         PhoenixAutoSetup setup = PhoenixAutoSetup.fromInitSelection(
                 integrationSpec(PhoenixAlliance.RED),
@@ -252,6 +252,22 @@ public final class PhoenixAutoPrestartTest {
                 .startPosition(PhoenixAutoSpec.StartPosition.AUDIENCE)
                 .strategy(PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST)
                 .build();
+    }
+
+    private static PhoenixAutoPrestart newPrestart(
+            PhoenixAutoSetup setup,
+            PhoenixProfile profile,
+            Gamepad gamepad1,
+            Gamepad gamepad2
+    ) {
+        return new PhoenixAutoPrestart(
+                setup,
+                profile.calibration,
+                profile.targeting,
+                profile.fixedAprilTagLayout,
+                gamepad1,
+                gamepad2
+        );
     }
 
     private static void chooseCurrentItem(PrestartHost host, double pressedAtSec) {
@@ -290,7 +306,7 @@ public final class PhoenixAutoPrestartTest {
 
         @Override
         protected void configure(RobotProgram program) {
-            prestart = new PhoenixAutoPrestart(setup, profile, gamepad1, gamepad2);
+            prestart = newPrestart(setup, profile, gamepad1, gamepad2);
             program.prestart(prestart);
             program.presenter(prestart::present);
         }

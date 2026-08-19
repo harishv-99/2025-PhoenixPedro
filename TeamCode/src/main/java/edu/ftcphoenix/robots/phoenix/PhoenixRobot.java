@@ -17,6 +17,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
+import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
@@ -35,13 +36,15 @@ import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
  * Phoenix composition root.
  *
  * <p>Ordinary TeleOp uses one declarative grammar: construct this object, call
- * {@link #declareTeleOp(RobotProgram, Source)} with its frozen scoring-tag eligibility, restore
+ * {@link #declareTeleOp(RobotProgram, PhoenixProfile, Gamepad, Gamepad, Source)} with its fresh
+ * profile and frozen scoring-tag eligibility, restore
  * the optional match snapshot, and register
  * {@link #teleOpPresenter(PhoenixMatchHandoff.RestoreResult)}. The framework then owns the clock,
  * lifecycle callbacks, bindings, output heartbeat, telemetry commit, and fail-stop cleanup.</p>
  *
  * <p>Auto uses the same declaration grammar through {@link #declareAuto(RobotProgram,
- * DriveCommandSink, MotionPredictor, Source, BooleanSource, BooleanSource, Runnable)}. The managed
+ * PhoenixProfile, DriveCommandSink, MotionPredictor, Source, BooleanSource, BooleanSource,
+ * Runnable)}. The managed
  * program owns FTC callbacks, the one clock, root Task, output order, telemetry commit, and
  * fail-stop cleanup in both modes. Phoenix still owns its hardware graph and service ordering;
  * alliance selection, Pedro route geometry, targeting policy, and routine composition remain
@@ -54,41 +57,52 @@ public final class PhoenixRobot {
     /**
      * Package-private FTC assembly seam for a managed-TeleOp lifecycle test.
      *
-     * <p>Ordinary robot code uses the public FTC-resource constructors. This seam is
+     * <p>Ordinary robot code uses the public FTC-resource constructor. This seam is
      * instance-scoped, changes no lifecycle grammar, and still makes {@link PhoenixRobot} construct
      * and privately retain its complete mechanism graph.</p>
      */
     interface TeleOpHardwareAssembly {
-        AprilTagVisionLane createVision(HardwareMap hardwareMap, PhoenixProfile profile);
+        AprilTagVisionLane createVision(
+                HardwareMap hardwareMap,
+                PhoenixVisionFactory.Config visionConfig
+        );
 
         FtcOdometryAprilTagLocalizationLane createLocalization(
                 HardwareMap hardwareMap,
                 AprilTagVisionLane vision,
-                PhoenixProfile profile
+                TagLayout fixedAprilTagLayout,
+                FtcOdometryAprilTagLocalizationLane.Config localizationConfig
         );
 
         PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
-                PhoenixProfile profile,
+                PhoenixScoring.Config scoringConfig,
                 PhoenixTargeting targeting
         );
 
-        DriveCommandSink createDrive(HardwareMap hardwareMap, PhoenixProfile profile);
+        DriveCommandSink createDrive(
+                HardwareMap hardwareMap,
+                FtcDrives.MecanumConfig driveConfig
+        );
     }
 
     /** Package-private FTC assembly seam for managed-Auto lifecycle tests. */
     interface AutoHardwareAssembly {
-        AprilTagVisionLane createVision(HardwareMap hardwareMap, PhoenixProfile profile);
+        AprilTagVisionLane createVision(
+                HardwareMap hardwareMap,
+                PhoenixVisionFactory.Config visionConfig
+        );
 
         FtcOdometryAprilTagLocalizationLane createLocalization(
                 MotionPredictor motionPredictor,
                 AprilTagVisionLane vision,
-                PhoenixProfile profile
+                TagLayout fixedAprilTagLayout,
+                FtcOdometryAprilTagLocalizationLane.EstimatorConfig estimationConfig
         );
 
         PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
-                PhoenixProfile profile,
+                PhoenixScoring.Config scoringConfig,
                 PhoenixTargeting targeting
         );
     }
@@ -98,40 +112,41 @@ public final class PhoenixRobot {
                 @Override
                 public AprilTagVisionLane createVision(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile
+                        PhoenixVisionFactory.Config visionConfig
                 ) {
-                    return PhoenixVisionFactory.create(hardwareMap, profile.vision);
+                    return PhoenixVisionFactory.create(hardwareMap, visionConfig);
                 }
 
                 @Override
                 public FtcOdometryAprilTagLocalizationLane createLocalization(
                         HardwareMap hardwareMap,
                         AprilTagVisionLane vision,
-                        PhoenixProfile profile
+                        TagLayout fixedAprilTagLayout,
+                        FtcOdometryAprilTagLocalizationLane.Config localizationConfig
                 ) {
                     return new FtcOdometryAprilTagLocalizationLane(
                             hardwareMap,
                             vision,
-                            profile.field.fixedAprilTagLayout,
-                            profile.localization
+                            fixedAprilTagLayout,
+                            localizationConfig
                     );
                 }
 
                 @Override
                 public PhoenixScoring createScoring(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile,
+                        PhoenixScoring.Config scoringConfig,
                         PhoenixTargeting targeting
                 ) {
-                    return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
+                    return new PhoenixScoring(hardwareMap, scoringConfig, targeting);
                 }
 
                 @Override
                 public DriveCommandSink createDrive(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile
+                        FtcDrives.MecanumConfig driveConfig
                 ) {
-                    return FtcDrives.mecanum(hardwareMap, profile.drive);
+                    return FtcDrives.mecanum(hardwareMap, driveConfig);
                 }
             };
 
@@ -140,32 +155,33 @@ public final class PhoenixRobot {
                 @Override
                 public AprilTagVisionLane createVision(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile
+                        PhoenixVisionFactory.Config visionConfig
                 ) {
-                    return PhoenixVisionFactory.create(hardwareMap, profile.vision);
+                    return PhoenixVisionFactory.create(hardwareMap, visionConfig);
                 }
 
                 @Override
                 public FtcOdometryAprilTagLocalizationLane createLocalization(
                         MotionPredictor motionPredictor,
                         AprilTagVisionLane vision,
-                        PhoenixProfile profile
+                        TagLayout fixedAprilTagLayout,
+                        FtcOdometryAprilTagLocalizationLane.EstimatorConfig estimationConfig
                 ) {
                     return FtcOdometryAprilTagLocalizationLane.withPredictor(
                             motionPredictor,
                             vision,
-                            profile.field.fixedAprilTagLayout,
-                            profile.localization.estimation
+                            fixedAprilTagLayout,
+                            estimationConfig
                     );
                 }
 
                 @Override
                 public PhoenixScoring createScoring(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile,
+                        PhoenixScoring.Config scoringConfig,
                         PhoenixTargeting targeting
                 ) {
-                    return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
+                    return new PhoenixScoring(hardwareMap, scoringConfig, targeting);
                 }
             };
 
@@ -176,17 +192,14 @@ public final class PhoenixRobot {
     }
 
     private final HardwareMap hardwareMap;
-    private final Gamepads gamepads;
-    private final PhoenixProfile profile;
     private final TeleOpHardwareAssembly teleOpHardwareAssembly;
     private final AutoHardwareAssembly autoHardwareAssembly;
-    private final PhoenixTelemetryPresenter telemetryPresenter;
     private final LoopPhaseProfiler loopPhaseProfiler;
     private final TeleOpPoseRestoreLifecycle teleOpPoseRestore =
             new TeleOpPoseRestoreLifecycle();
 
     private RuntimeMode mode = RuntimeMode.NEW;
-    private PhoenixCapabilities capabilities;
+    private PhoenixTelemetryPresenter telemetryPresenter;
     private AprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
     private PhoenixScoring scoring;
@@ -211,64 +224,27 @@ public final class PhoenixRobot {
     private boolean autoProfileCycleActive;
     private boolean autoPresenterCreated;
 
-    /** Create Phoenix using the checked-in profile snapshot. */
-    public PhoenixRobot(HardwareMap hardwareMap,
-                        Telemetry telemetry,
-                        Gamepad gamepad1,
-                        Gamepad gamepad2) {
-        this(hardwareMap, telemetry, gamepad1, gamepad2, PhoenixProfile.current());
-    }
-
-    /** Create Phoenix using an explicit defensively copied profile. */
-    public PhoenixRobot(HardwareMap hardwareMap,
-                        Telemetry telemetry,
-                        Gamepad gamepad1,
-                        Gamepad gamepad2,
-                        PhoenixProfile profile) {
-        this(
-                hardwareMap,
-                telemetry,
-                gamepad1,
-                gamepad2,
-                profile,
-                FTC_TELEOP_HARDWARE,
-                FTC_AUTO_HARDWARE
-        );
-    }
-
-    /** FTC-resource host-test construction with replaceable hardware assembly; not robot code. */
-    PhoenixRobot(HardwareMap hardwareMap,
-                 Telemetry telemetry,
-                 Gamepad gamepad1,
-                 Gamepad gamepad2,
-                 PhoenixProfile profile,
-                 TeleOpHardwareAssembly teleOpHardwareAssembly) {
-        this(
-                hardwareMap,
-                telemetry,
-                gamepad1,
-                gamepad2,
-                profile,
-                teleOpHardwareAssembly,
-                FTC_AUTO_HARDWARE
-        );
-    }
-
     /**
-     * FTC-resource lifecycle-test construction with replaceable assemblies; not ordinary robot
-     * code.
+     * Create an unselected Phoenix composition root around the FTC hardware registry.
+     *
+     * <p>The active mode declaration supplies and synchronously routes one fresh profile. This
+     * root never retains the aggregate or Auto-inactive Gamepad inputs.</p>
      */
+    public PhoenixRobot(HardwareMap hardwareMap) {
+        this(hardwareMap, FTC_TELEOP_HARDWARE, FTC_AUTO_HARDWARE);
+    }
+
+    /** FTC-resource host-test construction with replaceable TeleOp assembly; not robot code. */
     PhoenixRobot(HardwareMap hardwareMap,
-                 Telemetry telemetry,
-                 Gamepad gamepad1,
-                 Gamepad gamepad2,
-                 PhoenixProfile profile,
+                 TeleOpHardwareAssembly teleOpHardwareAssembly) {
+        this(hardwareMap, teleOpHardwareAssembly, FTC_AUTO_HARDWARE);
+    }
+
+    /** FTC-resource lifecycle-test construction with replaceable assemblies; not robot code. */
+    PhoenixRobot(HardwareMap hardwareMap,
                  TeleOpHardwareAssembly teleOpHardwareAssembly,
                  AutoHardwareAssembly autoHardwareAssembly) {
         this.hardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
-        Objects.requireNonNull(telemetry, "telemetry");
-        this.gamepads = Gamepads.create(gamepad1, gamepad2);
-        this.profile = Objects.requireNonNull(profile, "profile").copy();
         this.teleOpHardwareAssembly = Objects.requireNonNull(
                 teleOpHardwareAssembly,
                 "teleOpHardwareAssembly"
@@ -277,7 +253,6 @@ public final class PhoenixRobot {
                 autoHardwareAssembly,
                 "autoHardwareAssembly"
         );
-        this.telemetryPresenter = new PhoenixTelemetryPresenter(this.profile);
         this.loopPhaseProfiler = LoopPhaseProfiler.create(ENABLE_LOOP_PHASE_PROFILING);
     }
 
@@ -293,17 +268,32 @@ public final class PhoenixRobot {
      * writes an explicit zero. Manual and assisted driving starts in the first ordinary active
      * loop. No TeleOp behavior or hardware is advanced during INIT.</p>
      *
+     * <p>This direct declaration is an advanced assembly seam. Its caller must establish exclusive
+     * FTC hardware ownership before calling it, including trim-equivalent, case-sensitive motor
+     * identity across {@code profile.drive} and {@code profile.scoring}. The ordinary Phoenix
+     * TeleOp program performs that graph preflight before reaching this boundary.</p>
+     *
      * @param program configuring managed program supplied by the FTC host
+     * @param profile fresh complete Phoenix profile consumed only during this declaration
+     * @param gamepad1 active driver Gamepad retained by the controls source graph
+     * @param gamepad2 active operator Gamepad retained by the controls source graph
      * @param eligibleScoringTagIds non-empty configured scoring-AprilTag subset selected by the
      *                              mode client's frozen alliance policy
      */
     public void declareTeleOp(
             RobotProgram program,
+            PhoenixProfile profile,
+            Gamepad gamepad1,
+            Gamepad gamepad2,
             Source<Set<Integer>> eligibleScoringTagIds
     ) {
         RobotProgram requiredProgram = Objects.requireNonNull(
                 program,
                 "Phoenix TeleOp program is required"
+        );
+        PhoenixProfile selectedProfile = Objects.requireNonNull(
+                profile,
+                "Phoenix TeleOp profile is required"
         );
         Source<Set<Integer>> requiredEligibleScoringTagIds = Objects.requireNonNull(
                 eligibleScoringTagIds,
@@ -314,17 +304,19 @@ public final class PhoenixRobot {
         teleOpDriveStartupReleased = false;
 
         teleOpControls = new PhoenixTeleOpControls(
-                gamepads,
-                profile.controls
+                Gamepads.create(gamepad1, gamepad2),
+                selectedProfile.controls
         );
-        teleOpPoseAssistReadiness = PhoenixReadiness.teleOpPoseAssists(profile);
+        teleOpPoseAssistReadiness = PhoenixReadiness.teleOpPoseAssists(
+                selectedProfile.calibration
+        );
 
         BooleanSource enabledAutoAim = teleOpControls.autoAimEnabledSource()
                 .and(BooleanSource.constant(teleOpPoseAssistReadiness.isAllowed()))
                 .memoized();
 
         vision = Objects.requireNonNull(
-                teleOpHardwareAssembly.createVision(hardwareMap, profile),
+                teleOpHardwareAssembly.createVision(hardwareMap, selectedProfile.vision),
                 "TeleOp hardware assembly returned null vision"
         );
         ManagedTeleOpVisionService visionService = new ManagedTeleOpVisionService(vision);
@@ -334,14 +326,19 @@ public final class PhoenixRobot {
                 teleOpHardwareAssembly.createLocalization(
                         hardwareMap,
                         vision,
-                        profile
+                        selectedProfile.fixedAprilTagLayout,
+                        selectedProfile.localization
                 ),
                 "TeleOp hardware assembly returned null localization"
         );
         requiredProgram.service(new ManagedTeleOpLocalizationService(localization));
         teleOpPoseRestore.initialize(localization.globalEstimator());
+        telemetryPresenter = createTelemetryPresenter(selectedProfile.localization);
 
         targeting = createTargeting(
+                selectedProfile.targeting,
+                selectedProfile.localization,
+                selectedProfile.fixedAprilTagLayout,
                 requiredEligibleScoringTagIds,
                 enabledAutoAim,
                 teleOpControls.aimOverrideSource()
@@ -351,7 +348,7 @@ public final class PhoenixRobot {
         scoring = Objects.requireNonNull(
                 teleOpHardwareAssembly.createScoring(
                         hardwareMap,
-                        profile,
+                        selectedProfile.scoring,
                         targeting
                 ),
                 "TeleOp hardware assembly returned null scoring owner"
@@ -360,13 +357,13 @@ public final class PhoenixRobot {
                 new ManagedTeleOpScoringOutput(scoring);
         registerOutputOrClean(requiredProgram, scoringOutput, scoring::stop);
 
-        capabilities = createCapabilities();
+        PhoenixCapabilities capabilities = createCapabilities();
         teleOpControls.bind(requiredProgram.callbackBindings(), capabilities);
 
         Source<PhoenixCapabilities.ScoringStatus> scoringStatus =
                 Source.of(ignoredClock -> scoring.status());
         driveAssists = new PhoenixDriveAssistService(
-                profile.driveAssist,
+                selectedProfile.driveAssist,
                 teleOpControls.manualDriveSource(),
                 teleOpControls.manualTranslateMagnitudeSource(),
                 scoringStatus,
@@ -377,7 +374,7 @@ public final class PhoenixRobot {
         );
 
         DriveCommandSink drive = Objects.requireNonNull(
-                teleOpHardwareAssembly.createDrive(hardwareMap, profile),
+                teleOpHardwareAssembly.createDrive(hardwareMap, selectedProfile.drive),
                 "TeleOp hardware assembly returned null drive sink"
         );
         ManagedTeleOpDriveSink driveSink = new ManagedTeleOpDriveSink(drive);
@@ -434,16 +431,25 @@ public final class PhoenixRobot {
      * always-enabled auto aim and no override; a direct advanced assembly may supply other
      * clock-aware policies without taking lifecycle ownership away from the managed program.</p>
      *
+     * <p>This direct declaration is an advanced assembly seam. The caller owns exclusive hardware
+     * assignment for the supplied drive and the Phoenix owners constructed here. In particular,
+     * this method cannot infer the FTC motor identities hidden behind an arbitrary
+     * {@code autonomousDrive}. The ordinary Phoenix Auto program performs its known-profile
+     * scoring-versus-Pedro motor preflight before it creates the Pedro runtime.</p>
+     *
      * @param program managed program that immediately owns every completed resource
+     * @param profile fresh complete Phoenix profile consumed only during this declaration
      * @param autonomousDrive sole Auto drive heartbeat and stop owner
      * @param motionPredictor predictor owned by the same Auto runtime
      * @param eligibleScoringTagIds non-empty configured scoring-tag subset eligible in this mode
      * @param autoAimEnabledSource policy that enables target selection and aim gating
      * @param aimOverrideSource policy that bypasses aim-readiness gating while true
      * @param applyStartingPose exact-START action that applies the frozen Auto pose
+     * @return completed shared capability vocabulary used by the Auto routine builder
      */
-    public void declareAuto(
+    public PhoenixCapabilities declareAuto(
             RobotProgram program,
+            PhoenixProfile profile,
             DriveCommandSink autonomousDrive,
             MotionPredictor motionPredictor,
             Source<Set<Integer>> eligibleScoringTagIds,
@@ -455,6 +461,10 @@ public final class PhoenixRobot {
                 program,
                 "Phoenix Auto program is required"
         );
+        PhoenixProfile selectedProfile = Objects.requireNonNull(
+                profile,
+                "Phoenix Auto profile is required"
+        );
         beginMode(RuntimeMode.MANAGED_AUTO, "declareAuto");
         loopPhaseProfiler.reset();
 
@@ -465,7 +475,7 @@ public final class PhoenixRobot {
         registerServiceOrClean(requiredProgram, autoService, autoService::stop);
 
         vision = Objects.requireNonNull(
-                autoHardwareAssembly.createVision(hardwareMap, profile),
+                autoHardwareAssembly.createVision(hardwareMap, selectedProfile.vision),
                 "Auto hardware assembly returned null vision"
         );
         autoService.attachVision(vision);
@@ -474,13 +484,20 @@ public final class PhoenixRobot {
                 autoHardwareAssembly.createLocalization(
                         Objects.requireNonNull(motionPredictor, "motionPredictor"),
                         vision,
-                        profile
+                        selectedProfile.fixedAprilTagLayout,
+                        selectedProfile.localization == null
+                                ? null
+                                : selectedProfile.localization.estimation
                 ),
                 "Auto hardware assembly returned null localization"
         );
         autoService.attachLocalization(localization);
+        telemetryPresenter = createTelemetryPresenter(selectedProfile.localization);
 
         targeting = createTargeting(
+                selectedProfile.targeting,
+                selectedProfile.localization,
+                selectedProfile.fixedAprilTagLayout,
                 Objects.requireNonNull(
                         eligibleScoringTagIds,
                         "eligibleScoringTagIds"
@@ -499,14 +516,14 @@ public final class PhoenixRobot {
         scoring = Objects.requireNonNull(
                 autoHardwareAssembly.createScoring(
                         hardwareMap,
-                        profile,
+                        selectedProfile.scoring,
                         targeting
                 ),
                 "Auto hardware assembly returned null scoring owner"
         );
         ManagedAutoScoringOutput scoringOutput = new ManagedAutoScoringOutput(scoring);
         registerOutputOrClean(requiredProgram, scoringOutput, scoring::stop);
-        capabilities = createCapabilities();
+        return createCapabilities();
     }
 
     /** Return Phoenix's one additive managed-Auto presenter for the declared root routine. */
@@ -526,34 +543,52 @@ public final class PhoenixRobot {
         );
     }
 
-    /** Return Phoenix's initialized shared, mode-neutral capability vocabulary. */
-    public PhoenixCapabilities capabilities() {
-        if (capabilities == null) {
-            throw new IllegalStateException("Phoenix capabilities are not initialized");
-        }
-        return capabilities;
-    }
-
     /** Apply one accepted match pose while managed TeleOp is declared and still in INIT. */
     void restoreTeleOpPose(Pose2d fieldToRobotPose) {
         requireMode(RuntimeMode.MANAGED_TELEOP, "restore the Auto-to-TeleOp pose");
         teleOpPoseRestore.restore(fieldToRobotPose);
     }
 
-    private PhoenixTargeting createTargeting(Source<Set<Integer>> eligibleScoringTagIds,
+    private PhoenixTargeting createTargeting(PhoenixTargeting.Config targetingConfig,
+                                             FtcOdometryAprilTagLocalizationLane.Config localizationConfig,
+                                             TagLayout fixedAprilTagLayout,
+                                             Source<Set<Integer>> eligibleScoringTagIds,
                                              BooleanSource autoAimEnabledSource,
                                              BooleanSource aimOverrideSource) {
+        FtcOdometryAprilTagLocalizationLane.Config requiredLocalization = Objects.requireNonNull(
+                localizationConfig,
+                "PhoenixProfile.localization is required for targeting"
+        );
         return new PhoenixTargeting(
-                profile.autoAim,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
+                targetingConfig,
+                requiredLocalization.estimation.aprilTags.fieldPoseSolver,
                 vision.tagSensor(),
                 vision.cameraMountConfig(),
                 localization.globalEstimator(),
-                profile.field.fixedAprilTagLayout,
+                fixedAprilTagLayout,
                 eligibleScoringTagIds,
                 autoAimEnabledSource,
-                aimOverrideSource,
-                profile.autoAim.shotVelocityTable
+                aimOverrideSource
+        );
+    }
+
+    private static PhoenixTelemetryPresenter createTelemetryPresenter(
+            FtcOdometryAprilTagLocalizationLane.Config localizationConfig
+    ) {
+        FtcOdometryAprilTagLocalizationLane.EstimatorConfig estimation = Objects.requireNonNull(
+                Objects.requireNonNull(
+                        localizationConfig,
+                        "PhoenixProfile.localization is required for presentation"
+                ).estimation,
+                "PhoenixProfile.localization.estimation is required for presentation"
+        );
+        return new PhoenixTelemetryPresenter(
+                estimation.correctedEstimatorMode,
+                Objects.requireNonNull(
+                        estimation.correctionSource,
+                        "PhoenixProfile.localization.estimation.correctionSource is required "
+                                + "for presentation"
+                ).mode
         );
     }
 
@@ -1072,8 +1107,9 @@ public final class PhoenixRobot {
             }
             if (poseResetter == null) {
                 throw new IllegalStateException(
-                        "Cannot restore the Auto pose because Phoenix TeleOp is not declared; "
-                                + "call declareTeleOp(program, eligibleScoringTagIds) first"
+                    "Cannot restore the Auto pose because Phoenix TeleOp is not declared; "
+                                + "call declareTeleOp(program, profile, gamepad1, gamepad2, "
+                                + "eligibleScoringTagIds) first"
                 );
             }
             if (startBoundaryReached) {

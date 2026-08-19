@@ -19,6 +19,7 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Verifies Phoenix's calibration-dependent TeleOp assist policy without hardware. */
 public final class PhoenixDriveAssistServiceTest {
@@ -84,7 +85,7 @@ public final class PhoenixDriveAssistServiceTest {
         ));
         DriveSignal manualSignal = new DriveSignal(0.40, -0.20, 0.30);
         PhoenixDriveAssistService service = new PhoenixDriveAssistService(
-                new PhoenixProfile.DriveAssistConfig(),
+                PhoenixDriveAssistService.Config.defaults(),
                 clock -> manualSignal,
                 ScalarSource.constant(0.0),
                 Source.constant(scoringStatus(true)),
@@ -132,6 +133,75 @@ public final class PhoenixDriveAssistServiceTest {
         assertFalse(service.status().shootBraceEnabled);
     }
 
+    @Test
+    public void ownerRetainsItsValidatedScalarSnapshot() {
+        ManualLoopClock time = new ManualLoopClock();
+        PhoenixDriveAssistService.Config config = PhoenixDriveAssistService.Config.defaults();
+        PhoenixDriveAssistService service = createService(
+                time.clock(),
+                true,
+                new RecordingAimOverlay(),
+                Source.constant(scoringStatus(true)),
+                config
+        );
+
+        config.shootBraceEnterTranslateMagnitude = Double.NaN;
+        config.shootBraceExitTranslateMagnitude = Double.NaN;
+        config.shootBraceTranslateKp = Double.NaN;
+        config.shootBraceMaxTranslateCmd = Double.NaN;
+
+        DriveSignal output = service.driveSource().get(time.clock());
+        assertTrue(Double.isFinite(output.axial));
+        assertTrue(Double.isFinite(output.lateral));
+        assertTrue(Double.isFinite(output.omega));
+        assertTrue(service.status().shootBraceEnabled);
+    }
+
+    @Test
+    public void configRejectsEachInvalidDomainAndCrossFieldOrder() {
+        PhoenixDriveAssistService.Config enter = PhoenixDriveAssistService.Config.defaults();
+        enter.shootBraceEnterTranslateMagnitude = -0.01;
+        expectInvalidConfig(enter, "shootBraceEnterTranslateMagnitude");
+
+        PhoenixDriveAssistService.Config exit = PhoenixDriveAssistService.Config.defaults();
+        exit.shootBraceExitTranslateMagnitude = Double.NaN;
+        expectInvalidConfig(exit, "shootBraceExitTranslateMagnitude");
+
+        PhoenixDriveAssistService.Config ordering = PhoenixDriveAssistService.Config.defaults();
+        ordering.shootBraceEnterTranslateMagnitude = 0.8;
+        ordering.shootBraceExitTranslateMagnitude = 0.2;
+        ordering.shootBraceTranslateKp = Double.NaN;
+        expectInvalidConfig(ordering, "shootBraceEnterTranslateMagnitude");
+
+        PhoenixDriveAssistService.Config gain = PhoenixDriveAssistService.Config.defaults();
+        gain.shootBraceTranslateKp = -0.01;
+        expectInvalidConfig(gain, "shootBraceTranslateKp");
+
+        PhoenixDriveAssistService.Config maximum = PhoenixDriveAssistService.Config.defaults();
+        maximum.shootBraceMaxTranslateCmd = Double.POSITIVE_INFINITY;
+        expectInvalidConfig(maximum, "shootBraceMaxTranslateCmd");
+    }
+
+    @Test
+    public void configAcceptsInclusiveDocumentedBoundaries() {
+        ManualLoopClock time = new ManualLoopClock();
+        PhoenixDriveAssistService.Config config = PhoenixDriveAssistService.Config.defaults();
+        config.shootBraceEnterTranslateMagnitude = 0.0;
+        config.shootBraceExitTranslateMagnitude = 1.0;
+        config.shootBraceTranslateKp = 0.0;
+        config.shootBraceMaxTranslateCmd = 0.0;
+
+        PhoenixDriveAssistService service = createService(
+                time.clock(),
+                true,
+                new RecordingAimOverlay(),
+                Source.constant(scoringStatus(true)),
+                config
+        );
+
+        assertTrue(service != null);
+    }
+
     private static PhoenixDriveAssistService createService(
             LoopClock clock,
             boolean poseAssistsAvailable,
@@ -150,6 +220,22 @@ public final class PhoenixDriveAssistServiceTest {
             boolean poseAssistsAvailable,
             DriveOverlay aimOverlay,
             Source<PhoenixCapabilities.ScoringStatus> scoringStatusSource
+    ) {
+        return createService(
+                clock,
+                poseAssistsAvailable,
+                aimOverlay,
+                scoringStatusSource,
+                PhoenixDriveAssistService.Config.defaults()
+        );
+    }
+
+    private static PhoenixDriveAssistService createService(
+            LoopClock clock,
+            boolean poseAssistsAvailable,
+            DriveOverlay aimOverlay,
+            Source<PhoenixCapabilities.ScoringStatus> scoringStatusSource,
+            PhoenixDriveAssistService.Config config
     ) {
         DriveSource manualDrive = new DriveSource() {
             @Override
@@ -182,7 +268,7 @@ public final class PhoenixDriveAssistServiceTest {
         };
 
         return new PhoenixDriveAssistService(
-                new PhoenixProfile.DriveAssistConfig(),
+                config,
                 manualDrive,
                 ScalarSource.constant(0.0),
                 scoringStatusSource,
@@ -191,6 +277,26 @@ public final class PhoenixDriveAssistServiceTest {
                 poseEstimator,
                 aimOverlay
         );
+    }
+
+    private static void expectInvalidConfig(
+            PhoenixDriveAssistService.Config config,
+            String expectedField
+    ) {
+        try {
+            createService(
+                    new ManualLoopClock().clock(),
+                    true,
+                    new RecordingAimOverlay(),
+                    Source.constant(scoringStatus(true)),
+                    config
+            );
+            fail("Expected invalid drive-assist config field " + expectedField);
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains(
+                    "PhoenixDriveAssistService.Config." + expectedField
+            ));
+        }
     }
 
     private static PhoenixCapabilities.ScoringStatus scoringStatus(boolean shootActive) {

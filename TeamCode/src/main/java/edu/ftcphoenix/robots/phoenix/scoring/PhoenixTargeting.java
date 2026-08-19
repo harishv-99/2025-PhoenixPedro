@@ -24,8 +24,8 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
+import edu.ftcphoenix.fw.field.SimpleTagLayout;
 import edu.ftcphoenix.fw.field.TagLayout;
-import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -37,8 +37,8 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.spatial.References;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
+import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Shared targeting service for Phoenix scoring.
@@ -52,17 +52,130 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
  */
 public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
 
+    /** Mutable data-only alliance targeting, aiming, and shot-selection configuration. */
+    public static final class Config {
+        public int redAllianceScoringTagId;
+        public int blueAllianceScoringTagId;
+        public LinkedHashMap<Integer, ScoringTarget> scoringTargets;
+        public double aimToleranceDeg;
+        public double aimKp;
+        public double aimMaxOmegaCmd;
+        public double aimReadyToleranceDeg;
+        public double aimReadyDebounceSec;
+        public double aimMinOmegaCmd;
+        public double selectionMaxAgeSec;
+        public double selectionReacquireSec;
+        public AimOffset defaultAimOffset;
+        public InterpolatingTable1D shotVelocityTable;
+
+        private Config() {
+            // Use defaults() to start from the complete Phoenix software baseline.
+        }
+
+        /** Returns a fresh software baseline; this does not establish field calibration. */
+        public static Config defaults() {
+            Config config = new Config();
+            config.redAllianceScoringTagId = 24;
+            config.blueAllianceScoringTagId = 20;
+            config.scoringTargets = new LinkedHashMap<Integer, ScoringTarget>();
+            config.scoringTargets.put(
+                    20,
+                    new ScoringTarget("Blue scoring target", new AimOffset(0.0, 0.0))
+            );
+            config.scoringTargets.put(
+                    24,
+                    new ScoringTarget("Red scoring target", new AimOffset(0.0, 0.0))
+            );
+            config.aimToleranceDeg = 0.25;
+            config.aimKp = 1.5;
+            config.aimMaxOmegaCmd = 0.80;
+            config.aimReadyToleranceDeg = 0.50;
+            config.aimReadyDebounceSec = 0.05;
+            config.aimMinOmegaCmd = 0.05;
+            config.selectionMaxAgeSec = 0.50;
+            config.selectionReacquireSec = 0.20;
+            config.defaultAimOffset = new AimOffset(0.0, 0.0);
+            config.shotVelocityTable = PhoenixShotVelocityCalibration.currentTable();
+            return config;
+        }
+
+        /** Returns the configured scoring tag for the selected match alliance. */
+        public int scoringTagIdFor(PhoenixAlliance alliance) {
+            switch (Objects.requireNonNull(alliance, "alliance")) {
+                case RED:
+                    return redAllianceScoringTagId;
+                case BLUE:
+                    return blueAllianceScoringTagId;
+                default:
+                    throw new IllegalArgumentException(
+                            "Unsupported Phoenix alliance: " + alliance
+                    );
+            }
+        }
+
+        private static Config rawCopyOf(Config source) {
+            Config copy = new Config();
+            copy.redAllianceScoringTagId = source.redAllianceScoringTagId;
+            copy.blueAllianceScoringTagId = source.blueAllianceScoringTagId;
+            copy.scoringTargets = copyScoringTargets(source.scoringTargets);
+            copy.aimToleranceDeg = source.aimToleranceDeg;
+            copy.aimKp = source.aimKp;
+            copy.aimMaxOmegaCmd = source.aimMaxOmegaCmd;
+            copy.aimReadyToleranceDeg = source.aimReadyToleranceDeg;
+            copy.aimReadyDebounceSec = source.aimReadyDebounceSec;
+            copy.aimMinOmegaCmd = source.aimMinOmegaCmd;
+            copy.selectionMaxAgeSec = source.selectionMaxAgeSec;
+            copy.selectionReacquireSec = source.selectionReacquireSec;
+            copy.defaultAimOffset = copyAimOffset(source.defaultAimOffset);
+            copy.shotVelocityTable = source.shotVelocityTable;
+            return copy;
+        }
+    }
+
+    /** Raw target-catalog value; the map key is the target's sole AprilTag identity. */
+    public static final class ScoringTarget {
+        public String label;
+        public AimOffset aimOffset;
+
+        /** Creates one raw target definition without replacing invalid authoring evidence. */
+        public ScoringTarget(String label, AimOffset aimOffset) {
+            this.label = label;
+            this.aimOffset = aimOffset;
+        }
+    }
+
+    /** Raw tag-local forward/left aim offset in inches. */
+    public static final class AimOffset {
+        public double forwardInches;
+        public double leftInches;
+
+        /** Creates one raw tag-local offset without validating or normalizing its values. */
+        public AimOffset(double forwardInches, double leftInches) {
+            this.forwardInches = forwardInches;
+            this.leftInches = leftInches;
+        }
+    }
+
     /** One session's exact eligible selector and guidance graph. */
     private static final class AimRuntime {
         private final Set<Integer> eligibleTagIds;
+        private final TagLayout fieldTagLayout;
+        private final Map<Integer, Pose2d> fieldToAimPoints;
         private final TagSelectionSource selection;
         private final DriveGuidancePlan plan;
         private final DriveGuidanceQuery query;
 
         private AimRuntime(Set<Integer> eligibleTagIds,
+                           TagLayout fieldTagLayout,
+                           Map<Integer, Pose2d> fieldToAimPoints,
                            TagSelectionSource selection,
                            DriveGuidancePlan plan) {
             this.eligibleTagIds = Objects.requireNonNull(eligibleTagIds, "eligibleTagIds");
+            this.fieldTagLayout = Objects.requireNonNull(fieldTagLayout, "fieldTagLayout");
+            this.fieldToAimPoints = Objects.requireNonNull(
+                    fieldToAimPoints,
+                    "fieldToAimPoints"
+            );
             this.selection = Objects.requireNonNull(selection, "selection");
             this.plan = Objects.requireNonNull(plan, "plan");
             this.query = plan.query();
@@ -141,7 +254,7 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
         }
     }
 
-    private final PhoenixProfile.AutoAimConfig cfg;
+    private final Config cfg;
     private final FixedTagFieldPoseSolver fieldPoseSolver;
     private final AprilTagSensor tagSensor;
     private final CameraMountConfig cameraMountConfig;
@@ -150,7 +263,6 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
     private final Source<Set<Integer>> eligibleScoringTagIds;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverrideInput;
-    private final InterpolatingTable1D shotVelocityTable;
     private final double aimReadyToleranceRad;
     private final Source<TargetingCalculation> targetingCalculation;
     private final BooleanSource stableAimReady;
@@ -177,10 +289,8 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
      *                                    defensively frozen before the first detection selection
      * @param autoAimEnabled              driver enable source that activates sticky target selection and the aim overlay
      * @param aimOverrideInput            driver override source that bypasses aim readiness gates when held
-     * @param shotVelocityTable           finite range-to-velocity calibration table; a non-finite
-     *                                    live range produces no shot suggestion
      */
-    public PhoenixTargeting(PhoenixProfile.AutoAimConfig config,
+    public PhoenixTargeting(Config config,
                             FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig,
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMountConfig,
@@ -188,9 +298,8 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                             TagLayout fieldTagLayout,
                             Source<Set<Integer>> eligibleScoringTagIds,
                             BooleanSource autoAimEnabled,
-                            BooleanSource aimOverrideInput,
-                            InterpolatingTable1D shotVelocityTable) {
-        this.cfg = Objects.requireNonNull(config, "config").copy();
+                            BooleanSource aimOverrideInput) {
+        this.cfg = captureConfig(config);
         this.fieldPoseSolver = new FixedTagFieldPoseSolver(
                 Objects.requireNonNull(aprilTagFieldPoseConfig, "aprilTagFieldPoseConfig")
         );
@@ -207,7 +316,6 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
         );
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled").memoized();
         this.aimOverrideInput = Objects.requireNonNull(aimOverrideInput, "aimOverrideInput").memoized();
-        this.shotVelocityTable = Objects.requireNonNull(shotVelocityTable, "shotVelocityTable");
         this.aimReadyToleranceRad = Math.toRadians(this.cfg.aimReadyToleranceDeg);
 
         targetingCalculation = Source.of(this::calculateTargeting).memoized();
@@ -393,14 +501,16 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                         && aimStatus.omegaWithin(aimReadyToleranceRad)
         );
 
-        PhoenixProfile.AutoAimConfig.ScoringTarget target = selection.hasSelection
-                ? cfg.targetProfileForTag(selection.selectedTagId)
-                : cfg.defaultTargetProfile(-1);
+        ScoringTarget target = selection.hasSelection
+                ? cfg.scoringTargets.get(selection.selectedTagId)
+                : defaultTarget();
 
         boolean hasFreshTargetObservation = selection.hasFreshSelectedObservation
                 && selection.selectedObservation.hasTarget;
         double candidateVelocityNative = hasFreshTargetObservation
-                ? shotVelocityTable.interpolate(selection.selectedObservation.cameraRangeInches())
+                ? cfg.shotVelocityTable.interpolate(
+                        selection.selectedObservation.cameraRangeInches()
+                )
                 : Double.NaN;
         boolean hasSuggestedVelocity = Double.isFinite(candidateVelocityNative);
         double suggestedVelocityNative = hasSuggestedVelocity
@@ -409,13 +519,11 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
 
         Pose3d fieldToSelectedTag = null;
         Pose2d fieldToAimPoint = null;
-        if (selection.hasSelection && fieldTagLayout.has(selection.selectedTagId)) {
-            fieldToSelectedTag = fieldTagLayout.requireFieldToTagPose(selection.selectedTagId);
-            fieldToAimPoint = new Pose2d(
-                    fieldToSelectedTag.xInches,
-                    fieldToSelectedTag.yInches,
-                    fieldToSelectedTag.yawRad
-            ).then(new Pose2d(target.aimOffset.forwardInches, target.aimOffset.leftInches, 0.0));
+        if (selection.hasSelection) {
+            fieldToSelectedTag = runtime.fieldTagLayout.requireFieldToTagPose(
+                    selection.selectedTagId
+            );
+            fieldToAimPoint = runtime.fieldToAimPoints.get(selection.selectedTagId);
         }
 
         return new TargetingCalculation(
@@ -468,7 +576,7 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
     }
 
     private PhoenixCapabilities.TargetingStatus initialStatus() {
-        PhoenixProfile.AutoAimConfig.ScoringTarget target = cfg.defaultTargetProfile(-1);
+        ScoringTarget target = defaultTarget();
         return new PhoenixCapabilities.TargetingStatus(
                 false,
                 false,
@@ -488,29 +596,147 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
         );
     }
 
+    private ScoringTarget defaultTarget() {
+        return new ScoringTarget("No target", cfg.defaultAimOffset);
+    }
+
+    /** Captures raw catalog evidence, then validates only the always-active targeting policy. */
+    private static Config captureConfig(Config config) {
+        Config source = Objects.requireNonNull(
+                config,
+                "PhoenixTargeting.Config is required"
+        );
+        Config copy = Config.rawCopyOf(source);
+
+        requireFiniteRange("aimToleranceDeg", copy.aimToleranceDeg, 0.0, 180.0);
+        requireFiniteNonNegative("aimKp", copy.aimKp);
+        requireFiniteRange("aimMaxOmegaCmd", copy.aimMaxOmegaCmd, 0.0, 1.0);
+        if (!Double.isFinite(copy.aimReadyToleranceDeg)
+                || copy.aimReadyToleranceDeg < copy.aimToleranceDeg
+                || copy.aimReadyToleranceDeg > 180.0) {
+            throw invalidConfig(
+                    "aimReadyToleranceDeg",
+                    "finite, >= aimToleranceDeg, and <= 180.0",
+                    copy.aimReadyToleranceDeg
+            );
+        }
+        requireFiniteNonNegative("aimReadyDebounceSec", copy.aimReadyDebounceSec);
+        if (!Double.isFinite(copy.aimMinOmegaCmd)
+                || copy.aimMinOmegaCmd < 0.0
+                || copy.aimMinOmegaCmd > copy.aimMaxOmegaCmd) {
+            throw invalidConfig(
+                    "aimMinOmegaCmd",
+                    "finite and in [0.0, aimMaxOmegaCmd]",
+                    copy.aimMinOmegaCmd
+            );
+        }
+        if (copy.aimMinOmegaCmd > 0.0 && !(copy.aimKp > 0.0)) {
+            throw new IllegalArgumentException(
+                    "PhoenixTargeting.Config.aimKp must be > 0 when aimMinOmegaCmd is > 0, got "
+                            + copy.aimKp + " and " + copy.aimMinOmegaCmd + "."
+            );
+        }
+        requireFiniteNonNegative("selectionMaxAgeSec", copy.selectionMaxAgeSec);
+        requireFiniteNonNegative("selectionReacquireSec", copy.selectionReacquireSec);
+        if (copy.defaultAimOffset == null) {
+            throw invalidConfig("defaultAimOffset", "non-null", null);
+        }
+        requireFinite(
+                "defaultAimOffset.forwardInches",
+                copy.defaultAimOffset.forwardInches
+        );
+        requireFinite(
+                "defaultAimOffset.leftInches",
+                copy.defaultAimOffset.leftInches
+        );
+        if (copy.shotVelocityTable == null) {
+            throw invalidConfig("shotVelocityTable", "non-null", null);
+        }
+        return copy;
+    }
+
+    private static LinkedHashMap<Integer, ScoringTarget> copyScoringTargets(
+            LinkedHashMap<Integer, ScoringTarget> source
+    ) {
+        if (source == null) {
+            return null;
+        }
+        LinkedHashMap<Integer, ScoringTarget> copy =
+                new LinkedHashMap<Integer, ScoringTarget>();
+        for (Map.Entry<Integer, ScoringTarget> entry : source.entrySet()) {
+            ScoringTarget target = entry.getValue();
+            copy.put(
+                    entry.getKey(),
+                    target == null
+                            ? null
+                            : new ScoringTarget(target.label, copyAimOffset(target.aimOffset))
+            );
+        }
+        return copy;
+    }
+
+    private static AimOffset copyAimOffset(AimOffset source) {
+        return source == null
+                ? null
+                : new AimOffset(source.forwardInches, source.leftInches);
+    }
+
+    private static void requireFiniteRange(String fieldName,
+                                           double value,
+                                           double minimum,
+                                           double maximum) {
+        if (!Double.isFinite(value) || value < minimum || value > maximum) {
+            throw invalidConfig(
+                    fieldName,
+                    "finite and in [" + minimum + ", " + maximum + "]",
+                    value
+            );
+        }
+    }
+
+    private static void requireFiniteNonNegative(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0) {
+            throw invalidConfig(fieldName, "finite and >= 0", value);
+        }
+    }
+
+    private static void requireFinite(String fieldName, double value) {
+        if (!Double.isFinite(value)) {
+            throw invalidConfig(fieldName, "finite", value);
+        }
+    }
+
+    private static void requireFiniteFieldPose(int tagId, Pose3d pose) {
+        if (pose == null) {
+            throw new IllegalArgumentException(
+                    "PhoenixTargeting eligibleScoringTagIds contains tag id " + tagId
+                            + " without a pose in the fixed field layout. Managed readiness must "
+                            + "block START until the selected alliance scoring tag is fixed."
+            );
+        }
+        requireFinite("fixedFieldPose[" + tagId + "].xInches", pose.xInches);
+        requireFinite("fixedFieldPose[" + tagId + "].yInches", pose.yInches);
+        requireFinite("fixedFieldPose[" + tagId + "].zInches", pose.zInches);
+        requireFinite("fixedFieldPose[" + tagId + "].yawRad", pose.yawRad);
+        requireFinite("fixedFieldPose[" + tagId + "].pitchRad", pose.pitchRad);
+        requireFinite("fixedFieldPose[" + tagId + "].rollRad", pose.rollRad);
+    }
+
+    private static IllegalArgumentException invalidConfig(String fieldName,
+                                                          String requirement,
+                                                          Object value) {
+        return new IllegalArgumentException(
+                "PhoenixTargeting.Config." + fieldName + " must be " + requirement + ", got "
+                        + value + "."
+        );
+    }
+
     private AimRuntime buildAimRuntime(LoopClock clock) {
-        if (cfg.scoringTargets == null) {
-            throw new IllegalArgumentException(
-                    "PhoenixProfile.autoAim.scoringTargets is required before Phoenix targeting "
-                            + "can freeze eligibleScoringTagIds. The managed prestart readiness "
-                            + "screen must block START until the selected alliance target exists."
-            );
-        }
-
-        Set<Integer> configuredTagIds =
-                new LinkedHashSet<Integer>(cfg.scoringTargets.keySet());
-        if (configuredTagIds.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Phoenix auto-aim requires at least one entry in "
-                            + "PhoenixProfile.autoAim.scoringTargets before targeting starts."
-            );
-        }
-
         Set<Integer> suppliedEligibleTagIds = eligibleScoringTagIds.get(clock);
         if (suppliedEligibleTagIds == null) {
             throw new IllegalArgumentException(
                     "PhoenixTargeting eligibleScoringTagIds source returned null; return the "
-                            + "non-empty selected-mode subset of PhoenixProfile.autoAim.scoringTargets."
+                            + "non-empty selected-mode subset of PhoenixTargeting.Config."
             );
         }
         if (suppliedEligibleTagIds.isEmpty()) {
@@ -527,32 +753,88 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                         "PhoenixTargeting eligibleScoringTagIds must not contain null."
                 );
             }
-            if (!configuredTagIds.contains(tagId)
-                    || cfg.scoringTargets.get(tagId) == null) {
+            if (tagId < 0) {
                 throw new IllegalArgumentException(
-                        "PhoenixTargeting eligibleScoringTagIds contains tag id " + tagId
-                                + " that is not a usable entry in "
-                                + "PhoenixProfile.autoAim.scoringTargets. Configured tag ids: "
-                                + configuredTagIds + "."
-                );
-            }
-            if (!fieldTagLayout.has(tagId)) {
-                throw new IllegalArgumentException(
-                        "PhoenixTargeting eligibleScoringTagIds contains tag id " + tagId
-                                + " that is not in PhoenixProfile.field.fixedAprilTagLayout. "
-                                + "Managed TeleOp/Auto readiness must block START until the "
-                                + "selected alliance scoring tag has a fixed field pose."
+                        "PhoenixTargeting eligibleScoringTagIds must contain only non-negative "
+                                + "tag ids, got " + tagId + "."
                 );
             }
             eligibleSnapshot.add(tagId);
         }
 
+        if (cfg.scoringTargets == null) {
+            throw new IllegalArgumentException(
+                    "PhoenixTargeting.Config.scoringTargets is required for the selected "
+                            + "eligibleScoringTagIds. Managed readiness must block START until "
+                            + "the selected alliance target exists."
+            );
+        }
+
+        SimpleTagLayout selectedFieldLayout = new SimpleTagLayout();
+        LinkedHashMap<Integer, References.TagPointOffset> aimOffsets =
+                new LinkedHashMap<Integer, References.TagPointOffset>();
+        LinkedHashMap<Integer, Pose2d> fieldToAimPoints =
+                new LinkedHashMap<Integer, Pose2d>();
+        for (Integer tagId : eligibleSnapshot) {
+            ScoringTarget target = cfg.scoringTargets.get(tagId);
+            if (target == null) {
+                throw new IllegalArgumentException(
+                        "PhoenixTargeting eligibleScoringTagIds contains tag id " + tagId
+                                + " without a target in PhoenixTargeting.Config.scoringTargets."
+                );
+            }
+            if (target.label == null || target.label.trim().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "PhoenixTargeting.Config.scoringTargets[" + tagId
+                                + "].label must be non-blank, got " + target.label + "."
+                );
+            }
+            AimOffset aimOffset = target.aimOffset;
+            if (aimOffset == null) {
+                throw new IllegalArgumentException(
+                        "PhoenixTargeting.Config.scoringTargets[" + tagId
+                                + "].aimOffset is required, got null."
+                );
+            }
+            requireFinite(
+                    "scoringTargets[" + tagId + "].aimOffset.forwardInches",
+                    aimOffset.forwardInches
+            );
+            requireFinite(
+                    "scoringTargets[" + tagId + "].aimOffset.leftInches",
+                    aimOffset.leftInches
+            );
+
+            Pose3d fieldToTag = fieldTagLayout.getFieldToTagPose(tagId);
+            requireFiniteFieldPose(tagId, fieldToTag);
+            Pose2d fieldToAimPoint = new Pose2d(
+                    fieldToTag.xInches,
+                    fieldToTag.yInches,
+                    fieldToTag.yawRad
+            ).then(new Pose2d(aimOffset.forwardInches, aimOffset.leftInches, 0.0));
+            requireFinite(
+                    "composed fieldToAimPoint[" + tagId + "].xInches",
+                    fieldToAimPoint.xInches
+            );
+            requireFinite(
+                    "composed fieldToAimPoint[" + tagId + "].yInches",
+                    fieldToAimPoint.yInches
+            );
+            requireFinite(
+                    "composed fieldToAimPoint[" + tagId + "].headingRad",
+                    fieldToAimPoint.headingRad
+            );
+
+            selectedFieldLayout.addPose(tagId, fieldToTag);
+            aimOffsets.put(
+                    tagId,
+                    References.pointOffset(aimOffset.forwardInches, aimOffset.leftInches)
+            );
+            fieldToAimPoints.put(tagId, fieldToAimPoint);
+        }
+
         Set<Integer> frozenEligibleTagIds = Collections.unmodifiableSet(eligibleSnapshot);
-        TagLayout scoringTagLayout = TagLayouts.subsetOrSame(
-                fieldTagLayout,
-                frozenEligibleTagIds,
-                "Phoenix eligible scoring fixed-tag layout"
-        );
+        TagLayout scoringTagLayout = selectedFieldLayout;
         TagSelectionSource scoringSelection = TagSelections.from(tagSensor)
                 .among(frozenEligibleTagIds)
                 .freshWithinSec(cfg.selectionMaxAgeSec)
@@ -571,7 +853,7 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                 .faceTo()
                 .point(References.relativeToSelectedTagPoint(
                         scoringSelection,
-                        buildAimOffsetsByTag(frozenEligibleTagIds)
+                        aimOffsets
                 ))
                 .solveWith()
                 .adaptive()
@@ -588,7 +870,13 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
                 .doneDriveTuning()
                 .build();
 
-        return new AimRuntime(frozenEligibleTagIds, scoringSelection, aimPlan);
+        return new AimRuntime(
+                frozenEligibleTagIds,
+                scoringTagLayout,
+                Collections.unmodifiableMap(fieldToAimPoints),
+                scoringSelection,
+                aimPlan
+        );
     }
 
     private AimRuntime requireAimRuntime(String operation) {
@@ -602,21 +890,6 @@ public final class PhoenixTargeting implements PhoenixCapabilities.Targeting {
             );
         }
         return runtime;
-    }
-
-    private Map<Integer, References.TagPointOffset> buildAimOffsetsByTag(
-            Set<Integer> eligibleTagIds
-    ) {
-        LinkedHashMap<Integer, References.TagPointOffset> offsets = new LinkedHashMap<Integer, References.TagPointOffset>();
-        for (Integer tagId : eligibleTagIds) {
-            PhoenixProfile.AutoAimConfig.ScoringTarget target = cfg.scoringTargets.get(tagId);
-            PhoenixProfile.AutoAimConfig.AimOffset aimOffset = target.aimOffset;
-            offsets.put(tagId, References.pointOffset(
-                    aimOffset.forwardInches,
-                    aimOffset.leftInches
-            ));
-        }
-        return offsets;
     }
 
     /** One activation-owned wrapper that resolves its plan after managed targeting start. */

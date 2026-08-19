@@ -3,26 +3,53 @@ package edu.ftcphoenix.robots.phoenix;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Verifies that Phoenix presentation remains additive under the managed lifecycle. */
 public final class PhoenixTelemetryOwnershipTest {
 
     @Test
+    public void presenterIsPackagePrivateAndAcceptsOnlyItsTwoDisplayFacts() {
+        assertTrue(Modifier.isFinal(PhoenixTelemetryPresenter.class.getModifiers()));
+        assertFalse(Modifier.isPublic(PhoenixTelemetryPresenter.class.getModifiers()));
+
+        Constructor<?>[] constructors =
+                PhoenixTelemetryPresenter.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertFalse(Modifier.isPublic(constructors[0].getModifiers()));
+        assertEquals(2, constructors[0].getParameterTypes().length);
+        assertEquals(
+                FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.class,
+                constructors[0].getParameterTypes()[0]
+        );
+        assertEquals(
+                FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.class,
+                constructors[0].getParameterTypes()[1]
+        );
+    }
+
+    @Test
     public void presenterStagesTeleOpAndAutoRowsWithoutClearingOrCommitting() {
         RecordingTelemetry telemetry = new RecordingTelemetry();
-        PhoenixTelemetryPresenter presenter =
-                new PhoenixTelemetryPresenter(PhoenixProfile.current());
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixTelemetryPresenter presenter = new PhoenixTelemetryPresenter(
+                profile.localization.estimation.correctedEstimatorMode,
+                profile.localization.estimation.correctionSource.mode
+        );
         PoseEstimate noPose = PoseEstimate.noPose(LoopTimestamp.unavailable());
 
         telemetry.proxy().addData("upstream.sidecar", "retained");

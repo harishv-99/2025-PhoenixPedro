@@ -40,9 +40,13 @@ public final class PhoenixCapabilities {
         public final double flywheelAccelNativePerSec;
         public final double flywheelAccelAbsNativePerSec;
         public final double readyLeadSec;
+        /** Predicted absolute velocity, or {@link Double#NaN} when finite prediction overflows. */
         public final double predictedFlywheelAbsNative;
+        /** Predicted signed error, or {@link Double#NaN} when prediction is unavailable. */
         public final double predictedFlywheelErrorNative;
+        /** Independent raw result from the flywheel Plant's configured at-target test. */
         public final boolean flywheelAtTarget;
+        /** Predictive, asymmetric, debounced readiness; false when prediction is unavailable. */
         public final boolean ready;
         public final int feedQueued;
         public final boolean feedActive;

@@ -307,6 +307,11 @@ It should contain:
 
 It should not contain runtime behavior.
 
+For a single checked-in robot, prefer one `current()` factory that returns a fresh complete graph.
+Treat that graph as short-lived composition input: pass it once to the active mode declaration and
+let each long-lived owner capture only its own active Config. An aggregate public `copy()` is not a
+default requirement and can accidentally validate or retain dormant mode/backend branches.
+
 Example:
 
 - `PhoenixProfile`
@@ -463,30 +468,31 @@ A strong starting pattern is:
 ```java
 public final class MyRobotProfile {
 
-    public FtcDrives.MecanumConfig drive = FtcDrives.MecanumConfig.defaults();
-    public VisionConfig vision = new VisionConfig();
-    public FtcOdometryAprilTagLocalizationLane.Config localization =
-            FtcOdometryAprilTagLocalizationLane.Config.defaults();
+    public FtcDrives.MecanumConfig drive;
+    public VisionConfig vision;
+    public FtcOdometryAprilTagLocalizationLane.Config localization;
+    public TagLayout fixedAprilTagLayout;
+    public ControlsConfig controls;
+    public DriveAssistConfig driveAssist;
+    public MechanismConfig mechanism;
+    public StrategyConfig strategy;
+    public CalibrationConfig calibration;
 
-    public FieldConfig field = new FieldConfig();
-    public ControlsConfig controls = new ControlsConfig();
-    public DriveAssistConfig driveAssist = new DriveAssistConfig();
-    public MechanismConfig mechanism = new MechanismConfig();
-    public StrategyConfig strategy = new StrategyConfig();
-    public CalibrationConfig calibration = new CalibrationConfig();
+    private MyRobotProfile() {
+    }
 
-    public MyRobotProfile copy() {
-        MyRobotProfile c = new MyRobotProfile();
-        c.drive = this.drive.copy();
-        c.vision = this.vision.copy();
-        c.localization = this.localization.copy();
-        c.field = this.field.copy();
-        c.controls = this.controls.copy();
-        c.driveAssist = this.driveAssist.copy();
-        c.mechanism = this.mechanism.copy();
-        c.strategy = this.strategy.copy();
-        c.calibration = this.calibration.copy();
-        return c;
+    public static MyRobotProfile current() {
+        MyRobotProfile profile = new MyRobotProfile();
+        profile.drive = MyDriveConfiguration.current();
+        profile.vision = VisionConfig.defaults();
+        profile.localization = MyLocalizationConfiguration.current();
+        profile.fixedAprilTagLayout = MyFieldConfiguration.currentFixedTagLayout();
+        profile.controls = ControlsConfig.defaults();
+        profile.driveAssist = DriveAssistConfig.defaults();
+        profile.mechanism = MechanismConfig.defaults();
+        profile.strategy = StrategyConfig.defaults();
+        profile.calibration = MyCalibrationConfiguration.current();
+        return profile;
     }
 }
 ```
@@ -496,10 +502,16 @@ For the simplest robot, keeping `vision` concrete as `FtcWebcamAprilTagVisionLan
 If you expect to swap between webcam and smart-camera backends, keep a robot-owned `VisionConfig`
 wrapper in the profile and let the composition root hold the backend-neutral `AprilTagVisionLane` interface.
 
-Profile copies isolate mutable backend Config containers but do not activate or validate every
-alternative. In particular, a webcam Config's custom FTC `AprilTagLibrary` remains borrowed until
-the selected webcam factory or owner validates and deep-snapshots it. This lets an inactive draft
-remain data while the active resource owner closes the mutable SDK boundary before hardware use.
+The aggregate is a short-lived composition draft, not a runtime owner. `current()` returns a fresh
+graph, and the ordinary composition path passes that one local value synchronously to the selected
+mode declaration. Each long-lived owner captures only its active Config before effects; the root
+does not retain or broadly copy the profile. Expose a public copy operation only on a cohesive owner
+Config with a real independent-retention caller, not merely for symmetry.
+
+Active-slice capture does not activate or validate every alternative. In particular, a webcam
+Config's custom FTC `AprilTagLibrary` remains borrowed until the selected webcam factory or owner
+validates and deep-snapshots it. This lets an inactive draft remain data while the active resource
+owner closes the mutable SDK boundary before hardware use.
 
 Why this order works:
 
@@ -564,7 +576,7 @@ FtcOdometryAprilTagLocalizationLane localization =
         new FtcOdometryAprilTagLocalizationLane(
                 hardwareMap,
                 vision,
-                profile.field.fixedAprilTagLayout,
+                profile.fixedAprilTagLayout,
                 profile.localization
         );
 ```
@@ -577,7 +589,7 @@ FtcOdometryAprilTagLocalizationLane localization =
         FtcOdometryAprilTagLocalizationLane.withPredictor(
                 autoRuntime.motionPredictor(),
                 vision,
-                profile.field.fixedAprilTagLayout,
+                profile.fixedAprilTagLayout,
                 profile.localization.estimation
         );
 ```
@@ -1271,18 +1283,21 @@ or execute policy:
 
 ```java
 public final class MyRobot {
-    private final MyCapabilities capabilities;
+    private final HardwareMap hardwareMap;
 
-    public MyRobot(RobotProgram program,
-                   HardwareMap hardwareMap,
-                   Gamepads gamepads,
-                   MyRobotProfile profile) {
+    public MyRobot(HardwareMap hardwareMap) {
+        this.hardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
+    }
+
+    public MyCapabilities declareTeleOp(RobotProgram program,
+                                        MyRobotProfile profile,
+                                        Gamepads gamepads) {
         MySensingService sensing = program.service(
                 new MySensingService(
                         hardwareMap,
                         profile.vision,
                         profile.localization,
-                        profile.field.fixedAprilTagLayout));
+                        profile.fixedAprilTagLayout));
         IntakeShooterSubsystem shooter = program.output(
                 new IntakeShooterSubsystem(hardwareMap, profile.mechanism));
         IntakeShooterSupervisor scoring = new IntakeShooterSupervisor(shooter);
@@ -1291,9 +1306,10 @@ public final class MyRobot {
                 sensing.tagSensor(),
                 sensing.cameraMountConfig(),
                 sensing.globalEstimator(),
-                profile.field.fixedAprilTagLayout);
+                profile.fixedAprilTagLayout);
         program.service(new MyScoringPolicyService(targeting, scoring));
-        capabilities = new MyRobotCapabilities(shooter, scoring, targeting);
+        MyCapabilities capabilities =
+                new MyRobotCapabilities(shooter, scoring, targeting);
 
         MyTeleOpControls controls = new MyTeleOpControls(gamepads, profile.controls);
         controls.bind(program.callbackBindings(), capabilities);
@@ -1317,9 +1333,6 @@ public final class MyRobot {
                         targeting.status(),
                         driveAssist.status(),
                         sensing.globalPose()));
-    }
-
-    public MyCapabilities capabilities() {
         return capabilities;
     }
 }
@@ -1331,8 +1344,17 @@ exposes only backend-neutral sensing facts. It is registered before the next res
 not generic framework lanes. `IntakeShooterSubsystem` is registered immediately as the sole owner
 of its private Plants. Grouping by role still makes every service run before every output; public
 call order does not turn the earlier output declaration into an upstream phase. The OpMode itself
-only chooses the profile and calls `new MyRobot(program, hardwareMap, gamepads, profile)` from
-`configure(program)`.
+creates one fresh profile, performs any cross-owner preflight it owns, constructs
+`new MyRobot(hardwareMap)`, and passes the profile and Gamepads to `declareTeleOp(...)` from
+`configure(program)`. A parallel `declareAuto(...)` receives the same short-lived profile plus only
+Auto-active runtime roles; it does not receive dormant Gamepads. The root retains neither the
+aggregate profile nor mode-only inputs after routing their active slices to the actual owners.
+
+Production Phoenix follows this exact shape. Its package-private ordinary-mode program performs
+the drive-versus-scoring motor collision preflight before hardware effects, then calls the sole
+`PhoenixRobot(HardwareMap)` constructor and one mode declaration. Advanced direct callers with an
+opaque drive sink must establish their own exclusive hardware ownership rather than relying on a
+misleading nominal-name check inside the root.
 
 A portable tool or deliberately custom host may still own and commit a frame that never enters a
 managed program. Ordinary robot selectors compose behind the program's one data-only `Prestart`.
@@ -1351,7 +1373,7 @@ MyRobotProfile
   ├─ drive      -> FtcDrives.MecanumConfig
   ├─ vision     -> FtcWebcamAprilTagVisionLane.Config (or a robot-owned backend wrapper)
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
-  ├─ field      -> TagLayout / field facts
+  ├─ fixedAprilTagLayout -> TagLayout / field facts
   ├─ controls   -> MyTeleOpControls.Config
   ├─ mechanism  -> MySubsystem.Config
   └─ strategy   -> MyService / MySupervisor tuning
@@ -1475,7 +1497,7 @@ Phoenix is the reference example for this split:
 - primitive: `AprilTagSensor`
 - lane: `AprilTagVisionLane` with a concrete backend such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`
 - lane: `FtcOdometryAprilTagLocalizationLane`
-- field facts: `PhoenixProfile.field.fixedAprilTagLayout`
+- field facts: `PhoenixProfile.fixedAprilTagLayout`
 - capability family: `PhoenixCapabilities.scoring()` / `PhoenixCapabilities.targeting()`
 - controls owner: `PhoenixTeleOpControls`
 - scoring mechanism and execution-policy owner: `.scoring.PhoenixScoring`, with request, policy,
