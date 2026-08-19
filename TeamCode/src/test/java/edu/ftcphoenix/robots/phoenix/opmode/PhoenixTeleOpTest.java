@@ -3,14 +3,13 @@ package edu.ftcphoenix.robots.phoenix.opmode;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.Test;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Proxy;
+import java.util.Arrays;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.Source;
@@ -23,6 +22,7 @@ import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
+import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
 
@@ -55,26 +55,48 @@ public final class PhoenixTeleOpTest {
 
     @Test
     public void robotSurfaceUsesOneManagedDeclarationGrammarForTeleOpAndAuto() throws Exception {
-        assertNotNull(PhoenixRobot.class.getMethod(
+        Constructor<?>[] publicConstructors = PhoenixRobot.class.getConstructors();
+        assertEquals(1, publicConstructors.length);
+        assertTrue(Arrays.equals(
+                new Class<?>[]{HardwareMap.class},
+                publicConstructors[0].getParameterTypes()
+        ));
+
+        Method declareTeleOp = PhoenixRobot.class.getMethod(
                 "declareTeleOp",
                 RobotProgram.class,
+                PhoenixProfile.class,
+                Gamepad.class,
+                Gamepad.class,
                 Source.class
-        ));
+        );
+        assertEquals(Void.TYPE, declareTeleOp.getReturnType());
         assertNotNull(PhoenixRobot.class.getMethod(
                 "teleOpPresenter",
                 PhoenixMatchHandoff.RestoreResult.class
         ));
-        assertNotNull(PhoenixRobot.class.getMethod(
+        Method declareAuto = PhoenixRobot.class.getMethod(
                 "declareAuto",
                 RobotProgram.class,
+                PhoenixProfile.class,
                 DriveCommandSink.class,
                 MotionPredictor.class,
                 Source.class,
                 BooleanSource.class,
                 BooleanSource.class,
                 Runnable.class
-        ));
+        );
+        assertEquals(PhoenixCapabilities.class, declareAuto.getReturnType());
         assertNotNull(PhoenixRobot.class.getMethod("autoPresenter", Task.class));
+
+        int declaredPublicMethods = 0;
+        for (Method method : PhoenixRobot.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers())) {
+                declaredPublicMethods++;
+            }
+        }
+        assertEquals(4, declaredPublicMethods);
+        assertNoPublicRobotMethod("capabilities");
 
         assertNoPublicRobotMethod("initAny");
         assertNoPublicRobotMethod("initTeleOp");
@@ -93,13 +115,7 @@ public final class PhoenixTeleOpTest {
     @Test
     public void managedDriveSourceWritesZeroAtStartBeforeSamplingDriverIntent()
             throws Exception {
-        PhoenixRobot robot = new PhoenixRobot(
-                new HardwareMap(null, null),
-                inertTelemetry(),
-                new Gamepad(),
-                new Gamepad(),
-                PhoenixProfile.current()
-        );
+        PhoenixRobot robot = new PhoenixRobot(new HardwareMap(null, null));
         int[] activeSamples = {0};
         DriveSource activeSource = clock -> {
             activeSamples[0]++;
@@ -166,20 +182,4 @@ public final class PhoenixTeleOpTest {
         }
     }
 
-    private static Telemetry inertTelemetry() {
-        return (Telemetry) Proxy.newProxyInstance(
-                Telemetry.class.getClassLoader(),
-                new Class<?>[]{Telemetry.class},
-                (proxy, method, args) -> {
-                    Class<?> returnType = method.getReturnType();
-                    if (returnType == boolean.class) {
-                        return true;
-                    }
-                    if (returnType == int.class) {
-                        return 0;
-                    }
-                    return null;
-                }
-        );
-    }
 }

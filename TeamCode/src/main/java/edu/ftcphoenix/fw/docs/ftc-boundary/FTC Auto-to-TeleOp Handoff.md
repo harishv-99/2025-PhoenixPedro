@@ -56,10 +56,19 @@ graph. It then attempts one consume during INIT:
 
 ```java
 PhoenixTeleOpPrestart prestart = program.prestart(
-        new PhoenixTeleOpPrestart(profile, gamepad1, PhoenixAlliance.RED));
-PhoenixRobot robot = new PhoenixRobot(
-        hardwareMap, telemetry, gamepad1, gamepad2, profile);
-robot.declareTeleOp(program, prestart.eligibleScoringTagIds());
+        new PhoenixTeleOpPrestart(
+                profile.targeting,
+                profile.fixedAprilTagLayout,
+                gamepad1,
+                PhoenixAlliance.RED));
+PhoenixHardwareOwnershipPreflight.requireDistinctMotorOwners(profile);
+PhoenixRobot robot = new PhoenixRobot(hardwareMap);
+robot.declareTeleOp(
+        program,
+        profile,
+        gamepad1,
+        gamepad2,
+        prestart.eligibleScoringTagIds());
 
 PhoenixMatchHandoff.RestoreResult restore =
         PhoenixMatchHandoff.restoreForTeleOp(
@@ -69,6 +78,12 @@ PhoenixMatchHandoff.RestoreResult restore =
 program.presenter(prestart::present);
 program.presenter(robot.teleOpPresenter(restore));
 ```
+
+The package-private program creates `profile` once with `PhoenixProfile.current()`. The centralized
+preflight rejects exact drive-versus-scoring motor-name collisions before the root acquires hardware;
+the mechanism owners still validate their own active configuration. `PhoenixRobot` retains neither
+the aggregate profile nor Gamepads: `declareTeleOp(...)` synchronously gives the active slices and
+input devices to their actual owners.
 
 `RESTORED` applies the pose and moves the visible alliance draft to Auto's frozen alliance. The
 alliance is only a seed: gamepad 1's D-pad directly selects RED or BLUE during INIT, with no `A`

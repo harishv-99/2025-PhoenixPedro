@@ -24,19 +24,19 @@ public final class PhoenixCalibrationWalkthrough {
 
         int actuatorBringUpStep = guide.addStep(
                 "HW: Actuator Bring-up",
-                "Establish each raw motor or servo direction and any appropriate safe endpoints; copy the result into PhoenixProfile.",
+                "Establish each raw motor or servo direction and safe endpoints; copy them into PhoenixScoring.Config.defaults() or PhoenixDriveConfiguration.current().",
                 StandardTesters::createActuatorBringUp
         );
 
         guide.addStep(
                 "HW: Configured Drivetrain Verification",
-                "After HW: Actuator Bring-up facts are copied into PhoenixProfile, verify each configured wheel with the chassis raised.",
+                "After drivetrain facts are copied into PhoenixDriveConfiguration.current(), verify each configured wheel with the chassis raised.",
                 PhoenixRobotTesters::configuredDrivetrainVerification
         );
 
         guide.addStep(
                 "Calib: Camera Mount",
-                "Solve PhoenixProfile.current().vision.activeCameraMount() and paste the printed CameraMountConfig.ofDegrees(...) value.",
+                "Solve the selected backend mount in PhoenixVisionFactory.Config.defaults() and paste the printed CameraMountConfig.ofDegrees(...) value.",
                 PhoenixRobotTesters::cameraMountStatus,
                 PhoenixRobotTesters::cameraMountCalibrator
         );

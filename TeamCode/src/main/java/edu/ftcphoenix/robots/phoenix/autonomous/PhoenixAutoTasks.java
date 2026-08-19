@@ -7,8 +7,8 @@ import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
+import edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Reusable autonomous task snippets expressed over {@link PhoenixCapabilities}.
@@ -23,13 +23,10 @@ public final class PhoenixAutoTasks {
         // Utility class.
     }
 
-    /**
-     * Build drive-guidance aim config from Phoenix's Auto profile section.
-     */
-    public static DriveGuidanceTask.Config aimConfig(PhoenixProfile.AutoConfig autoCfg) {
-        PhoenixProfile.AutoConfig auto = cfgOrDefault(autoCfg);
+    /** Build one framework aim-task draft from the already validated Phoenix Auto answers. */
+    private static DriveGuidanceTask.Config aimConfig(AttemptConfig auto) {
         DriveGuidanceTask.Config cfg = new DriveGuidanceTask.Config();
-        cfg.headingTolRad = Math.toRadians(auto.aimHeadingToleranceDeg);
+        cfg.headingTolRad = auto.aimHeadingToleranceRad;
         cfg.timeoutSec = auto.aimTimeoutSec;
         cfg.maxNoGuidanceSec = auto.aimMaxNoGuidanceSec;
         return cfg;
@@ -48,10 +45,10 @@ public final class PhoenixAutoTasks {
      */
     public static Task aimAndShootOne(PhoenixCapabilities capabilities,
                                       DriveCommandSink driveSink,
-                                      PhoenixProfile.AutoConfig autoCfg) {
+                                      PhoenixAutoConfig autoConfig) {
         Objects.requireNonNull(capabilities, "capabilities");
         Objects.requireNonNull(driveSink, "driveSink");
-        final PhoenixProfile.AutoConfig auto = cfgOrDefault(autoCfg);
+        final AttemptConfig auto = AttemptConfig.capture(autoConfig);
         final PhoenixCapabilities.Scoring scoring = capabilities.scoring();
         final PhoenixCapabilities.Targeting targeting = capabilities.targeting();
 
@@ -86,7 +83,78 @@ public final class PhoenixAutoTasks {
         });
     }
 
-    private static PhoenixProfile.AutoConfig cfgOrDefault(PhoenixProfile.AutoConfig autoCfg) {
-        return autoCfg == null ? new PhoenixProfile.AutoConfig() : autoCfg;
+    /** Immutable active slice captured before any scoring-attempt Task is created. */
+    private static final class AttemptConfig {
+        final double aimHeadingToleranceRad;
+        final double aimTimeoutSec;
+        final double aimMaxNoGuidanceSec;
+        final double waitForTargetSec;
+        final double waitForShotCompleteSec;
+
+        private AttemptConfig(double aimHeadingToleranceRad,
+                              double aimTimeoutSec,
+                              double aimMaxNoGuidanceSec,
+                              double waitForTargetSec,
+                              double waitForShotCompleteSec) {
+            this.aimHeadingToleranceRad = aimHeadingToleranceRad;
+            this.aimTimeoutSec = aimTimeoutSec;
+            this.aimMaxNoGuidanceSec = aimMaxNoGuidanceSec;
+            this.waitForTargetSec = waitForTargetSec;
+            this.waitForShotCompleteSec = waitForShotCompleteSec;
+        }
+
+        /** Capture every retained primitive, then validate it in PhoenixAutoConfig source order. */
+        static AttemptConfig capture(PhoenixAutoConfig source) {
+            PhoenixAutoConfig required = Objects.requireNonNull(
+                    source,
+                    "PhoenixAutoTasks autoConfig is required"
+            );
+            double aimHeadingToleranceDeg = required.aimHeadingToleranceDeg;
+            double aimTimeoutSec = required.aimTimeoutSec;
+            double aimMaxNoGuidanceSec = required.aimMaxNoGuidanceSec;
+            double waitForTargetSec = required.waitForTargetSec;
+            double waitForShotCompleteSec = required.waitForShotCompleteSec;
+
+            requireFiniteNonNegative(
+                    "aimHeadingToleranceDeg",
+                    aimHeadingToleranceDeg
+            );
+            double aimHeadingToleranceRad = Math.toRadians(aimHeadingToleranceDeg);
+            if (!Double.isFinite(aimHeadingToleranceRad)) {
+                throw new IllegalArgumentException(
+                        "PhoenixAutoConfig.aimHeadingToleranceDeg must convert to finite radians, "
+                                + "but " + aimHeadingToleranceDeg + " degrees converted to "
+                                + aimHeadingToleranceRad
+                );
+            }
+            requireFinitePositive("aimTimeoutSec", aimTimeoutSec);
+            requireFinitePositive("aimMaxNoGuidanceSec", aimMaxNoGuidanceSec);
+            requireFiniteNonNegative("waitForTargetSec", waitForTargetSec);
+            requireFiniteNonNegative("waitForShotCompleteSec", waitForShotCompleteSec);
+
+            return new AttemptConfig(
+                    aimHeadingToleranceRad,
+                    aimTimeoutSec,
+                    aimMaxNoGuidanceSec,
+                    waitForTargetSec,
+                    waitForShotCompleteSec
+            );
+        }
+    }
+
+    private static void requireFinitePositive(String fieldName, double value) {
+        if (!Double.isFinite(value) || value <= 0.0) {
+            throw new IllegalArgumentException(
+                    "PhoenixAutoConfig." + fieldName + " must be finite and > 0, got " + value
+            );
+        }
+    }
+
+    private static void requireFiniteNonNegative(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0) {
+            throw new IllegalArgumentException(
+                    "PhoenixAutoConfig." + fieldName + " must be finite and >= 0, got " + value
+            );
+        }
     }
 }

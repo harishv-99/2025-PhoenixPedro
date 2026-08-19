@@ -14,7 +14,7 @@ import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
  * <p>This package-private lifecycle owner exists behind
  * {@link PhoenixAutoTasks#aimAndShootOne(PhoenixCapabilities,
  * edu.ftcphoenix.fw.drive.DriveCommandSink,
- * edu.ftcphoenix.robots.phoenix.PhoenixProfile.AutoConfig)} so ordinary robot code keeps one short
+ * edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig)} so ordinary robot code keeps one short
  * macro call. A phase must report {@link TaskOutcome#SUCCESS} before the dependent phase begins.
  * Timeout, cancellation, and unknown terminal outcomes remain visible to the autonomous routine.
  * If the attempt has requested a shot, every abnormal ending best-effort cancels that transient

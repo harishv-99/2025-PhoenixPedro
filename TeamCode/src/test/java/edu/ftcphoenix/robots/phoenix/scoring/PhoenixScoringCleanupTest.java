@@ -11,8 +11,11 @@ import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,6 +26,7 @@ import java.util.Map;
 
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -43,6 +47,65 @@ import static org.junit.Assert.fail;
 
 /** Policy, private-Plant construction, and cleanup coverage for PhoenixScoring. */
 public final class PhoenixScoringCleanupTest {
+
+    @Test
+    public void configSurfaceIsDefaultsOnlyWithAllThirtyFiveFields() {
+        assertEquals(35, PhoenixScoring.Config.class.getFields().length);
+        Constructor<?>[] constructors = PhoenixScoring.Config.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertTrue(Modifier.isPrivate(constructors[0].getModifiers()));
+
+        Method[] methods = PhoenixScoring.Config.class.getDeclaredMethods();
+        int publicMethodCount = 0;
+        for (Method method : methods) {
+            if (Modifier.isPublic(method.getModifiers())) {
+                publicMethodCount++;
+                assertEquals("defaults", method.getName());
+                assertTrue(Modifier.isStatic(method.getModifiers()));
+            }
+        }
+        assertEquals(1, publicMethodCount);
+        for (Field field : PhoenixScoring.Config.class.getFields()) {
+            assertTrue(Modifier.isPublic(field.getModifiers()));
+        }
+
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
+        assertEquals("intakeMotor", config.nameMotorIntake);
+        assertEquals(Direction.FORWARD, config.directionMotorIntake);
+        assertEquals("intakeTransfer", config.nameCrServoIntakeTransfer);
+        assertEquals(Direction.REVERSE, config.directionCrServoIntakeTransfer);
+        assertEquals("shooterTransferLeft", config.nameCrServoShooterTransferLeft);
+        assertEquals(Direction.REVERSE, config.directionCrServoShooterTransferLeft);
+        assertEquals("shooterTransferRight", config.nameCrServoShooterTransferRight);
+        assertEquals(Direction.FORWARD, config.directionCrServoShooterTransferRight);
+        assertEquals(0.65, config.shooterTransferLeftScale, 0.0);
+        assertEquals("shooterMotor", config.nameMotorShooterWheel);
+        assertEquals(Direction.FORWARD, config.directionMotorShooterWheel);
+        assertEquals(700.0, config.velocityMin, 0.0);
+        assertEquals(2000.0, config.velocityMax, 0.0);
+        assertEquals(50.0, config.velocityToleranceNative, 0.0);
+        assertFalse(config.applyFlywheelVelocityPIDF);
+        assertEquals(0.0, config.flywheelVelKp, 0.0);
+        assertEquals(0.0, config.flywheelVelKi, 0.0);
+        assertEquals(0.0, config.flywheelVelKd, 0.0);
+        assertEquals(0.0, config.flywheelVelKf, 0.0);
+        assertEquals(50.0, config.velocityToleranceBelowNative, 0.0);
+        assertEquals(50.0, config.velocityToleranceAboveNative, 0.0);
+        assertEquals(0.10, config.readyPredictLeadSec, 0.0);
+        assertEquals(0.03, config.readyStableSec, 0.0);
+        assertEquals(1.0, config.intakeMotorPower, 0.0);
+        assertEquals(1.0, config.intakeTransferPower, 0.0);
+        assertEquals(0.5, config.intakeShooterTransferHoldBackPower, 0.0);
+        assertEquals(1.0, config.ejectMotorPower, 0.0);
+        assertEquals(1.0, config.ejectTransferPower, 0.0);
+        assertEquals(1.0, config.ejectShooterTransferPower, 0.0);
+        assertEquals(1.0, config.shootFeedPower, 0.0);
+        assertEquals(0.22, config.shootFeedPulseSec, 0.0);
+        assertEquals(0.06, config.shootFeedCooldownSec, 0.0);
+        assertEquals(1.0, config.feedScaleIntakeMotor, 0.0);
+        assertEquals(1.0, config.feedScaleIntakeTransfer, 0.0);
+        assertEquals(1.0, config.feedScaleShooterTransfer, 0.0);
+    }
 
     @Test
     public void queuedShotsRunAsDistinctPulsesAndDrainInOrder() {
@@ -181,8 +244,8 @@ public final class PhoenixScoringCleanupTest {
 
     @Test
     public void productionAndExclusiveTuningFactoryShareTheFlywheelRecipe() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
-        PhoenixProfile.ScoringConfig config = profile.scoring.copy();
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
         config.applyFlywheelVelocityPIDF = true;
         config.flywheelVelKp = 1.25;
         config.flywheelVelKi = 2.5;
@@ -231,9 +294,247 @@ public final class PhoenixScoringCleanupTest {
     }
 
     @Test
+    public void productionPreflightRejectsMalformedAndEverySameFamilyCollisionBeforeLookup() {
+        PhoenixProfile profile = PhoenixProfile.current();
+
+        PhoenixScoring.Config malformed = PhoenixScoring.Config.defaults();
+        malformed.nameMotorIntake = "   ";
+        malformed.directionMotorIntake = null;
+        assertProductionPreflightFailure(
+                profile,
+                malformed,
+                "nameMotorIntake"
+        );
+
+        PhoenixScoring.Config motorCollision = PhoenixScoring.Config.defaults();
+        motorCollision.nameMotorShooterWheel = "  " + motorCollision.nameMotorIntake + "  ";
+        assertProductionPreflightFailure(profile, motorCollision, "nameMotorShooterWheel");
+
+        PhoenixScoring.Config firstServoCollision = PhoenixScoring.Config.defaults();
+        firstServoCollision.nameCrServoShooterTransferLeft =
+                " " + firstServoCollision.nameCrServoIntakeTransfer + " ";
+        assertProductionPreflightFailure(
+                profile,
+                firstServoCollision,
+                "nameCrServoShooterTransferLeft"
+        );
+
+        PhoenixScoring.Config secondServoCollision = PhoenixScoring.Config.defaults();
+        secondServoCollision.nameCrServoShooterTransferRight =
+                " " + secondServoCollision.nameCrServoIntakeTransfer + " ";
+        assertProductionPreflightFailure(
+                profile,
+                secondServoCollision,
+                "nameCrServoShooterTransferRight"
+        );
+
+        PhoenixScoring.Config thirdServoCollision = PhoenixScoring.Config.defaults();
+        thirdServoCollision.nameCrServoShooterTransferRight =
+                " " + thirdServoCollision.nameCrServoShooterTransferLeft + " ";
+        assertProductionPreflightFailure(
+                profile,
+                thirdServoCollision,
+                "nameCrServoShooterTransferRight"
+        );
+
+        PhoenixScoring.Config caseSensitive = PhoenixScoring.Config.defaults();
+        caseSensitive.nameMotorShooterWheel = caseSensitive.nameMotorIntake.toUpperCase();
+        TestHardwareMap hardwareMap = TestHardwareMap.forScoring(caseSensitive);
+        PhoenixScoring scoring = new PhoenixScoring(
+                hardwareMap,
+                caseSensitive,
+                targetingFor(profile)
+        );
+        assertTrue(hardwareMap.lookupCount > 0);
+        scoring.stop();
+    }
+
+    @Test
+    public void identityCrossFieldsPrecedeEveryLaterDirectionWithoutHardwareLookup() {
+        PhoenixProfile profile = PhoenixProfile.current();
+
+        PhoenixScoring.Config intakeLeft = PhoenixScoring.Config.defaults();
+        intakeLeft.nameCrServoShooterTransferLeft = intakeLeft.nameCrServoIntakeTransfer;
+        intakeLeft.directionCrServoShooterTransferLeft = null;
+        assertProductionPreflightFailure(profile, intakeLeft, "nameCrServoIntakeTransfer");
+
+        PhoenixScoring.Config intakeRight = PhoenixScoring.Config.defaults();
+        intakeRight.nameCrServoShooterTransferRight = intakeRight.nameCrServoIntakeTransfer;
+        intakeRight.directionCrServoShooterTransferRight = null;
+        assertProductionPreflightFailure(profile, intakeRight, "nameCrServoIntakeTransfer");
+
+        PhoenixScoring.Config leftRight = PhoenixScoring.Config.defaults();
+        leftRight.nameCrServoShooterTransferRight =
+                leftRight.nameCrServoShooterTransferLeft;
+        leftRight.directionCrServoShooterTransferRight = null;
+        assertProductionPreflightFailure(
+                profile,
+                leftRight,
+                "nameCrServoShooterTransferLeft"
+        );
+
+        PhoenixScoring.Config motorPair = PhoenixScoring.Config.defaults();
+        motorPair.nameMotorShooterWheel = motorPair.nameMotorIntake;
+        motorPair.directionMotorShooterWheel = null;
+        assertProductionPreflightFailure(profile, motorPair, "nameMotorIntake");
+    }
+
+    @Test
+    public void disabledPidfIsDormantAndEnabledRevDomainRejectsBeforeLookup() {
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixScoring.Config dormant = PhoenixScoring.Config.defaults();
+        dormant.flywheelVelKp = Double.NaN;
+        dormant.flywheelVelKi = Double.POSITIVE_INFINITY;
+        dormant.flywheelVelKd = Double.NEGATIVE_INFINITY;
+        dormant.flywheelVelKf = Double.NaN;
+        TestHardwareMap dormantHardware = TestHardwareMap.forScoring(dormant);
+        PhoenixScoring scoring = new PhoenixScoring(
+                dormantHardware,
+                dormant,
+                targetingFor(profile)
+        );
+        assertEquals(0, dormantHardware.state(dormant.nameMotorShooterWheel).velocityPidfWrites);
+        scoring.stop();
+
+        PhoenixScoring.Config active = PhoenixScoring.Config.defaults();
+        active.applyFlywheelVelocityPIDF = true;
+        active.flywheelVelKp = Math.nextUp(Integer.MAX_VALUE / 65536.0);
+        assertProductionPreflightFailure(profile, active, "flywheelVelKp");
+    }
+
+    @Test
+    public void productionDomainsRejectNonfiniteOutOfRangeAndCrossFieldValues() {
+        PhoenixProfile profile = PhoenixProfile.current();
+
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
+        config.directionCrServoShooterTransferLeft = null;
+        assertProductionPreflightFailure(profile, config,
+                "directionCrServoShooterTransferLeft");
+
+        config = PhoenixScoring.Config.defaults();
+        config.shooterTransferLeftScale = Math.nextUp(1.0);
+        assertProductionPreflightFailure(profile, config, "shooterTransferLeftScale");
+
+        config = PhoenixScoring.Config.defaults();
+        config.velocityMin = -1.0;
+        assertProductionPreflightFailure(profile, config, "velocityMin");
+
+        config = PhoenixScoring.Config.defaults();
+        config.velocityMax = Double.POSITIVE_INFINITY;
+        assertProductionPreflightFailure(profile, config, "velocityMax");
+
+        config = PhoenixScoring.Config.defaults();
+        config.velocityMin = 1000.0;
+        config.velocityMax = 999.0;
+        config.velocityToleranceNative = -1.0;
+        assertProductionPreflightFailure(profile, config, "velocityMin");
+
+        config = PhoenixScoring.Config.defaults();
+        config.velocityToleranceBelowNative = -1.0;
+        assertProductionPreflightFailure(profile, config, "velocityToleranceBelowNative");
+
+        config = PhoenixScoring.Config.defaults();
+        config.readyPredictLeadSec = Double.NaN;
+        assertProductionPreflightFailure(profile, config, "readyPredictLeadSec");
+
+        config = PhoenixScoring.Config.defaults();
+        config.intakeMotorPower = Math.nextUp(1.0);
+        assertProductionPreflightFailure(profile, config, "intakeMotorPower");
+
+        config = PhoenixScoring.Config.defaults();
+        config.shootFeedPulseSec = -1.0;
+        assertProductionPreflightFailure(profile, config, "shootFeedPulseSec");
+
+        config = PhoenixScoring.Config.defaults();
+        config.feedScaleShooterTransfer = Double.NaN;
+        assertProductionPreflightFailure(profile, config, "feedScaleShooterTransfer");
+
+        double coefficientBound = Integer.MAX_VALUE / 65536.0;
+        PhoenixScoring.Config boundaries = PhoenixScoring.Config.defaults();
+        boundaries.shooterTransferLeftScale = -1.0;
+        boundaries.velocityMin = 0.0;
+        boundaries.velocityMax = 0.0;
+        boundaries.velocityToleranceNative = 0.0;
+        boundaries.applyFlywheelVelocityPIDF = true;
+        boundaries.flywheelVelKp = -coefficientBound;
+        boundaries.flywheelVelKi = coefficientBound;
+        boundaries.flywheelVelKd = -coefficientBound;
+        boundaries.flywheelVelKf = coefficientBound;
+        boundaries.velocityToleranceBelowNative = 0.0;
+        boundaries.velocityToleranceAboveNative = 0.0;
+        boundaries.readyPredictLeadSec = 0.0;
+        boundaries.readyStableSec = 0.0;
+        boundaries.intakeMotorPower = 0.0;
+        boundaries.intakeTransferPower = 1.0;
+        boundaries.intakeShooterTransferHoldBackPower = 0.0;
+        boundaries.ejectMotorPower = 1.0;
+        boundaries.ejectTransferPower = 0.0;
+        boundaries.ejectShooterTransferPower = 1.0;
+        boundaries.shootFeedPower = 0.0;
+        boundaries.shootFeedPulseSec = 0.0;
+        boundaries.shootFeedCooldownSec = 0.0;
+        boundaries.feedScaleIntakeMotor = -1.0;
+        boundaries.feedScaleIntakeTransfer = 1.0;
+        boundaries.feedScaleShooterTransfer = -1.0;
+        TestHardwareMap boundaryHardware = TestHardwareMap.forScoring(boundaries);
+        PhoenixScoring accepted = new PhoenixScoring(
+                boundaryHardware,
+                boundaries,
+                targetingFor(profile)
+        );
+        assertTrue(boundaryHardware.lookupCount > 0);
+        accepted.stop();
+    }
+
+    @Test
+    public void exclusiveTunerValidatesOnlyItsExactActiveSliceBeforeLookup() {
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
+        config.nameMotorIntake = null;
+        config.directionMotorIntake = null;
+        config.nameCrServoIntakeTransfer = null;
+        config.directionCrServoIntakeTransfer = null;
+        config.nameCrServoShooterTransferLeft = null;
+        config.directionCrServoShooterTransferLeft = null;
+        config.nameCrServoShooterTransferRight = null;
+        config.directionCrServoShooterTransferRight = null;
+        config.shooterTransferLeftScale = Double.NaN;
+        config.velocityToleranceBelowNative = Double.NaN;
+        config.velocityToleranceAboveNative = Double.NaN;
+        config.readyPredictLeadSec = Double.NaN;
+        config.readyStableSec = Double.NaN;
+        config.intakeMotorPower = Double.NaN;
+        config.intakeTransferPower = Double.NaN;
+        config.intakeShooterTransferHoldBackPower = Double.NaN;
+        config.ejectMotorPower = Double.NaN;
+        config.ejectTransferPower = Double.NaN;
+        config.ejectShooterTransferPower = Double.NaN;
+        config.shootFeedPower = Double.NaN;
+        config.shootFeedPulseSec = Double.NaN;
+        config.shootFeedCooldownSec = Double.NaN;
+        config.feedScaleIntakeMotor = Double.NaN;
+        config.feedScaleIntakeTransfer = Double.NaN;
+        config.feedScaleShooterTransfer = Double.NaN;
+
+        TestHardwareMap acceptedHardware = TestHardwareMap.forFlywheel(config);
+        Plant plant = PhoenixScoring.createFlywheelPlantForTuning(acceptedHardware, config);
+        assertTrue(acceptedHardware.lookupCount > 0);
+        plant.stop();
+
+        config.velocityToleranceNative = Double.NaN;
+        TestHardwareMap rejectedHardware = TestHardwareMap.forFlywheel(config);
+        try {
+            PhoenixScoring.createFlywheelPlantForTuning(rejectedHardware, config);
+            fail("expected invalid active tuner tolerance to fail");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("velocityToleranceNative"));
+        }
+        assertEquals(0, rejectedHardware.lookupCount);
+    }
+
+    @Test
     public void eachLaterPlantConstructionFailureStopsEveryCompletedPlantInStableOrder() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
-        PhoenixProfile.ScoringConfig config = profile.scoring.copy();
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
 
         assertConstructionRollback(
                 profile,
@@ -262,8 +563,8 @@ public final class PhoenixScoringCleanupTest {
 
     @Test
     public void constructionRollbackRetainsPrimaryAndSuppressesCleanupFailuresInOrder() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
-        PhoenixProfile.ScoringConfig config = profile.scoring.copy();
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
         TestHardwareMap hardwareMap = TestHardwareMap.forScoring(config);
         hardwareMap.remove(config.nameMotorShooterWheel);
 
@@ -302,8 +603,8 @@ public final class PhoenixScoringCleanupTest {
 
     @Test
     public void stopIsTerminalIdempotentAndAttemptsEveryPlantAfterFailures() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
-        PhoenixProfile.ScoringConfig config = profile.scoring.copy();
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
         TestHardwareMap hardwareMap = TestHardwareMap.forScoring(config);
         PhoenixScoring scoring = new PhoenixScoring(
                 hardwareMap,
@@ -360,7 +661,7 @@ public final class PhoenixScoringCleanupTest {
     }
 
     private static void assertConstructionRollback(PhoenixProfile profile,
-                                                   PhoenixProfile.ScoringConfig config,
+                                                   PhoenixScoring.Config config,
                                                    String missingName,
                                                    List<String> expectedStopEvents) {
         TestHardwareMap hardwareMap = TestHardwareMap.forScoring(config);
@@ -377,6 +678,21 @@ public final class PhoenixScoringCleanupTest {
         assertEquals(expectedStopEvents, hardwareMap.stopEvents);
     }
 
+    private static void assertProductionPreflightFailure(PhoenixProfile profile,
+                                                         PhoenixScoring.Config config,
+                                                         String expectedPath) {
+        TestHardwareMap hardwareMap = TestHardwareMap.forScoring(config);
+        try {
+            new PhoenixScoring(hardwareMap, config, targetingFor(profile));
+            fail("expected PhoenixScoring.Config preflight failure for " + expectedPath);
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("PhoenixScoring.Config"));
+            assertTrue(expected.getMessage().contains(expectedPath));
+        }
+        assertEquals("configuration must fail before the first hardware lookup", 0,
+                hardwareMap.lookupCount);
+    }
+
     private static void assertFeedState(PolicyFixture fixture,
                                         String expectedMode,
                                         int expectedBacklog,
@@ -391,8 +707,8 @@ public final class PhoenixScoringCleanupTest {
     }
 
     private static final class PolicyFixture {
-        final PhoenixProfile profile = PhoenixProfile.defaults();
-        final PhoenixProfile.ScoringConfig config = profile.scoring.copy();
+        final PhoenixProfile profile = PhoenixProfile.current();
+        final PhoenixScoring.Config config = PhoenixScoring.Config.defaults();
         final TestHardwareMap hardwareMap;
         final PhoenixTargeting targeting;
         final PhoenixScoring scoring;
@@ -400,7 +716,7 @@ public final class PhoenixScoringCleanupTest {
         boolean firstTick = true;
 
         PolicyFixture() {
-            profile.autoAim.aimReadyDebounceSec = 0.0;
+            profile.targeting.aimReadyDebounceSec = 0.0;
             config.readyPredictLeadSec = 0.0;
             config.readyStableSec = 0.0;
             config.shootFeedPower = 0.73;
@@ -415,18 +731,17 @@ public final class PhoenixScoringCleanupTest {
 
             hardwareMap = TestHardwareMap.forScoring(config);
             flywheel().measuredVelocity = config.velocityMin;
-            int scoringTagId = profile.autoAim.scoringTagIds().iterator().next();
+            int scoringTagId = profile.targeting.scoringTargets.keySet().iterator().next();
             targeting = new PhoenixTargeting(
-                    profile.autoAim,
+                    profile.targeting,
                     profile.localization.estimation.aprilTags.fieldPoseSolver,
                     new CurrentFrameAprilTagSensor(scoringTagId),
                     CameraMountConfig.identity(),
                     new NoPoseEstimator(),
-                    profile.field.fixedAprilTagLayout,
-                    Source.constant(profile.autoAim.scoringTagIds()),
+                    profile.fixedAprilTagLayout,
+                    Source.constant(profile.targeting.scoringTargets.keySet()),
                     BooleanSource.constant(true),
-                    BooleanSource.constant(false),
-                    profile.autoAim.shotVelocityTable
+                    BooleanSource.constant(false)
             );
             scoring = new PhoenixScoring(hardwareMap, config, targeting);
         }
@@ -461,16 +776,15 @@ public final class PhoenixScoringCleanupTest {
 
     private static PhoenixTargeting targetingFor(PhoenixProfile profile) {
         return new PhoenixTargeting(
-                profile.autoAim,
+                profile.targeting,
                 profile.localization.estimation.aprilTags.fieldPoseSolver,
                 new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
-                profile.field.fixedAprilTagLayout,
-                Source.constant(profile.autoAim.scoringTagIds()),
+                profile.fixedAprilTagLayout,
+                Source.constant(profile.targeting.scoringTargets.keySet()),
                 BooleanSource.constant(true),
-                BooleanSource.constant(false),
-                profile.autoAim.shotVelocityTable
+                BooleanSource.constant(false)
         );
     }
 
@@ -525,12 +839,13 @@ public final class PhoenixScoringCleanupTest {
         private final Map<String, HardwareDevice> devices = new HashMap<String, HardwareDevice>();
         private final Map<String, DeviceState> states = new HashMap<String, DeviceState>();
         private final List<String> stopEvents = new ArrayList<String>();
+        int lookupCount;
 
         private TestHardwareMap() {
             super(null, null);
         }
 
-        static TestHardwareMap forScoring(PhoenixProfile.ScoringConfig config) {
+        static TestHardwareMap forScoring(PhoenixScoring.Config config) {
             TestHardwareMap map = new TestHardwareMap();
             map.add(config.nameMotorIntake, DcMotorEx.class, "intake");
             map.add(config.nameMotorShooterWheel, DcMotorEx.class, "flywheel");
@@ -548,7 +863,7 @@ public final class PhoenixScoringCleanupTest {
             return map;
         }
 
-        static TestHardwareMap forFlywheel(PhoenixProfile.ScoringConfig config) {
+        static TestHardwareMap forFlywheel(PhoenixScoring.Config config) {
             TestHardwareMap map = new TestHardwareMap();
             map.add(config.nameMotorShooterWheel, DcMotorEx.class, "flywheel");
             return map;
@@ -574,6 +889,7 @@ public final class PhoenixScoringCleanupTest {
 
         @Override
         public <T> T get(Class<? extends T> type, String name) {
+            lookupCount++;
             HardwareDevice device = devices.get(name);
             if (device == null || !type.isInstance(device)) {
                 throw new IllegalArgumentException("No test " + type.getSimpleName() + " named " + name);

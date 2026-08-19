@@ -47,13 +47,19 @@ adapter fail-stops drive. Its diagnostic includes the predictor's cached last de
 never polls the device through a second owner.
 
 ```java
+PhoenixProfile profile = PhoenixProfile.current();
+PhoenixRobot robot = new PhoenixRobot(hardwareMap);
 PedroPathingRuntime pedro =
         PedroPathingRuntime.create(
                 hardwareMap,
-                Constants.phoenixAutoRuntimeConfig(profile));
+                Constants.phoenixAutoRuntimeConfig(
+                        profile.localization.predictor,
+                        profile.drive.wiring,
+                        profile.drive.enableZeroPowerBrake));
 
 robot.declareAuto(
         program,
+        profile,
         pedro.driveAdapter(),
         pedro.motionPredictor(),
         frozenEligibleTagIds,
@@ -64,11 +70,20 @@ robot.declareAuto(
 program.rootTask(rootRoutine);
 ```
 
-Phoenix's `Constants.phoenixAutoRuntimeConfig(profile)` is only a pure project mapper. It snapshots
-the profile's Pinpoint and drivetrain slice, combines it with fresh checked-in Pedro tuning, and
-returns an independent runtime Config. It constructs no hardware and is not a second runtime
-factory. Unrelated vision, scoring, targeting, or Auto profile sections are outside that mapping;
-the runtime remains the authoritative whole-Config validation boundary.
+Phoenix's
+`Constants.phoenixAutoRuntimeConfig(predictor, wiring, enableZeroPowerBrake)` is only a pure project
+mapper. It raw-copies those narrow Pinpoint/drivetrain inputs, combines them with fresh checked-in
+Pedro tuning, and returns an independent runtime Config. It accepts and retains no aggregate
+profile, constructs no hardware, and is not a second runtime factory. Unrelated vision, scoring,
+targeting, or Auto sections are outside that mapping; the runtime remains the authoritative
+whole-Config validation boundary.
+
+The production Phoenix program obtains one fresh `PhoenixProfile.current()` graph, performs its
+package-private drive-versus-scoring motor collision preflight before hardware effects, then passes
+the profile synchronously into `declareAuto(...)`. `PhoenixRobot` itself is a HardwareMap-only root,
+and each long-lived owner captures only its active configuration. This preflight is robot policy,
+not a generic Pedro requirement; another adopting robot must enforce its own cross-owner hardware
+relationships.
 
 Those boolean sources keep ordinary Auto aim enabled with no manual override. Advanced direct
 assembly can provide other clock-aware targeting policies through the same managed declaration;

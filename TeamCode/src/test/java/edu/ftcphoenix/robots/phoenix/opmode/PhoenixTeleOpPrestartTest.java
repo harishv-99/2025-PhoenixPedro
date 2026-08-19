@@ -31,10 +31,11 @@ public final class PhoenixTeleOpPrestartTest {
 
     @Test
     public void standaloneTeleOpDefaultsToRedAndPublishesOnlyAfterStartFreeze() {
-        PhoenixProfile suppliedProfile = PhoenixProfile.defaults();
-        int redTagId = suppliedProfile.autoAim.scoringTagIdFor(PhoenixAlliance.RED);
+        PhoenixProfile suppliedProfile = PhoenixProfile.current();
+        int redTagId = suppliedProfile.targeting.scoringTagIdFor(PhoenixAlliance.RED);
         PhoenixTeleOpPrestart prestart = new PhoenixTeleOpPrestart(
-                suppliedProfile,
+                suppliedProfile.targeting,
+                suppliedProfile.fixedAprilTagLayout,
                 new Gamepad(),
                 PhoenixAlliance.RED
         );
@@ -56,9 +57,9 @@ public final class PhoenixTeleOpPrestartTest {
         );
         assertEquals(0, telemetry.updateCalls);
 
-        // Long-lived policy owns a defensive profile snapshot.
-        suppliedProfile.autoAim = null;
-        suppliedProfile.field = null;
+        // Long-lived policy retains only immutable derived selection/readiness facts.
+        suppliedProfile.targeting = null;
+        suppliedProfile.fixedAprilTagLayout = null;
 
         assertEquals(RobotProgram.StartDisposition.READY, prestart.freezeForStart());
         assertEquals(PhoenixAlliance.RED, prestart.frozenAlliance());
@@ -71,11 +72,12 @@ public final class PhoenixTeleOpPrestartTest {
 
     @Test
     public void freshAutoAllianceSeedsVisibleDraftButGamepadOneMayOverrideIt() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
-        int redTagId = profile.autoAim.scoringTagIdFor(PhoenixAlliance.RED);
+        PhoenixProfile profile = PhoenixProfile.current();
+        int redTagId = profile.targeting.scoringTagIdFor(PhoenixAlliance.RED);
         Gamepad driver = new Gamepad();
         PhoenixTeleOpPrestart prestart = new PhoenixTeleOpPrestart(
-                profile,
+                profile.targeting,
+                profile.fixedAprilTagLayout,
                 driver,
                 PhoenixAlliance.RED
         );
@@ -114,11 +116,12 @@ public final class PhoenixTeleOpPrestartTest {
 
     @Test
     public void selectedAllianceWithMissingTargetFactBlocksBeforeTargetingStarts() {
-        PhoenixProfile profile = PhoenixProfile.defaults();
-        int blueTagId = profile.autoAim.scoringTagIdFor(PhoenixAlliance.BLUE);
-        profile.autoAim.scoringTargets.remove(blueTagId);
+        PhoenixProfile profile = PhoenixProfile.current();
+        int blueTagId = profile.targeting.scoringTagIdFor(PhoenixAlliance.BLUE);
+        profile.targeting.scoringTargets.remove(blueTagId);
         PhoenixTeleOpPrestart prestart = new PhoenixTeleOpPrestart(
-                profile,
+                profile.targeting,
+                profile.fixedAprilTagLayout,
                 new Gamepad(),
                 PhoenixAlliance.RED
         );

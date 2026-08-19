@@ -3,23 +3,23 @@ package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
+import edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 
 /**
  * Immutable context passed to Pedro autonomous routine builders.
  *
  * <p>The context keeps routine factories from reaching back into an OpMode or raw robot internals.
- * It exposes only the selected Auto spec, the profile snapshot used to construct the robot,
- * capability families, the Pedro drive adapter, the robot-owned path factory, and the fixed path
- * set created for the selected spec. The retained path factory lets routines request live-start
- * geometry without reaching into the OpMode or raw Follower.</p>
+ * It exposes only the selected Auto spec, a defensive Auto-policy snapshot, capability families,
+ * the Pedro drive adapter, the robot-owned path factory, and the fixed path set created for the
+ * selected spec. The retained path factory lets routines request live-start geometry without
+ * reaching into the OpMode or raw Follower.</p>
  */
 public final class PhoenixPedroAutoContext {
 
     private final PhoenixAutoSpec spec;
-    private final PhoenixProfile profile;
+    private final PhoenixAutoConfig autoConfig;
     private final PhoenixCapabilities capabilities;
     private final PedroPathingDriveAdapter driveAdapter;
     private final PhoenixPedroPathFactory pathFactory;
@@ -29,13 +29,13 @@ public final class PhoenixPedroAutoContext {
      * Create an autonomous context.
      */
     public PhoenixPedroAutoContext(PhoenixAutoSpec spec,
-                                   PhoenixProfile profile,
+                                   PhoenixAutoConfig autoConfig,
                                    PhoenixCapabilities capabilities,
                                    PedroPathingDriveAdapter driveAdapter,
                                    PhoenixPedroPathFactory pathFactory,
                                    PhoenixPedroPathFactory.Paths paths) {
         this.spec = Objects.requireNonNull(spec, "spec");
-        this.profile = Objects.requireNonNull(profile, "profile");
+        this.autoConfig = Objects.requireNonNull(autoConfig, "autoConfig").copy();
         this.capabilities = Objects.requireNonNull(capabilities, "capabilities");
         this.driveAdapter = Objects.requireNonNull(driveAdapter, "driveAdapter");
         this.pathFactory = Objects.requireNonNull(pathFactory, "pathFactory");
@@ -50,10 +50,10 @@ public final class PhoenixPedroAutoContext {
     }
 
     /**
-     * Profile snapshot used to construct the robot.
+     * Return a defensive copy of the Auto policy captured for this routine context.
      */
-    public PhoenixProfile profile() {
-        return profile;
+    public PhoenixAutoConfig autoConfig() {
+        return autoConfig.copy();
     }
 
     /**

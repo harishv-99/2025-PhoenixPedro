@@ -26,9 +26,10 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 /**
  * Project-specific Pedro tuning and pure Phoenix-to-Pedro configuration mapping.
  *
- * <p>{@link #phoenixAutoRuntimeConfig(PhoenixProfile)} snapshots only the Phoenix profile facts
- * that Pedro owns: Pinpoint configuration, drivetrain wiring, and the brake-mode choice. It does
- * not construct hardware or validate the draft. {@link PedroPathingRuntime#create(HardwareMap,
+ * <p>{@link #phoenixAutoRuntimeConfig(PinpointOdometryPredictor.Config,
+ * FtcDrives.MecanumWiringConfig, boolean)} snapshots only the Phoenix facts that Pedro owns:
+ * Pinpoint configuration, drivetrain wiring, and the brake-mode choice. It does not construct
+ * hardware or validate the draft. {@link PedroPathingRuntime#create(HardwareMap,
  * PedroPathingRuntime.Config)} remains the sole production effect boundary and authoritative
  * validation owner.</p>
  *
@@ -43,26 +44,27 @@ public final class Constants {
     }
 
     /**
-     * Map the Pedro-owned slice of a Phoenix profile into one independent raw runtime draft.
+     * Map the Pedro-owned Phoenix facts into one independent raw runtime draft.
      *
-     * <p>This method deliberately does not call {@link PhoenixProfile#copy()}. Unrelated malformed
-     * profile sections cannot block this translation. Missing relevant nested sections and invalid
-     * relevant values are preserved as raw configuration evidence for the runtime's single
-     * {@code validatedCopy} boundary to diagnose before hardware acquisition.</p>
+     * <p>Unrelated profile sections are not accepted, so they cannot block this translation.
+     * Missing or invalid relevant values are preserved as raw configuration evidence for the
+     * runtime's single {@code validatedCopy} boundary to diagnose before hardware acquisition.</p>
      *
-     * @param profile selected Phoenix profile; retained nowhere and never mutated
+     * @param predictor selected Pinpoint draft; retained nowhere and never mutated
+     * @param wiring selected drivetrain-wiring draft; retained nowhere and never mutated
+     * @param enableZeroPowerBrake selected drivetrain brake-mode answer
      * @return a fresh, hardware-free Pedro runtime configuration draft
-     * @throws NullPointerException if {@code profile} itself is null
      */
-    public static PedroPathingRuntime.Config phoenixAutoRuntimeConfig(PhoenixProfile profile) {
-        PhoenixProfile source = Objects.requireNonNull(profile, "profile");
+    public static PedroPathingRuntime.Config phoenixAutoRuntimeConfig(
+            PinpointOdometryPredictor.Config predictor,
+            FtcDrives.MecanumWiringConfig wiring,
+            boolean enableZeroPowerBrake
+    ) {
         PedroPathingRuntime.Config mapped = PedroPathingRuntime.Config.defaults();
 
-        mapped.predictor = source.localization == null || source.localization.predictor == null
-                ? null
-                : source.localization.predictor.copy();
+        mapped.predictor = predictor == null ? null : predictor.copy();
         mapped.followerConstants = freshFollowerConstants();
-        mapped.mecanumConstants = mecanumConstantsFrom(source);
+        mapped.mecanumConstants = mecanumConstantsFrom(wiring, enableZeroPowerBrake);
         mapped.pathConstraints = freshPathConstraints();
         mapped.fieldTransform = PedroFieldTransform.decodeInvertedFtc();
         return mapped;
@@ -79,9 +81,14 @@ public final class Constants {
      * PedroPathingRuntime.Config)}.</p>
      */
     static Follower createToolOnlyNativeFollower(HardwareMap hardwareMap) {
+        PhoenixProfile profile = PhoenixProfile.current();
         return createToolOnlyNativeFollowerForTest(
                 hardwareMap,
-                PhoenixProfile.current(),
+                phoenixAutoRuntimeConfig(
+                        profile.localization == null ? null : profile.localization.predictor,
+                        profile.drive == null ? null : profile.drive.wiring,
+                        profile.drive != null && profile.drive.enableZeroPowerBrake
+                ),
                 nativeToolConstruction()
         );
     }
@@ -94,17 +101,18 @@ public final class Constants {
      */
     static Follower createToolOnlyNativeFollowerForTest(
             HardwareMap hardwareMap,
-            PhoenixProfile profile,
+            PedroPathingRuntime.Config runtimeConfig,
             NativeToolConstruction construction
     ) {
         HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
-        PhoenixProfile requiredProfile = Objects.requireNonNull(profile, "profile");
         NativeToolConstruction requiredConstruction = Objects.requireNonNull(
                 construction,
                 "construction"
         );
-        PedroPathingRuntime.Config snapshot = phoenixAutoRuntimeConfig(requiredProfile)
-                .validatedCopy(null);
+        PedroPathingRuntime.Config snapshot = Objects.requireNonNull(
+                runtimeConfig,
+                "runtimeConfig"
+        ).validatedCopy(null);
 
         Drivetrain drivetrain = null;
         try {
@@ -187,16 +195,18 @@ public final class Constants {
         return new PathConstraints(0.99, 100.0, 1.0, 1.0);
     }
 
-    /** Map profile-owned physical wiring and brake mode onto fresh Pedro drivetrain tuning. */
-    private static MecanumConstants mecanumConstantsFrom(PhoenixProfile profile) {
-        if (profile.drive == null || profile.drive.wiring == null) {
+    /** Map Phoenix physical wiring and brake mode onto fresh Pedro drivetrain tuning. */
+    private static MecanumConstants mecanumConstantsFrom(
+            FtcDrives.MecanumWiringConfig wiring,
+            boolean enableZeroPowerBrake
+    ) {
+        if (wiring == null) {
             return null;
         }
 
-        FtcDrives.MecanumWiringConfig wiring = profile.drive.wiring;
         MecanumConstants mapped = new MecanumConstants();
         mapped.maxPower = 1.0;
-        mapped.useBrakeModeInTeleOp = profile.drive.enableZeroPowerBrake;
+        mapped.useBrakeModeInTeleOp = enableZeroPowerBrake;
         mapped.leftFrontMotorName = wiring.frontLeftName;
         mapped.leftRearMotorName = wiring.backLeftName;
         mapped.rightFrontMotorName = wiring.frontRightName;

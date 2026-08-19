@@ -14,6 +14,7 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
+import edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
@@ -30,7 +31,7 @@ final class PhoenixAutoProgram {
     private final PhoenixAutoPrestart prestart;
     private final PedroPathingRuntime pedroRuntime;
     private final PhoenixPedroPathFactory pathFactory;
-    private final PhoenixProfile profile;
+    private final PhoenixAutoConfig autoConfig;
     private final PhoenixCapabilities capabilities;
     private final Task rootTask;
 
@@ -49,24 +50,29 @@ final class PhoenixAutoProgram {
 
         // Clear first so even a construction failure cannot leave a prior match snapshot visible.
         PhoenixMatchHandoff.clear();
-        profile = PhoenixProfile.current().copy();
+        PhoenixProfile profile = PhoenixProfile.current();
+        PhoenixHardwareOwnershipPreflight.requireDistinctMotorOwners(profile);
+        autoConfig = Objects.requireNonNull(
+                profile.auto,
+                "PhoenixProfile.auto"
+        ).copy();
         prestart = requiredProgram.prestart(new PhoenixAutoPrestart(
                 requiredSetup,
-                profile,
+                profile.calibration,
+                profile.targeting,
+                profile.fixedAprilTagLayout,
                 requiredHost.gamepad1,
                 requiredHost.gamepad2
         ));
 
-        PhoenixRobot robot = new PhoenixRobot(
-                requiredHost.hardwareMap,
-                requiredHost.telemetry,
-                requiredHost.gamepad1,
-                requiredHost.gamepad2,
-                profile
-        );
+        PhoenixRobot robot = new PhoenixRobot(requiredHost.hardwareMap);
         pedroRuntime = PedroPathingRuntime.create(
                 requiredHost.hardwareMap,
-                Constants.phoenixAutoRuntimeConfig(profile)
+                Constants.phoenixAutoRuntimeConfig(
+                        profile.localization == null ? null : profile.localization.predictor,
+                        profile.drive == null ? null : profile.drive.wiring,
+                        profile.drive != null && profile.drive.enableZeroPowerBrake
+                )
         );
 
         if (requiredSetup.purpose() == PhoenixReadiness.AutoPurpose.MATCH_AUTO) {
@@ -75,8 +81,9 @@ final class PhoenixAutoProgram {
 
         // declareAuto transfers the Pedro drive owner into RobotProgram before constructing any
         // later Phoenix hardware owner, so every subsequent failure has one cleanup transaction.
-        robot.declareAuto(
+        capabilities = robot.declareAuto(
                 requiredProgram,
+                profile,
                 pedroRuntime.driveAdapter(),
                 pedroRuntime.motionPredictor(),
                 prestart.eligibleScoringTagIds(),
@@ -84,8 +91,7 @@ final class PhoenixAutoProgram {
                 BooleanSource.constant(false),
                 () -> pedroRuntime.setStartingPose(prestart.frozenStartingPose())
         );
-        capabilities = robot.capabilities();
-        pathFactory = new PhoenixPedroPathFactory(pedroRuntime, profile.auto);
+        pathFactory = new PhoenixPedroPathFactory(pedroRuntime, autoConfig);
 
         if (requiredSetup.selectionMode() == PhoenixAutoSetup.SelectionMode.FIXED) {
             rootTask = buildRoutine(prestart.fixedSpecForEagerBuild());
@@ -111,7 +117,7 @@ final class PhoenixAutoProgram {
         paths = builtPaths;
         return PhoenixPedroAutoRoutineFactory.build(new PhoenixPedroAutoContext(
                 requiredSpec,
-                profile,
+                autoConfig,
                 capabilities,
                 pedroRuntime.driveAdapter(),
                 pathFactory,

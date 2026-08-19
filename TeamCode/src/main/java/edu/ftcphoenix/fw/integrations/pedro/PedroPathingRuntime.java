@@ -32,9 +32,11 @@ import edu.ftcphoenix.fw.localization.MotionPredictor;
  *
  * <p>The following short form documents production Phoenix managed Auto:</p>
  * <pre>{@code
+ * PhoenixProfile profile = PhoenixProfile.current();
  * PedroPathingRuntime runtime = PedroPathingRuntime.create(...);
  * robot.declareAuto(
  *         program,
+ *         profile,
  *         runtime.driveAdapter(),
  *         runtime.motionPredictor(),
  *         frozenEligibleTagIds,

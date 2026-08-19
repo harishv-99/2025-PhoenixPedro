@@ -26,7 +26,6 @@ import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.integrations.pedro.PedroFieldTransform;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -63,12 +62,16 @@ public final class ConstantsTest {
 
         Method mapper = Constants.class.getDeclaredMethod(
                 "phoenixAutoRuntimeConfig",
-                PhoenixProfile.class
+                PinpointOdometryPredictor.Config.class,
+                FtcDrives.MecanumWiringConfig.class,
+                boolean.class
         );
         assertEquals(Modifier.PUBLIC | Modifier.STATIC, mapper.getModifiers());
         assertSame(PedroPathingRuntime.Config.class, mapper.getReturnType());
-        assertEquals(1, mapper.getParameterTypes().length);
-        assertSame(PhoenixProfile.class, mapper.getParameterTypes()[0]);
+        assertEquals(3, mapper.getParameterTypes().length);
+        assertSame(PinpointOdometryPredictor.Config.class, mapper.getParameterTypes()[0]);
+        assertSame(FtcDrives.MecanumWiringConfig.class, mapper.getParameterTypes()[1]);
+        assertSame(boolean.class, mapper.getParameterTypes()[2]);
         assertEquals(0, mapper.getExceptionTypes().length);
         assertFalse(mapper.isVarArgs());
 
@@ -82,38 +85,41 @@ public final class ConstantsTest {
     }
 
     @Test
-    public void mapperSnapshotsOnlyPedroOwnedProfileFactsAndCheckedInTuning() {
-        PhoenixProfile profile = PhoenixProfile.current().copy();
-        profile.drive.wiring.frontLeftName = "profile-fl";
-        profile.drive.wiring.frontRightName = "profile-fr";
-        profile.drive.wiring.backLeftName = "profile-bl";
-        profile.drive.wiring.backRightName = "profile-br";
-        profile.drive.wiring.frontLeftDirection = Direction.FORWARD;
-        profile.drive.wiring.frontRightDirection = Direction.REVERSE;
-        profile.drive.wiring.backLeftDirection = Direction.FORWARD;
-        profile.drive.wiring.backRightDirection = Direction.REVERSE;
-        profile.drive.enableZeroPowerBrake = true;
+    public void mapperSnapshotsOnlyPedroOwnedFactsAndCheckedInTuning() {
+        FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
+        wiring.frontLeftName = "profile-fl";
+        wiring.frontRightName = "profile-fr";
+        wiring.backLeftName = "profile-bl";
+        wiring.backRightName = "profile-br";
+        wiring.frontLeftDirection = Direction.FORWARD;
+        wiring.frontRightDirection = Direction.REVERSE;
+        wiring.backLeftDirection = Direction.FORWARD;
+        wiring.backRightDirection = Direction.REVERSE;
 
-        profile.localization.predictor.hardwareMapName = "profile-pinpoint";
-        profile.localization.predictor.forwardPodOffsetLeftInches = 3.25;
-        profile.localization.predictor.strafePodOffsetForwardInches = -4.5;
-        profile.localization.predictor.encoderResolution =
+        PinpointOdometryPredictor.Config predictor = PinpointOdometryPredictor.Config.defaults();
+        predictor.hardwareMapName = "profile-pinpoint";
+        predictor.forwardPodOffsetLeftInches = 3.25;
+        predictor.strafePodOffsetForwardInches = -4.5;
+        predictor.encoderResolution =
                 PinpointOdometryPredictor.EncoderResolution.ticksPerInch(1234.5);
-        profile.localization.predictor.forwardPodDirection =
+        predictor.forwardPodDirection =
                 GoBildaPinpointDriver.EncoderDirection.REVERSED;
-        profile.localization.predictor.strafePodDirection =
+        predictor.strafePodDirection =
                 GoBildaPinpointDriver.EncoderDirection.REVERSED;
-        profile.localization.predictor.yawScalar = 1.001;
-        profile.localization.predictor.quality = 0.63;
+        predictor.yawScalar = 1.001;
+        predictor.quality = 0.63;
 
-        PedroPathingRuntime.Config mapped = Constants.phoenixAutoRuntimeConfig(profile);
+        PedroPathingRuntime.Config mapped = Constants.phoenixAutoRuntimeConfig(
+                predictor,
+                wiring,
+                true
+        );
 
-        assertNotSame(profile.localization.predictor, mapped.predictor);
+        assertNotSame(predictor, mapped.predictor);
         assertEquals("profile-pinpoint", mapped.predictor.hardwareMapName);
         assertEquals(3.25, mapped.predictor.forwardPodOffsetLeftInches, EPSILON);
         assertEquals(-4.5, mapped.predictor.strafePodOffsetForwardInches, EPSILON);
-        assertSame(profile.localization.predictor.encoderResolution,
-                mapped.predictor.encoderResolution);
+        assertSame(predictor.encoderResolution, mapped.predictor.encoderResolution);
         assertSame(GoBildaPinpointDriver.EncoderDirection.REVERSED,
                 mapped.predictor.forwardPodDirection);
         assertSame(GoBildaPinpointDriver.EncoderDirection.REVERSED,
@@ -145,54 +151,31 @@ public final class ConstantsTest {
     }
 
     @Test
-    public void mapperDoesNotInspectUnrelatedMalformedProfileSections() {
-        PhoenixProfile profile = PhoenixProfile.current().copy();
-        profile.vision = null;
-        profile.field = null;
-        profile.controls = null;
-        profile.driveAssist = null;
-        profile.scoring = null;
-        profile.calibration = null;
-        profile.autoAim = null;
-        profile.auto = null;
-        profile.drive.drivebase = null;
-        profile.localization.estimation = null;
-
-        PedroPathingRuntime.Config mapped = Constants.phoenixAutoRuntimeConfig(profile);
-
-        assertNotNull(mapped.predictor);
-        assertNotNull(mapped.mecanumConstants);
-        assertNotNull(mapped.followerConstants);
-        assertNotNull(mapped.pathConstraints);
-        assertNotNull(mapped.fieldTransform);
-    }
-
-    @Test
     public void mapperPreservesRelevantNullAndInvalidDraftEvidenceForRuntimeValidation() {
-        PhoenixProfile noLocalization = PhoenixProfile.current().copy();
-        noLocalization.localization = null;
-        assertNull(Constants.phoenixAutoRuntimeConfig(noLocalization).predictor);
+        assertNull(Constants.phoenixAutoRuntimeConfig(
+                null,
+                FtcDrives.MecanumWiringConfig.defaults(),
+                true
+        ).predictor);
+        assertNull(Constants.phoenixAutoRuntimeConfig(
+                PinpointOdometryPredictor.Config.defaults(),
+                null,
+                true
+        ).mecanumConstants);
 
-        PhoenixProfile noPredictor = PhoenixProfile.current().copy();
-        noPredictor.localization.predictor = null;
-        assertNull(Constants.phoenixAutoRuntimeConfig(noPredictor).predictor);
-
-        PhoenixProfile noDrive = PhoenixProfile.current().copy();
-        noDrive.drive = null;
-        assertNull(Constants.phoenixAutoRuntimeConfig(noDrive).mecanumConstants);
-
-        PhoenixProfile noWiring = PhoenixProfile.current().copy();
-        noWiring.drive.wiring = null;
-        assertNull(Constants.phoenixAutoRuntimeConfig(noWiring).mecanumConstants);
-
-        PhoenixProfile malformed = PhoenixProfile.current().copy();
-        malformed.localization.predictor.quality = Double.longBitsToDouble(0x7ff8000000000042L);
-        malformed.drive.wiring.frontLeftName = null;
-        malformed.drive.wiring.frontLeftDirection = null;
-        PedroPathingRuntime.Config raw = Constants.phoenixAutoRuntimeConfig(malformed);
+        PinpointOdometryPredictor.Config predictor = PinpointOdometryPredictor.Config.defaults();
+        predictor.quality = Double.longBitsToDouble(0x7ff8000000000042L);
+        FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
+        wiring.frontLeftName = null;
+        wiring.frontLeftDirection = null;
+        PedroPathingRuntime.Config raw = Constants.phoenixAutoRuntimeConfig(
+                predictor,
+                wiring,
+                false
+        );
 
         assertEquals(
-                Double.doubleToRawLongBits(malformed.localization.predictor.quality),
+                Double.doubleToRawLongBits(predictor.quality),
                 Double.doubleToRawLongBits(raw.predictor.quality)
         );
         assertNull(raw.mecanumConstants.leftFrontMotorName);
@@ -201,14 +184,21 @@ public final class ConstantsTest {
 
     @Test
     public void mapperReturnsIndependentGraphsAndDoesNotMutateItsSource() {
-        PhoenixProfile profile = PhoenixProfile.current().copy();
-        PinpointOdometryPredictor.Config sourcePredictor =
-                profile.localization.predictor.copy();
-        FtcDrives.MecanumWiringConfig sourceWiring = profile.drive.wiring.copy();
-        boolean sourceBrakeMode = profile.drive.enableZeroPowerBrake;
+        PinpointOdometryPredictor.Config predictor = PinpointOdometryPredictor.Config.defaults();
+        FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
+        PinpointOdometryPredictor.Config sourcePredictor = predictor.copy();
+        FtcDrives.MecanumWiringConfig sourceWiring = wiring.copy();
 
-        PedroPathingRuntime.Config first = Constants.phoenixAutoRuntimeConfig(profile);
-        PedroPathingRuntime.Config second = Constants.phoenixAutoRuntimeConfig(profile);
+        PedroPathingRuntime.Config first = Constants.phoenixAutoRuntimeConfig(
+                predictor,
+                wiring,
+                true
+        );
+        PedroPathingRuntime.Config second = Constants.phoenixAutoRuntimeConfig(
+                predictor,
+                wiring,
+                true
+        );
 
         assertNotSame(first, second);
         assertNotSame(first.predictor, second.predictor);
@@ -229,12 +219,11 @@ public final class ConstantsTest {
         assertEquals(sourceWiring.frontLeftName, second.mecanumConstants.leftFrontMotorName);
         assertEquals(9.616158, second.followerConstants.mass, EPSILON);
         assertEquals(100.0, second.pathConstraints.getTimeoutConstraint(), EPSILON);
-        assertPredictorEquals(sourcePredictor, profile.localization.predictor);
-        assertWiringEquals(sourceWiring, profile.drive.wiring);
-        assertEquals(sourceBrakeMode, profile.drive.enableZeroPowerBrake);
+        assertPredictorEquals(sourcePredictor, predictor);
+        assertWiringEquals(sourceWiring, wiring);
 
-        profile.localization.predictor.hardwareMapName = "mutated-source-pinpoint";
-        profile.drive.wiring.frontLeftName = "mutated-source-motor";
+        predictor.hardwareMapName = "mutated-source-pinpoint";
+        wiring.frontLeftName = "mutated-source-motor";
         assertEquals(sourcePredictor.hardwareMapName, second.predictor.hardwareMapName);
         assertEquals(sourceWiring.frontLeftName, second.mecanumConstants.leftFrontMotorName);
     }
@@ -255,9 +244,7 @@ public final class ConstantsTest {
         try {
             PathConstraints.setDefaultConstraints(poison);
 
-            PedroPathingRuntime.Config mapped = Constants.phoenixAutoRuntimeConfig(
-                    PhoenixProfile.current()
-            );
+            PedroPathingRuntime.Config mapped = freshMappedRuntime();
 
             assertSame(poison, PathConstraints.defaultConstraints);
             assertEquals(0.99, mapped.pathConstraints.getTValueConstraint(), EPSILON);
@@ -324,17 +311,17 @@ public final class ConstantsTest {
     @Test
     public void nativeToolValidatesBeforeEffectsThenBuildsFreshGraphsInExactOrder() {
         HardwareMap hardwareMap = new HardwareMap(null, null);
-        PhoenixProfile profile = PhoenixProfile.current().copy();
+        PedroPathingRuntime.Config runtimeConfig = freshMappedRuntime();
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
 
         Follower first = Constants.createToolOnlyNativeFollowerForTest(
                 hardwareMap,
-                profile,
+                runtimeConfig,
                 construction
         );
         Follower second = Constants.createToolOnlyNativeFollowerForTest(
                 hardwareMap,
-                profile,
+                runtimeConfig,
                 construction
         );
 
@@ -365,15 +352,20 @@ public final class ConstantsTest {
     }
 
     @Test
-    public void nativeToolInvalidProfileProducesNoConstructionEffect() {
-        PhoenixProfile profile = PhoenixProfile.current().copy();
-        profile.drive.wiring.frontRightName = profile.drive.wiring.frontLeftName;
+    public void nativeToolInvalidRuntimeDraftProducesNoConstructionEffect() {
+        FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
+        wiring.frontRightName = wiring.frontLeftName;
+        PedroPathingRuntime.Config runtimeConfig = Constants.phoenixAutoRuntimeConfig(
+                PinpointOdometryPredictor.Config.defaults(),
+                wiring,
+                true
+        );
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
 
         try {
             Constants.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
-                    profile,
+                    runtimeConfig,
                     construction
             );
             fail("expected duplicate motor identity to fail preflight");
@@ -389,24 +381,33 @@ public final class ConstantsTest {
     public void nativeToolRelevantNullsUseCanonicalDiagnosticsBeforeAnyRoleEffect() {
         String canonicalRoot = PedroPathingRuntime.Config.class.getCanonicalName();
 
-        PhoenixProfile noLocalization = PhoenixProfile.current().copy();
-        noLocalization.localization = null;
         assertCanonicalNullPreflight(
-                noLocalization,
+                Constants.phoenixAutoRuntimeConfig(
+                        null,
+                        FtcDrives.MecanumWiringConfig.defaults(),
+                        true
+                ),
                 canonicalRoot + ".predictor must not be null"
         );
 
-        PhoenixProfile noDrive = PhoenixProfile.current().copy();
-        noDrive.drive = null;
         assertCanonicalNullPreflight(
-                noDrive,
+                Constants.phoenixAutoRuntimeConfig(
+                        PinpointOdometryPredictor.Config.defaults(),
+                        null,
+                        true
+                ),
                 canonicalRoot + ".mecanumConstants must not be null"
         );
 
-        PhoenixProfile invalidPredictor = PhoenixProfile.current().copy();
-        invalidPredictor.localization.predictor.quality = Double.NaN;
+        PinpointOdometryPredictor.Config invalidPredictor =
+                PinpointOdometryPredictor.Config.defaults();
+        invalidPredictor.quality = Double.NaN;
         assertCanonicalInvalidPreflight(
-                invalidPredictor,
+                Constants.phoenixAutoRuntimeConfig(
+                        invalidPredictor,
+                        FtcDrives.MecanumWiringConfig.defaults(),
+                        true
+                ),
                 canonicalRoot + ".predictor.quality must be finite and in [0, 1], got NaN"
         );
     }
@@ -486,7 +487,7 @@ public final class ConstantsTest {
         try {
             Constants.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
-                    PhoenixProfile.current().copy(),
+                    freshMappedRuntime(),
                     construction
             );
             fail("expected native-tool construction failure");
@@ -495,13 +496,13 @@ public final class ConstantsTest {
         }
     }
 
-    private static void assertCanonicalNullPreflight(PhoenixProfile profile,
+    private static void assertCanonicalNullPreflight(PedroPathingRuntime.Config runtimeConfig,
                                                      String exactMessage) {
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
         try {
             Constants.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
-                    profile,
+                    runtimeConfig,
                     construction
             );
             fail("expected canonical preflight rejection: " + exactMessage);
@@ -511,13 +512,14 @@ public final class ConstantsTest {
         assertTrue(construction.events.toString(), construction.events.isEmpty());
     }
 
-    private static void assertCanonicalInvalidPreflight(PhoenixProfile profile,
+    private static void assertCanonicalInvalidPreflight(
+            PedroPathingRuntime.Config runtimeConfig,
                                                         String exactMessage) {
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
         try {
             Constants.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
-                    profile,
+                    runtimeConfig,
                     construction
             );
             fail("expected canonical preflight rejection: " + exactMessage);
@@ -525,6 +527,14 @@ public final class ConstantsTest {
             assertEquals(exactMessage, expected.getMessage());
         }
         assertTrue(construction.events.toString(), construction.events.isEmpty());
+    }
+
+    private static PedroPathingRuntime.Config freshMappedRuntime() {
+        return Constants.phoenixAutoRuntimeConfig(
+                PinpointOdometryPredictor.Config.defaults(),
+                FtcDrives.MecanumWiringConfig.defaults(),
+                true
+        );
     }
 
     private static List<String> asList(String... values) {

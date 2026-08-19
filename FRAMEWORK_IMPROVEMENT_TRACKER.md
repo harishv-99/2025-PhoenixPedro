@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -180,7 +180,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 93 | CONFIG-06 | Tool and tester configuration ownership | Done | The reviewed defaults-only tester Configs, explicit vision-factory behavior, production-aligned Pod evidence, corrected-localization naming, synchronized guidance, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 94 | CONFIG-07 | Starter profile simplification | Done | The reviewed owner-local Starter profile, separate motion permissions, synchronous active-slice declarations, API removals, cleanup evidence, synchronized teaching, and destination-specific publication authorization are complete. |
 | 95 | CONFIG-08 | Basic Pedro profile independence | Done | The reviewed independent profile, one review-gated root path, owner-local capture, collision preflight, tests, teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Proposed | Move Phoenix configuration sections beside their owning services and mechanisms while retaining one small data-only aggregate. |
+| 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Done | The reviewed owner-section implementation, synchronized evidence, Android Studio review, and destination-specific publication authorization are complete. |
 | 97 | EXAMPLE-04 | Curated managed concept examples | Proposed | Rationalize the manual-loop examples into a smaller managed progression while preserving EXAMPLE-03's evidence-gated deferral. |
 | 98 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
 | 99 | DRIVE-03 | Field-centric TeleOp drive intent | Proposed | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
@@ -261,7 +261,10 @@ approved implementation, focused/full automated verification, strict Javadocs, d
 checks, independent adversarial review, Android Studio review, and destination-specific publication
 authorization; CONFIG-08 is **Done** after its approved implementation, focused/full automated
 verification, strict Javadocs, documentation checks, independent adversarial review, Android Studio
-review, and destination-specific publication authorization. CONFIG-09 remains **Proposed**.
+review, and destination-specific publication authorization. CONFIG-09 is **Done** after its
+approved implementation, focused/full automated verification, strict Javadocs, documentation
+checks, independent adversarial review, Android Studio review, and destination-specific publication
+authorization.
 Recording the program neither approves the later implementations nor permits compatibility shims or
 mixed-item PRs.
 EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
@@ -19997,49 +20000,419 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-09 - Phoenix profile owner-section decomposition
 
-- **Status and intake boundary (2026-08-15):** **Proposed after every earlier configuration item.**
-  Phoenix remains the production capstone, but its current profile is specifically rejected as the
-  configuration model for simple examples. This item changes configuration ownership and caller
-  shape without changing season behavior.
-- **Confirmed current burden:** `PhoenixProfile` is 1,033 physical/roughly 498 code lines. It owns a
-  shared static `CURRENT`, `defaults()`, a manual aggregate copy, ten nested configuration types,
-  backend-selection helpers, field facts, validation-adjacent policy, and a large shot table.
-  Forty-plus maintained production/test/doc files refer to the profile or nested types. Scoring,
-  targeting, controls, and drive-assist owners already receive narrow nested sections; the broad
-  consumers are `PhoenixRobot`, mode programs/prestarts, telemetry, readiness, Pedro context, and
-  testers, which still retain or reach through more of the aggregate than they need.
-- **Leading ownership map:** move vision selection to `PhoenixVisionFactory.Config`, controls to
-  `PhoenixTeleOpControls.Config`, drive-assist answers to `PhoenixDriveAssistService.Config`, scoring
-  hardware/realization to `PhoenixScoring.Config`, and targeting plus the shot table reference to
-  `PhoenixTargeting.Config`. Keep drive and localization as their framework owner configs; expose
-  the fixed `TagLayout` as a field fact rather than a one-field wrapper. Use top-level
-  `PhoenixAutoConfig` and `PhoenixCalibrationConfig` only if their facts are genuinely shared across
-  several robot owners. Isolate the literal shot calibration in one data-only named factory.
-- **Aggregate and caller hypothesis:** `PhoenixProfile.current()` returns a fresh small data-only
-  aggregate assembled from package-private named current-configuration factories. Delete static
-  mutable `CURRENT`, broad `defaults()`, nested config types, validation, lookup/policy helpers, and
-  large literals from the aggregate. `PhoenixRobot` is the one aggregate snapshot boundary; narrower
-  owners/prestarts/presenters/readiness/Pedro context retain only the exact copied slices or display
-  facts they use. Replace all callers in one item with no forwarding aliases or deprecated nested
-  types.
-- **Principle and behavior boundaries:** field layout, sensor ownership, localization, controls,
-  targeting policy, scoring realization, Auto strategy, and calibration evidence remain distinct.
-  Do not create a generic robot Config framework, split Gradle modules, move season policy into
-  reusable `fw`, or change capability/loop order/physical defaults. CONFIG-05 owns Pedro's generic
-  runtime config; CONFIG-03/04 supply the validated FTC/localization leaves consumed here.
-- **Measurable simplicity target:** reduce `PhoenixProfile` to at most 180 physical/90 code lines,
-  with zero nested config types, validation loops, large calibration literals, or static mutable
-  state. Keep every named `current()` factory reviewably short (normally at most 25 executable
-  statements, with the isolated shot-data literal exempt) and each owner input cohesive. Metrics
-  expose accidental complexity but must not be satisfied by meaningless file splitting.
-- **Future completion evidence:** exhaustive caller/type migration; fresh aggregate and deep nested
-  mutation isolation; unchanged checked-in default snapshot; owner-local invalid-value/pre-effect
-  tests; active-backend, readiness, TeleOp/Auto, scoring/targeting, Pedro, tester, partial-construction,
-  and handoff regressions; zero old nested-type/compatibility references; synchronized Phoenix
-  Architecture/calibration/readiness/docs. Run strict Javadocs/site, full TeamCode compile/tests,
-  static ownership/LOC evidence, and whitespace checks. Robot validation remains required for all
-  physical constants, calibrations, tuning, and season behavior.
-- **Decision record:** _Pending. No implementation started._
+- **Status and Gate 2 stop (2026-08-18):** **Verifying.** The approved CONFIG-09 implementation,
+  synchronized callers/guides, automated evidence, and independent read-only audits are complete.
+  The reviewed unstaged diff remains isolated on
+  `codex/config-09-phoenix-profile-decomposition` from
+  `origin/master@d2a0f807da2583067efc5bd365481dd4e05f6518`. Android Studio review and a later exact
+  destination-specific publication authorization remain required; no staging, publication,
+  EXAMPLE-04, or RUNTIME-03 work is authorized. Phoenix remains the production capstone, but its
+  former profile is specifically rejected as the configuration model for simple examples. This
+  item changes configuration ownership and caller shape without changing season behavior.
+- **Exact current inventory and defect:** the live `PhoenixProfile.java` is 1,052 physical/505 rough
+  code lines. Its public outer surface is ten mutable fields, `PhoenixProfile()`, shared-global
+  `current()`, `defaults()`, and `copy()`. It nests ten Config/container types plus two targeting
+  value types, owns FTC/Phoenix recipes and lookup policy, and embeds the 20-pair shot table. Main
+  Java has seven executable `current()` calls, no `defaults()` caller, and six broad `copy()`
+  consumers; the public no-arg constructor has no external maintained caller. `PhoenixRobot` has a
+  zero-caller implicit-current constructor and an explicit-profile constructor; `Telemetry` is only
+  null-checked and never retained or read. Forty maintained Java files and eight maintained Markdown
+  files refer to the aggregate or its nested types.
+  This is already a behavior bug, not only source size: `PhoenixAutoProgram` broadly copies the
+  profile before CONFIG-05's deliberately slice-local Pedro mapper. That copy reaches
+  `FtcDrives.MecanumConfig.copy()` and validates the direct-drive `maxAxial`, `maxLateral`, and
+  `maxOmega` scales even though Pedro Auto uses only drivetrain wiring and brake policy. A malformed
+  dormant TeleOp scale can therefore block Auto before Pedro's selected validation boundary.
+- **Selected aggregate contract:** `PhoenixProfile` becomes a small, mutable, data-only assembly
+  choice with a private constructor, exactly ten public instance fields, and exactly one public
+  method: `public static PhoenixProfile current()`. Every call returns a fresh complete graph; there
+  is no static mutable `CURRENT`, public constructor, `defaults()`, `copy()`, validation, lookup,
+  builder, inheritance layer, or nested type. Immutable reviewed collaborators such as a snapshotted
+  `TagLayout` or `InterpolatingTable1D` may be shared; every mutable Config/map/value graph must be
+  independent. The exact fields, in review order, are:
+
+  | Field | Exact type and owner |
+  |---|---|
+  | `drive` | `FtcDrives.MecanumConfig` |
+  | `vision` | `PhoenixVisionFactory.Config` |
+  | `localization` | `FtcOdometryAprilTagLocalizationLane.Config` |
+  | `fixedAprilTagLayout` | direct `TagLayout` field fact; delete the one-field `FieldConfig` |
+  | `controls` | `PhoenixTeleOpControls.Config` |
+  | `driveAssist` | `PhoenixDriveAssistService.Config` |
+  | `scoring` | `PhoenixScoring.Config` |
+  | `calibration` | top-level `PhoenixCalibrationConfig` |
+  | `targeting` | `PhoenixTargeting.Config`; rename the misleading aggregate field `autoAim` |
+  | `auto` | top-level `PhoenixAutoConfig` |
+
+- **Why the two top-level policy Configs remain:** `PhoenixAutoConfig` is one cohesive eight-answer
+  policy consumed across `PhoenixAutoTasks`, Pedro path/routine construction, and the public custom-
+  routine context. `PhoenixCalibrationConfig` is evidence shared by TeleOp readiness, Auto readiness,
+  and robot testers and has no runtime hardware owner. Splitting Auto into task/path/routine configs
+  would duplicate one budget; hiding calibration acknowledgements inside localization would falsely
+  turn human evidence into sensor configuration.
+- **Exact owner Config shapes:** each new Config is `public static final` under its owner, except the
+  two justified top-level classes; each has a private constructor and a public `defaults()` returning
+  a fresh complete software-valid draft. `defaults()` never proves wiring, calibration, tuning, or
+  safe motion. Do not add builders, `validatedCopy`, public validation helpers, or public
+  `currentConfig()` aliases. Owner constructors privately capture and validate active facts.
+  `PhoenixAutoConfig.copy()` is the sole new public `copy()`: the public
+  `PhoenixPedroAutoContext.autoConfig()` custom-routine seam returns that defensive copy, while the
+  stock routine reads it once. Exact declared-public Config method counts are three for Vision
+  (`defaults`, `activeDeviceName`, `activeCameraMount`), two for Targeting (`defaults`,
+  `scoringTagIdFor`), two for Auto (`defaults`, `copy`), and one (`defaults`) for Controls, Drive
+  Assist, Scoring, and Calibration. Exact primitive/catalog facts are captured where needed rather
+  than copying an unrelated section for symmetry.
+
+  - `PhoenixVisionFactory.Config` has exactly `PhoenixVisionFactory.Backend backend`,
+    `FtcWebcamAprilTagVisionLane.Config webcam`, and
+    `FtcLimelightAprilTagVisionLane.Config limelight`. Its existing active-device and active-mount
+    queries remain public because calibration/tester callers use them; null backend is actionable,
+    not a webcam fallback. Only the selected backend is inspected/captured/opened.
+  - `PhoenixTeleOpControls.Config` is flattened to exactly seven fields: `manualDrive`,
+    `slowTranslateScale`, `maxAxialRatePerSec`, `maxLateralRatePerSec`, `maxOmegaRatePerSec`,
+    `slowOmegaScale`, and `selectedVelocityStepNative`. Delete `DriveControlsConfig`.
+  - `PhoenixDriveAssistService.Config` is flattened to exactly
+    `shootBraceEnterTranslateMagnitude`, `shootBraceExitTranslateMagnitude`,
+    `shootBraceTranslateKp`, and `shootBraceMaxTranslateCmd`. Delete `ShootBraceConfig`.
+  - `PhoenixScoring.Config` owns the existing 35 hardware, direction, scale, velocity, PIDF,
+    readiness, power, and timing fields with their values unchanged.
+  - `PhoenixCalibrationConfig` owns exactly `pinpointAxesVerified` and
+    `pinpointPodOffsetsCalibrated`.
+  - `PhoenixTargeting.Config` owns the existing 13 alliance/catalog, aim, selection, default-offset,
+    and shot-table fields. The only additional public data query is
+    `scoringTagIdFor(PhoenixAlliance)`; catalog projections and fallback lookup stay owner/package
+    implementation. `PhoenixTargeting.ScoringTarget` and `PhoenixTargeting.AimOffset` are sibling
+    owner value types with public authoring constructors. Delete `ScoringTarget.tagId`: the ordered
+    map key is the sole tag identity, and the duplicate field has zero readers and can contradict it.
+    The selected target constructor is `(String label, AimOffset aimOffset)` and preserves both
+    authored arguments raw, including null dormant evidence; it never substitutes a zero offset or
+    label. Remove the zero-external-caller public `copy()` methods from both `ScoringTarget` and
+    `AimOffset`; `PhoenixTargeting` privately clones only the facts it retains.
+  - `PhoenixAutoConfig` owns the existing eight Auto timing/distance fields unchanged, with public
+    `defaults()` and raw, null-free `copy()` only.
+- **Checked-in current recipes:** `PhoenixProfile.current()` visibly assembles one complete current
+  robot from short named factories. Framework-owned Phoenix recipes live in package-private
+  `PhoenixDriveConfiguration.current()` and `PhoenixLocalizationConfiguration.current()`; the long
+  localization recipe is divided by predictor/AprilTag/Limelight/fusion/EKF branch so each helper is
+  reviewable. The fixed layout remains `FtcGameTagLayout.currentGameFieldFixed()`. Robot-owner
+  defaults live beside their owners. Package-private
+  `PhoenixCalibrationConfiguration.current()` is the checked-in edit location that deliberately
+  changes conservative `PhoenixCalibrationConfig.defaults()` from `false/false` to Phoenix's
+  current `true/false` acknowledgements. The 20-pair table moves intact to package-private
+  `PhoenixShotVelocityCalibration.currentTable()` in the scoring package. Every existing name,
+  direction, enum, mount, scale,
+  numeric raw bit, layout, map order, and table pair remains unchanged. These values remain physical
+  claims requiring robot review, never safe examples merely because they compile.
+- **Selected active-slice root API:** materially improve the leading constructor-snapshot hypothesis.
+  `PhoenixRobot` retains only `HardwareMap` before a mode is selected. Its sole public constructor is
+  `PhoenixRobot(HardwareMap)`: remove the implicit-current/profile overloads, redundant `Telemetry`,
+  and Auto-inactive Gamepad peers. The exact mode boundaries are:
+
+  ```java
+  public void declareTeleOp(
+          RobotProgram program,
+          PhoenixProfile profile,
+          Gamepad gamepad1,
+          Gamepad gamepad2,
+          Source<Set<Integer>> eligibleScoringTagIds);
+
+  public PhoenixCapabilities declareAuto(
+          RobotProgram program,
+          PhoenixProfile profile,
+          DriveCommandSink autonomousDrive,
+          MotionPredictor motionPredictor,
+          Source<Set<Integer>> eligibleScoringTagIds,
+          BooleanSource autoAimEnabledSource,
+          BooleanSource aimOverrideSource,
+          Runnable applyStartingPose);
+  ```
+
+  Both consume the profile synchronously. `PhoenixRobot` retains no Profile aggregate or direct
+  Gamepads peer; `PhoenixTeleOpControls` truthfully retains the active Gamepad references in its
+  input-source graph. "Retains only `HardwareMap` before mode selection" describes caller-supplied
+  resource/config peers, not the root's package-private assembly seams or internal lifecycle state.
+  TeleOp remains
+  `void` because its caller uses no returned graph; Auto returns the completed
+  `PhoenixCapabilities` vocabulary because routine construction immediately needs it. Delete the
+  ordering-sensitive public `capabilities()` getter. Keep the two presenter methods. Package-private
+  lifecycle assembly seams lose Profile/Telemetry/Gamepad constructor peers and receive exact active
+  Config/layout inputs. `PhoenixTelemetryPresenter` becomes package-private and captures only the
+  corrected-estimator and correction-source enum display facts supplied by the root.
+- **Construction-path closure:** outer Profile authoring contracts from public constructor plus
+  `current()`/`defaults()`/`copy()` to the sole fresh `current()` factory. Ten public nested Config
+  constructors and their parallel copies move to the seven owner/top-level `defaults()` paths above,
+  with only the evidence-backed Auto copy retained. Robot construction goes from two public
+  overloads to the one HardwareMap path. Keep exactly one production constructor each for
+  `PhoenixTeleOpControls`, `PhoenixDriveAssistService`, `PhoenixScoring`, and `PhoenixTargeting`, but
+  migrate each existing Profile-Config parameter's type in place—preserving conventional
+  `Gamepads, Config` and `HardwareMap, Config, ...` ordering—and remove Targeting's tenth shot-table
+  peer.
+  Keep `PhoenixVisionFactory.create(HardwareMap, Config)` and Scoring's distinct exclusive flywheel-
+  tuning factory. Remove the zero-caller public `PhoenixAutoTasks.aimConfig` translation factory,
+  Profile-backed configured-drive tester path, broad presenter constructor, and ordering getter.
+  Retain Phoenix's six public calibration/localization tester facades because each maps a distinct
+  capability. Demote zero-external-caller `configuredDrivetrainVerification()` to package-private;
+  its two same-package suite/walkthrough method references remain, and its tester keeps only the
+  explicit Mecanum Config construction path. No new public profile/config factory is selected.
+- **Ordinary call-site comparison:** TeleOp becomes one fresh local profile, exact prestart facts,
+  `PhoenixRobot robot = new PhoenixRobot(hardwareMap)`, then one declaration carrying the profile and
+  two active Gamepads. Auto becomes one fresh local profile, exact prestart facts, the pure narrow
+  Pedro mapping, `PhoenixRobot robot = new PhoenixRobot(hardwareMap)`, and one declaration whose
+  return builds paths/routine. Neither program pre-copies the aggregate. Ordinary FTC OpModes remain
+  their existing one-line `PhoenixTeleOpProgram`/`PhoenixAutoSetup` declarations; students edit one
+  named owner Config/current-recipe file rather than a 1,052-line god profile.
+- **Cross-owner hardware preflight:** one package-private
+  `.opmode.PhoenixHardwareOwnershipPreflight` owns the complete policy and diagnostics. Both
+  ordinary Programs invoke it with the same profile before their first hardware effect: TeleOp
+  before `declareTeleOp`, and Auto after the deliberately first `PhoenixMatchHandoff.clear()` but
+  before `PedroPathingRuntime.create`. The public Robot declarations are advanced assembly seams;
+  direct callers own exclusivity for the supplied/constructed resources, especially because an
+  opaque Auto `DriveCommandSink` cannot publish motor identities. This centralizes the ordinary
+  rule without a public/global validation concept. Compare
+  each scoring DC motor (`nameMotorIntake`, `nameMotorShooterWheel`) with all four drive motor names.
+  FTC identity is raw-preserving `trim()` equivalence with case-sensitive comparison; null/blank
+  malformed fields are skipped so the owning Config retains diagnostic precedence. A conflict is an
+  `IllegalStateException` naming both exact paths, authored values, and effective key. Do not add a
+  public/global hardware registry or generic name validator.
+  Separately, `PhoenixScoring` rejects its two motor names colliding and all three pairwise CR-servo
+  name collisions before the first scoring recipe build/lookup. Those are same-owner
+  `IllegalArgumentException`s. Do not compare across FTC device families or inspect an inactive
+  vision backend.
+- **Capture, validation, and effect truth:** `current()` and raw Config copies perform no aggregate
+  validation. Every active owner captures all fields it retains before its own effects and reports
+  owner-qualified paths. A later owner may reject configuration after an earlier registered owner
+  exists; `RobotProgram` then preserves the primary failure and best-effort cleanup/suppression. Do
+  not claim every Phoenix Config fails before the first whole-robot lookup.
+
+  - Vision validates/captures only the selected backend; the inactive backend may be null or hostile.
+    Framework localization and direct-drive owners keep their approved selected-config validation.
+    Pedro Auto reads predictor plus wiring/brake only and ignores direct-drive scale drafts.
+  - Controls first requires a nonnull `manualDrive` draft, then checks its six outer scalars in
+    declared order: slow translation scale is finite in `[0,1]`; all three slew rates are finite and
+    `> 0`; slow omega scale is finite in `[0,1]`; and `selectedVelocityStepNative` is finite and
+    `> 0`. It then constructs `GamepadDriveSource` from that draft; the existing framework-owner
+    boundary defensively copies and validates the nested
+    config in its declared order: deadband `[0,1]`, both exponents `>= 1`, then both scales `[0,1]`.
+    Thus an invalid outer field wins over an invalid nested draft without duplicating framework
+    validation. Drive Assist checks enter and exit
+    magnitudes as finite `[0,1]` values, then requires `enter <= exit`; translation Kp is finite and
+    `>= 0`, and maximum translation command is finite in `[0,1]`. Controls finishes its six
+    Phoenix-owned checks before asking `GamepadDriveSource` to validate/build, whose own validation
+    finishes before the source is usable; Drive Assist finishes every check before its latch/overlay.
+  - Production Scoring walks all 35 declared fields in source order. Each of the five hardware names
+    is nonblank and each direction is nonnull; the shooter-transfer and three final feed scales are
+    finite in `[-1,1]`; the seven magnitude powers are finite in `[0,1]`;
+    both velocity bounds are finite with `0 <= velocityMin <= velocityMax`; and all velocity
+    tolerances, readiness lead/stability, feed
+    pulse, and cooldown times are finite and `>= 0`. Only when PIDF override is enabled, each gain
+    must fit the pinned inclusive REV coefficient domain
+    `[-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]`; disabled gains remain dormant.
+    Same-owner identity checks follow their valid operands, and every production-active check
+    finishes before the first Plant build. The exclusive flywheel tuner consumes only shooter motor
+    name/direction, velocity min/max, `velocityToleranceNative`, the PIDF-enable flag, and the four
+    gains when enabled; readiness below/above tolerances, prediction lead/stability, and every
+    intake/feed/servo fact remain dormant.
+  - After raw-capturing the alliance IDs/catalog without inspecting dormant entries, Targeting checks
+    common active facts in their declared order: aim tolerance is finite in `[0,180]` degrees;
+    Kp is finite and `>= 0`; max omega is finite in `[0,1]`; ready tolerance is finite, at least the
+    aim tolerance, and at most 180 degrees; debounce is finite and `>= 0`; min omega is finite in
+    `[0,maxOmega]`, and a positive min requires positive Kp; then selection max age and reacquire
+    time are finite and `>= 0`. Its default offset and shot table are required, with both offset
+    coordinates finite.
+    Readiness/START validates only the selected alliance and frozen eligible catalog entries before
+    sensor selection: the selected alliance id is nonnegative; the sampled eligible set is nonnull
+    and nonempty; and each member is nonnull and nonnegative before catalog lookup. Each eligible id
+    then maps to a nonnull target with a nonblank raw label, nonnull finite offset, and finite
+    fixed-layout pose. It also requires the selected
+    `fieldToTag.then(offset)` result to remain finite before publishing the aim point; finite operands
+    that overflow composition are rejected actionably. The inactive alliance and unused catalog
+    entries do not block, and private capture preserves their raw null/invalid evidence.
+  - Auto consumers require an explicit nonnull `PhoenixAutoConfig`; remove hidden null-to-default
+    fallbacks. In declared order: park takeover and route timeout are finite and `> 0`; heading
+    tolerance is finite and `>= 0` and its radians remain finite; aim timeout and max-no-guidance
+    time are finite and `> 0`; both waits are finite and `>= 0`; and integration-test distance is
+    finite and `> 0`, with the configured Pedro path endpoint also finite. Each consumer captures
+    only its fields and validates before creating a Task/path, preserving current zero-duration wait
+    semantics.
+  - If finite flywheel measurement plus finite acceleration-times-lead overflows at runtime,
+    predictive readiness becomes unavailable: `ready` is false and the published predicted
+    value/error are `Double.NaN`, never infinity or a clamped fiction. The independent raw
+    `flywheel.atTarget()` result remains unchanged in `flywheelAtTarget`; an unavailable acceleration
+    continues to use the existing zero-acceleration prediction.
+
+  For every owner, validate individual fields in the declared/source order above and validate a
+  cross-field expression immediately after its last operand. Gate 2 locks first-failure precedence
+  as well as accepted boundaries.
+- **Narrow broad-consumer migration:** replace every aggregate reach-through in one change, with no
+  forwarding aliases or deprecated nested names.
+
+  - `PhoenixReadiness` takes exact calibration, targeting, layout, purpose, and selected-alliance
+    facts. TeleOp/Auto prestarts retain only the exact copied primitive/catalog/layout facts they use.
+  - `PhoenixTelemetryPresenter` retains only its two enum labels. `PhoenixRobotTesters` captures one
+    fresh local profile per suite/factory and maps exact slices. The configured-drivetrain tester
+    retains only its explicit Mecanum Config path; delete its hidden no-arg profile lookup.
+  - `Constants.phoenixAutoRuntimeConfig` remains the sole public pure mapper but becomes exactly
+    `(PinpointOdometryPredictor.Config predictor, FtcDrives.MecanumWiringConfig wiring,
+    boolean enableZeroPowerBrake)`. It raw-copies only those answers; native-tool seams take the
+    mapped runtime draft, not a whole Phoenix profile.
+  - `PhoenixPedroAutoContext` deletes its raw `profile` field and `profile()` export. It retains one
+    `PhoenixAutoConfig` snapshot and exposes `autoConfig()` as a defensive copy for custom routines;
+    the stock routine reads that once. Path/task constructors require explicit Auto config.
+  - `PhoenixTargeting` removes the redundant shot-table constructor peer and uses its captured Config
+    field. `PhoenixAutoTasks.aimConfig(...)` becomes private because only `aimAndShootOne` translates
+    that policy; retain the coherent public `disableFlywheel` macro.
+- **Documentation and edit-location contract:** synchronize Javadocs plus `Phoenix Architecture.md`,
+  `Phoenix Calibration Guide.md`, the Phoenix `README.md`, Phoenix Pedro `README.md`, the framework
+  Pedro integration `README.md`, `FTC Auto-to-TeleOp Handoff.md`,
+  `Framework Lanes & Robot Controls.md`, `Robot Capabilities & Mode Clients.md`, and affected
+  sections of `Recommended Robot Design.md`.
+  Audit the Basic Pedro guides only to preserve their independence claim. Remove all wording that
+  `current()` is shared or that roots/prestarts/presenters/context retain the complete profile.
+  Repeated expressions such as `PhoenixProfile.current().autoAim... = ...` are invalid teaching once
+  `current()` is fresh: show the named checked-in owner/current-recipe edit location, or one local
+  profile explicitly passed through a test declaration. Keep ordinary OpModes thin and keep physical
+  calibration caveats adjacent to every current recipe, including
+  `PhoenixCalibrationConfiguration.current()` as the edit location for Phoenix's two checked-in
+  calibration acknowledgements.
+- **Rejected alternatives:** keep the monolith and improve comments (shared alias, dormant validation,
+  and ownership stay wrong); retain a constructor-bound aggregate (mode is not known, so Auto copies
+  dormant direct-drive/controls/assist sections); pass ten Configs to every root (accurate but makes
+  ordinary assembly answer ten concepts); let each owner fetch static current config (hidden globals
+  and no alternate profile); add a staged profile builder (same ten questions plus stages); split
+  TeleOp and Auto profiles (duplicates shared robot facts); preserve nested forwarding aliases or
+  deprecations (two names per concept); add a generic Config base/reflection copier/validation DSL or
+  public FTC-name API (different active domains/diagnostics and reopened completed boundaries); put
+  all recipes in a new `PhoenixConfigurations` god utility (moves the monolith); or split the cohesive
+  Auto budget into task/path/routine configs (duplicates one policy).
+- **Measurable simplicity gate:** `PhoenixProfile` must be at most 180 physical/90 rough code lines,
+  with exactly the ten fields, no nested types, validation, lookup loops, large literals, or mutable
+  static state. Every named recipe should normally stay at or below 25 executable statements; split
+  the localization recipe by its real nested owners and exempt only the isolated shot data literal.
+  Record both the profile reduction and total changed Phoenix production-code delta so source is not
+  merely hidden in arbitrary files.
+- **Required Gate 2 evidence:** reflection-lock the exact Profile field/method/constructor/nesting
+  surface; sole one-arg Robot ctor, exact declaration parameters/returns, removed getter, narrowed
+  presenter, every Config method/field count, flattened controls/assist, and `ScoringTarget` without
+  `tagId`. Prove two `current()` graphs are deeply independent through drive, both vision drafts,
+  localization, manual controls, scoring, target map/offsets, calibration, and Auto; lock immutable
+  collaborator sharing only where documented. A golden raw-bit snapshot must cover every current
+  name, direction, enum, boolean, numeric, mount, layout id/pose, target-map entry/order, and all 20
+  shot-table pairs.
+  Table-test active versus dormant vision, direct-drive/Pedro, controls/Auto, PIDF, tuner, alliance,
+  catalog, and localization branches; post-construction source mutation isolation; null/blank/
+  nonfinite/boundary/cross-field diagnostics; Controls' null-manual then outer-before-nested-scalar
+  precedence; selected-alliance and eligible-set null/empty/negative/member ordering; all eight
+  drive/scoring conflicts in both ordinary
+  modes; scoring's one motor pair and three CR-servo pairs; exact/trim/case/malformed precedence; and
+  zero hardware lookup/reset/write or vendor-global effects at the selected preflight boundaries;
+  Auto's deliberately first in-memory `PhoenixMatchHandoff.clear()` remains the explicit exception.
+  Prove composed selected field poses reject finite-operand overflow before publication, and prove
+  flywheel-prediction overflow publishes `NaN`/unready while preserving raw Plant at-target truth,
+  and finite/acceleration-unavailable paths retain their current results. Lock the single
+  package-private ordinary-mode preflight and
+  the advanced direct-declaration exclusivity Javadocs.
+  Preserve
+  vision/localization/scoring/drive and Pedro partial-construction cleanup, primary/suppressed truth,
+  reentrant STOP, readiness, targeting/scoring, route/cancel/timeout, tester, handoff, TeleOp, and Auto
+  regressions. Static scans must find no old nested Config, `.field`, `.autoAim`, shared `CURRENT`,
+  broad Profile mapper/context/presenter, old Robot ctor/getter, public `aimConfig`, hidden Auto
+  default, forwarding alias, or stale edit-path prose. Run focused suites, full TeamCode tests and
+  compile, strict Javadocs, documentation link/site checks, LOC/API/caller scans, and diff/whitespace.
+- **Hardware evidence boundary:** software can prove ownership, capture, validation order, unchanged
+  values, API shape, and cleanup calls. Only the adopting robot can prove names/directions, brake and
+  physical zero, camera mount/backend, Pinpoint axes/offsets, localization quality, targeting/PIDF/
+  shot calibration, route timing/clearance, and actual STOP. CONFIG-09 must not change an
+  acknowledgement, tune a value, or claim current values are safe because snapshot tests pass.
+- **Bounded scope:** this is Phoenix configuration decomposition and its direct callers/docs only.
+  Preserve capability vocabulary, loop order, backend behavior, field convention, match handoff,
+  route/scoring semantics, and every checked-in value. Do not start EXAMPLE-04/RUNTIME-03, change
+  Gradle modules, add live tuning/persistence, or introduce a framework-wide validation/resource
+  registry.
+- **Decision record (2026-08-18):** **Ready for explicit Gate 1 approval.** Independent
+  source/caller, architecture/API, and docs/student-simplicity audits all returned PASS after the
+  exact public surfaces, active/dormant domains, validation precedence, cross-owner preflight,
+  derived-overflow truth, migration scope, and evidence matrix were reconciled. No production file,
+  test, or guide was changed; no Gradle, staging, publication, or robot-hardware claim occurred.
+  To authorize Gate 2 on this branch, reply exactly: **“Approve CONFIG-09 fresh owner-section
+  Phoenix profile, active-slice mode declarations, owner-local Config capture and validation,
+  narrow Pedro/Auto/readiness mapping, centralized cross-owner hardware preflight, and redundant
+  aggregate/API removal design.”** That approval authorizes only the reviewed CONFIG-09
+  implementation; Android Studio review and a later destination-specific publication authorization
+  remain required, and EXAMPLE-04/RUNTIME-03 stay unauthorized.
+- **Gate 2 implementation authorization (2026-08-18):** the user sent the exact approval sentence
+  above. Implementation of the reviewed CONFIG-09 design is authorized on this branch. The user did
+  not authorize staging, committing, pushing, opening or merging a pull request, starting
+  EXAMPLE-04/RUNTIME-03, or making a robot-hardware safety claim.
+- **Implemented result (2026-08-18):** `PhoenixProfile` is now the selected fresh, current-only
+  ten-field aggregate; checked-in facts live in the named owner/current recipes, and active owners
+  privately capture and validate only the slices they retain. `PhoenixRobot` has the sole
+  HardwareMap construction path and synchronous TeleOp/Auto declarations, the ordinary programs
+  share one package-private cross-owner motor preflight, and Auto returns the completed capability
+  graph directly. Vision, controls, assist, scoring, targeting, calibration, Auto, Pedro mapping,
+  readiness, presenter, prestart, tester, and routine-context dependencies are narrowed to their
+  exact facts. The shared mutable profile, nested Config forest, broad copy/default paths, duplicate
+  targeting ID, broad presenter/context/Constants inputs, hidden configured-drive construction,
+  public `aimConfig`, and ordering-sensitive capability getter are removed with no forwarding
+  aliases. Production scoring now validates all active facts and each same-family identity
+  cross-field immediately after its last name operand before the first recipe build.
+- **Exact Gate 2 scope (2026-08-18):** the reviewed working tree is exactly 69 CONFIG-09 files:
+  58 tracked entries (57 modified and the obsolete `PhoenixProfileAutoConfigTest` deleted) plus 11
+  new untracked files. Categorized by responsibility, that is this tracker (1), production Java
+  (34), test Java (25), and maintained Markdown (9). Expected-versus-actual scope is 69/69 with no
+  missing or extra file, no Gradle/module/generated/vendor/legacy change, and a completely empty
+  staged index.
+- **Automated Gate 2 evidence (2026-08-18):**
+  `:TeamCode:compileDebugUnitTestJavaWithJavac` is green. The strengthened four-suite regression
+  lane is 32/32 after its independent fixed-layout raw-bit oracle was corrected by one ULP; the
+  implementation did not change for that oracle correction. The final
+  `:TeamCode:testDebugUnitTest` artifacts are 196 suites/1,861 tests with zero failures, errors, or
+  skips; their exact Phoenix-plus-project-`ConstantsTest` subset is 26 suites/202 tests, also all
+  green. `DocumentationLinksTest` is 5/5, covering maintained links, anchors, and fences. Strict
+  `:TeamCode:phoenixJavadocs` is green with doclint and warnings-as-errors. The only non-success
+  build output is the existing JBR 21 warning about Java 8 source/target deprecation and the FTC
+  controller's existing deprecated-API note.
+- **Exact API/value/lifecycle evidence (2026-08-18):** reflection closes the selected Profile,
+  Robot, owner Config, targeting-value, presenter, mapper, tester, context, and removed surfaces.
+  Fresh-graph and mutation tests cover every mutable branch. An independent raw-bit golden snapshot
+  locks drive, both vision drafts and mounts, localization, the fixed IDs/poses, controls, assist,
+  all 35 scoring fields, all 13 targeting fields plus ordered catalog/offsets, every one of the 20
+  shot-table pairs, calibration, and all eight Auto fields. Active/dormant, first-failure,
+  zero-effect preflight, selected-layout overflow, prediction-unavailable truth, partial-construction
+  cleanup, suppression, reentrant STOP, handoff, readiness, targeting, scoring, route, TeleOp, Auto,
+  tester, and context regressions are green. Static scans find no stale nested Config, `.field`,
+  `.autoAim`, shared `CURRENT`, broad mapper/context/presenter, old Robot construction/getter, public
+  `aimConfig`, hidden Auto default, or forwarding alias; the sole textual
+  `PhoenixProfile.defaults()`/`copy()` mention is the guide's explicit statement that they no longer
+  exist.
+- **Simplicity and static evidence (2026-08-18):** `PhoenixProfile` fell from 1,052 physical/505
+  rough code lines to 78/35, within the approved 180/90 ceiling and with no nested type, large
+  literal, validation loop, or mutable static. Across the 31 changed Phoenix production Java files,
+  source grew from 7,947 physical/5,626 rough lines to 8,683/6,547, a recorded +736/+921 that places
+  explicit owner Configs, validation, active-slice capture, narrow mappings, and named data recipes
+  beside their real owners rather than hiding them in another aggregate utility. Recipe-shape scans,
+  stale-symbol/caller scans, `git diff --check`, trailing-whitespace, final-newline, and no-sleep
+  checks are clean; Git reports only informational LF-to-CRLF notices.
+- **Independent review and evidence boundary (2026-08-18):** independent production/API,
+  scoring/targeting, docs/student, Javadoc-truth, raw-value, and final Gate-2 audits all returned PASS
+  after the scoring precedence and golden-evidence gaps were corrected. Software evidence does not
+  prove names/directions, brake or physical zero, camera mount/backend, Pinpoint axes/offsets,
+  localization quality, targeting/PIDF/shot calibration, route timing/clearance, or actual STOP.
+  Those remain mandatory robot checks in Android Studio/on hardware; no current acknowledgement or
+  tuning value was changed or reinterpreted as safe.
+- **Gate 3 review/publication stop (2026-08-18):** every CONFIG-09 file remains unstaged. Review the
+  diff and automated evidence in Android Studio. If it is acceptable, reply exactly:
+  **“CONFIG-09 looks good. Authorize committing the reviewed CONFIG-09 diff on
+  codex/config-09-phoenix-profile-decomposition, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** That later reply alone authorizes staging and publication of this exact CONFIG-09
+  scope; it does not start EXAMPLE-04 or RUNTIME-03 and does not make a hardware-safety claim.
+- **Manual verification and publication authorization (2026-08-19):** the user sent the exact
+  combined reply above after the Android Studio review handoff. CONFIG-09 is now **Done**; Gate 3
+  may stage only this reviewed 69-file diff, create its single item commit, push
+  `codex/config-09-phoenix-profile-decomposition` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. This authorization does not start EXAMPLE-04 or RUNTIME-03 and does not claim robot-
+  hardware validation.
 
 ### EXAMPLE-04 - Curated managed concept examples
 

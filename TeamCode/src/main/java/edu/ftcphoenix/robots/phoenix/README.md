@@ -12,8 +12,8 @@ choices must follow the [`Framework Principles`](<../../fw/Framework Principles.
 
 1. [`Phoenix Architecture`](<Phoenix Architecture.md>) explains the complete ownership graph,
    managed lifecycle, loop order, readiness rules, and TeleOp/Auto relationship.
-2. [`PhoenixProfile.java`](<PhoenixProfile.java>) contains the data-only hardware and policy
-   configuration that long-lived owners defensively copy.
+2. [`PhoenixProfile.java`](<PhoenixProfile.java>) assembles one fresh, data-only current
+   configuration graph whose active slices are synchronously handed to their long-lived owners.
 3. [`Phoenix Calibration Guide`](<Phoenix Calibration Guide.md>) explains how to replace checked-in
    placeholders with measurements and record the required acknowledgements.
 4. [`Phoenix Pedro autonomous`](<autonomous/pedro/README.md>) explains route ownership, INIT
@@ -32,6 +32,10 @@ choices must follow the [`Framework Principles`](<../../fw/Framework Principles.
 
 `PhoenixRobot` wires these owners together. Controls and autonomous routines use
 `PhoenixCapabilities`; they do not reach into mechanisms, Plants, FTC devices, or Pedro followers.
+Its only public constructor is `PhoenixRobot(HardwareMap)`. TeleOp supplies its one local
+`PhoenixProfile`, both Gamepads, and targeting-eligibility source to `declareTeleOp(...)`; Auto
+supplies its local profile and Auto-only runtime roles to `declareAuto(...)`. The root retains no
+aggregate profile or dormant Gamepad dependency.
 
 ## Mode entries
 
@@ -65,9 +69,17 @@ and Auto never read its Configurable draft values.
 
 | Goal | Change here |
 |---|---|
-| Rename hardware or enter a measured constant | [`PhoenixProfile.java`](<PhoenixProfile.java>) |
-| Tune flywheel velocity control | Open **Phoenix: Tuning (Panels)**, correlate trials by session/segment ID, then copy accepted controller readback into [`PhoenixProfile.java`](<PhoenixProfile.java>) |
-| Change a button's meaning | [`PhoenixTeleOpControls.java`](<PhoenixTeleOpControls.java>) |
+| Change drivetrain motor names, directions, or brake policy | `PhoenixDriveConfiguration.current()` in [`PhoenixDriveConfiguration.java`](<PhoenixDriveConfiguration.java>) |
+| Change Pinpoint, AprilTag correction, Fusion, or EKF policy | `PhoenixLocalizationConfiguration.current()` in [`PhoenixLocalizationConfiguration.java`](<PhoenixLocalizationConfiguration.java>) |
+| Record reviewed Pinpoint axes or pod-offset evidence | `PhoenixCalibrationConfiguration.current()` in [`PhoenixCalibrationConfiguration.java`](<PhoenixCalibrationConfiguration.java>) |
+| Change the fixed FTC field tag layout | `FtcGameTagLayout.currentGameFieldFixed()` in the framework FTC boundary |
+| Select/configure the active vision backend | `PhoenixVisionFactory.Config.defaults()` in [`PhoenixVisionFactory.java`](<PhoenixVisionFactory.java>) |
+| Change a button's meaning or drive-control tuning | `PhoenixTeleOpControls.Config.defaults()` in [`PhoenixTeleOpControls.java`](<PhoenixTeleOpControls.java>) |
+| Change drive-assist policy | `PhoenixDriveAssistService.Config.defaults()` in [`PhoenixDriveAssistService.java`](<PhoenixDriveAssistService.java>) |
+| Change scoring hardware, bounds, timing, or controller values | `PhoenixScoring.Config.defaults()` in [`PhoenixScoring.java`](<scoring/PhoenixScoring.java>) |
+| Tune flywheel velocity control | Open **Phoenix: Tuning (Panels)**, correlate trials by session/segment ID, then copy accepted controller readback into `PhoenixScoring.Config.defaults()` |
+| Change target catalog, alliance mapping, or aim policy | `PhoenixTargeting.Config.defaults()` in [`PhoenixTargeting.java`](<scoring/PhoenixTargeting.java>); edit shot rows in `PhoenixShotVelocityCalibration.currentTable()` |
+| Change autonomous timing/budgets | `PhoenixAutoConfig.defaults()` in [`PhoenixAutoConfig.java`](<PhoenixAutoConfig.java>) |
 | Add mode-neutral robot intent | [`PhoenixCapabilities.java`](<PhoenixCapabilities.java>) and its owning mechanism |
 | Change scoring realization or safety behavior | [`PhoenixScoring.java`](<scoring/PhoenixScoring.java>) |
 | Change target-selection or drive-assist policy | [`PhoenixTargeting.java`](<scoring/PhoenixTargeting.java>) or [`PhoenixDriveAssistService.java`](<PhoenixDriveAssistService.java>) |
@@ -79,6 +91,12 @@ and Auto never read its Configurable draft values.
 Keep the change with the owner of that decision. `PhoenixRobot` should change only when the
 composition or lifecycle graph changes.
 
+`PhoenixProfile.current()` is the sole public profile factory and returns a new graph every time.
+For a one-run override, assign it once, edit that local value, and pass the same value to the mode
+declaration. Calling `current()` again does not recover an earlier edit. There is intentionally no
+aggregate `PhoenixProfile.defaults()` or `PhoenixProfile.copy()`; each runtime owner captures and
+validates only the slice active in that mode or selected backend.
+
 ## Readiness and physical validation
 
 The checked-in competition routes are marked `INTEGRATION_ONLY`. Match Auto entries intentionally
@@ -88,4 +106,7 @@ warning visible.
 
 Compilation and fake tests cannot validate wiring, motor direction, camera placement, odometry,
 mechanism limits, traction, or route clearance. Follow the calibration guide, test conservatively,
-and record only acknowledgements supported by physical evidence.
+and record only acknowledgements supported by physical evidence. The ordinary TeleOp and Auto
+programs do perform one centralized pre-effect collision check between the four drive motor names
+and scoring's intake/flywheel names, but that software check cannot establish physical identity or
+safe behavior.

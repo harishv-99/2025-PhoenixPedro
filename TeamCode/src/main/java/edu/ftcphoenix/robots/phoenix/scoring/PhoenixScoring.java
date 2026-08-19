@@ -8,6 +8,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
@@ -20,7 +21,6 @@ import edu.ftcphoenix.fw.task.OutputTaskFactory;
 import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Phoenix's one scoring mechanism owner.
@@ -31,13 +31,146 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
  * separate peer owners.</p>
  *
  * <p>TeleOp and Auto use only {@link PhoenixCapabilities.Scoring}. The sole advanced exception is
- * {@link #createFlywheelPlantForTuning(HardwareMap, PhoenixProfile.ScoringConfig)}, which creates a
+ * {@link #createFlywheelPlantForTuning(HardwareMap, Config)}, which creates a
  * fresh caller-owned Plant for the exclusive flywheel tuner from the same private recipe used by
  * production.</p>
  */
 public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotProgram.Output {
 
+    /** Mutable data-only scoring hardware, readiness, feed, and controller configuration. */
+    public static final class Config {
+        public String nameMotorIntake;
+        public Direction directionMotorIntake;
+        public String nameCrServoIntakeTransfer;
+        public Direction directionCrServoIntakeTransfer;
+        public String nameCrServoShooterTransferLeft;
+        public Direction directionCrServoShooterTransferLeft;
+        public String nameCrServoShooterTransferRight;
+        public Direction directionCrServoShooterTransferRight;
+        public double shooterTransferLeftScale;
+        public String nameMotorShooterWheel;
+        public Direction directionMotorShooterWheel;
+        public double velocityMin;
+        public double velocityMax;
+        public double velocityToleranceNative;
+        public boolean applyFlywheelVelocityPIDF;
+        public double flywheelVelKp;
+        public double flywheelVelKi;
+        public double flywheelVelKd;
+        public double flywheelVelKf;
+        public double velocityToleranceBelowNative;
+        public double velocityToleranceAboveNative;
+        public double readyPredictLeadSec;
+        public double readyStableSec;
+        public double intakeMotorPower;
+        public double intakeTransferPower;
+        public double intakeShooterTransferHoldBackPower;
+        public double ejectMotorPower;
+        public double ejectTransferPower;
+        public double ejectShooterTransferPower;
+        public double shootFeedPower;
+        public double shootFeedPulseSec;
+        public double shootFeedCooldownSec;
+        public double feedScaleIntakeMotor;
+        public double feedScaleIntakeTransfer;
+        public double feedScaleShooterTransfer;
+
+        private Config() {
+            // Use defaults() to start from the complete Phoenix software baseline.
+        }
+
+        /** Returns a fresh software baseline; this does not establish physical calibration. */
+        public static Config defaults() {
+            Config config = new Config();
+            applyHardwareAndFlywheelDefaults(config);
+            applyReadinessAndFeedDefaults(config);
+            return config;
+        }
+
+        private static Config rawCopyOf(Config source) {
+            Config copy = new Config();
+            copy.nameMotorIntake = source.nameMotorIntake;
+            copy.directionMotorIntake = source.directionMotorIntake;
+            copy.nameCrServoIntakeTransfer = source.nameCrServoIntakeTransfer;
+            copy.directionCrServoIntakeTransfer = source.directionCrServoIntakeTransfer;
+            copy.nameCrServoShooterTransferLeft = source.nameCrServoShooterTransferLeft;
+            copy.directionCrServoShooterTransferLeft = source.directionCrServoShooterTransferLeft;
+            copy.nameCrServoShooterTransferRight = source.nameCrServoShooterTransferRight;
+            copy.directionCrServoShooterTransferRight = source.directionCrServoShooterTransferRight;
+            copy.shooterTransferLeftScale = source.shooterTransferLeftScale;
+            copy.nameMotorShooterWheel = source.nameMotorShooterWheel;
+            copy.directionMotorShooterWheel = source.directionMotorShooterWheel;
+            copy.velocityMin = source.velocityMin;
+            copy.velocityMax = source.velocityMax;
+            copy.velocityToleranceNative = source.velocityToleranceNative;
+            copy.applyFlywheelVelocityPIDF = source.applyFlywheelVelocityPIDF;
+            copy.flywheelVelKp = source.flywheelVelKp;
+            copy.flywheelVelKi = source.flywheelVelKi;
+            copy.flywheelVelKd = source.flywheelVelKd;
+            copy.flywheelVelKf = source.flywheelVelKf;
+            copy.velocityToleranceBelowNative = source.velocityToleranceBelowNative;
+            copy.velocityToleranceAboveNative = source.velocityToleranceAboveNative;
+            copy.readyPredictLeadSec = source.readyPredictLeadSec;
+            copy.readyStableSec = source.readyStableSec;
+            copy.intakeMotorPower = source.intakeMotorPower;
+            copy.intakeTransferPower = source.intakeTransferPower;
+            copy.intakeShooterTransferHoldBackPower = source.intakeShooterTransferHoldBackPower;
+            copy.ejectMotorPower = source.ejectMotorPower;
+            copy.ejectTransferPower = source.ejectTransferPower;
+            copy.ejectShooterTransferPower = source.ejectShooterTransferPower;
+            copy.shootFeedPower = source.shootFeedPower;
+            copy.shootFeedPulseSec = source.shootFeedPulseSec;
+            copy.shootFeedCooldownSec = source.shootFeedCooldownSec;
+            copy.feedScaleIntakeMotor = source.feedScaleIntakeMotor;
+            copy.feedScaleIntakeTransfer = source.feedScaleIntakeTransfer;
+            copy.feedScaleShooterTransfer = source.feedScaleShooterTransfer;
+            return copy;
+        }
+    }
+
     private static final double ENABLED_TARGET_EPSILON = 1e-6;
+    private static final double MAX_FTC_PIDF_COEFFICIENT = Integer.MAX_VALUE / 65536.0;
+
+    private static void applyHardwareAndFlywheelDefaults(Config config) {
+        config.nameMotorIntake = "intakeMotor";
+        config.directionMotorIntake = Direction.FORWARD;
+        config.nameCrServoIntakeTransfer = "intakeTransfer";
+        config.directionCrServoIntakeTransfer = Direction.REVERSE;
+        config.nameCrServoShooterTransferLeft = "shooterTransferLeft";
+        config.directionCrServoShooterTransferLeft = Direction.REVERSE;
+        config.nameCrServoShooterTransferRight = "shooterTransferRight";
+        config.directionCrServoShooterTransferRight = Direction.FORWARD;
+        config.shooterTransferLeftScale = 0.65;
+        config.nameMotorShooterWheel = "shooterMotor";
+        config.directionMotorShooterWheel = Direction.FORWARD;
+        config.velocityMin = 700.0;
+        config.velocityMax = 2000.0;
+        config.velocityToleranceNative = 50.0;
+        config.applyFlywheelVelocityPIDF = false;
+        config.flywheelVelKp = 0.0;
+        config.flywheelVelKi = 0.0;
+        config.flywheelVelKd = 0.0;
+        config.flywheelVelKf = 0.0;
+    }
+
+    private static void applyReadinessAndFeedDefaults(Config config) {
+        config.velocityToleranceBelowNative = 50.0;
+        config.velocityToleranceAboveNative = 50.0;
+        config.readyPredictLeadSec = 0.10;
+        config.readyStableSec = 0.03;
+        config.intakeMotorPower = 1.0;
+        config.intakeTransferPower = 1.0;
+        config.intakeShooterTransferHoldBackPower = 0.5;
+        config.ejectMotorPower = 1.0;
+        config.ejectTransferPower = 1.0;
+        config.ejectShooterTransferPower = 1.0;
+        config.shootFeedPower = 1.0;
+        config.shootFeedPulseSec = 0.22;
+        config.shootFeedCooldownSec = 0.06;
+        config.feedScaleIntakeMotor = 1.0;
+        config.feedScaleIntakeTransfer = 1.0;
+        config.feedScaleShooterTransfer = 1.0;
+    }
 
     private enum FeedMode {
         IDLE("IDLE"),
@@ -52,7 +185,7 @@ public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotP
         }
     }
 
-    private final PhoenixProfile.ScoringConfig cfg;
+    private final Config cfg;
     private final PhoenixTargeting targeting;
     private final BooleanSource aimOkToShoot;
     private final BooleanSource shootOverride;
@@ -107,10 +240,10 @@ public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotP
      * @param targeting shared targeting service used only for aim gates and velocity suggestions
      */
     public PhoenixScoring(HardwareMap hardwareMap,
-                          PhoenixProfile.ScoringConfig config,
+                          Config config,
                           PhoenixTargeting targeting) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
-        this.cfg = Objects.requireNonNull(config, "config").copy();
+        this.cfg = captureProductionConfig(config);
         this.targeting = Objects.requireNonNull(targeting, "targeting");
         this.aimOkToShoot = targeting.aimOkToShootSource();
         this.shootOverride = targeting.aimOverrideSource();
@@ -205,10 +338,9 @@ public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotP
      */
     public static Plant createFlywheelPlantForTuning(
             HardwareMap hardwareMap,
-            PhoenixProfile.ScoringConfig config) {
+            Config config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
-        PhoenixProfile.ScoringConfig copiedConfig =
-                Objects.requireNonNull(config, "config").copy();
+        Config copiedConfig = captureFlywheelTunerConfig(config);
         return buildFlywheelPlant(hardwareMap, copiedConfig);
     }
 
@@ -560,9 +692,9 @@ public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotP
     }
 
     private double predictedFlywheelAbsNative() {
-        double leadSec = Math.max(0.0, cfg.readyPredictLeadSec);
-        double predictedAbs = flywheelMeasuredAbsNative + flywheelAccelNativePerSec * leadSec;
-        return Math.max(0.0, predictedAbs);
+        double predictedAbs = flywheelMeasuredAbsNative
+                + flywheelAccelNativePerSec * cfg.readyPredictLeadSec;
+        return Double.isFinite(predictedAbs) ? Math.max(0.0, predictedAbs) : Double.NaN;
     }
 
     private void stopOwnedPlants() {
@@ -583,8 +715,212 @@ public final class PhoenixScoring implements PhoenixCapabilities.Scoring, RobotP
         );
     }
 
+    /** Captures and validates the complete production slice before any Plant is constructed. */
+    private static Config captureProductionConfig(Config config) {
+        Config copy = copyAllConfig(Objects.requireNonNull(
+                config,
+                "PhoenixScoring.Config is required"
+        ));
+
+        requireHardwareName("nameMotorIntake", copy.nameMotorIntake);
+        requireDirection("directionMotorIntake", copy.directionMotorIntake);
+        requireHardwareName("nameCrServoIntakeTransfer", copy.nameCrServoIntakeTransfer);
+        requireDirection("directionCrServoIntakeTransfer", copy.directionCrServoIntakeTransfer);
+        requireHardwareName(
+                "nameCrServoShooterTransferLeft",
+                copy.nameCrServoShooterTransferLeft
+        );
+        requireDifferentHardwareNames(
+                "nameCrServoIntakeTransfer",
+                copy.nameCrServoIntakeTransfer,
+                "nameCrServoShooterTransferLeft",
+                copy.nameCrServoShooterTransferLeft
+        );
+        requireDirection(
+                "directionCrServoShooterTransferLeft",
+                copy.directionCrServoShooterTransferLeft
+        );
+        requireHardwareName(
+                "nameCrServoShooterTransferRight",
+                copy.nameCrServoShooterTransferRight
+        );
+        requireDifferentHardwareNames(
+                "nameCrServoIntakeTransfer",
+                copy.nameCrServoIntakeTransfer,
+                "nameCrServoShooterTransferRight",
+                copy.nameCrServoShooterTransferRight
+        );
+        requireDifferentHardwareNames(
+                "nameCrServoShooterTransferLeft",
+                copy.nameCrServoShooterTransferLeft,
+                "nameCrServoShooterTransferRight",
+                copy.nameCrServoShooterTransferRight
+        );
+        requireDirection(
+                "directionCrServoShooterTransferRight",
+                copy.directionCrServoShooterTransferRight
+        );
+        requireSignedScale("shooterTransferLeftScale", copy.shooterTransferLeftScale);
+        requireHardwareName("nameMotorShooterWheel", copy.nameMotorShooterWheel);
+        requireDifferentHardwareNames(
+                "nameMotorIntake",
+                copy.nameMotorIntake,
+                "nameMotorShooterWheel",
+                copy.nameMotorShooterWheel
+        );
+        requireDirection("directionMotorShooterWheel", copy.directionMotorShooterWheel);
+        requireVelocityRange(copy.velocityMin, copy.velocityMax);
+        requireFiniteNonNegative("velocityToleranceNative", copy.velocityToleranceNative);
+        if (copy.applyFlywheelVelocityPIDF) {
+            requireFtcPidfCoefficient("flywheelVelKp", copy.flywheelVelKp);
+            requireFtcPidfCoefficient("flywheelVelKi", copy.flywheelVelKi);
+            requireFtcPidfCoefficient("flywheelVelKd", copy.flywheelVelKd);
+            requireFtcPidfCoefficient("flywheelVelKf", copy.flywheelVelKf);
+        }
+        requireFiniteNonNegative(
+                "velocityToleranceBelowNative",
+                copy.velocityToleranceBelowNative
+        );
+        requireFiniteNonNegative(
+                "velocityToleranceAboveNative",
+                copy.velocityToleranceAboveNative
+        );
+        requireFiniteNonNegative("readyPredictLeadSec", copy.readyPredictLeadSec);
+        requireFiniteNonNegative("readyStableSec", copy.readyStableSec);
+        requireMagnitudePower("intakeMotorPower", copy.intakeMotorPower);
+        requireMagnitudePower("intakeTransferPower", copy.intakeTransferPower);
+        requireMagnitudePower(
+                "intakeShooterTransferHoldBackPower",
+                copy.intakeShooterTransferHoldBackPower
+        );
+        requireMagnitudePower("ejectMotorPower", copy.ejectMotorPower);
+        requireMagnitudePower("ejectTransferPower", copy.ejectTransferPower);
+        requireMagnitudePower("ejectShooterTransferPower", copy.ejectShooterTransferPower);
+        requireMagnitudePower("shootFeedPower", copy.shootFeedPower);
+        requireFiniteNonNegative("shootFeedPulseSec", copy.shootFeedPulseSec);
+        requireFiniteNonNegative("shootFeedCooldownSec", copy.shootFeedCooldownSec);
+        requireSignedScale("feedScaleIntakeMotor", copy.feedScaleIntakeMotor);
+        requireSignedScale("feedScaleIntakeTransfer", copy.feedScaleIntakeTransfer);
+        requireSignedScale("feedScaleShooterTransfer", copy.feedScaleShooterTransfer);
+        return copy;
+    }
+
+    /** Captures only the fields the exclusive flywheel tuner can activate. */
+    private static Config captureFlywheelTunerConfig(Config config) {
+        Config source = Objects.requireNonNull(config, "PhoenixScoring.Config is required");
+        Config copy = Config.defaults();
+        copy.nameMotorShooterWheel = source.nameMotorShooterWheel;
+        copy.directionMotorShooterWheel = source.directionMotorShooterWheel;
+        copy.velocityMin = source.velocityMin;
+        copy.velocityMax = source.velocityMax;
+        copy.velocityToleranceNative = source.velocityToleranceNative;
+        copy.applyFlywheelVelocityPIDF = source.applyFlywheelVelocityPIDF;
+        copy.flywheelVelKp = source.flywheelVelKp;
+        copy.flywheelVelKi = source.flywheelVelKi;
+        copy.flywheelVelKd = source.flywheelVelKd;
+        copy.flywheelVelKf = source.flywheelVelKf;
+
+        requireHardwareName("nameMotorShooterWheel", copy.nameMotorShooterWheel);
+        requireDirection("directionMotorShooterWheel", copy.directionMotorShooterWheel);
+        requireVelocityRange(copy.velocityMin, copy.velocityMax);
+        requireFiniteNonNegative("velocityToleranceNative", copy.velocityToleranceNative);
+        if (copy.applyFlywheelVelocityPIDF) {
+            requireFtcPidfCoefficient("flywheelVelKp", copy.flywheelVelKp);
+            requireFtcPidfCoefficient("flywheelVelKi", copy.flywheelVelKi);
+            requireFtcPidfCoefficient("flywheelVelKd", copy.flywheelVelKd);
+            requireFtcPidfCoefficient("flywheelVelKf", copy.flywheelVelKf);
+        }
+        return copy;
+    }
+
+    private static Config copyAllConfig(Config source) {
+        return Config.rawCopyOf(source);
+    }
+
+    private static void requireHardwareName(String fieldName, String value) {
+        if (value == null || value.trim().isEmpty()) {
+            throw invalidConfig(fieldName, "a non-blank FTC hardware name", value);
+        }
+    }
+
+    private static void requireDirection(String fieldName, Direction value) {
+        if (value == null) {
+            throw invalidConfig(fieldName, "non-null", null);
+        }
+    }
+
+    private static void requireDifferentHardwareNames(String firstField,
+                                                      String firstName,
+                                                      String secondField,
+                                                      String secondName) {
+        if (firstName.trim().equals(secondName.trim())) {
+            String effectiveKey = firstName.trim();
+            throw new IllegalArgumentException(
+                    "PhoenixScoring.Config." + firstField + " and PhoenixScoring.Config."
+                            + secondField + " must identify different FTC hardware devices after "
+                            + "trimming; got \"" + firstName + "\" and \"" + secondName
+                            + "\" with effective key \"" + effectiveKey + "\"."
+            );
+        }
+    }
+
+    private static void requireVelocityRange(double minimum, double maximum) {
+        requireFiniteNonNegative("velocityMin", minimum);
+        requireFiniteNonNegative("velocityMax", maximum);
+        if (minimum > maximum) {
+            throw new IllegalArgumentException(
+                    "PhoenixScoring.Config.velocityMin must be <= "
+                            + "PhoenixScoring.Config.velocityMax, got " + minimum + " and "
+                            + maximum + "."
+            );
+        }
+    }
+
+    private static void requireFiniteNonNegative(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0) {
+            throw invalidConfig(fieldName, "finite and >= 0", value);
+        }
+    }
+
+    private static void requireMagnitudePower(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+            throw invalidConfig(fieldName, "finite and in [0.0, 1.0]", value);
+        }
+    }
+
+    private static void requireSignedScale(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < -1.0 || value > 1.0) {
+            throw invalidConfig(fieldName, "finite and in [-1.0, 1.0]", value);
+        }
+    }
+
+    private static void requireFtcPidfCoefficient(String fieldName, double value) {
+        if (!Double.isFinite(value)
+                || value < -MAX_FTC_PIDF_COEFFICIENT
+                || value > MAX_FTC_PIDF_COEFFICIENT) {
+            throw invalidConfig(
+                    fieldName,
+                    "finite and in [-Integer.MAX_VALUE / 65536.0, "
+                            + "+Integer.MAX_VALUE / 65536.0] while PIDF overrides are enabled",
+                    value
+            );
+        }
+    }
+
+    private static IllegalArgumentException invalidConfig(String fieldName,
+                                                          String requirement,
+                                                          Object value) {
+        String renderedValue = value instanceof String
+                ? "\"" + value + "\""
+                : String.valueOf(value);
+        return new IllegalArgumentException(
+                "PhoenixScoring.Config." + fieldName + " must be " + requirement + ", got "
+                        + renderedValue + "."
+        );
+    }
+
     private static Plant buildFlywheelPlant(HardwareMap hardwareMap,
-                                            PhoenixProfile.ScoringConfig cfg) {
+                                            Config cfg) {
         if (cfg.applyFlywheelVelocityPIDF) {
             return FtcActuators.plant(hardwareMap)
                     .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)

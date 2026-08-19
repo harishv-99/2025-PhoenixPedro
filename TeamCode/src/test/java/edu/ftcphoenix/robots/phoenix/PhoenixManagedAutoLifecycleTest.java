@@ -31,6 +31,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
+import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
@@ -70,7 +72,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         RecordingMotionPredictor predictor = new RecordingMotionPredictor(events);
         RecordingPedroDrive drive = new RecordingPedroDrive(events);
         RecordingEligibleTags eligibleTags = new RecordingEligibleTags(
-                profile.autoAim.redAllianceScoringTagId,
+                profile.targeting.redAllianceScoringTagId,
                 events
         );
         RecordingBooleanSource autoAimEnabled = new RecordingBooleanSource(false);
@@ -143,7 +145,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         assertEquals(1, autoAimEnabled.sampleCalls);
         assertEquals(1, aimOverride.sampleCalls);
         PhoenixCapabilities.TargetingStatus targetingStatus =
-                host.robot.capabilities().targeting().status();
+                host.capabilities.targeting().status();
         assertEquals(false, targetingStatus.autoAimEnabled);
         assertEquals(true, targetingStatus.aimOverride);
         assertEquals(1, drive.updateCalls);
@@ -245,6 +247,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         private double runtimeSec;
         private int poseApplications;
         private PhoenixRobot robot;
+        private PhoenixCapabilities capabilities;
 
         private TestHost(
                 PhoenixProfile profile,
@@ -275,15 +278,12 @@ public final class PhoenixManagedAutoLifecycleTest {
             program.prestart(prestart);
             robot = new PhoenixRobot(
                     hardwareMap,
-                    telemetry,
-                    gamepad1,
-                    gamepad2,
-                    profile,
                     UNUSED_TELEOP_ASSEMBLY,
                     autoAssembly
             );
-            robot.declareAuto(
+            capabilities = robot.declareAuto(
                     program,
+                    profile,
                     drive,
                     predictor,
                     eligibleTags,
@@ -308,7 +308,7 @@ public final class PhoenixManagedAutoLifecycleTest {
                 @Override
                 public AprilTagVisionLane createVision(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile
+                        PhoenixVisionFactory.Config visionConfig
                 ) {
                     throw new AssertionError("TeleOp hardware must not be created for Auto");
                 }
@@ -317,7 +317,8 @@ public final class PhoenixManagedAutoLifecycleTest {
                 public FtcOdometryAprilTagLocalizationLane createLocalization(
                         HardwareMap hardwareMap,
                         AprilTagVisionLane vision,
-                        PhoenixProfile profile
+                        TagLayout fixedAprilTagLayout,
+                        FtcOdometryAprilTagLocalizationLane.Config localizationConfig
                 ) {
                     throw new AssertionError("TeleOp localization must not be created for Auto");
                 }
@@ -325,7 +326,7 @@ public final class PhoenixManagedAutoLifecycleTest {
                 @Override
                 public PhoenixScoring createScoring(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile,
+                        PhoenixScoring.Config scoringConfig,
                         PhoenixTargeting targeting
                 ) {
                     throw new AssertionError("TeleOp scoring must not be created for Auto");
@@ -334,7 +335,7 @@ public final class PhoenixManagedAutoLifecycleTest {
                 @Override
                 public DriveCommandSink createDrive(
                         HardwareMap hardwareMap,
-                        PhoenixProfile profile
+                        FtcDrives.MecanumConfig driveConfig
                 ) {
                     throw new AssertionError("TeleOp drive must not be created for Auto");
                 }
@@ -355,7 +356,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         @Override
         public AprilTagVisionLane createVision(
                 HardwareMap hardwareMap,
-                PhoenixProfile profile
+                PhoenixVisionFactory.Config visionConfig
         ) {
             return vision;
         }
@@ -364,25 +365,26 @@ public final class PhoenixManagedAutoLifecycleTest {
         public FtcOdometryAprilTagLocalizationLane createLocalization(
                 MotionPredictor motionPredictor,
                 AprilTagVisionLane createdVision,
-                PhoenixProfile profile
+                TagLayout fixedAprilTagLayout,
+                FtcOdometryAprilTagLocalizationLane.EstimatorConfig estimationConfig
         ) {
             assertSame(expectedPredictor, motionPredictor);
             assertSame(vision, createdVision);
             return FtcOdometryAprilTagLocalizationLane.withPredictor(
                     motionPredictor,
                     createdVision,
-                    profile.field.fixedAprilTagLayout,
-                    profile.localization.estimation
+                    fixedAprilTagLayout,
+                    estimationConfig
             );
         }
 
         @Override
         public PhoenixScoring createScoring(
                 HardwareMap hardwareMap,
-                PhoenixProfile profile,
+                PhoenixScoring.Config scoringConfig,
                 PhoenixTargeting targeting
         ) {
-            return new PhoenixScoring(hardwareMap, profile.scoring, targeting);
+            return new PhoenixScoring(hardwareMap, scoringConfig, targeting);
         }
     }
 
@@ -602,7 +604,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         }
 
         private static TestHardwareMap forScoring(
-                PhoenixProfile.ScoringConfig config,
+                PhoenixScoring.Config config,
                 List<String> events
         ) {
             TestHardwareMap map = new TestHardwareMap(events);

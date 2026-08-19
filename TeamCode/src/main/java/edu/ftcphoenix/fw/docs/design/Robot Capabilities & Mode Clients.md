@@ -227,15 +227,20 @@ methods a student remembers to forward.
 
 ### `constructor`
 
-Own references and immutable config snapshots only.
+Keep the composition-root constructor resource-only. It may retain the stable FTC resource needed
+to construct the selected graph; pass configuration and mode-active inputs synchronously to the
+mode declaration instead.
 
-Good:
+Production Phoenix's sole root constructor is:
 
-- `hardwareMap`
-- `telemetry`
-- copied profile/config
+```java
+PhoenixRobot robot = new PhoenixRobot(hardwareMap);
+```
 
-Avoid constructing half the robot here.
+`declareTeleOp(...)` receives the one local profile and both Gamepads. `declareAuto(...)` receives
+the local profile and Auto-only drive, predictor, targeting-policy, and starting-pose roles. The
+root retains no aggregate profile, Telemetry, or dormant Gamepads. Avoid constructing half the
+robot or retaining mode-inactive dependencies in the resource-only constructor.
 
 ### `configure(RobotProgram)`
 
@@ -339,16 +344,24 @@ owned by the failed phase, leaving unrelated mechanism intent to its actual owne
 Production `PhoenixTeleOp` is an ordinary `FtcRobotOpMode`. Its only override is
 `configure(program)`, which delegates to one package-private `PhoenixTeleOpProgram`. That owner
 receives the entry's explicit `PhoenixAlliance.RED` default, installs the visible D-pad-only
-`PhoenixTeleOpPrestart`, constructs `PhoenixRobot`, passes the
-prestart's START-frozen singleton scoring-tag source to `declareTeleOp(...)`, consumes the optional
-pose-and-alliance snapshot after localization exists, and registers additive presenters.
+`PhoenixTeleOpPrestart`, creates one fresh `PhoenixProfile.current()` graph, runs the centralized
+drive-versus-scoring motor collision preflight, constructs `new PhoenixRobot(hardwareMap)`, and
+passes the profile, both Gamepads, and the prestart's START-frozen singleton scoring-tag source to
+`declareTeleOp(...)`. It then consumes the optional pose-and-alliance snapshot after localization
+exists and registers additive presenters. Each long-lived owner captures only its active Config;
+the root never copies or retains the aggregate profile.
 `PhoenixTeleOpControls` declares callbacks through the program's callback surface, scoring is
 declared before the one final drive, and the program owns the sole TeleOp clock, lifecycle,
 telemetry commit, and fail-stop cleanup.
 
 Phoenix Auto is parallel: every Phoenix-season entry extends `PhoenixAutoOpMode` and returns one
 `PhoenixAutoSetup`. `PhoenixAutoProgram` declares one data-only prestart selector/readiness owner,
-the complete stable hardware/service graph, one root Task, and presenters into `RobotProgram`.
+creates its own fresh current profile, performs the same centralized preflight before Pedro or
+Phoenix hardware effects, and declares the complete stable hardware/service graph, one root Task,
+and presenters into `RobotProgram`. Auto supplies no dormant Gamepads. The narrow pure
+`Constants.phoenixAutoRuntimeConfig(predictor, wiring, enableZeroPowerBrake)` mapper accepts no
+aggregate profile; the Pedro runtime remains the hardware/effect and whole-Config validation
+boundary.
 Fixed setup uses `fromFixedSpec(...)`; selector setup uses `fromInitSelection(...)` and defers only
 the selected Task graph through `Tasks.buildAtStart(...)`.
 

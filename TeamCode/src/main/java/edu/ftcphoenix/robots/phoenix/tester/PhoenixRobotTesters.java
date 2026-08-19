@@ -22,6 +22,7 @@ import edu.ftcphoenix.fw.tools.tester.calibration.PinpointPodOffsetCalibrator;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
 import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagCorrectedLocalizationTester;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
+import edu.ftcphoenix.robots.phoenix.PhoenixVisionFactory;
 
 /**
  * Central home for Phoenix robot-specific tester wiring.
@@ -47,19 +48,19 @@ public final class PhoenixRobotTesters {
     }
 
     private static String activeVisionBackendLabel(PhoenixProfile p) {
-        return p.vision.backend == PhoenixProfile.VisionConfig.Backend.LIMELIGHT
+        return p.vision.backend == PhoenixVisionFactory.Backend.LIMELIGHT
                 ? "Limelight"
                 : "Webcam";
     }
 
     private static Class<? extends HardwareDevice> activeVisionDeviceType(PhoenixProfile p) {
-        return p.vision.backend == PhoenixProfile.VisionConfig.Backend.LIMELIGHT
+        return p.vision.backend == PhoenixVisionFactory.Backend.LIMELIGHT
                 ? Limelight3A.class
                 : WebcamName.class;
     }
 
     private static String activeVisionPickerTitle(PhoenixProfile p) {
-        return p.vision.backend == PhoenixProfile.VisionConfig.Backend.LIMELIGHT
+        return p.vision.backend == PhoenixVisionFactory.Backend.LIMELIGHT
                 ? "Select Limelight"
                 : "Select Camera";
     }
@@ -148,9 +149,10 @@ public final class PhoenixRobotTesters {
                 .setHelp("Phoenix-configured bring-up and localization tools for the active vision backend.")
                 .setMaxVisibleItems(8);
 
-        CalibrationStatus mount = cameraMountStatus();
-        CalibrationStatus axes = pinpointAxesStatus();
-        CalibrationStatus offsets = pinpointOffsetsStatus();
+        CalibrationStatus mount = cameraMountStatus(p);
+        CalibrationStatus axes = pinpointAxesStatus(p);
+        CalibrationStatus offsets = pinpointOffsetsStatus(p);
+        CalibrationStatus global = globalLocalizationStatus(p);
 
         suite.add(
                 "Calib: Camera Mount (Robot)",
@@ -178,14 +180,14 @@ public final class PhoenixRobotTesters {
 
         suite.add(
                 "Loc: Pinpoint + Field Corrections (Robot)",
-                "Default Phoenix corrected-global localizer on the active " + backend + " backend. Status: " + globalLocalizationStatus().summaryOrEmpty(),
+                "Default Phoenix corrected-global localizer on the active " + backend + " backend. Status: " + global.summaryOrEmpty(),
                 PhoenixRobotTesters::pinpointAprilTagFusion
         );
 
         suite.add(
                 "Loc: Pinpoint + Field Corrections EKF (Robot)",
                 "Optional comparison corrected localizer after the default fusion path looks good. Status: "
-                        + globalLocalizationStatus().summaryOrEmpty(),
+                        + global.summaryOrEmpty(),
                 PhoenixRobotTesters::pinpointAprilTagEkf
         );
 
@@ -203,7 +205,7 @@ public final class PhoenixRobotTesters {
         cfg.preferredVisionDeviceName = p.vision.activeDeviceName();
         cfg.visionDeviceType = activeVisionDeviceType(p);
         cfg.visionPickerTitle = activeVisionPickerTitle(p);
-        cfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        cfg.fixedTagLayout = p.fixedAprilTagLayout;
         return new CameraMountCalibrator(cfg, activeVisionLaneFactoryBuilder(p));
     }
 
@@ -218,7 +220,7 @@ public final class PhoenixRobotTesters {
         cfg.preferredVisionDeviceName = p.vision.activeDeviceName();
         cfg.visionDeviceType = activeVisionDeviceType(p);
         cfg.visionPickerTitle = activeVisionPickerTitle(p);
-        cfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        cfg.fixedTagLayout = p.fixedAprilTagLayout;
         cfg.aprilTags = p.localization.estimation.aprilTags.copy();
         return new AprilTagLocalizationTester(cfg, activeVisionLaneFactoryBuilder(p));
     }
@@ -250,7 +252,7 @@ public final class PhoenixRobotTesters {
         cfg.preferredVisionDeviceName = p.vision.activeDeviceName();
         cfg.visionDeviceType = activeVisionDeviceType(p);
         cfg.visionPickerTitle = activeVisionPickerTitle(p);
-        cfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        cfg.fixedTagLayout = p.fixedAprilTagLayout;
         cfg.aprilTags = p.localization.estimation.aprilTags.copy();
         Function<String, AprilTagVisionLaneFactory> visionFactoryBuilder =
                 CalibrationChecks.canUseAprilTagAssist(p.vision.activeCameraMount())
@@ -304,7 +306,7 @@ public final class PhoenixRobotTesters {
         toolCfg.preferredVisionDeviceName = p.vision.activeDeviceName();
         toolCfg.visionDeviceType = activeVisionDeviceType(p);
         toolCfg.visionPickerTitle = activeVisionPickerTitle(p);
-        toolCfg.fixedTagLayout = p.field.fixedAprilTagLayout;
+        toolCfg.fixedTagLayout = p.fixedAprilTagLayout;
         toolCfg.localization = cfg;
         return new PinpointAprilTagCorrectedLocalizationTester(
                 toolCfg,
@@ -318,8 +320,8 @@ public final class PhoenixRobotTesters {
      * @return tester that verifies the profile's drivetrain names and directions one raised wheel
      *         at a time
      */
-    public static TeleOpTester configuredDrivetrainVerification() {
-        return new ConfiguredDrivetrainVerificationTester();
+    static TeleOpTester configuredDrivetrainVerification() {
+        return new ConfiguredDrivetrainVerificationTester(profile().drive);
     }
 
     /**
@@ -328,7 +330,7 @@ public final class PhoenixRobotTesters {
      * @return status indicating whether the configured Phoenix camera mount looks solved
      */
     public static CalibrationStatus cameraMountStatus() {
-        return CalibrationChecks.cameraMount(profile().vision.activeCameraMount());
+        return cameraMountStatus(profile());
     }
 
     /**
@@ -337,7 +339,7 @@ public final class PhoenixRobotTesters {
      * @return status indicating whether Phoenix has acknowledged correct Pinpoint axis directions
      */
     public static CalibrationStatus pinpointAxesStatus() {
-        return CalibrationChecks.pinpointAxes(profile().calibration.pinpointAxesVerified);
+        return pinpointAxesStatus(profile());
     }
 
     /**
@@ -346,11 +348,7 @@ public final class PhoenixRobotTesters {
      * @return status indicating whether Phoenix has calibrated and acknowledged Pinpoint pod offsets
      */
     public static CalibrationStatus pinpointOffsetsStatus() {
-        PhoenixProfile p = profile();
-        return CalibrationChecks.pinpointOffsets(
-                p.localization.predictor,
-                p.calibration.pinpointPodOffsetsCalibrated
-        );
+        return pinpointOffsetsStatus(profile());
     }
 
     /**
@@ -359,15 +357,36 @@ public final class PhoenixRobotTesters {
      * @return complete status when camera mount, Pinpoint axes, and Pinpoint offsets all look ready
      */
     public static CalibrationStatus globalLocalizationStatus() {
-        CalibrationStatus mount = cameraMountStatus();
-        CalibrationStatus axes = pinpointAxesStatus();
-        CalibrationStatus offsets = pinpointOffsetsStatus();
+        return globalLocalizationStatus(profile());
+    }
+
+    private static CalibrationStatus cameraMountStatus(PhoenixProfile p) {
+        return CalibrationChecks.cameraMount(p.vision.activeCameraMount());
+    }
+
+    private static CalibrationStatus pinpointAxesStatus(PhoenixProfile p) {
+        return CalibrationChecks.pinpointAxes(p.calibration.pinpointAxesVerified);
+    }
+
+    private static CalibrationStatus pinpointOffsetsStatus(PhoenixProfile p) {
+        return CalibrationChecks.pinpointOffsets(
+                p.localization.predictor,
+                p.calibration.pinpointPodOffsetsCalibrated
+        );
+    }
+
+    private static CalibrationStatus globalLocalizationStatus(PhoenixProfile p) {
+        CalibrationStatus mount = cameraMountStatus(p);
+        CalibrationStatus axes = pinpointAxesStatus(p);
+        CalibrationStatus offsets = pinpointOffsetsStatus(p);
 
         if (mount.complete && axes.complete && offsets.complete) {
             return CalibrationStatus.complete("camera mount, Pinpoint axes, and Pinpoint offsets all look ready");
         }
 
-        return CalibrationStatus.incomplete("finish prerequisites: " + prerequisiteSummary());
+        return CalibrationStatus.incomplete(
+                "finish prerequisites: " + prerequisiteSummary(mount, axes, offsets)
+        );
     }
 
     /**
@@ -376,8 +395,21 @@ public final class PhoenixRobotTesters {
      * @return string of the form {@code mount=..., axes=..., offsets=...}
      */
     public static String prerequisiteSummary() {
-        return "mount=" + cameraMountStatus().menuTag()
-                + ", axes=" + pinpointAxesStatus().menuTag()
-                + ", offsets=" + pinpointOffsetsStatus().menuTag();
+        PhoenixProfile p = profile();
+        return prerequisiteSummary(
+                cameraMountStatus(p),
+                pinpointAxesStatus(p),
+                pinpointOffsetsStatus(p)
+        );
+    }
+
+    private static String prerequisiteSummary(
+            CalibrationStatus mount,
+            CalibrationStatus axes,
+            CalibrationStatus offsets
+    ) {
+        return "mount=" + mount.menuTag()
+                + ", axes=" + axes.menuTag()
+                + ", offsets=" + offsets.menuTag();
     }
 }

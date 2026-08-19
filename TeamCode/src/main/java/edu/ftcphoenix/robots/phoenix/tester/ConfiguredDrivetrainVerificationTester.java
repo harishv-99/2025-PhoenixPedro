@@ -12,13 +12,12 @@ import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Robot-specific tester for verifying Phoenix's configured drivetrain wiring and directions.
  *
  * <p>This is an integration check for the names and directions already stored in
- * {@link PhoenixProfile}, not a direction-discovery tool. After Driver Station START and one neutral observation,
+ * the supplied robot configuration, not a direction-discovery tool. After Driver Station START and one neutral observation,
  * holding exactly one mapped face button commands only that wheel at a fixed positive power.
  * Releasing the button or holding multiple face buttons commands zero to every wheel.</p>
  *
@@ -40,17 +39,10 @@ final class ConfiguredDrivetrainVerificationTester extends BaseTeleOpTester {
     private int pressedCount;
 
     /**
-     * Creates the tester instance.
-     */
-    ConfiguredDrivetrainVerificationTester() {
-        specifiedDriveConfig = null;
-    }
-
-    /**
      * Creates a tester around one defensive configuration snapshot for focused verification.
      *
-     * <p>This package-private seam keeps the production entry point profile-driven while allowing
-     * wiring validation to be exercised without mutating {@link PhoenixProfile#current()}.</p>
+     * <p>The robot facade chooses the current drive draft explicitly; this owner never reaches
+     * through a process-global profile or offers a hidden default path.</p>
      */
     ConfiguredDrivetrainVerificationTester(FtcDrives.MecanumConfig driveConfig) {
         if (driveConfig == null) {
@@ -71,9 +63,7 @@ final class ConfiguredDrivetrainVerificationTester extends BaseTeleOpTester {
 
     @Override
     protected void onInit() {
-        driveConfig = specifiedDriveConfig == null
-                ? PhoenixProfile.current().drive.copy()
-                : specifiedDriveConfig.copy();
+        driveConfig = specifiedDriveConfig.copy();
         started = false;
         neutralObserved = false;
         pressedCount = 0;
@@ -238,7 +228,7 @@ final class ConfiguredDrivetrainVerificationTester extends BaseTeleOpTester {
     private void renderInit() {
         telemHeader("Configured Drivetrain Verification");
         telemHint("INIT: no drivetrain commands. Raise and secure all wheels, then press Driver Station START.");
-        telemHint("This verifies PhoenixProfile names/directions; establish raw direction with HW: Actuator Bring-up.");
+        telemHint("This verifies PhoenixDriveConfiguration.current() names/directions; establish raw direction with HW: Actuator Bring-up.");
         telemHint("After Driver Station START, release A/B/X/Y once to arm.");
         telemUpdate();
     }

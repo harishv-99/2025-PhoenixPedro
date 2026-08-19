@@ -5,19 +5,21 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.Objects;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenu;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenus;
 import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixReadiness;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
 
 /** Owns Phoenix TeleOp's one data-only INIT alliance selection. */
 final class PhoenixTeleOpPrestart implements RobotProgram.Prestart {
@@ -34,8 +36,11 @@ final class PhoenixTeleOpPrestart implements RobotProgram.Prestart {
         }
     }
 
-    private final PhoenixProfile profile;
     private final PhoenixAlliance defaultAlliance;
+    private final EnumMap<PhoenixAlliance, Integer> scoringTagIds =
+            new EnumMap<PhoenixAlliance, Integer>(PhoenixAlliance.class);
+    private final EnumMap<PhoenixAlliance, PhoenixReadiness.Result> readinessByAlliance =
+            new EnumMap<PhoenixAlliance, PhoenixReadiness.Result>(PhoenixAlliance.class);
     private final Bindings bindings = new Bindings();
     private final SelectionMenu<PhoenixAlliance> allianceMenu;
 
@@ -45,11 +50,25 @@ final class PhoenixTeleOpPrestart implements RobotProgram.Prestart {
     private PhoenixReadiness.Result readiness;
     private RobotProgram.StartDisposition disposition;
 
-    PhoenixTeleOpPrestart(PhoenixProfile profile,
+    PhoenixTeleOpPrestart(PhoenixTargeting.Config targeting,
+                         TagLayout fixedAprilTagLayout,
                          Gamepad gamepad1,
                          PhoenixAlliance defaultAlliance) {
-        this.profile = Objects.requireNonNull(profile, "profile").copy();
         this.defaultAlliance = Objects.requireNonNull(defaultAlliance, "defaultAlliance");
+        for (PhoenixAlliance alliance : PhoenixAlliance.values()) {
+            scoringTagIds.put(
+                    alliance,
+                    targeting == null ? -1 : targeting.scoringTagIdFor(alliance)
+            );
+            readinessByAlliance.put(
+                    alliance,
+                    PhoenixReadiness.allianceScoringTarget(
+                            alliance,
+                            targeting,
+                            fixedAprilTagLayout
+                    )
+            );
+        }
         draftAlliance = this.defaultAlliance;
         GamepadDevice driver = new GamepadDevice(
                 Objects.requireNonNull(gamepad1, "gamepad1")
@@ -151,7 +170,7 @@ final class PhoenixTeleOpPrestart implements RobotProgram.Prestart {
     /** Return the selected alliance's one eligible scoring-tag id after the START freeze. */
     Source<Set<Integer>> eligibleScoringTagIds() {
         return Source.of(clock -> Collections.singleton(
-                profile.autoAim.scoringTagIdFor(frozenAlliance())
+                scoringTagIds.get(frozenAlliance())
         ));
     }
 
@@ -201,7 +220,10 @@ final class PhoenixTeleOpPrestart implements RobotProgram.Prestart {
     }
 
     private void refreshReadiness() {
-        readiness = PhoenixReadiness.allianceScoringTarget(draftAlliance, profile);
+        readiness = Objects.requireNonNull(
+                readinessByAlliance.get(draftAlliance),
+                "Phoenix TeleOp readiness was not captured for " + draftAlliance
+        );
     }
 
     private void requireNotFrozen(String operation) {

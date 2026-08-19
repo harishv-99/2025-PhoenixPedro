@@ -15,6 +15,7 @@ import edu.ftcphoenix.fw.tools.tester.TeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Menu-order regression for the beginner-first Phoenix calibration walkthrough. */
@@ -48,6 +49,13 @@ public final class PhoenixCalibrationWalkthroughShapeTest {
             assertTrue(methodName, Modifier.isStatic(method.getModifiers()));
             assertEquals(methodName, TeleOpTester.class, method.getReturnType());
         }
+
+        Method drivetrain = PhoenixRobotTesters.class.getDeclaredMethod(
+                "configuredDrivetrainVerification"
+        );
+        assertTrue(Modifier.isStatic(drivetrain.getModifiers()));
+        assertFalse(Modifier.isPublic(drivetrain.getModifiers()));
+        assertEquals(TeleOpTester.class, drivetrain.getReturnType());
     }
 
     @SuppressWarnings("unchecked")

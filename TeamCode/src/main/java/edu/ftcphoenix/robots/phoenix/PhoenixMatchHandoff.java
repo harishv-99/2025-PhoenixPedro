@@ -1,6 +1,7 @@
 package edu.ftcphoenix.robots.phoenix;
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.hardware.Gamepad;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -116,11 +117,12 @@ public final class PhoenixMatchHandoff {
      * Consumes and, when fresh, applies Phoenix's final Auto pose and seeds TeleOp's alliance draft
      * during INIT.
      *
-     * <p>Call this after {@link PhoenixRobot#declareTeleOp(RobotProgram, Source)} has declared
-     * localization and before the managed program reaches FTC START. Non-delivery results are
-     * explicit and leave the normally initialized TeleOp localization pose and entry alliance
-     * default unchanged. The seed is not a targeting command: the operator may still choose
-     * either alliance until TeleOp's prestart owner freezes at FTC START.</p>
+     * <p>Call this after {@link PhoenixRobot#declareTeleOp(RobotProgram, PhoenixProfile, Gamepad,
+     * Gamepad, Source)} has declared localization and before the managed program reaches FTC
+     * START. Non-delivery results are explicit and leave the normally initialized TeleOp
+     * localization pose and entry alliance default unchanged. The seed is not a targeting
+     * command: the operator may still choose either alliance until TeleOp's prestart owner freezes
+     * at FTC START.</p>
      *
      * @param teleOpMode FTC TeleOp instance consuming the snapshot
      * @param robot      initialized Phoenix TeleOp composition root

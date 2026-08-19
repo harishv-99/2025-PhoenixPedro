@@ -6,11 +6,15 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.ui.MenuNavigator;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenu;
@@ -20,20 +24,24 @@ import edu.ftcphoenix.fw.ftc.ui.UiControls;
 import edu.ftcphoenix.fw.ftc.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
+import edu.ftcphoenix.robots.phoenix.PhoenixCalibrationConfig;
 import edu.ftcphoenix.robots.phoenix.PhoenixReadiness;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
 import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
+import edu.ftcphoenix.robots.phoenix.scoring.PhoenixTargeting;
 
 /** Owns Phoenix's one data-only INIT selector/readiness policy. */
 final class PhoenixAutoPrestart implements RobotProgram.Prestart {
 
     private final PhoenixAutoSetup setup;
-    private final PhoenixProfile profile;
     private final PhoenixAutoSpec.Builder builder;
     private final Bindings bindings;
     private final MenuNavigator navigator;
+    private final EnumMap<PhoenixAlliance, Integer> scoringTagIds =
+            new EnumMap<PhoenixAlliance, Integer>(PhoenixAlliance.class);
+    private final Map<String, PhoenixReadiness.Result> readinessBySelection =
+            new HashMap<String, PhoenixReadiness.Result>();
 
     private PhoenixAutoSpec displayedSpec;
     private PhoenixAutoSpec frozenSpec;
@@ -42,11 +50,13 @@ final class PhoenixAutoPrestart implements RobotProgram.Prestart {
     private RobotProgram.StartDisposition disposition;
 
     PhoenixAutoPrestart(PhoenixAutoSetup setup,
-                        PhoenixProfile profile,
+                        PhoenixCalibrationConfig calibration,
+                        PhoenixTargeting.Config targeting,
+                        TagLayout fixedAprilTagLayout,
                         Gamepad gamepad1,
                         Gamepad gamepad2) {
         this.setup = Objects.requireNonNull(setup, "setup");
-        this.profile = Objects.requireNonNull(profile, "profile").copy();
+        captureReadiness(calibration, targeting, fixedAprilTagLayout);
         PhoenixAutoSpec initial = setup.initialSpec();
         builder = PhoenixAutoSpec.builder()
                 .alliance(initial.alliance)
@@ -91,7 +101,7 @@ final class PhoenixAutoPrestart implements RobotProgram.Prestart {
         frozenSpec = selectedSpec();
         displayedSpec = frozenSpec;
         routeAvailability = PhoenixPedroPathFactory.routeAvailabilityFor(frozenSpec);
-        readiness = PhoenixReadiness.pedroAuto(frozenSpec, profile, setup.purpose());
+        readiness = readinessFor(frozenSpec);
         disposition = readiness.isAllowed()
                 ? RobotProgram.StartDisposition.READY
                 : RobotProgram.StartDisposition.BLOCKED;
@@ -164,7 +174,7 @@ final class PhoenixAutoPrestart implements RobotProgram.Prestart {
     private void refreshPolicy() {
         displayedSpec = selectedSpec();
         routeAvailability = PhoenixPedroPathFactory.routeAvailabilityFor(displayedSpec);
-        readiness = PhoenixReadiness.pedroAuto(displayedSpec, profile, setup.purpose());
+        readiness = readinessFor(displayedSpec);
     }
 
     private PhoenixAutoSpec selectedSpec() {
@@ -270,11 +280,7 @@ final class PhoenixAutoPrestart implements RobotProgram.Prestart {
 
     private SummaryScreen selectionSummary() {
         PhoenixAutoSpec preview = builder.build();
-        PhoenixReadiness.Result result = PhoenixReadiness.pedroAuto(
-                preview,
-                profile,
-                setup.purpose()
-        );
+        PhoenixReadiness.Result result = readinessFor(preview);
         PhoenixReadiness.Issue blocker = result.firstBlockingIssueOrNull();
         PhoenixPedroPathFactory.RouteAvailability availability =
                 PhoenixPedroPathFactory.routeAvailabilityFor(preview);
@@ -315,7 +321,51 @@ final class PhoenixAutoPrestart implements RobotProgram.Prestart {
     }
 
     private int selectedAllianceTagId(PhoenixAutoSpec spec) {
-        return profile.autoAim.scoringTagIdFor(spec.alliance);
+        return scoringTagIds.get(spec.alliance);
+    }
+
+    private void captureReadiness(
+            PhoenixCalibrationConfig calibration,
+            PhoenixTargeting.Config targeting,
+            TagLayout fixedAprilTagLayout
+    ) {
+        for (PhoenixAlliance alliance : PhoenixAlliance.values()) {
+            scoringTagIds.put(
+                    alliance,
+                    targeting == null ? -1 : targeting.scoringTagIdFor(alliance)
+            );
+            for (PhoenixAutoSpec.StartPosition start : PhoenixAutoSpec.StartPosition.values()) {
+                for (PhoenixAutoStrategyId strategy : PhoenixAutoStrategyId.values()) {
+                    PhoenixAutoSpec spec = PhoenixAutoSpec.builder()
+                            .alliance(alliance)
+                            .startPosition(start)
+                            .strategy(strategy)
+                            .build();
+                    readinessBySelection.put(
+                            readinessKey(spec),
+                            PhoenixReadiness.pedroAuto(
+                                    spec,
+                                    calibration,
+                                    targeting,
+                                    fixedAprilTagLayout,
+                                    setup.purpose()
+                            )
+                    );
+                }
+            }
+        }
+    }
+
+    private PhoenixReadiness.Result readinessFor(PhoenixAutoSpec spec) {
+        return Objects.requireNonNull(
+                readinessBySelection.get(readinessKey(spec)),
+                "Phoenix Auto readiness was not captured for " + spec.summary()
+        );
+    }
+
+    private static String readinessKey(PhoenixAutoSpec spec) {
+        return spec.alliance.name() + '|' + spec.startPosition.name() + '|'
+                + spec.strategy.name();
     }
 
     private static <E extends Enum<E>> SelectionMenus.EnumDisplay<E> enumDisplay(

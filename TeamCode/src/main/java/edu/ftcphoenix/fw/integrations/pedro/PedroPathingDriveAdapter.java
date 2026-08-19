@@ -37,13 +37,19 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  *
  * <p>Production Phoenix Auto transfers this adapter into the ordinary managed program:</p>
  * <pre>{@code
+ * PhoenixProfile profile = PhoenixProfile.current();
  * PedroPathingRuntime runtime = PedroPathingRuntime.create(
  *         hardwareMap,
- *         Constants.phoenixAutoRuntimeConfig(profile)
+ *         Constants.phoenixAutoRuntimeConfig(
+ *                 profile.localization.predictor,
+ *                 profile.drive.wiring,
+ *                 profile.drive.enableZeroPowerBrake
+ *         )
  * );
  * PedroPathingDriveAdapter adapter = runtime.driveAdapter();
  * robot.declareAuto(
  *         program,
+ *         profile,
  *         adapter,
  *         runtime.motionPredictor(),
  *         frozenEligibleTagIds,

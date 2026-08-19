@@ -11,8 +11,8 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
+import edu.ftcphoenix.robots.phoenix.PhoenixAutoConfig;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 
 /**
@@ -110,18 +110,21 @@ public final class PhoenixPedroPathFactory {
     }
 
     private final PedroPathingRuntime pedroRuntime;
-    private final PhoenixProfile.AutoConfig autoCfg;
+    private final double pedroIntegrationTestDistanceIn;
 
     /**
      * Create a path factory around the validated Pedro runtime used by the OpMode.
      *
      * @param pedroRuntime Pedro runtime that applies its validated path constraints explicitly
-     * @param autoCfg  Phoenix Auto timing/path-placeholder config
+     * @param autoConfig Phoenix Auto policy containing the path-placeholder distance
      */
     public PhoenixPedroPathFactory(PedroPathingRuntime pedroRuntime,
-                                   PhoenixProfile.AutoConfig autoCfg) {
+                                   PhoenixAutoConfig autoConfig) {
         this.pedroRuntime = Objects.requireNonNull(pedroRuntime, "pedroRuntime");
-        this.autoCfg = autoCfg == null ? new PhoenixProfile.AutoConfig() : autoCfg.copy();
+        PhoenixAutoConfig requiredConfig = Objects.requireNonNull(autoConfig, "autoConfig");
+        this.pedroIntegrationTestDistanceIn = requireIntegrationDistance(
+                requiredConfig.pedroIntegrationTestDistanceIn
+        );
     }
 
     /**
@@ -163,7 +166,7 @@ public final class PhoenixPedroPathFactory {
         RouteAvailability routeAvailability = routeAvailabilityFor(spec);
         Objects.requireNonNull(capabilities, "capabilities");
 
-        double distanceIn = autoCfg.pedroIntegrationTestDistanceIn;
+        double distanceIn = pedroIntegrationTestDistanceIn;
         Pose pedroStartPose = routeAvailability.expectedPedroStartPose;
         Pose forwardPose = integrationPlaceholderEndPose(pedroStartPose, distanceIn);
 
@@ -311,12 +314,12 @@ public final class PhoenixPedroPathFactory {
         Pose startPose = requireFinitePose(pedroStartPose, "pedroStartPose");
         requireFinite(
                 distanceIn,
-                "PhoenixProfile.auto",
+                "PhoenixAutoConfig",
                 "pedroIntegrationTestDistanceIn"
         );
         if (distanceIn <= 0.0) {
             throw new IllegalArgumentException(
-                    "PhoenixProfile.auto.pedroIntegrationTestDistanceIn must be > 0 for the "
+                    "PhoenixAutoConfig.pedroIntegrationTestDistanceIn must be > 0 for the "
                             + "integration route, but was " + distanceIn
             );
         }
@@ -340,6 +343,17 @@ public final class PhoenixPedroPathFactory {
                 scoring.setFlywheelEnabled(true);
             }
         };
+    }
+
+    /** Capture the sole retained Auto fact before any Pedro path-builder call can occur. */
+    private static double requireIntegrationDistance(double value) {
+        if (!Double.isFinite(value) || value <= 0.0) {
+            throw new IllegalArgumentException(
+                    "PhoenixAutoConfig.pedroIntegrationTestDistanceIn must be finite and > 0, "
+                            + "got " + value
+            );
+        }
+        return value;
     }
 
     private static Pose expectedStartPoseFor(PhoenixAutoSpec spec) {

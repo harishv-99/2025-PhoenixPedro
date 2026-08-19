@@ -10,7 +10,9 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +24,7 @@ import edu.ftcphoenix.fw.tools.tester.TesterContext;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -31,6 +34,25 @@ public final class ConfiguredDrivetrainVerificationTesterTest {
     private static final double EPSILON = 1e-9;
 
     @Test
+    public void constructionSurfaceRequiresOneExplicitDriveConfig() {
+        Constructor<?>[] constructors =
+                ConfiguredDrivetrainVerificationTester.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertEquals(1, constructors[0].getParameterTypes().length);
+        assertEquals(
+                FtcDrives.MecanumConfig.class,
+                constructors[0].getParameterTypes()[0]
+        );
+        assertTrue(Modifier.isFinal(
+                ConfiguredDrivetrainVerificationTester.class.getModifiers()
+        ));
+        assertFalse(Modifier.isPublic(
+                ConfiguredDrivetrainVerificationTester.class.getModifiers()
+        ));
+        assertFalse(Modifier.isPublic(constructors[0].getModifiers()));
+    }
+
+    @Test
     public void startNeutralExactOneConflictReleaseAndStopStaySafe() {
         TestHardwareMap hardware = new TestHardwareMap();
         MotorProbe frontLeft = hardware.addMotor("frontLeftMotor");
@@ -38,8 +60,9 @@ public final class ConfiguredDrivetrainVerificationTesterTest {
         MotorProbe backLeft = hardware.addMotor("backLeftMotor");
         MotorProbe backRight = hardware.addMotor("backRightMotor");
         Rig rig = new Rig(hardware);
+        PhoenixProfile profile = PhoenixProfile.current();
         ConfiguredDrivetrainVerificationTester tester =
-                new ConfiguredDrivetrainVerificationTester();
+                new ConfiguredDrivetrainVerificationTester(profile.drive);
 
         rig.gamepad1.a = true;
         tester.init(rig.context());
@@ -51,7 +74,6 @@ public final class ConfiguredDrivetrainVerificationTesterTest {
 
         tester.start();
         assertEquals(8, hardware.lookups);
-        PhoenixProfile profile = PhoenixProfile.current();
         assertDirection(profile.drive.wiring.frontLeftDirection, frontLeft);
         assertDirection(profile.drive.wiring.frontRightDirection, frontRight);
         assertDirection(profile.drive.wiring.backLeftDirection, backLeft);
