@@ -26,7 +26,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       both an absolute odometry pose and incremental motion deltas</li>
  * </ul>
  */
-public interface AbsolutePoseEstimator {
+public interface AbsolutePoseEstimator extends HeadingEstimator {
 
     /**
      * Advance the estimator's internal state using the current loop time.
@@ -72,6 +72,27 @@ public interface AbsolutePoseEstimator {
      * @return latest pose estimate snapshot
      */
     PoseEstimate getEstimate();
+
+    /**
+     * Project the latest cached pose into equivalent heading evidence without another update.
+     */
+    @Override
+    default HeadingEstimate getHeadingEstimate() {
+        PoseEstimate estimate = getEstimate();
+        if (estimate == null || !estimate.hasPose
+                || !Double.isFinite(estimate.fieldToRobotPose.yawRad)) {
+            return HeadingEstimate.noHeading(
+                    estimate == null ? edu.ftcphoenix.fw.core.time.LoopTimestamp.unavailable()
+                            : estimate.timestamp
+            );
+        }
+        return new HeadingEstimate(
+                estimate.fieldToRobotPose.yawRad,
+                true,
+                estimate.quality,
+                estimate.timestamp
+        );
+    }
 
     /**
      * Emits a compact telemetry/debug summary of the current estimate.

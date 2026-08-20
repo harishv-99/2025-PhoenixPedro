@@ -181,9 +181,9 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 94 | CONFIG-07 | Starter profile simplification | Done | The reviewed owner-local Starter profile, separate motion permissions, synchronous active-slice declarations, API removals, cleanup evidence, synchronized teaching, and destination-specific publication authorization are complete. |
 | 95 | CONFIG-08 | Basic Pedro profile independence | Done | The reviewed independent profile, one review-gated root path, owner-local capture, collision preflight, tests, teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Done | The reviewed owner-section implementation, synchronized evidence, Android Studio review, and destination-specific publication authorization are complete. |
-| 97 | EXAMPLE-04 | Curated managed concept examples | Proposed | Rationalize the manual-loop examples into a smaller managed progression while preserving EXAMPLE-03's evidence-gated deferral. |
-| 98 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
-| 99 | DRIVE-03 | Field-centric TeleOp drive intent | Proposed | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
+| 97 | DRIVE-03 | Field-centric TeleOp drive intent | Done | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
+| 98 | EXAMPLE-04 | Curated managed concept examples | Proposed | Rationalize the manual-loop examples into a smaller managed progression while preserving EXAMPLE-03's evidence-gated deferral. |
+| 99 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -229,13 +229,15 @@ EXAMPLE-03/EXAMPLE-04 audit on 2026-08-14 later deferred it for real-caller and 
 evidence. Deferred hardware/evidence items remain deferred regardless of their table position.
 
 On 2026-08-14, a tracker-only intake added EXAMPLE-04, RUNTIME-03, and DRIVE-03 without starting
-their decision gates or implementation. EXAMPLE-04 comes first because the nine disabled manual
-concept labs are the largest student-visible duplicate of the managed runtime. RUNTIME-03 then
+their decision gates or implementation. On 2026-08-19, the user reordered the remaining queue to
+DRIVE-03, EXAMPLE-04, then RUNTIME-03 so the curated student curriculum can teach the final manual-
+drive vocabulary. EXAMPLE-04 then removes the nine disabled manual concept labs, the largest
+student-visible duplicate of the managed runtime. RUNTIME-03 finally
 audits what direct-host guidance or enforcement remains while preserving genuinely different
-tester, portable-host, test, and private-owner seams. DRIVE-03 is independent behavior work, but it
-follows the example/runtime clarification so its first maintained example cannot create another
-robot lifecycle story. A later evidence-backed decision gate may reorder these Proposed items; no
-row here is an approved API or migration plan.
+tester, portable-host, test, and private-owner seams. DRIVE-03 remains independent behavior work;
+its first adopter must use the existing managed lifecycle so it cannot create another robot
+lifecycle story. A later evidence-backed decision gate may reorder Proposed items; no row alone is
+an approved API or migration plan.
 
 The same day, the omitted intake was recovered exactly from local-only commit `3a90c01` on
 `codex/tracker-example-drive-runtime-intake`. The user reviewed the tracker-only recovery and
@@ -20586,9 +20588,10 @@ writer, and explicit lifecycle ownership.
 
 ### DRIVE-03 - Field-centric TeleOp drive intent
 
-- **Status and intake boundary (2026-08-14):** **Proposed.** The missing capability and current
-  seams are confirmed, but heading origin, evidence loss, re-zero, and composition order materially
-  determine the public contract. No API, Phoenix adoption, or drive behavior is approved here.
+- **Status and intake boundary (2026-08-19):** **Verifying.** The missing capability and current seams
+  are confirmed, and the decision record below resolves heading origin, evidence loss, re-zero, and
+  composition order. The approved implementation below awaits human review; Phoenix remains
+  unchanged and no publication or hardware claim is approved.
 - **Confirmed current behavior:** `DriveSignal` is consistently robot-centric: positive axial is
   robot forward, positive lateral is robot left, and positive omega is counter-clockwise.
   `GamepadDriveSource` samples three explicit axes, shapes them, converts driver signs, and emits
@@ -20637,27 +20640,110 @@ writer, and explicit lifecycle ownership.
   existing robot-centric signal. Compare robot-centric and field/control-frame call sites, added
   concepts, discoverability, evidence truth, failure behavior, reset ownership, and implementation
   cost. Do not add a second drivetrain factory merely for coordinate conversion.
-- **Leading hypothesis:** add one dedicated, explicitly named upstream manual-drive source beside
-  `GamepadDriveSource`. It receives explicit axes/configuration plus truthful heading evidence,
-  owns any driver-frame offset, and emits one robot-centric `DriveSignal` for unchanged overlays and
-  sinks. The exact name, evidence type, origin choice, loss policy, and rate-limit placement remain
-  Gate-1 decisions. If only Phoenix can supply a complete policy, first prove the local wrapper and
-  caller before promoting a generic source; do not manufacture an IMU hardware API solely for
-  symmetry.
+- **Approved revision (2026-08-19):** the user explicitly rejected Phoenix adoption and approved
+  an example-only adopter. “Up” is an authored field heading selected by a named driver-station
+  specification, not an inferred robot-start direction or an alliance transform. A station owns
+  independent initial-robot and control-up headings; no Red/Blue opposite-angle assumption is
+  permitted because FTC field layouts may make alliance directions orthogonal. The reusable source
+  remains alliance- and season-neutral. Neutral practice stations demonstrate cardinal directions
+  until reviewed BIOBUZZ geometry is available. The user also approved a narrow heading lane with
+  both a managed Control Hub IMU implementation and direct full-localization adaptation, plus
+  a fixed authored control-up direction for the match.
+- **Approved simplification (2026-08-19):** after reviewing the first implementation, the user
+  approved removing the parallel field-relative source, its separate configuration/status surface,
+  and runtime re-zero/restore controls. The beginner API is now
+  `GamepadDriveSource.fieldRelativeTo(headingEstimator, configuredUpHeading)`; an advanced overload
+  exposes only heading age and quality acceptance. It returns the ordinary robot-centric
+  `DriveSource`, so standard downstream combinators—including `.rateLimited(...)` when desired—stay
+  unchanged. Rejection detail remains available through `debugDump()` rather than a second public
+  status model.
+- **Ordinary call-site comparison:** robot-relative control remains the existing four-argument
+  `new GamepadDriveSource(lateral, axial, omega, config)` followed by optional `DriveSource`
+  combinators. Field-relative control adds
+  `.fieldRelativeTo(headingEstimator, configuredUpHeading)` to that same source. The advanced
+  overload adds maximum heading age and minimum heading quality. Slow mode and optional ordinary
+  robot-frame rate limiting remain downstream, as do robot-frame guidance overlays. The extra
+  student concepts are therefore one conversion method and one already-owned heading lane—not a
+  new drive signal, source type, status type, sink, drivetrain, or loop.
+- **Selected origin, loss, and lifecycle policy:** “field-relative” means a driver control frame
+  whose forward direction is the finite field heading frozen from the selected named station at
+  START and remains fixed for the match. Until the configured heading and current evidence are
+  valid, and whenever the latest pose is absent, non-finite, stale, below configured quality, or
+  belongs to an invalid clock epoch, translation is zero while finite shaped omega remains
+  available. There is no robot-relative translation fallback and no indefinite last-heading hold.
+  `get(clock)` samples each axis and `getHeadingEstimate()` once on the first successful attempt of a
+  cycle, memoizes the result, and retains a same-cycle failure; `reset()` clears the memo and resets
+  the structural gamepad source. The conversion reads but never updates or resets the estimator.
+- **Selected composition and implementation shape:** add `fieldRelativeTo(...)` to
+  `GamepadDriveSource`, returning the unchanged robot-centric `DriveSignal`. Add an availability-,
+  quality-, and timestamp-bearing
+  `HeadingEstimate` and a cycle-updated `HeadingEstimator`; make `AbsolutePoseEstimator` extend the
+  latter with a default cached pose-heading projection. Add a managed FTC IMU implementation that
+  aligns raw yaw to the station's authored initial robot field heading at START. Reuse the existing
+  existing `GamepadDriveSource` so shaping cannot drift, then rotate translation with the documented
+  signs and pass omega through. Apply ordinary rate limiting, slow-mode scaling, and robot-frame
+  assists afterward. Expose rejection detail through the standard debug surface. A dedicated
+  `FtcRobotOpMode`/`RobotProgram` example is the only adopting robot code; Phoenix remains unchanged.
+  Retain `GamepadDriveSource` for robots without trustworthy heading evidence.
+- **Rejected alternatives:** documentation or a Phoenix-local trigonometry wrapper would make
+  every student robot reimplement safety and lifecycle semantics; reinterpreting a `DriveSource`
+  decorator on arbitrary `DriveSource` would invite conversion after robot-frame assists and blur
+  that type's contract; the concrete gamepad-source conversion keeps the frame boundary explicit.
+  A config boolean would hide a
+  materially different evidence dependency; drivetrain/sink conversion would rotate Auto and
+  robot-frame assists; and a raw scalar heading would discard freshness and validity evidence.
+  Preserving a stale heading or falling back to robot-relative translation would silently change
+  driver meaning. A narrow managed FTC IMU estimator is justified because field-relative drive
+  needs heading but not field position; full localization implements the same lane directly.
+  Alliance transforms and held robot-relative override remain robot-owned policies that may be
+  added only with a concrete adopter.
+- **Downstream curriculum constraint:** EXAMPLE-04 must teach the eventual BIOBUZZ robot as a
+  progressive managed build, with each checkpoint compiling and adding one idea: safe TeleOp drive;
+  field-relative drive; one intake Plant and capability; a repeatable intake Task;
+  transfer/storage status; one scoring Plant and capability; coordinated score/recover Tasks;
+  AprilTag observation; field localization/fusion; assisted alignment to a reviewed scoring pose;
+  rectangular parking status and guided entry; then autonomous composition using the same
+  capabilities. Each outer OpMode stays a thin `configure(RobotProgram)` declaration. Pollen,
+  inventory, scoring-height, and endgame rules remain robot-owned examples until the revealed game
+  proves a reusable abstraction. This constraint guides DRIVE-03's beginner call site but does not
+  start EXAMPLE-04 while DRIVE-03 is active.
 - **Bounded future scope and completion evidence:** limit implementation to source-layer frame math,
   evidence/lifecycle policy, diagnostics/readiness, one approved managed adopter, and synchronized
-  drive/TeleOp/Phoenix docs and Javadocs. Do not change `RobotProgram`, `FtcDrives`,
+  drive/TeleOp/example docs and Javadocs. Do not change Phoenix, `RobotProgram`, `FtcDrives`,
   `MecanumDrivebase`, Auto route control, localization hardware ownership, or raw FTC hosting.
   Focused tests must cover zero and cardinal/wrapped headings, signs, magnitude and omega
   preservation, zero input, selected unavailable/stale/quality behavior, one input/evidence sample
-  per cycle, same-cycle retries/failures, reset/re-zero, START zero, first-active sampling,
+  per cycle, same-cycle retries/failures, reset, START zero, first-active sampling,
   rotate-while-translating behavior, and unchanged robot-centric overlays/callers. Run
-  `GamepadDriveSourceSamplingTest`, `DriveSourceCycleSafetyTest`,
-  `PhoenixTeleOpControlsTest`, the new frame-source tests, full TeamCode tests/compile, strict
+  `GamepadDriveSourceSamplingTest`, `DriveSourceCycleSafetyTest`, the new frame-source, heading,
+  IMU, and managed-example tests, full TeamCode tests/compile, strict
   Javadocs, docs checks, API scans, and whitespace checks. Raised-wheel/low-power cardinal motion,
   heading sign/zero, loss response, rotating translation, and standalone-versus-handoff alignment
   remain adopting-robot validation rather than software completion evidence.
-- **Decision record:** _Pending. No implementation started._
+- **Implemented result (2026-08-19):** `HeadingEstimate` and `HeadingEstimator` provide the narrow
+  evidence lane; `AbsolutePoseEstimator` projects its cached pose heading without a second update;
+  `FtcImuHeadingEstimator` aligns Hub yaw to the selected station's independently authored initial
+  robot heading at START; and `GamepadDriveSource.fieldRelativeTo(...)` adds configured-up,
+  fail-closed translation, cycle safety, and robot-frame output without a parallel source/config/status API.
+  The disabled managed `FieldRelativeDriveExample` selects one of four neutral cardinal practice
+  stations and keeps motion permission false pending physical review. No Phoenix file changed.
+- **Automated verification (2026-08-19):** focused DRIVE-03 frame, evidence, localization,
+  IMU, and managed-example tests passed. Full `:TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac` passed with 1,875 tests and zero
+  failures/errors/skips; strict `:TeamCode:phoenixJavadocs` passed. `git diff --check`, the
+  untracked-file trailing-whitespace scan, removed-API scan, and Phoenix no-diff scan passed. The
+  build retained only the pre-existing Java 8-on-JDK-21 and deprecated FTC controller warnings.
+  Robot heading sign, Hub mounting, low-power cardinal motion, evidence-loss response, and physical
+  STOP remain Android Studio/robot review.
+- **Manual review and publication authorization (2026-08-19):** the user approved the reviewed
+  Android Studio diff and explicitly authorized committing `codex/drive-03-field-relative-teleop`,
+  pushing it to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
+  merging it into `master`. Robot-hardware checks remain adopter validation rather than a software
+  completion claim.
+- **Decision record (2026-08-19):** **Done; simplified implementation approved.** The user's “Implement
+  the plan” approved Gate 2 on `codex/drive-03-field-relative-teleop`. The reviewed design is the
+  example-only adopter and heading/station contract above; no hardware or publication claim is
+  authorized.
 
 ## Explicitly deferred architectural ideas
 
