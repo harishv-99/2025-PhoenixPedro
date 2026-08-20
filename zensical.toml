@@ -30,10 +30,11 @@ nav = [
   { "Examples" = [
     { "Examples home" = "fw/docs/examples/README.md" },
     { "Modern starter robot" = "fw/docs/examples/Modern Starter Robot.md" },
-    { "Manual-lifecycle concept labs" = "fw/docs/examples/Examples Progression & Layered Mechanisms.md" },
-    { "Layered shooter" = "fw/docs/examples/Layered Shooter Example.md" },
-    { "Shooter case study" = "fw/docs/examples/Shooter Case Study & Examples Walkthrough.md" },
+    { "Framework components" = "fw/docs/examples/Framework Components Through Examples.md" },
+    { "Field-relative drive" = "fw/docs/examples/Field-relative Drive.md" },
     { "Pedro autonomous reference" = "fw/docs/examples/Pedro Autonomous Reference.md" },
+    { "Subsystem experiments" = "fw/docs/examples/Subsystem Experiments.md" },
+    { "BIOBUZZ capability map" = "fw/docs/examples/BIOBUZZ Capability Map.md" },
   ] },
   { "Core concepts" = [
     { "Core concepts home" = "fw/docs/core-concepts/README.md" },

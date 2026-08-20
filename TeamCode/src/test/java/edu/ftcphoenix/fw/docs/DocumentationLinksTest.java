@@ -47,6 +47,25 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void documentationSiteNavigationTargetsExistingMarkdown() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        Path docsRoot = repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcphoenix");
+        String config = new String(
+                Files.readAllBytes(repositoryRoot.resolve("zensical.toml")),
+                StandardCharsets.UTF_8);
+        Matcher entries = Pattern.compile("=\\s*\\\"([^\\\"]+\\.md)\\\"").matcher(config);
+        List<String> failures = new ArrayList<String>();
+        while (entries.find()) {
+            String target = entries.group(1);
+            if (!Files.isRegularFile(docsRoot.resolve(target))) {
+                failures.add(target);
+            }
+        }
+        assertTrue("Missing documentation navigation targets: " + failures, failures.isEmpty());
+    }
+
+    @Test
     public void acceptsLiteralAndEncodedSpacesAndDuplicateHeadingAnchors() throws IOException {
         Path root = temporaryFolder.getRoot().toPath();
         write(root, "Docs/Guide File.md",
