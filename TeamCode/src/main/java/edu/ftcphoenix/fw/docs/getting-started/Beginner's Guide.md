@@ -20,9 +20,9 @@ separate project.
 
 **Files for this lesson:**
 
-- [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) — the continuing
+- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — the continuing
   starter's simple Auto entry;
-- [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) — the
+- [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) — the
   fixed-route Pedro reference entry;
 - [`FtcRobotOpMode.java`](<../../ftc/FtcRobotOpMode.java>) and
   [`RobotProgram.java`](<../../ftc/RobotProgram.java>) — the managed runtime surface.

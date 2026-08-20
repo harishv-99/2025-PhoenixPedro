@@ -1,5 +1,10 @@
 package edu.ftcphoenix.robots.examples.starter;
 
+import edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware;
+import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntakeMechanism;
+import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntake;
+import edu.ftcphoenix.robots.examples.starter.robot.StarterProfile;
+
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 

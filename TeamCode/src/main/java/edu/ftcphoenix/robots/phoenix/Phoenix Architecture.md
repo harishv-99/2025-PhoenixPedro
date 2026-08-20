@@ -83,7 +83,7 @@ The parallel selector factory is
 `PhoenixAutoSetup.fromInitSelection(defaultSpec, purpose)`. Both feed the same internal
 `PhoenixAutoProgram` declaration. There is no raw Phoenix Auto OpMode base, private Auto clock,
 private Auto runner, manual telemetry commit, or public start/update/stop alias on `PhoenixRobot`.
-The disabled `robots.examples.pedro.BasicPedroAutoExample` is a generic new-robot reference using
+The disabled `robots.examples.pedro.opmode.BasicPedroAutoExample` is a generic new-robot reference using
 the same managed `FtcRobotOpMode` grammar; it is not a Phoenix-season entry or alternate Phoenix
 hardware graph.
 

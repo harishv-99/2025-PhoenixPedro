@@ -8,7 +8,7 @@ fixed practice route, one Plant-backed mechanism capability, explicit route-outc
 stable follower heartbeat, and deterministic cleanup. It is not the first-route tutorial; start at
 the canonical [`Phoenix docs hub`](<../README.md>) for the guided learning path.
 
-Start with the compiling [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>)
+Start with the compiling [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>)
 entry. Its six-file example uses the ordinary `FtcRobotOpMode`/`RobotProgram` grammar, one local
 data-only profile, and the project's pinned Pedro Pathing dependency. Production Phoenix Auto uses
 `PhoenixAutoOpMode`; this package has no `PhoenixProfile` or project `pedroPathing.Constants`
@@ -18,12 +18,12 @@ configuration dependency and is the independent reference for another robot.
 
 | File | Role | Adapt for another robot |
 |---|---|---|
-| [`BasicPedroProfile.java`](<../../../robots/examples/pedro/BasicPedroProfile.java>) | Fresh local Pedro/runtime and intake configuration plus the false-by-default motion permission. | Replace and physically review every active fact, then permit only the complete supervised run. |
-| [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) | Thin FTC host: selects the local profile, invalidates stale match handoff, and adds read-only presenters. | Keep the host declarative; choose the adopting robot's profile here. |
-| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | Composition root: gates configuration, constructs/registers the runtime and mechanism, and declares one fresh root Task in safety-significant order. | Keep the managed role shape; add an owner only when it has a distinct lifecycle job. |
-| [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) | Geometry owner: declares the physical start pose and eagerly builds one fixed Pedro route. | Replace start/end poses and route geometry in Pedro field inches and radians. |
-| [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | Strategy owner: maps route success, timeout, and cancellation-like outcomes to explicit Task behavior. | Compose the robot's capability Tasks and state every non-success policy. |
-| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | Mechanism output: snapshots data-only configuration, privately owns one Plant, and creates fresh cancellation-safe Tasks. | Prefer the robot's existing capability; otherwise build the real mechanism with the same ownership boundary. |
+| [`BasicPedroProfile.java`](<../../../robots/examples/pedro/robot/BasicPedroProfile.java>) | Fresh local Pedro/runtime and intake configuration plus the false-by-default motion permission. | Replace and physically review every active fact, then permit only the complete supervised run. |
+| [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) | Thin FTC host: invalidates stale match handoff, selects the local profile, and constructs the composition root. | Keep the host declarative; choose the adopting robot's profile here. |
+| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/robot/BasicPedroAutoRobot.java>) | Composition root: gates configuration, constructs/registers the runtime and mechanism, declares one fresh root Task, and wires additive presenters in safety-significant order. | Keep the managed role shape; add an owner only when it has a distinct lifecycle job. |
+| [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) | Geometry owner: declares the physical start pose and eagerly builds one fixed Pedro route. | Replace start/end poses and route geometry in Pedro field inches and radians. |
+| [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>) | Strategy owner: maps route success, timeout, and cancellation-like outcomes to explicit Task behavior. | Compose the robot's capability Tasks and state every non-success policy. |
+| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>) | Mechanism output: snapshots data-only configuration, privately owns one Plant, and creates fresh cancellation-safe Tasks. | Prefer the robot's existing capability; otherwise build the real mechanism with the same ownership boundary. |
 
 These roles are robot code. The short routine expression is strategy, while construction,
 lifecycle, capability realization, and physical configuration stay with their actual owners.

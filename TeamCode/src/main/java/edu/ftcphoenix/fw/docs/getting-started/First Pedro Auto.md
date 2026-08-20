@@ -23,17 +23,17 @@ the [`Phoenix Calibration Guide`](<../../../robots/phoenix/Phoenix Calibration G
 
 **Files for this lesson:**
 
-- [`BasicPedroProfile.java`](<../../../robots/examples/pedro/BasicPedroProfile.java>) — fresh local
+- [`BasicPedroProfile.java`](<../../../robots/examples/pedro/robot/BasicPedroProfile.java>) — fresh local
   Pedro and intake configuration plus the false-by-default motion permission;
-- [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) — physical
+- [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) — physical
   start and fixed route;
-- [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) —
+- [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>) —
   route Task and outcome policy;
-- [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) — managed
+- [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/robot/BasicPedroAutoRobot.java>) — managed
   service, output, and root declarations;
-- [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) —
+- [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>) —
   the reference action capability;
-- [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) —
+- [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) —
   disabled FTC host that selects the local profile and adds read-only status.
 
 ## Safety

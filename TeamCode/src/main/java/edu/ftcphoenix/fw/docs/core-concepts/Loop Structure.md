@@ -85,7 +85,7 @@ robot's intended realization order.
 
 ## 3. The canonical managed program
 
-The compiling [`StarterTeleOp`](<../../../robots/examples/starter/StarterTeleOp.java>) shows the
+The compiling [`StarterTeleOp`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) shows the
 ordinary complete host. It overrides one configuration method, not five FTC lifecycle methods:
 
 ```java
@@ -139,10 +139,10 @@ still belong in `configure(program)`. A typed `program.stopHandoff(capture, publ
 supports Auto-to-TeleOp transfer without a custom FTC lifecycle: capture occurs only on normal
 ACTIVE STOP, publication waits for successful cleanup, and every other path invalidates.
 
-The flat `TeleOp_01` through `TeleOp_09` files remain deliberately explicit teaching/tool hosts.
-Such a host is an advanced exception: it must still own one clock, run the same semantic phase
-order, commit once, and perform complete fail-stop cleanup. Do not copy an active-loop excerpt
-without its construction and STOP ownership.
+The curated ordinary examples use this managed host exclusively. A genuinely custom host is an
+advanced exception: it must still own one clock, run the same semantic phase order, commit once,
+and perform complete fail-stop cleanup. Do not copy an active-loop excerpt without its construction
+and STOP ownership.
 
 That is the normal TeleOp ownership model: Tasks finish their decision/source/Plant-target work,
 then the downstream Outputs/Drive phase visits declarations in order. The one drive declaration
@@ -572,11 +572,10 @@ robot. An FTC or vendor boundary owner may make a documented cheap, side-effect-
 when the backend exposes no retained equivalent, but that read must not acquire a new result or
 change robot behavior.
 
-The disabled `TeleOp_01` through `TeleOp_06` teaching examples intentionally enable several verbose
-dumps when a student explicitly launches one; they expose the related framework surfaces together
-for exploration. Treat that as tutorial instrumentation, not a match-robot default. Adopted and
-match robot code should default optional topics off and enable only the owner or owners relevant to
-the current investigation.
+The curated examples and subsystem lab cards keep telemetry specific to the lesson. Experiment code
+prints only program-known commands, measurements, timing, errors, and outcomes; externally observed
+physical results remain operator records. Adopted match code should enable only the presenters
+relevant to the current investigation.
 
 Use a consistent prefix so logs are easy to scan, for example:
 
