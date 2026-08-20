@@ -331,6 +331,20 @@ Construction validates software coherence only. `GamepadDevice` neutral calibrat
 and drivetrain direction still require the operator and robot checks described in
 [`Your first TeleOp`](<../getting-started/First TeleOp.md>).
 
+### Field-relative gamepad drive
+
+`GamepadDriveSource.fieldRelativeTo(...)` interprets its shaped manual translation in a driver
+control frame whose up direction is explicitly authored in field coordinates. It consumes cached
+`HeadingEstimate` evidence from a separately updated `HeadingEstimator`, rotates translation, and
+returns the same robot-centric `DriveSignal` used by overlays and drive sinks.
+
+The configured up heading is independent from the robot's initial heading and from alliance names.
+Named station configuration may assign any finite headings, including orthogonal Red/Blue layouts.
+When evidence is unusable, translation becomes zero and omega remains available; the source never
+silently changes the driver's frame. See the managed
+[`Field-relative Drive`](<../examples/Field-relative Drive.md>) lesson for the IMU and full-pose
+construction paths.
+
 For complete context ownership, scalar-output limits, and mode examples, see
 [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>).
 

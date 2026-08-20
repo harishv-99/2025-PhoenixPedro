@@ -10,6 +10,7 @@ The short version:
 - **`TagLayout`** tells Phoenix which tag IDs are trusted as fixed field landmarks.
 - **`AprilTagVisionLane`** owns the FTC-side AprilTag rig and exposes a shared `AprilTagSensor`.
 - **`AbsolutePoseEstimator`** answers "where is the robot on the field?"
+- **`HeadingEstimator`** answers the narrower "which field direction is the robot facing?"
 - **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last accepted motion baseline?"
 - **`CorrectedPoseEstimator`** combines a motion predictor with one absolute correction source.
 
@@ -88,6 +89,13 @@ This is the interface most consumers want:
 - go-to-pose tasks
 - targeting
 - telemetry
+
+Every `AbsolutePoseEstimator` is also a `HeadingEstimator`. Its default heading view projects the
+cached pose yaw, availability, quality, and timestamp without advancing localization again. A
+consumer that needs only heading—such as field-relative manual drive—therefore avoids depending on
+position while remaining compatible with Pinpoint, AprilTag-corrected, or other full localization.
+For robots that do not need field position, `FtcImuHeadingEstimator` supplies the same evidence from
+the Hub IMU after aligning its raw yaw to an authored robot field heading at START.
 
 `update(clock)` uses the one non-null shared OpMode clock and publishes one attempt-stable snapshot
 per cycle. The first attempt owns source/filter/vendor effects; a repeat does not redo them. Finish

@@ -1,10 +1,16 @@
 package edu.ftcphoenix.fw.drive.source;
 
+import java.util.Objects;
+import java.util.function.DoubleSupplier;
+
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
+import edu.ftcphoenix.fw.localization.HeadingEstimate;
+import edu.ftcphoenix.fw.localization.HeadingEstimator;
 
 /**
  * {@link DriveSource} that maps explicit gamepad-style axes to a robot-centric {@link DriveSignal}
@@ -73,6 +79,9 @@ import edu.ftcphoenix.fw.drive.DriveSource;
  * </p>
  */
 public final class GamepadDriveSource implements DriveSource {
+
+    private static final double DEFAULT_MAX_HEADING_AGE_SEC = 0.25;
+    private static final double DEFAULT_MIN_HEADING_QUALITY = 0.0;
 
     /**
      * Configuration for TeleOp stick shaping.
@@ -268,6 +277,197 @@ public final class GamepadDriveSource implements DriveSource {
         DriveSignal out = new DriveSignal(ax, lat, om);
         lastSignal = out;
         return out;
+    }
+
+    /**
+     * Interpret this source's shaped translation as control-frame intent and convert it to the
+     * robot frame using cached heading evidence.
+     *
+     * <p>The supplied up heading is authored in the same fixed field frame as the estimator. It is
+     * resolved once after construction or reset. The returned source preserves omega and outputs
+     * zero translation instead of silently falling back to robot-relative controls when heading
+     * evidence is unusable.</p>
+     *
+     * @param headingEstimator externally updated cached field-heading evidence
+     * @param configuredUpHeadingSupplier cache-only finite field heading supplier, normally backed
+     *                                    by a START-frozen named station
+     * @return robot-centric drive source using default heading-evidence thresholds
+     */
+    public DriveSource fieldRelativeTo(HeadingEstimator headingEstimator,
+                                       DoubleSupplier configuredUpHeadingSupplier) {
+        return fieldRelativeTo(
+                headingEstimator,
+                configuredUpHeadingSupplier,
+                DEFAULT_MAX_HEADING_AGE_SEC,
+                DEFAULT_MIN_HEADING_QUALITY
+        );
+    }
+
+    /**
+     * Advanced field-relative conversion with explicit heading-evidence thresholds.
+     *
+     * @param headingEstimator externally updated cached field-heading evidence
+     * @param configuredUpHeadingSupplier cache-only finite field heading supplier, sampled once
+     * @param maxHeadingAgeSec inclusive finite non-negative maximum evidence age
+     * @param minHeadingQuality inclusive finite minimum quality in [0, 1]
+     * @return robot-centric drive source with field-relative manual translation
+     */
+    public DriveSource fieldRelativeTo(HeadingEstimator headingEstimator,
+                                       DoubleSupplier configuredUpHeadingSupplier,
+                                       double maxHeadingAgeSec,
+                                       double minHeadingQuality) {
+        HeadingEstimator requiredHeading = Objects.requireNonNull(
+                headingEstimator,
+                "headingEstimator is required"
+        );
+        DoubleSupplier requiredUp = Objects.requireNonNull(
+                configuredUpHeadingSupplier,
+                "configuredUpHeadingSupplier is required"
+        );
+        if (!Double.isFinite(maxHeadingAgeSec) || maxHeadingAgeSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "maxHeadingAgeSec must be finite and >= 0, got " + maxHeadingAgeSec);
+        }
+        if (!Double.isFinite(minHeadingQuality)
+                || minHeadingQuality < 0.0
+                || minHeadingQuality > 1.0) {
+            throw new IllegalArgumentException(
+                    "minHeadingQuality must be finite and in [0, 1], got "
+                            + minHeadingQuality);
+        }
+
+        GamepadDriveSource self = this;
+        return new DriveSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private long failedCycle = Long.MIN_VALUE;
+            private RuntimeException retainedFailure;
+            private boolean sampling;
+            private boolean upResolved;
+            private double upFieldHeadingRad;
+            private String rejection = "no sample";
+            private DriveSignal lastControl = DriveSignal.zero();
+            private DriveSignal lastRobot = DriveSignal.zero();
+
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                Objects.requireNonNull(clock, "clock is required");
+                long cycle = clock.cycle();
+                if (cycle == failedCycle) {
+                    throw retainedFailure;
+                }
+                if (sampling) {
+                    throw new IllegalStateException(
+                            "field-relative GamepadDriveSource sample is reentrant");
+                }
+                if (cycle == lastCycle) {
+                    return lastRobot;
+                }
+                sampling = true;
+                try {
+                    DriveSignal control = self.get(clock);
+                    HeadingEstimate heading = requiredHeading.getHeadingEstimate();
+                    resolveUp();
+                    String nextRejection = rejectionOf(heading, clock);
+                    DriveSignal robot;
+                    if (nextRejection == null) {
+                        double theta = MathUtil.wrapToPi(
+                                heading.fieldHeadingRad - upFieldHeadingRad
+                        );
+                        double cos = Math.cos(theta);
+                        double sin = Math.sin(theta);
+                        robot = new DriveSignal(
+                                cos * control.axial + sin * control.lateral,
+                                -sin * control.axial + cos * control.lateral,
+                                control.omega
+                        );
+                        rejection = "none";
+                    } else {
+                        robot = new DriveSignal(0.0, 0.0, control.omega);
+                        rejection = nextRejection;
+                    }
+                    lastControl = control;
+                    lastRobot = robot;
+                    lastCycle = cycle;
+                    failedCycle = Long.MIN_VALUE;
+                    retainedFailure = null;
+                    return robot;
+                } catch (RuntimeException failure) {
+                    failedCycle = cycle;
+                    retainedFailure = failure;
+                    throw failure;
+                } finally {
+                    sampling = false;
+                }
+            }
+
+            private void resolveUp() {
+                if (upResolved) {
+                    return;
+                }
+                double supplied = requiredUp.getAsDouble();
+                if (!Double.isFinite(supplied)) {
+                    throw new IllegalStateException(
+                            "configured control-up field heading must be finite, got " + supplied);
+                }
+                upFieldHeadingRad = MathUtil.wrapToPi(supplied);
+                upResolved = true;
+            }
+
+            private String rejectionOf(HeadingEstimate heading, LoopClock clock) {
+                if (heading == null || !heading.hasHeading) {
+                    return "no heading";
+                }
+                if (!Double.isFinite(heading.fieldHeadingRad)
+                        || !Double.isFinite(heading.quality)) {
+                    return "non-finite heading evidence";
+                }
+                if (heading.quality < minHeadingQuality) {
+                    return "heading quality below minimum";
+                }
+                try {
+                    double ageSec = heading.timestamp.ageSec(clock);
+                    if (!Double.isFinite(ageSec)) {
+                        return "heading timestamp is invalid for this clock epoch";
+                    }
+                    if (ageSec > maxHeadingAgeSec) {
+                        return "heading evidence is stale";
+                    }
+                } catch (IllegalArgumentException differentClock) {
+                    return "heading timestamp belongs to another clock";
+                }
+                return null;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                failedCycle = Long.MIN_VALUE;
+                retainedFailure = null;
+                sampling = false;
+                upResolved = false;
+                upFieldHeadingRad = 0.0;
+                rejection = "no sample";
+                lastControl = DriveSignal.zero();
+                lastRobot = DriveSignal.zero();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = prefix == null || prefix.isEmpty() ? "fieldRelativeDrive" : prefix;
+                dbg.addData(p + ".class", "FieldRelativeGamepadDrive")
+                        .addData(p + ".rejection", rejection)
+                        .addData(p + ".configuredUpFieldHeadingRad",
+                                upResolved ? upFieldHeadingRad : Double.NaN)
+                        .addData(p + ".lastControl", lastControl)
+                        .addData(p + ".lastRobot", lastRobot);
+                requiredHeading.debugDumpHeading(dbg, p + ".heading");
+                self.debugDump(dbg, p + ".gamepad");
+            }
+        };
     }
 
     /**

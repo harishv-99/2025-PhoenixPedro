@@ -153,6 +153,10 @@ you customize its deadband, exponents, or normalized maximum scales, use the exa
 [`Sources and Signals`](<../core-concepts/Sources and Signals.md#gamepad-drive-shaping>). The raised-
 wheel test remains the evidence for physical direction and safe response.
 
+Keep this first lesson robot-relative. After it works, the managed
+[`Field-relative Drive`](<../examples/Field-relative Drive.md>) lesson adds one narrow heading lane
+and explicit driver-station up direction without changing the drivetrain or managed OpMode shape.
+
 The same controls owner maps button edges to the capability from the mechanism lesson:
 
 ```java
