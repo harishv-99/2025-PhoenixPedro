@@ -23,10 +23,11 @@ section explicitly labels a custom hardware adapter or other advanced boundary. 
 compare low-level builder alternatives may declare a short local solely to keep the API difference
 visible; production mechanism code assigns the selected build to a private field, as the complete
 examples do. The compiling
-[`StarterIntakeMechanism`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) shows the
-ordinary private-Plant owner; the flat
-[`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>) shows the same
-ownership inside a complete teaching OpMode.
+[`StarterIntakeMechanism`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) shows an
+ordinary direct-power private-Plant owner. The managed
+[`ReferenceLauncherMechanism`](<../../../robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+adds paired velocity, servo, sensor, overlay, and outcome-aware Task examples without exposing
+manual OpMode lifecycle code.
 
 ---
 

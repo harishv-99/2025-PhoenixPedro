@@ -17,9 +17,9 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) — the first course
+- [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) — the first course
   OpMode;
-- [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) — the later simple Auto.
+- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — the later simple Auto.
 
 **Safety:** Keep the starter OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.

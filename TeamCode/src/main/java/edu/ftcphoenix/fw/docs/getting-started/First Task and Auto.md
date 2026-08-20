@@ -15,10 +15,10 @@ blocking the robot loop.
 
 **Files for this lesson:**
 
-- [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) —
+- [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) —
   fresh timed Task factory;
-- [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) — root declaration;
-- [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) — FTC Auto entry;
+- [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>) — root declaration;
+- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — FTC Auto entry;
 - [`ScalarTasks.java`](<../../actuation/ScalarTasks.java>) and
   [`Tasks.java`](<../../task/Tasks.java>) — current Task factories.
 

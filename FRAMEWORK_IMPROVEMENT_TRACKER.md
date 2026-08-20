@@ -182,7 +182,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 95 | CONFIG-08 | Basic Pedro profile independence | Done | The reviewed independent profile, one review-gated root path, owner-local capture, collision preflight, tests, teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Done | The reviewed owner-section implementation, synchronized evidence, Android Studio review, and destination-specific publication authorization are complete. |
 | 97 | DRIVE-03 | Field-centric TeleOp drive intent | Done | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
-| 98 | EXAMPLE-04 | Curated managed concept examples | Proposed | Rationalize the manual-loop examples into a smaller managed progression while preserving EXAMPLE-03's evidence-gated deferral. |
+| 98 | EXAMPLE-04 | Curated managed concept examples | In progress | Replace the manual-loop labs with a season-independent managed reference curriculum, subsystem experiment companions, and a non-duplicating BIOBUZZ feature map. |
 | 99 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
@@ -15276,7 +15276,7 @@ writer, and explicit lifecycle ownership.
   - The raw `PhoenixPedroAutoOpModeBase`, private Auto clock/runner, manual Auto lifecycle,
     selector hardware retry, construction-time `PhoenixAutoProfiles`, direct Phoenix telemetry
     commits, and corresponding compatibility tests are deleted. The disabled generic Pedro
-    reference was renamed/moved to `robots.examples.pedro.BasicPedroAutoExample`: it remains a
+    reference was renamed/moved to `robots.examples.pedro.opmode.BasicPedroAutoExample`: it remains a
     managed `FtcRobotOpMode` example for a new/different robot and no longer appears to be a second
     Phoenix-season Auto recipe. Managed TeleOp, targeting snapshot publication, final drive-source
     ownership, and `ScoringPath` staged construction/best-effort cleanup from the approved first
@@ -20520,6 +20520,59 @@ writer, and explicit lifecycle ownership.
   Hardware remains adopting-robot validation for names/directions, mechanism response and stop,
   camera readiness, and physical drive/guidance behavior.
 - **Decision record:** _Pending. No implementation started._
+- **Gate 1 curriculum approval (2026-08-20):** the user approved the audited season-independent
+  `ReferenceRobot` curriculum with “Implement the plan.” The selected progression covers the
+  managed host/profile/root, sources and bindings, robot- and field-relative drive, power/servo/
+  referenced-position/paired-velocity Plants, fresh and outcome-aware Tasks, sensors/status/haptics,
+  output overlays, capability/supervisor ownership, AprilTag observation and offsets, localization,
+  spatial guidance/parking, and Pedro route composition. The existing Starter, field-relative, and
+  basic Pedro families remain focused entry or integration references; they do not become parallel
+  robot architectures.
+- **Approved example disposition:** remove the nine raw-`OpMode` numbered labs and the orphaned
+  custom-vision sketch. Migrate only their distinct lessons into managed reference owners or the
+  advanced reference index. Keep custom Tasks/regulators/adapters, periodic-equivalent planning,
+  contextual/endgame controls, custom vision processors/dynamic frames, Auto-to-TeleOp handoff,
+  raw host internals, and EXAMPLE-03's moving-target work reference-only unless a concrete adopter
+  proves a runnable lesson.
+- **Approved experiment boundary:** add a robot-specific tester suite and paired lab cards, not a
+  protected-core `Experiment` API. Reuse production subsystem capabilities and canonical actuator,
+  tuning, calibration, and localization tools. Driver Station telemetry prints only code-known
+  trial identity, commands, measurements, timing, errors, and outcomes; existing Panels tuning may
+  publish its supported controller evidence. Operators record externally observed results in a
+  spreadsheet. No Robot Controller persistence or invented physical PASS/FAIL claim is permitted.
+  Motion experiments ship locked until an adopting team supplies and reviews its own criteria.
+- **BIOBUZZ boundary:** add a helper that points confirmed or plausible BIOBUZZ needs to canonical
+  season-independent lessons without copying their code. Keep unrevealed game geometry, scoring,
+  inventory, strategy, and physical mechanism claims explicitly provisional and robot-owned.
+- **Implementation boundary and evidence:** no new protected-core API is approved. Add only
+  example-local capabilities/status/configuration/tester wiring, synchronize the current docs,
+  delete stale manual-lab callers/links, and test lifecycle, Task outcomes, experiment locks,
+  cleanup, and absence of false physical verdicts. Full tests/compile, strict Javadocs, docs link/
+  site checks, stale-name and ordinary-host scans, and whitespace checks are required. Hardware
+  performance remains adopting-robot evidence. **In progress on
+  `codex/example-04-curated-managed-examples`.** Implementation is complete and the item is now
+  **Done** after Android Studio review and destination-specific publication authorization.
+- **Package-structure revision (2026-08-20):** before review approval, the user selected one
+  scalable teaching taxonomy for every managed example: `robot`, `opmode`,
+  `capability/<family>`, `autonomous`, and `tester`, omitting unused roles. The revision preserves
+  package-private controls and production test seams, adds the missing field-relative composition
+  root so its OpMode stays thin, moves focused tests beside their owners, and teaches the package
+  map in the season-spanning catalog. Runtime behavior and protected-core APIs remain unchanged;
+  the complete Android Studio review and verification gate is reopened after these moves.
+- **Automated verification (2026-08-20):** focused managed-example tests passed after the package
+  moves. Full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac
+  :TeamCode:phoenixJavadocs` passed with **201 suites / 1,878 tests / 0 failures / 0 errors /
+  0 skipped** under Android Studio JBR 21. Documentation-link validation runs within that suite;
+  the stale example-package scan and `git diff --check` also passed. Output retains only the
+  repository's existing Java 8-on-JDK-21 and deprecated FTC controller warnings. Physical
+  directions, limits, experiment criteria, mechanism response, and motion remain adopting-robot
+  checks in Android Studio and on hardware.
+- **Manual review and publication authorization (2026-08-20):** the user approved the reviewed
+  Android Studio diff and explicitly authorized committing
+  `codex/example-04-curated-managed-examples`, pushing it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. EXAMPLE-04 is **Done**; physical robot checks remain adopter validation rather than a
+  software-completion claim. This authorization does not start RUNTIME-03 or another tracker item.
 
 ### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
 

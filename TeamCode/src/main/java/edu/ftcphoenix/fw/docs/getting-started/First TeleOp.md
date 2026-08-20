@@ -15,11 +15,11 @@ to control the intake through robot meanings.
 
 **Files for this lesson:**
 
-- [`StarterProfile.java`](<../../../robots/examples/starter/StarterProfile.java>) — drive names and
+- [`StarterProfile.java`](<../../../robots/examples/starter/robot/StarterProfile.java>) — drive names and
   directions plus the reviewed intake facts;
-- [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) — FTC entry;
-- [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) — TeleOp declarations;
-- [`StarterTeleOpControls.java`](<../../../robots/examples/starter/StarterTeleOpControls.java>) —
+- [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) — FTC entry;
+- [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>) — TeleOp declarations;
+- [`StarterTeleOpControls.java`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>) —
   sticks, slow mode, and buttons.
 
 ## Safety

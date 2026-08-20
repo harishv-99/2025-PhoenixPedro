@@ -38,9 +38,9 @@ students who have finished the core course. It switches to the dedicated Pedro r
 `@Disabled`, and explains the separate configuration and calibration required before any later
 physical test. It is not another required starter lesson.
 
-The core source starts at [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>).
+The core source starts at [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>).
 The optional Pedro track starts at its separate
-[`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) entry.
+[`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) entry.
 
 ## Keep these three rules visible
 

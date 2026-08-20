@@ -1,5 +1,12 @@
 package edu.ftcphoenix.robots.examples.starter;
 
+import edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware;
+import edu.ftcphoenix.robots.examples.starter.opmode.StarterAuto;
+import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntake;
+import edu.ftcphoenix.robots.examples.starter.opmode.StarterTeleOp;
+import edu.ftcphoenix.robots.examples.starter.robot.StarterProfile;
+import edu.ftcphoenix.robots.examples.starter.robot.StarterRobot;
+
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
@@ -17,8 +24,8 @@ import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 
-import static edu.ftcphoenix.robots.examples.starter.StarterTestHardware.fullTeleOpHardware;
-import static edu.ftcphoenix.robots.examples.starter.StarterTestHardware.prepare;
+import static edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware.fullTeleOpHardware;
+import static edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware.prepare;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;

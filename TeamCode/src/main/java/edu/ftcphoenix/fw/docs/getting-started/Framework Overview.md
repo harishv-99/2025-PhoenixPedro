@@ -13,8 +13,8 @@ required.
 
 - [`FtcRobotOpMode.java`](<../../ftc/FtcRobotOpMode.java>)
 - [`RobotProgram.java`](<../../ftc/RobotProgram.java>)
-- [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>)
-- [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>)
+- [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>)
+- [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>)
 
 **Safety:** This lesson only reads code. Do not enable a checked-in example or command hardware yet.
 

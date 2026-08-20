@@ -57,10 +57,9 @@ The Task and binding APIs see ordinary Phoenix sources, and robot code uses the 
 
 This is a complete FTC lifecycle shape: the framework starts and advances its private runner after
 bindings, then updates declared outputs and commits presenters. STOP and runtime failure actively
-cancel the runner before outputs stop. The flat teaching
-[`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>) deliberately shows
-the advanced explicit-owner form, where the custom host must cancel its runner and stop every
-resource itself.
+cancel the runner before outputs stop. The managed
+[`ReferenceLauncherMechanism`](<../../../robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+shows a fresh outcome-aware macro without exposing custom-host ceremony.
 
 In ordinary TeleOp, Tasks do decision work, update sources, request Plant targets, or manage a
 temporary calibration-search recipe. They run before the one final `DriveSource` writer and the
@@ -287,7 +286,7 @@ code, that constructor receives `HardwareMap` and its active data-only config, c
 the complete snapshot before its own hardware lookup, and uses the copied hardware name and
 direction. The composition root owns cross-owner policy and constructs the mechanism, not this raw
 Plant. See the compiling
-[`StarterIntakeMechanism`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) for the
+[`StarterIntakeMechanism`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) for the
 complete owner.
 
 ```java

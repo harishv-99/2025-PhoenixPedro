@@ -15,13 +15,13 @@ checkpoint before adding a drivetrain.
 
 **Files for this lesson:**
 
-- [`StarterProfile.java`](<../../../robots/examples/starter/StarterProfile.java>) — intake name,
+- [`StarterProfile.java`](<../../../robots/examples/starter/robot/StarterProfile.java>) — intake name,
   direction, and powers;
-- [`StarterIntake.java`](<../../../robots/examples/starter/StarterIntake.java>) — robot meanings;
-- [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) —
+- [`StarterIntake.java`](<../../../robots/examples/starter/capability/intake/StarterIntake.java>) — robot meanings;
+- [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) —
   private Plant and safe stop;
-- [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) — Auto declarations;
-- [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) — disabled FTC entry.
+- [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>) — Auto declarations;
+- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — disabled FTC entry.
 
 ## Safety
 
