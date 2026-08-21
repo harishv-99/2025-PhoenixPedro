@@ -144,4 +144,10 @@ No. Tests cannot inspect the Robot Controller configuration, wiring, motor polar
 travel, or available floor space. Use the testing and calibration runbooks when the team begins
 that separate work.
 
+## Continue with robot code
+
+With the software baseline green, use [Your first Phoenix robot code](<First Phoenix Robot Code.md>)
+to copy the compiled Starter into a team package, change one control meaning, and prove that change
+with no robot hardware. Keep the example disabled and its motion permissions false.
+
 **Framework tour:** [`Phoenix in one picture`](<Framework Overview.md>)

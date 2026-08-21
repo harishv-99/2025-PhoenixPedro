@@ -43,6 +43,21 @@ stalled OpMode loop cannot apply a new neutral command.
 This repository's production Phoenix robot has its own ordered
 [`Phoenix calibration guide`](<../../../robots/phoenix/Phoenix Calibration Guide.md>).
 
+## When hardware is available, choose one question
+
+Hardware work is not required by the first software lesson. When a supervised robot is available,
+start with the one question that must be answered rather than running every tool:
+
+| Question | Start here |
+|---|---|
+| Does this named actuator move in the intended direction and stop when commanded? | [Actuator bring-up](<Actuator Bring-up.md>) |
+| Are the mechanism reference, encoder scale, drivetrain response, or sensor axes correct? | [Robot Calibration Tutorials](<Robot Calibration Tutorials.md>) |
+| Which reviewed controller settings meet the mechanism's measured response goal? | [Control Tuning Workflow](<Control Tuning Workflow.md>) |
+| Does the whole subsystem meet a team-authored success criterion over repeated trials? | [Subsystem Experiments](<../examples/Subsystem Experiments.md>) |
+
+Stop after collecting the evidence needed for that question. A later question begins a separate
+reviewed test; one successful result does not validate unrelated hardware or behavior.
+
 ## Student runbooks
 
 1. [`Actuator bring-up`](<Actuator Bring-up.md>) — the one ordinary device-first workflow for

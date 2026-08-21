@@ -79,14 +79,16 @@ public final class DocumentationLinksTest {
                 startGroup.group(1),
                 Arrays.asList(
                         "Phoenix in one picture",
-                        "Choose a Phoenix topic",
                         "Set up and verify the project",
+                        "Write your first Phoenix robot code",
+                        "Choose a Phoenix topic",
                         "Documentation home",
                         "Getting started"),
                 Arrays.asList(
                         "fw/docs/getting-started/Framework Overview.md",
-                        "fw/docs/getting-started/Beginner's Guide.md",
                         "fw/docs/getting-started/Build and Run.md",
+                        "fw/docs/getting-started/First Phoenix Robot Code.md",
+                        "fw/docs/getting-started/Beginner's Guide.md",
                         "fw/docs/README.md",
                         "fw/docs/getting-started/README.md"));
 
@@ -225,6 +227,7 @@ public final class DocumentationLinksTest {
         Path learningRoot = repositoryRoot.resolve(
                 "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started");
         Path overview = learningRoot.resolve("Framework Overview.md");
+        Path firstRobotCode = learningRoot.resolve("First Phoenix Robot Code.md");
         Path hub = learningRoot.resolve("Beginner's Guide.md");
         Path topics = learningRoot.resolve("learn-phoenix");
 
@@ -234,6 +237,21 @@ public final class DocumentationLinksTest {
                 javaFenceCount(overview) <= 3);
         assertTrue("First-contact overview exceeds 30 displayed Java lines",
                 displayedJavaLineCount(overview) <= 30);
+        assertTrue("First robot-code lesson is missing", Files.isRegularFile(firstRobotCode));
+        assertTrue("First robot-code lesson exceeds 1,200 prose words",
+                proseWordCount(firstRobotCode) <= 1200);
+        assertTrue("First robot-code lesson exceeds five Java excerpts",
+                javaFenceCount(firstRobotCode) <= 5);
+        assertTrue("First robot-code lesson exceeds 35 displayed Java lines",
+                displayedJavaLineCount(firstRobotCode) <= 35);
+        String firstRobotCodeText = readUtf8(firstRobotCode);
+        assertTrue("First robot-code lesson must link its compiled control check on GitHub",
+                firstRobotCodeText.contains(
+                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
+                                + "edu/ftcphoenix/robots/examples/starter/robot/"
+                                + "StarterFirstLessonTest.java"));
+        assertTrue("First robot-code lesson must link the canonical Starter source",
+                firstRobotCodeText.contains("robots/examples/starter"));
         assertTrue("Topic router exceeds 450 prose words", proseWordCount(hub) <= 450);
 
         int topicWords = 0;

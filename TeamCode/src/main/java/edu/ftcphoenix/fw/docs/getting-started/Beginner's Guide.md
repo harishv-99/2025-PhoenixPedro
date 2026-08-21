@@ -4,6 +4,10 @@ Start with [Phoenix in one picture](<Framework Overview.md>). After you can trac
 button from gamepad intent to the mechanism-owned hardware command, choose only the topic that
 answers your current question. These are independent deep dives, not required course chapters.
 
+To practice before choosing a deep dive, complete
+[Your first Phoenix robot code](<First Phoenix Robot Code.md>). It makes one tested control change
+in a copied team package and requires no matching hardware.
+
 | When you need to understand… | Read |
 |---|---|
 | Why profiles, composition roots, capabilities, mechanisms, and presenters have different jobs | [Robot roles](<learn-phoenix/Robot Roles.md>) |

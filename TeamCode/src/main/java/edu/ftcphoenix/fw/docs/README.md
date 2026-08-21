@@ -8,17 +8,20 @@ Plants realize mechanism targets, and one managed program owns the loop.
 
 1. Read [Phoenix in one picture](<getting-started/Framework Overview.md>) to see code composition,
    managed execution, and one complete button-to-hardware-command trace.
-2. [Choose a Phoenix topic](<getting-started/Beginner's Guide.md>) that matches the job in front of
+2. [Set up and verify the project](<getting-started/Build and Run.md>), then complete
+   [your first Phoenix robot code](<getting-started/First Phoenix Robot Code.md>) to make one
+   hardware-free, tested change in a copied team package.
+3. [Choose a Phoenix topic](<getting-started/Beginner's Guide.md>) that matches the job in front of
    you. The topic pages are optional deep dives, not a required course sequence.
 
-For project setup, use [Build and run Phoenix](<getting-started/Build and Run.md>). Physical device
-work starts separately at [Testing and calibration](<testing-calibration/README.md>).
+Physical device work starts separately at [Testing and calibration](<testing-calibration/README.md>).
 
 ## Find an answer
 
 | Goal | Start here |
 |---|---|
 | Understand how the framework executes | [Phoenix in one picture](<getting-started/Framework Overview.md>) |
+| Write and test the first team code without hardware | [Your first Phoenix robot code](<getting-started/First Phoenix Robot Code.md>) |
 | Learn one framework area in depth | [Choose a Phoenix topic](<getting-started/Beginner's Guide.md>) |
 | Decide where new robot code belongs | [From requirement to robot](<getting-started/learn-phoenix/From Requirement to Robot.md>) |
 | Remember the ordinary API shape | [Phoenix Cheat Sheet](<reference/Phoenix Cheat Sheet.md>) |
@@ -38,7 +41,7 @@ work starts separately at [Testing and calibration](<testing-calibration/README.
 
 ### Learn and program a team robot
 
-- [Getting started](<getting-started/README.md>) — visual first contact, topic router, and setup
+- [Getting started](<getting-started/README.md>) — visual first contact, setup, software exercise, and topic router
 - [Examples](<examples/README.md>) — copyable Starter, Reference case study, and focused integrations
 - [Reference](<reference/README.md>) — short lookups and exact current vocabulary
 - [Troubleshooting](<troubleshooting/README.md>) — symptom-led recovery

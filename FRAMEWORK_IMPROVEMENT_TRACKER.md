@@ -187,6 +187,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 100 | DOC-04 | Reference-robot learning path | Done | The reviewed source-based course and bounded Starter/Reference truth hardening have completed Android Studio review and destination-specific publication authorization. |
 | 101 | DOC-05 | Visual first contact and compact learning path | Done | The reviewed accessible Starter execution picture, optional topic router, compact source-based topics, and focused navigation/accessibility/budget regressions received destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
 | 102 | EXAMPLE-05 | Authoritative Starter intake mode | Done | The reviewed semantic-mode implementation, unchanged student calls, synchronized teaching, clean verification, and destination-specific publication authorization are complete. |
+| 103 | EXAMPLE-06 | First software robot scaffold | Done | The reviewed cumulative hardware-free Starter exercise, focused control-meaning proof, one-path navigation, and compact source map are software-verified and have destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -20895,7 +20896,7 @@ writer, and explicit lifecycle ownership.
 
 ### EXAMPLE-05 - Authoritative Starter intake mode
 
-- **Status and approval boundary (2026-08-20):** **Verifying** on
+- **Status and approval boundary (2026-08-20):** **Done** on
   `codex/example-05-authoritative-starter-mode`, based directly on
   `origin/master@520145bc34dd51ffd7ec89549d4c47ffb61bcd16`. The user identified the Starter's
   power-to-mode reconstruction as a misleading teaching pattern, approved the decision-complete
@@ -21012,6 +21013,122 @@ writer, and explicit lifecycle ownership.
   `master`. EXAMPLE-05 is **Done**. This authorization does not start RUNTIME-03, extend the
   reviewed file scope, or convert the explicitly deferred robot-hardware evidence into a software
   claim.
+
+### EXAMPLE-06 - First software robot scaffold
+
+- **Status and approval boundary (2026-08-20):** **Verifying** on
+  `codex/example-06-first-software-robot`, based directly on
+  `origin/master@ed13a1b5f7bacafa85e86039da6b0b1decdccdd1`. The user approved the
+  decision-complete plan with **“Implement the plan.”** That approval covers one cumulative,
+  software-only Starter exercise, its focused test, navigation, and synchronized teaching. It does
+  not authorize a framework API, duplicate workshop robot, generator, hardware claim, publication,
+  RUNTIME-03, or another tracker item.
+- **Confirmed beginner path:** the ordinary Phoenix host is already three student statements inside
+  one `configure(RobotProgram)` override. The canonical Starter is compiled and tested, but its full
+  reference currently introduces seven production files before a student completes a code change.
+  `Phoenix in one picture` is intentionally read-only, `Build and Run` keeps the example disabled,
+  and the physical runbooks correctly require hardware that may not exist. The missing capability
+  is therefore a cumulative software exercise, not a shorter lifecycle facade.
+- **External documentation audit:** official WPILib and NextFTC material gains approachability from
+  a known template, one continuing robot story, and complete checkpoints. The FTC SDK tutorial
+  builds and runs small increments. Road Runner and Pedro name one tuning goal at a time. FTCLib,
+  WPILib, NextFTC, Road Runner Actions, and Pedro Ivy make composition visually compact, but their
+  shortest examples also rely on global schedulers/subsystems, direct hardware access, manual
+  heartbeats, blocking hosts, hidden lifecycle details, or language-specific syntax. Those are
+  presentation or ownership tradeoffs, not evidence that Phoenix needs a second ordinary API.
+- **Complete local caller and source audit:** EXAMPLE-06 affects the Starter documentation/test
+  experience, not its runtime behavior. The seven Starter files, three existing Starter suites,
+  `Framework Overview`, `Build and Run`, the beginner and examples hubs, `Modern Starter Robot`,
+  the root/package/framework entry READMEs, the testing/calibration hub, Zensical navigation, and
+  `DocumentationLinksTest` are the complete maintained surface. Reference, Pedro, field-relative,
+  Phoenix production, legacy/sample code, and protected framework implementations remain
+  unchanged.
+- **Construction and API audit:** `FtcRobotOpMode.configure`, `RobotProgram` declarations,
+  `CallbackBindings.onRise`, semantic capability calls, `Tasks.sequence/parallel...`, and the
+  staged `FtcActuators.plant(...)` recipe each expose distinct ownership or physical decisions.
+  A name-only motor wrapper would discard data-only configuration and pre-effect validation. A
+  fluent trigger or Task synonym would duplicate the current graph-owned registration/factory path.
+  A global scheduler, singleton subsystem, or generic component registry would weaken per-program
+  ownership. No production public layer is redundant or missing for this lesson.
+- **Chosen design:** keep `edu.ftcphoenix.robots.examples.starter` as the one compiled authority.
+  Add a short guide that has students use Android Studio's copy/refactor support to copy that package
+  into `edu.ftcphoenix.robots.<robotname>`, leaving class names unchanged until the team has real
+  vocabulary. Reveal only the current owner instead of asking students to read all seven files.
+  The first deliberate edit changes the copied COLLECT binding from A to Y, demonstrates one focused
+  red/green test, and then traces the unchanged capability, mechanism, and timed Auto path.
+- **Required completion boundary:** the lesson ends with the copied package compiling and its
+  copied control-meaning test passing. Example OpModes remain `@Disabled`; motion permissions stay
+  false; no device, deployment, or physical result is required. Existing exhaustive Starter tests
+  remain the authority for requested/applied staging, fresh Task timing, cancellation, loop order,
+  and terminal zero. Hardware bring-up is a separate optional route and never a hidden prerequisite.
+- **Focused learning-test design:** add one concise, hardware-free `StarterFirstLessonTest` beside
+  the controls. It uses Phoenix's test clock/bindings plus a local recording capability to prove
+  that the selected rising edge makes exactly one semantic COLLECT request and never reaches a
+  Plant or numeric power. It contains no FTC hardware fake, reflection, mock library, copied
+  scheduler, or alternate robot API. Students copy this one test separately into their matching
+  team test package and update its expected input only after observing the intentional failure.
+- **Progressive documentation design:** add `First Phoenix Robot Code.md` as a 45–60 minute guide,
+  capped near 1,200 prose words, five short Java excerpts, and 35 displayed Java lines. The Start
+  Here order becomes picture, setup/verification, first code, then the optional topic router. Revise
+  the Modern Starter source map to say “open one owner at a time,” and add only a compact,
+  question-based optional hardware continuation. Preserve the three legacy lesson URLs and every
+  deep reference page.
+- **Alternatives rejected:** documentation-only routing without a compiled focused check does not
+  produce programming ability. Editing the canonical Starter in place teaches disposable changes.
+  A separate workshop package duplicates the architecture and can drift. A generator adds tooling
+  before repeated copy evidence exists. A beginner facade, fluent DSL, direct hardware wrapper,
+  stored reusable Task, or global manager gives students another way they must later unlearn.
+- **Deferred candidate:** Starter, Reference, and Pedro tests contain repeated FTC hardware probes.
+  A reusable test-scope FTC probe may eventually simplify team mechanism tests, but its supported
+  device/evidence surface needs a separate distinct-capability gate. EXAMPLE-06 neither creates that
+  API nor makes the first lesson depend on it.
+- **Verification plan:** run `StarterFirstLessonTest`, all three Starter suites, and
+  `DocumentationLinksTest`; then run full TeamCode unit tests, Java compilation, and Phoenix
+  Javadocs. Extend documentation checks for the exact Start Here order, new page/link stability,
+  legacy-page preservation, and compactness budgets. Run strict Zensical generation and inspect the
+  page at desktop and narrow widths when the renderer is available. Rehearse the documented package
+  copy/refactor in a disposable workspace and confirm the copy compiles. Run stale-route scans,
+  `git diff --check`, and whitespace checks. No robot-hardware validation is required or claimed.
+- **Implemented result (2026-08-20):** the canonical Starter remains the only production scaffold
+  and its seven runtime files are unchanged. The new `Your first Phoenix robot code` page guides one
+  Android Studio package copy, an explicit zero-stale-import check, a compile-green checkpoint, and
+  one A-to-Y red/green control edit. It then reveals only the thin OpMode, semantic capability,
+  mechanism realization, and fresh Auto Task needed to explain that edit. The checked-in page is
+  712 prose words, five Java excerpts, and 22 displayed Java lines by the same counting convention
+  enforced in `DocumentationLinksTest`.
+- **Focused proof (2026-08-20):** the new hardware-free `StarterFirstLessonTest` uses the real
+  `GamepadDevice`, callback binding graph, and Phoenix test clock with a local recording capability.
+  It proves exactly three registered meanings, rising-edge COLLECT/EJECT/STOPPED requests, no repeat
+  while held or released, and no Task-factory call. The four existing Starter/documentation suites
+  plus that test passed: **5 suites, 38 tests, 0 failures, 0 errors, 0 skipped**.
+- **Full software verification (2026-08-20):**
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs`
+  completed successfully on the reviewed tree: **208 suites, 1,928 tests, 0 failures, 0 errors,
+  0 skipped**. Only the repository's existing Java-8-on-JDK-21 and FTC deprecation warnings were
+  emitted. No robot hardware, physical motion, direction, wiring, or STOP response was tested or
+  claimed.
+- **Documentation and rendering boundary (2026-08-20):** maintained Markdown links, anchors,
+  fences, exact Start Here order, legacy destinations, source-link stability, and compactness
+  budgets pass `DocumentationLinksTest`. The lesson links production source inside the published
+  docs tree and links its test through the stable GitHub `master` source path, avoiding an
+  out-of-site relative link. This workstation exposes only the nonfunctional Windows Store Python
+  alias and has no `py`, `uv`, or `zensical`, so strict Zensical generation and desktop/narrow
+  rendered inspection were not run locally. The GitHub `Verify documentation artifact` check and
+  rendered PR review remain mandatory publication gates.
+- **Android Studio review handoff (2026-08-20):** inspect the unstaged diff on
+  `codex/example-06-first-software-robot`, based on
+  `origin/master@ed13a1b5f7bacafa85e86039da6b0b1decdccdd1`. Rehearse `Refactor > Copy` with
+  `New name = myrobot`, the documented production/test destinations, and the zero-stale-import
+  search; confirm the copied package compiles, the unchanged test is green, the A-to-Y edit makes it
+  red, and the two indicated test input lines return it to green. Also inspect the new lesson,
+  question-based Modern Starter map, one-path entry navigation, and optional hardware selector.
+  The user completed that review and supplied the exact combined authorization: **“EXAMPLE-06
+  looks good. Authorize committing the reviewed EXAMPLE-06 diff on
+  codex/example-06-first-software-robot, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** That authorizes staging only this reviewed item, one commit, pushing the named branch,
+  opening the matching PR, and merging it into `master`; it does not authorize the next tracker
+  item.
 
 ### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
 

@@ -15,6 +15,11 @@ Start with [Phoenix in one picture](<Framework Overview.md>). It follows one Sta
 the managed lifecycle and the mechanism-owned hardware-command path. Reading it requires no
 matching robot, example execution, edit, or individual build project.
 
+After [setting up and verifying the project](<Build and Run.md>), complete
+[your first Phoenix robot code](<First Phoenix Robot Code.md>). It copies the one canonical Starter
+into a team package, changes one button meaning, and proves the change with a hardware-free test.
+The exercise reveals one owner at a time; it does not require reading all seven Starter files first.
+
 Then [choose a Phoenix topic](<Beginner's Guide.md>) for the problem in front of you: robot roles,
 controls, Plants, Tasks and Auto, evidence, or placing a new requirement. These pages are optional
 deep dives rather than a required sequence. [Role paths](<learn-phoenix/Role Paths.md>) provides a
@@ -40,9 +45,11 @@ example. It is an optional integration topic and does not authorize a physical r
 ## Keep these three rules visible
 
 - Robot behavior must not sleep or wait in a blocking loop. Use a fresh `Task` for work over time.
-- A mechanism privately owns its Plants and exposes robot meanings such as `collect()` or
-  `launchOne()`.
+- A mechanism privately owns its Plants and exposes robot meanings such as `setMode(COLLECT)`,
+  `collectForSeconds(...)`, or `launchOne()`.
 - Software evidence and physical evidence are different; claim only what the available source or
   measurement proves.
 
 **First-contact guide:** [Phoenix in one picture](<Framework Overview.md>)
+
+**First coding exercise:** [Your first Phoenix robot code](<First Phoenix Robot Code.md>)
