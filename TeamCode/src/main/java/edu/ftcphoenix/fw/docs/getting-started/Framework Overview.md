@@ -135,6 +135,6 @@ and declares the mechanism that privately owns the hardware path.
 
 ## Choose one next route
 
-1. For project setup and supervised physical bring-up, use [Build and run Phoenix](<Build and Run.md>).
-2. For behavior over time and Auto, study [Tasks and autonomous](<learn-phoenix/Tasks and Autonomous.md>).
-3. For a topic matched to your current job, open [Choose a Phoenix topic](<Beginner's Guide.md>).
+1. Verify the software project with [Build and run Phoenix](<Build and Run.md>).
+2. Make and test one real code change in [Your first Phoenix robot code](<First Phoenix Robot Code.md>).
+3. For the question in front of you, open [Choose a Phoenix topic](<Beginner's Guide.md>).

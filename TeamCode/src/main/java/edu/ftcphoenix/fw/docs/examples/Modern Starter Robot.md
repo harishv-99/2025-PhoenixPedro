@@ -10,25 +10,30 @@ Use this example as the smallest compiling Phoenix structure shared by TeleOp an
 direct mecanum drive, one intake mechanism, one mode-neutral intake capability, one controls owner,
 and one declaration-only composition root. FTC lifecycle ceremony is supplied by
 `FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
-remain in the seven source files listed below.
+remain in the focused owners mapped below.
 
 For the short execution trace, begin with
-[`Phoenix in one picture`](<../getting-started/Framework Overview.md>). Use
+[`Phoenix in one picture`](<../getting-started/Framework Overview.md>), then
+[`set up and verify the project`](<../getting-started/Build and Run.md>). Use
+[`Your first Phoenix robot code`](<../getting-started/First Phoenix Robot Code.md>) to copy the
+Starter, make one control change, and prove it without hardware. Use
 [`Choose a Phoenix topic`](<../getting-started/Beginner's Guide.md>) when one ownership boundary
-needs more explanation. This page remains the complete Starter source reference; project setup is separate in
-[`Build and run Phoenix`](<../getting-started/Build and Run.md>).
+needs more explanation. This page remains the complete Starter source reference.
 
-## Read the seven files
+## Open one owner at a time
 
-| File | Job | What a student normally edits |
+Do not read seven files before making a change. Start with the question in front of you, open its
+owner, and return to this map only when the next boundary matters.
+
+| Question in front of you | Open this source | Boundary it owns |
 |---|---|---|
-| [`StarterProfile.java`](<../../../robots/examples/starter/robot/StarterProfile.java>) | Fresh four-field intake/drive configuration and separate motion permissions | Replace and review the example facts in `current()`, then permit only the motion being tested. |
-| [`StarterIntake.java`](<../../../robots/examples/starter/capability/intake/StarterIntake.java>) | Shared mode-neutral capability vocabulary | Rename the capability and modes for the real robot. |
-| [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) | Privately owns the intake Plant and implements `RobotProgram.Output` | Change hardware realization and safe stop behavior. |
-| [`StarterTeleOpControls.java`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>) | Declares button meanings and exposes the final manual `DriveSource` | Change driver meanings here. |
-| [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>) | Checks robot-level permissions/relationships, then constructs and declares the mode-specific graph | Add real owners and their declaration order. |
-| [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) | Disabled one-method FTC TeleOp | Normally change only the name/profile selection. |
-| [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) | Disabled one-method Auto with one fresh root Task | Replace the routine expression. |
+| What should a button or drive stick mean? | [`StarterTeleOpControls.java`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>) | Driver meanings and the final manual `DriveSource` |
+| Which robot words should TeleOp and Auto share? | [`StarterIntake.java`](<../../../robots/examples/starter/capability/intake/StarterIntake.java>) | Mode-neutral intake intent, fresh Tasks, and status |
+| How does an intake mode become one final motor command? | [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) | Private Plant construction, realization, update, and stop |
+| Where do names, directions, powers, limits, and permissions belong? | [`StarterProfile.java`](<../../../robots/examples/starter/robot/StarterProfile.java>) | Fresh data-only intake/drive configuration and separate motion permissions |
+| Who constructs and declares the active robot graph? | [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>) | Robot-level checks, construction, declaration order, and presentation |
+| What is the smallest ordinary FTC TeleOp host? | [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) | Disabled profile selection and TeleOp declaration |
+| How does Auto compose timed behavior from the same capability? | [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) | Disabled Auto strategy and one fresh root Task |
 
 The split is intentional. `FtcRobotOpMode` is not a season robot superclass and knows no intake,
 scoring, route, or strategy vocabulary. It owns only the reusable FTC callback/lifecycle contract.

@@ -10,8 +10,9 @@ nav = [
   { "Home" = "README.md" },
   { "Start here" = [
     { "Phoenix in one picture" = "fw/docs/getting-started/Framework Overview.md" },
-    { "Choose a Phoenix topic" = "fw/docs/getting-started/Beginner's Guide.md" },
     { "Set up and verify the project" = "fw/docs/getting-started/Build and Run.md" },
+    { "Write your first Phoenix robot code" = "fw/docs/getting-started/First Phoenix Robot Code.md" },
+    { "Choose a Phoenix topic" = "fw/docs/getting-started/Beginner's Guide.md" },
     { "Documentation home" = "fw/docs/README.md" },
     { "Getting started" = "fw/docs/getting-started/README.md" },
   ] },

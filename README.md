@@ -10,18 +10,20 @@ There is one source-based beginner entry:
 
 1. Read [`Phoenix in one picture`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Framework Overview.md>)
    to trace what is composed once and what the managed program executes later.
-2. [`Choose a Phoenix topic`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>)
-   relevant to your work, or use
-   [`Build and run Phoenix`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Build and Run.md>)
+2. Use [`Build and run Phoenix`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Build and Run.md>)
    for project setup and software verification.
-3. Use the canonical [`Phoenix documentation hub`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/README.md>)
+3. Complete [`Your first Phoenix robot code`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/First Phoenix Robot Code.md>)
+   to copy the Starter and prove one code change without robot hardware.
+4. [`Choose a Phoenix topic`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>)
+   relevant to your work, or use the canonical
+   [`Phoenix documentation hub`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/README.md>)
    later as a searchable reference.
 
 The compiling [`modern starter robot`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/examples/Modern Starter Robot.md>)
 is the ordinary managed TeleOp-and-Auto example. Framework changes follow the
 [`Framework Principles`](<TeamCode/src/main/java/edu/ftcphoenix/fw/Framework Principles.md>).
 
-### Quick links after the first picture
+### Later reference shortcuts
 
 - [`Phoenix Cheat Sheet`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/reference/Phoenix Cheat Sheet.md>)
 - [`Common Problems`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/troubleshooting/Common Problems.md>)
