@@ -31,6 +31,7 @@ them. A small robot simply leaves out unused packages.
 | Sources and callback bindings | `StarterTeleOpControls` | Map gamepad meanings to semantic capability calls. |
 | Robot-centric mecanum | `StarterTeleOpControls.driveSource()` | A `DriveSource` describes intent; one sink realizes it. |
 | Direct-power Plant and timed macro | `StarterIntakeMechanism` and `StarterAuto` | A mechanism owns its Plant; repeated behavior returns a fresh Task. |
+| Hardware-free mechanism evidence | [Test a mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>) and [Reference scenarios](<Hardware-free Reference Scenarios.md>) | Construct the unchanged production mechanism, inject device inputs explicitly, and record outputs without claiming physics. |
 | Field-relative composition | `fieldrelative/opmode/FieldRelativeDriveExample` | Define station “up” explicitly and rotate intent before the normal mecanum sink. |
 | Referenced position, feedback moves, and homing | `ReferenceLift`, `ReferenceLiftMechanism` | Use a persistent request for immediate intent and a fresh feedback-aware Task when later work must wait for arrival. |
 | Paired velocity wheels and readiness | `reference/capability/launcher/ReferenceLauncherMechanism` | One Plant owns paired commands while each wheel supplies readiness evidence; controller readiness is not proof that a game piece scored. |

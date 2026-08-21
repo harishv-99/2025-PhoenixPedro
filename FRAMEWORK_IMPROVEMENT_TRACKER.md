@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -188,6 +188,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 101 | DOC-05 | Visual first contact and compact learning path | Done | The reviewed accessible Starter execution picture, optional topic router, compact source-based topics, and focused navigation/accessibility/budget regressions received destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
 | 102 | EXAMPLE-05 | Authoritative Starter intake mode | Done | The reviewed semantic-mode implementation, unchanged student calls, synchronized teaching, clean verification, and destination-specific publication authorization are complete. |
 | 103 | EXAMPLE-06 | First software robot scaffold | Done | The reviewed cumulative hardware-free Starter exercise, focused control-meaning proof, one-path navigation, and compact source map are software-verified and have destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
+| 104 | EXAMPLE-07 | Extensible hardware-free subsystem bench | Done | The reviewed test-only FTC device registry, consolidated example fixtures, bounded Starter/Reference scenarios, truthful evidence path, and destination-specific publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -21129,6 +21130,145 @@ writer, and explicit lifecycle ownership.
   master.”** That authorizes staging only this reviewed item, one commit, pushing the named branch,
   opening the matching PR, and merging it into `master`; it does not authorize the next tracker
   item.
+
+### EXAMPLE-07 - Extensible hardware-free subsystem bench
+
+- **Status and approval boundary (2026-08-21):** **Done** on
+  `codex/example-07-hardware-free-mechanism-bench`, based directly on
+  `origin/master@97b57ac8a677236edeb713ebba0dfe033609b71a`. After discussing how actuator
+  and sensor values enter the existing training tests, the user approved the decision-complete
+  design with **“Implement the plan.”** That approval covers one test-source FTC device bench,
+  consolidation of the three example-local probes, bounded learning scenarios, navigation, and
+  synchronized evidence guidance. It does not authorize a production runtime API, Plant injection
+  into ordinary mechanisms, a physics model, trace-file playback, hardware claims, publication,
+  RUNTIME-03, or another tracker item.
+- **Confirmed behavior and missing teaching seam:** Starter's first software lesson currently proves
+  control meanings with the real gamepad adapter, bindings, clock, and a recording capability. Its
+  mechanism tests, Reference lift/launcher tests, and Basic Pedro tests separately subclass
+  `HardwareMap` and proxy FTC devices. Those probes already inject encoder positions, measured
+  velocities, and digital electrical levels while recording motor/servo commands, but their APIs
+  and fidelity boundaries are duplicated and hidden inside robot-specific support packages. There
+  is no current student-facing explanation of how the production `HardwareMap + Config`
+  constructor can be exercised without owning the physical devices.
+- **Current callers and ordinary path:** the affected test callers are the Starter profile,
+  mechanism, controls, root, and first-lesson suites; the Reference root, lift, launcher, parking,
+  and flywheel-experiment suites; and the Basic Pedro configuration/mechanism suites. Production
+  Starter, Reference, Pedro, Phoenix, `FtcActuators`, Plant builders, and managed OpModes remain
+  unchanged. The ordinary robot path stays `new Mechanism(hardwareMap, config)`: a real FTC OpMode
+  supplies the SDK map, while a software scenario supplies the test map at that same constructor
+  call.
+- **Boundary/API audit:** the distinct missing capability is a test-scope `HardwareMap` populated
+  with narrow `DcMotorEx`, digital-input, `Servo`, and `CRServo` probes. It must expose injected
+  observations separately from recorded commands, use unit-bearing names, reject duplicate or
+  mismatched device registrations before a scenario can false-pass, and never manufacture encoder
+  motion or mirror a command into feedback. The production mechanism still invokes the canonical
+  `FtcActuators.plant(hardwareMap)` recipe and privately owns the complete Plant graph. Therefore no
+  Plant builder, resolver, completed Plant, alternate mechanism constructor, device facade, or
+  model interface is exported to student robot code.
+- **Chosen design:** add one `edu.ftcphoenix.fw.testing.ftc.FtcTestHardware` test utility that is a
+  real SDK-stub `HardwareMap` with explicit `addMotor`, `addDigitalInput`, `addServo`, and
+  `addCrServo` registration. Nested probes accept direct test observations such as
+  `setCurrentPositionTicks`, `setMeasuredVelocityTicksPerSec`, and `setHigh`, and expose recorded
+  facts such as requested power, target ticks, requested velocity, position, direction, brake
+  mode, reads, and writes. Consolidate only the duplicated Starter, Reference, and Basic Pedro
+  example fixtures; leave specialized protected-framework and integration probes local to the
+  contract they test.
+- **Progressive learning design:** continue the one cumulative Starter path with one short
+  hardware-free mechanism lesson. It uses the unchanged production mechanism constructor and a
+  checked-in passing scenario, then asks the student to transfer COLLECT to EJECT. An optional
+  Reference page shows injected lift encoder/switch evidence and independent flywheel-velocity
+  evidence without requiring that hardware. Every scenario uses the headings **Proves**, **Does
+  not prove**, and **Next gate**, and the documentation uses the evidence ladder semantic test ->
+  software device scenario -> optional modeled simulation -> supervised bring-up -> robot
+  experiment. “Software bench” is never presented as modeled physics or a digital twin.
+- **Future extension boundary:** direct setters are the complete present API. A later item may add
+  a deterministic scenario/timeline reader or a separate model that drives these same input
+  setters if repeated student harnesses justify it. File formats, playback clocks, dynamics,
+  command-to-state rules, fault libraries, and a public model SPI are deliberately deferred so
+  this item does not freeze an unproven simulation architecture.
+- **Alternatives rejected:** documentation-only leaves three incompatible fixture stories and no
+  copyable mechanism exercise. Exporting `FtcActuators` builders or injecting completed Plants
+  creates a second ordinary construction path and bypasses the exact FTC boundary students must
+  learn. Mirroring commanded power/velocity into position or readiness creates false physical
+  evidence. A general simulator, digital twin, trace DSL, scripted-scenario framework, generic
+  hardware model interface, or GUI adds concepts before a concrete second requirement exists.
+  Keeping all probes local preserves duplication and makes their proof boundary hard to teach.
+- **Simplicity comparison:** student production calls remain unchanged. A software scenario adds
+  only the test map, the devices it needs, the production mechanism construction, explicit input
+  injection, one managed update, and assertions on truthful evidence. One shared utility replaces
+  three device-fake dialects; the beginner sees no new runtime role, heartbeat, resolver, or Plant
+  API. Optional Reference scenarios and internal proxy details stay behind links rather than in the
+  first lesson.
+- **Verification plan:** add focused `FtcTestHardwareTest`, Starter mechanism-lesson, Reference
+  lift/switch and flywheel-readiness scenarios; migrate and run every Starter, Reference, and Basic
+  Pedro suite that used the old fixtures; run `DocumentationLinksTest`; then run full TeamCode unit
+  tests, Java compilation, and Phoenix Javadocs. Verify exact Start Here navigation and compactness
+  budgets, strict Zensical generation/rendering when available, stale fixture/import scans,
+  `git diff --check`, and whitespace checks. No robot hardware is required or claimed; device
+  names, electrical wiring, directions, movement, loading, timing, STOP response, and subsystem
+  success remain physical validation.
+- **Implemented result (2026-08-21):** the new test-source
+  `edu.ftcphoenix.fw.testing.ftc.FtcTestHardware` supplies explicitly registered `DcMotorEx`,
+  digital-input, `CRServo`, and `Servo` probes through the ordinary SDK `HardwareMap` lookup. Motor
+  encoder ticks, measured ticks per second, and electrical HIGH/LOW are independent injected
+  observations. Power, target ticks, commanded ticks per second, direction, brake mode, servo
+  position, and type-specific write counts are recorded outputs. Effective-name collisions and
+  wrong-type/missing lookups fail clearly; supported SDK calls dispatch by exact signature; every
+  unsupported call fails actionably. Commands do not change feedback, `STOP_AND_RESET_ENCODER`
+  does not manufacture ticks, and no `isBusy`, dynamics, or physics rule exists.
+- **Fixture consolidation (2026-08-21):** Starter, Reference, and Basic Pedro example tests now use
+  the one shared registry. `StarterTestHardware` retains only its genuinely robot-specific OpMode
+  preparation and telemetry probe. The duplicated `ReferenceTestHardware` and
+  `BasicPedroTestHardware` files are removed. Specialized framework/integration fixtures remain
+  local because they test different controller, failure, or vendor contracts. No production Java
+  source, mechanism constructor, `FtcActuators` builder, Plant graph, robot API, or managed runtime
+  behavior changed.
+- **Teaching result (2026-08-21):** the cumulative 30–40 minute Starter page constructs the same
+  production intake mechanism and private Plant, traces semantic request -> output heartbeat ->
+  recorded motor command, and ends with an EJECT transfer exercise. Its checked-in page is **498
+  prose words, one Java excerpt, and 20 displayed Java lines** by the
+  `DocumentationLinksTest` counting convention. Optional compiled Reference scenarios prove
+  active-low/debounced homing plus independently injected encoder/target evidence, and paired
+  flywheel readiness from two independently injected measurements. Canonical navigation, hubs,
+  glossary, BIOBUZZ map, experiments, calibration, and maintainer guidance now use the five-rung
+  evidence vocabulary and explicit **Proves / Does not prove / Next gate** boundaries.
+- **Affected and full software verification (2026-08-21):** the authoritative affected selection
+  included `FtcTestHardwareTest`, `DocumentationLinksTest`, and every maintained example suite:
+  **23 suites, 125 tests, 0 failures, 0 errors, 0 skipped**. The final
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac
+  :TeamCode:phoenixJavadocs` gate then passed: **212 suites, 1,936 tests, 0 failures, 0 errors,
+  0 skipped**. Only the repository's existing Java-8-on-JDK-21 and FTC deprecation warnings were
+  emitted. `git diff --check`, changed-file review, and stale fixture/type/method scans are clean.
+- **Independent review and evidence boundary (2026-08-21):** an adversarial review is **CLEAN**
+  after requiring exact-signature/fail-fast proxies, removing derived `isBusy` pseudo-feedback,
+  making every teaching input explicit, narrowing scenario claims, clarifying motor-only aggregate
+  write naming, and adding a copied-test stale-import guard. No Control Hub, motor, sensor, servo,
+  drivetrain, or mechanism was available or exercised. The result cannot establish hardware names,
+  wiring, direction, polarity, scale, power safety, motion, load response, STOP response, or game
+  performance.
+- **Documentation rendering boundary (2026-08-21):** repository-local Markdown paths, anchors,
+  fences, exact navigation, source links, evidence headings, and progressive-disclosure budgets
+  pass `DocumentationLinksTest`. This workstation has only the nonfunctional Windows Store Python
+  alias and no docs virtual environment, `py`, `uv`, or `zensical`; strict Zensical generation and
+  desktop/narrow rendered inspection were not run locally. The hosted strict-documentation check
+  and rendered PR review remain publication gates.
+- **Android Studio review handoff (2026-08-21):** inspect the unstaged diff on
+  `codex/example-07-hardware-free-mechanism-bench`, based on
+  `origin/master@97b57ac8a677236edeb713ebba0dfe033609b71a`. Review the short Starter scenario first:
+  confirm the production constructor is unchanged, `setMode(...)` stages intent, one mechanism
+  update realizes the Plant output, and EJECT/STOPPED remain simple. Then inspect
+  `FtcTestHardware`, its fail-fast contract test, the two optional Reference scenarios, fixture
+  migrations/deletions, evidence ladder, and navigation. Confirm that injected readings never
+  follow commands automatically and that no production API or Java source changed. No file is
+  staged, committed, or pushed; no pull request exists. Publication requires the exact
+  destination-specific authorization in the handoff response.
+- **Manual review and Gate 3 authorization (2026-08-21):** the user replied with the complete
+  destination-specific prompt, approving the reviewed Android Studio diff and explicitly
+  authorizing committing `codex/example-07-hardware-free-mechanism-bench`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. EXAMPLE-07 is **Done**. This authorization is limited to the reviewed EXAMPLE-07 files
+  and publication coordinates; it does not start RUNTIME-03 or another tracker item, add a physics
+  or trace-file layer, or convert software evidence into a robot-hardware claim.
 
 ### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
 

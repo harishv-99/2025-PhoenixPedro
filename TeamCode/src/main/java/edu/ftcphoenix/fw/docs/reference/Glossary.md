@@ -174,6 +174,32 @@ The one optional top-level Task graph declared for an Auto or another start-owne
 An advanced temporary-output pattern. The runner queues short output proposals; the mechanism
 overlays its source into one final Plant target resolver.
 
+## Evidence
+
+### Semantic test
+
+A software test that records capability intent without constructing the FTC device graph.
+
+### Software device scenario
+
+A test that constructs the production mechanism with a test-only `HardwareMap`, explicitly injects
+device observations, and records actuator commands. It does not model physics.
+
+### Modeled simulation
+
+An optional software environment with an authored dynamics model and stated assumptions and
+fidelity. Directly setting probe readings is not a modeled simulation.
+
+### Supervised bring-up
+
+A conservative physical check of one device fact, such as wiring, direction, encoder sign, or STOP
+response, with a reviewed operator and safety plan.
+
+### Robot experiment
+
+A bounded physical subsystem trial evaluated against team-authored success criteria and retained
+computed and operator-observed evidence.
+
 ## Drive and spatial data
 
 ### `DriveSignal`

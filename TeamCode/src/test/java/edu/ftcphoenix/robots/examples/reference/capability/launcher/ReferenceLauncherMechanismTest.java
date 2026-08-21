@@ -15,10 +15,10 @@ import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.fw.task.TaskRunner;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware.CrServoProbe;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware.HardwareMapProbe;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware.MotorProbe;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware.ServoProbe;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware.CrServoProbe;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware.MotorProbe;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware.ServoProbe;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -89,7 +89,7 @@ public final class ReferenceLauncherMechanismTest {
 
     @Test
     public void duplicateNamesAndLaunchAtToleranceFailBeforeHardwareLookup() {
-        HardwareMapProbe duplicateMap = new HardwareMapProbe();
+        FtcTestHardware duplicateMap = new FtcTestHardware();
         ReferenceLauncherMechanism.Config duplicate = testConfig();
         duplicate.rightFlywheelName = "  " + duplicate.leftFlywheelName + "  ";
 
@@ -102,7 +102,7 @@ public final class ReferenceLauncherMechanismTest {
         assertTrue(duplicateFailure.getMessage().contains("after trimming"));
         assertEquals(0, duplicateMap.lookupCalls());
 
-        HardwareMapProbe toleranceMap = new HardwareMapProbe();
+        FtcTestHardware toleranceMap = new FtcTestHardware();
         ReferenceLauncherMechanism.Config atTolerance = testConfig();
         atTolerance.launchVelocityTicksPerSec =
                 atTolerance.velocityToleranceTicksPerSec;
@@ -120,8 +120,8 @@ public final class ReferenceLauncherMechanismTest {
     public void readinessRequiresPositiveTargetAndBothFiniteIndependentMeasurements() {
         Rig rig = new Rig();
         rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
-        rig.left.setVelocity(1075.0);
-        rig.right.setVelocity(925.0);
+        rig.left.setMeasuredVelocityTicksPerSec(1075.0);
+        rig.right.setMeasuredVelocityTicksPerSec(925.0);
 
         rig.mechanism.update(rig.time.clock());
         ReferenceLauncher.Status status = rig.mechanism.status();
@@ -141,15 +141,15 @@ public final class ReferenceLauncherMechanismTest {
         assertEquals("per-wheel evidence must be memoized in one cycle",
                 rightReads, rig.right.velocityReadCalls());
 
-        rig.left.setVelocity(950.0);
-        rig.right.setVelocity(1050.0);
+        rig.left.setMeasuredVelocityTicksPerSec(950.0);
+        rig.right.setMeasuredVelocityTicksPerSec(1050.0);
         rig.mechanism.update(rig.time.nextCycle(0.02));
         status = rig.mechanism.status();
         assertTrue(status.leftAtTarget);
         assertTrue(status.rightAtTarget);
         assertTrue(status.ready);
 
-        rig.right.setVelocity(Double.NaN);
+        rig.right.setMeasuredVelocityTicksPerSec(Double.NaN);
         rig.mechanism.update(rig.time.nextCycle(0.02));
         status = rig.mechanism.status();
         assertTrue(status.leftAtTarget);
@@ -157,8 +157,8 @@ public final class ReferenceLauncherMechanismTest {
         assertFalse(status.ready);
 
         rig.mechanism.setTargetVelocityTicksPerSec(0.0);
-        rig.left.setVelocity(0.0);
-        rig.right.setVelocity(0.0);
+        rig.left.setMeasuredVelocityTicksPerSec(0.0);
+        rig.right.setMeasuredVelocityTicksPerSec(0.0);
         rig.mechanism.update(rig.time.nextCycle(0.02));
         status = rig.mechanism.status();
         assertTrue(status.leftAtTarget);
@@ -235,8 +235,8 @@ public final class ReferenceLauncherMechanismTest {
         Rig rig = new Rig();
         Task launch = rig.mechanism.launchOne();
         primeSpinUp(rig, launch);
-        rig.left.setVelocity(rig.config.launchVelocityTicksPerSec);
-        rig.right.setVelocity(rig.config.launchVelocityTicksPerSec);
+        rig.left.setMeasuredVelocityTicksPerSec(rig.config.launchVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.config.launchVelocityTicksPerSec);
 
         launch.update(rig.time.nextCycle(rig.config.spinUpTimeoutSec * 0.5));
         rig.mechanism.update(rig.time.clock());
@@ -294,7 +294,7 @@ public final class ReferenceLauncherMechanismTest {
         runner.update(rig.time.clock());
         rig.mechanism.update(rig.time.clock());
         assertEquals(rig.config.launchVelocityTicksPerSec,
-                rig.left.commandedVelocity(), EPSILON);
+                rig.left.commandedVelocityTicksPerSec(), EPSILON);
 
         rig.mechanism.abortLaunches();
         rig.mechanism.setTargetVelocityTicksPerSec(600.0);
@@ -302,14 +302,14 @@ public final class ReferenceLauncherMechanismTest {
         rig.mechanism.update(rig.time.clock());
         assertEquals(TaskOutcome.CANCELLED, active.getOutcome());
         assertEquals("a stale active update must not overwrite later manual intent",
-                600.0, rig.left.commandedVelocity(), EPSILON);
+                600.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
 
         runner.update(rig.time.nextCycle(0.02));
         rig.mechanism.update(rig.time.clock());
         assertEquals(TaskOutcome.CANCELLED, queued.getOutcome());
         assertEquals("a stale queued start must have no request side effects",
                 600.0, rig.mechanism.status().targetVelocityTicksPerSec, EPSILON);
-        assertEquals(600.0, rig.left.commandedVelocity(), EPSILON);
+        assertEquals(600.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
 
         Task later = rig.mechanism.launchOne();
         runner.enqueue(later);
@@ -317,7 +317,7 @@ public final class ReferenceLauncherMechanismTest {
         rig.mechanism.update(rig.time.clock());
         assertFalse(later.isComplete());
         assertEquals(rig.config.launchVelocityTicksPerSec,
-                rig.left.commandedVelocity(), EPSILON);
+                rig.left.commandedVelocityTicksPerSec(), EPSILON);
         later.cancel();
     }
 
@@ -347,7 +347,7 @@ public final class ReferenceLauncherMechanismTest {
 
         rig.mechanism.update(rig.time.nextCycle(0.02));
         assertEquals(rig.config.launchVelocityTicksPerSec,
-                rig.left.commandedVelocity(), EPSILON);
+                rig.left.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(rig.config.releaseExtendedPosition,
                 rig.release.position(), EPSILON);
         fresh.cancel();
@@ -381,8 +381,8 @@ public final class ReferenceLauncherMechanismTest {
     }
 
     private static void reachReleasePhase(Rig rig, Task launch) {
-        rig.left.setVelocity(rig.config.launchVelocityTicksPerSec);
-        rig.right.setVelocity(rig.config.launchVelocityTicksPerSec);
+        rig.left.setMeasuredVelocityTicksPerSec(rig.config.launchVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.config.launchVelocityTicksPerSec);
         launch.update(rig.time.nextCycle(0.02));
         rig.mechanism.update(rig.time.clock());
         assertTrue(rig.mechanism.status().ready);
@@ -397,8 +397,8 @@ public final class ReferenceLauncherMechanismTest {
         assertEquals(0.0, status.targetVelocityTicksPerSec, EPSILON);
         assertFalse(status.transferPulseActive);
         assertFalse(status.ready);
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
-        assertEquals(0.0, rig.right.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0, rig.transfer.power(), EPSILON);
         assertEquals(rig.config.releaseRetractedPosition, rig.release.position(), EPSILON);
     }
@@ -457,7 +457,7 @@ public final class ReferenceLauncherMechanismTest {
 
     private static final class Rig {
         private final ReferenceLauncherMechanism.Config config = testConfig();
-        private final HardwareMapProbe hardware = new HardwareMapProbe();
+        private final FtcTestHardware hardware = new FtcTestHardware();
         private final MotorProbe left = hardware.addMotor(config.leftFlywheelName);
         private final MotorProbe right = hardware.addMotor(config.rightFlywheelName);
         private final CrServoProbe transfer = hardware.addCrServo(config.transferName);
@@ -466,7 +466,7 @@ public final class ReferenceLauncherMechanismTest {
         private final ReferenceLauncherMechanism mechanism;
 
         private Rig() {
-            hardware.addDigital(config.objectSensorName);
+            hardware.addDigitalInput(config.objectSensorName);
             mechanism = new ReferenceLauncherMechanism(hardware, config);
         }
     }

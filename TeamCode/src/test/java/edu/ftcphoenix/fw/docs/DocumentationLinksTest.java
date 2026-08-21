@@ -81,6 +81,7 @@ public final class DocumentationLinksTest {
                         "Phoenix in one picture",
                         "Set up and verify the project",
                         "Write your first Phoenix robot code",
+                        "Test a mechanism without hardware",
                         "Choose a Phoenix topic",
                         "Documentation home",
                         "Getting started"),
@@ -88,6 +89,7 @@ public final class DocumentationLinksTest {
                         "fw/docs/getting-started/Framework Overview.md",
                         "fw/docs/getting-started/Build and Run.md",
                         "fw/docs/getting-started/First Phoenix Robot Code.md",
+                        "fw/docs/getting-started/Test a Mechanism Without Hardware.md",
                         "fw/docs/getting-started/Beginner's Guide.md",
                         "fw/docs/README.md",
                         "fw/docs/getting-started/README.md"));
@@ -116,6 +118,32 @@ public final class DocumentationLinksTest {
                         "fw/docs/getting-started/learn-phoenix/Evidence and Experiments.md",
                         "fw/docs/getting-started/learn-phoenix/From Requirement to Robot.md",
                         "fw/docs/getting-started/learn-phoenix/Role Paths.md"));
+
+        Matcher examplesGroup = Pattern.compile(
+                "\\{\\s*\"Examples\"\\s*=\\s*\\[([^]]+)]\\s*},",
+                Pattern.DOTALL).matcher(config);
+        assertTrue("Missing Examples navigation group", examplesGroup.find());
+        assertNavigationEntries(
+                "Examples",
+                examplesGroup.group(1),
+                Arrays.asList(
+                        "Examples home",
+                        "Modern starter robot",
+                        "Hardware-free reference scenarios",
+                        "Framework components",
+                        "Field-relative drive",
+                        "Pedro autonomous reference",
+                        "Subsystem experiments",
+                        "BIOBUZZ capability map"),
+                Arrays.asList(
+                        "fw/docs/examples/README.md",
+                        "fw/docs/examples/Modern Starter Robot.md",
+                        "fw/docs/examples/Hardware-free Reference Scenarios.md",
+                        "fw/docs/examples/Framework Components Through Examples.md",
+                        "fw/docs/examples/Field-relative Drive.md",
+                        "fw/docs/examples/Pedro Autonomous Reference.md",
+                        "fw/docs/examples/Subsystem Experiments.md",
+                        "fw/docs/examples/BIOBUZZ Capability Map.md"));
         assertTrue("Primary navigation still exposes the old build-along labels",
                 !config.contains("Your first mechanism")
                         && !config.contains("Your first TeleOp")
@@ -228,6 +256,7 @@ public final class DocumentationLinksTest {
                 "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started");
         Path overview = learningRoot.resolve("Framework Overview.md");
         Path firstRobotCode = learningRoot.resolve("First Phoenix Robot Code.md");
+        Path mechanismLesson = learningRoot.resolve("Test a Mechanism Without Hardware.md");
         Path hub = learningRoot.resolve("Beginner's Guide.md");
         Path topics = learningRoot.resolve("learn-phoenix");
 
@@ -252,6 +281,37 @@ public final class DocumentationLinksTest {
                                 + "StarterFirstLessonTest.java"));
         assertTrue("First robot-code lesson must link the canonical Starter source",
                 firstRobotCodeText.contains("robots/examples/starter"));
+        assertTrue("Hardware-free mechanism lesson is missing",
+                Files.isRegularFile(mechanismLesson));
+        assertTrue("Hardware-free mechanism lesson exceeds 1,000 prose words",
+                proseWordCount(mechanismLesson) <= 1000);
+        assertTrue("Hardware-free mechanism lesson exceeds three Java excerpts",
+                javaFenceCount(mechanismLesson) <= 3);
+        assertTrue("Hardware-free mechanism lesson exceeds 35 displayed Java lines",
+                displayedJavaLineCount(mechanismLesson) <= 35);
+        String mechanismLessonText = readUtf8(mechanismLesson);
+        assertTrue("Hardware-free mechanism lesson must link its compiled scenario on GitHub",
+                mechanismLessonText.contains(
+                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
+                                + "edu/ftcphoenix/robots/examples/starter/robot/"
+                                + "StarterMechanismLessonTest.java"));
+        assertEvidenceBoundary("Hardware-free mechanism lesson", mechanismLessonText);
+
+        Path referenceScenarios = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/examples/"
+                        + "Hardware-free Reference Scenarios.md");
+        String referenceScenarioText = readUtf8(referenceScenarios);
+        assertTrue("Reference scenario guide must link the compiled lift scenario on GitHub",
+                referenceScenarioText.contains(
+                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
+                                + "edu/ftcphoenix/robots/examples/reference/capability/lift/"
+                                + "ReferenceLiftSoftwareScenarioTest.java"));
+        assertTrue("Reference scenario guide must link the compiled launcher scenario on GitHub",
+                referenceScenarioText.contains(
+                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
+                                + "edu/ftcphoenix/robots/examples/reference/capability/launcher/"
+                                + "ReferenceLauncherSoftwareScenarioTest.java"));
+        assertEvidenceBoundary("Hardware-free Reference scenarios", referenceScenarioText);
         assertTrue("Topic router exceeds 450 prose words", proseWordCount(hub) <= 450);
 
         int topicWords = 0;
@@ -353,6 +413,15 @@ public final class DocumentationLinksTest {
         Path file = root.resolve(relativePath);
         Files.createDirectories(file.getParent());
         Files.write(file, contents.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void assertEvidenceBoundary(String pageName, String contents) {
+        assertTrue(pageName + " must state what its evidence proves",
+                contents.contains("### Proves"));
+        assertTrue(pageName + " must state what its evidence does not prove",
+                contents.contains("### Does not prove"));
+        assertTrue(pageName + " must state the next evidence gate",
+                contents.contains("### Next gate"));
     }
 
     private static void assertCompatibilityPage(Path repositoryRoot,

@@ -144,8 +144,10 @@ You are finished when the copied package compiles, its focused test passes with 
 OpModes and permissions remain disabled. The complete source map is in
 [Modern starter robot](<../examples/Modern Starter Robot.md>).
 
-Hardware is optional and separate. When the team actually has a supervised robot, return to
-[Build and run Phoenix](<Build and Run.md>), then use the
+Continue in software with [Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>)
+to follow the same COLLECT request through the production mechanism and Plant to a recorded motor
+command. When the team actually has a supervised robot, return to [Build and run Phoenix](<Build and Run.md>),
+then use the
 [hardware question selector](<../testing-calibration/README.md#when-hardware-is-available-choose-one-question>)
 to review names, directions, powers, brake behavior, clear space, and physical STOP before enabling
 any motion.

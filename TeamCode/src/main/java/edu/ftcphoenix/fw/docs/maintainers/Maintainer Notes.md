@@ -98,6 +98,8 @@ Use this authoring contract:
 - Give each page one purpose and one primary audience; state both near the top.
 - Structure a tutorial checkpoint as: goal, prerequisites, files to inspect or edit, numbered
   steps, observable result, common problems, and one next step.
+- End a software scenario or experiment lesson with the exact evidence headings **Proves**,
+  **Does not prove**, and **Next gate**. Do not make students infer where software evidence ends.
 - Link to compiling source for complete programs. Keep excerpts short enough to teach one idea
   without creating a copied program that can drift.
 - Describe the supported present state directly. Keep migration narratives, completed work logs,
@@ -129,6 +131,16 @@ Tests that depend on loop time should use the test-only `ManualLoopClock`, which
 framework `LoopClock` deterministically. Keep tests focused on documented contracts, and do not use
 Android stub default-return settings to conceal an accidental FTC/Android dependency in code that is
 supposed to remain pure Java.
+
+Mechanism-learning scenarios should use the shared test-only `FtcTestHardware` registry with the
+ordinary production `HardwareMap + Config` constructor. Register only the devices needed by the
+scenario, inject encoder, measured-velocity, and electrical-level inputs explicitly, and assert
+recorded outputs separately. Never mirror a command into feedback. These probes provide no physics;
+call the result a **software device scenario**, not a simulation. A **modeled simulation** must add
+an explicit dynamics model and document its assumptions and fidelity. The current registry
+intentionally defines no scenario input-file format, trace playback, timeline, physics, or public
+model extension interface. A later trace reader can parse values and call the same probe setters
+before each clock cycle without changing production mechanism construction.
 
 The hosted job log contains setup, compiler, and test output; setup and compilation failures are
 actionable there. When a failed unit-test execution produces reports, its run also provides the

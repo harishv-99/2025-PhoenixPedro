@@ -14,7 +14,9 @@ There is one source-based beginner entry:
    for project setup and software verification.
 3. Complete [`Your first Phoenix robot code`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/First Phoenix Robot Code.md>)
    to copy the Starter and prove one code change without robot hardware.
-4. [`Choose a Phoenix topic`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>)
+4. [`Test its mechanism without hardware`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Test a Mechanism Without Hardware.md>)
+   through the same production mechanism and Plant used on the robot.
+5. [`Choose a Phoenix topic`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>)
    relevant to your work, or use the canonical
    [`Phoenix documentation hub`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/README.md>)
    later as a searchable reference.
