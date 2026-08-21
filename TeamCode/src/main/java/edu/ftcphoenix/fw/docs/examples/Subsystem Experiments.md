@@ -2,46 +2,180 @@
 
 An experiment is a robot-specific use of existing capabilities and tester infrastructure, not a
 new framework abstraction. Its purpose is to answer one decision before ordinary robot code relies
-on the answer.
+on the answer. Software tests establish software behavior; a bounded experiment collects the
+physical evidence software cannot invent.
 
-## Lab card
+Use this order:
 
-Write this card before enabling motion:
+```text
+canonical actuator bring-up
+    -> reviewed lab card
+    -> locked, bounded subsystem tester
+    -> production-mechanism integration check
+    -> promote only accepted configuration into robot use
+```
 
-1. **Question:** one falsifiable subsystem question.
-2. **Configuration:** reviewed hardware names, directions, bounds, limits, and safe STOP behavior.
-3. **Trial:** exact starting condition, command, duration or terminal condition, repetitions, and
-   emergency-stop owner.
-4. **Computed evidence:** values the code must calculate, such as target, measurement, error,
-   elapsed time, timeout, and Task outcome.
-5. **Observed evidence:** facts a person must see, such as whether an object entered a basket. The
-   operator records these in the experiment spreadsheet.
-6. **Success criteria:** numeric or observable thresholds supplied and reviewed by the adopting
-   team. Checked-in examples do not invent them.
-7. **Decision:** accept, revise, or reject the configuration, with the evidence location.
+## Copyable lab card and results sheet
 
-## Telemetry rule
+Copy this block into the team's normal experiment record before enabling motion:
 
-Driver Station telemetry prints only information known by the program: trial identity, command,
-measurement, timing, error, and outcome. It must not print `PASS` merely because a controller was
-at target when the real question was whether a physical scoring action succeeded. Existing Panels
-tuning tools may publish the controller evidence they explicitly support. Do not persist trial
-results on the Robot Controller.
+```markdown
+# Subsystem experiment: ____________________
 
-## Suggested subsystem trials
+- Experiment ID: ____________________
+- Date / operator / safety observer: ____________________
+- Robot and configuration revision: ____________________
+- Evidence file or video location: ____________________
 
-| Subsystem | Computed telemetry | Operator record |
+## Decision question
+
+One falsifiable question: ________________________________________________
+
+## Starting conditions
+
+- Mechanism state and game-piece load: ____________________
+- Battery / environment / field setup: ____________________
+- Reviewed command envelope and units: ____________________
+- Start control: __________  Abort control: __________
+- Emergency STOP owner: ____________________
+- Immediate stop conditions: ____________________________________________
+
+## Evidence
+
+- Computed fields, source, and units: ___________________________________
+- Operator-observed fields: _____________________________________________
+- Repetitions: ______
+- Accept when ____________________ in ______ of ______ trials
+  AND _________________________________________________________________
+
+| Trial | Starting condition | Command | Computed result | Observed result | Stop? | Notes |
+|---:|---|---|---|---|---|---|
+| 1 | | | | | | |
+| 2 | | | | | | |
+| 3 | | | | | | |
+
+## Decision
+
+- [ ] Accept configuration
+- [ ] Revise and repeat
+- [ ] Reject configuration
+- Reason and evidence location: _________________________________________
+```
+
+The adopting team supplies every blank. Checked-in examples do not choose a safe command, a
+repetition count, or an acceptance threshold for another robot.
+
+## Computed evidence versus observation
+
+Driver Station telemetry always keeps the state and control hint visible. Add a trial number for
+correlation, then show command, measurement, timing, error/readiness, and retained outcome only
+while they describe the current or most recently frozen trial. Print a value only when the
+experiment code must compute it. A person records directly visible facts—direction, clearance,
+vibration, sound, jams, damage, containment, or game-piece result—in the external trial row.
+
+Do not print `PASS` merely because a controller reached target. `TARGET_REACHED` is one computed
+trial outcome; the lab card's complete criteria and operator observations determine accept, revise,
+or reject. Do not persist trial results on the Robot Controller.
+
+## Worked locked card: Reference flywheel spin-up
+
+[`ReferenceFlywheelSpinUpExperiment.java`](<../../../robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
+answers one narrow question: how quickly do both flywheels reach the reviewed velocity condition
+from the card's starting state? The trial action changes only flywheel velocity and never requests
+a release or transfer pulse. Because it updates the complete production mechanism, normal active
+idle still commands zero transfer and the configured retracted release position; the card must
+review that servo clearance. No object is launched or scored.
+
+The checked-in card remains locked:
+
+| Card decision | Reference location | Meaning |
 |---|---|---|
-| Drivetrain | command, pose/distance if measured, elapsed time, final error | tracking, obstruction, wheel slip, stop behavior |
-| Intake/transfer | requested mode, sensor edges, cycle time, timeout | acquisition/release outcome and jams |
-| Referenced lift | reference state, requested/measured position, error, move time, timeout | clearance, repeatability marks, unwanted contact |
-| Flywheel/launcher | target/measured velocity, spin-up time, droop, recovery time, Task outcome | launch result, consistency, game-piece damage |
-| Vision/localization | observation age, selected ID, residual/innovation, accepted/rejected status | lighting, occlusion, field setup notes |
-| Parking/guidance | frozen target pose, pose evidence age, final pose error, literal footprint status | full containment and shared-area safety observations |
+| Motion review | `ReferenceFlywheelSpinUpCriteria.current().reviewedForMotion` | `false` prevents construction of the motion-capable mechanism. |
+| Command | `targetVelocityTicksPerSec` | Team-reviewed target in encoder ticks per second, positive, above the copied tolerance, and no greater than the configured maximum. |
+| Safety cap | `maximumPoweredRunSec` | Cooperative elapsed-time boundary checked each active loop; zero is applied on the first loop observed at or after it, not by a hard real-time cutoff. It is not automatically the acceptable spin-up threshold. |
+| Computed evidence | `ReferenceLauncher.Status` | Target, left/right measured velocity, per-wheel error/at-target evidence, and aggregate readiness. |
+| Minimal display | experiment telemetry | State and control hint always; trial number plus target, left/right evidence, elapsed/spin-up time, and frozen result only when a trial supplies them. |
+| Physical evidence | operator results row | Direction, vibration, sound, damage, clearance, and STOP response. |
+| Decision | reviewed lab card | Accept, revise, or reject from all criteria; `TARGET_REACHED` alone is not `PASS`. |
 
-Use `StandardTesters` for actuator bring-up and the existing calibration/localization tools. A robot
-may add a `TesterSuite` entry that constructs its production subsystem and prints the card's
-computed fields. Keep every motion entry locked until the team has supplied and reviewed that
-card's physical criteria.
+The evidence flow is deliberately one-way:
+
+```text
+reviewed card values
+    -> ReferenceFlywheelSpinUpCriteria
+    -> ReferenceLauncher.Status
+    -> minimal telemetry with trialNumber
+    -> operator matches the external row
+    -> team decision
+```
+
+Press A to begin one trial and B to abort it. A terminal transition freezes elapsed time and both
+wheel measurements before requesting zero, so deceleration readings cannot change a retained
+`TARGET_REACHED`, `TIME_LIMIT_REACHED`, or `ABORTED` result. A while `RUNNING` is ignored to prevent
+overlapping or restarted work. After a terminal result, pressing A again increments the trial
+number and starts a distinct row. Readiness published strictly before the powered-time boundary
+freezes `TARGET_REACHED` in that same loop. If readiness has not already been observed when elapsed
+time reaches the boundary, `TIME_LIMIT_REACHED` wins before the output update and zero is applied;
+a measurement first available in that boundary cycle cannot relabel the retained timeout. Because
+the tester is cooperative, it checks this boundary once per active loop and freezes the elapsed
+time actually observed there, which may exceed `maximumPoweredRunSec`. The reviewed lab card and
+STOP plan must allow for the worst-case loop delay.
+
+## Two independent motion gates
+
+The Reference example has two permissions with different owners:
+
+- `ReferenceFlywheelSpinUpCriteria.current().reviewedForMotion` authorizes only this bounded tester
+  after its lab-card review.
+- `ReferenceProfile.current().allowLauncherMotion` authorizes construction of the production
+  Reference launcher graph for a normal Reference OpMode.
+
+Enabling one does not enable, imply, or replace the other. Tester evidence may support a later
+profile decision, but a production permission still requires its own complete robot review.
+
+## Add a team-owned subsystem experiment
+
+Use the existing tester lifecycle; do not create another FTC loop or generic experiment framework:
+
+1. Create data-only `<Subsystem>ExperimentCriteria` or reuse the subsystem `Spec`. Its `current()`
+   returns a fresh locked value. Validate and defensively snapshot every retained criterion before
+   hardware lookup.
+2. Create `<Subsystem>Experiment extends BaseTeleOpTester`. Acquire its fresh production-aligned
+   mechanism only in `onInit()` after the menu selects the tester. A partial construction failure
+   must safely stop every resource it completed before ownership transfer.
+3. Keep INIT observational. Display the lock, question, units, and controls; never command motion
+   from `onInit()` or `onInitLoop(...)`.
+4. Bind one explicit A start and B abort. Start one bounded trial, update each owned mechanism
+   exactly once per shared-clock loop, and prevent overlapping trials.
+5. At success, time limit, or abort, freeze the evidence first and then request the reusable idle
+   state. `onStop()` performs full terminal cleanup even after partial initialization.
+6. Add a supplier to `<Robot>Testers.create()` so every menu entry constructs a fresh inactive
+   tester. Register `StandardTesters` there if the robot also exposes the canonical bring-up tools.
+7. Keep the FTC entry thin: extend `FtcTeleOpTesterOpMode` and return the fresh tester tree from
+   `createTester()`.
+8. Record external observations outside the Robot Controller and promote configuration only after
+   the reviewed decision accepts it.
+
+## Criterion shapes by subsystem
+
+The shape of a criterion can be copied; its values cannot:
+
+| Subsystem | Possible computed criterion shape | Operator record |
+|---|---|---|
+| Intake/transfer | successful acquisition sensor sequence in `N` of `M` trials; bounded cycle time | acquisition/release, jams, damage |
+| Referenced lift | reference completes before its cap; move and hold error remain inside a team threshold | clearance, repeatability marks, unwanted contact |
+| Flywheel | both wheels independently meet tolerance; bounded spin-up and post-disturbance recovery | direction, vibration, sound, game-piece condition |
+| Vision/localization | observation age and residual remain within reviewed bounds in `N` of `M` setups | lighting, occlusion, field-layout notes |
+| Parking/guidance | bounded final pose error plus literal full-footprint containment status | full containment, clearance, shared-area safety |
+
+If the program cannot truthfully compute an answer, leave it out of telemetry. If the decision
+requires a visible physical result, put that field in the operator row instead.
+
+## Related workflow
+
+Use [`Actuator bring-up`](<../testing-calibration/Actuator Bring-up.md>) before a subsystem trial and
+the [`Control tuning workflow`](<../testing-calibration/Control Tuning Workflow.md>) for supported
+controller experiments. The [Evidence and experiments](<../getting-started/learn-phoenix/Evidence and Experiments.md>)
+chapter explains how to read status without overclaiming it.
 
 [Back to the examples index](<README.md>)

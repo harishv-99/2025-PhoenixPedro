@@ -6,6 +6,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.PositionCalibrationTasks;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
+import edu.ftcphoenix.fw.actuation.ScalarTasks;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -13,6 +14,7 @@ import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.fw.task.Tasks;
 
 /** Owns a bounded lift Plant and exposes reference-aware semantic commands. */
 public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram.Output {
@@ -30,6 +32,7 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
         public double highHeightIn;
         public double homingPower;
         public double homingTimeoutSec;
+        public double moveTimeoutSec;
 
         private Config() {
         }
@@ -49,6 +52,7 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
             c.highHeightIn = 14.0;
             c.homingPower = -0.15;
             c.homingTimeoutSec = 3.0;
+            c.moveTimeoutSec = 2.0;
             return c;
         }
     }
@@ -60,8 +64,9 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     private final double highHeightIn;
     private final double homingPower;
     private final double homingTimeoutSec;
+    private final double moveTimeoutSec;
     private Height requestedHeight = Height.STOWED;
-    private Status lastStatus = new Status(Height.STOWED, 0.0, Double.NaN, false, false);
+    private Status lastStatus;
 
     /** Constructs the lift after validating every retained configuration field. */
     public ReferenceLiftMechanism(HardwareMap hardwareMap, Config config) {
@@ -86,6 +91,9 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
         highHeightIn = c.highHeightIn;
         homingPower = c.homingPower;
         homingTimeoutSec = c.homingTimeoutSec;
+        moveTimeoutSec = c.moveTimeoutSec;
+        lastStatus = new Status(
+                Height.STOWED, stowedHeightIn, Double.NaN, false, false);
     }
 
     @Override
@@ -95,14 +103,31 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     }
 
     @Override
+    public Task moveTo(Height height) {
+        Height selectedHeight = Objects.requireNonNull(height, "height");
+        double selectedPositionIn = positionFor(selectedHeight);
+        return Tasks.sequence(
+                Tasks.runOnce(() -> requestedHeight = selectedHeight),
+                ScalarTasks.set(lift.commandTarget(), selectedPositionIn)
+                        .untilReachedBy(lift)
+                        .leaveTargetOnCancel()
+                        .timeout(moveTimeoutSec)
+                        .build());
+    }
+
+    @Override
     public Task home() {
-        return PositionCalibrationTasks.search(lift)
+        Task search = PositionCalibrationTasks.search(lift)
                 .withPower(homingPower)
                 .until(bottomSwitch)
                 .establishReferenceAt(0.0)
                 .holdAfterReference(stowedHeightIn)
                 .failAfterSec(homingTimeoutSec)
                 .build();
+        return Tasks.sequence(
+                Tasks.runOnce(() -> setHeight(Height.STOWED)),
+                search,
+                Tasks.runOnce(() -> setHeight(Height.STOWED)));
     }
 
     @Override
@@ -154,11 +179,19 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
         c.stowedHeightIn = within(s.stowedHeightIn, c.maximumHeightIn, "stowedHeightIn");
         c.lowHeightIn = within(s.lowHeightIn, c.maximumHeightIn, "lowHeightIn");
         c.highHeightIn = within(s.highHeightIn, c.maximumHeightIn, "highHeightIn");
+        if (!(c.stowedHeightIn < c.lowHeightIn && c.lowHeightIn < c.highHeightIn)) {
+            throw new IllegalArgumentException(
+                    "semantic lift heights must satisfy stowedHeightIn < lowHeightIn "
+                            + "< highHeightIn <= maximumHeightIn, got "
+                            + c.stowedHeightIn + ", " + c.lowHeightIn + ", "
+                            + c.highHeightIn + ", " + c.maximumHeightIn);
+        }
         c.homingPower = s.homingPower;
         if (!Double.isFinite(c.homingPower) || c.homingPower >= 0.0 || c.homingPower < -1.0) {
             throw new IllegalArgumentException("homingPower must be finite and in [-1, 0)");
         }
         c.homingTimeoutSec = positive(s.homingTimeoutSec, "homingTimeoutSec");
+        c.moveTimeoutSec = positive(s.moveTimeoutSec, "moveTimeoutSec");
         return c;
     }
 

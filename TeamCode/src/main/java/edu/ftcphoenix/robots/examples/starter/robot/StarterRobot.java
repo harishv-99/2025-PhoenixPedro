@@ -10,7 +10,6 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
-import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntake;
 import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntakeMechanism;
 
@@ -67,14 +66,16 @@ public final class StarterRobot {
     }
 
     /**
-     * Declare the starter Auto's intake output, one fresh root Task, and telemetry rows.
+     * Declare the starter Auto's intake output and telemetry rows.
      *
      * <p>Only the intake configuration and its motion permission are read in Auto, so an unused
-     * drive configuration or drive permission cannot prevent this program from initializing.</p>
+     * drive configuration or drive permission cannot prevent this program from initializing.
+     * The Auto client receives the shared capability and owns its routine choice.</p>
+     *
+     * @return declared intake capability for the Auto client's selected routine
      */
-    public void declareAuto(RobotProgram program,
-                            StarterProfile profile,
-                            double collectDurationSec) {
+    public StarterIntake declareAuto(RobotProgram program,
+                                     StarterProfile profile) {
         Objects.requireNonNull(program, "program");
         StarterProfile activeProfile = Objects.requireNonNull(profile, "profile");
         requireMotionAllowed(
@@ -84,12 +85,8 @@ public final class StarterRobot {
 
         StarterIntakeMechanism intake = program.output(
                 new StarterIntakeMechanism(hardwareMap, activeProfile.intake));
-        Task root = intake.collectForSeconds(collectDurationSec);
-        program.rootTask(root);
-        program.presenter((clock, telemetry) -> {
-            presentIntake(telemetry, intake);
-            telemetry.addData("auto.idle", root.isComplete());
-        });
+        program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
+        return intake;
     }
 
     private static void requireMotionAllowed(String mode,

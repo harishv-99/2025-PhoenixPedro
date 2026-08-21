@@ -6,7 +6,6 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.spatial.AxisAlignedBoxRegion2d;
 import edu.ftcphoenix.fw.spatial.RobotFrameRectangle2d;
 import edu.ftcphoenix.robots.examples.reference.robot.ReferenceProfile;
-import edu.ftcphoenix.robots.examples.reference.tester.ReferenceExperimentCriteria;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -42,13 +41,11 @@ public final class ReferenceParkingPlanTest {
     }
 
     @Test
-    public void checkedInProfilesKeepRobotAndExperimentMotionLocked() {
+    public void checkedInProfileKeepsRobotMotionLocked() {
         ReferenceProfile profile = ReferenceProfile.current();
-        ReferenceExperimentCriteria criteria = ReferenceExperimentCriteria.locked();
 
         assertFalse(profile.allowDriveMotion);
         assertFalse(profile.allowLiftMotion);
         assertFalse(profile.allowLauncherMotion);
-        assertFalse(criteria.reviewedForMotion);
     }
 }

@@ -2,7 +2,8 @@
 
 **Classification:** Copyable starter
 
-**Audience:** Students who have completed the first-mechanism lesson
+**Audience:** Students following the [`Learn Phoenix`](<../getting-started/Beginner's Guide.md>)
+common path
 **Source entry:** [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>)
 
 Use this example as the smallest compiling Phoenix structure shared by TeleOp and Auto. It has one
@@ -11,10 +12,10 @@ and one declaration-only composition root. FTC lifecycle ceremony is supplied by
 `FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
 remain in the seven source files listed below.
 
-If this is your first Phoenix project, follow [`Build and run Phoenix`](<../getting-started/Build and Run.md>),
-[`Your first mechanism`](<../getting-started/First Mechanism.md>), and
-[`Your first TeleOp`](<../getting-started/First TeleOp.md>) first. This page then explains how
-the complete starter fits together.
+For a progressive source explanation, begin with
+[`Learn Phoenix`](<../getting-started/Beginner's Guide.md>). This page remains the complete Starter
+source reference; project setup is separate in
+[`Build and run Phoenix`](<../getting-started/Build and Run.md>).
 
 ## Read the seven files
 
@@ -76,11 +77,14 @@ Auto is parallel:
 
 ```java
 public final class StarterAuto extends FtcRobotOpMode {
+    private static final double COLLECT_DURATION_SEC = 0.75;
+
     @Override
     protected void configure(RobotProgram program) {
         StarterProfile profile = StarterProfile.current();
-        new StarterRobot(hardwareMap)
-                .declareAuto(program, profile, 0.75);
+        StarterIntake intake =
+                new StarterRobot(hardwareMap).declareAuto(program, profile);
+        program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
     }
 }
 ```
@@ -122,17 +126,20 @@ configuration effects. The source-driven drive joins output declaration order; i
 heartbeat, samples the source, rejects non-finite components, clamps finite components, writes once,
 and stops the sink during cleanup.
 
-Auto declares the same capability realization plus one fresh root:
+The Auto declaration method constructs the same capability realization and returns the capability
+to its mode client:
 
 ```java
 StarterIntakeMechanism intake = program.output(
         new StarterIntakeMechanism(hardwareMap, profile.intake));
-Task root = intake.collectForSeconds(collectDurationSec);
-program.rootTask(root);
+program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
+return intake;
 ```
 
-There is no one-member capability aggregate. `StarterIntake` is already the one cohesive family
-both modes need.
+`StarterAuto` then chooses and declares
+`intake.collectForSeconds(COLLECT_DURATION_SEC)`. Strategy therefore stays with the Auto client
+rather than inside the composition root. There is no one-member capability aggregate:
+`StarterIntake` is already the one cohesive family both modes need.
 
 ## Mechanism and controls ownership
 
@@ -150,7 +157,7 @@ public final class StarterIntakeMechanism
 
     @Override
     public void stop() {
-        // terminally stop the private Plant; no target rewrite is needed
+        plant.stop();
     }
 }
 ```
@@ -222,7 +229,7 @@ commands—not physical motion or that the review happened.
 
 - [`Phoenix Cheat Sheet`](<../reference/Phoenix Cheat Sheet.md>)
 - [`Common Problems`](<../troubleshooting/Common Problems.md>)
-- [`Beginner course`](<../getting-started/Beginner's Guide.md>)
+- [`Learn Phoenix`](<../getting-started/Beginner's Guide.md>)
 - [`Architecture Roles, Framework Lanes, and Robot Controls`](<../design/Framework Lanes & Robot Controls.md>)
 - [`Robot Capabilities and Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>)
 - [`Loop Structure`](<../core-concepts/Loop Structure.md>)

@@ -1,149 +1,89 @@
-# Phoenix beginner course
+# Learn Phoenix
 
-## Goal
+This self-guided path explains how Phoenix robot code fits together. You do not need the example
+robot, and you are not expected to enable an OpMode, edit the examples, or build a complete robot
+alone. Read the small excerpts, follow each intent or evidence flow, and use only the relevant
+patterns in your team's shared robot.
 
-Build confidence with one continuous starter example: compile Phoenix, run one Plant-backed
-mechanism in a simple Auto, add managed TeleOp drive and controls, and understand the Task you
-observed. A separate optional track then explains a Pedro reference without making route following
-part of the first-robot prerequisite.
+**Audience:** FTC students who know basic Java classes, methods, and enums.
 
-**Time:** About 2–3 hours of software work for the four core lessons, plus the time your team needs
-for careful hardware checks. Pedro setup, localization, tuning, and physical validation are a
-separate project.
+**Time:** About two hours for the common path. Role paths are optional follow-up reading.
 
-**Prerequisites:**
+## The learning contract
 
-- basic Java classes, methods, and enums;
-- an FTC Android Studio project that opens successfully;
-- access to the Robot Controller configuration when you begin the hardware lessons; and
-- an adult or experienced student supervising first motion tests.
+The course starts with the small Starter robot, then reveals the Reference robot one layer at a
+time. They are not competing architectures:
 
-**Files for this lesson:**
+- **Starter** is the smallest ordinary Phoenix shape and the easiest place to see an entire flow.
+- **Reference** is a larger teaching robot that adds a referenced lift, a velocity launcher,
+  non-blocking macros, status, and an experiment.
+- **Focused examples and guides** cover integrations the Reference robot does not own.
 
-- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — the continuing
-  starter's simple Auto entry;
-- [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) — the
-  fixed-route Pedro reference entry;
-- [`FtcRobotOpMode.java`](<../../ftc/FtcRobotOpMode.java>) and
-  [`RobotProgram.java`](<../../ftc/RobotProgram.java>) — the managed runtime surface.
+The checked-in configurations are compiling placeholders, not facts about your team's hardware.
+Software can explain ownership and behavior; it cannot prove wiring, safe motion, calibration, or
+physical performance.
 
-## Course checkpoints
+## Common path
 
-| Step | Lesson | You are done when… |
+Read these chapters in order. Each one has a bounded source trace, questions with answers, and a
+clear statement of what to copy, adapt, or leave framework-owned.
+
+| Step | Chapter | You should be able to explain |
 |---:|---|---|
-| 1 | [`Build and Run`](<Build and Run.md>) | The TeamCode module compiles and its unit tests pass. |
-| 2 | [`Your first mechanism`](<First Mechanism.md>) | The generic wizard establishes the motor direction, then the one-motor starter Auto collects for 0.75 seconds and returns to stopped. |
-| 3 | [`Your first TeleOp`](<First TeleOp.md>) | The starter drives, slows with right bumper, and maps A/B/X to intake meanings. |
-| 4 | [`Your first Task and Auto`](<First Task and Auto.md>) | You can explain and safely adapt the non-blocking timed behavior already observed. |
+| 1 | [Robot roles](<learn-phoenix/Robot Roles.md>) | Why the profile, OpMode, composition root, capability, and mechanism have different jobs. |
+| 2 | [Controls and intent](<learn-phoenix/Controls and Intent.md>) | How a semantic gamepad action reaches a capability without controls owning hardware. |
+| 3 | [Plants and hardware](<learn-phoenix/Plants and Hardware.md>) | How one mechanism turns a request into one final hardware realization path. |
+| 4 | [Tasks and autonomous](<learn-phoenix/Tasks and Autonomous.md>) | How fresh, non-blocking Tasks coordinate behavior and retain truthful outcomes. |
+| 5 | [Evidence and experiments](<learn-phoenix/Evidence and Experiments.md>) | How electrical observations become semantic status without inventing physical conclusions. |
+| 6 | [From requirement to robot](<learn-phoenix/From Requirement to Robot.md>) | Where a new team-robot requirement belongs and which owners must collaborate. |
 
-Do one checkpoint at a time. Commit or otherwise save a known-good state before changing hardware
-configuration, directions, or path geometry.
+The goal is understanding, not producing a modified example. The final chapter lets you check your
+design reasoning on paper before your team changes robot code.
 
-After checkpoint 4, the core beginner course is complete. Continue with the optional
-[`Pedro software walkthrough`](<First Pedro Auto.md>) if route integration is relevant; it remains
-disabled and requires no physical Pedro setup.
+## Choose the path relevant to your role
 
-## The files form one robot
+After the common path, use [Role paths](<learn-phoenix/Role Paths.md>) to continue with controls and
+drive, mechanisms and Plants, Tasks and autonomous, vision/localization/guidance, or testing and
+experiments. Read only the path that answers the problem in front of you.
 
-You do not need to read all seven starter files at once. Each lesson opens only the next layer:
+## Where the concepts really live
 
-```text
-    StarterProfile                     intake Config + permission; drive Config + permission
-       |
-       +--> StarterAuto            first one-motor FTC entry
-       |          |
-       |          v
-       |     StarterRobot.declareAuto(...)
-       |          |
-       |          v
-       |     StarterIntake --> StarterIntakeMechanism
-       |                         private Plant and safe stop
-       |
-       +--> StarterTeleOp         adds drive and controls
-                  |
-                  v
-             StarterRobot.declareTeleOp(...)
-                  |
-                  +--> same StarterIntake capability
-                  +--> StarterTeleOpControls and final drive
-```
+The Reference robot is the common case study, not a kitchen-sink robot. This coverage map keeps the
+examples truthful:
 
-The split keeps the OpModes short without hiding robot behavior in a robot-specific base class.
+| Concept | Teaching source |
+|---|---|
+| Minimal managed robot and direct-power mechanism | Starter robot |
+| Profile, root, capabilities, mechanisms, controls, Tasks, status, presenters | Reference robot |
+| Referenced lift, velocity launcher, transfer overlay, locked experiment | Reference robot |
+| Service, Prestart, and field-relative composition | Field-relative focused example |
+| Parking geometry policy | `ReferenceParkingPlan`; it is not executed by Reference Auto |
+| Pedro follower lifecycle and route outcomes | Pedro focused example and tutorial |
+| AprilTags, localization, and guidance | Canonical guides and production references |
+| Haptics and supervisors | Optional guides, Javadocs, and production references |
 
-## Safety contract for the course
+## If you are working with real hardware
 
-Before setting either motion permission or removing `@Disabled`:
+Conceptual understanding and hardware validation are separate jobs. Start with
+[Build and run Phoenix](<Build and Run.md>) for project setup, then use the
+[testing and calibration hub](<../testing-calibration/README.md>) and
+[actuator bring-up](<../testing-calibration/Actuator Bring-up.md>) before enabling motion. A software
+example never authorizes physical movement.
 
-- match every configured name to the Robot Controller configuration;
-- isolate each new actuator in [`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>),
-  review its configured direction, and write down the expected positive motion;
-- use conservative mechanism powers and explicit conservative drive scales;
-- keep people, wires, game pieces, and tools outside moving mechanisms;
-- leave enough clear floor space for any drive or Pedro test; and
-- keep one operator ready to press STOP.
+## Common questions
 
-`StarterProfile.current()` supplies compiling, software-valid example values; those defaults are not
-evidence about your robot. For the intake-only Auto, set `allowIntakeMotion = true` only after
-reviewing that slice and leave `allowDriveMotion = false`. TeleOp requires both permissions after a
-separate drive review, including the explicit BRAKE/FLOAT choice. Clear a slice's permission whenever
-you edit it.
+**Should I copy the Reference robot?**
 
-These booleans record human acknowledgement; they do not prove the review or any physical fact.
-Enabling makes the first supervised motion test possible. During that test, keep wheels or
-mechanisms safely unloaded, verify every direction and response, and prove that FTC STOP removes
-motion before lowering the robot or increasing a limit.
+No. Copy or adapt a small ownership pattern only when it matches a real team requirement. Keep the
+team's capability names, configuration, physical limits, and evidence truthful to its robot.
 
-Compilation and unit tests verify software contracts. They cannot verify wiring, polarity,
-traction, calibration, physical placement, or safe travel.
+**Do I need to understand every framework package first?**
 
-## How to read each lesson
+No. Complete the common path, then use one role path. Advanced integrations should appear only when
+the robot has the corresponding need.
 
-Every lesson gives you:
+**Must I run these examples to finish the course?**
 
-1. one visible goal;
-2. the exact checked-in source files to open;
-3. a short sequence of changes or observations;
-4. a checkpoint you can test;
-5. common failure messages and fixes; and
-6. one link to the next lesson.
+No. The course is source-based. Physical bring-up is a separate supervised team activity.
 
-Code blocks are excerpts from the checked-in examples or use the same public API those examples
-compile against. Follow the linked complete source whenever an excerpt omits imports, configuration,
-or surrounding ownership code.
-
-## Expected checkpoint
-
-Before moving on, you should know that the course uses only the managed path:
-
-```java
-public final class MyMode extends FtcRobotOpMode {
-    @Override
-    protected void configure(RobotProgram program) {
-        // Construct robot owners and declare their roles here.
-    }
-}
-```
-
-You will not create a `LoopClock`, `TaskRunner`, manual FTC loop, or second hardware writer.
-
-## Common problems
-
-**“The source looks larger than the code shown in a lesson.”**
-
-The complete source also contains owner-local configuration validation, safe cleanup, telemetry,
-and focused tests. Learn the highlighted hardware path first; each mechanism copies and validates
-the active Config it owns before looking up its hardware.
-
-**“When should I continue to Pedro?”**
-
-Finish the four core checkpoints first. Pedro builds on the same Task, Auto, ownership, and
-safe-stop vocabulary. The optional lesson is software-first and does not ask a beginner to enable
-route motion. A later physical test is a separate project that requires an installed, localized,
-calibrated, and tuned robot.
-
-**“Should I copy code from the FTC SDK sample packages?”**
-
-Use code under `edu.ftcphoenix.robots` as the Phoenix reference. FTC SDK sample packages do not
-demonstrate this managed ownership model.
-
-**Next:** [`Build and run Phoenix`](<Build and Run.md>)
+**Next:** [Robot roles](<learn-phoenix/Robot Roles.md>)

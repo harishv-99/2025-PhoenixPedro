@@ -329,7 +329,7 @@ drive sink. `Config.copy()` remains an independent data copy so a profile may co
 the source that understands and retains the shaping answers owns their semantic validation.
 Construction validates software coherence only. `GamepadDevice` neutral calibration, safe response,
 and drivetrain direction still require the operator and robot checks described in
-[`Your first TeleOp`](<../getting-started/First TeleOp.md>).
+[`drivetrain direction and integration`](<../testing-calibration/Robot Calibration Tutorials.md#drivetrain-direction-and-integration>).
 
 ### Field-relative gamepad drive
 

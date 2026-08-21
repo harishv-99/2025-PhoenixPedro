@@ -57,6 +57,54 @@ position, choose meaningful Plant units, establish an incremental encoder's dura
 PIDF. After direction, feedback, bounds, and stop behavior are established, use the separate
 [`control tuning workflow`](<Control Tuning Workflow.md>).
 
+## Production mechanism and timed-behavior check
+
+The generic wizard establishes one device fact. It does not prove that the production profile,
+mechanism owner, capability meaning, Task ending, and lifecycle stop work together. Perform this
+separate integration check before relying on a mechanism in TeleOp or Auto.
+
+### Before enabling motion
+
+- Review the exact hardware names, directions, bounds, powers or limits, sensor polarity, and stop
+  policy used by the selected production owner. Checked-in defaults and successful Config
+  validation are software evidence, not physical evidence.
+- If the profile has an explicit motion permission such as `allowIntakeMotion`, leave it false while
+  editing and set it true only after that subsystem's complete configuration has been reviewed.
+  Keep unrelated subsystem motion permissions false for an isolated check.
+- Remove game pieces, fixture the robot, unload the mechanism when appropriate, and keep people,
+  hair, tools, clothing, and wires outside its full motion path. Never hold or stall a powered shaft,
+  roller, wheel, or gearbox by hand.
+- Do not validate a bounded arm, lift, or other hard-stop mechanism by copying an unbounded power
+  example. Use its real feedback, bounds, references, guards, support, and owner-specific policy.
+- Begin with conservative power and duration. Select only the intended OpMode and assign one person
+  to FTC STOP with immediate access to robot power.
+
+### Procedure
+
+1. With the mechanism clear, press INIT. It must not begin ordinary motion. If it does, press STOP,
+   remove motion power, and inspect wiring, the selected OpMode, competing owners, and local changes.
+2. Press START and request one small semantic action, such as collect, eject, raise, or launch. Verify
+   that the physical direction matches the capability meaning rather than compensating with a
+   scattered negative command.
+3. For timed behavior, verify the requested action becomes observable, lasts for the reviewed
+   interval or terminal condition, and reaches its documented completion request. Do not block the
+   loop with `sleep(...)` to create or measure the interval.
+4. Cancel one active behavior through its supported control when that is part of the design, and
+   verify its documented cancellation request. Then press FTC STOP and verify the mechanism's owner
+   immediately applies its physical stop path without needing another ordinary loop update.
+5. Only after the unloaded, conservative check succeeds should the team repeat under expected load
+   and record computed versus operator-observed evidence using the
+   [`subsystem experiment`](<../examples/Subsystem Experiments.md>) lab card.
+
+### Do not move on if
+
+- INIT causes unexplained motion;
+- the mechanism moves opposite its semantic request, crosses reviewed travel, or contacts an
+  obstruction;
+- a timed action never reaches its documented ending;
+- cancellation or FTC STOP leaves unsafe output; or
+- the only evidence is a permission boolean, successful build, unit test, or plausible telemetry.
+
 ## Mechanism position references
 
 ### Why this matters
@@ -203,15 +251,35 @@ Before you trust odometry or autonomous motion, each drivetrain motor should con
 - Robot-specific check when available: `HW: Configured Drivetrain Verification`
 - Final check: the production TeleOp with all wheels safely raised
 
+### Before enabling motion
+
+- Review all drivetrain hardware names and directions, the zero-power brake choice, and conservative
+  axial, lateral, and turn limits. If the profile has an explicit drive-motion permission, leave it
+  false while editing and set it true only after that complete review.
+- Raise and secure every drive wheel for the first integrated test. Keep mechanisms empty and clear,
+  and assign one person to FTC STOP with immediate access to robot power.
+- Release both sticks and every trigger before INIT and reconfirm them before START. Phoenix
+  `GamepadDevice` uses the current axis positions as its neutral baseline when it is constructed, so
+  a held control can teach the wrong baseline.
+
 ### Procedure
 
 1. In the generic wizard, command each configured motor individually and decide which FTC
    `Direction` makes its positive rotation contribute to robot-forward motion.
-2. Copy those direction facts into the robot profile and rebuild.
+2. Copy those direction facts into the robot profile and rebuild. Fix the profile rather than
+   compensating with scattered negative powers.
 3. If the project provides configured-drivetrain verification, run it to confirm the profile and
    hardware-name wiring select the expected wheel one at a time.
-4. With all wheels raised, run the production TeleOp and test forward, strafe, and turn separately.
-5. Fix the profile rather than compensating with scattered negative powers.
+4. With every control neutral and all wheels raised, press INIT. No ordinary drive motion should
+   occur. Reconfirm neutral controls, press START, then test forward, strafe, and turn separately at
+   small input. Test any slow-mode control before increasing the ordinary limits.
+5. Release the controls and verify all drive motors command zero. Press FTC STOP and verify zero
+   again.
+6. Remove motion power before lowering the stopped robot. Never lower or carry it while the OpMode is
+   active. Clear an open floor area, restore power, and start a fresh INIT/START with controls
+   neutral.
+7. Repeat only small, separate forward, strafe, and turn requests on the floor. Increase one limit at
+   a time only after controlled tests establish that the current value is safe.
 
 ### Good result
 
@@ -221,6 +289,8 @@ A student can answer, without hesitation, “yes, each wheel does the expected t
 
 - one wheel spins opposite the others for the same commanded motion
 - drivetrain motor names are still uncertain
+- the robot moves during INIT or with neutral controls
+- releasing the controls or FTC STOP does not produce the expected physical stop
 - your only explanation is “mecanum is confusing” rather than a config fix
 
 ## High-resolution external encoder velocity comparison

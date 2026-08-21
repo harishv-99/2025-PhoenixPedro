@@ -6,19 +6,22 @@ lifecycle and loop order.
 
 ## Start here
 
-There is one beginner path:
+There is one source-based beginner path:
 
 1. Open the canonical [`Phoenix documentation hub`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/README.md>).
 2. Read [`Phoenix in five minutes`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Framework Overview.md>).
-3. Review the [`beginner course checklist`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>).
-4. Complete the four numbered lessons, beginning with
-   [`Build and run Phoenix`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Build and Run.md>).
+3. Follow [`Learn Phoenix`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>)
+   to trace the Starter and Reference robots without requiring their hardware.
+4. Choose the [`role path`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/learn-phoenix/Role Paths.md>)
+   relevant to your work, or use
+   [`Build and run Phoenix`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Build and Run.md>)
+   for project setup and software verification.
 
 The compiling [`modern starter robot`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/examples/Modern Starter Robot.md>)
 is the ordinary managed TeleOp-and-Auto example. Framework changes follow the
 [`Framework Principles`](<TeamCode/src/main/java/edu/ftcphoenix/fw/Framework Principles.md>).
 
-### Quick links after the course
+### Quick links after the learning path
 
 - [`Phoenix Cheat Sheet`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/reference/Phoenix Cheat Sheet.md>)
 - [`Common Problems`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/troubleshooting/Common Problems.md>)

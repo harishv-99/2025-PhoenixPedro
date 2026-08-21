@@ -87,70 +87,19 @@ It decides *what should happen*, and the subsystem decides *what the final targe
 
 ---
 
-## Start simple: a beginner robot (one mechanism)
+## Start simple: one managed mechanism
 
-Students should start with as few concepts as possible.
+Students should start with as few concepts as possible while keeping the ordinary ownership model.
+Even a robot with one mechanism gives that mechanism one owner; the OpMode remains a thin
+`configure(RobotProgram)` entry and `RobotProgram` owns the loop. Trace that smallest shape in
+[`Robot roles`](<../getting-started/learn-phoenix/Robot Roles.md>) and
+[`Plants and hardware`](<../getting-started/learn-phoenix/Plants and Hardware.md>), or inspect the
+compiling [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>).
 
-### Level 0: "One file" robot
+### Smallest ordinary subsystem
 
-This is the simplest possible pattern:
-
-- one command-backed `Plant`
-- one state variable (an enum or boolean)
-- bindings set that state
-- the loop converts state → plant target
-
-This flat OpMode is an intentional first-lesson exception. It teaches one Plant before a student has
-a robot owner or mechanism class; do not keep the composition root constructing raw Plants after the
-mechanism is extracted. The ordinary structured pattern is Level 1 below and the
-[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>).
-
-Example: a servo with a few valid positions in that one-file lesson.
-
-```java
-public enum WristPose { STOW, INTAKE, SCORE }
-
-private Plant wristPlant;
-private WristPose pose = WristPose.STOW;
-
-// init()
-wristPlant = FtcActuators.plant(hardwareMap)
-        .servo("wrist", Direction.FORWARD)
-        .position()
-        .nonPeriodic()
-            .bounded(0.0, 1.0)
-            .nativeUnits()
-        .targetFromNewCommand(0.10)
-        .build();
-
-// Bindings
-bindings.onRise(gamepads.p1().a(), () -> pose = WristPose.INTAKE);
-bindings.onRise(gamepads.p1().b(), () -> pose = WristPose.SCORE);
-bindings.onRise(gamepads.p1().y(), () -> pose = WristPose.STOW);
-
-// Loop
-double target;
-switch (pose) {
-  case STOW:   target = 0.10; break;
-  case INTAKE: target = 0.45; break;
-  case SCORE:  target = 0.80; break;
-  default:     target = 0.10; break;
-}
-
-wristPlant.commandTarget().set(target);
-wristPlant.update(clock);
-```
-
-This teaches the essentials:
-
-- loop structure
-- state
-- bindings
-- plants
-
-### Level 1: add one subsystem
-
-When the mechanism grows (more sensors, more signals, more modes), extract a subsystem.
+Begin with one cohesive mechanism owner. Add a supervisor only when coordination policy no longer
+belongs to that mechanism or to one mode client.
 
 The subsystem:
 
@@ -228,14 +177,11 @@ final class WristSubsystem implements RobotProgram.Output {
 
 ## Add structure: supervisors + pipelines
 
-As soon as you have either of these:
-
-- "do X only when Y is true" (sensor gates)
-- repeated actions (feed one ball repeatedly)
-- time-based actions (pulse for 0.2s)
-- behavior shared between TeleOp and Auto
-
-…it’s time to introduce a supervisor.
+Introduce a supervisor when continuing policy must coordinate multiple capability owners or must
+arbitrate requests independently of one TeleOp or Auto client. A sensor gate, repeated action,
+time-based pulse, or behavior shared by both modes does not by itself require another owner: keep
+cohesive mechanism policy and fresh Task factories with that capability. Add the supervisor only
+when the rule genuinely crosses those boundaries.
 
 ### Pattern A (recommended): bindings call supervisor methods
 

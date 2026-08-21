@@ -1,7 +1,8 @@
 # Phoenix production robot
 
 This package is the repository's complete production example of a robot built on the Phoenix
-framework. It is useful after the beginner course because it shows how the same framework pieces
+framework. It is useful after [Learn Phoenix](<../../fw/docs/getting-started/Beginner's Guide.md>)
+because it shows how the same framework pieces
 fit together at competition scale.
 
 If you are building your first mechanism, start at the canonical

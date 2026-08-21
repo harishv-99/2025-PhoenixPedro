@@ -17,9 +17,10 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) — the first course
-  OpMode;
-- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — the later simple Auto.
+- [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) — the smallest
+  managed TeleOp entry;
+- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — its parallel
+  managed Auto entry.
 
 **Safety:** Keep the starter OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.
@@ -56,9 +57,9 @@ Open the Android Studio terminal at the repository root and run:
 .\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac
 ```
 
-The course shows the Windows command used by this repository's team. On macOS or Linux, replace
+This page shows the Windows command used by this repository's team. On macOS or Linux, replace
 `.\gradlew.bat` with `./gradlew` and keep the remaining arguments unchanged. The same substitution
-applies to later lessons.
+applies to other repository commands.
 
 Wait for `BUILD SUCCESSFUL`. Warnings are not the same as compilation failures; read the final
 result and the first actual error if the build fails.
@@ -72,7 +73,7 @@ result and the first actual error if the build fails.
 These tests exercise the managed runtime, starter ownership, Tasks, Plants, and Pedro reference with
 software fakes. They do not move hardware.
 
-## 4. Find the course examples
+## 4. Find the learning sources
 
 Open the two starter entry files. Both contain `@Disabled`, so they compile but do not appear on the
 Driver Station yet:
@@ -85,18 +86,18 @@ public final class StarterTeleOp extends FtcRobotOpMode {
 }
 ```
 
-Do not remove `@Disabled` until the later lessons have reviewed every hardware name, direction,
+Do not remove `@Disabled` merely to follow the source-based walkthrough. A later physical run must
+first review every hardware name, direction,
 mechanism power, drive scale, and drive brake choice required by that mode. The checked-in profile
 is software-valid so it compiles, but `allowIntakeMotion` and `allowDriveMotion` are both false.
 Those defaults are examples, not proof that the configuration or motion is correct for your robot.
 
-The ready-made tester suite is separate from the disabled starter. It has exactly two entries:
+When the team later works with hardware, the ready-made tester suite is separate from the disabled
+starter. It has exactly two entries:
 **FW: Testers (Driver Station)** for physical-gamepad input and **FW: Testers (Panels)** for
 Panels virtual-gamepad input. They run the same testers and controls and show the same telemetry on
-both consoles; choose one input owner for the whole run. The next lesson uses their shared **HW:
-Actuator Bring-up** wizard to establish one motor's direction at low power before the starter owns
-that motor. Read the [`testing console guide`](<../testing-calibration/README.md>) before choosing
-the Panels entry.
+both consoles; choose one input owner for the whole run. Read the
+[`testing console guide`](<../testing-calibration/README.md>) before any supervised hardware work.
 
 ## 5. Deploy without enabling the starter
 
@@ -118,9 +119,7 @@ Phoenix begins after those FTC controller and deployment steps are working.
 - `:TeamCode:compileDebugJavaWithJavac` reports `BUILD SUCCESSFUL`.
 - `:TeamCode:testDebugUnitTest` reports `BUILD SUCCESSFUL`.
 - Android Studio can navigate to `FtcRobotOpMode`, `RobotProgram`, and the starter examples.
-- You can find **FW: Testers (Driver Station)** and **FW: Testers (Panels)** for the next supervised
-  hardware lesson.
-- No course OpMode has been enabled and no hardware has moved.
+- No example OpMode has been enabled and no hardware has moved.
 
 ## Common problems
 
@@ -142,6 +141,7 @@ first useful network or repository error rather than repeatedly changing source 
 **Tests pass, so can I assume the robot is safe?**
 
 No. Tests cannot inspect the Robot Controller configuration, wiring, motor polarity, mechanism
-travel, or available floor space. The next lesson treats those as explicit checks.
+travel, or available floor space. Use the testing and calibration runbooks when the team begins
+that separate work.
 
-**Next:** [`Your first mechanism`](<First Mechanism.md>)
+**Next:** [`Learn Phoenix`](<Beginner's Guide.md>)

@@ -24,6 +24,21 @@ not BIOBUZZ field geometry. Replace it with reviewed official station facts when
 and keep `allowDriveMotion` false until motor wiring, Hub orientation, headings, low-power motion,
 and physical STOP have all been checked.
 
+## Why this example uses Prestart and a Service
+
+`RobotProgram.Prestart` owns data-only choices made during INIT. Here it lets the operator select a
+named practice station, presents that selection, and freezes the station exactly once at START. It
+does not own drivetrain hardware, move the robot, or need a stop hook.
+
+`RobotProgram.Service` owns a stable resource or upstream process that must advance before bindings,
+Tasks, and outputs during the active loop. Here the IMU heading estimator starts from the frozen
+initial heading, updates once per managed cycle, and stops during program cleanup. Controls only
+read its cached heading evidence.
+
+These are distinct lifecycle jobs, not decoration required by every robot. Robot-centric mecanum
+needs neither role. This focused example adds them because field-relative translation needs one
+INIT-only station decision and one actively updated heading owner.
+
 ## Heading backends
 
 The example registers `FtcImuHeadingEstimator` as a service. At START it reads the selected

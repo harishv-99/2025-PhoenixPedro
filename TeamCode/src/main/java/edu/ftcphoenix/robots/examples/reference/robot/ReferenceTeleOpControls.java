@@ -14,6 +14,7 @@ import edu.ftcphoenix.robots.examples.reference.capability.lift.ReferenceLift;
 final class ReferenceTeleOpControls {
     private final GamepadDevice gamepad;
     private final DriveSource drive;
+    private boolean bindAttempted;
 
     ReferenceTeleOpControls(GamepadDevice gamepad) {
         this.gamepad = Objects.requireNonNull(gamepad, "gamepad");
@@ -26,21 +27,34 @@ final class ReferenceTeleOpControls {
               TaskBindings tasks,
               ReferenceLift lift,
               ReferenceLauncher launcher) {
-        Objects.requireNonNull(callbacks, "callbacks");
-        Objects.requireNonNull(tasks, "tasks");
-        Objects.requireNonNull(lift, "lift");
-        Objects.requireNonNull(launcher, "launcher");
+        CallbackBindings requiredCallbacks = Objects.requireNonNull(callbacks, "callbacks");
+        TaskBindings requiredTasks = Objects.requireNonNull(tasks, "tasks");
+        ReferenceLift requiredLift = Objects.requireNonNull(lift, "lift");
+        ReferenceLauncher requiredLauncher = Objects.requireNonNull(launcher, "launcher");
+        claimBind();
 
-        callbacks.onRise(gamepad.dpadDown(),
-                () -> lift.setHeight(ReferenceLift.Height.STOWED));
-        callbacks.onRise(gamepad.dpadLeft(),
-                () -> lift.setHeight(ReferenceLift.Height.LOW));
-        callbacks.onRise(gamepad.dpadUp(),
-                () -> lift.setHeight(ReferenceLift.Height.HIGH));
-        tasks.onRise(gamepad.x(), lift::home);
+        requiredCallbacks.onRise(gamepad.dpadDown(),
+                () -> requiredLift.setHeight(ReferenceLift.Height.STOWED));
+        requiredCallbacks.onRise(gamepad.dpadLeft(),
+                () -> requiredLift.setHeight(ReferenceLift.Height.LOW));
+        requiredCallbacks.onRise(gamepad.dpadUp(),
+                () -> requiredLift.setHeight(ReferenceLift.Height.HIGH));
+        requiredTasks.onRise(gamepad.x(), requiredLift::home);
 
-        callbacks.onRise(gamepad.b(), launcher::idle);
-        tasks.onRise(gamepad.y(), launcher::launchOne);
+        // TaskBindings delegates to the same ordered callback graph. Declare Y first so a
+        // simultaneous B rise invalidates the just-created launch before the Task runner phase.
+        requiredTasks.onRise(gamepad.y(), requiredLauncher::launchOne);
+        requiredCallbacks.onRise(gamepad.b(), requiredLauncher::abortLaunches);
+    }
+
+    /** Consume the single declaration attempt before the first callback registration. */
+    private void claimBind() {
+        if (bindAttempted) {
+            throw new IllegalStateException(
+                    "ReferenceTeleOpControls.bind(...) may be called only once; create a fresh "
+                            + "controls owner for another callback graph");
+        }
+        bindAttempted = true;
     }
 
     DriveSource driveSource() {

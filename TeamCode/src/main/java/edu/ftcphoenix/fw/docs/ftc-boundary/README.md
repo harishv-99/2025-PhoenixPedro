@@ -27,7 +27,8 @@ drive code never imports the raw SDK `Gamepad` type.
 - [`FTC Auto-to-TeleOp handoff`](<FTC Auto-to-TeleOp Handoff.md>) — advanced process-local,
   cleanup-gated state transfer.
 
-For the ordinary Plant shape, start with [`Your first mechanism`](<../getting-started/First Mechanism.md>)
+For the ordinary Plant shape, start with
+[`Plants and hardware`](<../getting-started/learn-phoenix/Plants and Hardware.md>)
 or the [`Phoenix Cheat Sheet`](<../reference/Phoenix Cheat Sheet.md>).
 
 [Back to the Phoenix docs home](<../README.md>)

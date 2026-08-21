@@ -5,6 +5,8 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
+import edu.ftcphoenix.robots.examples.reference.autonomous.ReferenceAutoRoutines;
+import edu.ftcphoenix.robots.examples.reference.robot.ReferenceCapabilities;
 import edu.ftcphoenix.robots.examples.reference.robot.ReferenceProfile;
 import edu.ftcphoenix.robots.examples.reference.robot.ReferenceRobot;
 
@@ -14,7 +16,8 @@ import edu.ftcphoenix.robots.examples.reference.robot.ReferenceRobot;
 public final class ReferenceAuto extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
-        new ReferenceRobot(hardwareMap)
+        ReferenceCapabilities capabilities = new ReferenceRobot(hardwareMap)
                 .declareAuto(program, ReferenceProfile.current());
+        program.rootTask(ReferenceAutoRoutines.homeMoveLowThenLaunch(capabilities));
     }
 }

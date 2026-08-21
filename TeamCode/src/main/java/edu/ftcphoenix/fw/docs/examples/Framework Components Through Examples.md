@@ -1,8 +1,8 @@
 # Framework components through examples
 
-This is the season-spanning reference path. Read only the row that answers the problem in front of
-you, then return to robot code. The examples keep mechanism intent small while framework-owned
-lifecycle work stays out of sight.
+This is a season-spanning lookup, not a second course. Follow
+[Learn Phoenix](<../getting-started/Beginner's Guide.md>) for the continuous Starter-to-Reference
+story. Return here when one concrete robot problem needs its canonical example or guide.
 
 ## Package structure to copy
 
@@ -11,10 +11,10 @@ need:
 
 ```text
 example/
-  robot/                 profile, composition root, package-private controls and policy
+  robot/                 profile, composition root, and package-private controls
   opmode/                thin FTC entries only
   capability/<family>/   mode-neutral intent/status and its hardware realization
-  autonomous/            routes, routines, and autonomous spatial policy
+  autonomous/            routes, routines, outcome policy, and autonomous spatial policy
   tester/                robot-specific experiment criteria and testers
 ```
 
@@ -31,18 +31,23 @@ them. A small robot simply leaves out unused packages.
 | Robot-centric mecanum | `StarterTeleOpControls.driveSource()` | A `DriveSource` describes intent; one sink realizes it. |
 | Direct-power Plant and timed macro | `StarterIntakeMechanism` and `StarterAuto` | A mechanism owns its Plant; repeated behavior returns a fresh Task. |
 | Field-relative composition | `fieldrelative/opmode/FieldRelativeDriveExample` | Define station “up” explicitly and rotate intent before the normal mecanum sink. |
-| Referenced position and homing | `reference/capability/lift/ReferenceLiftMechanism` | A coordinate that depends on hardware reference must be established by a non-blocking calibration Task. |
-| Paired velocity wheels and readiness | `reference/capability/launcher/ReferenceLauncherMechanism` | One Plant can own paired motors; controller readiness is computed evidence, not proof that a game piece scored. |
-| Temporary output override | `ReferenceLauncherMechanism` transfer queue | Overlay a short feed pulse on a persistent safe target without adding a competing writer. |
+| Referenced position, feedback moves, and homing | `ReferenceLift`, `ReferenceLiftMechanism` | Use a persistent request for immediate intent and a fresh feedback-aware Task when later work must wait for arrival. |
+| Paired velocity wheels and readiness | `reference/capability/launcher/ReferenceLauncherMechanism` | One Plant owns paired commands while each wheel supplies readiness evidence; controller readiness is not proof that a game piece scored. |
+| Temporary output override | `ReferenceLauncherMechanism` transfer queue | Overlay a short feed pulse on a persistent zero target without adding a competing writer. |
 | Outcome-aware Tasks | `ReferenceLauncherMechanism.launchOne()` | Branch after spin-up so timeout cannot accidentally feed. |
-| Shared capability vocabulary | `ReferenceLift`, `ReferenceLauncher`, `ReferenceRobot` | TeleOp and Auto call the same mode-neutral robot meanings. |
+| Shared capability vocabulary | `ReferenceLift`, `ReferenceLauncher`, `ReferenceCapabilities` | TeleOp and Auto call the same mode-neutral robot meanings; an aggregate is useful only for a real multi-family client. |
 | Sensors and status | reference lift/launcher status | Mechanisms condition sensors and publish cached evidence; presenters only format it. |
 | Haptics | `HapticSink` Javadocs and `FtcHaptics.gamepad(...)` | Bind a semantic edge to a short cue and stop the sink during total cleanup. |
 | AprilTag observation and offsets | [Drive Guidance](<../drive-vision/Drive Guidance.md>) | Keep camera ownership, field facts, tag selection, and aim policy distinct. |
 | Localization and field geometry | [AprilTag Localization & Fixed Layouts](<../drive-vision/AprilTag Localization & Fixed Layouts.md>) | Pose evidence belongs upstream of guidance; frames and units stay explicit. |
 | Guided parking and conservative footprint | [Drive Guidance](<../drive-vision/Drive Guidance.md>) | A reviewed target pose may guide into a known-clear full box; corner-inside is literal status only. |
-| Pedro route Tasks | `pedro/opmode/BasicPedroAutoExample` | Resolve live geometry once at Task start and preserve truthful route outcomes. |
+| Pedro route Tasks | `BasicPedroAutoPaths`, `BasicPedroAutoRoutine` | The example builds fixed geometry eagerly; use the named start-time factory only for genuinely live geometry, and preserve truthful route outcomes. |
 | Controller tuning and calibration | [Control Tuning Workflow](<../testing-calibration/Control Tuning Workflow.md>) | Use supported tools to establish controller evidence before robot behavior depends on it. |
+
+The Reference robot does not wire field-relative drive, Prestart, services, parking guidance,
+Pedro, AprilTags, localization, haptics, or supervisors. Rows for those concepts deliberately point
+to focused examples, guides, Javadocs, or production references instead of pretending one example
+owns every capability.
 
 ## What stays advanced
 
@@ -56,7 +61,7 @@ ordinary factories and owners cannot express.
 The launcher example deliberately covers the concepts needed by a typical flywheel mechanism:
 paired velocity actuation, a bounded target, measured velocity, tolerance-based readiness, spin-up
 timeout, outcome-aware feeding, a temporary transfer pulse, positional release, object sensing,
-status presentation, safe active idle, and terminal stop. Range-to-speed interpolation and aiming
+status presentation, reusable active idle, and terminal stop. Range-to-speed interpolation and aiming
 are separate policy lessons; add them upstream without moving Plant ownership out of the launcher.
 
 [Back to the examples index](<README.md>)

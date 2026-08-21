@@ -182,8 +182,9 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 95 | CONFIG-08 | Basic Pedro profile independence | Done | The reviewed independent profile, one review-gated root path, owner-local capture, collision preflight, tests, teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Done | The reviewed owner-section implementation, synchronized evidence, Android Studio review, and destination-specific publication authorization are complete. |
 | 97 | DRIVE-03 | Field-centric TeleOp drive intent | Done | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
-| 98 | EXAMPLE-04 | Curated managed concept examples | In progress | Replace the manual-loop labs with a season-independent managed reference curriculum, subsystem experiment companions, and a non-duplicating BIOBUZZ feature map. |
+| 98 | EXAMPLE-04 | Curated managed concept examples | Done | The managed Starter, Reference, field-relative, and Pedro examples, experiment companion, BIOBUZZ map, package taxonomy, and corrected site navigation are published. |
 | 99 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
+| 100 | DOC-04 | Reference-robot learning path | Done | The reviewed source-based course and bounded Starter/Reference truth hardening have completed Android Studio review and destination-specific publication authorization. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -20573,6 +20574,214 @@ writer, and explicit lifecycle ownership.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
   `master`. EXAMPLE-04 is **Done**; physical robot checks remain adopter validation rather than a
   software-completion claim. This authorization does not start RUNTIME-03 or another tracker item.
+- **Published navigation correction (2026-08-20):** the user found that `zensical.toml` still
+  exposed three pages removed by EXAMPLE-04. The focused follow-up replaced those stale menu items
+  with the current example guides and extended `DocumentationLinksTest` to require every Markdown
+  navigation target to exist. Commit `5a3db58` merged through PR #100 as `8efefad`; both framework
+  and strict documentation checks passed, the trusted master artifact deployed, and the live menu
+  no longer exposed the 404 link.
+
+### DOC-04 - Reference-robot learning path
+
+- **Status and bounded scope (2026-08-20):** **Done** on
+  `codex/doc-04-reference-robot-learning-path`. The user approved expanding the original
+  documentation-only follow-up with the bounded Starter/Reference example corrections recorded
+  below. It adds no protected-framework API and does not begin RUNTIME-03.
+- **Confirmed problem:** the published course still presents one student's supervised hardware
+  build as the primary learning path. That does not match the team's intended use: students need
+  to understand the framework from source and integrate only the pieces relevant to their shared
+  robot, without possessing or executing the example hardware. The concept catalog is a lookup
+  table rather than a continuous explanation, while the complete Reference robot is too large to
+  be a beginner entry without progressive disclosure.
+- **Approved decision:** retain Starter as the one minimal ordinary path, then use ReferenceRobot
+  as one layered case study rather than a second copy-wholesale template. Keep the stable
+  `Beginner's Guide.md` URL as a self-guided hub; add six short source-based chapters plus one role
+  path index. Preserve old lesson URLs as compatibility pages and migrate their unique physical
+  safety material to canonical tester/calibration runbooks. No chapter requires code changes,
+  example execution, an instructor, or individual construction of a complete robot.
+- **Truthful coverage boundary:** the common spine teaches managed roles, semantic controls,
+  capabilities, Plants, Tasks, Auto/TeleOp sharing, sensor evidence, presenters, and experiments.
+  Service/Prestart/field-relative composition, parking policy, Pedro, vision/localization/guidance,
+  haptics, and supervisors remain explicitly labeled focused-example, guide, Javadoc, or production
+  reference satellites. The walkthrough must not claim that ReferenceRobot wires those features.
+- **Required behavioral explanations:** gamepad booleans express semantic button state while
+  `digitalHigh`/`digitalLow` test electrical level; only reviewed active-low wiring makes LOW mean
+  pressed. Reference Auto requests LOW and immediately begins launcher spin-up rather than waiting
+  for lift arrival; its object sensor is status evidence rather than a launch gate. Task instances
+  are single-use, timeouts retain outcomes, and cancellation does not start fallback behavior.
+- **Verification and review:** validate Markdown links/anchors/fences and exact Zensical navigation,
+  retain working compatibility URLs with concept and hardware-runbook destinations, run full
+  TeamCode tests/compile, strict Javadocs and strict Zensical where available, then stop for Android
+  Studio review and destination-specific publication authorization. Physical robot validation is
+  outside this documentation-only item.
+- **Gate 2 curriculum implementation before the reopened decision (2026-08-20):** the unstaged
+  course draft preserves `Beginner's Guide.md` as the hub, adds six short chapters plus a role-path
+  index, replaces the three retired build-along pages with two-route compatibility pages, moves
+  unique physical-safety guidance into the calibration runbook, and updates navigation and inbound
+  descriptions. No framework or robot-example Java source has been edited. Focused link validation
+  passed before the final adversarial source review; full verification has deliberately not begun.
+- **Material source findings and renewed Gate 1 boundary (2026-08-20):** **Researching; source
+  implementation paused.** The final source-to-prose audit found that the proposed canonical case
+  study cannot yet support the course's claims. `ReferenceLauncherExperiment` can idle on timeout,
+  later observe readiness at the new zero target, and relabel that deceleration as a successful
+  spin-up because its active timestamps remain live. The paired flywheel Plant exposes an average
+  measurement, so equal and opposite wheel errors can satisfy its group tolerance while neither
+  wheel is individually ready. Launcher configuration, status, commands, and telemetry omit the
+  fact that native velocity is encoder ticks per second. `idle()` does not cancel an already active
+  or queued `launchOne()` Task, allowing that Task to reassert spin-up or feed after the operator's
+  apparent stop request; normal success and active cancellation also leave persistent launcher
+  requests behind. Successful lift homing writes the stowed numeric command without synchronizing
+  `requestedHeight`, so status can publish contradictory semantic and numeric requests. Finally,
+  Starter and Reference composition roots currently construct Auto control scripts, and Reference
+  does not preflight cross-owner motor-name collisions before hardware lookup. These are observable
+  example defects, not prose preferences; publishing caveats as the main lesson would violate
+  Framework Principles' truthful-boundary and one-current-proven-story requirements.
+- **Complete affected caller/construction inventory:** the launcher surface is confined to
+  `ReferenceLauncher`, `ReferenceLauncherMechanism`, `ReferenceTeleOpControls`, `ReferenceRobot`,
+  `ReferenceLauncherExperiment`, its criteria/menu, focused Reference tests, and maintained
+  Markdown snippets. The lift surface is confined to `ReferenceLift`, its mechanism, Reference
+  controls/root/routine, focused tests, and those guides. Starter Auto policy is confined to
+  `StarterAuto`, `StarterRobot`, Starter tests, and maintained Starter/course pages. Both ordinary
+  examples construct mechanisms only through `HardwareMap` plus owner-local Config; the paired
+  flywheel Plant is the one command/stop realization. No Phoenix production caller, protected-core
+  Plant API, Pedro integration, or legacy/sample robot depends on these example capability names.
+- **Chosen bounded correction, pending approval:** expand DOC-04 only enough to make its two source
+  examples teachable; add no framework API. Keep the paired device-managed flywheel Plant as the
+  one atomic grouped command/stop owner, but add two mechanism-owned memoized motor-velocity
+  sources and decide readiness only when both finite per-wheel measurements independently meet the
+  copied tolerance for the current command. Rename every ambiguous launcher and experiment field,
+  method, validation error, and telemetry key with `TicksPerSec`; retain concise aggregate `ready`
+  only as the documented conjunction of `leftReady` and `rightReady`. The additional evidence
+  sources intentionally poll each motor separately from the Plant's private aggregate reader; do
+  not claim that the public Plant exposes per-child evidence. Validate distinct flywheel names
+  before either named hardware lookup.
+- **Chosen launcher Task/abort contract:** keep `launchOne()` as the fresh shared TeleOp/Auto Task
+  factory, but wrap its factory-composed children in one private Reference-only Task because the
+  existing factories do not combine terminal cleanup with selective invalidation of queued Tasks.
+  Each Task captures the launcher's abort generation. `abortLaunches()` increments that generation
+  before best-effort idle cleanup, so active and not-yet-started older launch Tasks finish
+  `CANCELLED` without later effects while a Task created after the abort remains valid. Declare Y
+  before B so same-cycle declaration order makes abort win. Success finishes the release and
+  transfer pulse, then retracts, clears temporary transfer work, and requests zero velocity;
+  spin-up timeout never feeds and returns `TIMEOUT`; active cancellation returns `CANCELLED` and
+  performs the same cleanup. Pre-start cancellation remains a no-op, terminal cancellation is
+  idempotent, and a second start fails before effects. The wait requires both-ready evidence whose
+  cached target equals the launch target, so prior idle evidence cannot satisfy it. Persistent
+  manual spin-up remains the separately and explicitly named velocity request.
+- **Chosen lift and Auto ownership correction:** make `home()` a fresh sequence that selects
+  `STOWED`, runs the existing bounded calibration search/hold, and selects `STOWED` again after
+  either success or timeout. `SequenceTask` retains the search timeout while its final instant step
+  repairs semantic/numeric agreement; active cancellation skips that final step but the search
+  does not rewrite the persistent command on cancellation, so the last semantic command remains
+  aligned. This also repairs a height request issued while homing when the search later writes its
+  stowed success hold. Change Starter's Auto declaration to return its intake capability and let
+  `StarterAuto` register `intake.collectForSeconds(...)`. Add a small mode-neutral
+  `ReferenceCapabilities` bundle; Reference's Auto declaration returns it, and
+  `ReferenceAutoRoutines.homeMoveLowThenLaunch(...)` owns the existing policy before `ReferenceAuto`
+  registers the returned root Task. The Reference policy deliberately still requests LOW and then
+  launches without waiting for lift arrival. Roots retain construction, active-role declaration,
+  presenter wiring, and update order, not control scripts.
+- **Chosen experiment and ownership evidence:** replace derived live timestamps with retained
+  `IDLE`, `RUNNING`, `TARGET_REACHED`, `TIME_LIMIT_REACHED`, and `ABORTED` trial states. A terminal
+  transition freezes elapsed time and the two wheel measurements before requesting idle; later
+  zero-target readiness cannot change the result, B during a trial retains `ABORTED`, and only a
+  new A trial resets the evidence. Print only the target, per-wheel measured/error/readiness facts,
+  elapsed/spin-up time, and retained outcome needed for this computed experiment. Before any
+  Reference hardware lookup, compare the active modes' trimmed, case-sensitive motor keys: drive,
+  lift, and both flywheels in TeleOp; lift and both flywheels in Auto. Report both profile paths on
+  collision. Keep group-local validation and do not add a framework-wide ownership registry.
+- **Ordinary student call-site comparison:** current Starter and Reference calls hide routine policy
+  inside `declareAuto(...)`. The corrected Starter client has two direct statements—receive the
+  declared `StarterIntake`, then give `intake.collectForSeconds(...)` to
+  `program.rootTask(...)`. The corrected Reference client receives `ReferenceCapabilities`, then
+  gives `ReferenceAutoRoutines.homeMoveLowThenLaunch(capabilities)` to `program.rootTask(...)`. The only
+  added concept is the one the student must actually choose: which Auto routine uses the declared
+  capabilities. TeleOp stays `tasks.onRise(Y, launcher::launchOne)` plus the synchronous
+  `callbacks.onRise(B, launcher::abortLaunches)`; no runner or cancellation API is exposed.
+- **Alternatives rejected at the reopened gate:** documentation-only quarantine would demote the
+  central Reference sources to known-flawed anti-examples and make the experiment chapter
+  factually false. A separate EXAMPLE-05 prerequisite would suspend an already implemented DOC-04
+  branch and split one source-and-documentation truth correction across two publication cycles;
+  explicit expansion keeps one coherent reviewed item. Adding `TaskBindings.cancelAndClear()`
+  would expose a framework-wide total-runner abort for one example-specific need and would also
+  cancel unrelated lift work. Giving the launcher a second command Plant would create avoidable
+  peer realization paths. Trusting the paired Plant's average, merely renaming it, or describing it
+  as both-wheel readiness would remain false. Passing a public routine-function interface into each
+  root adds a higher-order concept when returning the existing capability vocabulary is clearer.
+- **Focused proof required after approval:** add Reference launcher tests for explicit units,
+  per-wheel mismatch that an average would hide, non-finite evidence, fresh/single-use tasks,
+  success, timeout, cancellation during each phase, old-generation active/queued invalidation, and
+  safe final requests. Add tester tests proving frozen success/timeout/abort states and exact
+  deadline ordering. Add lift tests for prior and concurrent height requests across homing success,
+  timeout, and cancellation. Add root tests proving every active trimmed-name collision fails
+  before lookup while Auto ignores unused drive configuration, plus Starter/Reference Auto tests
+  proving routine policy moved to the clients and current outcomes/order remain explicit. Migrate
+  all example callers, snippets, Javadocs, and course explanations together; then run the originally
+  approved documentation checks, full TeamCode tests/compile, strict Javadocs, and strict Zensical.
+  Hardware direction, safe velocity/tolerance/timing, active-low wiring, actual launch success, and
+  scoring remain adopting-team validation and receive no software-only safety claim.
+- **Required scope approval:** because this changes public example names and launcher/Auto behavior,
+  the prior documentation-only authorization does not permit implementation. The exact requested
+  reply is: **“Approve expanding DOC-04 with the bounded Reference and Starter example-truth
+  corrections: explicit ticks-per-second and per-wheel launcher evidence, safe launch completion
+  and generation-based abort, retained experiment outcomes, coherent lift homing status, Auto
+  policy outside composition roots, cross-owner Reference motor preflight, focused tests, and
+  synchronized documentation, with no framework API change.”**
+- **Expanded design approval (2026-08-20):** after reviewing the complete replacement plan, the
+  user replied **“Implement the plan.”** That approval includes the preceding launcher, experiment,
+  root-ownership, and collision corrections plus these refinements discovered during the final
+  teaching audit. `ReferenceLift` gains a fresh feedback-aware `moveTo(Height)` Task with a copied
+  finite timeout and an explicit leave-target-on-cancel policy; Reference Auto now waits for the
+  LOW move to succeed before launching, and retains a home, move, or launch timeout after cleanup.
+  Launcher readiness is false at an idle/zero target and launch/experiment targets must exceed the
+  copied tolerance. The spin-up tester is named and documented only as a wheel experiment, retains
+  terminal per-wheel evidence and a monotonic trial number, and never claims that it feeds or
+  scores an object. The existing six-chapter structure remains fixed while the experiment guide
+  gains a reusable lab-card/results template, one locked worked spin-up card, the two independent
+  motion gates, subsystem criterion shapes, and an exact team-tester construction checklist.
+  Package handoff, Auto-routine ownership, software proof, boundary-based debugging, and a plain
+  first-use Plant definition complete the beginner workflow. Private abort-generation mechanics,
+  per-wheel acquisition plumbing, and experiment state-machine internals stay outside the common
+  student path. Generic experiment/result APIs, a framework abort API, a global ownership registry,
+  new mechanism examples, loaded scoring claims, and Pedro/field-relative runtime refactors remain
+  out of scope.
+- **Implemented result (2026-08-20):** the stable beginner hub now leads through six bounded,
+  source-linked chapters and one role-path index. Starter supplies the minimal first trace and
+  Reference supplies the progressively disclosed mechanism case study; the compatibility pages
+  retain their published URLs and route separately to conceptual learning and physical bring-up.
+  The navigation, BIOBUZZ map, role guides, Pedro/field-relative satellites, calibration material,
+  reusable subsystem lab card, and locked spin-up worked example now tell one synchronized story.
+  Starter and Reference roots declare owners and return capabilities while their OpModes/routine
+  factory own Auto policy. Reference Auto waits for feedback-confirmed LOW before launch. The lift
+  exposes coherent persistent selection, feedback move, and homing outcomes. The launcher exposes
+  explicit ticks-per-second intent and independent per-wheel evidence, derived positive-target
+  readiness, fresh cleanup-safe launch Tasks, and a generation-based abort that invalidates older
+  active or queued launch work. The renamed spin-up tester is inert during INIT, freezes minimal
+  per-wheel terminal evidence with a trial number, and documents its powered-run limit as a
+  cooperative loop boundary rather than a hard-real-time cutoff. Active motor-owner collisions are
+  rejected before Reference hardware lookup. No protected-framework API was added.
+- **Verification result (2026-08-20):** an independent adversarial API/lifecycle review found no
+  remaining blocker after its findings were repaired. The final full Gradle gate passed 1,925 tests
+  in 207 suites with zero failures, errors, or skips, along with
+  `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:phoenixJavadocs`. The focused curriculum
+  regression passed all seven link/navigation tests; focused Reference/Starter review covered 63
+  tests. `git diff --check`, changed-file trailing-whitespace checks, Java line-length checks, stale
+  API-name scans, and publication-coordinate checks are clean. Local strict Zensical generation is
+  unavailable because no Zensical or working Python/uv executable is installed, so the GitHub
+  strict-documentation check remains a required publication gate. No robot hardware was exercised;
+  wiring/directions, switch polarity, safe limits/timing, servo clearance and STOP response, and
+  actual object launching/scoring remain team lab evidence.
+- **Review handoff (2026-08-20):** the complete unstaged diff is ready for Android Studio review on
+  `codex/doc-04-reference-robot-learning-path`, based on the unchanged `origin/master` commit
+  `8efefad`. Nothing has been staged, committed, pushed, or published. The intended push destination
+  is `https://github.com/harishv-99/2025-PhoenixPedro.git` and the merge target is `master`; Gate 3
+  publication waits for one destination-specific combined authorization after review.
+- **Manual review and Gate 3 authorization (2026-08-20):** the user replied with the complete
+  destination-specific prompt, approving the reviewed Android Studio diff and explicitly
+  authorizing committing `codex/doc-04-reference-robot-learning-path`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. DOC-04 is **Done**; hardware evidence remains adopting-team validation, and this
+  authorization does not start RUNTIME-03 or another tracker item.
 
 ### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
 

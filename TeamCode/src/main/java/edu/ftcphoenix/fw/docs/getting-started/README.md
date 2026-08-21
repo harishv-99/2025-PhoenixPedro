@@ -1,9 +1,5 @@
 # Getting started
 
-This is the shortest supported path from a clean checkout to a Phoenix TeleOp and Auto. The core
-course uses the checked-in starter robot throughout, so every core lesson points to Java that the
-project compiles and tests.
-
 Phoenix has one ordinary robot-programming path:
 
 1. extend `FtcRobotOpMode`;
@@ -13,49 +9,41 @@ Phoenix has one ordinary robot-programming path:
 You do not forward FTC lifecycle callbacks or construct a clock or Task runner in ordinary robot
 code.
 
-## Orientation
+## Learn the framework from source
 
-Read these two pages before the numbered lessons:
+Start with [Phoenix in five minutes](<Framework Overview.md>), then follow
+[Learn Phoenix](<Beginner's Guide.md>). The self-guided walkthrough begins with one small Starter
+flow and reveals the Reference robot one layer at a time. It requires no matching robot, example
+execution, or individual build project.
 
-- [`Framework Overview.md`](<Framework Overview.md>) — understand Phoenix in five minutes.
-- [`Beginner's Guide.md`](<Beginner's Guide.md>) — see the complete course and checkpoints.
+The common path covers robot roles, controls and intent, Plants and hardware ownership, Tasks and
+Auto, evidence and experiments, and the workflow from a requirement to team robot code. Afterward,
+the [role paths](<learn-phoenix/Role Paths.md>) route you to only the controls, mechanisms, Auto,
+vision, or testing material relevant to your work.
 
-## Core beginner course
+## Set up or work with physical hardware
 
-1. [`Build and Run.md`](<Build and Run.md>) — build the project before connecting motion hardware.
-2. [`First Mechanism.md`](<First Mechanism.md>) — use the actuator bring-up wizard, copy one tested
-   motor direction, and run a safe Auto checkpoint.
-3. [`First TeleOp.md`](<First TeleOp.md>) — add conservatively limited drive motors and map A/B/X
-   controls.
-4. [`First Task and Auto.md`](<First Task and Auto.md>) — run timed behavior without blocking.
+[Build and run Phoenix](<Build and Run.md>) explains project setup and software verification. When
+the team is ready to work with real devices, use the
+[testing and calibration hub](<../testing-calibration/README.md>) and
+[actuator bring-up](<../testing-calibration/Actuator Bring-up.md>). Source understanding does not
+authorize motion or prove wiring, direction, calibration, safe limits, or physical performance.
 
-These four lessons use one continuous starter robot.
+The older First Mechanism, First TeleOp, and First Task URLs remain as compatibility pages. They
+point separately to the conceptual chapter and the physical runbook rather than defining a second
+course.
 
-## Optional next track
+## Optional integration tutorial
 
-[`First Pedro Auto.md`](<First Pedro Auto.md>) is a software-first route-following walkthrough for
-students who have finished the core course. It switches to the dedicated Pedro reference, remains
-`@Disabled`, and explains the separate configuration and calibration required before any later
-physical test. It is not another required starter lesson.
-
-The core source starts at [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>).
-The optional Pedro track starts at its separate
-[`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) entry.
+[First Pedro Auto](<First Pedro Auto.md>) is a source-only tutorial for the dedicated managed Pedro
+example. It is not part of the common path and does not authorize a physical route test.
 
 ## Keep these three rules visible
 
-- Robot behavior must not sleep or wait in a blocking loop. Use a `Task` for work over time.
+- Robot behavior must not sleep or wait in a blocking loop. Use a fresh `Task` for work over time.
 - A mechanism privately owns its Plants and exposes robot meanings such as `collect()` or
-  `collectForSeconds(...)`.
-- Establish one actuator's direction and optional safe endpoints with
-  [`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>), then verify names,
-  directions, limits, physical placement, and immediate STOP behavior in the production owner. A
-  successful build cannot prove those facts.
+  `launchOne()`.
+- Software evidence and physical evidence are different; claim only what the available source or
+  measurement proves.
 
-## After the course
-
-Use the main [`Phoenix docs hub`](<../README.md>) to find mechanism, controls, vision, localization,
-calibration, and design references. Those pages explain deeper behavior but are not prerequisites
-for the first robot.
-
-**Next:** [`Phoenix in five minutes`](<Framework Overview.md>)
+**Next:** [Phoenix in five minutes](<Framework Overview.md>)

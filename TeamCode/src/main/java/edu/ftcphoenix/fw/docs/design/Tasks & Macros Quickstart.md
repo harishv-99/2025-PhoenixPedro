@@ -1,8 +1,9 @@
 # Tasks and Macros
 
 This is the detailed guide to Phoenix **Tasks**: non-blocking behaviors that continue over several
-robot loops. If this is your first Task, complete
-[`First Task and Auto`](<../getting-started/First Task and Auto.md>) before using this reference.
+robot loops. If this is your first Task, read
+[`Tasks and autonomous`](<../getting-started/learn-phoenix/Tasks and Autonomous.md>) before using
+this reference.
 
 Tasks are used for:
 
