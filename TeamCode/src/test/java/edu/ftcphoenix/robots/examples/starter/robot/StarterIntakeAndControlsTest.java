@@ -10,12 +10,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTargetStatus;
-import edu.ftcphoenix.fw.actuation.PlantTargets;
-import edu.ftcphoenix.fw.actuation.Plants;
-import edu.ftcphoenix.fw.core.hal.PowerOutput;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.input.binding.CallbackBindings;
@@ -26,6 +20,7 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 import edu.ftcphoenix.fw.testing.RecordingCallbackBindings;
 import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntake;
 import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntakeMechanism;
+import edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -137,184 +132,182 @@ public final class StarterIntakeAndControlsTest {
     }
 
     @Test
-    public void mechanismMapsModesThroughOneCommandTargetAndSubmitsStop() {
-        RecordingPowerOutput output = new RecordingPowerOutput();
-        Plant plant = Plants.fromOutputs()
-                .power(output)
-                .targetFromNewCommand(0.0)
-                .build();
-        StarterIntakeMechanism intake = mechanismFrom(plant);
+    public void mechanismMapsSemanticModesForwardAndStagesAppliedPower() {
+        StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+        config.collectPower = 0.65;
+        config.ejectPower = -0.45;
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
-        assertMode(intake, time.clock(), StarterIntake.Mode.STOPPED, 0.0, output);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
+        assertEquals(0, motor.powerWrites());
 
         intake.setMode(StarterIntake.Mode.COLLECT);
-        assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.COLLECT, 0.20, output);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
+        assertEquals(0, motor.powerWrites());
+        intake.update(time.clock());
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65);
+        assertEquals(0.65, motor.lastPower(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
-        assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.EJECT, -0.20, output);
+        assertStatus(intake, StarterIntake.Mode.EJECT, 0.65);
+        intake.update(time.nextCycle(0.02));
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45);
+        assertEquals(-0.45, motor.lastPower(), 0.0);
+
+        expectNullPointer(() -> intake.setMode(null));
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45);
 
         intake.setMode(StarterIntake.Mode.STOPPED);
-        assertMode(intake, time.nextCycle(0.02), StarterIntake.Mode.STOPPED, 0.0, output);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, -0.45);
+        intake.update(time.nextCycle(0.02));
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
+        assertEquals(0.0, motor.lastPower(), 0.0);
+    }
+
+    @Test
+    public void equalPowersDoNotEraseTheRequestedMode() {
+        StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+        config.collectPower = 0.40;
+        config.ejectPower = 0.40;
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
+        ManualLoopClock time = new ManualLoopClock();
+
+        intake.setMode(StarterIntake.Mode.COLLECT);
+        intake.update(time.clock());
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.40);
+        assertEquals(0.40, motor.lastPower(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
+        assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
         intake.update(time.nextCycle(0.02));
+        assertStatus(intake, StarterIntake.Mode.EJECT, 0.40);
+        assertEquals(0.40, motor.lastPower(), 0.0);
+    }
+
+    @Test
+    public void terminalStopZerosHardwareWithoutRewritingTheRequestedMode() {
+        StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+        config.collectPower = 0.65;
+        config.ejectPower = -0.45;
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
+        ManualLoopClock time = new ManualLoopClock();
+
+        intake.setMode(StarterIntake.Mode.EJECT);
+        intake.update(time.clock());
         intake.stop();
 
-        assertEquals(1, output.stopCalls);
-        assertEquals(0.0, output.commandedPower, 0.0);
-        assertEquals(-0.20, plant.commandTarget().get(), 0.0);
-        assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
+        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertStatus(intake, StarterIntake.Mode.EJECT, 0.0);
 
         intake.setMode(StarterIntake.Mode.COLLECT);
         intake.update(time.nextCycle(0.02));
-        assertEquals(0.0, output.commandedPower, 0.0);
-        assertEquals(StarterIntake.Mode.COLLECT, intake.status().mode());
+        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
     }
 
     @Test
-    public void stopDoesNotRewriteTheGraphOwnedCommand() {
-        ScalarTarget failingTarget = new ScalarTarget() {
-            @Override
-            public void set(double value) {
-                throw new IllegalStateException("request write failed");
-            }
-
-            @Override
-            public double get() {
-                return 0.20;
-            }
-        };
-        RecordingPowerOutput output = new RecordingPowerOutput();
-        StarterIntakeMechanism intake = mechanismFrom(
-                Plants.fromOutputs()
-                        .power(output)
-                        .targetFromResolver(PlantTargets.exact(failingTarget))
-                        .build());
-
-        intake.stop();
-
-        assertEquals(1, output.stopCalls);
-        assertEquals(0.0, output.commandedPower, 0.0);
-    }
-
-    @Test
-    public void hardwareNeutralSeamRejectsPlantWithoutCommandTarget() {
-        Plant plant = Plants.fromOutputs()
-                .power(new RecordingPowerOutput())
-                .targetFromResolver(PlantTargets.exact(0.0))
-                .build();
-
-        try {
-            mechanismFrom(plant);
-            fail("Expected Plant without command target to fail");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("command target"));
-        }
-    }
-
-    @Test
-    public void hardwareNeutralSeamRejectsClaimedButMissingCommandTarget() {
-        Plant plant = new Plant() {
-            @Override
-            public void update(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-            }
-
-            @Override
-            public double getRequestedTarget() {
-                return 0.0;
-            }
-
-            @Override
-            public double getAppliedTarget() {
-                return 0.0;
-            }
-
-            @Override
-            public PlantTargetStatus getTargetStatus() {
-                return PlantTargetStatus.ACCEPTED;
-            }
-
-            @Override
-            public boolean hasCommandTarget() {
-                return true;
-            }
-
-            @Override
-            public ScalarTarget commandTarget() {
-                return null;
-            }
-
-            @Override
-            public void stop() {
-            }
-        };
-
-        try {
-            mechanismFrom(plant);
-            fail("Expected null command target to fail");
-        } catch (NullPointerException expected) {
-            assertTrue(expected.getMessage().contains("plant.commandTarget()"));
-        }
-    }
-
-    @Test
-    public void collectTasksAreFreshCompleteOnTimeAndCancelToZero() {
-        RecordingPowerOutput output = new RecordingPowerOutput();
-        StarterIntakeMechanism intake = mechanismFrom(
-                Plants.fromOutputs()
-                        .power(output)
-                        .targetFromNewCommand(0.0)
-                        .build());
+    public void collectTasksAreFreshReassertAndCompleteAtTheirOwnBoundary() {
+        StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+        config.collectPower = 0.65;
+        config.ejectPower = -0.45;
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
         Task first = intake.collectForSeconds(0.50);
         Task second = intake.collectForSeconds(0.50);
         assertNotSame(first, second);
 
+        time.nextCycle(37.0);
         first.start(time.clock());
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
         intake.update(time.clock());
-        assertEquals(0.20, output.commandedPower, 0.0);
+        assertEquals(0.65, motor.lastPower(), 0.0);
         assertFalse(first.isComplete());
 
         first.update(time.nextCycle(0.49));
         intake.update(time.clock());
         assertFalse(first.isComplete());
-        assertEquals(0.20, output.commandedPower, 0.0);
+        assertEquals(0.65, motor.lastPower(), 0.0);
+
+        intake.setMode(StarterIntake.Mode.EJECT);
+        assertStatus(intake, StarterIntake.Mode.EJECT, 0.65);
+        first.update(time.clock());
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65);
 
         first.update(time.nextCycle(0.01));
-        intake.update(time.clock());
         assertTrue(first.isComplete());
         assertEquals(TaskOutcome.SUCCESS, first.getOutcome());
-        assertEquals(0.0, output.commandedPower, 0.0);
-        assertEquals(StarterIntake.Mode.STOPPED, intake.status().mode());
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.65);
+        intake.update(time.clock());
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
+        assertEquals(0.0, motor.lastPower(), 0.0);
 
         second.start(time.nextCycle(0.02));
         intake.update(time.clock());
-        assertEquals(0.20, output.commandedPower, 0.0);
-
-        second.cancel();
-        second.cancel();
-        intake.update(time.nextCycle(0.02));
-        assertTrue(second.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, second.getOutcome());
-        assertEquals(0.0, output.commandedPower, 0.0);
-        assertEquals(StarterIntake.Mode.STOPPED, intake.status().mode());
-
-        assertIllegalDuration(intake, 0.0);
-        assertIllegalDuration(intake, Double.NaN);
+        assertEquals(0.65, motor.lastPower(), 0.0);
     }
 
-    private static void assertMode(StarterIntakeMechanism intake,
-                                   edu.ftcphoenix.fw.core.time.LoopClock clock,
-                                   StarterIntake.Mode expectedMode,
-                                   double expectedPower,
-                                   RecordingPowerOutput output) {
-        intake.update(clock);
+    @Test
+    public void collectTaskCancellationIsActiveOnlyIdempotentAndSingleUse() {
+        StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+        config.collectPower = 0.65;
+        config.ejectPower = -0.45;
+        StarterTestHardware.HardwareMapProbe hardwareMap =
+                new StarterTestHardware.HardwareMapProbe();
+        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
+        ManualLoopClock time = new ManualLoopClock();
+        Task task = intake.collectForSeconds(0.50);
+
+        intake.setMode(StarterIntake.Mode.EJECT);
+        task.cancel();
+        assertFalse(task.isComplete());
+        assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
+        expectUpdateBeforeStart(() -> task.update(time.clock()));
+
+        task.start(time.clock());
+        intake.update(time.clock());
+        assertEquals(0.65, motor.lastPower(), 0.0);
+
+        task.cancel();
+        assertTrue(task.isComplete());
+        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.65);
+        intake.update(time.nextCycle(0.02));
+        assertEquals(0.0, motor.lastPower(), 0.0);
+
+        intake.setMode(StarterIntake.Mode.EJECT);
+        task.cancel();
+        assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
+        expectSecondStart(() -> task.start(time.nextCycle(0.02)));
+        assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
+
+        assertIllegalDuration(intake, 0.0);
+        assertIllegalDuration(intake, -0.01);
+        assertIllegalDuration(intake, Double.NaN);
+        assertIllegalDuration(intake, Double.POSITIVE_INFINITY);
+        assertIllegalDuration(intake, Double.NEGATIVE_INFINITY);
+    }
+
+    private static void assertStatus(StarterIntakeMechanism intake,
+                                     StarterIntake.Mode expectedMode,
+                                     double expectedAppliedPower) {
         StarterIntake.Status status = intake.status();
         assertEquals(expectedMode, status.mode());
-        assertEquals(expectedPower, status.appliedTargetPower(), 0.0);
-        assertEquals(expectedPower, output.commandedPower, 0.0);
+        assertEquals(expectedAppliedPower, status.appliedTargetPower(), 0.0);
     }
 
     private static void pulse(Gamepad driver,
@@ -357,18 +350,21 @@ public final class StarterIntakeAndControlsTest {
         }
     }
 
-    private static StarterIntakeMechanism mechanismFrom(Plant plant) {
+    private static void expectUpdateBeforeStart(Runnable action) {
         try {
-            Constructor<StarterIntakeMechanism> constructor =
-                    StarterIntakeMechanism.class.getDeclaredConstructor(Plant.class);
-            constructor.setAccessible(true);
-            return constructor.newInstance(plant);
-        } catch (ReflectiveOperationException failure) {
-            Throwable cause = failure.getCause();
-            if (cause instanceof RuntimeException) {
-                throw (RuntimeException) cause;
-            }
-            throw new AssertionError("Could not invoke the hardware-neutral mechanism seam", failure);
+            action.run();
+            fail("Expected update before start to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().toLowerCase().contains("before start"));
+        }
+    }
+
+    private static void expectSecondStart(Runnable action) {
+        try {
+            action.run();
+            fail("Expected second start to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().toLowerCase().contains("single-use"));
         }
     }
 
@@ -416,24 +412,4 @@ public final class StarterIntakeAndControlsTest {
         }
     }
 
-    private static final class RecordingPowerOutput implements PowerOutput {
-        private double commandedPower;
-        private int stopCalls;
-
-        @Override
-        public void setPower(double power) {
-            commandedPower = power;
-        }
-
-        @Override
-        public double getCommandedPower() {
-            return commandedPower;
-        }
-
-        @Override
-        public void stop() {
-            stopCalls++;
-            commandedPower = 0.0;
-        }
-    }
 }

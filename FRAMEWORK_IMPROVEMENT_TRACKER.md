@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-18
+Last updated: 2026-08-20
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -186,6 +186,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 99 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
 | 100 | DOC-04 | Reference-robot learning path | Done | The reviewed source-based course and bounded Starter/Reference truth hardening have completed Android Studio review and destination-specific publication authorization. |
 | 101 | DOC-05 | Visual first contact and compact learning path | Done | The reviewed accessible Starter execution picture, optional topic router, compact source-based topics, and focused navigation/accessibility/budget regressions received destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
+| 102 | EXAMPLE-05 | Authoritative Starter intake mode | Done | The reviewed semantic-mode implementation, unchanged student calls, synchronized teaching, clean verification, and destination-specific publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -20891,6 +20892,126 @@ writer, and explicit lifecycle ownership.
   `master`. DOC-05 is **Done**; the required hosted strict-documentation check and rendered-artifact
   inspection remain publication gates, and this authorization does not start RUNTIME-03 or another
   tracker item.
+
+### EXAMPLE-05 - Authoritative Starter intake mode
+
+- **Status and approval boundary (2026-08-20):** **Verifying** on
+  `codex/example-05-authoritative-starter-mode`, based directly on
+  `origin/master@520145bc34dd51ffd7ec89549d4c47ffb61bcd16`. The user identified the Starter's
+  power-to-mode reconstruction as a misleading teaching pattern, approved the decision-complete
+  EXAMPLE-05 plan with **“Implement the plan,”** and then emphasized that this remains the students'
+  first lesson. This authorizes only the bounded Starter implementation, focused tests,
+  synchronized teaching, and Gate 2 verification below. It does not authorize RUNTIME-03,
+  publication, or a robot-hardware claim.
+- **Confirmed behavior and student path:** `StarterIntakeMechanism.status()` currently reads the
+  private Plant's numeric command and calls `modeFor(double)`, so `collectPower` and `ejectPower`
+  serve as semantic identifiers as well as actuator configuration. Config therefore rejects equal
+  action powers, and the timed macro writes the scalar target directly through `ScalarTasks`,
+  bypassing any independently retained semantic request. Controls otherwise use the correct tiny
+  vocabulary—`setMode(COLLECT/EJECT/STOPPED)`—and Starter Auto uses the correct tiny call
+  `collectForSeconds(0.75)`. One exact beginner snippet reproduces the reverse lookup.
+- **Complete caller and sibling audit:** the seven Starter production files, the three focused
+  Starter suites, and maintained Starter guides are the only affected callers. Basic Pedro has no
+  semantic mode or status to reconstruct, so its numeric `ScalarTasks` pattern remains valid.
+  Reference lift already retains semantic height and maps it forward to a numeric command;
+  Reference launcher intentionally exposes numeric velocity. Phoenix, field-relative drive, and
+  protected framework APIs have no corresponding defect and remain out of scope.
+- **Construction/API audit:** ordinary construction remains exactly
+  `StarterIntakeMechanism(HardwareMap, Config)`. The package-private completed-`Plant` constructor
+  is test-only and supplies no distinct student capability; once a semantic request is retained,
+  an injected command target can begin or later be mutated out of agreement with that request.
+  Remove that seam and exercise the ordinary constructor through the existing FTC hardware probes.
+  Do not replace it with a `PowerOutput` recipe, a Plant-plus-mode peer constructor, or another
+  public construction layer.
+- **Chosen implementation:** retain `private Mode requestedMode = STOPPED`. `setMode(...)`
+  validates the enum, maps it forward with `powerFor(...)`, writes the private exact Plant command,
+  and only after a successful write publishes the semantic request. `status()` returns that held
+  mode plus the Plant's cached applied target; delete `modeFor(...)`. Build every timed macro with
+  the existing `RunForSecondsTask`: request COLLECT at start and on each active update, then request
+  STOPPED on natural completion or active cancellation. This preserves fresh/single-use timing,
+  exact-start observability, current per-cycle reassertion, and Task-before-output semantics without
+  a custom Task or framework facade.
+- **Configuration decision:** remove only the equality rejection. Equal nonzero collect/eject
+  powers are software-coherent and must not collapse two semantic requests; their physical
+  usefulness remains team evidence. At the user's explicit choice, each Starter action power still
+  must be finite, nonzero, and within the direct-power Plant range `[-1,+1]`, because COLLECT and
+  EJECT are advertised as motor-action modes. That is a local action invariant, not a universal
+  rule that modes require unique numeric values.
+- **Public surface and ordinary call-site comparison:** keep `StarterIntake.Mode`, `setMode(...)`,
+  `collectForSeconds(...)`, `Status.mode()`, `Status.appliedTargetPower()`, all Config fields, and
+  telemetry keys unchanged. Before and after this item, student controls still say
+  `intake.setMode(Mode.COLLECT)` and Auto still says
+  `program.rootTask(intake.collectForSeconds(0.75))`. Only mechanism internals become one-way and
+  truthful. Javadocs define `mode()` as the held semantic request and the applied value as cached
+  realization evidence; no compatibility alias or new public noun is added.
+- **Alternatives rejected:** documentation-only leaves compiling teaching code wrong. Keeping
+  `modeFor(...)` with tolerances or IDs continues reverse inference. Mirroring a mode field while
+  leaving `ScalarTasks` as a peer writer permits timed work to drift from status. A generic typed
+  target, `Tasks.runModeForSeconds`, or framework enum-source layer adds a public abstraction for
+  one example. Making the Plant resolve a read-only scalar derived from Mode is coherent but adds
+  target-resolver ceremony to the first exact-mechanism lesson; the Framework Principles already
+  designate the Plant's stable `commandTarget()` as the ordinary exact-mechanism path. Renaming
+  `mode()` or its telemetry row adds breaking ceremony when its tightened contract is unambiguous.
+- **Teaching synchronization:** update the Starter capability/mechanism Javadocs and the canonical
+  Plants, Tasks/Auto, Modern Starter, and task-macro explanations. Teach the one-way flow
+  `Mode -> configured power -> Plant command -> applied target`; say explicitly that numeric power
+  is not semantic identity, and distinguish a semantic macro from `ScalarTasks` when the domain
+  request itself is numeric. Keep the initial controls and Auto snippets unchanged and within the
+  existing compact-learning budgets.
+- **Verification plan:** focused tests must prove distinct COLLECT/EJECT status with equal powers;
+  retained zero/nonfinite/range rejection before lookup; requested-mode versus applied-target
+  staging; fresh Tasks; cancel-before-start, update-before-start, second-start, exact-duration,
+  active/repeated-cancel, and active reassertion behavior; terminal motor zero without rewriting the
+  held semantic request; the single ordinary mechanism constructor; and unchanged managed
+  TeleOp/Auto telemetry and order. Run the three Starter suites plus `DocumentationLinksTest`, then
+  full TeamCode tests/compile, strict Phoenix Javadocs, stale-pattern and construction-surface
+  scans, whitespace checks, and `git diff --check`. Hardware names, direction, action effectiveness,
+  safe power, and physical STOP remain supervised adopting-robot evidence.
+- **Implemented result and simplicity evidence (2026-08-20):** the mechanism now retains
+  `requestedMode`, maps it forward through the one private Plant command in `setMode(...)`, and
+  reports that semantic fact directly beside the Plant's cached applied target. The reverse
+  `modeFor(double)` lookup and the package-private completed-Plant constructor are gone. Timed
+  collection delegates to the existing `RunForSecondsTask` behind the unchanged one-line
+  `collectForSeconds(...)` call; controls still use the unchanged one-line `setMode(...)` call.
+  There is no new framework API, public type, compatibility path, or student-side decoration. The
+  mechanism has one ordinary `HardwareMap`-plus-`Config` constructor and is 173 lines, 32 fewer
+  than `origin/master`. Config still rejects zero, nonfinite, and out-of-range action powers but no
+  longer requires two semantic modes to have numerically unique realizations.
+- **Focused verification (2026-08-20):** 37 focused tests passed: 10 intake/control tests, seven
+  mechanism/config tests, 11 managed Starter profile/root tests, and nine documentation tests, with
+  zero failures, errors, or skips. Regressions cover equal-power semantic identity, requested versus
+  applied staging, a 37-second pre-start clock interval that is not charged to the Task, exact
+  duration, per-cycle reassertion, natural completion, active/pre-start/repeated cancellation,
+  single use, terminal physical zero, one ordinary constructor, and unchanged TeleOp/Auto
+  telemetry and loop order.
+- **Full software gate and static evidence (2026-08-20):** the frozen-tree command
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs`
+  completed successfully: 207 suites / 1,927 tests / zero failures, errors, or skips. Stale scans
+  find no Starter `modeFor(...)`, completed-Plant constructor, or old distinct-power rule; changed
+  Java files have no lines over 120 characters. `git diff --check` and the independent
+  Framework-Principles/source-truth audit are **CLEAN**, apart from Git's existing LF-to-CRLF
+  notices. JDK 21 emitted only the existing Java 8 source/target and deprecated FTC API warnings.
+- **Documentation and hardware boundary (2026-08-20):** the maintained Starter guides now teach
+  `Mode -> configured power -> Plant command -> applied target`, preserve `ScalarTasks` for domains
+  whose request is itself numeric, and label equal action powers as a software regression case—not
+  a useful physical intake setup. This machine still exposes only the non-functional Windows Store
+  `python.exe` alias and no `py`, `uv`, or `zensical` command, so local strict site rendering was not
+  available; the pull request's strict documentation check remains a publication gate. No robot
+  hardware was run. Motor names/directions, useful collect/eject behavior, safe power, and physical
+  STOP response remain supervised team evidence.
+- **Review handoff (2026-08-20):** EXAMPLE-05 is intentionally **Verifying** with the complete diff
+  unstaged and uncommitted on `codex/example-05-authoritative-starter-mode`. Review the capability
+  and mechanism, the three focused Starter suites, the four synchronized teaching pages, and this
+  decision record in Android Studio. No commit, push, pull request, or merge has been performed.
+  Destination-specific publication authorization must name this branch, the exact push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`.
+- **Manual review and Gate 3 authorization (2026-08-20):** the user replied with the complete
+  destination-specific prompt, approving the reviewed Android Studio diff and explicitly
+  authorizing committing `codex/example-05-authoritative-starter-mode`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. EXAMPLE-05 is **Done**. This authorization does not start RUNTIME-03, extend the
+  reviewed file scope, or convert the explicitly deferred robot-hardware evidence into a software
+  claim.
 
 ### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
 

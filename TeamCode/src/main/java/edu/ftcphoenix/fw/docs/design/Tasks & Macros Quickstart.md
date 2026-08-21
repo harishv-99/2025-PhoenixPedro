@@ -278,23 +278,24 @@ they protect different scopes, but do not configure two copies of the same polic
 
 ## 4. Mechanisms: `ScalarTasks` for common patterns
 
-For mechanism commands and other writable numbers, start with
-`edu.ftcphoenix.fw.actuation.ScalarTasks`. A simple exact mechanism retains one Plant variable and
-creates its command inline:
+When the capability request is itself a number, such as flywheel velocity or lift position, start
+with `edu.ftcphoenix.fw.actuation.ScalarTasks`. A simple exact mechanism retains one Plant variable
+and creates its command inline:
 
 The builder below is a construction-time excerpt from the mechanism owner. In ordinary FTC robot
 code, that constructor receives `HardwareMap` and its active data-only config, copies and validates
 the complete snapshot before its own hardware lookup, and uses the copied hardware name and
 direction. The composition root owns cross-owner policy and constructs the mechanism, not this raw
 Plant. See the compiling
-[`StarterIntakeMechanism`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) for the
-complete owner.
+[`BasicPedroAutoMechanism`](<../../../robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>)
+for a complete numeric-target owner. This pattern is intentionally separate from the Starter
+intake's named `Mode` vocabulary.
 
 ```java
-private final Plant intake;
+private final Plant roller;
 
-// In the IntakeMechanism constructor:
-this.intake = FtcActuators.plant(hardwareMap)
+// In the RollerMechanism constructor:
+this.roller = FtcActuators.plant(hardwareMap)
         .motor(snapshot.motorName, snapshot.direction)
         .power()
         .targetFromNewCommand(0.0)
@@ -313,9 +314,9 @@ Plant bounds and target guards select the applied target
 Plant sends the actuator command; a feedback-capable Plant can also report physical arrival
 ```
 
-`intake.commandTarget()` returns that same stable target without sampling or touching hardware. Use
-it directly for immediate robot behavior (`intake.commandTarget().set(...)`) and deferred Task
-behavior (`ScalarTasks.set(intake.commandTarget(), ...)`). A feedback branch validates that the
+`roller.commandTarget()` returns that same stable target without sampling or touching hardware. Use
+it directly for immediate numeric behavior (`roller.commandTarget().set(...)`) and deferred Task
+behavior (`ScalarTasks.set(roller.commandTarget(), ...)`). A feedback branch validates that the
 supplied Plant follows that exact target, so a mismatched standalone or graph-owned target fails
 when the Task is constructed rather than silently waiting on the wrong mechanism.
 
@@ -360,7 +361,7 @@ Use `ScalarTasks.set(target, value).forSeconds(...)` for open-loop pulses and ti
 These work whether or not a Plant has feedback.
 
 ```java
-Task intakePulse = ScalarTasks.set(intake.commandTarget(), +1.0)
+Task rollerPulse = ScalarTasks.set(roller.commandTarget(), +1.0)
         .forSeconds(0.7)
         .then(0.0)
         .build();
@@ -379,6 +380,11 @@ still queued and never started, discarding it has no target side effects.
 The `0.7` seconds begin when this task starts. Even if the preceding loop was unusually long, the
 new `+1.0` target is still available for the following `plant.update(clock)` call before a positive
 duration may finish.
+
+Do not use a numeric target to reconstruct a named capability state. The Starter intake retains its
+requested `Mode`, maps that mode forward to power in `setMode(...)`, and builds its timed action with
+`RunForSecondsTask` callbacks that call the same setter. This keeps `status().mode()` truthful while
+the one-line robot call remains `intake.collectForSeconds(durationSec)`.
 
 To hold and leave the target there:
 
@@ -713,8 +719,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 * **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`,
   `parallelDeadline`, `withTimeout`, `noop`, ...) are the main building blocks you should reach for
   first.
-* **`ScalarTasks.set(target, value)`** is the one deferred-write path: build it directly, add a
-  timed branch, or add a feedback-aware branch.
+* **`ScalarTasks.set(target, value)`** is the direct deferred-write path when the request itself is
+  numeric: build it directly, add a timed branch, or add a feedback-aware branch.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement
   when its Task is the sole behavior-command writer for the drive sink.
 * Ordinary leaf Tasks and generic composition use `Tasks.*`; `RunForSecondsTask` remains public for

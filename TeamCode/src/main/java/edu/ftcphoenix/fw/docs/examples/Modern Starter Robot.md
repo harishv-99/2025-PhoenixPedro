@@ -45,8 +45,8 @@ The baseline intake is `"intakeMotor"`, `FORWARD`, `+0.20` collect, and `-0.20` 
 `"frontLeftMotor"`, `"frontRightMotor"`, `"backLeftMotor"`, and `"backRightMotor"`, directions
 F/R/F/R, `enableZeroPowerBrake = true`, and axial/lateral/omega scales `0.25/0.25/0.20`.
 
-Before the intake-only Auto, replace and review the intake motor name/direction and distinct finite
-nonzero collect/eject powers in `[-1, +1]`, then set only `allowIntakeMotion = true`. Leave
+Before the intake-only Auto, replace and review the intake motor name/direction and finite nonzero
+collect/eject powers in `[-1, +1]`, then set only `allowIntakeMotion = true`. Leave
 `allowDriveMotion = false`; Auto never reads the inactive drive slice or its permission.
 
 Before TeleOp, also replace and review all four drive names/directions, the explicit
@@ -146,7 +146,27 @@ rather than inside the composition root. There is no one-member capability aggre
 
 `StarterIntakeMechanism` receives `HardwareMap` plus a data-only config, defensively copies and
 validates the complete snapshot before its first hardware lookup, constructs its final
-command-backed Plant, and implements the downstream role:
+command-backed Plant, and implements the downstream role. Its central rule stays small:
+
+```java
+public void setMode(Mode mode) {
+    Mode requested = Objects.requireNonNull(mode, "mode");
+    plant.commandTarget().set(powerFor(requested));
+    requestedMode = requested;
+}
+
+public Status status() {
+    return new Status(requestedMode, plant.getAppliedTarget());
+}
+```
+
+The named mode is the request. The mechanism maps it forward to configured power and never tries to
+recover it from a number. Collect and eject powers may therefore be equal without making status
+ambiguous; each action power must still be finite, nonzero, and in `[-1, +1]`. Equal values are a
+software-valid regression case, not a suggested physical intake configuration. The team must verify
+that its chosen values produce the intended collect and eject actions on its hardware.
+
+The same owner applies the downstream lifecycle:
 
 ```java
 public final class StarterIntakeMechanism
@@ -162,9 +182,6 @@ public final class StarterIntakeMechanism
     }
 }
 ```
-
-For advanced hardware-neutral tests only, one package-private constructor accepts a completed Plant
-alone; ordinary robot code has only the `HardwareMap`-plus-`Config` path.
 
 The controls constructor creates stable input sources without changing the callback graph. Its
 explicit, one-shot `bind(...)` call receives `CallbackBindings` first and the capability second. It
