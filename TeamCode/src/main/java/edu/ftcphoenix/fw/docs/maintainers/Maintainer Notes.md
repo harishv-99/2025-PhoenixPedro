@@ -206,6 +206,9 @@ list of minimum versions. Zensical is still a `0.0.x` package, so upgrades are d
 2. create a new clean Python 3.12 environment outside the checked-in source tree;
 3. install only `zensical==<new-version>` and inspect `python -m pip freeze --local`;
 4. replace every runtime pin in `requirements-docs.txt`, retaining platform markers such as the
-   Windows-only `colorama` dependency and checking the release's tagged upstream lock; and
-5. install the revised lock in clean Windows and Linux environments, then rerun the strict combined
+   Windows-only `colorama` dependency and checking the release's tagged upstream lock;
+5. compare the new release's generated default Markdown-extension map with the explicit
+   `[project.markdown_extensions]` block in `zensical.toml`, then update that block and its focused
+   documentation regression together; and
+6. install the revised lock in clean Windows and Linux environments, then rerun the strict combined
    build, link test, search/artifact checks, and visual review before accepting the upgrade.

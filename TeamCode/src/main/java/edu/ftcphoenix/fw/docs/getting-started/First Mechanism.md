@@ -1,7 +1,7 @@
 # Your first mechanism
 
 This URL is retained for existing bookmarks. The earlier supervised hardware build-along is no
-longer part of the conceptual Phoenix course. Choose the route that matches what you are doing.
+longer the primary Phoenix learning route. Choose the destination that matches what you are doing.
 
 ## Learn the framework concept
 

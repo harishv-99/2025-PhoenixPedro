@@ -11,15 +11,14 @@ code.
 
 ## Learn the framework from source
 
-Start with [Phoenix in five minutes](<Framework Overview.md>), then follow
-[Learn Phoenix](<Beginner's Guide.md>). The self-guided walkthrough begins with one small Starter
-flow and reveals the Reference robot one layer at a time. It requires no matching robot, example
-execution, or individual build project.
+Start with [Phoenix in one picture](<Framework Overview.md>). It follows one Starter button through
+the managed lifecycle and the mechanism-owned hardware-command path. Reading it requires no
+matching robot, example execution, edit, or individual build project.
 
-The common path covers robot roles, controls and intent, Plants and hardware ownership, Tasks and
-Auto, evidence and experiments, and the workflow from a requirement to team robot code. Afterward,
-the [role paths](<learn-phoenix/Role Paths.md>) route you to only the controls, mechanisms, Auto,
-vision, or testing material relevant to your work.
+Then [choose a Phoenix topic](<Beginner's Guide.md>) for the problem in front of you: robot roles,
+controls, Plants, Tasks and Auto, evidence, or placing a new requirement. These pages are optional
+deep dives rather than a required sequence. [Role paths](<learn-phoenix/Role Paths.md>) provides a
+more detailed map for controls, mechanisms, Auto, vision, and testing work.
 
 ## Set up or work with physical hardware
 
@@ -36,7 +35,7 @@ course.
 ## Optional integration tutorial
 
 [First Pedro Auto](<First Pedro Auto.md>) is a source-only tutorial for the dedicated managed Pedro
-example. It is not part of the common path and does not authorize a physical route test.
+example. It is an optional integration topic and does not authorize a physical route test.
 
 ## Keep these three rules visible
 
@@ -46,4 +45,4 @@ example. It is not part of the common path and does not authorize a physical rou
 - Software evidence and physical evidence are different; claim only what the available source or
   measurement proves.
 
-**Next:** [Phoenix in five minutes](<Framework Overview.md>)
+**First-contact guide:** [Phoenix in one picture](<Framework Overview.md>)

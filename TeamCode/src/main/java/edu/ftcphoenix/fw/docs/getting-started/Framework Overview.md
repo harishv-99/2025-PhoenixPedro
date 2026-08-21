@@ -1,159 +1,140 @@
-# Phoenix in five minutes
+# Phoenix in one picture
 
-## Goal
+Phoenix lets students describe a robot once while the framework owns the FTC lifecycle and runs
+everything in a predictable order. This 15–20 minute, read-only tour uses the small Starter robot.
+It requires no matching hardware, build, or example edit.
 
-Understand where ordinary TeleOp and Auto code belongs without learning the framework internals.
+## The student entry point
 
-**Time:** 5–10 minutes
-
-**Prerequisites:** Basic Java classes and FTC OpModes are helpful, but no Phoenix experience is
-required.
-
-**Files for this lesson:**
-
-- [`FtcRobotOpMode.java`](<../../ftc/FtcRobotOpMode.java>)
-- [`RobotProgram.java`](<../../ftc/RobotProgram.java>)
-- [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>)
-- [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>)
-
-**Safety:** This lesson only reads code. Do not enable a checked-in example or command hardware yet.
-
-## The whole idea
-
-Phoenix separates **what your robot should do** from **when the FTC loop calls it**.
-
-Your OpMode declares a robot once:
+An ordinary Phoenix OpMode overrides one method. This is the complete method from
+[`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>):
 
 ```java
-public final class StarterTeleOp extends FtcRobotOpMode {
-    @Override
-    protected void configure(RobotProgram program) {
-        StarterProfile profile = StarterProfile.current();
-        new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
-    }
+@Override
+protected void configure(RobotProgram program) {
+    StarterProfile profile = StarterProfile.current();
+    new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
 }
 ```
 
-`FtcRobotOpMode` then owns INIT, START, each active loop, STOP, one telemetry commit, and fail-stop
-cleanup. The fresh profile is consumed synchronously by this declaration; the root does not retain
-an editable aggregate. Ordinary robot code does not override those callbacks.
+`StarterProfile` supplies checked-in configuration. `StarterRobot` performs code composition: it
+constructs the intake, controls, and drivetrain owners, registers the controls' bindings, and
+declares the managed output, drive, and presenter roles. `StarterTeleOpControls` owns the button
+meanings. `FtcRobotOpMode` calls `configure(...)` once and owns all later lifecycle calls.
 
-## The beginner mental model
+## What executes after composition
 
-```text
-gamepads and sensors
-        |
-        v
-controls and Tasks choose robot intent
-        |
-        v
-capabilities express meanings such as COLLECT or STOPPED
-        |
-        v
-mechanism outputs and drive apply the final commands
-        |
-        v
-hardware
+```mermaid
+flowchart TB
+  accTitle: Phoenix managed execution after robot code composition
+  accDescr: The FTC INIT call performs code composition once. Managed INIT cycles do not run bindings, Tasks, outputs, or drive. At START, a ready program starts optional services and a root Task before one output and drive update; a blocked program keeps active owners inert. Every ready ACTIVE cycle advances the clock, optional services, bindings, Tasks, outputs and drive, presenters, and one telemetry commit. STOP or a caught RuntimeException cleans up Tasks, bindings, outputs, and services in order.
+
+  subgraph COMPOSE["CODE COMPOSITION — once during the first INIT call"]
+    direction TB
+    C1["configure(program)"] --> C2["Choose StarterProfile and create StarterRobot"]
+    C2 --> C3["Register button bindings<br/>declare intake output, drive, and presenter"]
+    C3 --> C4["RobotProgram freezes the declarations"]
+  end
+
+  subgraph RUN["MANAGED EXECUTION — framework owned"]
+    direction TB
+    I["INIT after composition<br/>optional Prestart check → Presenters<br/>one telemetry commit<br/>Later INIT loops first advance Clock<br/>active owners stay inert"]
+    S["START once<br/>freeze optional Prestart → reset Clock"]
+    D{"READY?"}
+    R["READY<br/>start optional Services and root Task<br/>run outputs and drive once<br/>no telemetry commit"]
+    B["BLOCKED<br/>active owners stay inert<br/>later loops: Clock → Presenters<br/>one telemetry commit"]
+    A1["ACTIVE: Clock"] --> A2["optional Services"]
+    A2 --> A3["Bindings"]
+    A3 --> A4["Tasks"]
+    A4 --> A5["Outputs and drive"]
+    A5 --> A6["Presenters"]
+    A6 --> A7["one telemetry commit"]
+    X["STOP or caught RuntimeException<br/>cancel/clear Tasks → clear bindings<br/>stop outputs, including drive, in order<br/>stop Services in reverse order"]
+  end
+
+  C4 --> I
+  I --> S
+  S --> D
+  D -- "yes" --> R
+  D -- "no" --> B
+  R --> A1
+  B -. "later blocked loop" .-> B
+  A7 -. "next active cycle" .-> A1
+  A7 -. "FTC STOP" .-> X
+  B -. "FTC STOP" .-> X
+  I -. "STOP or caught RuntimeException" .-> X
+  S -. "STOP or caught RuntimeException" .-> X
 ```
+**Text version:**
 
-The framework runs the declared roles in the safe order. Students work mostly with these five
-ideas:
+1. During the first FTC INIT call, `configure(program)` selects the profile, creates the Starter
+   composition root, registers button bindings, and declares the intake output, drive, and a
+   presenter. It then freezes those declarations. This code composition happens once.
+2. After composition, the first INIT call runs an optional Prestart check, presents status, and
+   commits telemetry once. Each later INIT loop first advances the clock and then does the same.
+   Prestart means data-only work that may select the BLOCKED disposition and prevent active owners
+   from starting. Starter TeleOp has no Prestart, Service, or root Task; none is required. Bindings,
+   Tasks, managed outputs, and drive stay inert in INIT.
+3. At START, Phoenix freezes Prestart and resets the same clock. If READY, it starts optional
+   Services and the optional root Task, then runs outputs and drive once without committing
+   telemetry. A Service is recurring background ownership such as localization; a root Task is an
+   Auto routine. If BLOCKED, active owners remain inert and later loops run only Clock → Presenters
+   → one telemetry commit.
+4. Each READY ACTIVE cycle runs Clock → optional Services → Bindings → Tasks → Outputs and drive →
+   Presenters → one telemetry commit, then repeats in the same order.
+5. At STOP, Phoenix best-effort cancels and clears Tasks, clears bindings, stops outputs in
+   declaration order—including drive—and stops Services in reverse declaration order. A managed
+   phase that throws a `RuntimeException` enters the same cleanup path; Java `Error`s are not
+   caught.
 
-1. **`FtcRobotOpMode`** is the FTC host.
-2. **`RobotProgram`** is the declaration surface received by `configure(...)`.
-3. **Bindings** connect gamepad signals to semantic robot actions.
-4. **Tasks** describe non-blocking behavior that takes time.
-5. **Outputs and drive** are the owners that finally command hardware.
+The diagram shows both START dispositions but omits rarer failure details. See
+[Loop structure](<../core-concepts/Loop Structure.md>) when implementing Prestart, Services, or a
+custom lifecycle host.
 
-## What `RobotProgram` declarations mean
+## Follow one button through the cycle
 
-You will meet these methods in the course:
+When the driver first presses A during an ACTIVE cycle:
 
-| Declaration | Meaning |
+`A is true` → its rising-edge binding runs → `setMode(COLLECT)` changes the intake's request → the
+later output phase updates the private Plant → the Plant performs the sole motor write → the
+presenter reads the requested mode and cached applied target → Phoenix commits that telemetry frame.
+
+A **Plant** is the mechanism-owned object that resolves one actuator target and performs the final
+hardware write.
+
+Three distinctions keep that trace truthful:
+
+- Drive sticks do not pass through callback bindings. The drive source samples them in the
+  Outputs/drive phase and the drive sink performs the final drivetrain write.
+- A Task changes a capability or Plant request; it does not write hardware directly. The owning
+  output performs that later phase.
+- An applied target reports what software resolved and submitted. It does not prove that a motor
+  moved or that a game piece was collected.
+
+## Where students make changes
+
+| If the team wants to change… | The usual owner |
 |---|---|
-| `program.callbackBindings()` | Register synchronous button or axis meanings. |
-| `program.taskBindings()` | Construct and enqueue a fresh Task from a control event. |
-| `program.output(owner)` | Register a mechanism that owns update and safe stop. |
-| `program.drive(source, sink)` | Connect the final drive intent to the drivetrain owner. |
-| `program.rootTask(task)` | Declare the one Auto routine that starts at FTC START. |
-| `program.presenter(...)` | Add read-only rows to the one telemetry frame. |
+| A motor name, direction, permission, limit, or `collectPower` value | [`StarterProfile`](<../../../robots/examples/starter/robot/StarterProfile.java>) and its data-only configuration |
+| What A, B, X, a trigger, or a stick means | [`StarterTeleOpControls`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>) |
+| The shared robot word `COLLECT` and its status | [`StarterIntake`](<../../../robots/examples/starter/capability/intake/StarterIntake.java>) |
+| How a mode becomes a bounded Plant target and hardware update | [`StarterIntakeMechanism`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) |
 
-The program returns registered owners from `output(...)` and `drive(...)`, so construction and
-ownership stay visible at the declaration site.
+The composition root connects those owners. It should not become a control script. Mechanisms keep
+their Plants private so controls, Tasks, and Auto all use the same visible intent-to-hardware path.
 
-## TeleOp and Auto use the same robot vocabulary
+## Optional source check
 
-The starter intake exposes meanings such as:
+Without changing a file, find `intake.motorName` and `intake.collectPower` in
+[`StarterProfile.java`](<../../../robots/examples/starter/robot/StarterProfile.java>), the A binding
+in [`StarterTeleOpControls.java`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>),
+and the intake construction in
+[`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>). The profile owns
+the two configuration values, controls own the button meaning, and the composition root constructs
+and declares the mechanism that privately owns the hardware path.
 
-```java
-void setMode(Mode mode);
-Task collectForSeconds(double durationSec);
-```
+## Choose one next route
 
-TeleOp controls call `setMode(...)`. Auto asks for a fresh `collectForSeconds(...)` Task. The
-mechanism owns the hardware in both modes, so the two modes do not duplicate motor code.
-
-## The three habits Phoenix expects
-
-### Keep behavior non-blocking
-
-Do not call `sleep(...)` or spin in `while (...)` waiting for time or a sensor. Build a Task and let
-the managed program advance it while the rest of the robot remains responsive.
-
-### Keep hardware inside its owner
-
-An ordinary mechanism constructor receives `HardwareMap` plus data-only configuration, defensively
-copies and validates its active slice before its own hardware lookup, privately builds its Plants,
-and implements `RobotProgram.Output`. The composition root owns robot-level permissions and
-cross-owner relationships; controls and Auto call capability methods instead of reaching into a
-Plant or FTC motor.
-
-A Plant is the mechanism-owned object that resolves one requested actuator target and performs the
-final hardware write.
-
-### Create a fresh Task for every run
-
-A Task instance represents one run. A method such as `collectForSeconds(...)` builds and returns a
-new Task whenever a button or Auto routine needs that behavior again.
-
-## What you can defer
-
-You do not need these topics to finish the common learning path:
-
-- the framework clock and same-cycle safeguards;
-- direct Task-runner lifecycle;
-- target resolvers, overlays, and custom Plant adapters;
-- custom Task state machines;
-- prestart selection and Auto-to-TeleOp handoff;
-- Pedro adapter heartbeat and route-execution internals.
-
-The framework and integration references document them when a robot actually needs them.
-
-## Expected checkpoint
-
-You can answer these questions:
-
-- Which method does an ordinary Phoenix OpMode override? `configure(RobotProgram)`.
-- Who calls the FTC lifecycle and updates the robot? `FtcRobotOpMode` and its `RobotProgram`.
-- Where do button meanings live? In robot-owned controls registered through bindings.
-- Where does motor or servo construction live? In the mechanism that owns the Plant.
-- How does code wait without blocking? With a fresh Task.
-
-## Common problems
-
-**“Where is the loop method I should edit?”**
-
-There is no student-owned loop method in the managed path. Declare owners and behavior in
-`configure(...)`; the framework calls them.
-
-**“Should my controls set motor power directly?”**
-
-No. Controls call capability methods such as `setMode(...)`. The mechanism translates that intent
-to its private Plant.
-
-**“Do I need to understand every `RobotProgram` role?”**
-
-No. Learn Phoenix introduces the common managed roles through Starter and Reference. Services and
-prestart policy remain focused follow-ups for robot features that actually need them.
-
-**Next:** [`Learn Phoenix`](<Beginner's Guide.md>)
+1. For project setup and supervised physical bring-up, use [Build and run Phoenix](<Build and Run.md>).
+2. For behavior over time and Auto, study [Tasks and autonomous](<learn-phoenix/Tasks and Autonomous.md>).
+3. For a topic matched to your current job, open [Choose a Phoenix topic](<Beginner's Guide.md>).

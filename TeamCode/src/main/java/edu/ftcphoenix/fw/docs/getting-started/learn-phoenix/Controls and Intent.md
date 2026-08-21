@@ -1,232 +1,88 @@
 # Controls and intent
 
-**Question this chapter answers:** How does a human action become robot intent without putting
-gamepad policy inside a mechanism?
+**Question:** How does a human action become robot intent without putting gamepad policy inside a
+mechanism?
 
-**Reading time:** about 15 minutes
+Controls own operator meanings. They turn stable input sources into capability calls or drive
+intent; they do not construct hardware or update Plants. You can follow this source-only lesson
+without a gamepad or robot.
 
-Controls own meanings. They turn stable input sources into capability calls and drive intent; they
-do not construct hardware or update Plants. This chapter is source-only—you do not need a gamepad
-or robot to follow the data flow.
+## A button becomes a capability request
 
-## Source map
+[`GamepadDevice`](<../../../ftc/input/GamepadDevice.java>) adapts the FTC gamepad to Phoenix sources.
+`gamepad.a()` is a `BooleanSource` that is `true` while A is pressed. That meaning is not an
+electrical HIGH or LOW signal. A trigger is instead a `ScalarSource` from `0.0` to `1.0`; code can
+derive a Boolean meaning with, for example, `rightTrigger().above(0.2)`.
 
-| Read | Look for |
-| --- | --- |
-| [`StarterTeleOpControls.java`](<../../../../robots/examples/starter/robot/StarterTeleOpControls.java>) | Stable input sources, callback bindings, and robot-centric drive intent |
-| [`ReferenceTeleOpControls.java`](<../../../../robots/examples/reference/robot/ReferenceTeleOpControls.java>) | The distinction between synchronous callbacks and fresh Tasks |
-| [`StarterIntake.java`](<../../../../robots/examples/starter/capability/intake/StarterIntake.java>) | Semantic requests that contain no button names or motor powers |
-| [`GamepadDevice.java`](<../../../ftc/input/GamepadDevice.java>) | The FTC boundary that exposes buttons and axes as Phoenix sources |
-
-## A button is a semantic source
-
-`GamepadDevice` wraps the FTC SDK `Gamepad`. A button source is `true` while that named button is
-pressed. That is already a human-facing meaning; it is not a statement about an electrical HIGH or
-LOW pin inside the controller.
-
-The Starter controls constructor retains the boundary object and creates its stable drive source:
+The complete Starter intake mapping lives in
+[`StarterTeleOpControls`](<../../../../robots/examples/starter/robot/StarterTeleOpControls.java>):
 
 ```java
-StarterTeleOpControls(GamepadDevice driver) {
-    this.driver = Objects.requireNonNull(driver, "driver");
-
-    driveSource = new GamepadDriveSource(
-            this.driver.leftX(),
-            this.driver.leftY(),
-            this.driver.rightX(),
-            GamepadDriveSource.Config.defaults()
-    ).scaledWhen(this.driver.rightBumper(), SLOW_TRANSLATE_SCALE, SLOW_OMEGA_SCALE);
-}
-```
-
-Construction does not register behavior. The root later calls `bind(...)` exactly once for the
-program's callback graph.
-
-Here is the Starter's complete intake mapping:
-
-```java
-requiredCallbacks.onRise(
-        driver.a(),
+requiredCallbacks.onRise(driver.a(),
         () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
-requiredCallbacks.onRise(
-        driver.b(),
+requiredCallbacks.onRise(driver.b(),
         () -> requiredIntake.setMode(StarterIntake.Mode.EJECT));
-requiredCallbacks.onRise(
-        driver.x(),
+requiredCallbacks.onRise(driver.x(),
         () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
 ```
 
-Trace the A button:
-
 ```text
-FTC Gamepad.a: pressed
-        |
-        v
-GamepadDevice.a(): BooleanSource true
-        |
-        v rising edge
-CallbackBindings.onRise(...)
-        |
-        v
-StarterIntake.setMode(COLLECT)
-        |
-        v
-mechanism records a persistent semantic request
+A pressed -> BooleanSource true -> rising edge -> setMode(COLLECT)
+          -> mechanism records a persistent semantic request
 ```
 
-The binding says *what A means*. The capability says *what COLLECT means to the robot*. The
-mechanism decides how hardware realizes COLLECT. Moving any of those decisions into another layer
-would make the same fact have two owners.
+The binding owns what A means. The
+[`StarterIntake`](<../../../../robots/examples/starter/capability/intake/StarterIntake.java>)
+capability names what the robot should do. Its mechanism owns how hardware realizes that request.
+Holding A for twenty cycles produces one rising edge; COLLECT persists because `setMode` replaced
+the held request.
 
-## Buttons and triggers carry different kinds of intent
+## Drive follows a separate path
 
-Keep these source meanings separate:
+The Starter controls also expose a robot-centric `DriveSource`. Stick and slow-mode sources are
+sampled when `RobotProgram` reaches the **output/drive phase**; they do not pass through a callback
+binding on every cycle.
 
-| Source | Type | What `true` or the value means |
-| --- | --- | --- |
-| `gamepad.a()` | `BooleanSource` | The FTC gamepad reports A pressed. |
-| `gamepad.rightTrigger()` | `ScalarSource` | Calibrated trigger travel from `0.0` to `1.0`; it is not a Boolean button. |
-| `gamepad.rightTrigger().above(0.2)` | `BooleanSource` | Trigger travel is above the program's semantic threshold. |
+```text
+sticks + bumper -> controls-owned DriveSource -> DriveSignal
+                 -> program.drive(source, sink) -> one mecanum hardware write
+```
 
-These are operator meanings, not statements about an electrical HIGH or LOW pin. Hardware digital
-polarity, semantic switch meaning, and debounce are introduced together in
-[`Evidence and experiments`](<Evidence and Experiments.md>).
+Controls never call motor setters. Robot-centric forward follows the robot. Field-relative “up”
+requires an explicitly chosen field frame and is demonstrated only in the optional
+[`Field-relative Drive`](<../../examples/Field-relative Drive.md>) example.
 
-## Callback bindings versus Task bindings
+## How the pattern scales: callback or Task?
 
-A callback is appropriate for a synchronous request such as replacing a held target. A Task
-binding is appropriate for non-blocking behavior that unfolds over several loop cycles.
-
-The Reference controls show both choices next to each other:
+Use a callback when an action completes synchronously by replacing intent. Use a Task binding when
+non-blocking behavior unfolds over several managed cycles:
 
 ```java
-callbacks.onRise(gamepad.dpadDown(),
-        () -> lift.setHeight(ReferenceLift.Height.STOWED));
-callbacks.onRise(gamepad.dpadLeft(),
-        () -> lift.setHeight(ReferenceLift.Height.LOW));
-callbacks.onRise(gamepad.dpadUp(),
-        () -> lift.setHeight(ReferenceLift.Height.HIGH));
-tasks.onRise(gamepad.x(), lift::home);
-
-tasks.onRise(gamepad.y(), launcher::launchOne);
-callbacks.onRise(gamepad.b(), launcher::abortLaunches);
+requiredCallbacks.onRise(gamepad.dpadUp(),
+        () -> requiredLift.setHeight(ReferenceLift.Height.HIGH));
+requiredTasks.onRise(gamepad.x(), requiredLift::home);
 ```
 
-`lift::home` and `launcher::launchOne` are factories. Each eligible rising edge calls the method to
-obtain a **fresh, single-use Task** for the managed runner. The controls do not update that Task in
-a private loop.
+`lift::home` is a factory. Each eligible press returns a **fresh, single-use Task**; controls never
+run it in a private loop. The
+[`ReferenceTeleOpControls`](<../../../../robots/examples/reference/robot/ReferenceTeleOpControls.java>)
+also uses this rule for launcher spin-up/feed behavior. Declaration order remains observable when
+multiple buttons rise in one cycle.
 
-Use this decision rule:
+## Check your understanding
 
-```text
-Does the action complete synchronously by replacing intent?
-    yes -> program.callbackBindings()
-    no  -> program.taskBindings() with a fresh Task supplier
-```
+**B should request COLLECT instead of EJECT. What changes?** The controls mapping, not the
+capability or mechanism.
 
-Examples:
+**COLLECT should use a different reviewed motor power. What changes?** Intake configuration, never
+the button binding.
 
-- `setHeight(HIGH)` replaces a persistent target, so it is a callback.
-- `home()` searches over time and can time out, so it is a Task.
-- `abortLaunches()` synchronously invalidates older launch requests and restores active-match
-  launcher requests, so it is a callback.
-- `launchOne()` spins up, feeds, and retracts over time, so it is a Task.
+**A fully pressed trigger is digital HIGH. True or false?** False. It is a scalar operator value;
+a threshold may derive a semantic Boolean, but not an electrical pin state.
 
-Declaration order is also observable policy. The Reference controls declare Y before B. If both
-rise in one cycle, the fresh launch request is seen first and the later abort invalidates it, so B
-wins without a priority API.
+## Go deeper when needed
 
-## Drive is intent plus one final sink
-
-`GamepadDriveSource` combines three axes into a robot-centric `DriveSignal`. It obeys the Phoenix
-robot frame: `+X` forward, `+Y` left, and counter-clockwise omega positive. `GamepadDevice.leftY()`
-already converts FTC's stick sign so pushing the stick up is positive before the drive source maps
-the axes.
-
-The Starter adds one controls-owned meaning: while the right bumper is pressed, scale translation
-and rotation. The source still produces the same robot-centric `DriveSignal` type.
-
-```text
-left stick + right stick + right bumper
-                    |
-                    v
-        StarterTeleOpControls
-                    |
-                    v
-              DriveSource
-          robot-centric intent
-                    |
-                    v
-        program.drive(source, sink)
-                    |
-                    v
-       one final mecanum hardware write
-```
-
-The controls never call motor setters. `StarterRobot` pairs the source with the one mecanum sink,
-and `RobotProgram` samples and realizes that pair in the managed output phase.
-
-Robot-centric “forward” follows the robot. Driver-station or field “up” is a separate choice. The
-optional [`Field-relative Drive`](<../../examples/Field-relative Drive.md>) example shows how to
-author that direction and transform manual intent before the same normal mecanum sink; field-
-relative behavior is not built into the Phoenix robot.
-
-## Trace it
-
-### 1. The team wants B to request COLLECT instead of EJECT. What changes?
-
-**Answer:** the mapping in the controls owner. `StarterIntake.Mode.COLLECT` and its hardware
-realization remain unchanged.
-
-### 2. The team changes COLLECT from `0.20` to `0.30` power. What changes?
-
-**Answer:** the intake configuration, after the team's physical review process. A control binding
-should never contain that motor value.
-
-### 3. Two autonomous routines also need COLLECT. Should either mention gamepad A?
-
-**Answer:** no. They call `StarterIntake.setMode(COLLECT)` or request a fresh capability Task. The
-gamepad mapping belongs only to TeleOp controls.
-
-## Predict it
-
-### The driver holds A for twenty loops. How many rising-edge callbacks run?
-
-**Prediction:** one, when the source changes from false to true.
-
-**Answer:** one. COLLECT persists because the callback replaced the mechanism's held request; the
-binding does not need to repeat it every loop.
-
-### The driver presses Y, releases it, and presses it again after the first launch completes. Is the same Task reused?
-
-**Prediction:** no.
-
-**Answer:** `tasks.onRise(gamepad.y(), launcher::launchOne)` calls the factory again. Task instances
-are single-use, so repeatable behavior must return a fresh instance.
-
-### Is a fully pressed gamepad trigger “digital HIGH”?
-
-**Prediction:** no.
-
-**Answer:** it is a scalar operator value near `1.0`. A program may turn it into a semantic Boolean
-with a threshold, but that Boolean does not describe an electrical digital input pin.
-
-## Copy, adapt, and leave behind
-
-**Copy this structure:** create stable sources in a controls constructor, bind meanings once,
-depend on capabilities, use callbacks for synchronous requests, use Task suppliers for behavior
-over time, and expose a `DriveSource` instead of writing motors.
-
-**Adapt these meanings:** buttons, axes, slow-mode scales, capability calls, trigger thresholds, and
-which actions deserve Tasks.
-
-**Do not copy:** a particular button layout as a universal standard, raw motor writes into controls,
-one prebuilt Task reused by several presses, or field-relative behavior when the team has not chosen
-and documented a field control frame.
-
-**Previous:** [Robot roles](<Robot Roles.md>)
-
-**Next:** [Plants and hardware](<Plants and Hardware.md>)
-
-For complete source composition rules, see
-[`Sources and signals`](<../../core-concepts/Sources and Signals.md>).
+- [Tasks and autonomous](<Tasks and Autonomous.md>) — Task lifetime, timing, and outcomes
+- [Sources and signals](<../../core-concepts/Sources and Signals.md>) — source caching and mapping
+- [Evidence and experiments](<Evidence and Experiments.md>) — electrical switch polarity and debounce
+- [Learn Phoenix topic guide](<../Beginner's Guide.md>) — choose another topic

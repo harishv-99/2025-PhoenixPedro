@@ -1,8 +1,8 @@
 # Architecture Roles, Framework Lanes, and Robot Controls
 
-This is the detailed architecture guide for **structuring a complete robot**. Finish the
-[`Beginner's Guide`](<../getting-started/Beginner's Guide.md>) first; this page defines the ownership
-vocabulary used when a robot grows beyond the starter.
+This is the detailed architecture guide for **structuring a complete robot**. Start with
+[`Robot roles`](<../getting-started/learn-phoenix/Robot Roles.md>); this page expands that ownership
+vocabulary when a robot grows beyond the starter.
 
 Read this if you want to answer questions like:
 

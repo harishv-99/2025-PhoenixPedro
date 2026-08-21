@@ -9,19 +9,19 @@ site_dir = "build/docs-site"
 nav = [
   { "Home" = "README.md" },
   { "Start here" = [
+    { "Phoenix in one picture" = "fw/docs/getting-started/Framework Overview.md" },
+    { "Choose a Phoenix topic" = "fw/docs/getting-started/Beginner's Guide.md" },
+    { "Set up and verify the project" = "fw/docs/getting-started/Build and Run.md" },
     { "Documentation home" = "fw/docs/README.md" },
     { "Getting started" = "fw/docs/getting-started/README.md" },
-    { "Phoenix in five minutes" = "fw/docs/getting-started/Framework Overview.md" },
-    { "Learn Phoenix" = "fw/docs/getting-started/Beginner's Guide.md" },
-    { "Set up and verify the project" = "fw/docs/getting-started/Build and Run.md" },
   ] },
-  { "Learn Phoenix walkthrough" = [
-    { "1. Robot roles" = "fw/docs/getting-started/learn-phoenix/Robot Roles.md" },
-    { "2. Controls and intent" = "fw/docs/getting-started/learn-phoenix/Controls and Intent.md" },
-    { "3. Plants and hardware" = "fw/docs/getting-started/learn-phoenix/Plants and Hardware.md" },
-    { "4. Tasks and autonomous" = "fw/docs/getting-started/learn-phoenix/Tasks and Autonomous.md" },
-    { "5. Evidence and experiments" = "fw/docs/getting-started/learn-phoenix/Evidence and Experiments.md" },
-    { "6. From requirement to robot" = "fw/docs/getting-started/learn-phoenix/From Requirement to Robot.md" },
+  { "Learn Phoenix topics" = [
+    { "Robot roles" = "fw/docs/getting-started/learn-phoenix/Robot Roles.md" },
+    { "Controls and intent" = "fw/docs/getting-started/learn-phoenix/Controls and Intent.md" },
+    { "Plants and hardware" = "fw/docs/getting-started/learn-phoenix/Plants and Hardware.md" },
+    { "Tasks and autonomous" = "fw/docs/getting-started/learn-phoenix/Tasks and Autonomous.md" },
+    { "Evidence and experiments" = "fw/docs/getting-started/learn-phoenix/Evidence and Experiments.md" },
+    { "From requirement to robot" = "fw/docs/getting-started/learn-phoenix/From Requirement to Robot.md" },
     { "Role paths" = "fw/docs/getting-started/learn-phoenix/Role Paths.md" },
   ] },
   { "Reference and troubleshooting" = [
@@ -105,3 +105,33 @@ features = [
 [project.validation]
 invalid_links = true
 invalid_link_anchors = true
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+toc.permalink = true
+pymdownx.arithmatex.generic = true
+pymdownx.betterem = {}
+pymdownx.caret = {}
+pymdownx.details = {}
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.magiclink = {}
+pymdownx.mark = {}
+pymdownx.smartsymbols = {}
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+pymdownx.tabbed.alternate_style = true
+pymdownx.tabbed.combine_header_slug = true
+pymdownx.tasklist.custom_checkbox = true
+pymdownx.tilde = {}

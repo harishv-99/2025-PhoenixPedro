@@ -1,7 +1,7 @@
 # Phoenix Cheat Sheet
 
-This is a reminder, not a first lesson. Follow
-[`Learn Phoenix`](<../getting-started/Beginner's Guide.md>) once before using it.
+This is a reminder, not a first lesson. Read
+[`Phoenix in one picture`](<../getting-started/Framework Overview.md>) first.
 
 ## The ordinary program
 

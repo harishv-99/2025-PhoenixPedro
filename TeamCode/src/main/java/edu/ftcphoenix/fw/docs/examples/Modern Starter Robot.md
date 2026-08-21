@@ -2,8 +2,8 @@
 
 **Classification:** Copyable starter
 
-**Audience:** Students following the [`Learn Phoenix`](<../getting-started/Beginner's Guide.md>)
-common path
+**Audience:** Students who have read
+[`Phoenix in one picture`](<../getting-started/Framework Overview.md>)
 **Source entry:** [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>)
 
 Use this example as the smallest compiling Phoenix structure shared by TeleOp and Auto. It has one
@@ -12,9 +12,10 @@ and one declaration-only composition root. FTC lifecycle ceremony is supplied by
 `FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
 remain in the seven source files listed below.
 
-For a progressive source explanation, begin with
-[`Learn Phoenix`](<../getting-started/Beginner's Guide.md>). This page remains the complete Starter
-source reference; project setup is separate in
+For the short execution trace, begin with
+[`Phoenix in one picture`](<../getting-started/Framework Overview.md>). Use
+[`Choose a Phoenix topic`](<../getting-started/Beginner's Guide.md>) when one ownership boundary
+needs more explanation. This page remains the complete Starter source reference; project setup is separate in
 [`Build and run Phoenix`](<../getting-started/Build and Run.md>).
 
 ## Read the seven files
@@ -229,7 +230,7 @@ commands—not physical motion or that the review happened.
 
 - [`Phoenix Cheat Sheet`](<../reference/Phoenix Cheat Sheet.md>)
 - [`Common Problems`](<../troubleshooting/Common Problems.md>)
-- [`Learn Phoenix`](<../getting-started/Beginner's Guide.md>)
+- [`Choose a Phoenix topic`](<../getting-started/Beginner's Guide.md>)
 - [`Architecture Roles, Framework Lanes, and Robot Controls`](<../design/Framework Lanes & Robot Controls.md>)
 - [`Robot Capabilities and Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>)
 - [`Loop Structure`](<../core-concepts/Loop Structure.md>)

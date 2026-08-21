@@ -53,8 +53,8 @@ This keeps stable framework code reusable across seasons without turning the lif
 giant robot capability superclass. It also keeps each robot's control scheme and game logic easy to
 find, instead of scattering it across convenience helpers and subsystem constructors.
 
-This is an architecture guide for readers who have completed the
-[`Beginner's Guide`](<../getting-started/Beginner's Guide.md>). Read
+This is an architecture guide for readers who already understand
+[`Robot roles`](<../getting-started/learn-phoenix/Robot Roles.md>). Read
 [`Framework Lanes & Robot Controls`](<Framework Lanes & Robot Controls.md>) when you need the full
 ownership vocabulary used here.
 

@@ -6,22 +6,22 @@ lifecycle and loop order.
 
 ## Start here
 
-There is one source-based beginner path:
+There is one source-based beginner entry:
 
-1. Open the canonical [`Phoenix documentation hub`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/README.md>).
-2. Read [`Phoenix in five minutes`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Framework Overview.md>).
-3. Follow [`Learn Phoenix`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>)
-   to trace the Starter and Reference robots without requiring their hardware.
-4. Choose the [`role path`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/learn-phoenix/Role Paths.md>)
+1. Read [`Phoenix in one picture`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Framework Overview.md>)
+   to trace what is composed once and what the managed program executes later.
+2. [`Choose a Phoenix topic`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Beginner's Guide.md>)
    relevant to your work, or use
    [`Build and run Phoenix`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Build and Run.md>)
    for project setup and software verification.
+3. Use the canonical [`Phoenix documentation hub`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/README.md>)
+   later as a searchable reference.
 
 The compiling [`modern starter robot`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/examples/Modern Starter Robot.md>)
 is the ordinary managed TeleOp-and-Auto example. Framework changes follow the
 [`Framework Principles`](<TeamCode/src/main/java/edu/ftcphoenix/fw/Framework Principles.md>).
 
-### Quick links after the learning path
+### Quick links after the first picture
 
 - [`Phoenix Cheat Sheet`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/reference/Phoenix Cheat Sheet.md>)
 - [`Common Problems`](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/troubleshooting/Common Problems.md>)
@@ -75,4 +75,4 @@ samples, and platform release information:
 - [Official FTC SDK releases](https://github.com/FIRST-Tech-Challenge/FtcRobotController/releases)
 
 Those upstream download links create a clean FTC SDK project without Phoenix. Use the Phoenix clone
-instructions above when following this repository's course.
+instructions above when following this repository's guides.

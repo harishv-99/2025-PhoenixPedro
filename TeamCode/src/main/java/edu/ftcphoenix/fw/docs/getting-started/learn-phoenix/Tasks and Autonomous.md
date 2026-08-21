@@ -1,163 +1,91 @@
 # Tasks and autonomous
 
-**Question:** How can robot behavior continue across many loop cycles without blocking the rest of
-the robot?
+**Question:** How can behavior continue across loop cycles without blocking the robot?
 
-**Reading time:** about 20 minutes
+**Reading time:** about 8 minutes
 
-A Phoenix `Task` is a small, cooperative behavior. The framework starts and updates it from the one
-managed loop, so a Task never needs `sleep()` or a long-running `while` loop. TeleOp macros and Auto
-routines use the same Task vocabulary.
+A Phoenix `Task` is cooperative work advanced by the one managed loop. It never needs `sleep()` or
+a long-running `while` loop. Reading this page does not require editing code, enabling an example,
+or moving hardware.
 
-This chapter is a source-reading exercise. You do not need to enable or run the Reference robot.
+## Start with one timed intake
 
-## Source map
-
-- [`ReferenceRobot.java`](<../../../../robots/examples/reference/robot/ReferenceRobot.java>) declares
-  the Auto hardware owners and returns their mode-neutral capabilities.
-- [`ReferenceAutoRoutines.java`](<../../../../robots/examples/reference/autonomous/ReferenceAutoRoutines.java>)
-  owns the Auto sequence and its outcome policy.
-- [`ReferenceLauncher.java`](<../../../../robots/examples/reference/capability/launcher/ReferenceLauncher.java>)
-  exposes the small fresh-Task and abort contract while keeping realization details private.
-- [`ReferenceTeleOpControls.java`](<../../../../robots/examples/reference/robot/ReferenceTeleOpControls.java>)
-  gives `TaskBindings` method references that create fresh Tasks on button rises.
-- [`Tasks and Macros`](<../../design/Tasks & Macros Quickstart.md>) is the detailed API guide after
-  this walkthrough.
-
-## Trace the Reference Auto
-
-The thin Auto selects a profile, asks the composition root to declare the active owners, and then
-selects one routine:
+Starter Auto declares the same intake capability used by TeleOp, then chooses its routine:
 
 ```java
-ReferenceProfile profile = ReferenceProfile.current();
-ReferenceCapabilities capabilities =
-        new ReferenceRobot(hardwareMap).declareAuto(program, profile);
-program.rootTask(ReferenceAutoRoutines.homeMoveLowThenLaunch(capabilities));
+StarterIntake intake = new StarterRobot(hardwareMap)
+        .declareAuto(program, profile);
+program.rootTask(intake.collectForSeconds(0.75));
 ```
 
-The root constructs and registers resources. `ReferenceAutoRoutines` owns the strategy:
+[`StarterAuto.java`](<../../../../robots/examples/starter/opmode/StarterAuto.java>) owns that routine
+choice. `StarterRobot` only declares the intake output and presenter. At START, the fresh root Task
+requests collect power. Managed output updates realize that request through the mechanism's private
+Plant. After 0.75 seconds, the Task requests stopped power. Active cancellation also restores the
+stopped request, and FTC STOP cancels active work before stopping declared outputs.
 
-```text
-RobotProgram starts the root Task
-    -> lift.home() searches non-blockingly for the reference switch
-       -> SUCCESS: lift.moveTo(LOW) requests LOW and waits for feedback
-          -> SUCCESS: begin launcher.launchOne()
-          -> TIMEOUT: abort launcher work; do not launch
-       -> TIMEOUT: abort launcher work; do not move or launch
-       -> CANCELLED: finish cancelled; do not start later work
-    -> declared mechanism outputs realize the resulting requests each loop
-```
+This is temporal intent, not a second hardware writer: the Task changes the Plant's command request;
+the mechanism remains the one object that updates and stops the Plant.
 
-The lift exposes both meanings deliberately:
+## Every run needs a fresh Task
+
+Each `Task` instance may start only once. Calling `collectForSeconds(...)`, `home()`, `moveTo(...)`,
+or `launchOne()` is calling a factory method that returns new work. Call it again for another run;
+never save and restart the old object.
+
+That is why a repeatable TeleOp macro binds a supplier:
 
 ```java
-lift.setHeight(ReferenceLift.Height.LOW);  // replace the persistent request now
-Task move = lift.moveTo(ReferenceLift.Height.LOW); // fresh Task that waits for feedback
+tasks.onRise(gamepad.x(), lift::home);
+tasks.onRise(gamepad.y(), launcher::launchOne);
+callbacks.onRise(gamepad.b(), launcher::abortLaunches);
 ```
 
-TeleOp callbacks normally use `setHeight(...)`. Auto uses `moveTo(...)` when the next action must
-wait for the cached Plant evidence. Calling `moveTo(...)` constructs the Task; the height request
-changes only when the managed runner starts that Task. A move timeout is retained after cleanup
-instead of being relabeled as a successful routine. Timeout or active cancellation leaves the
-selected persistent height request in place; it does not bypass the mechanism's source graph with
-a direct hardware write. The budget comes from the mechanism's copied
-`ReferenceLiftMechanism.Config.moveTimeoutSec`; its checked-in value is not physical proof.
+Each X or Y rising edge constructs a fresh Task. B is a synchronous callback, so it calls the abort
+method directly.
 
-Outcome selection is policy, not exception handling hidden by the framework. The routine performs
-its explicit abort cleanup after a home, move, or launch timeout while retaining the original
-`TIMEOUT`. Direct cancellation does **not** start later or fallback work. At FTC STOP,
-`RobotProgram` cancels active Task work and then stops the declared outputs.
+## Persistent requests and feedback Tasks answer different questions
 
-## Follow the launcher capability
+`lift.setHeight(LOW)` replaces a persistent request and returns immediately. It is appropriate when
+the caller does not need to wait. A fresh `lift.moveTo(LOW)` Task makes that request when it starts
+and waits for cached Plant feedback, so Auto can decide whether to begin its next action.
 
-Students using the capability need its small public contract, not its private cleanup machinery:
+The Reference Auto routine owns that strategy: home, move to LOW only after successful homing, then
+launch only after a successful move. The capability and composition root do not choose the match
+sequence.
 
-- `SUCCESS` from the velocity wait selects `feed`.
-- `TIMEOUT` clears its temporary requests without feeding and remains `TIMEOUT`.
-- Active cancellation clears its temporary requests and ends `CANCELLED`; it does not select
-  `feed`.
-- `abortLaunches()` invalidates launch Tasks created before that abort and restores reusable
-  active-match requests. A later `launchOne()` call still returns valid fresh work.
+Outcome-aware Tasks retain what happened:
 
-The wait requires a positive target and independent left/right ticks-per-second evidence for the
-current launch target. The timeout proves only whether that controller condition was met within its
-budget. It does not prove that a game piece launched or scored.
+- `NOT_DONE`: the Task is still active.
+- `SUCCESS`: the documented completion condition was met.
+- `TIMEOUT`: the budget elapsed first.
+- `CANCELLED`: active work was cancelled or deliberately failed closed.
+- `UNKNOWN`: no more specific result is available.
 
-## A Task object is single-use
+A timeout reports evidence; it does not silently choose recovery. The Reference routine explicitly
+aborts launcher work after a home, move, or launch timeout and retains `TIMEOUT`. A bare
+`Tasks.sequence(...)` retains a child's timeout but can still advance, so use an outcome branch when
+the next step requires success. The checked-in timeout values are software configuration, not proof
+that the real mechanism is fast or safe. The launcher feeds only after its readiness wait succeeds;
+timeout clears temporary requests without feeding.
 
-Every Task instance may enter `start(clock)` only once. A method such as `launchOne()` or `home()`
-is a **factory method**: call it again to obtain another Task. Never save one Task and try to restart
-it.
+Cancellation before start has no effect. Active cancellation is terminal and idempotent; repeated
+or terminal cancellation does nothing, and cancelled work still cannot be reused. For the Reference
+lift, timeout or active cancellation leaves its selected persistent height request in place. It
+does not bypass the source graph with a direct hardware write, and direct cancellation never starts
+a later fallback branch.
 
-That is why TeleOp binds suppliers:
+## Check your understanding
 
-```java
-        tasks.onRise(gamepad.x(), lift::home);
+**Auto must wait until the lift physically reaches HIGH before launching. Is `setHeight(HIGH)`
+enough?**
 
-        tasks.onRise(gamepad.y(), launcher::launchOne);
-        callbacks.onRise(gamepad.b(), launcher::abortLaunches);
-```
+No. It only replaces the persistent request. Build a fresh feedback-aware `moveTo(HIGH)` Task and
+continue to launch only from its successful outcome.
 
-Each rising edge asks the capability for a fresh Task. The callback binding is different:
-`abortLaunches()` is synchronous, so it does not need a Task. Declaring Y before B makes a
-same-cycle abort the last request and therefore the winner.
+## Go deeper when needed
 
-## Outcomes and cancellation
-
-Use these meanings when reading a Task graph:
-
-| Outcome | Meaning at the Task boundary |
-|---|---|
-| `NOT_DONE` | The outcome-aware Task is still active. |
-| `SUCCESS` | It completed its documented condition normally. |
-| `TIMEOUT` | Its time budget elapsed before that condition. |
-| `CANCELLED` | Active work ended through cancellation or a documented fail-closed abort. |
-| `UNKNOWN` | The Task does not expose a more specific result. |
-
-Cancellation is active-only and idempotent: cancelling before start has no effect, cancelling an
-active Task makes it terminal, and terminal or repeated cancellation does nothing. A cancelled Task
-still cannot be reused. When a Task owns temporary output, its cancellation policy must make that
-temporary behavior safe; terminal program cleanup remains responsible for stopping each output
-owner.
-
-Also remember that `Tasks.sequence(...)` orders children but does not invent robot policy. A child
-timeout is retained in the sequence's aggregate outcome, yet a bare sequence still advances to its
-next child. Use an explicit outcome branch when the next action depends on success, as the launcher
-does.
-
-## Copy, adapt, and leave alone
-
-- **Copy the shape:** capability methods return fresh Tasks; the Auto client selects a routine from
-  declared capabilities; controls bind Task suppliers.
-- **Adapt the policy:** choose the real success condition, timeout response, cancellation target,
-  and order for the team robot.
-- **Leave lifecycle ownership alone:** let `RobotProgram` start, update, cancel, and clean up its
-  runner. Do not add another OpMode loop or clock.
-
-## Trace it
-
-1. **Does Reference Auto wait for the lift to arrive at LOW before launching?**
-
-   Yes. It sequences the fresh feedback-aware `moveTo(LOW)` Task before `launchOne()`.
-
-2. **If flywheel spin-up times out, does the feed sequence run?**
-
-   No. The launcher cleans its temporary requests and retains `TIMEOUT`.
-
-3. **If FTC STOP cancels the launch while it is waiting, does the timeout branch run?**
-
-   No. Direct cancellation is terminal and does not start a fallback branch. Managed cleanup then
-   stops the declared mechanism outputs.
-
-## Predict it
-
-The driver presses Y, releases it, and later presses Y again. Does the second press restart the
-first `Task` object?
-
-No. `tasks.onRise(gamepad.y(), launcher::launchOne)` calls the method again, producing a fresh,
-single-use Task for the new request.
-
-**Previous:** [Plants and hardware](<Plants and Hardware.md>)
-
-**Next:** [Evidence and experiments](<Evidence and Experiments.md>)
+- Complete Starter source: [`StarterAuto.java`](<../../../../robots/examples/starter/opmode/StarterAuto.java>)
+- Scaling example: [`ReferenceAutoRoutines.java`](<../../../../robots/examples/reference/autonomous/ReferenceAutoRoutines.java>)
+- Task factories, composition, timing, and cancellation: [Tasks and Macros](<../../design/Tasks & Macros Quickstart.md>)
+- [Choose another Phoenix topic](<../Beginner's Guide.md>)
