@@ -2,9 +2,6 @@ package edu.ftcphoenix.robots.examples.starter.support;
 
 import edu.ftcphoenix.robots.examples.starter.robot.StarterProfile;
 
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
@@ -19,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
 
 /** Shared FTC probes for the focused Starter suites. */
 public final class StarterTestHardware {
@@ -40,158 +38,20 @@ public final class StarterTestHardware {
         return mode;
     }
 
-    public static HardwareMapProbe fullTeleOpHardware(StarterProfile profile) {
+    public static FtcTestHardware fullTeleOpHardware(StarterProfile profile) {
         return fullTeleOpHardware(profile, null);
     }
 
-    public static HardwareMapProbe fullTeleOpHardware(StarterProfile profile, List<String> events) {
-        HardwareMapProbe hardwareMap = new HardwareMapProbe(events);
+    public static FtcTestHardware fullTeleOpHardware(
+            StarterProfile profile,
+            List<String> events) {
+        FtcTestHardware hardwareMap = new FtcTestHardware(events);
         hardwareMap.addMotor(profile.intake.motorName);
         hardwareMap.addMotor(profile.drive.wiring.frontLeftName);
         hardwareMap.addMotor(profile.drive.wiring.frontRightName);
         hardwareMap.addMotor(profile.drive.wiring.backLeftName);
         hardwareMap.addMotor(profile.drive.wiring.backRightName);
         return hardwareMap;
-    }
-
-    /** In-memory FTC map with observable lookups and motor commands. */
-    public static final class HardwareMapProbe extends HardwareMap {
-        private final Map<String, MotorProbe> motors = new HashMap<String, MotorProbe>();
-        private final List<String> events;
-        private int lookupCalls;
-
-        public HardwareMapProbe() {
-            this(null);
-        }
-
-        public HardwareMapProbe(List<String> events) {
-            super(null, null);
-            this.events = events;
-        }
-
-        public MotorProbe addMotor(String name) {
-            MotorProbe probe = new MotorProbe(name, events);
-            motors.put(name.trim(), probe);
-            return probe;
-        }
-
-        public MotorProbe motor(String name) {
-            MotorProbe probe = motors.get(name.trim());
-            if (probe == null) {
-                throw new AssertionError("No test motor named " + name);
-            }
-            return probe;
-        }
-
-        public int lookupCalls() {
-            return lookupCalls;
-        }
-
-        public int totalPowerWrites() {
-            int total = 0;
-            for (MotorProbe probe : motors.values()) {
-                total += probe.powerWrites;
-            }
-            return total;
-        }
-
-        @Override
-        public <T> T get(Class<? extends T> type, String name) {
-            lookupCalls++;
-            MotorProbe probe = motors.get(name == null ? null : name.trim());
-            if (probe == null || !type.isInstance(probe.motor)) {
-                throw new IllegalArgumentException(
-                        "No test " + type.getSimpleName() + " named " + name);
-            }
-            return type.cast(probe.motor);
-        }
-    }
-
-    /** Dynamic SDK motor with enough behavior for direct-drive and power-Plant integration. */
-    public static final class MotorProbe implements InvocationHandler {
-        private final String label;
-        private final List<String> events;
-        private final DcMotorEx motor;
-        private DcMotor.RunMode mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER;
-        private DcMotorSimple.Direction direction = DcMotorSimple.Direction.FORWARD;
-        private DcMotor.ZeroPowerBehavior zeroPowerBehavior = DcMotor.ZeroPowerBehavior.FLOAT;
-        private double lastPower;
-        private int powerWrites;
-
-        private MotorProbe(String label, List<String> events) {
-            this.label = label;
-            this.events = events;
-            motor = (DcMotorEx) Proxy.newProxyInstance(
-                    DcMotorEx.class.getClassLoader(),
-                    new Class<?>[]{DcMotorEx.class},
-                    this);
-        }
-
-        public double lastPower() {
-            return lastPower;
-        }
-
-        public int powerWrites() {
-            return powerWrites;
-        }
-
-        public DcMotorSimple.Direction direction() {
-            return direction;
-        }
-
-        public DcMotor.ZeroPowerBehavior zeroPowerBehavior() {
-            return zeroPowerBehavior;
-        }
-
-        @Override
-        public Object invoke(Object proxy, Method method, Object[] args) {
-            String name = method.getName();
-            if (method.getDeclaringClass() == Object.class) {
-                return objectMethod(proxy, name, args, label);
-            }
-            if ("setDirection".equals(name)) {
-                direction = (DcMotorSimple.Direction) args[0];
-                return null;
-            }
-            if ("getDirection".equals(name)) {
-                return direction;
-            }
-            if ("setMode".equals(name)) {
-                mode = (DcMotor.RunMode) args[0];
-                return null;
-            }
-            if ("getMode".equals(name)) {
-                return mode;
-            }
-            if ("setPower".equals(name)) {
-                lastPower = (Double) args[0];
-                powerWrites++;
-                if (events != null) {
-                    events.add("power:" + label + ":" + lastPower);
-                }
-                return null;
-            }
-            if ("getPower".equals(name)) {
-                return lastPower;
-            }
-            if ("setZeroPowerBehavior".equals(name)) {
-                zeroPowerBehavior = (DcMotor.ZeroPowerBehavior) args[0];
-                return null;
-            }
-            if ("getZeroPowerBehavior".equals(name)) {
-                return zeroPowerBehavior;
-            }
-            if ("getCurrentPosition".equals(name) || "getTargetPosition".equals(name)) {
-                return 0;
-            }
-            if ("getVelocity".equals(name)) {
-                return 0.0;
-            }
-            if ("isBusy".equals(name)) {
-                return false;
-            }
-            return defaultValue(method.getReturnType());
-        }
     }
 
     /** Records complete-frame commits without imposing another production seam. */

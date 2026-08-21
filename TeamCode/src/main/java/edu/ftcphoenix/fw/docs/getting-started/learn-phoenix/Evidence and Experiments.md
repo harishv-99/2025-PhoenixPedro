@@ -7,6 +7,39 @@
 Phoenix separates a request, an electrical observation, a measurement, and a physical conclusion.
 This page requires no sensor, code edit, or robot run.
 
+## Climb the evidence ladder
+
+Use the lowest-cost evidence that can truthfully answer the current question, then move upward only
+when the next fact requires it:
+
+```text
+semantic test
+    -> software device scenario
+    -> optional modeled simulation
+    -> supervised bring-up
+    -> robot experiment
+```
+
+1. A **semantic test** replaces a capability with a small recording object. It proves controls,
+   Tasks, or policy requested the right robot meaning without constructing FTC devices.
+2. A **software device scenario** constructs the real production mechanism and Plants with a
+   test-only `HardwareMap`. The scenario explicitly injects readings and records actuator commands.
+3. An **optional modeled simulation** evolves state with an authored dynamics model. Use that name
+   only when its assumptions and fidelity are explicit; many mechanism questions do not need it.
+4. **Supervised bring-up** establishes one physical device fact such as wiring, direction, encoder
+   sign, or STOP response with conservative commands.
+5. A **robot experiment** evaluates a complete physical subsystem question against team-authored
+   success criteria over controlled trials.
+
+The arrow shows increasing kinds of evidence, not permission to skip safety review. A green lower
+step remains valuable, but it cannot make a physical claim from software alone.
+
+In a software device scenario, commanded power, velocity, or position must never be copied
+automatically into encoder or velocity feedback. The test supplies each observation independently;
+otherwise a broken feedback loop can pass by reading back its own command. The checked-in
+[Starter mechanism lesson](<../Test a Mechanism Without Hardware.md>) and optional
+[Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>) show the boundary.
+
 ## Start with the Starter status
 
 The Starter presenter reads one cached snapshot:
@@ -87,5 +120,7 @@ team rejects the configuration. Neither observation should be converted silently
 
 - Electrical conditioning: [`ReferenceLiftMechanism.java`](<../../../../robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
 - Cached launcher evidence: [`ReferenceLauncherMechanism.java`](<../../../../robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+- Hardware-free feedback cases: [Hardware-free Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>)
 - Safe experiment card and workflow: [Subsystem Experiments](<../../examples/Subsystem Experiments.md>)
+- Evidence vocabulary: [Glossary](<../../reference/Glossary.md#evidence>)
 - [Choose another Phoenix topic](<../Beginner's Guide.md>)

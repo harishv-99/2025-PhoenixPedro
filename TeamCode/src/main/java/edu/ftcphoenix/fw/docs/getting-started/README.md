@@ -20,10 +20,11 @@ After [setting up and verifying the project](<Build and Run.md>), complete
 into a team package, changes one button meaning, and proves the change with a hardware-free test.
 The exercise reveals one owner at a time; it does not require reading all seven Starter files first.
 
-Then [choose a Phoenix topic](<Beginner's Guide.md>) for the problem in front of you: robot roles,
-controls, Plants, Tasks and Auto, evidence, or placing a new requirement. These pages are optional
-deep dives rather than a required sequence. [Role paths](<learn-phoenix/Role Paths.md>) provides a
-more detailed map for controls, mechanisms, Auto, vision, and testing work.
+Next, [test its mechanism without hardware](<Test a Mechanism Without Hardware.md>). That second
+software lesson keeps the production `HardwareMap + Config` constructor and private Plant while a
+test-only hardware registry records its actuator command. Then [choose a Phoenix topic](<Beginner's Guide.md>)
+for the problem in front of you. These pages are optional deep dives rather than a required
+sequence. [Role paths](<learn-phoenix/Role Paths.md>) provides a more detailed map.
 
 ## Set up or work with physical hardware
 
@@ -53,3 +54,5 @@ example. It is an optional integration topic and does not authorize a physical r
 **First-contact guide:** [Phoenix in one picture](<Framework Overview.md>)
 
 **First coding exercise:** [Your first Phoenix robot code](<First Phoenix Robot Code.md>)
+
+**First mechanism scenario:** [Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>)

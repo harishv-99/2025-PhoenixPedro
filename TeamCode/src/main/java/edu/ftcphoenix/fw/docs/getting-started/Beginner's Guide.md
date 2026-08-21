@@ -6,7 +6,9 @@ answers your current question. These are independent deep dives, not required co
 
 To practice before choosing a deep dive, complete
 [Your first Phoenix robot code](<First Phoenix Robot Code.md>). It makes one tested control change
-in a copied team package and requires no matching hardware.
+in a copied team package. Then [test its mechanism without hardware](<Test a Mechanism Without Hardware.md>)
+to exercise the real mechanism and Plant with recorded software-device outputs. Neither exercise
+requires matching hardware.
 
 | When you need to understand… | Read |
 |---|---|

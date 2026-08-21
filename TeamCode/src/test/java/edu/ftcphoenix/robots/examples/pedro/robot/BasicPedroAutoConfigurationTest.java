@@ -1,6 +1,6 @@
 package edu.ftcphoenix.robots.examples.pedro.robot;
 
-import edu.ftcphoenix.robots.examples.pedro.support.BasicPedroTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.Test;
@@ -30,32 +30,32 @@ public final class BasicPedroAutoConfigurationTest {
         BasicPedroProfile profile = BasicPedroProfile.current();
         profile.pedro = null;
         profile.intake = null;
-        BasicPedroTestHardware.HardwareMapProbe hardwareMap = hardwareWithIntake();
+        FtcTestHardware hardwareMap = hardwareWithIntake();
 
         RuntimeException failure = expectInitFailure(profile, hardwareMap);
 
         assertTrue(failure.getMessage().contains("BasicPedroProfile.allowRobotMotion"));
         assertEquals(0, hardwareMap.lookupCalls());
-        assertEquals(0, hardwareMap.totalPowerWrites());
+        assertEquals(0, hardwareMap.totalMotorPowerWrites());
     }
 
     @Test
     public void nullActiveConfigObjectsFailBeforeRuntimeEffects() {
         BasicPedroProfile missingPedro = readyProfile();
         missingPedro.pedro = null;
-        BasicPedroTestHardware.HardwareMapProbe firstHardware = hardwareWithIntake();
+        FtcTestHardware firstHardware = hardwareWithIntake();
         RuntimeException pedroFailure = expectInitFailure(missingPedro, firstHardware);
         assertTrue(pedroFailure.getMessage().contains("BasicPedroProfile.pedro"));
         assertEquals(0, firstHardware.lookupCalls());
-        assertEquals(0, firstHardware.totalPowerWrites());
+        assertEquals(0, firstHardware.totalMotorPowerWrites());
 
         BasicPedroProfile missingIntake = readyProfile();
         missingIntake.intake = null;
-        BasicPedroTestHardware.HardwareMapProbe secondHardware = hardwareWithIntake();
+        FtcTestHardware secondHardware = hardwareWithIntake();
         RuntimeException intakeFailure = expectInitFailure(missingIntake, secondHardware);
         assertTrue(intakeFailure.getMessage().contains("BasicPedroProfile.intake"));
         assertEquals(0, secondHardware.lookupCalls());
-        assertEquals(0, secondHardware.totalPowerWrites());
+        assertEquals(0, secondHardware.totalMotorPowerWrites());
     }
 
     @Test
@@ -73,13 +73,13 @@ public final class BasicPedroAutoConfigurationTest {
             BasicPedroProfile profile = readyProfile();
             setDriveName(profile, index, "IntakeMotor");
             profile.pedro.pathConstraints = null;
-            BasicPedroTestHardware.HardwareMapProbe hardwareMap = hardwareWithIntake();
+            FtcTestHardware hardwareMap = hardwareWithIntake();
 
             RuntimeException failure = expectInitFailure(profile, hardwareMap);
 
             assertTrue(failure.getMessage().contains("pathConstraints"));
             assertEquals(0, hardwareMap.lookupCalls());
-            assertEquals(0, hardwareMap.totalPowerWrites());
+            assertEquals(0, hardwareMap.totalMotorPowerWrites());
         }
     }
 
@@ -87,7 +87,7 @@ public final class BasicPedroAutoConfigurationTest {
     public void runtimeInvalidDraftFailsBeforeLookupAndLeavesPedroGlobalUntouched() {
         BasicPedroProfile profile = readyProfile();
         profile.pedro.mecanumConstants.maxPower = Double.NaN;
-        BasicPedroTestHardware.HardwareMapProbe hardwareMap = hardwareWithIntake();
+        FtcTestHardware hardwareMap = hardwareWithIntake();
         com.pedropathing.paths.PathConstraints original =
                 com.pedropathing.paths.PathConstraints.defaultConstraints;
         com.pedropathing.paths.PathConstraints poison =
@@ -99,7 +99,7 @@ public final class BasicPedroAutoConfigurationTest {
 
             assertTrue(failure.getMessage().contains("mecanumConstants.maxPower"));
             assertEquals(0, hardwareMap.lookupCalls());
-            assertEquals(0, hardwareMap.totalPowerWrites());
+            assertEquals(0, hardwareMap.totalMotorPowerWrites());
             assertSame(poison, com.pedropathing.paths.PathConstraints.defaultConstraints);
         } finally {
             com.pedropathing.paths.PathConstraints.defaultConstraints = original;
@@ -113,7 +113,7 @@ public final class BasicPedroAutoConfigurationTest {
         BasicPedroProfile profile = readyProfile();
         profile.intake.motorName = configuredIntakeName;
         setDriveName(profile, driveIndex, configuredDriveName);
-        BasicPedroTestHardware.HardwareMapProbe hardwareMap = hardwareWithIntake();
+        FtcTestHardware hardwareMap = hardwareWithIntake();
 
         RuntimeException failure = expectInitFailure(profile, hardwareMap);
 
@@ -121,7 +121,7 @@ public final class BasicPedroAutoConfigurationTest {
         assertTrue(failure.getMessage().contains(DRIVE_NAME_PATHS[driveIndex]));
         assertTrue(failure.getMessage().contains("\"" + effectiveName + "\""));
         assertEquals(0, hardwareMap.lookupCalls());
-        assertEquals(0, hardwareMap.totalPowerWrites());
+        assertEquals(0, hardwareMap.totalMotorPowerWrites());
     }
 
     private static BasicPedroProfile readyProfile() {
@@ -130,9 +130,9 @@ public final class BasicPedroAutoConfigurationTest {
         return profile;
     }
 
-    private static BasicPedroTestHardware.HardwareMapProbe hardwareWithIntake() {
-        BasicPedroTestHardware.HardwareMapProbe hardwareMap =
-                new BasicPedroTestHardware.HardwareMapProbe();
+    private static FtcTestHardware hardwareWithIntake() {
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
         hardwareMap.addMotor("intakeMotor");
         return hardwareMap;
     }
@@ -153,7 +153,7 @@ public final class BasicPedroAutoConfigurationTest {
 
     private static RuntimeException expectInitFailure(
             BasicPedroProfile profile,
-            BasicPedroTestHardware.HardwareMapProbe hardwareMap) {
+            FtcTestHardware hardwareMap) {
         ProductionDeclarationMode mode = new ProductionDeclarationMode(profile);
         mode.hardwareMap = hardwareMap;
         mode.telemetry = inertTelemetry();

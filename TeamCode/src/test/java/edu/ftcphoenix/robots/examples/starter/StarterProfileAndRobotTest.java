@@ -1,6 +1,7 @@
 package edu.ftcphoenix.robots.examples.starter;
 
 import edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
 import edu.ftcphoenix.robots.examples.starter.opmode.StarterAuto;
 import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntake;
 import edu.ftcphoenix.robots.examples.starter.opmode.StarterTeleOp;
@@ -128,8 +129,8 @@ public final class StarterProfileAndRobotTest {
         for (int index = 0; index < drivePaths.length; index++) {
             StarterProfile profile = readyProfile();
             setDriveName(profile, index, "  intake  ");
-            StarterTestHardware.HardwareMapProbe hardwareMap =
-                    new StarterTestHardware.HardwareMapProbe();
+            FtcTestHardware hardwareMap =
+                    new FtcTestHardware();
             TestStarterTeleOp mode = prepare(
                     new TestStarterTeleOp(profile),
                     hardwareMap,
@@ -149,7 +150,7 @@ public final class StarterProfileAndRobotTest {
     public void caseDifferentMotorNamesRemainDistinctFtcKeys() {
         StarterProfile profile = readyProfile();
         profile.drive.wiring.frontLeftName = "Intake";
-        StarterTestHardware.HardwareMapProbe hardwareMap = fullTeleOpHardware(profile);
+        FtcTestHardware hardwareMap = fullTeleOpHardware(profile);
         TestStarterTeleOp mode = prepare(
                 new TestStarterTeleOp(profile),
                 hardwareMap,
@@ -165,9 +166,9 @@ public final class StarterProfileAndRobotTest {
     @Test
     public void activeIntakeOwnerSnapshotsItsConfigDuringInit() {
         StarterProfile profile = readyProfile();
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe intakeMotor =
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe intakeMotor =
                 hardwareMap.addMotor(profile.intake.motorName);
         TestStarterAuto mode = prepare(
                 new TestStarterAuto(profile),
@@ -182,7 +183,7 @@ public final class StarterProfileAndRobotTest {
         mode.start();
 
         assertEquals(1, hardwareMap.lookupCalls());
-        assertEquals(0.65, intakeMotor.lastPower(), 0.0);
+        assertEquals(0.65, intakeMotor.power(), 0.0);
         mode.stop();
     }
 
@@ -190,9 +191,9 @@ public final class StarterProfileAndRobotTest {
     public void invalidLaterDriveConfigCleansRegisteredIntakeAndPreservesFailure() {
         StarterProfile profile = readyProfile();
         profile.drive.drivebase.maxAxial = Double.NaN;
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe intakeMotor =
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe intakeMotor =
                 hardwareMap.addMotor(profile.intake.motorName);
         TestStarterTeleOp mode = prepare(
                 new TestStarterTeleOp(profile),
@@ -206,7 +207,7 @@ public final class StarterProfileAndRobotTest {
                 "MecanumDrivebase.Config.maxAxial must be finite and in [0.0, 1.0], got NaN",
                 failure.getMessage());
         assertEquals(1, hardwareMap.lookupCalls());
-        assertEquals(0.0, intakeMotor.lastPower(), 0.0);
+        assertEquals(0.0, intakeMotor.power(), 0.0);
         assertEquals(1, intakeMotor.powerWrites());
 
         mode.loop();
@@ -218,9 +219,9 @@ public final class StarterProfileAndRobotTest {
     public void missingLaterDriveHardwareCleansRegisteredIntakeAndPreservesFailure() {
         StarterProfile profile = readyProfile();
         profile.drive.wiring.frontLeftName = "missingFrontLeft";
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe intakeMotor =
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe intakeMotor =
                 hardwareMap.addMotor(profile.intake.motorName);
         TestStarterTeleOp mode = prepare(
                 new TestStarterTeleOp(profile),
@@ -230,9 +231,9 @@ public final class StarterProfileAndRobotTest {
 
         IllegalArgumentException failure = expectIllegalArgument(mode::init);
 
-        assertEquals("No test DcMotorEx named missingFrontLeft", failure.getMessage());
+        assertEquals("No test DcMotorEx named 'missingFrontLeft'", failure.getMessage());
         assertEquals(2, hardwareMap.lookupCalls());
-        assertEquals(0.0, intakeMotor.lastPower(), 0.0);
+        assertEquals(0.0, intakeMotor.power(), 0.0);
         assertEquals(1, intakeMotor.powerWrites());
 
         mode.loop();
@@ -245,7 +246,7 @@ public final class StarterProfileAndRobotTest {
         StarterProfile profile = readyProfile();
         profile.intake.ejectPower = profile.intake.collectPower;
         List<String> events = new ArrayList<String>();
-        StarterTestHardware.HardwareMapProbe hardwareMap =
+        FtcTestHardware hardwareMap =
                 fullTeleOpHardware(profile, events);
         StarterTestHardware.TelemetryProbe telemetry =
                 new StarterTestHardware.TelemetryProbe(events);
@@ -287,7 +288,7 @@ public final class StarterProfileAndRobotTest {
                 telemetry.dataValue("intake.mode"));
         assertEquals(
                 profile.intake.collectPower,
-                hardwareMap.motor(profile.intake.motorName).lastPower(),
+                hardwareMap.motor(profile.intake.motorName).power(),
                 0.0);
         assertEventBefore(events, "power:intake:", "power:frontLeft:");
         assertEventBefore(events, "power:frontLeft:", "telemetry.row:intake.mode");
@@ -310,23 +311,23 @@ public final class StarterProfileAndRobotTest {
                 0.0);
         assertEquals(
                 profile.intake.ejectPower,
-                hardwareMap.motor(profile.intake.motorName).lastPower(),
+                hardwareMap.motor(profile.intake.motorName).power(),
                 0.0);
 
         mode.stop();
         assertAllMotorsStopped(hardwareMap, profile);
-        int powerWritesAfterFirstStop = hardwareMap.totalPowerWrites();
+        int powerWritesAfterFirstStop = hardwareMap.totalMotorPowerWrites();
 
         mode.stop();
         mode.loop();
-        assertEquals(powerWritesAfterFirstStop, hardwareMap.totalPowerWrites());
+        assertEquals(powerWritesAfterFirstStop, hardwareMap.totalMotorPowerWrites());
         assertEquals(4, telemetry.updateCalls());
     }
 
     @Test
     public void activeLoopFailureFailStopsEveryConstructedOutput() {
         StarterProfile profile = readyProfile();
-        StarterTestHardware.HardwareMapProbe hardwareMap = fullTeleOpHardware(profile);
+        FtcTestHardware hardwareMap = fullTeleOpHardware(profile);
         StarterTestHardware.TelemetryProbe telemetry =
                 new StarterTestHardware.TelemetryProbe();
         TestStarterTeleOp mode = prepare(
@@ -343,18 +344,18 @@ public final class StarterProfileAndRobotTest {
 
         assertTrue(failure.getMessage().contains("telemetry update failed"));
         assertAllMotorsStopped(hardwareMap, profile);
-        int writesAfterFailure = hardwareMap.totalPowerWrites();
+        int writesAfterFailure = hardwareMap.totalMotorPowerWrites();
         mode.loop();
-        assertEquals(writesAfterFailure, hardwareMap.totalPowerWrites());
+        assertEquals(writesAfterFailure, hardwareMap.totalMotorPowerWrites());
     }
 
     @Test
     public void autoClientStartsOneFreshRootAndDeclarationPresentsOnlyCapabilityStatus() {
         StarterProfile profile = readyProfile();
         List<String> events = new ArrayList<String>();
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe(events);
-        StarterTestHardware.MotorProbe intakeMotor =
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware(events);
+        FtcTestHardware.MotorProbe intakeMotor =
                 hardwareMap.addMotor(profile.intake.motorName);
         StarterTestHardware.TelemetryProbe telemetry =
                 new StarterTestHardware.TelemetryProbe(events);
@@ -372,7 +373,7 @@ public final class StarterProfileAndRobotTest {
         assertEquals(2, telemetry.dataRowsAtLastUpdate());
 
         mode.start();
-        assertEquals(profile.intake.collectPower, intakeMotor.lastPower(), 0.0);
+        assertEquals(profile.intake.collectPower, intakeMotor.power(), 0.0);
 
         events.clear();
         mode.loop();
@@ -392,7 +393,7 @@ public final class StarterProfileAndRobotTest {
                 "telemetry.commit");
 
         mode.stop();
-        assertEquals(0.0, intakeMotor.lastPower(), 0.0);
+        assertEquals(0.0, intakeMotor.power(), 0.0);
         int writesAfterFirstStop = intakeMotor.powerWrites();
 
         mode.stop();
@@ -407,8 +408,8 @@ public final class StarterProfileAndRobotTest {
         autoProfile.allowIntakeMotion = allowIntakeMotion;
         autoProfile.allowDriveMotion = allowDriveMotion;
         autoProfile.drive = null;
-        StarterTestHardware.HardwareMapProbe autoMap =
-                new StarterTestHardware.HardwareMapProbe();
+        FtcTestHardware autoMap =
+                new FtcTestHardware();
         autoMap.addMotor(autoProfile.intake.motorName);
         TestStarterAuto autoMode = prepare(
                 new TestStarterAuto(autoProfile),
@@ -429,9 +430,9 @@ public final class StarterProfileAndRobotTest {
         StarterProfile teleOpProfile = readyProfile();
         teleOpProfile.allowIntakeMotion = allowIntakeMotion;
         teleOpProfile.allowDriveMotion = allowDriveMotion;
-        StarterTestHardware.HardwareMapProbe teleOpMap = allowIntakeMotion && allowDriveMotion
+        FtcTestHardware teleOpMap = allowIntakeMotion && allowDriveMotion
                 ? fullTeleOpHardware(teleOpProfile)
-                : new StarterTestHardware.HardwareMapProbe();
+                : new FtcTestHardware();
         TestStarterTeleOp teleOpMode = prepare(
                 new TestStarterTeleOp(teleOpProfile),
                 teleOpMap,
@@ -539,20 +540,20 @@ public final class StarterProfileAndRobotTest {
     }
 
     private static void assertAllMotorsStopped(
-            StarterTestHardware.HardwareMapProbe hardwareMap,
+            FtcTestHardware hardwareMap,
             StarterProfile profile) {
-        assertEquals(0.0, hardwareMap.motor(profile.intake.motorName).lastPower(), 0.0);
+        assertEquals(0.0, hardwareMap.motor(profile.intake.motorName).power(), 0.0);
         assertEquals(0.0,
-                hardwareMap.motor(profile.drive.wiring.frontLeftName).lastPower(),
+                hardwareMap.motor(profile.drive.wiring.frontLeftName).power(),
                 0.0);
         assertEquals(0.0,
-                hardwareMap.motor(profile.drive.wiring.frontRightName).lastPower(),
+                hardwareMap.motor(profile.drive.wiring.frontRightName).power(),
                 0.0);
         assertEquals(0.0,
-                hardwareMap.motor(profile.drive.wiring.backLeftName).lastPower(),
+                hardwareMap.motor(profile.drive.wiring.backLeftName).power(),
                 0.0);
         assertEquals(0.0,
-                hardwareMap.motor(profile.drive.wiring.backRightName).lastPower(),
+                hardwareMap.motor(profile.drive.wiring.backRightName).power(),
                 0.0);
     }
 

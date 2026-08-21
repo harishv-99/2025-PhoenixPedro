@@ -12,7 +12,7 @@ import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.robots.examples.reference.autonomous.ReferenceAutoRoutines;
 import edu.ftcphoenix.robots.examples.reference.opmode.ReferenceAuto;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
 import edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware;
 
 import static edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware.prepare;
@@ -48,8 +48,8 @@ public final class ReferenceRobotTest {
                 ReferenceProfile profile = readyProfile();
                 String key = motorName(profile, first);
                 setMotorName(profile, second, "  " + key + "  ");
-                ReferenceTestHardware.HardwareMapProbe hardware =
-                        new ReferenceTestHardware.HardwareMapProbe();
+                FtcTestHardware hardware =
+                        new FtcTestHardware();
                 TestReferenceTeleOp mode = prepare(
                         new TestReferenceTeleOp(profile),
                         hardware,
@@ -74,8 +74,8 @@ public final class ReferenceRobotTest {
                 ReferenceProfile profile = readyProfile();
                 String key = motorName(profile, first);
                 setMotorName(profile, second, " " + key + " ");
-                ReferenceTestHardware.HardwareMapProbe hardware =
-                        new ReferenceTestHardware.HardwareMapProbe();
+                FtcTestHardware hardware =
+                        new FtcTestHardware();
                 TestReferenceAuto mode = prepare(
                         new TestReferenceAuto(profile),
                         hardware,
@@ -94,7 +94,7 @@ public final class ReferenceRobotTest {
         ReferenceProfile profile = readyProfile();
         profile.drive = null;
         profile.allowDriveMotion = false;
-        ReferenceTestHardware.HardwareMapProbe hardware = fullAutoHardware(profile);
+        FtcTestHardware hardware = fullAutoHardware(profile);
         TestReferenceAuto mode = prepare(
                 new TestReferenceAuto(profile),
                 hardware,
@@ -111,7 +111,7 @@ public final class ReferenceRobotTest {
         ReferenceProfile profile = readyProfile();
         profile.lift.motorName = "Shared";
         profile.launcher.leftFlywheelName = "shared";
-        ReferenceTestHardware.HardwareMapProbe hardware = fullAutoHardware(profile);
+        FtcTestHardware hardware = fullAutoHardware(profile);
         TestReferenceAuto mode = prepare(
                 new TestReferenceAuto(profile),
                 hardware,
@@ -125,7 +125,7 @@ public final class ReferenceRobotTest {
     @Test
     public void autoDeclarationDoesNotHideACompositionRootControlScript() {
         ReferenceProfile profile = readyProfile();
-        ReferenceTestHardware.HardwareMapProbe hardware = fullAutoHardware(profile);
+        FtcTestHardware hardware = fullAutoHardware(profile);
         TestReferenceDeclarationOnlyAuto mode = prepare(
                 new TestReferenceDeclarationOnlyAuto(profile),
                 hardware,
@@ -142,10 +142,10 @@ public final class ReferenceRobotTest {
     @Test
     public void laterLauncherConstructionFailureCleansTheRegisteredLiftOwner() {
         ReferenceProfile profile = readyProfile();
-        ReferenceTestHardware.HardwareMapProbe hardware =
-                new ReferenceTestHardware.HardwareMapProbe();
-        hardware.addDigital(profile.lift.bottomSwitchName);
-        ReferenceTestHardware.MotorProbe liftMotor =
+        FtcTestHardware hardware =
+                new FtcTestHardware();
+        hardware.addDigitalInput(profile.lift.bottomSwitchName);
+        FtcTestHardware.MotorProbe liftMotor =
                 hardware.addMotor(profile.lift.motorName);
         hardware.addMotor(profile.launcher.leftFlywheelName);
         hardware.addMotor(profile.launcher.rightFlywheelName);
@@ -160,7 +160,7 @@ public final class ReferenceRobotTest {
             fail("Expected missing launcher hardware");
         } catch (IllegalArgumentException expected) {
             assertEquals(
-                    "No test DigitalChannel named " + profile.launcher.objectSensorName,
+                    "No test DigitalChannel named '" + profile.launcher.objectSensorName + "'",
                     expected.getMessage());
         }
 
@@ -176,8 +176,8 @@ public final class ReferenceRobotTest {
     public void nullTeleOpGamepadFailsBeforePermissionsCollisionOrHardwareLookup() {
         ReferenceProfile profile = readyProfile();
         profile.allowDriveMotion = false;
-        ReferenceTestHardware.HardwareMapProbe hardware =
-                new ReferenceTestHardware.HardwareMapProbe();
+        FtcTestHardware hardware =
+                new FtcTestHardware();
         TestReferenceTeleOp mode = prepare(
                 new TestReferenceTeleOp(profile),
                 hardware,
@@ -201,13 +201,13 @@ public final class ReferenceRobotTest {
         return profile;
     }
 
-    private static ReferenceTestHardware.HardwareMapProbe fullAutoHardware(
+    private static FtcTestHardware fullAutoHardware(
             ReferenceProfile profile) {
-        ReferenceTestHardware.HardwareMapProbe hardware =
-                new ReferenceTestHardware.HardwareMapProbe();
-        hardware.addDigital(profile.lift.bottomSwitchName);
+        FtcTestHardware hardware =
+                new FtcTestHardware();
+        hardware.addDigitalInput(profile.lift.bottomSwitchName);
         hardware.addMotor(profile.lift.motorName);
-        hardware.addDigital(profile.launcher.objectSensorName);
+        hardware.addDigitalInput(profile.launcher.objectSensorName);
         hardware.addMotor(profile.launcher.leftFlywheelName);
         hardware.addMotor(profile.launcher.rightFlywheelName);
         hardware.addCrServo(profile.launcher.transferName);

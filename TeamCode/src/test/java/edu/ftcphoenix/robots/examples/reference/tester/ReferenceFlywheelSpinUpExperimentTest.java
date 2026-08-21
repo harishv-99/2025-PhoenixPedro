@@ -16,8 +16,8 @@ import java.util.Map;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.tools.tester.TesterContext;
 import edu.ftcphoenix.robots.examples.reference.capability.launcher.ReferenceLauncherMechanism;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware.HardwareMapProbe;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware.MotorProbe;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware.MotorProbe;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -56,7 +56,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         ReferenceFlywheelSpinUpCriteria criteria = ReferenceFlywheelSpinUpCriteria.current();
         criteria.reviewedForMotion = true;
         criteria.targetVelocityTicksPerSec = config.velocityToleranceTicksPerSec;
-        HardwareMapProbe hardware = new HardwareMapProbe();
+        FtcTestHardware hardware = new FtcTestHardware();
         ReferenceFlywheelSpinUpExperiment tester =
                 new ReferenceFlywheelSpinUpExperiment(config, criteria);
 
@@ -71,7 +71,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
 
     @Test
     public void currentLockedCriteriaRenderWithoutHardwareLookup() {
-        HardwareMapProbe hardware = new HardwareMapProbe();
+        FtcTestHardware hardware = new FtcTestHardware();
         RecordingTelemetry telemetry = new RecordingTelemetry();
         LoopClock clock = new LoopClock();
         ReferenceFlywheelSpinUpExperiment tester = new ReferenceFlywheelSpinUpExperiment(
@@ -102,8 +102,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
                 rig.telemetry.value("trialState"));
         assertFalse(rig.telemetry.has("trialNumber"));
         assertFalse(rig.telemetry.has("targetVelocityTicksPerSec"));
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
-        assertEquals(0.0, rig.right.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
 
         rig.gamepad1.a = false;
         rig.initCycle(0.02);
@@ -114,8 +114,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
                 rig.telemetry.value("trialState"));
         assertFalse(rig.telemetry.has("trialNumber"));
         assertFalse(rig.telemetry.has("spinUpSec"));
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
-        assertEquals(0.0, rig.right.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
         assertMinimalTelemetry(rig.telemetry);
         rig.tester.stop();
     }
@@ -126,8 +126,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         rig.startActive();
         rig.gamepad1.a = true;
         rig.activeCycle(0.02);
-        rig.left.setVelocity(rig.criteria.targetVelocityTicksPerSec);
-        rig.right.setVelocity(rig.criteria.targetVelocityTicksPerSec);
+        rig.left.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
 
         double observedSpinUpSec = rig.criteria.maximumPoweredRunSec * 0.4;
         rig.activeCycle(observedSpinUpSec);
@@ -141,12 +141,12 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         assertNumber(rig.criteria.targetVelocityTicksPerSec,
                 rig.telemetry.value("rightMeasuredVelocityTicksPerSec"));
 
-        rig.left.setVelocity(0.0);
-        rig.right.setVelocity(0.0);
+        rig.left.setMeasuredVelocityTicksPerSec(0.0);
+        rig.right.setMeasuredVelocityTicksPerSec(0.0);
         rig.gamepad1.a = false;
         rig.activeCycle(0.20);
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
-        assertEquals(0.0, rig.right.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
         assertNumber(observedSpinUpSec, rig.telemetry.value("spinUpSec"));
         assertNumber(rig.criteria.targetVelocityTicksPerSec,
                 rig.telemetry.value("leftMeasuredVelocityTicksPerSec"));
@@ -161,8 +161,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         rig.startActive();
         rig.gamepad1.a = true;
         rig.activeCycle(0.02);
-        rig.left.setVelocity(rig.criteria.targetVelocityTicksPerSec);
-        rig.right.setVelocity(rig.criteria.targetVelocityTicksPerSec);
+        rig.left.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
 
         rig.activeCycle(rig.criteria.maximumPoweredRunSec);
 
@@ -174,11 +174,11 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         assertNumber(rig.criteria.maximumPoweredRunSec,
                 rig.telemetry.value("elapsedSec"));
         assertFalse(rig.telemetry.has("spinUpSec"));
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
-        assertEquals(0.0, rig.right.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
 
-        rig.left.setVelocity(0.0);
-        rig.right.setVelocity(0.0);
+        rig.left.setMeasuredVelocityTicksPerSec(0.0);
+        rig.right.setMeasuredVelocityTicksPerSec(0.0);
         rig.gamepad1.a = false;
         rig.activeCycle(0.20);
 
@@ -190,8 +190,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
                 rig.telemetry.value("rightMeasuredVelocityTicksPerSec"));
         assertNumber(rig.criteria.maximumPoweredRunSec,
                 rig.telemetry.value("elapsedSec"));
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
-        assertEquals(0.0, rig.right.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
         assertMinimalTelemetry(rig.telemetry);
         rig.tester.stop();
     }
@@ -202,8 +202,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         rig.startActive();
         rig.gamepad1.a = true;
         rig.activeCycle(0.02);
-        rig.left.setVelocity(125.0);
-        rig.right.setVelocity(275.0);
+        rig.left.setMeasuredVelocityTicksPerSec(125.0);
+        rig.right.setMeasuredVelocityTicksPerSec(275.0);
 
         rig.activeCycle(rig.criteria.maximumPoweredRunSec * 0.5);
         assertEquals(ReferenceFlywheelSpinUpExperiment.TrialState.RUNNING,
@@ -219,11 +219,11 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         assertNumber(275.0, rig.telemetry.value("rightMeasuredVelocityTicksPerSec"));
         assertNumber(observedTimeoutSec, rig.telemetry.value("elapsedSec"));
         assertFalse(rig.telemetry.has("spinUpSec"));
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
-        assertEquals(0.0, rig.right.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
 
-        rig.left.setVelocity(rig.criteria.targetVelocityTicksPerSec);
-        rig.right.setVelocity(rig.criteria.targetVelocityTicksPerSec);
+        rig.left.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
         rig.gamepad1.a = false;
         rig.activeCycle(0.20);
 
@@ -251,7 +251,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         assertNumber(rig.criteria.targetVelocityTicksPerSec,
                 rig.telemetry.value("targetVelocityTicksPerSec"));
         assertFalse(rig.telemetry.has("spinUpSec"));
-        assertEquals(0.0, rig.left.commandedVelocity(), EPSILON);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
 
         rig.gamepad1.a = false;
         rig.gamepad1.b = false;
@@ -273,8 +273,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         assertEquals(2L, rig.telemetry.value("trialNumber"));
         assertTrue(number(rig.telemetry.value("elapsedSec")) > elapsedBeforeSecondA);
 
-        rig.left.setVelocity(333.0);
-        rig.right.setVelocity(444.0);
+        rig.left.setMeasuredVelocityTicksPerSec(333.0);
+        rig.right.setMeasuredVelocityTicksPerSec(444.0);
         rig.gamepad1.a = false;
         rig.activeCycle(0.02);
         rig.gamepad1.b = true;
@@ -287,8 +287,8 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         double abortedElapsedSec = number(rig.telemetry.value("elapsedSec"));
         assertFalse(rig.telemetry.has("spinUpSec"));
 
-        rig.left.setVelocity(rig.criteria.targetVelocityTicksPerSec);
-        rig.right.setVelocity(rig.criteria.targetVelocityTicksPerSec);
+        rig.left.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
         rig.gamepad1.b = false;
         rig.activeCycle(0.20);
         assertEquals(ReferenceFlywheelSpinUpExperiment.TrialState.ABORTED,
@@ -334,7 +334,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         return ((Number) value).doubleValue();
     }
 
-    private static TesterContext context(HardwareMapProbe hardware,
+    private static TesterContext context(FtcTestHardware hardware,
                                          Telemetry telemetry,
                                          Gamepad gamepad1,
                                          LoopClock clock) {
@@ -367,7 +367,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
     private static final class Rig {
         private final ReferenceLauncherMechanism.Config config = testConfig();
         private final ReferenceFlywheelSpinUpCriteria criteria = reviewedCriteria();
-        private final HardwareMapProbe hardware = new HardwareMapProbe();
+        private final FtcTestHardware hardware = new FtcTestHardware();
         private final MotorProbe left = hardware.addMotor(config.leftFlywheelName);
         private final MotorProbe right = hardware.addMotor(config.rightFlywheelName);
         private final Gamepad gamepad1 = new Gamepad();
@@ -379,7 +379,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         private Rig() {
             hardware.addCrServo(config.transferName);
             hardware.addServo(config.releaseServoName);
-            hardware.addDigital(config.objectSensorName);
+            hardware.addDigitalInput(config.objectSensorName);
             clock.reset(0.0);
             tester = new ReferenceFlywheelSpinUpExperiment(config, criteria);
             tester.init(new TesterContext(

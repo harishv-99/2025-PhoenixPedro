@@ -20,7 +20,7 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 import edu.ftcphoenix.fw.testing.RecordingCallbackBindings;
 import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntake;
 import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntakeMechanism;
-import edu.ftcphoenix.robots.examples.starter.support.StarterTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -136,9 +136,9 @@ public final class StarterIntakeAndControlsTest {
         StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
         config.collectPower = 0.65;
         config.ejectPower = -0.45;
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
         StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
@@ -150,13 +150,13 @@ public final class StarterIntakeAndControlsTest {
         assertEquals(0, motor.powerWrites());
         intake.update(time.clock());
         assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65);
-        assertEquals(0.65, motor.lastPower(), 0.0);
+        assertEquals(0.65, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
         assertStatus(intake, StarterIntake.Mode.EJECT, 0.65);
         intake.update(time.nextCycle(0.02));
         assertStatus(intake, StarterIntake.Mode.EJECT, -0.45);
-        assertEquals(-0.45, motor.lastPower(), 0.0);
+        assertEquals(-0.45, motor.power(), 0.0);
 
         expectNullPointer(() -> intake.setMode(null));
         assertStatus(intake, StarterIntake.Mode.EJECT, -0.45);
@@ -165,7 +165,7 @@ public final class StarterIntakeAndControlsTest {
         assertStatus(intake, StarterIntake.Mode.STOPPED, -0.45);
         intake.update(time.nextCycle(0.02));
         assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
-        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
     }
 
     @Test
@@ -173,22 +173,22 @@ public final class StarterIntakeAndControlsTest {
         StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
         config.collectPower = 0.40;
         config.ejectPower = 0.40;
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
         StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
         intake.setMode(StarterIntake.Mode.COLLECT);
         intake.update(time.clock());
         assertStatus(intake, StarterIntake.Mode.COLLECT, 0.40);
-        assertEquals(0.40, motor.lastPower(), 0.0);
+        assertEquals(0.40, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
         assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
         intake.update(time.nextCycle(0.02));
         assertStatus(intake, StarterIntake.Mode.EJECT, 0.40);
-        assertEquals(0.40, motor.lastPower(), 0.0);
+        assertEquals(0.40, motor.power(), 0.0);
     }
 
     @Test
@@ -196,9 +196,9 @@ public final class StarterIntakeAndControlsTest {
         StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
         config.collectPower = 0.65;
         config.ejectPower = -0.45;
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
         StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
@@ -206,12 +206,12 @@ public final class StarterIntakeAndControlsTest {
         intake.update(time.clock());
         intake.stop();
 
-        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
         assertStatus(intake, StarterIntake.Mode.EJECT, 0.0);
 
         intake.setMode(StarterIntake.Mode.COLLECT);
         intake.update(time.nextCycle(0.02));
-        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
         assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
     }
 
@@ -220,9 +220,9 @@ public final class StarterIntakeAndControlsTest {
         StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
         config.collectPower = 0.65;
         config.ejectPower = -0.45;
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
         StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
@@ -234,13 +234,13 @@ public final class StarterIntakeAndControlsTest {
         first.start(time.clock());
         assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
         intake.update(time.clock());
-        assertEquals(0.65, motor.lastPower(), 0.0);
+        assertEquals(0.65, motor.power(), 0.0);
         assertFalse(first.isComplete());
 
         first.update(time.nextCycle(0.49));
         intake.update(time.clock());
         assertFalse(first.isComplete());
-        assertEquals(0.65, motor.lastPower(), 0.0);
+        assertEquals(0.65, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
         assertStatus(intake, StarterIntake.Mode.EJECT, 0.65);
@@ -253,11 +253,11 @@ public final class StarterIntakeAndControlsTest {
         assertStatus(intake, StarterIntake.Mode.STOPPED, 0.65);
         intake.update(time.clock());
         assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
-        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
 
         second.start(time.nextCycle(0.02));
         intake.update(time.clock());
-        assertEquals(0.65, motor.lastPower(), 0.0);
+        assertEquals(0.65, motor.power(), 0.0);
     }
 
     @Test
@@ -265,9 +265,9 @@ public final class StarterIntakeAndControlsTest {
         StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
         config.collectPower = 0.65;
         config.ejectPower = -0.45;
-        StarterTestHardware.HardwareMapProbe hardwareMap =
-                new StarterTestHardware.HardwareMapProbe();
-        StarterTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
         StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
         Task task = intake.collectForSeconds(0.50);
@@ -280,14 +280,14 @@ public final class StarterIntakeAndControlsTest {
 
         task.start(time.clock());
         intake.update(time.clock());
-        assertEquals(0.65, motor.lastPower(), 0.0);
+        assertEquals(0.65, motor.power(), 0.0);
 
         task.cancel();
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
         assertStatus(intake, StarterIntake.Mode.STOPPED, 0.65);
         intake.update(time.nextCycle(0.02));
-        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
         task.cancel();

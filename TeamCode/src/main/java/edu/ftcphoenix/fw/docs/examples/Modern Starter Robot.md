@@ -17,6 +17,8 @@ For the short execution trace, begin with
 [`set up and verify the project`](<../getting-started/Build and Run.md>). Use
 [`Your first Phoenix robot code`](<../getting-started/First Phoenix Robot Code.md>) to copy the
 Starter, make one control change, and prove it without hardware. Use
+[`Test a mechanism without hardware`](<../getting-started/Test a Mechanism Without Hardware.md>) to
+exercise the same production mechanism and Plant with a test-only hardware registry. Use
 [`Choose a Phoenix topic`](<../getting-started/Beginner's Guide.md>) when one ownership boundary
 needs more explanation. This page remains the complete Starter source reference.
 
@@ -248,11 +250,16 @@ sticks and triggers before INIT so `GamepadDevice` calibrates their physical neu
 Software tests prove declaration order, cancellation, configuration domains, and output-seam zero
 commands—not physical motion or that the review happened.
 
+The Starter mechanism scenario uses the ordinary production constructor and private Plant while a
+test-only `HardwareMap` records the motor command. Its result is software evidence, not a substitute
+for the supervised bring-up above.
+
 ## Related reading
 
 - [`Phoenix Cheat Sheet`](<../reference/Phoenix Cheat Sheet.md>)
 - [`Common Problems`](<../troubleshooting/Common Problems.md>)
 - [`Choose a Phoenix topic`](<../getting-started/Beginner's Guide.md>)
+- [`Test a mechanism without hardware`](<../getting-started/Test a Mechanism Without Hardware.md>)
 - [`Architecture Roles, Framework Lanes, and Robot Controls`](<../design/Framework Lanes & Robot Controls.md>)
 - [`Robot Capabilities and Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>)
 - [`Loop Structure`](<../core-concepts/Loop Structure.md>)

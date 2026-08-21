@@ -137,4 +137,5 @@ and declares the mechanism that privately owns the hardware path.
 
 1. Verify the software project with [Build and run Phoenix](<Build and Run.md>).
 2. Make and test one real code change in [Your first Phoenix robot code](<First Phoenix Robot Code.md>).
-3. For the question in front of you, open [Choose a Phoenix topic](<Beginner's Guide.md>).
+3. [Test its mechanism without hardware](<Test a Mechanism Without Hardware.md>).
+4. For the question in front of you, open [Choose a Phoenix topic](<Beginner's Guide.md>).

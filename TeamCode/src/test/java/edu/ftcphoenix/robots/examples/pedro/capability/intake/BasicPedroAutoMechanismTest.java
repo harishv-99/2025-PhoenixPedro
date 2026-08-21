@@ -1,6 +1,6 @@
 package edu.ftcphoenix.robots.examples.pedro.capability.intake;
 
-import edu.ftcphoenix.robots.examples.pedro.support.BasicPedroTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
 
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
@@ -115,15 +115,15 @@ public final class BasicPedroAutoMechanismTest {
         config.motorName = "  customIntake  ";
         config.direction = Direction.REVERSE;
         config.collectPower = -0.65;
-        BasicPedroTestHardware.HardwareMapProbe hardwareMap =
-                new BasicPedroTestHardware.HardwareMapProbe();
-        BasicPedroTestHardware.MotorProbe motor = hardwareMap.addMotor("customIntake");
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor("customIntake");
 
         BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(hardwareMap, config);
 
         assertEquals(1, hardwareMap.lookupCalls());
         assertEquals("  customIntake  ", hardwareMap.lastLookupName());
-        assertEquals(0, hardwareMap.totalPowerWrites());
+        assertEquals(0, hardwareMap.totalMotorPowerWrites());
         assertEquals(DcMotorSimple.Direction.REVERSE, motor.direction());
 
         config.motorName = "missingAfterConstruction";
@@ -134,15 +134,15 @@ public final class BasicPedroAutoMechanismTest {
         Task collect = mechanism.collectTask(0.50);
         collect.start(time.clock());
         mechanism.update(time.clock());
-        assertEquals(-0.65, motor.lastPower(), 0.0);
+        assertEquals(-0.65, motor.power(), 0.0);
         assertEquals(1, hardwareMap.lookupCalls());
         assertEquals(DcMotorSimple.Direction.REVERSE, motor.direction());
 
         collect.cancel();
         mechanism.update(time.nextCycle(0.02));
-        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
         mechanism.stop();
-        assertEquals(0.0, motor.lastPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
     }
 
     @Test
@@ -192,9 +192,9 @@ public final class BasicPedroAutoMechanismTest {
 
     private static void assertInvalid(BasicPedroAutoMechanism.Config config,
                                       String... messageFragments) {
-        BasicPedroTestHardware.HardwareMapProbe hardwareMap =
-                new BasicPedroTestHardware.HardwareMapProbe();
-        BasicPedroTestHardware.MotorProbe motor = hardwareMap.addMotor("intakeMotor");
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor("intakeMotor");
         try {
             new BasicPedroAutoMechanism(hardwareMap, config);
             fail("expected invalid Basic Pedro intake Config to fail");
@@ -208,23 +208,23 @@ public final class BasicPedroAutoMechanismTest {
             }
         }
         assertEquals(0, hardwareMap.lookupCalls());
-        assertEquals(0, hardwareMap.totalPowerWrites());
+        assertEquals(0, hardwareMap.totalMotorPowerWrites());
         assertEquals(DcMotorSimple.Direction.FORWARD, motor.direction());
     }
 
     private static void assertAcceptedPower(double collectPower) {
         BasicPedroAutoMechanism.Config config = BasicPedroAutoMechanism.Config.defaults();
         config.collectPower = collectPower;
-        BasicPedroTestHardware.HardwareMapProbe hardwareMap =
-                new BasicPedroTestHardware.HardwareMapProbe();
-        BasicPedroTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
+        FtcTestHardware hardwareMap =
+                new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardwareMap.addMotor(config.motorName);
         BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
         mechanism.collectTask(0.50).start(time.clock());
         mechanism.update(time.clock());
 
-        assertEquals(collectPower, motor.lastPower(), 0.0);
+        assertEquals(collectPower, motor.power(), 0.0);
         mechanism.stop();
     }
 

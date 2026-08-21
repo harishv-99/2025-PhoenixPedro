@@ -5,7 +5,7 @@ import org.junit.Test;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
-import edu.ftcphoenix.robots.examples.reference.support.ReferenceTestHardware;
+import edu.ftcphoenix.fw.testing.ftc.FtcTestHardware;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -38,7 +38,7 @@ public final class ReferenceLiftMechanismTest {
         homeSuccessfully(f, time);
 
         Task move = f.lift.moveTo(ReferenceLift.Height.LOW);
-        f.motor.setCurrentPosition((int) (f.config.lowHeightIn * f.config.ticksPerIn));
+        f.motor.setCurrentPositionTicks((int) (f.config.lowHeightIn * f.config.ticksPerIn));
         move.start(time.nextCycle(0.02));
 
         f.lift.update(time.clock());
@@ -58,7 +58,7 @@ public final class ReferenceLiftMechanismTest {
         ManualLoopClock time = new ManualLoopClock();
         homeSuccessfully(f, time);
 
-        f.motor.setCurrentPosition(0);
+        f.motor.setCurrentPositionTicks(0);
         Task timeout = f.lift.moveTo(ReferenceLift.Height.HIGH);
         timeout.start(time.nextCycle(0.02));
         f.lift.update(time.clock());
@@ -165,11 +165,11 @@ public final class ReferenceLiftMechanismTest {
 
     private static Fixture fixture() {
         ReferenceLiftMechanism.Config config = config();
-        ReferenceTestHardware.HardwareMapProbe hardware =
-                new ReferenceTestHardware.HardwareMapProbe();
-        ReferenceTestHardware.DigitalProbe bottomSwitch =
-                hardware.addDigital(config.bottomSwitchName);
-        ReferenceTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
+        FtcTestHardware hardware =
+                new FtcTestHardware();
+        FtcTestHardware.DigitalProbe bottomSwitch =
+                hardware.addDigitalInput(config.bottomSwitchName);
+        FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
         return new Fixture(
                 config,
                 motor,
@@ -195,8 +195,8 @@ public final class ReferenceLiftMechanismTest {
     private static void assertConfigFailureBeforeLookup(
             ReferenceLiftMechanism.Config config,
             String expectedMessage) {
-        ReferenceTestHardware.HardwareMapProbe hardware =
-                new ReferenceTestHardware.HardwareMapProbe();
+        FtcTestHardware hardware =
+                new FtcTestHardware();
         try {
             new ReferenceLiftMechanism(hardware, config);
             fail("Expected invalid Reference lift configuration");
@@ -208,13 +208,13 @@ public final class ReferenceLiftMechanismTest {
 
     private static final class Fixture {
         private final ReferenceLiftMechanism.Config config;
-        private final ReferenceTestHardware.MotorProbe motor;
-        private final ReferenceTestHardware.DigitalProbe bottomSwitch;
+        private final FtcTestHardware.MotorProbe motor;
+        private final FtcTestHardware.DigitalProbe bottomSwitch;
         private final ReferenceLiftMechanism lift;
 
         private Fixture(ReferenceLiftMechanism.Config config,
-                        ReferenceTestHardware.MotorProbe motor,
-                        ReferenceTestHardware.DigitalProbe bottomSwitch,
+                        FtcTestHardware.MotorProbe motor,
+                        FtcTestHardware.DigitalProbe bottomSwitch,
                         ReferenceLiftMechanism lift) {
             this.config = config;
             this.motor = motor;

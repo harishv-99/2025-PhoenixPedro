@@ -3,6 +3,12 @@
 Calibrate one physical fact at a time. Keep the robot clear of people, begin with conservative
 commands, know how to stop the OpMode, and do not treat a successful build as proof of safe motion.
 
+If hardware is unavailable, stay in software: [Test a mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>)
+uses the real Starter mechanism and Plant with a recording test device. The optional
+[Reference scenarios](<../examples/Hardware-free Reference Scenarios.md>) add explicit switch,
+encoder, and independent flywheel-velocity inputs. These scenarios can establish software behavior
+before a robot exists, but they do not model physics or authorize motion.
+
 If you copied the framework into another project, choose exactly one ready-made entry for a
 general-purpose tester run:
 
@@ -45,8 +51,8 @@ This repository's production Phoenix robot has its own ordered
 
 ## When hardware is available, choose one question
 
-Hardware work is not required by the first software lesson. When a supervised robot is available,
-start with the one question that must be answered rather than running every tool:
+Hardware work is not required by either software lesson. When a supervised robot is available,
+start with the one physical question that must be answered rather than running every tool:
 
 | Question | Start here |
 |---|---|

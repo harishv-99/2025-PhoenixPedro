@@ -15,6 +15,7 @@ physical mechanism design.
 | Detect a known field target | [Drive Guidance](<../drive-vision/Drive Guidance.md>) | Plausible; keep tag layout separate from camera ownership and robot policy. |
 | Enter a known-clear parking area | [Drive Guidance](<../drive-vision/Drive Guidance.md>) | Plausible; only a reviewed full-box target permits automatic guidance. |
 | Follow an autonomous route | [Pedro Autonomous Reference](<Pedro Autonomous Reference.md>) | Optional integration after route geometry and completion criteria are known. |
+| Exercise proposed intake, lift, or launcher software before matching hardware exists | [Test a mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>) and [Hardware-free Reference scenarios](<Hardware-free Reference Scenarios.md>) | High for software behavior only; direct input injection and recorded commands do not select or validate a physical design. |
 | Evaluate a mechanism before competition code depends on it | [Evidence and experiments](<../getting-started/learn-phoenix/Evidence and Experiments.md>) and [Subsystem Experiments](<Subsystem Experiments.md>) | High; the team supplies the physical question and success criteria. |
 
 When the official game and the robot design are known, create BIOBUZZ-owned capabilities that use

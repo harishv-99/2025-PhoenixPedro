@@ -8,12 +8,23 @@ physical evidence software cannot invent.
 Use this order:
 
 ```text
-canonical actuator bring-up
+semantic test
+    -> software device scenario
+    -> optional modeled simulation when its fidelity serves the question
+    -> canonical actuator bring-up
     -> reviewed lab card
     -> locked, bounded subsystem tester
     -> production-mechanism integration check
     -> promote only accepted configuration into robot use
 ```
+
+Before powered work, use
+[Test a mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>) or
+an optional [Reference software scenario](<Hardware-free Reference Scenarios.md>) to establish that
+the production mechanism interprets injected inputs and sends expected outputs. A software
+scenario supplies readings explicitly; it does not mirror commands into feedback or model physics.
+Its green result removes software uncertainty, but it does not authorize motion or replace the
+physical bring-up and lab card.
 
 ## Copyable lab card and results sheet
 
@@ -135,7 +146,10 @@ profile decision, but a production permission still requires its own complete ro
 
 ## Add a team-owned subsystem experiment
 
-Use the existing tester lifecycle; do not create another FTC loop or generic experiment framework:
+First give the subsystem a focused software device scenario with explicit input observations,
+recorded outputs, and a **Proves / Does not prove / Next gate** evidence boundary. Then use the
+existing tester lifecycle for facts that require hardware; do not create another FTC loop or
+generic experiment framework:
 
 1. Create data-only `<Subsystem>ExperimentCriteria` or reuse the subsystem `Spec`. Its `current()`
    returns a fresh locked value. Validate and defensively snapshot every retained criterion before
@@ -176,6 +190,6 @@ requires a visible physical result, put that field in the operator row instead.
 Use [`Actuator bring-up`](<../testing-calibration/Actuator Bring-up.md>) before a subsystem trial and
 the [`Control tuning workflow`](<../testing-calibration/Control Tuning Workflow.md>) for supported
 controller experiments. The [Evidence and experiments](<../getting-started/learn-phoenix/Evidence and Experiments.md>)
-chapter explains how to read status without overclaiming it.
+chapter explains the full evidence ladder and how to read status without overclaiming it.
 
 [Back to the examples index](<README.md>)
