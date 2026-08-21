@@ -66,6 +66,51 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void learningNavigationAndCompatibilityPagesKeepOneCurrentPath() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        Matcher learningGroup = Pattern.compile(
+                "\\{ \\\"Learn Phoenix walkthrough\\\" = \\[([^]]+)] },",
+                Pattern.DOTALL).matcher(config);
+        assertTrue("Missing Learn Phoenix walkthrough navigation group", learningGroup.find());
+
+        Matcher targets = Pattern.compile("=\\s*\\\"([^\\\"]+\\.md)\\\"")
+                .matcher(learningGroup.group(1));
+        List<String> actualTargets = new ArrayList<String>();
+        while (targets.find()) {
+            actualTargets.add(targets.group(1));
+        }
+        List<String> expectedTargets = Arrays.asList(
+                "fw/docs/getting-started/learn-phoenix/Robot Roles.md",
+                "fw/docs/getting-started/learn-phoenix/Controls and Intent.md",
+                "fw/docs/getting-started/learn-phoenix/Plants and Hardware.md",
+                "fw/docs/getting-started/learn-phoenix/Tasks and Autonomous.md",
+                "fw/docs/getting-started/learn-phoenix/Evidence and Experiments.md",
+                "fw/docs/getting-started/learn-phoenix/From Requirement to Robot.md",
+                "fw/docs/getting-started/learn-phoenix/Role Paths.md");
+        assertTrue("Unexpected Learn Phoenix navigation order: " + actualTargets,
+                expectedTargets.equals(actualTargets));
+        assertTrue("Primary navigation still exposes the old build-along labels",
+                !config.contains("Your first mechanism")
+                        && !config.contains("Your first TeleOp")
+                        && !config.contains("Your first Task and Auto"));
+
+        assertCompatibilityPage(repositoryRoot,
+                "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/First Mechanism.md",
+                "learn-phoenix/Plants and Hardware.md",
+                "../testing-calibration/Actuator Bring-up.md");
+        assertCompatibilityPage(repositoryRoot,
+                "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/First TeleOp.md",
+                "learn-phoenix/Controls and Intent.md",
+                "../testing-calibration/Robot Calibration Tutorials.md");
+        assertCompatibilityPage(repositoryRoot,
+                "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/First Task and Auto.md",
+                "learn-phoenix/Tasks and Autonomous.md",
+                "../testing-calibration/Robot Calibration Tutorials.md");
+    }
+
+    @Test
     public void acceptsLiteralAndEncodedSpacesAndDuplicateHeadingAnchors() throws IOException {
         Path root = temporaryFolder.getRoot().toPath();
         write(root, "Docs/Guide File.md",
@@ -148,6 +193,21 @@ public final class DocumentationLinksTest {
         Path file = root.resolve(relativePath);
         Files.createDirectories(file.getParent());
         Files.write(file, contents.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void assertCompatibilityPage(Path repositoryRoot,
+                                                String relativePath,
+                                                String conceptTarget,
+                                                String hardwareTarget) throws IOException {
+        String contents = readUtf8(repositoryRoot.resolve(relativePath));
+        assertTrue(relativePath + " must link to " + conceptTarget,
+                contents.contains(conceptTarget));
+        assertTrue(relativePath + " must link to " + hardwareTarget,
+                contents.contains(hardwareTarget));
+    }
+
+    private static String readUtf8(Path path) throws IOException {
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
 
     private static void assertNoFailures(List<String> failures) {

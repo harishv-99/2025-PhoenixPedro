@@ -108,6 +108,9 @@ and implements `RobotProgram.Output`. The composition root owns robot-level perm
 cross-owner relationships; controls and Auto call capability methods instead of reaching into a
 Plant or FTC motor.
 
+A Plant is the mechanism-owned object that resolves one requested actuator target and performs the
+final hardware write.
+
 ### Create a fresh Task for every run
 
 A Task instance represents one run. A method such as `collectForSeconds(...)` builds and returns a
@@ -115,7 +118,7 @@ new Task whenever a button or Auto routine needs that behavior again.
 
 ## What you can defer
 
-You do not need these topics to finish the beginner course:
+You do not need these topics to finish the common learning path:
 
 - the framework clock and same-cycle safeguards;
 - direct Task-runner lifecycle;
@@ -150,7 +153,7 @@ to its private Plant.
 
 **“Do I need to understand every `RobotProgram` role?”**
 
-No. The course introduces only the roles used by the starter. Services and prestart policy belong
-to later robot features.
+No. Learn Phoenix introduces the common managed roles through Starter and Reference. Services and
+prestart policy remain focused follow-ups for robot features that actually need them.
 
-**Next:** [`Phoenix beginner course`](<Beginner's Guide.md>)
+**Next:** [`Learn Phoenix`](<Beginner's Guide.md>)

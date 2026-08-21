@@ -5,8 +5,8 @@ Pathing.
 
 This is the advanced, compiling reference for the complete supported Pedro lifecycle. It shows one
 fixed practice route, one Plant-backed mechanism capability, explicit route-outcome policy, one
-stable follower heartbeat, and deterministic cleanup. It is not the first-route tutorial; start at
-the canonical [`Phoenix docs hub`](<../README.md>) for the guided learning path.
+stable follower heartbeat, and deterministic cleanup. It is not the first-route tutorial; start
+with [`Your first Pedro Auto`](<../getting-started/First Pedro Auto.md>) for the guided source tour.
 
 Start with the compiling [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>)
 entry. Its six-file example uses the ordinary `FtcRobotOpMode`/`RobotProgram` grammar, one local
@@ -124,14 +124,18 @@ cause and restart the OpMode rather than retrying construction in place.
 `BasicPedroAutoRoutine` follows one route with a four-second Task timeout and branches on the
 retained result from that exact start:
 
-| Terminal result | Task outcome | Reference policy |
+| Retained route status | Route Task outcome | Reference policy and root result |
 |---|---|---|
-| Confirmed endpoint completion | `SUCCESS` | Run a fresh 0.50-second collection Task, then return the intake request to idle. |
-| Follower timeout/stall or Task timeout | `TIMEOUT` | Run the explicit idle fallback; do not start the position-dependent collection action. |
-| Interruption, replacement, direct cancellation, integration failure, or unknown ending | `CANCELLED` | Abort without starting either branch. |
+| `COMPLETED` | `SUCCESS` | Run a fresh collection Task; the root is `SUCCESS` if that selected Task succeeds. |
+| `FOLLOWER_TIMEOUT_OR_STALL` | `TIMEOUT` | Run the explicit idle fallback; the root is `SUCCESS` if that fallback succeeds. |
+| `TASK_TIMEOUT` | `TIMEOUT` | Run the same idle fallback; retain `TASK_TIMEOUT` as the route fact even though successful fallback makes the root `SUCCESS`. |
+| interruption, replacement, cancellation, failure, or unknown ending | `CANCELLED` | Abort without starting either branch; the root is `CANCELLED`. |
 
 The robot routine owns this policy. Vendor idle or not-busy state alone is never success, and
-direct cancellation never manufactures a fallback action.
+direct cancellation never manufactures a fallback action. The route status describes why that
+route attempt ended; the outer/root outcome describes whether the selected strategy branch later
+completed. Telemetry intentionally presents both instead of letting successful cleanup erase a
+route timeout.
 
 ## Adaptation checklist
 
@@ -175,7 +179,9 @@ deliberately verifies the configuration and enables its adapted host, the refere
 5. stop the mechanism and Pedro drivetrain on STOP or failure.
 
 Telemetry reports the expected physical start, latest route status, root completion, and root
-outcome without advancing those owners.
+outcome without advancing those owners. For example, a Task deadline followed by successful idle
+fallback ends with `example.routeStatus=TASK_TIMEOUT` and `example.rootOutcome=SUCCESS`; those are
+different truthful boundaries, not a contradiction.
 
 ## Physical validation before enabling
 
@@ -193,6 +199,7 @@ placement/readiness, follower stability, field alignment, route clearance, or ph
 
 ## Related reading
 
+- [`Your first Pedro Auto`](<../getting-started/First Pedro Auto.md>)
 - [`Pedro Pathing integration contract`](<../../integrations/pedro/README.md>)
 - [`Tasks and Macros`](<../design/Tasks & Macros Quickstart.md>)
 - [`Robot Capabilities and Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>)

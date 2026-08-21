@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
+import edu.ftcphoenix.robots.examples.starter.capability.intake.StarterIntake;
 import edu.ftcphoenix.robots.examples.starter.robot.StarterProfile;
 import edu.ftcphoenix.robots.examples.starter.robot.StarterRobot;
 
@@ -23,7 +24,7 @@ public final class StarterAuto extends FtcRobotOpMode {
     @Override
     protected void configure(RobotProgram program) {
         StarterProfile profile = StarterProfile.current();
-        new StarterRobot(hardwareMap)
-                .declareAuto(program, profile, COLLECT_DURATION_SEC);
+        StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
+        program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
     }
 }

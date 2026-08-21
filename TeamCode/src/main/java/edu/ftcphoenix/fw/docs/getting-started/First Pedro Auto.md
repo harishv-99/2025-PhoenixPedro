@@ -11,8 +11,8 @@ localization, follower tuning, constraints, and field placement are separate pro
 
 **Prerequisites:**
 
-- the Task and Auto checkpoint from [`Your first Task and Auto`](<First Task and Auto.md>); and
-- the ability to compile and read the checked-in Pedro reference files.
+- the Task vocabulary from
+  [`Tasks and autonomous`](<learn-phoenix/Tasks and Autonomous.md>).
 
 No physical Pedro setup is required for this walkthrough. Before any later robot-owned physical
 test, complete Pedro's official [`tuning`](https://pedropathing.com/docs/pathing/tuning) and
@@ -34,7 +34,8 @@ the [`Phoenix Calibration Guide`](<../../../robots/phoenix/Phoenix Calibration G
 - [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>) —
   the reference action capability;
 - [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) —
-  disabled FTC host that selects the local profile and adds read-only status.
+  disabled FTC host that clears stale match handoff and selects the local profile; the composition
+  root owns status and presenter registration.
 
 ## Safety
 
@@ -135,7 +136,10 @@ For this routine:
 | Cancellation-like or failed ending | Abort without starting either branch. |
 
 “The follower is no longer busy” is not enough evidence for the success action. The route Task
-retains a truthful status; the robot routine chooses what that status means.
+retains a truthful status; the robot routine chooses what that status means. A successful timeout
+fallback makes the outer root outcome `SUCCESS` without rewriting the route fact. For example, a
+Task deadline remains `routeStatus=TASK_TIMEOUT` while the completed wrapper reports
+`rootOutcome=SUCCESS`.
 
 ## 4. Let the managed program own Pedro's lifecycle
 
@@ -146,9 +150,11 @@ retains a truthful status; the robot routine chooses what that status means.
 2. one Plant-backed mechanism output; and
 3. one root routine Task.
 
-Treat that class as the lifecycle template. The lesson does not require a separate clock, runner,
-manual follower update, or FTC callback. The managed program updates the service before the route
-Task and stops the output and drive owner during cleanup.
+Copy its Pedro service heartbeat, START ordering, and cleanup ownership as the lifecycle template.
+The lesson does not require a separate clock, runner, manual follower update, or FTC callback. The
+managed program updates the service before the route Task and stops the output and drive owner
+during cleanup. This single-purpose Auto root also selects its one routine; a multi-client robot
+keeps reusable capabilities in its root and Auto strategy in an Auto-owned routine instead.
 
 ## 5. Review the local profile and use the one root boundary
 
@@ -236,7 +242,7 @@ this generic reference into a motion test merely by removing `@Disabled`.
 
 **The OpMode is missing.**
 
-That is the expected software-course result: the example is checked in with `@Disabled`. A later
+That is the expected source-only result: the example is checked in with `@Disabled`. A later
 robot-owned integration test, not this walkthrough, owns any decision to expose a Driver Station
 entry after its complete readiness review.
 
@@ -277,4 +283,6 @@ routine, with a clear reason and a physically validated replacement action.
 No. A safe Pedro program also needs the verified runtime, starting pose, stable managed service,
 mechanism owner, root declaration, telemetry, and cleanup represented by the linked files.
 
-**Next:** [`Phoenix documentation hub`](<../README.md>)
+**Full lifecycle reference:** [`Pedro autonomous reference`](<../examples/Pedro Autonomous Reference.md>)
+
+**Return to:** [`Phoenix documentation hub`](<../README.md>)

@@ -1,6 +1,7 @@
 # Core concepts
 
-Use these guides after the beginner course when you need to understand the contracts behind the
+Use these guides after [Learn Phoenix](<../getting-started/Beginner's Guide.md>) when you need to
+understand the contracts behind the
 ordinary API.
 
 - [`Loop Structure`](<Loop Structure.md>) — the managed lifecycle, one `LoopClock`, phase order,

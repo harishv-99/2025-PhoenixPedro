@@ -1,7 +1,7 @@
 # Robot design and behavior
 
 These are intermediate and advanced guides. Finish the
-[`beginner course`](<../getting-started/Beginner's Guide.md>) before using them as a design menu.
+[`Learn Phoenix`](<../getting-started/Beginner's Guide.md>) before using them as a design menu.
 
 ## Structure a robot
 

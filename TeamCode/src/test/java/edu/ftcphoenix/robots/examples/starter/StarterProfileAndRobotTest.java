@@ -60,10 +60,9 @@ public final class StarterProfileAndRobotTest {
         Method auto = StarterRobot.class.getDeclaredMethod(
                 "declareAuto",
                 RobotProgram.class,
-                StarterProfile.class,
-                double.class);
+                StarterProfile.class);
         assertTrue(Modifier.isPublic(auto.getModifiers()));
-        assertEquals(Void.TYPE, auto.getReturnType());
+        assertEquals(StarterIntake.class, auto.getReturnType());
         assertEquals(1, declaredMethodCount(StarterRobot.class, "declareAuto"));
 
         Field[] rootFields = StarterRobot.class.getDeclaredFields();
@@ -332,7 +331,7 @@ public final class StarterProfileAndRobotTest {
     }
 
     @Test
-    public void autoDeclarationStartsOneFreshRootAndPresentsStatus() {
+    public void autoClientStartsOneFreshRootAndDeclarationPresentsOnlyCapabilityStatus() {
         StarterProfile profile = readyProfile();
         List<String> events = new ArrayList<String>();
         StarterTestHardware.HardwareMapProbe hardwareMap =
@@ -350,10 +349,9 @@ public final class StarterProfileAndRobotTest {
         mode.init();
         assertEquals(1, telemetry.updateCalls());
         assertEquals(
-                Arrays.asList("intake.mode", "intake.appliedTargetPower", "auto.idle"),
+                Arrays.asList("intake.mode", "intake.appliedTargetPower"),
                 telemetry.lastFrameKeys());
-        assertEquals(3, telemetry.dataRowsAtLastUpdate());
-        assertFalse((Boolean) telemetry.dataValue("auto.idle"));
+        assertEquals(2, telemetry.dataRowsAtLastUpdate());
 
         mode.start();
         assertEquals(profile.intake.collectPower, intakeMotor.lastPower(), 0.0);
@@ -361,14 +359,16 @@ public final class StarterProfileAndRobotTest {
         events.clear();
         mode.loop();
         assertEquals(2, telemetry.updateCalls());
-        assertEquals(3, telemetry.dataRowsAtLastUpdate());
+        assertEquals(2, telemetry.dataRowsAtLastUpdate());
         assertEquals(
                 profile.intake.collectPower,
                 (Double) telemetry.dataValue("intake.appliedTargetPower"),
                 0.0);
-        assertFalse((Boolean) telemetry.dataValue("auto.idle"));
         assertEventBefore(events, "power:intake:", "telemetry.row:intake.mode");
-        assertEventBefore(events, "telemetry.row:auto.idle", "telemetry.commit");
+        assertEventBefore(
+                events,
+                "telemetry.row:intake.appliedTargetPower",
+                "telemetry.commit");
 
         mode.stop();
         assertEquals(0.0, intakeMotor.lastPower(), 0.0);
@@ -579,7 +579,8 @@ public final class StarterProfileAndRobotTest {
 
         @Override
         protected void configure(RobotProgram program) {
-            new StarterRobot(hardwareMap).declareAuto(program, profile, 0.75);
+            StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
+            program.rootTask(intake.collectForSeconds(0.75));
         }
     }
 }

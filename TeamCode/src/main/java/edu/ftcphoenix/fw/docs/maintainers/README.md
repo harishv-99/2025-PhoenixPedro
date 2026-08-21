@@ -1,7 +1,7 @@
 # Maintainers
 
 This section is for people changing or extending the framework itself. It is not part of the
-beginner course.
+student learning path.
 
 1. Read the [`Framework Principles`](<../../Framework Principles.md>) before designing a change.
 2. Use [`Maintainer Notes`](<Maintainer Notes.md>) for tests, boundaries, and documentation checks.
