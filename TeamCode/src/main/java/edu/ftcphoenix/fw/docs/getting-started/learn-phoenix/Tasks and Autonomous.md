@@ -20,12 +20,15 @@ program.rootTask(intake.collectForSeconds(0.75));
 
 [`StarterAuto.java`](<../../../../robots/examples/starter/opmode/StarterAuto.java>) owns that routine
 choice. `StarterRobot` only declares the intake output and presenter. At START, the fresh root Task
-requests collect power. Managed output updates realize that request through the mechanism's private
-Plant. After 0.75 seconds, the Task requests stopped power. Active cancellation also restores the
-stopped request, and FTC STOP cancels active work before stopping declared outputs.
+requests `Mode.COLLECT` through the same `setMode(...)` method used by TeleOp. The mechanism maps
+that named request to configured power, and managed output updates realize it through the private
+Plant. After 0.75 seconds, the Task requests `Mode.STOPPED`. Active cancellation also restores that
+stopped mode, and FTC STOP cancels active work before stopping declared outputs.
 
-This is temporal intent, not a second hardware writer: the Task changes the Plant's command request;
-the mechanism remains the one object that updates and stops the Plant.
+This is temporal intent, not a second hardware writer: the Task changes the mechanism's semantic
+request; the mechanism remains the one object that maps it, updates the Plant, and stops the Plant.
+Use `ScalarTasks` directly when the capability request itself is a number, such as flywheel
+velocity. The Starter uses `setMode(...)` because its public request and status are named modes.
 
 ## Every run needs a fresh Task
 

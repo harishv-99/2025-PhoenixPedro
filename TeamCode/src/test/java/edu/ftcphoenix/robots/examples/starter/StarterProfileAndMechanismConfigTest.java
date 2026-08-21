@@ -18,7 +18,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
@@ -92,13 +91,11 @@ public final class StarterProfileAndMechanismConfigTest {
 
         Constructor<?>[] mechanismConstructors =
                 StarterIntakeMechanism.class.getDeclaredConstructors();
-        assertEquals(2, mechanismConstructors.length);
+        assertEquals(1, mechanismConstructors.length);
         Constructor<?> ordinary = StarterIntakeMechanism.class.getDeclaredConstructor(
                 HardwareMap.class,
                 StarterIntakeMechanism.Config.class);
         assertTrue(Modifier.isPublic(ordinary.getModifiers()));
-        Constructor<?> neutral = StarterIntakeMechanism.class.getDeclaredConstructor(Plant.class);
-        assertTrue(isPackagePrivate(neutral.getModifiers()));
 
         Class<?> configType = StarterIntakeMechanism.Config.class;
         int configModifiers = configType.getModifiers();
@@ -222,23 +219,15 @@ public final class StarterProfileAndMechanismConfigTest {
         assertInvalidEjectPower(-0.0);
         assertInvalidEjectPower(1.01);
         assertInvalidEjectPower(-1.01);
-
-        config = StarterIntakeMechanism.Config.defaults();
-        config.ejectPower = config.collectPower;
-        assertInvalid(
-                config,
-                "StarterIntakeMechanism.Config.collectPower",
-                "StarterIntakeMechanism.Config.ejectPower",
-                "must be different",
-                "got 0.2 and 0.2");
     }
 
     @Test
-    public void actionPowerBoundariesAndEitherSignRemainValid() {
+    public void actionPowerBoundariesEitherSignAndEqualValuesRemainValid() {
         assertAcceptedPowers(1.0, -1.0);
         assertAcceptedPowers(-1.0, 1.0);
         assertAcceptedPowers(0.01, 0.02);
         assertAcceptedPowers(-0.01, -0.02);
+        assertAcceptedPowers(0.20, 0.20);
     }
 
     private static void assertCurrentValues(StarterProfile profile) {
@@ -328,11 +317,5 @@ public final class StarterProfileAndMechanismConfigTest {
         assertEquals(type, field.getType());
         assertTrue(Modifier.isPublic(field.getModifiers()));
         assertFalse(Modifier.isStatic(field.getModifiers()));
-    }
-
-    private static boolean isPackagePrivate(int modifiers) {
-        return !Modifier.isPublic(modifiers)
-                && !Modifier.isProtected(modifiers)
-                && !Modifier.isPrivate(modifiers);
     }
 }

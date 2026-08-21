@@ -243,6 +243,7 @@ public final class StarterProfileAndRobotTest {
     @Test
     public void teleOpDeclarationMapsControlsRealizesOutputsAndPresentsStatus() {
         StarterProfile profile = readyProfile();
+        profile.intake.ejectPower = profile.intake.collectPower;
         List<String> events = new ArrayList<String>();
         StarterTestHardware.HardwareMapProbe hardwareMap =
                 fullTeleOpHardware(profile, events);
@@ -295,6 +296,23 @@ public final class StarterProfileAndRobotTest {
                 "telemetry.row:intake.appliedTargetPower",
                 "telemetry.commit");
 
+        events.clear();
+        driver.a = false;
+        driver.b = true;
+        mode.loop();
+        assertEquals(4, telemetry.updateCalls());
+        assertEquals(
+                StarterIntake.Mode.EJECT,
+                telemetry.dataValue("intake.mode"));
+        assertEquals(
+                profile.intake.ejectPower,
+                (Double) telemetry.dataValue("intake.appliedTargetPower"),
+                0.0);
+        assertEquals(
+                profile.intake.ejectPower,
+                hardwareMap.motor(profile.intake.motorName).lastPower(),
+                0.0);
+
         mode.stop();
         assertAllMotorsStopped(hardwareMap, profile);
         int powerWritesAfterFirstStop = hardwareMap.totalPowerWrites();
@@ -302,7 +320,7 @@ public final class StarterProfileAndRobotTest {
         mode.stop();
         mode.loop();
         assertEquals(powerWritesAfterFirstStop, hardwareMap.totalPowerWrites());
-        assertEquals(3, telemetry.updateCalls());
+        assertEquals(4, telemetry.updateCalls());
     }
 
     @Test
@@ -364,6 +382,9 @@ public final class StarterProfileAndRobotTest {
                 profile.intake.collectPower,
                 (Double) telemetry.dataValue("intake.appliedTargetPower"),
                 0.0);
+        assertEquals(
+                StarterIntake.Mode.COLLECT,
+                telemetry.dataValue("intake.mode"));
         assertEventBefore(events, "power:intake:", "telemetry.row:intake.mode");
         assertEventBefore(
                 events,

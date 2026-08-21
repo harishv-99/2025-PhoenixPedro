@@ -5,17 +5,24 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.ScalarTasks;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
+import edu.ftcphoenix.fw.task.RunForSecondsTask;
 import edu.ftcphoenix.fw.task.Task;
 
-/** Owns the starter intake's one final target resolver, Plant, update, and stop command. */
+/**
+ * Owns the starter intake's semantic request, one final target resolver, Plant, update, and stop.
+ * {@link Mode} is mapped forward to configured power and is never inferred from a numeric target.
+ */
 public final class StarterIntakeMechanism implements StarterIntake, RobotProgram.Output {
 
-    /** Data-only FTC wiring and normalized action-power configuration for the starter intake. */
+    /**
+     * Data-only FTC wiring and normalized action-power configuration for the starter intake.
+     * Power values realize modes; software does not use numeric uniqueness to identify them. Teams
+     * must still validate that chosen values produce the intended physical actions.
+     */
     public static final class Config {
         /** FTC Robot Configuration name for the intake motor. */
         public String motorName;
@@ -23,10 +30,10 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
         /** Logical direction that makes the configured action-power signs correct. */
         public Direction direction;
 
-        /** Normalized power used while collecting. */
+        /** Normalized nonzero power used while collecting. */
         public double collectPower;
 
-        /** Normalized power used while ejecting. */
+        /** Normalized nonzero power used while ejecting. */
         public double ejectPower;
 
         private Config() {
@@ -49,6 +56,7 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
     private final Plant plant;
     private final double collectPower;
     private final double ejectPower;
+    private Mode requestedMode = Mode.STOPPED;
 
     /**
      * Constructs and privately owns the ordinary FTC intake Plant from a defensive Config
@@ -82,21 +90,11 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
         ejectPower = copiedEjectPower;
     }
 
-    /**
-     * Package-private hardware-neutral seam for hostile command-target and lifecycle tests.
-     * Action powers come only from {@link Config#defaults()}.
-     */
-    StarterIntakeMechanism(Plant plant) {
-        this.plant = requireCommandPlant(Objects.requireNonNull(plant, "plant is required"));
-        Config defaults = Config.defaults();
-        requireActionPowers(defaults.collectPower, defaults.ejectPower);
-        collectPower = defaults.collectPower;
-        ejectPower = defaults.ejectPower;
-    }
-
     @Override
     public void setMode(Mode mode) {
-        plant.commandTarget().set(powerFor(Objects.requireNonNull(mode, "mode")));
+        Mode requested = Objects.requireNonNull(mode, "mode");
+        plant.commandTarget().set(powerFor(requested));
+        requestedMode = requested;
     }
 
     @Override
@@ -105,18 +103,16 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
             throw new IllegalArgumentException(
                     "durationSec must be finite and > 0, got " + durationSec);
         }
-        return ScalarTasks.set(plant.commandTarget(), collectPower)
-                .forSeconds(durationSec)
-                .then(STOPPED_POWER)
-                .build();
+        return new RunForSecondsTask(
+                durationSec,
+                () -> setMode(Mode.COLLECT),
+                ignoredClock -> setMode(Mode.COLLECT),
+                () -> setMode(Mode.STOPPED));
     }
 
     @Override
     public Status status() {
-        double requestedPower = plant.commandTarget().get();
-        return new Status(
-                modeFor(requestedPower),
-                plant.getAppliedTarget());
+        return new Status(requestedMode, plant.getAppliedTarget());
     }
 
     @Override
@@ -139,28 +135,6 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
             default:
                 return STOPPED_POWER;
         }
-    }
-
-    private Mode modeFor(double power) {
-        if (Double.compare(power, collectPower) == 0) {
-            return Mode.COLLECT;
-        }
-        if (Double.compare(power, ejectPower) == 0) {
-            return Mode.EJECT;
-        }
-        return Mode.STOPPED;
-    }
-
-    private static Plant requireCommandPlant(Plant plant) {
-        if (!plant.hasCommandTarget()) {
-            throw new IllegalArgumentException(
-                    "StarterIntakeMechanism requires plant to have a command target");
-        }
-        Objects.requireNonNull(
-                plant.commandTarget(),
-                "plant.commandTarget()"
-        );
-        return plant;
     }
 
     private static void requireHardwareName(String motorName) {
@@ -188,12 +162,6 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
                 "StarterIntakeMechanism.Config.ejectPower",
                 ejectPower
         );
-        if (Double.compare(collectPower, ejectPower) == 0) {
-            throw new IllegalArgumentException(
-                    "StarterIntakeMechanism.Config.collectPower and "
-                            + "StarterIntakeMechanism.Config.ejectPower must be different, got "
-                            + collectPower + " and " + ejectPower);
-        }
     }
 
     private static void requireActionPower(String fieldName, double value) {

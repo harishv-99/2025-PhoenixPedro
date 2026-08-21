@@ -11,9 +11,9 @@ motion is required.
 ## Follow the Starter intake
 
 ```text
-setMode(COLLECT) -> mechanism -> persistent Plant command target
-                  -> final resolver, guards, and bounds -> applied target
-                  -> Plant.update(shared clock) -> one actuator write path
+setMode(COLLECT) -> remember Mode.COLLECT -> map it to configured power
+                 -> persistent Plant command target -> Plant.update(shared clock)
+                 -> resolve/cache applied target -> one actuator write path
 ```
 
 There is no second writer for a button, Task, or emergency. Temporary and guarded intent must join
@@ -38,16 +38,19 @@ where the final target comes from. A direct-power Plant owns normalized range `[
 with a zero command. Construction does not command motion; the managed output phase later calls
 `plant.update(clock)`.
 
-`setMode(...)` translates COLLECT or EJECT into a persistent numeric request. It does not write
-hardware. Status is also side-effect-free:
+`setMode(...)` keeps the named request and maps it forward to the configured power. It does not
+write hardware. Status reports that retained request directly:
 
 ```java
-double requestedPower = plant.commandTarget().get();
-return new Status(modeFor(requestedPower), plant.getAppliedTarget());
+return new Status(requestedMode, plant.getAppliedTarget());
 ```
 
-`appliedTargetPower` is the cached final target after resolution and guards. It is not motor
-readback and does not prove physical movement.
+The mechanism never guesses a mode by reading a power back. Collect and eject powers therefore do
+not need to be unique, though both Starter action powers must still be finite, nonzero, and inside
+`[-1, +1]`. That is a software-identity rule, not a recommendation to configure a real one-motor
+intake with equal powers: the team must still verify that its chosen values produce the intended
+different physical actions. `appliedTargetPower` is the cached final target after resolution and
+guards. It is not motor readback and does not prove physical movement.
 
 ## Keep the evidence names honest
 
@@ -92,6 +95,9 @@ tolerance; it cannot prove that a game piece scored.
 
 **`appliedTargetPower()` reports `0.20`. Did the motor turn?** That cannot be concluded. Phoenix
 knows the cached applied command, not physical motion.
+
+**Collect and eject use the same configured power. Can status still distinguish them?** Yes.
+`status().mode()` reports the retained semantic request, not a mode inferred from that number.
 
 **Where should maximum lift power live?** In lift configuration and Plant construction, not a
 button callback.
