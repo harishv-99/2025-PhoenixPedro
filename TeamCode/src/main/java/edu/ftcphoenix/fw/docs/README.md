@@ -6,11 +6,10 @@ Plants realize mechanism targets, and one managed program owns the loop.
 
 ## New to Phoenix
 
-1. Read [Phoenix in five minutes](<getting-started/Framework Overview.md>) for the mental model.
-2. Follow [Learn Phoenix](<getting-started/Beginner's Guide.md>) to trace the Starter and Reference
-   robots from source without needing their hardware.
-3. Choose a [role path](<getting-started/learn-phoenix/Role Paths.md>) for the part of the team robot
-   you are working on.
+1. Read [Phoenix in one picture](<getting-started/Framework Overview.md>) to see code composition,
+   managed execution, and one complete button-to-hardware-command trace.
+2. [Choose a Phoenix topic](<getting-started/Beginner's Guide.md>) that matches the job in front of
+   you. The topic pages are optional deep dives, not a required course sequence.
 
 For project setup, use [Build and run Phoenix](<getting-started/Build and Run.md>). Physical device
 work starts separately at [Testing and calibration](<testing-calibration/README.md>).
@@ -19,7 +18,8 @@ work starts separately at [Testing and calibration](<testing-calibration/README.
 
 | Goal | Start here |
 |---|---|
-| Understand how the framework fits together | [Learn Phoenix](<getting-started/Beginner's Guide.md>) |
+| Understand how the framework executes | [Phoenix in one picture](<getting-started/Framework Overview.md>) |
+| Learn one framework area in depth | [Choose a Phoenix topic](<getting-started/Beginner's Guide.md>) |
 | Decide where new robot code belongs | [From requirement to robot](<getting-started/learn-phoenix/From Requirement to Robot.md>) |
 | Remember the ordinary API shape | [Phoenix Cheat Sheet](<reference/Phoenix Cheat Sheet.md>) |
 | Look up a Phoenix term | [Glossary](<reference/Glossary.md>) |
@@ -38,7 +38,7 @@ work starts separately at [Testing and calibration](<testing-calibration/README.
 
 ### Learn and program a team robot
 
-- [Getting started](<getting-started/README.md>) — source-based common path and setup
+- [Getting started](<getting-started/README.md>) — visual first contact, topic router, and setup
 - [Examples](<examples/README.md>) — copyable Starter, Reference case study, and focused integrations
 - [Reference](<reference/README.md>) — short lookups and exact current vocabulary
 - [Troubleshooting](<troubleshooting/README.md>) — symptom-led recovery

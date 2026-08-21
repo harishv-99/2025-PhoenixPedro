@@ -1,8 +1,7 @@
 # Core concepts
 
-Use these guides after [Learn Phoenix](<../getting-started/Beginner's Guide.md>) when you need to
-understand the contracts behind the
-ordinary API.
+Use these guides after [Phoenix in one picture](<../getting-started/Framework Overview.md>) when you
+need the contracts behind the ordinary API.
 
 - [`Loop Structure`](<Loop Structure.md>) — the managed lifecycle, one `LoopClock`, phase order,
   same-cycle behavior, telemetry, and the advanced explicit-host exception.

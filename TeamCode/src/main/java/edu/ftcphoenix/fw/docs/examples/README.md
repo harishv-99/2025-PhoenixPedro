@@ -1,15 +1,15 @@
 # Examples
 
-Use the [Learn Phoenix](<../getting-started/Beginner's Guide.md>) walkthrough for the continuous
-Starter-to-Reference explanation. Use this page afterward to find the smallest example that teaches
-the concept you need. All ordinary examples use the managed
+Start with [Phoenix in one picture](<../getting-started/Framework Overview.md>) for the continuous
+Starter execution trace. Then [choose a Phoenix topic](<../getting-started/Beginner's Guide.md>) or
+use this page to find the smallest example that teaches the concept you need. All ordinary examples use the managed
 `FtcRobotOpMode`/`RobotProgram` lifecycle; students do not need to copy clock, loop, telemetry, or
 cleanup ceremony.
 
 | Start here | Teaches |
 |---|---|
 | [Modern Starter Robot](<Modern Starter Robot.md>) | The smallest copyable TeleOp-and-Auto shape: profile, root, drive, direct-power mechanism, callbacks, and a timed Task. |
-| [Reference walkthrough](<../getting-started/Beginner's Guide.md>) | One layered teaching robot with lift, launcher, shared capabilities, Tasks, status, and experiments; study it rather than copying it wholesale. |
+| [Reference case-study topics](<../getting-started/Beginner's Guide.md>) | Short routes into its lift, launcher, shared capabilities, Tasks, status, and experiment; study the relevant slice rather than copying it wholesale. |
 | [Framework Components Through Examples](<Framework Components Through Examples.md>) | A problem-driven lookup for the canonical example or guide behind each concept. |
 | [Field-relative Drive](<Field-relative Drive.md>) | Optional station-defined driver “up”; it is an example composition, not part of Phoenix drive. |
 | [Pedro Autonomous Reference](<Pedro Autonomous Reference.md>) | Optional third-party route integration after the ordinary Tasks and guidance lessons. |

@@ -1,7 +1,8 @@
 # Phoenix reference
 
-Use this section for a quick lookup after you understand the
-[`Learn Phoenix`](<../getting-started/Beginner's Guide.md>) mental model.
+Use this section for a quick lookup after
+[`Phoenix in one picture`](<../getting-started/Framework Overview.md>) has introduced the managed
+execution model.
 
 - [`Phoenix Cheat Sheet`](<Phoenix Cheat Sheet.md>) — the ordinary program, controls, mechanism,
   Task, drive, source, units, and safety shapes on one page.

@@ -1,8 +1,9 @@
 # Phoenix Glossary
 
 These definitions describe the current framework. Terms are grouped by what a student encounters,
-not by Java package. Start with [`Learn Phoenix`](<../getting-started/Beginner's Guide.md>) if these
-terms are new rather than reading the glossary front to back.
+not by Java package. Start with
+[`Phoenix in one picture`](<../getting-started/Framework Overview.md>) if these terms are new rather
+than reading the glossary front to back.
 
 ## Program and loop
 

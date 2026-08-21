@@ -1,7 +1,9 @@
 # Robot design and behavior
 
-These are intermediate and advanced guides. Finish the
-[`Learn Phoenix`](<../getting-started/Beginner's Guide.md>) before using them as a design menu.
+These are intermediate and advanced guides. First read
+[`Phoenix in one picture`](<../getting-started/Framework Overview.md>) and the
+[`Robot roles`](<../getting-started/learn-phoenix/Robot Roles.md>) topic relevant to this ownership
+vocabulary.
 
 ## Structure a robot
 

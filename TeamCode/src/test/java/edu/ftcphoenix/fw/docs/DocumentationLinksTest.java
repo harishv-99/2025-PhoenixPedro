@@ -70,27 +70,50 @@ public final class DocumentationLinksTest {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
         String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
-        Matcher learningGroup = Pattern.compile(
-                "\\{ \\\"Learn Phoenix walkthrough\\\" = \\[([^]]+)] },",
+        Matcher startGroup = Pattern.compile(
+                "\\{\\s*\"Start here\"\\s*=\\s*\\[([^]]+)]\\s*},",
                 Pattern.DOTALL).matcher(config);
-        assertTrue("Missing Learn Phoenix walkthrough navigation group", learningGroup.find());
+        assertTrue("Missing Start here navigation group", startGroup.find());
+        assertNavigationEntries(
+                "Start here",
+                startGroup.group(1),
+                Arrays.asList(
+                        "Phoenix in one picture",
+                        "Choose a Phoenix topic",
+                        "Set up and verify the project",
+                        "Documentation home",
+                        "Getting started"),
+                Arrays.asList(
+                        "fw/docs/getting-started/Framework Overview.md",
+                        "fw/docs/getting-started/Beginner's Guide.md",
+                        "fw/docs/getting-started/Build and Run.md",
+                        "fw/docs/README.md",
+                        "fw/docs/getting-started/README.md"));
 
-        Matcher targets = Pattern.compile("=\\s*\\\"([^\\\"]+\\.md)\\\"")
-                .matcher(learningGroup.group(1));
-        List<String> actualTargets = new ArrayList<String>();
-        while (targets.find()) {
-            actualTargets.add(targets.group(1));
-        }
-        List<String> expectedTargets = Arrays.asList(
-                "fw/docs/getting-started/learn-phoenix/Robot Roles.md",
-                "fw/docs/getting-started/learn-phoenix/Controls and Intent.md",
-                "fw/docs/getting-started/learn-phoenix/Plants and Hardware.md",
-                "fw/docs/getting-started/learn-phoenix/Tasks and Autonomous.md",
-                "fw/docs/getting-started/learn-phoenix/Evidence and Experiments.md",
-                "fw/docs/getting-started/learn-phoenix/From Requirement to Robot.md",
-                "fw/docs/getting-started/learn-phoenix/Role Paths.md");
-        assertTrue("Unexpected Learn Phoenix navigation order: " + actualTargets,
-                expectedTargets.equals(actualTargets));
+        Matcher learningGroup = Pattern.compile(
+                "\\{\\s*\"Learn Phoenix topics\"\\s*=\\s*\\[([^]]+)]\\s*},",
+                Pattern.DOTALL).matcher(config);
+        assertTrue("Missing Learn Phoenix topics navigation group", learningGroup.find());
+
+        assertNavigationEntries(
+                "Learn Phoenix topics",
+                learningGroup.group(1),
+                Arrays.asList(
+                        "Robot roles",
+                        "Controls and intent",
+                        "Plants and hardware",
+                        "Tasks and autonomous",
+                        "Evidence and experiments",
+                        "From requirement to robot",
+                        "Role paths"),
+                Arrays.asList(
+                        "fw/docs/getting-started/learn-phoenix/Robot Roles.md",
+                        "fw/docs/getting-started/learn-phoenix/Controls and Intent.md",
+                        "fw/docs/getting-started/learn-phoenix/Plants and Hardware.md",
+                        "fw/docs/getting-started/learn-phoenix/Tasks and Autonomous.md",
+                        "fw/docs/getting-started/learn-phoenix/Evidence and Experiments.md",
+                        "fw/docs/getting-started/learn-phoenix/From Requirement to Robot.md",
+                        "fw/docs/getting-started/learn-phoenix/Role Paths.md"));
         assertTrue("Primary navigation still exposes the old build-along labels",
                 !config.contains("Your first mechanism")
                         && !config.contains("Your first TeleOp")
@@ -108,6 +131,125 @@ public final class DocumentationLinksTest {
                 "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/First Task and Auto.md",
                 "learn-phoenix/Tasks and Autonomous.md",
                 "../testing-calibration/Robot Calibration Tutorials.md");
+    }
+
+    @Test
+    public void firstContactDiagramIsExplicitlyConfiguredAndAccessible() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        Matcher extensionSection = Pattern.compile(
+                "(?ms)^\\[project\\.markdown_extensions][ \\t]*\\r?\\n"
+                        + "(.*?)(?=^\\[[^\\r\\n]+][ \\t]*\\r?$|\\z)")
+                .matcher(config);
+        assertTrue("Zensical must explicitly configure Markdown extensions",
+                extensionSection.find());
+        String extensions = extensionSection.group(1);
+        Set<String> activeExtensionLines = new HashSet<String>();
+        for (String line : extensions.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                activeExtensionLines.add(trimmed);
+            }
+        }
+        String[] requiredExtensions = {
+            "abbr = {}",
+            "admonition = {}",
+            "attr_list = {}",
+            "def_list = {}",
+            "footnotes = {}",
+            "md_in_html = {}",
+            "toc.permalink = true",
+            "pymdownx.arithmatex.generic = true",
+            "pymdownx.betterem = {}",
+            "pymdownx.caret = {}",
+            "pymdownx.details = {}",
+            "pymdownx.emoji.emoji_generator = \"zensical.extensions.emoji.to_svg\"",
+            "pymdownx.emoji.emoji_index = \"zensical.extensions.emoji.twemoji\"",
+            "pymdownx.highlight.anchor_linenums = true",
+            "pymdownx.highlight.line_spans = \"__span\"",
+            "pymdownx.highlight.pygments_lang_class = true",
+            "pymdownx.inlinehilite = {}",
+            "pymdownx.keys = {}",
+            "pymdownx.magiclink = {}",
+            "pymdownx.mark = {}",
+            "pymdownx.smartsymbols = {}",
+            "pymdownx.superfences.custom_fences = [",
+            "{ name = \"mermaid\", class = \"mermaid\", "
+                    + "format = \"pymdownx.superfences.fence_code_format\" },",
+            "pymdownx.tabbed.alternate_style = true",
+            "pymdownx.tabbed.combine_header_slug = true",
+            "pymdownx.tasklist.custom_checkbox = true",
+            "pymdownx.tilde = {}"
+        };
+        for (String requiredExtension : requiredExtensions) {
+            assertTrue(
+                    "Missing explicit Zensical default/Mermaid extension: " + requiredExtension,
+                    activeExtensionLines.contains(requiredExtension));
+        }
+
+        Path overviewPath = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/"
+                        + "Framework Overview.md");
+        String overview = readUtf8(overviewPath);
+        Matcher diagrams = Pattern.compile("```mermaid\\s*([\\s\\S]*?)```").matcher(overview);
+        int diagramCount = 0;
+        while (diagrams.find()) {
+            diagramCount++;
+            String diagram = diagrams.group(1);
+            assertTrue("Every Mermaid diagram needs accTitle metadata",
+                    Pattern.compile("(?m)^[ \\t]*accTitle:[ \\t]*\\S+")
+                            .matcher(diagram).find());
+            assertTrue("Every Mermaid diagram needs accDescr metadata",
+                    Pattern.compile("(?m)^[ \\t]*accDescr:[ \\t]*\\S+")
+                            .matcher(diagram).find());
+
+            String afterDiagram = overview.substring(diagrams.end()).replace("\r\n", "\n");
+            assertTrue("Every Mermaid diagram needs an adjacent plain-text fallback",
+                    afterDiagram.startsWith("\n**Text version:**\n"));
+            int nextHeading = afterDiagram.indexOf("\n## ", 1);
+            String fallback = nextHeading < 0
+                    ? afterDiagram
+                    : afterDiagram.substring(0, nextHeading);
+            assertTrue("The adjacent plain-text fallback must not be empty",
+                    fallback.trim().length() > "**Text version:**".length());
+        }
+        assertTrue("The first-contact page needs at least one Mermaid diagram", diagramCount > 0);
+    }
+
+    @Test
+    public void firstContactLearningPagesStayWithinProgressiveDisclosureBudgets()
+            throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        Path learningRoot = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started");
+        Path overview = learningRoot.resolve("Framework Overview.md");
+        Path hub = learningRoot.resolve("Beginner's Guide.md");
+        Path topics = learningRoot.resolve("learn-phoenix");
+
+        assertTrue("First-contact overview exceeds 900 prose words",
+                proseWordCount(overview) <= 900);
+        assertTrue("First-contact overview exceeds three Java excerpts",
+                javaFenceCount(overview) <= 3);
+        assertTrue("First-contact overview exceeds 30 displayed Java lines",
+                displayedJavaLineCount(overview) <= 30);
+        assertTrue("Topic router exceeds 450 prose words", proseWordCount(hub) <= 450);
+
+        int topicWords = 0;
+        for (String topic : Arrays.asList(
+                "Robot Roles.md",
+                "Controls and Intent.md",
+                "Plants and Hardware.md",
+                "Tasks and Autonomous.md",
+                "Evidence and Experiments.md",
+                "From Requirement to Robot.md")) {
+            topicWords += proseWordCount(topics.resolve(topic));
+        }
+        assertTrue("Six Phoenix topic pages exceed 4,200 prose words: " + topicWords,
+                topicWords <= 4200);
+        assertTrue("Role Paths exceeds 500 prose words",
+                proseWordCount(topics.resolve("Role Paths.md")) <= 500);
     }
 
     @Test
@@ -206,8 +348,68 @@ public final class DocumentationLinksTest {
                 contents.contains(hardwareTarget));
     }
 
+    private static void assertNavigationEntries(String groupName,
+                                                String groupContents,
+                                                List<String> expectedLabels,
+                                                List<String> expectedTargets) {
+        Matcher entries = Pattern.compile(
+                "\\{\\s*\"([^\"]+)\"\\s*=\\s*\"([^\"]+\\.md)\"\\s*}")
+                .matcher(groupContents);
+        List<String> actualLabels = new ArrayList<String>();
+        List<String> actualTargets = new ArrayList<String>();
+        while (entries.find()) {
+            actualLabels.add(entries.group(1));
+            actualTargets.add(entries.group(2));
+        }
+        assertTrue("Unexpected " + groupName + " navigation labels: " + actualLabels,
+                expectedLabels.equals(actualLabels));
+        assertTrue("Unexpected " + groupName + " navigation order: " + actualTargets,
+                expectedTargets.equals(actualTargets));
+    }
+
     private static String readUtf8(Path path) throws IOException {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+    }
+
+    private static int proseWordCount(Path path) throws IOException {
+        boolean insideFence = false;
+        StringBuilder prose = new StringBuilder();
+        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+                insideFence = !insideFence;
+            } else if (!insideFence) {
+                prose.append(' ').append(trimmed);
+            }
+        }
+        String text = prose.toString().trim();
+        return text.isEmpty() ? 0 : text.split("\\s+").length;
+    }
+
+    private static int javaFenceCount(Path path) throws IOException {
+        int count = 0;
+        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+            if (line.trim().equals("```java")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int displayedJavaLineCount(Path path) throws IOException {
+        boolean insideJava = false;
+        int count = 0;
+        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+            String trimmed = line.trim();
+            if (!insideJava && trimmed.equals("```java")) {
+                insideJava = true;
+            } else if (insideJava && trimmed.equals("```")) {
+                insideJava = false;
+            } else if (insideJava && !trimmed.isEmpty()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static void assertNoFailures(List<String> failures) {

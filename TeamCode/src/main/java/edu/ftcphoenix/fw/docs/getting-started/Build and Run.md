@@ -144,4 +144,4 @@ No. Tests cannot inspect the Robot Controller configuration, wiring, motor polar
 travel, or available floor space. Use the testing and calibration runbooks when the team begins
 that separate work.
 
-**Next:** [`Learn Phoenix`](<Beginner's Guide.md>)
+**Framework tour:** [`Phoenix in one picture`](<Framework Overview.md>)

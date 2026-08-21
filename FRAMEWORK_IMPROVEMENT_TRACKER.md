@@ -185,6 +185,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 98 | EXAMPLE-04 | Curated managed concept examples | Done | The managed Starter, Reference, field-relative, and Pedro examples, experiment companion, BIOBUZZ map, package taxonomy, and corrected site navigation are published. |
 | 99 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
 | 100 | DOC-04 | Reference-robot learning path | Done | The reviewed source-based course and bounded Starter/Reference truth hardening have completed Android Studio review and destination-specific publication authorization. |
+| 101 | DOC-05 | Visual first contact and compact learning path | Done | The reviewed accessible Starter execution picture, optional topic router, compact source-based topics, and focused navigation/accessibility/budget regressions received destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -20782,6 +20783,114 @@ writer, and explicit lifecycle ownership.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
   `master`. DOC-04 is **Done**; hardware evidence remains adopting-team validation, and this
   authorization does not start RUNTIME-03 or another tracker item.
+
+### DOC-05 - Visual first contact and compact learning path
+
+- **Status and intake boundary (2026-08-20):** **Done** on
+  `codex/doc-05-visual-first-contact`, based directly on the merged DOC-04 `origin/master`.
+  The user approved the decision-complete plan and then replied **“Implement the plan.”** This is
+  one documentation/site-navigation item; it does not reopen DOC-04, start RUNTIME-03, or change
+  framework, example, or robot runtime behavior.
+- **Confirmed problem:** the current source-based course is truthful but front-loads thousands of
+  words, hundreds of displayed code lines, repeated source maps, and many framework nouns before a
+  beginner sees one complete input-to-output execution. Static ownership diagrams, controls
+  intent, Plant realization, and managed lifecycle order live on separate pages, so students must
+  assemble the runtime story themselves. “Wiring” also ambiguously means both code composition and
+  electrical wiring. Reference remains valuable, but its detail repeatedly interrupts Starter's
+  smallest complete flow.
+- **Compared presentation models:** documentation-only reduction, a new convenience API/DSL, one
+  new competing quickstart, a hand-authored SVG, and a compact visual layer over the current stable
+  URLs were compared. NextFTC's short guide benefits both from Kotlin/built-in command syntax and
+  from progressive disclosure: one continuous example, one decision at a time, and detailed
+  concepts routed to later reference. Phoenix will adopt that presentation pattern, not singleton
+  ownership, global access, inline physical facts, hidden lifecycle, or a teaching-only API.
+- **Approved design:** keep `Framework Overview.md` as the one stable first-contact URL and turn it
+  into a no-edit, no-hardware 15–20 minute Starter walkthrough. It will show code composition once,
+  exact managed INIT/START/ACTIVE/STOP execution, and the same-cycle A-button-to-Plant-to-telemetry
+  trace beside an accessible, mobile-friendly Mermaid diagram plus an adjacent plain-text fallback. The
+  page will distinguish requests, applied targets, measurements, and physical results; it will not
+  route drive sticks through callback bindings or imply INIT actuation, Task hardware writes, or a
+  telemetry commit at START.
+- **Approved learning topology:** keep `Beginner's Guide.md`, every six-chapter filename, Role
+  Paths, and the legacy compatibility URLs. The hub becomes a short choose-your-topic router rather
+  than a mandatory two-hour syllabus. The navigation labels the six pages as optional learning
+  topics instead of numbered prerequisites. Each topic keeps one bounded Starter-first explanation,
+  one scaling note or Reference slice, one answered understanding check, and focused authority
+  links. Repeated source maps, Trace/Predict sets, copy/adapt boilerplate, and duplicate concept
+  catalogs are removed. Unique framework truth remains in the topic; detailed API material routes
+  to its canonical guide/Javadocs; physical safety remains in the canonical bring-up/calibration
+  runbooks.
+- **Chosen visual/build path:** explicitly configure Zensical's supported Mermaid superfence; use
+  only maintained flowchart/sequence syntax, no custom JavaScript or generated bitmap asset. Every
+  diagram carries `accTitle` and `accDescr`, does not rely on color alone, and is followed by a
+  complete text equivalent for raw Markdown, Android Studio, screen readers, or disabled script.
+  A static SVG would duplicate labels in an asset and complicate light/dark maintenance; relying on
+  ASCII alone would not provide the requested visual relationship.
+- **Rejected scope:** do not add a framework convenience facade, parallel example architecture,
+  new tutorial source tree, interactive simulator, animation, required edit/build/deploy step, or
+  robot motion. Do not rewrite detailed design, integration, calibration, or Javadoc authorities.
+  Do not remove published Markdown files or their maintained inbound anchors merely to reduce word
+  count.
+- **Student-facing acceptance:** the overview stays at or below 900 prose words with no more than
+  three short excerpts/30 displayed Java lines. The hub stays at or below 450 words; the six topic
+  pages total at most about 4,200 words; Role Paths stays at or below 500 words. After the overview,
+  a reader should identify what runs once versus every loop, trace A to the motor command and one
+  telemetry commit, locate where a button, motor name, and behavior value change, and identify
+  managed STOP ownership. Source exploration may be offered but is never required.
+- **Verification plan:** extend the focused documentation regression for the exact primary topic
+  navigation, explicit Mermaid configuration, accessible diagram metadata, stable compatibility
+  destinations, and valid local paths/anchors/fences. Run strict Zensical generation, inspect the
+  rendered diagrams at desktop and narrow mobile widths in light/dark themes, and confirm the raw
+  Markdown fallback. Run full TeamCode tests/compile, strict Phoenix Javadocs, whitespace checks,
+  and an independent lifecycle/source-truth review. Robot hardware is neither required nor claimed.
+- **Implemented result (2026-08-20):** `Framework Overview.md` is now the one graphical first
+  contact. It separates one-time code composition from managed INIT, READY/BLOCKED START, repeated
+  ACTIVE phases, FTC STOP, and caught-`RuntimeException` cleanup; defines the optional Prestart,
+  Service, root-Task, and Plant nouns in place; and traces Starter A from semantic input through the
+  same-cycle mechanism-owned motor command and one telemetry commit. `Beginner's Guide.md` is now a
+  choose-one-topic router. The six stable topic URLs and Role Paths are compact, independent,
+  Starter-first references with bounded Reference/satellite scaling; compatibility URLs still
+  route separately to concept learning and supervised physical runbooks. No framework, example,
+  robot runtime, or public API source changed.
+- **Compactness evidence (2026-08-20):** using whitespace-delimited tokens outside fenced blocks,
+  the overview is 749 prose words with one Java excerpt/five non-empty displayed Java lines; the
+  topic router is 323 words; the six topic pages total 3,507 words; and Role Paths is 432 words.
+  `DocumentationLinksTest` now enforces those ceilings, the excerpt/line budgets, exact beginner
+  navigation, stable compatibility destinations, active explicit Zensical defaults plus Mermaid
+  configuration, non-empty same-line accessibility metadata, an immediate non-empty text fallback,
+  and every maintained local Markdown path, anchor, and fence.
+- **Framework Principles and independent review (2026-08-20):** the settled source story retains
+  one ordinary managed host, one heartbeat, exact READY/BLOCKED and phase order, controls-owned
+  operator meaning, mechanism-private Plants/final writers, fresh Tasks, declaration-only roots,
+  truthful requested/applied/measured/physical evidence, and terminal cleanup including drive.
+  Independent lifecycle and pedagogy audits returned **CLEAN** after their findings were resolved.
+- **Local verification (2026-08-20):** the frozen-tree command
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs`
+  completed successfully: 207 suites / 1,927 tests / zero failures, errors, or skips; the focused
+  `DocumentationLinksTest` contributes nine passing tests. `git diff --check` is clean apart from
+  Git's existing LF-to-CRLF worktree notices. JDK 21 emitted the existing Java 8 source/target and
+  deprecated FTC API warnings. No robot-hardware validation was required or performed.
+- **Renderer verification boundary (2026-08-20):** this machine exposes only the non-functional
+  Windows Store `python.exe` alias and has no `py`, `uv`, or `zensical` command, so the strict
+  narrative build and desktop/narrow, light/dark rendered-Mermaid inspection were not run locally.
+  Before merge, the pull request's required **Verify documentation artifact** job must pass its
+  pinned `python -m zensical build --clean --strict`, and review must inspect that job's exact Pages
+  artifact at desktop and narrow widths in both themes. Raw Markdown retains the complete adjacent
+  text equivalent meanwhile.
+- **Review handoff (2026-08-20):** DOC-05 is **Verifying**. Review the unstaged Android Studio diff
+  on `codex/doc-05-visual-first-contact`, especially `Framework Overview.md`, the topic router and
+  six compact topic pages, `zensical.toml`, `DocumentationLinksTest`, and the preserved inbound and
+  compatibility routes. No commit, push, pull request, or merge has been performed. Destination-
+  specific publication authorization must name this branch, the exact push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`; hosted strict rendering
+  and visual artifact review remain mandatory before merge.
+- **Manual review and Gate 3 authorization (2026-08-20):** the user replied with the complete
+  destination-specific prompt, approving the reviewed Android Studio diff and explicitly
+  authorizing committing `codex/doc-05-visual-first-contact`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. DOC-05 is **Done**; the required hosted strict-documentation check and rendered-artifact
+  inspection remain publication gates, and this authorization does not start RUNTIME-03 or another
+  tracker item.
 
 ### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
 

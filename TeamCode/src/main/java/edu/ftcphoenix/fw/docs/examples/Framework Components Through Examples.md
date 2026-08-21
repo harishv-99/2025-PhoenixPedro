@@ -1,8 +1,9 @@
 # Framework components through examples
 
-This is a season-spanning lookup, not a second course. Follow
-[Learn Phoenix](<../getting-started/Beginner's Guide.md>) for the continuous Starter-to-Reference
-story. Return here when one concrete robot problem needs its canonical example or guide.
+This is a season-spanning lookup, not a second learning path. Start with
+[Phoenix in one picture](<../getting-started/Framework Overview.md>) for the complete Starter
+execution story, then [choose a Phoenix topic](<../getting-started/Beginner's Guide.md>) when one
+robot problem needs a deeper explanation. Return here for its canonical example or guide.
 
 ## Package structure to copy
 
