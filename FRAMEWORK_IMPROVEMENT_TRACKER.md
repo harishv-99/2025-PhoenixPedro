@@ -189,6 +189,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 102 | EXAMPLE-05 | Authoritative Starter intake mode | Done | The reviewed semantic-mode implementation, unchanged student calls, synchronized teaching, clean verification, and destination-specific publication authorization are complete. |
 | 103 | EXAMPLE-06 | First software robot scaffold | Done | The reviewed cumulative hardware-free Starter exercise, focused control-meaning proof, one-path navigation, and compact source map are software-verified and have destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
 | 104 | EXAMPLE-07 | Extensible hardware-free subsystem bench | Done | The reviewed test-only FTC device registry, consolidated example fixtures, bounded Starter/Reference scenarios, truthful evidence path, and destination-specific publication authorization are complete. |
+| 105 | DOC-06 | Explain Phoenix's value at first contact | Done | The reviewed candid SDK-versus-Phoenix explanation, canonical pointers, verification evidence, and destination-specific publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -21493,6 +21494,91 @@ writer, and explicit lifecycle ownership.
   the plan” approved Gate 2 on `codex/drive-03-field-relative-teleop`. The reviewed design is the
   example-only adopter and heading/station contract above; no hardware or publication claim is
   authorized.
+
+### DOC-06 - Explain Phoenix's value at first contact
+
+- **Status and approval boundary (2026-08-21):** **Done** on
+  `codex/doc-06-why-phoenix`, based directly on
+  `origin/master@f22f1d9207f1e0f30ac4d5f7ed6672433de0fcfa`. After a cross-framework teaching
+  audit, the user approved the decision-complete plan and then directed **“Implement the plan.”**
+  That approval covers one compact value explanation in the existing first-contact guide plus
+  one-sentence pointers from the repository and rendered-site home pages. It does not authorize a
+  framework API, example, diagram, navigation-order change, publication, or another tracker item.
+- **Confirmed first-contact gap:** both home pages currently say that Phoenix is non-blocking and
+  manages FTC lifecycle, while `Phoenix in one picture` begins immediately with the Starter's
+  managed execution model. A new student can see what Phoenix does but is not yet told why those
+  constraints are worth learning, which responsibilities still come from the FTC SDK, or when a
+  direct SDK diagnostic is the more proportionate choice.
+- **Selected design:** keep the FTC SDK as the stated foundation: it supplies OpModes,
+  `HardwareMap`, gamepads, devices, and telemetry while leaving robot-software structure to each
+  team. Add a short **Why use Phoenix?** section before the Starter entry point. Explain Phoenix's
+  outcomes in student language: one predictable managed lifecycle and cleanup path, non-blocking
+  actions over time, behavior shared by TeleOp and Auto, one final owner for each actuator, and
+  production-mechanism software evidence when matching hardware is unavailable. State the honest
+  tradeoff: a small vocabulary and consistent structure in exchange for less duplicated lifecycle
+  and coordination work as the robot grows. Connect that value directly to the existing
+  small Starter declaration below it.
+- **Alternatives rejected:** a side-by-side feature table adds visual and terminology overhead
+  before either approach is taught; a growth-story narrative delays the practical answer; a new
+  diagram duplicates the execution picture already on the page; repeating the full explanation on
+  multiple home pages creates competing authored stories; and claiming Phoenix is always simpler
+  would be untruthful for a one-device diagnostic or short experiment. An API or example change is
+  unnecessary because the gap is motivation, not capability.
+- **Simplicity and scope boundary:** the canonical explanation lives once in the first learning
+  page. The root README and rendered-site home receive only a short linked summary. Preserve the
+  current beginner route, URLs, headings after the insertion, Starter code, managed-runtime
+  diagram, and the overview's 900-prose-word ceiling. Do not add framework jargon that the page has
+  not yet introduced or imply that software evidence proves physical safety or performance.
+- **Verification plan:** run `DocumentationLinksTest`, confirm the overview remains within its
+  enforced word budget and both home-page links resolve to the new anchor, run `git diff --check`,
+  and inspect the entire changed prose for FTC/Phoenix responsibility, lifecycle, STOP, reuse, and
+  software-evidence truthfulness. Run the strict Zensical documentation build and desktop/narrow
+  rendering when locally available; otherwise retain the hosted strict-documentation check and
+  rendered PR inspection as publication gates. No robot hardware is required or claimed.
+- **Decision record (2026-08-21):** **Gate 1 complete; implementation approved.** The user selected
+  the candid outcome-based framing over the table and growth-story alternatives, approved the
+  bounded plan, and explicitly requested implementation. The selected design is consistent with
+  **student simplicity without hiding truth**, one obvious learning path, truthful evidence
+  boundaries, and one current documentation story.
+- **Implemented result (2026-08-21):** `Phoenix in one picture` now answers **Why use Phoenix?**
+  before introducing the Starter. In 126 prose words it distinguishes the FTC SDK foundation and a
+  proportionate direct-SDK diagnostic from Phoenix's value as robot code grows: predictable work
+  order and cleanup ownership, non-blocking timed behavior, shared TeleOp/Auto vocabulary, one final
+  actuator owner, and production-mechanism software checks. It states the learning tradeoff and
+  then connects those outcomes to the unchanged small Starter declaration. The root and rendered
+  site home pages each add the same one-sentence link to that canonical explanation. No navigation,
+  diagram, example, API, Java source, or generated file changed.
+- **Automated and static verification (2026-08-21):** the focused
+  `DocumentationLinksTest` passed after the final wording changes; its complete maintained-Markdown
+  scan resolves both new relative links and the `#why-use-phoenix` anchor. The first-contact guide
+  is **885/900 prose words**, still has one Mermaid diagram with its text fallback, and retains the
+  existing Java-excerpt limits. `git diff --check` passes, the Zensical navigation is unchanged, and
+  the diff contains only this tracker plus the three intended Markdown pages. The build emitted
+  only the repository's existing Java-8-on-JDK-21 and FTC deprecation warnings.
+- **Independent review (2026-08-21):** adversarial student, copy, architecture, and documentation-
+  integrity reviews are **CLEAN** after distinguishing Phoenix's fixed work order from the FTC
+  loop itself, qualifying both home-page claims as software checks, and replacing a brittle Starter
+  line-count description. The final prose does not claim that managed cleanup proves physical STOP
+  or that software checks prove wiring, motion, safety, or performance.
+- **Documentation rendering boundary (2026-08-21):** this workstation has only the nonfunctional
+  Windows Store Python alias and no `py`, `uv`, `zensical`, or docs virtual environment. Strict
+  Zensical generation and desktop/narrow rendered inspection were not run locally. The hosted
+  strict-documentation check and rendered PR inspection remain publication gates.
+- **Android Studio review handoff (2026-08-21):** inspect the unstaged diff on
+  `codex/doc-06-why-phoenix`, based on
+  `origin/master@f22f1d9207f1e0f30ac4d5f7ed6672433de0fcfa`. Read the two home-page summaries, then
+  the new section immediately before **The student entry point**. Confirm that the SDK remains the
+  foundation, direct SDK code is allowed for a bounded diagnostic, each Phoenix outcome is concrete
+  and truthful, the tradeoff is candid, and the unchanged Starter follows naturally. No file is
+  staged, committed, or pushed; no pull request exists. Publication requires the exact
+  destination-specific authorization in the handoff response.
+- **Manual review and Gate 3 authorization (2026-08-21):** the user replied with the complete
+  destination-specific prompt, approving the reviewed DOC-06 diff and explicitly authorizing
+  committing `codex/doc-06-why-phoenix`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. DOC-06 is **Done**. This authorization is limited to the reviewed DOC-06 files and
+  publication coordinates; it does not start another tracker item or convert the hosted strict
+  rendering gate into a local verification claim.
 
 ## Explicitly deferred architectural ideas
 

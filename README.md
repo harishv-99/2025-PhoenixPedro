@@ -4,6 +4,9 @@ Phoenix is a non-blocking FTC robot framework built into an FTC SDK project. Ord
 declares mechanisms, controls, Tasks, drive, and telemetry once; the managed runtime owns FTC
 lifecycle and loop order.
 
+The FTC SDK remains the OpMode and device-access foundation; [Phoenix adds value](<TeamCode/src/main/java/edu/ftcphoenix/fw/docs/getting-started/Framework Overview.md#why-use-phoenix>)
+when behavior must be coordinated, reused by TeleOp and Auto, and checked in software as a robot grows.
+
 ## Start here
 
 There is one source-based beginner entry:

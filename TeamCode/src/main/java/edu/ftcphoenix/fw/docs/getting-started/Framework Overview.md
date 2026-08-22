@@ -4,6 +4,24 @@ Phoenix lets students describe a robot once while the framework owns the FTC lif
 everything in a predictable order. This 15–20 minute, read-only tour uses the small Starter robot.
 It requires no matching hardware, build, or example edit.
 
+## Why use Phoenix?
+
+The FTC SDK is the foundation: it provides OpModes, `HardwareMap`, gamepads, devices, and telemetry,
+while each team chooses its robot-software structure. For a one-device diagnostic, direct SDK code
+may be simpler.
+
+Phoenix pays off as a robot grows:
+
+- one predictable order for work in each loop and one managed cleanup path;
+- timed actions without sleeps or frozen driver control;
+- the same robot actions in TeleOp and Auto;
+- one clear owner for each final actuator command; and
+- software checks of the production mechanism without matching hardware.
+
+The tradeoff is learning a small vocabulary and consistent structure. In return, students repeat
+less lifecycle and coordination code. The small Starter method below declares the robot once;
+Phoenix runs it later.
+
 ## The student entry point
 
 An ordinary Phoenix OpMode overrides one method. This is the complete method from
