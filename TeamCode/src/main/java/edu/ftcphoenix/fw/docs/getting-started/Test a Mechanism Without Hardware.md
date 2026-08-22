@@ -92,6 +92,25 @@ assertEquals(0.0, motor.power(), 0.0);
 `update(...)` is the one output heartbeat that realizes the final command. The probe records that
 command; it does not pretend the motor rotated.
 
+### When feedback determines what happens next
+
+The device probes stay passive, but the Java scenario can react to what production code actually
+did. For a subsystem with a Task and feedback, keep this causal order visible:
+
+1. Inject any initial observations before the first sample.
+2. Request the semantic action and start a fresh Task.
+3. Run the Task phase, then the mechanism output phase.
+4. Assert the actuator command that was actually recorded.
+5. Inject the next named external fact, such as `bottomSwitchPressed` or
+   `rightWheelVelocityTicksPerSec`.
+6. Advance the shared `ManualLoopClock` once, again running Task before output.
+7. Assert the resulting status or Task outcome.
+
+The test therefore chooses an observation only after seeing the command that caused the question.
+Students do not need to predict future commands in a per-cycle input file, and feedback is never
+manufactured from a command. The optional Reference cases use small private Java fixtures to keep
+setup out of the way while leaving these cause-and-effect steps in each test.
+
 ## 3. Transfer the idea
 
 Before running, predict the recorded command sequence: `0.37`, `-0.22`, then `0.0`. Deliberately
@@ -101,7 +120,8 @@ and confirm the test is green again. Production robot code does not change.
 
 If a later subsystem reads a switch, encoder, or velocity, the scenario must inject that input
 explicitly. Never copy an output command automatically into feedback; doing so can make a broken
-controller appear correct.
+controller appear correct. Assert the command first, name the external observation you are choosing,
+then advance the one shared clock and inspect the result.
 
 ### Proves
 

@@ -40,6 +40,14 @@ otherwise a broken feedback loop can pass by reading back its own command. The c
 [Starter mechanism lesson](<../Test a Mechanism Without Hardware.md>) and optional
 [Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>) show the boundary.
 
+The probes are passive, but a typed Java scenario can still be reactive. Request an action, run its
+Task and output phases, and assert the command that production code actually issued. Only then name
+and inject the next external fact; advance the one shared clock once and inspect status or the Task
+outcome. This preserves causality without asking students to predict future commands in a per-cycle
+input file. A small fixture may own setup and the Task-before-output cycle helper, but the request,
+command assertion, and observation remain visible in the test. Plain Java is enough for that
+software question.
+
 ## Start with the Starter status
 
 The Starter presenter reads one cached snapshot:
