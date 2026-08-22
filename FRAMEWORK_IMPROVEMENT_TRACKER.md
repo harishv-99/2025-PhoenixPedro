@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -190,6 +190,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 103 | EXAMPLE-06 | First software robot scaffold | Done | The reviewed cumulative hardware-free Starter exercise, focused control-meaning proof, one-path navigation, and compact source map are software-verified and have destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
 | 104 | EXAMPLE-07 | Extensible hardware-free subsystem bench | Done | The reviewed test-only FTC device registry, consolidated example fixtures, bounded Starter/Reference scenarios, truthful evidence path, and destination-specific publication authorization are complete. |
 | 105 | DOC-06 | Explain Phoenix's value at first contact | Done | The reviewed candid SDK-versus-Phoenix explanation, canonical pointers, verification evidence, and destination-specific publication authorization are complete. |
+| 106 | EXAMPLE-08 | Reactive hardware-free subsystem scenarios | Done | The reviewed reactive lift/launcher scenarios, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -21579,6 +21580,124 @@ writer, and explicit lifecycle ownership.
   `master`. DOC-06 is **Done**. This authorization is limited to the reviewed DOC-06 files and
   publication coordinates; it does not start another tracker item or convert the hosted strict
   rendering gate into a local verification claim.
+
+### EXAMPLE-08 - Reactive hardware-free subsystem scenarios
+
+- **Status and approval boundary (2026-08-22):** **Done** on
+  `codex/example-08-reactive-software-scenarios`, based directly on
+  `origin/master@d8e4a611d241bc58931d6bab56bfefe639087b20`. The user selected subsystem-logic
+  evidence over dynamic response or recorded replay, selected typed Java fixtures over a reusable
+  runner or scenario file, selected both Reference lift and launcher as the adopters, and then
+  directed **“Implement the plan.”** That approval does not authorize a simulator, dynamics model,
+  input-file schema, public scenario DSL, production API, publication, RUNTIME-03, or another item.
+- **Confirmed behavior and teaching gap:** `FtcTestHardware` already records motor/servo commands
+  independently from injected encoder, velocity, and digital observations while unchanged
+  production mechanisms construct their private Plants through the ordinary `HardwareMap + Config`
+  path. The lift scenario manually proves active-low homing and encoder scaling; the launcher
+  scenario manually proves independent paired-wheel readiness. The detailed mechanism suites also
+  cover Task success and timeout, but the teaching page does not yet show students how a complex
+  scenario can observe an actual command before choosing and injecting its next external fact.
+- **Answer to the future-input problem:** a passive device probe does not require a passive test.
+  A typed Java scenario can request behavior, run the production Task/output phases, assert the
+  command already issued, inject the next named observation, advance the one manual clock, and
+  assert status or outcome. It therefore never predicts a future command. A time-indexed input file
+  would either anticipate code behavior or replay a trace that may no longer match it; automatic
+  command-to-feedback copying would make a broken feedback loop circularly pass.
+- **Selected implementation:** retain the two existing `Reference*SoftwareScenarioTest` classes and
+  give each a small private fixture owning production configuration, passive probes, unchanged
+  mechanism, `ManualLoopClock`, and the current fresh Task. Keep the causal steps visible in the
+  test body. A fixture helper may only advance the shared clock and preserve Task-before-output
+  order; semantic requests, command assertions, and explicit input injections remain named at the
+  call site. Initial sensor facts are injected explicitly before construction or first sampling.
+- **Lift and launcher evidence:** the lift cases assert homing power before injecting active-low
+  switch evidence, exercise debounce, reference establishment, encoder-to-position status, and a
+  never-pressed timeout that releases search ownership without inventing a physical stop. The
+  launcher cases assert both velocity commands before injecting asymmetric wheel measurements,
+  exercise readiness plus release/transfer success, and prove a stalled wheel reaches timeout
+  without feeding before final idle cleanup. Every Task instance is fresh and single-use.
+- **Public-layer audit and simplicity:** no new construction path, test utility, builder, interface,
+  model SPI, parser, or serialized format is required. `FtcTestHardware`, `ManualLoopClock`, both
+  production mechanism constructors, Plants, and robot code remain unchanged. The two private
+  fixtures may repeat a tiny local cycle helper because a shared noun would add vocabulary without
+  a third adopter or distinct capability. Reconsider a reusable runner only after another concrete
+  subsystem repeats the same structure.
+- **Alternatives rejected:** a generic FTC simulator hides unsupported fidelity and weakens the
+  command/observation boundary; a first-order motor model answers dynamics rather than the selected
+  subsystem-logic question; a YAML/CSV/trace format adds names, units, parsing, ordering, and stale-
+  trace failures without removing authored observations; a shared Java runner freezes a new DSL
+  before repeated use proves it; and documentation alone would leave the full reactive pattern
+  buried in maintainer-oriented mechanism tests.
+- **Documentation and truth boundary:** update the existing hardware-free lesson, Reference
+  scenarios, and evidence chapter—not navigation or the first-contact route—to teach
+  request -> update -> assert command -> inject fact -> advance -> assert outcome. Retain **Proves / Does
+  not prove / Next gate**: these scenarios establish software behavior for authored observations,
+  not motor motion, real timing, wiring, polarity, load response, tuning, STOP behavior, safety,
+  reliability, or game performance.
+- **Verification plan:** run both curated scenario suites, their detailed lift/launcher mechanism
+  suites, `FtcTestHardwareTest`, and `DocumentationLinksTest`; then run full TeamCode unit tests,
+  Java compilation, and Phoenix Javadocs. Check scenario phase order, initial evidence, debounce and
+  exact timeout boundaries, asymmetric readiness, no-feed timeout, terminal idle cleanup, absence
+  of production/API changes, stale simulation/file terminology, `git diff --check`, and whitespace.
+  Run strict Zensical rendering when locally available; no robot hardware evidence is required or
+  claimed.
+- **Decision record (2026-08-22):** **Gate 1 complete; implementation approved.** The selected
+  test-and-documentation-only design is the smallest response to the user's future-command concern
+  and preserves student simplicity, one heartbeat, one production realization path, and truthful
+  evidence boundaries.
+- **Implemented result and exact scope (2026-08-22):** the unstaged diff contains exactly six
+  files: this tracker, the existing lift and launcher software-scenario tests, and the existing
+  Starter hardware-free lesson, optional Reference-scenarios guide, and evidence chapter. The lift
+  scenarios now prove command-before-active-low feedback, the full debounce boundary, reference
+  establishment, target scaling, explicitly injected encoder status, and exact never-pressed
+  timeout cleanup. The launcher scenarios now prove paired commands, asymmetric readiness, the
+  separately observable release and transfer phases, successful terminal cleanup, and a stalled
+  wheel's exact timeout with idle feed outputs at every exercised heartbeat. No production Java,
+  framework API, mechanism constructor, Plant, test utility, navigation file, simulator, dynamics
+  model, file format, parser, DSL, or shared runner changed or was added.
+- **Lifecycle and causality review (2026-08-22):** each fresh Task is started, updated, and followed
+  by its mechanism output on the unchanged start clock, so no pre-command interval is charged.
+  Every later scenario cycle advances the one `ManualLoopClock` exactly once, then runs Task before
+  mechanism output. The completed lift Task is not updated for later output-only position checks.
+  Launcher pre-deadline time is derived from `clock.nowSec()` rather than hidden cycle counts, and
+  both the pre-deadline and exact deadline are asserted. Observations remain authored external
+  facts and never follow commands automatically.
+- **Focused and full verification (2026-08-22):** the authoritative focused selection comprised
+  both scenario suites, both detailed mechanism suites, `FtcTestHardwareTest`, and
+  `DocumentationLinksTest`: **6 suites, 36 tests, 0 failures, 0 errors, 0 skipped**. The final
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac
+  :TeamCode:phoenixJavadocs` gate passed: **212 suites, 1,938 tests, 0 failures, 0 errors,
+  0 skipped**. Only the repository's existing Java-8-on-JDK-21 and FTC deprecation warnings were
+  emitted. The beginner hardware-free page remains below its 1,000-word budget.
+- **Independent review and evidence boundary (2026-08-22):** separate lifecycle/code and
+  pedagogy/documentation reviews are **CLEAN** after correcting start-cycle timing, deadline
+  arithmetic, full no-feed heartbeat evidence, an obsolete numeric target, clock-versus-owner
+  wording, the initial-observation recipe, and unnecessary maintainer vocabulary. The diff proves
+  behavior only for explicitly authored software observations. No Control Hub, motor, switch,
+  encoder, servo, launcher, lift, game piece, or robot was exercised; wiring, polarity, scale,
+  motion, physical timing, loading, STOP response, safety, and game performance remain hardware
+  gates.
+- **Documentation rendering boundary (2026-08-22):** repository-local links and the teaching budget
+  pass `DocumentationLinksTest`. This workstation has only the nonfunctional Windows Store
+  `python.exe` alias and has no repository docs virtual environment, `py`, `uv`, or `zensical`, so
+  strict Zensical generation and rendered desktop/narrow inspection were not run locally. The
+  hosted strict-documentation check and rendered PR review remain publication gates.
+- **Android Studio review handoff (2026-08-22):** inspect the six-file unstaged diff on
+  `codex/example-08-reactive-software-scenarios`, based exactly on
+  `origin/master@d8e4a611d241bc58931d6bab56bfefe639087b20`. Read the two scenarios first and confirm
+  unchanged production constructors, explicit initial facts, same-start-cycle Task/output order,
+  command assertions before new observations, one later heartbeat, lift debounce/timeout cleanup,
+  independent launcher readiness, observable release/transfer phases, no-feed timeout, and final
+  idle commands. Then inspect the three guides for the same causal story and truthful **Proves /
+  Does not prove / Next gate** boundary. No file is staged, committed, or pushed; no pull request
+  exists. Publication requires the exact destination-specific authorization in the handoff
+  response.
+- **Manual review and Gate 3 authorization (2026-08-22):** the user replied with the complete
+  destination-specific prompt, approving the reviewed EXAMPLE-08 diff and explicitly authorizing
+  committing `codex/example-08-reactive-software-scenarios`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. EXAMPLE-08 is **Done**. This authorization is limited to the reviewed six files and
+  publication coordinates; it does not start RUNTIME-03 or another tracker item, add a simulator
+  or model layer, or convert software evidence into a robot-hardware claim.
 
 ## Explicitly deferred architectural ideas
 

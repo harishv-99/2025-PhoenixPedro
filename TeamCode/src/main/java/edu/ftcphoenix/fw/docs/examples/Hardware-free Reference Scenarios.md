@@ -24,6 +24,20 @@ Inputs never change merely because an output was commanded. These direct-setter 
 no motor, mechanism, battery, response-time, or game-piece physics. Call them software device
 scenarios, not simulations.
 
+## React to an observed command
+
+A passive probe does not require a time-indexed observation schedule. The typed Java scenario can
+request an action, run its fresh Task and the production output phase, assert the command that was
+actually recorded, and only then inject the next named observation. The first Task and mechanism
+updates use the unchanged start clock, so no pre-command interval is charged. For later cycles, the
+fixture's `advance(...)` helper advances the shared `ManualLoopClock`, then explicitly updates the
+Task before the mechanism. After that output phase, the scenario asserts status or the Task outcome.
+
+This order avoids predicting a future command. It also keeps the boundary reviewable: a command is
+software output, while a switch level, encoder count, or measured velocity is an independently
+authored external fact. The private fixtures only remove repeated setup; the command and observation
+steps remain visible in each test.
+
 ## Referenced lift: position and active-low input
 
 The
@@ -33,14 +47,22 @@ It then constructs the unchanged `ReferenceLiftMechanism`.
 
 The motor's injected encoder ticks are measurement input. The bottom switch's injected electrical
 level is a separate input: HIGH means the active-low semantic source is false; LOW means it is
-true. The scenario must advance enough explicit `ManualLoopClock` cycles for the configured
-debounce before the homing Task can establish a reference. Recorded power and target ticks remain
+true. The successful case starts with HIGH and explicit encoder evidence, requests a fresh homing
+Task, and asserts the recorded homing power before injecting LOW. It then advances enough explicit
+`ManualLoopClock` cycles for debounce, checks `SUCCESS` and reference establishment, and separately
+injects encoder ticks to check the published position status. Recorded power and target ticks remain
 outputs; neither one automatically moves the encoder or presses the switch.
+
+The timeout case leaves the switch HIGH. After first proving that the homing command was issued, it
+advances to the configured deadline and checks `TIMEOUT`, no reference, and release of the temporary
+search command. That is Task and command-ownership cleanup in software; it is not evidence that a
+physical lift stopped safely.
 
 This is useful for proving software questions such as:
 
 - Does LOW, not HIGH, satisfy this chosen bottom-switch polarity?
 - Does the homing Task retain success only after conditioned switch evidence?
+- Does a never-pressed switch produce `TIMEOUT` and release the search request?
 - Does the position request scale inches into the expected target ticks?
 
 It cannot prove that the switch is actually wired active-low, the lift reaches bottom safely, or
@@ -54,33 +76,40 @@ registers both flywheel motors plus the transfer CR servo, release servo, and ob
 constructing the unchanged `ReferenceLauncherMechanism`.
 
 One velocity request is recorded on both motors, but left and right measured velocities are
-injected independently. The mechanism publishes readiness only when each finite measurement is
-inside its configured tolerance. A command of 1000 ticks per second therefore does not manufacture
-two 1000-tick-per-second measurements or claim that either wheel spun.
+injected independently. The successful case first asserts that the configured velocity reached
+both probes. It then injects asymmetric measurements and proves readiness remains false until each
+finite wheel measurement is inside its configured tolerance. The velocity command therefore does
+not manufacture matching measurements or claim that either wheel spun.
 
-The compact scenario exposes a one-sided or averaged readiness error. The same pattern can support
-separate focused cases for swapped names, a missing wheel, non-finite measurements, or an incorrect
-inclusive tolerance. It does not predict spin-up time, voltage sag, load recovery, vibration,
-launch result, or safe wheel speed.
+The successful full-flow case starts a fresh `launchOne()` Task, observes both flywheel commands,
+then injects ready measurements. Later clock advances expose the release and transfer commands in
+their documented phases before the Task reaches `SUCCESS`; the next output update proves that
+flywheel, release, and transfer requests returned to idle. The stalled-wheel case keeps one
+measurement outside tolerance until the spin-up deadline, then checks `TIMEOUT`, no feed command,
+and the same final idle cleanup.
+
+These scenarios expose a one-sided or averaged readiness error and the Task phases that depend on
+readiness. The same pattern can support separate focused cases for swapped names, a missing wheel,
+non-finite measurements, or an incorrect inclusive tolerance. It does not predict spin-up time,
+voltage sag, load recovery, vibration, launch result, or safe wheel speed.
 
 ## Adapt the pattern to one team subsystem
 
 1. Start from the subsystem's data-only production configuration.
 2. Register only the software devices named by that configuration.
-3. Construct the same production mechanism used by the robot.
-4. Request one semantic action.
-5. Inject only the input facts owned by the scenario.
-6. Advance one shared `ManualLoopClock` cycle and update each owner once.
-7. Assert the smallest status and recorded-output facts needed for the question.
+3. Construct the same production mechanism used by the robot; inject initial observations before
+   construction or, when construction is passive, before its first sample.
+4. Request one semantic action with a fresh Task when the action takes time.
+5. Run Task before mechanism output, then assert the actual recorded command.
+6. Inject the next named observation, advance the shared `ManualLoopClock` exactly once, and again
+   update Task before mechanism output.
+7. Assert the smallest status, Task-outcome, and recorded-output facts needed for the question.
 
-Keep the setup behind a small test fixture when it distracts from the question. Prefer explicit
-units such as `currentPositionTicks` and `measuredVelocityTicksPerSec`. If future work introduces a
-real dynamics model, label its assumptions and fidelity separately; a list of setter values alone
-is still a software device scenario.
-
-A later trace reader could parse an input file and call the same probe setters before each clock
-cycle. The current teaching surface deliberately defines no trace format, playback engine,
-timeline, physics, or public model interface.
+Keep the setup behind a small test-local fixture when it distracts from the question, but leave
+requests, command assertions, and observation injection in the test body. Prefer explicit units
+such as `currentPositionTicks` and `measuredVelocityTicksPerSec`. Keep the scenario in plain Java
+instead of asking students to predict observations in a per-cycle data file. A recorded run or a
+physics model is a different experiment and needs its own stated evidence and assumptions.
 
 ### Proves
 
