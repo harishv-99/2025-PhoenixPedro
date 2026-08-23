@@ -12,21 +12,23 @@ package edu.ftcphoenix.fw.core.debug;
  * adapter.
  * </p>
  *
- * <p>For example, retained root wiring can stay non-null while topic selection
+ * <p>For example, one owner can retain a stable non-null sink while topic selection
  * remains an explicit call-site decision:</p>
  *
  * <pre>{@code
- * private DebugSink debugSink = NullDebugSink.INSTANCE;
+ * final class DiagnosticsOwner {
+ *     private final DebugSink debugSink;
  *
- * public void init() {
- *     if (telemetryDebugAvailable) {
- *         debugSink = new FtcTelemetryDebugSink(telemetry);
+ *     DiagnosticsOwner(DebugSink selectedDebugSink) {
+ *         debugSink = selectedDebugSink == null
+ *                 ? NullDebugSink.INSTANCE
+ *                 : selectedDebugSink;
  *     }
- * }
  *
- * public void loop() {
- *     if (debugDrive) {
- *         drive.debugDump(debugSink, "drive");
+ *     void addTaskDiagnostics(TaskRunner taskRunner, boolean enabled) {
+ *         if (enabled) {
+ *             taskRunner.debugDump(debugSink, "tasks");
+ *         }
  *     }
  * }
  * }</pre>

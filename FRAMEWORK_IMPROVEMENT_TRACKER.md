@@ -183,7 +183,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 96 | CONFIG-09 | Phoenix profile owner-section decomposition | Done | The reviewed owner-section implementation, synchronized evidence, Android Studio review, and destination-specific publication authorization are complete. |
 | 97 | DRIVE-03 | Field-centric TeleOp drive intent | Done | Convert explicit field/control-frame manual intent upstream into the existing robot-centric `DriveSignal`, with heading evidence, reference, loss, and composition semantics decided explicitly. |
 | 98 | EXAMPLE-04 | Curated managed concept examples | Done | The managed Starter, Reference, field-relative, and Pedro examples, experiment companion, BIOBUZZ map, package taxonomy, and corrected site navigation are published. |
-| 99 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Proposed | Keep `FtcRobotOpMode`/`RobotProgram` as the sole ordinary FTC path while preserving only evidence-backed advanced direct owners and enforcing that distinction. |
+| 99 | RUNTIME-03 | One ordinary FTC host and explicit custom-host boundary | Done | The reviewed documentation/Javadoc consolidation and modern-host boundary test received Android Studio review and destination-specific publication authorization. |
 | 100 | DOC-04 | Reference-robot learning path | Done | The reviewed source-based course and bounded Starter/Reference truth hardening have completed Android Studio review and destination-specific publication authorization. |
 | 101 | DOC-05 | Visual first contact and compact learning path | Done | The reviewed accessible Starter execution picture, optional topic router, compact source-based topics, and focused navigation/accessibility/budget regressions received destination-specific publication authorization; hosted strict rendering remains a required PR gate. |
 | 102 | EXAMPLE-05 | Authoritative Starter intake mode | Done | The reviewed semantic-mode implementation, unchanged student calls, synchronized teaching, clean verification, and destination-specific publication authorization are complete. |
@@ -21274,68 +21274,198 @@ writer, and explicit lifecycle ownership.
 
 ### RUNTIME-03 - One ordinary FTC host and explicit custom-host boundary
 
-- **Status and intake boundary (2026-08-14):** **Proposed.** The audit evaluates whether “one way”
-  should deprecate direct loop ownership. It records current evidence only; it does not deprecate a
-  type, change visibility, add enforcement, or alter a host.
-- **Confirmed ordinary path:** the sole ordinary managed FTC construction path is subclassing
-  `FtcRobotOpMode` and overriding `configure(RobotProgram)`. `RobotProgram` has a package-private
-  constructor and package-private lifecycle methods, with no public builder, factory, or callable
-  phase facade. Managed starter, Pedro, and Phoenix entries do not own an active-loop clock, Task
-  runner, telemetry commit, or shutdown shell. The nine numbered tool examples are the only
-  maintained robot-like direct FTC hosts under `edu.ftcphoenix`; EXAMPLE-04 owns their eventual
-  source disposition.
-- **Direct ownership that is not a competing robot recipe:** `LoopClock`, `Bindings`, and
-  `TaskRunner` are public reusable owner primitives. The managed program deliberately retains them
-  privately and exposes narrower `CallbackBindings` and `TaskBindings` declaration surfaces, but
-  deterministic tests, portable hosts, `BaseTeleOpTester`, private `OutputTaskRunner` queues, and
-  bounded framework owners still need direct construction. Likewise, a mechanism or localization
-  service calling its private child's `update(clock)` inside one registered program role is the
-  intended ownership hierarchy, not manual FTC hosting.
-- **Materially different host:** `FtcTeleOpTesterOpMode` is a separate final-callback tester host.
-  Its current entries are `PhoenixTestersOpMode` and, through
-  `FtcPanelsTeleOpTesterOpMode`, `PhoenixPanelsTuningOpMode`,
-  `FrameworkPanelsTestersOpMode`, and `FrameworkDriverStationTestersOpMode`. These own dynamic
-  tester selection, resource acquisition after selection, exclusive tester telemetry screens,
-  optional alternate Panels input transport, and repeated child cleanup. Those needs differ from
-  `RobotProgram`'s frozen declaration graph and data-only prestart policy; the audit found no basis
-  for calling this an ordinary robot alternative.
-- **Answer to the broad deprecation question:** the current evidence does not justify deprecating
-  FTC's `OpMode` type, Phoenix's reusable clock/binding/runner constructors, or owner-level
-  update/stop methods. Such warnings would target valid advanced/test owners and leave them without
-  a truthful replacement. The issue to decide is narrower: whether any maintained ordinary-looking
-  manual FTC recipe should remain after EXAMPLE-04, and how Phoenix prevents a new one from becoming
-  a parallel student path.
-- **Alternatives to compare:** make no change because principles already label manual hosting
-  advanced; migrate/delete only the flat examples and update navigation; deprecate the low-level
-  primitives; make `RobotProgram` publicly constructible for custom hosts; force tester hosts into
-  the managed robot grammar; or retain one explicitly documented advanced custom-host contract and
-  add a narrow repository boundary check for ordinary robot entries. Gate 1 must compare ordinary
-  call sites, concepts, error quality, lifecycle omissions, advanced caller migrations, and public
-  API/implementation cost.
-- **Leading hypothesis:** keep `FtcRobotOpMode` plus its framework-created `RobotProgram` as the
-  sole ordinary FTC robot path. Preserve reusable primitives and the specialized tester host as
-  explicitly advanced capabilities. After EXAMPLE-04 resolves the largest visible duplicate,
-  consolidate any remaining direct-host guidance into one maintainer/custom-host section and add a
-  focused source/reflection rule so modern `edu.ftcphoenix.robots` entries use the managed host, a
-  Phoenix managed subtype, or an explicitly named tester host. Do not create or expose a second
-  lifecycle facade in order to police the first one.
-- **Dependencies and bounded scope:** consume EXAMPLE-04's example disposition rather than editing
-  the same nine files twice. Exclude legacy `org.firstinspires.ftc.teamcode`, FTC SDK samples, Pedro
-  vendor tuning OpModes, deterministic unit tests, and explicitly justified portable/tester hosts.
-  Do not add lifecycle observer hooks, expose `RobotProgram` internals, redesign tester menus, or
-  combine INPUT-02's separate binding-failure semantics. If example cleanup leaves no ordinary
-  manual caller, Gate 1 may conclude with documentation and enforcement only instead of inventing
-  an API removal.
-- **Future completion evidence:** enumerate every modern class extending FTC `OpMode`,
-  `FtcRobotOpMode`, a Phoenix managed subtype, `FtcTeleOpTesterOpMode`, or
-  `FtcPanelsTeleOpTesterOpMode`; scan modern robot code for direct clock/binding/runner construction,
-  raw FTC callbacks, and `telemetry.update()` with reasoned exceptions. Reflection tests should
-  retain final `FtcRobotOpMode` callbacks, the non-public `RobotProgram` constructor/lifecycle, and
-  the absence of a second public runtime factory. Preserve `FtcRobotOpModeTest`,
-  `FtcTeleOpTesterOpModeTest`, Panels-host coverage, direct primitive/portable tests, and owner-level
-  Plant/Pedro tests. Run full TeamCode tests/compile, strict Javadocs, docs checks, static API scans,
-  and whitespace checks. No robot hardware is required to establish this API/lifecycle boundary.
-- **Decision record:** _Pending. No implementation started._
+- **Status and Gate 2 boundary (2026-08-22):** **Done** on
+  `codex/runtime-03-ordinary-host-boundary`, based directly on
+  `origin/master@c9c238f57aca0aad402f6c41f44b868781eb502e`. The user directed **“Start the
+  RUNTIME-03 decision gate.”** This authorizes only the Gate 1 host/construction-path audit and its
+  tracker record. The audit, approved implementation, independent reviews, and automated
+  verification below are complete. The remote base was fetched again before implementation and at
+  the Gate 3 boundary, and remains the exact branch base. Android Studio review and the exact
+  destination-specific publication authorization are now recorded below; no production API change
+  or other tracker item has started.
+- **Implementation approval (2026-08-22):** the user replied exactly **“Approve RUNTIME-03
+  ordinary-host boundary design.”** This authorizes only the selected documentation/Javadoc
+  consolidation and modern-host source/reflection test recorded below. It does not authorize a
+  production runtime/API/visibility/deprecation change, publication, another tracker item, or a
+  robot-hardware claim.
+- **Complete modern host inventory:** the only direct FTC `OpMode` subclasses under production
+  `edu.ftcphoenix` are the two abstract framework owners: `FtcRobotOpMode` and
+  `FtcTeleOpTesterOpMode`. No maintained class there extends `LinearOpMode`. The **11 ordinary
+  entries** are `StarterTeleOp`, `StarterAuto`, `ReferenceTeleOp`, `ReferenceAuto`,
+  `FieldRelativeDriveExample`, `BasicPedroAutoExample`, `PhoenixTeleOp`, and the four
+  `PhoenixAutoOpMode` entries. All inherit `FtcRobotOpMode`; none declares a raw FTC callback. The
+  **5 specialized tester entries** are `ReferenceTestersOpMode`, `PhoenixTestersOpMode`,
+  `PhoenixPanelsTuningOpMode`, `FrameworkPanelsTestersOpMode`, and
+  `FrameworkDriverStationTestersOpMode`. All inherit `FtcTeleOpTesterOpMode`, directly or through
+  `FtcPanelsTeleOpTesterOpMode`. EXAMPLE-04 removed the former nine manual concept OpModes.
+- **Public construction-path audit:** every host-related public construction path, overload, and
+  staged-builder question was checked side by side:
+
+  | Surface | Construction path | Distinct retained capability |
+  |---|---|---|
+  | `FtcRobotOpMode` | Implicit public no-argument construction; subclasses implement protected `configure(RobotProgram)`. No factory or builder. | Retains the framework-created program and owns five final FTC callbacks. |
+  | `RobotProgram` | One package-private `RobotProgram(Telemetry)` constructor; no public/protected constructor, factory, builder, or lifecycle facade. | Privately retains one clock, binding graph, runner, stable declaration views, roles, phase order, commit, and cleanup. Its only public methods are the nine declarations `callbackBindings`, `taskBindings`, `prestart`, `service`, `output`, `drive`, `rootTask`, `presenter`, and `stopHandoff`. |
+  | `FtcTeleOpTesterOpMode` | Implicit public no-argument construction; protected `createTester()` and advanced `createTesterConsole()` hooks. No factory or builder. | Owns stable console/input identities, tester resource retention, one tester clock, exclusive screens, and tester fail-stop cleanup. |
+  | `FtcPanelsTeleOpTesterOpMode` | Protected one- and two-argument input/client-policy constructors plus one package-private three-argument backend test seam. No public no-argument path or builder. | Retains a fixed input transport, client requirement, and backend; current callers use Driver Station input, default Panels input, and exact-one-client tuning distinctly. |
+  | `LoopClock` | One public no-argument constructor. | Reusable time/cycle owner for the two hosts, deterministic tests, and an explicitly custom owner. |
+  | `Bindings` / `CallbackBindings` | One implicit public `Bindings` constructor and `contextWhen(...)`; `CallbackBindings` is a registration-only interface with no factory. | Separates root update/clear/context ownership from the narrow declaration capability given to ordinary controls. |
+  | `TaskRunner` / `TaskBindings` | One implicit public runner constructor; private `TaskBindings` constructor reached only by `TaskBindings.of(callbacks, runner)`. | Separates Task lifecycle ownership from the event-to-runner declaration adapter. |
+  | `OutputTaskRunner` | Package-private constructor reached only by `Tasks.outputQueue()` and `outputQueue(idleOutput)`. | Adds a source-producing bounded private queue; the idle value is retained policy. |
+
+  No host staged builder exists to simplify, and none is warranted. Every existing constructor or
+  factory parameter above is retained lifetime state or policy, not pass-through decoration.
+- **Nested owner audit:** production `LoopClock` construction occurs only in `RobotProgram` and the
+  tester host. Production `TaskRunner` construction occurs only in `RobotProgram` and privately in
+  `OutputTaskRunner`. Direct `Bindings` owners are `RobotProgram`, `BaseTeleOpTester`, and three
+  INIT-only Prestart selection owners that share the managed clock and clear their graphs at START.
+  Phoenix scoring and the Reference launcher privately own the two application output queues.
+  Ordinary entries do not construct/advance a clock or runner, declare FTC callbacks, or commit
+  telemetry. `RobotProgram` owns the ordinary complete frame; tester hosts and children own
+  mutually exclusive tester screens. Mechanism/service child `update(clock)` and `stop()` calls are
+  the intended nested ownership hierarchy, not competing hosts.
+- **Ordinary-versus-specialized call sites:** ordinary robot code chooses only a profile,
+  composition root, and declarations:
+
+  ```java
+  public final class MyTeleOp extends FtcRobotOpMode {
+      @Override
+      protected void configure(RobotProgram program) {
+          new MyRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
+      }
+  }
+  ```
+
+  A raw host would additionally make the caller own partial-INIT retention, five FTC callbacks,
+  the exact START boundary, one clock advance, service/binding/Task/output/drive/presenter order,
+  one telemetry commit, RuntimeException and suppressed-cleanup handling, Task cancellation,
+  binding clearing, ordered output/service shutdown, and repeated/reentrant STOP. Exposing
+  `RobotProgram` would not remove those choices; it would add a second public lifecycle vocabulary.
+  The tester entry is also small, but semantically different: it returns one inactive
+  `TeleOpTester`, while its host owns selection, transport sampling, resource retention, exclusive
+  presentation, and cleanup. It is not an alternate match-robot grammar.
+- **Only remaining teaching leak:** production code already satisfies the desired boundary. The
+  one ordinary-looking manual recipe left by the completed prerequisites is the raw
+  `init/start/loop` profiler block in `Loop Structure.md`. Although labeled advanced, it omits
+  partial-construction ownership, STOP, terminal failure handling, Task/binding clearing, and
+  output/service cleanup, so it is an unsafe copyable second recipe. Callback-shaped snippets in
+  `NullDebugSink` and `FtcTelemetryDebugSink` Javadocs reinforce the same visual grammar. The
+  profiler itself is valid inside a managed service/output/presenter to measure that owner's
+  internal phases; only instrumentation across `RobotProgram`'s private whole-host phases requires
+  an approved custom host.
+- **Alternatives rejected:** no change leaves an incomplete copyable lifecycle and no regression
+  guard. A docs-only cleanup cannot prevent a future raw modern entry. Deprecating FTC `OpMode`,
+  `LoopClock`, `Bindings`, `TaskRunner`, owner-level update/stop, or the tester hosts would warn on
+  valid advanced, test, Prestart, and private-queue ownership without a truthful replacement.
+  Making `RobotProgram` public or adding a lifecycle builder/facade creates the duplicate API this
+  item is meant to remove and has no adopter. Forcing testers into `RobotProgram` would require
+  mutable INIT selection, deferred resource replacement, exclusive-screen and alternate-transport
+  hooks, weakening the frozen ordinary declaration graph.
+- **Selected design:** make **no production behavior, public API, visibility, or deprecation
+  change**. Keep `FtcRobotOpMode.configure(RobotProgram)` as the sole ordinary lifecycle and keep
+  `FtcTeleOpTesterOpMode`/Panels as the evidence-backed specialized family. Replace, rather than
+  relocate, the incomplete callback block. Keep the student path managed; put custom-host
+  eligibility and the complete ownership/cleanup checklist in one Maintainer Notes section. Add
+  one modern-host source/reflection boundary test. Do not publish another compiling raw-host
+  template.
+- **Exact bounded implementation scope:** add
+  `TeamCode/src/test/java/edu/ftcphoenix/fw/architecture/ModernFtcHostBoundaryTest.java`; update only
+  `docs/getting-started/Framework Overview.md`, `docs/core-concepts/README.md`,
+  `docs/core-concepts/Loop Structure.md`, and `docs/maintainers/Maintainer Notes.md`; and make
+  Javadoc-only example/wording changes in `NullDebugSink.java`, `LoopPhaseProfiler.java`, and
+  `FtcTelemetryDebugSink.java`. The first-contact pages will stop inviting custom hosting; Loop
+  Structure will retain a short advanced boundary/link without raw callbacks; Maintainer Notes
+  will specify eligibility, one-clock/order/commit ownership, partial construction, terminal
+  failure cleanup, Task/binding/output/service shutdown, disjoint runner ownership, and
+  repeated/reentrant STOP. No navigation, site configuration, host implementation, tester menu,
+  primitive, robot, example source, or generated file changes are in scope.
+- **Boundary-test contract:** scan all production Java sources and select every source physically
+  under `edu/ftcphoenix` or declaring an `edu.ftcphoenix` package, requiring package/path agreement
+  so an off-path Phoenix declaration cannot evade the check. Discover every top-level type,
+  including multiple and package-private declarations, while ignoring comment, string, character,
+  text-block, nested-type, and class-literal lookalikes; load each without initialization and report
+  actionable discovery/load failures. Inspect all discovered and publicly/protectedly reachable
+  member types for FTC `OpMode` subtypes, not merely annotations or robot packages. Permit only the
+  `FtcRobotOpMode` or `FtcTeleOpTesterOpMode` families plus exact binary names in a test-owned
+  custom-host exemption map, each carrying a mandatory nonblank rationale. The map starts empty
+  and rejects missing, stale, redundant, or non-OpMode entries. Require only the two approved bases
+  (or a reasoned exemption) to extend raw `OpMode`; retain their five final FTC callbacks; retain
+  the exact non-public `RobotProgram` construction/lifecycle and nine-method declaration surface;
+  and reject reflection-visible public/protected `RobotProgram` exposure through return types,
+  fields, arrays, generic carriers, bounds, or parameterized owner types. Method parameters remain
+  intentionally available for managed declarations and `configure(RobotProgram)`; a semantically
+  equivalent untyped facade remains a source/design-review concern rather than a claim reflection
+  can prove. Fixtures cover lexical discovery, malformed and unloadable sources, load-without-
+  initialization, exemption validation, off-path packages, direct and inherited member OpModes,
+  and direct, array, generic-carrier, and owner-only `RobotProgram` exposure. Do not ban primitive
+  construction, `update(clock)`, `stop()`, or telemetry commits globally.
+- **Explicit exclusions:** legacy `org.firstinspires.ftc.teamcode`, FTC SDK samples, Pedro vendor
+  tuning OpModes, tests/fakes, and generated/build sources remain outside the production scan.
+  Existing specialized tester hosts and bounded nested owners remain permitted by their actual
+  host family/ownership, not by broad path exclusions. No lifecycle observer hook, public
+  `RobotProgram` facade, INPUT-02 behavior, or unrelated cleanup is included.
+- **Verification plan:** run the new boundary/discovery fixtures plus `FtcRobotOpModeTest`,
+  `RobotProgramPrestartAndHandoffTest`, `FtcTeleOpTesterOpModeTest`,
+  `FtcPanelsTeleOpTesterOpModeTest`, `FrameworkTesterOpModesShapeTest`,
+  `PhoenixManagedAutoLifecycleTest`, `PhoenixTeleOpTest`, and `DocumentationLinksTest`; then run
+  `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest` and
+  `:TeamCode:phoenixJavadocs`. Re-run raw-callback/clock/runner/telemetry and public-runtime-factory
+  searches, exact Markdown links/anchors/fences, `git diff --check`, changed-file review, and stale
+  wording/type scans. Run the strict generated documentation check and desktop/narrow rendered
+  review when the repository docs environment is available; the hosted strict artifact remains a
+  publication gate. No Control Hub, robot, actuator, sensor, camera, or Panels client is required
+  to prove this source/API/documentation boundary, and no physical behavior claim will be made.
+- **Independent Gate 1 reviews:** the host/callback inventory, public constructor/factory audit,
+  and progressive-disclosure audit independently converge on the selected design. An adversarial
+  review initially requested a namespace-wide type scan, exact reasoned exceptions, cleanup of the
+  two debug-sink callback snippets, and a truthful distinction between owner-internal and
+  whole-host profiling. Those corrections are incorporated; the re-review is **CLEAN**.
+- **Approval gate:** this changes and mechanically enforces the public teaching/lifecycle boundary,
+  so implementation must stop at **Ready**. `Approve RUNTIME-03 ordinary-host boundary design`
+  authorizes only the exact docs/Javadocs/test scope above. It does not authorize runtime behavior
+  or API changes, publication, another tracker item, or a robot-hardware claim. The user supplied
+  that exact approval on 2026-08-22; Gate 2 is now limited to the approved scope.
+- **Gate 2 implementation (2026-08-22):** the four approved guides now present one managed beginner
+  path, replace the incomplete raw-callback profiler recipe with truthful managed-role observation,
+  and centralize the complete advanced-host eligibility and ownership contract in Maintainer Notes.
+  The three approved debug Javadocs now teach lifecycle-neutral or managed-role use without a
+  callback-shaped second recipe. `ModernFtcHostBoundaryTest` implements the source/reflection
+  contract above with an empty explicit exemption map and seven fixture-backed tests. No executable
+  production statement, signature, visibility, deprecation, generated file, site configuration,
+  robot, or example changed.
+- **Construction/API re-audit:** `FtcRobotOpMode` remains the only ordinary host and the only creator
+  of `RobotProgram`; there is exactly one production `new RobotProgram(...)`. `RobotProgram` retains
+  its sole package-private `Telemetry` constructor, nine public declaration methods, and
+  package-private lifecycle. No public/protected runtime method or constructor exposes it by a
+  typed return or field path, and no factory, builder, session, template, or lifecycle facade was
+  added. The three changed production Java files are bytecode-neutral Javadoc edits; all runtime/API
+  implementation files are otherwise byte-identical to the branch base.
+- **Automated verification:** the focused boundary, managed-host, prestart/handoff, tester-host,
+  Panels-host, modern-entry-shape, Phoenix TeleOp/Auto lifecycle, and documentation-link run passed
+  **92/92 tests** across nine suites. The final full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passed **1,945/1,945 tests**
+  across 213 suites with zero failures, errors, or skips; the new boundary suite passed 7/7 and
+  `DocumentationLinksTest` passed 9/9. Strict `:TeamCode:phoenixJavadocs` also passed. The build's
+  existing Java-8-on-JDK-21 and FTC deprecated-API notices remain; no new warning was attributed to
+  this diff.
+- **Documentation/static verification:** changed Markdown links, the Maintainer Notes advanced-host
+  anchor, balanced fences, stale wording, raw callback recipes, file scope, final newlines,
+  whitespace, and `git diff --check` were checked. A local strict Zensical render could not run
+  because this checkout has no functional Python launcher, `uv`, or `zensical`; no tool was
+  installed. The hosted strict documentation artifact and rendered inspection therefore remain a
+  publication gate.
+- **Independent Gate 2 reviews:** API/construction, progressive-disclosure, and adversarial boundary-
+  test reviews found and corrected whole-host profiler attribution, Maintainer Notes wording,
+  namespace/path evasion, reachable nested and inherited OpModes, generic/field exposure, and
+  parameterized-owner exposure. Final re-reviews are **CLEAN**; the test remains Java 8 compatible,
+  avoids class initialization, and does not pull vendor/legacy types into the protected scan.
+- **Manual verification and publication authorization (2026-08-22):** after the Android Studio
+  handoff, the user sent the exact combined reply authorizing committing the reviewed RUNTIME-03
+  diff on `codex/runtime-03-ordinary-host-boundary`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. RUNTIME-03 is **Done**; Gate 3 may stage and publish only this reviewed nine-file diff.
+  This authorization does not start another tracker item or convert the explicitly unnecessary
+  hardware run into a physical-runtime claim. The hosted strict documentation artifact and rendered
+  inspection remain required pull-request checks.
 
 ### DRIVE-03 - Field-centric TeleOp drive intent
 

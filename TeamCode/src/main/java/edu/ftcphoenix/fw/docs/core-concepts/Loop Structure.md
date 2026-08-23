@@ -140,9 +140,9 @@ supports Auto-to-TeleOp transfer without a custom FTC lifecycle: capture occurs 
 ACTIVE STOP, publication waits for successful cleanup, and every other path invalidates.
 
 The curated ordinary examples use this managed host exclusively. A genuinely custom host is an
-advanced exception: it must still own one clock, run the same semantic phase order, commit once,
-and perform complete fail-stop cleanup. Do not copy an active-loop excerpt without its construction
-and STOP ownership.
+advanced exception, not a second robot recipe. Its eligibility and complete lifecycle contract live
+in [`Advanced host ownership`](<../maintainers/Maintainer Notes.md#11-advanced-host-ownership>).
+Do not copy an active-loop excerpt without its construction and STOP ownership.
 
 That is the normal TeleOp ownership model: Tasks finish their decision/source/Plant-target work,
 then the downstream Outputs/Drive phase visits declarations in order. The one drive declaration
@@ -402,88 +402,40 @@ seconds do not need this wrapper when they never escape that Task.
 
 ### 5.2 Optional loop-phase diagnostics
 
-When the whole loop is slow and you need to find the owner, the composition root may opt into a
-`LoopPhaseProfiler`. This is a diagnostic observer, not another behavioral clock. It hides its own
-monotonic stopwatch, never advances `LoopClock`, and must never supply a value that changes Tasks,
-controllers, targets, guards, or other robot behavior.
+When one managed owner is slow and you need to find its internal cost, that service, output, or
+presenter may retain a `LoopPhaseProfiler` and mark stable, high-level boundaries inside its own
+`update(clock)` or presentation call. This is owner-internal instrumentation, not another
+heartbeat: `RobotProgram` still advances one `LoopClock` and calls the owner in its normal phase.
+The profiler hides its own monotonic stopwatch, never advances `LoopClock`, and must never supply a
+value that changes Tasks, controllers, targets, guards, or other robot behavior.
 
-Keep the normal loop order visible and mark only stable, high-level boundaries. `finishPhase(name)`
-names the interval that just completed, starting at `startCycle(clock)` or the preceding
-`finishPhase(...)`. The profiler deliberately has no nested-span, callback, scheduler, sleep, or
-loop-rate API.
+At the start of that owner's one call for the cycle, call `startCycle(clock)`. After each stable
+internal stage, call `finishPhase(name)` with a fixed literal name; it measures the interval since
+`startCycle(clock)` or the preceding `finishPhase(...)`. Call `finishCycle(clock)` before returning
+from the owner. Retain the profiler instead of allocating it per update. It deliberately has no
+nested-span, callback, scheduler, sleep, or loop-rate API.
 
-The callback-shaped example below is an **advanced custom-host diagnostic**, not a second ordinary
-robot lifecycle grammar. `FtcRobotOpMode` keeps FTC callbacks final; normal robot code declares its
-services, bindings, Tasks, outputs, drive, and presenters through `configure(RobotProgram)`. Use a
-manual host like this only when a specialized tool or diagnostic must own phase instrumentation
-that the managed host does not expose.
+This pattern covers only the work between that owner's markers. A composition-root-retained
+profiler may also span markers placed in several of its own registered roles, but the elapsed span
+then includes any private `RobotProgram` work between those markers and cannot truthfully attribute
+that time to a framework phase. It still cannot mark private transitions outside those roles or
+Driver Station commit latency. Profiling across the complete managed phase schedule is possible
+only inside an already-approved advanced host whose materially different lifecycle independently
+justifies that ownership. Profiling alone is not a reason to recreate FTC callbacks; use the
+[`Advanced host ownership`](<../maintainers/Maintainer Notes.md#11-advanced-host-ownership>)
+contract before retaining such a host.
 
-```java
-private static final boolean DEBUG_LOOP_PHASES = false;
-
-private final LoopPhaseProfiler loopPhases =
-        LoopPhaseProfiler.create(DEBUG_LOOP_PHASES);
-private DebugSink debugSink = NullDebugSink.INSTANCE;
-
-@Override
-public void init() {
-    // Retain one output adapter; do not allocate it inside loop().
-    debugSink = DEBUG_LOOP_PHASES
-            ? new FtcTelemetryDebugSink(telemetry)
-            : NullDebugSink.INSTANCE;
-}
-
-@Override
-public void start() {
-    clock.reset(getRuntime());
-    loopPhases.reset();
-}
-
-@Override
-public void loop() {
-    clock.update(getRuntime());
-    loopPhases.startCycle(clock);
-
-    localization.update(clock);
-    loopPhases.finishPhase("localization");
-
-    bindings.update(clock);
-    loopPhases.finishPhase("bindings");
-
-    macroRunner.update(clock);
-    loopPhases.finishPhase("tasks");
-
-    drivebase.drive(driveSource.get(clock).clamped());
-    loopPhases.finishPhase("drive");
-
-    shooter.update(clock);
-    loopPhases.finishPhase("plants");
-
-    // During this cycle, this displays the previous completed cycle.
-    // Select the diagnostic at the call site so the disabled path does no dump work.
-    if (DEBUG_LOOP_PHASES) {
-        loopPhases.debugDump(debugSink, "loopPhases");
-    }
-    presentStatus(telemetry); // additive: does not clear or commit
-    loopPhases.finishPhase("presentation");
-
-    loopPhases.finishCycle(clock);
-    telemetry.update(); // the complete-frame owner commits once, outside this profile span
-}
-```
-
-Leave `DEBUG_LOOP_PHASES` false during ordinary robot operation. When it is true,
-`snapshot()` and `debugDump(...)` report only fully completed cycles, so the rows shown during one
-cycle describe the preceding completed span. This example deliberately ends at `presentation`
-before `telemetry.update()` and therefore makes no claim about Driver Station commit latency. Use
-stable literal names such as `"localization"`, `"tasks"`, and `"presentation"`; do not generate
-one name per device, route, or target.
+Keep profiling disabled outside a deliberate diagnostic run. When it is enabled, `snapshot()` and
+`debugDump(...)` report only fully completed spans, so a dump made during one active span still
+describes the preceding completed one. Select `debugDump(...)` at the call site only when that
+diagnostic is enabled, and use stable literal names such as `"poll"`, `"estimate"`, and `"publish"`;
+do not generate one name per device, route, target, or cycle.
 
 The reported seconds are monotonic elapsed wall time. They can include operating-system scheduling
 pauses and profiler overhead; they are not CPU time and do not cover work before `startCycle` or
-after `finishCycle`, so they are not the complete FTC callback period. If the same profiler has
-already collected data when the composition root deliberately resets its `LoopClock`, call
-`loopPhases.reset()` at that boundary while no profiler cycle is active, as the example does.
+after `finishCycle`. If the same profiler has already collected data when its owning lifecycle
+deliberately resets its `LoopClock`, call `reset()` at that boundary while no profiler span is
+active.
 
 ---
 
@@ -637,7 +589,8 @@ For ordinary robot code, declare roles once and let `RobotProgram` keep:
 
 > Clock → Services → Bindings → Tasks → Outputs/Drive → Presenters → Telemetry commit
 
-For a deliberate custom host, spell out the equivalent sensor/service, Task, final-drive,
-mechanism, and frame phases explicitly.
+An advanced host is a narrow maintainer exception, not an alternate spelling of ordinary robot
+code. It must satisfy the complete
+[`Advanced host ownership`](<../maintainers/Maintainer Notes.md#11-advanced-host-ownership>) contract.
 
 That keeps the rest of the framework predictable.

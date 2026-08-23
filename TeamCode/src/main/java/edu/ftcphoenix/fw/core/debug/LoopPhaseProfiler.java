@@ -14,10 +14,16 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Observes elapsed wall time across named, sequential phases of one robot loop.
  *
- * <p>This is an optional development diagnostic owned by a composition root. It does not advance,
- * replace, or supply behavior time for the robot's one {@link LoopClock}. The profiler owns a
- * private monotonic stopwatch only to measure work that happens after {@link #startCycle(LoopClock)}
- * and before {@link #finishCycle(LoopClock)}.</p>
+ * <p>This is an optional development diagnostic owned by a composition root or one of its managed
+ * roles. It does not advance, replace, or supply behavior time for the robot's one
+ * {@link LoopClock}. The profiler owns a private monotonic stopwatch only to measure work that
+ * happens after {@link #startCycle(LoopClock)} and before {@link #finishCycle(LoopClock)}.</p>
+ *
+ * <p>A managed service, output, or presenter can use the clock supplied to its callback to measure
+ * sequential work owned by that role. It must not advance the clock or claim visibility into work
+ * outside its markers. Instrumenting the complete managed-program phase schedule requires an
+ * explicitly advanced host; ordinary robot code must not replace its managed host merely to add
+ * whole-program timing.</p>
  *
  * <p>Call {@link #finishPhase(String)} immediately after each useful high-level phase. It attributes
  * the interval since the cycle began or the previous phase finished to the phase that just
@@ -29,13 +35,15 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * private final LoopPhaseProfiler loopPhases =
  *         LoopPhaseProfiler.create(PROFILE_LOOP_PHASES);
  *
- * // After the composition root advances its one LoopClock:
- * loopPhases.startCycle(clock);
- * localization.update(clock);
- * loopPhases.finishPhase("localization");
- * tasks.update(clock);
- * loopPhases.finishPhase("tasks");
- * loopPhases.finishCycle(clock);
+ * // Inside one managed role; the host supplies the already-advanced clock.
+ * public void update(LoopClock clock) {
+ *     loopPhases.startCycle(clock);
+ *     localization.update(clock);
+ *     loopPhases.finishPhase("localization");
+ *     targeting.update(clock);
+ *     loopPhases.finishPhase("targeting");
+ *     loopPhases.finishCycle(clock);
+ * }
  * }</pre>
  *
  * <p>Elapsed values are wall-clock observations, not CPU time and not the complete period between
