@@ -106,8 +106,8 @@ flowchart TB
    caught.
 
 The diagram shows both START dispositions but omits rarer failure details. See
-[Loop structure](<../core-concepts/Loop Structure.md>) when implementing Prestart, Services, or a
-custom lifecycle host.
+[Loop structure](<../core-concepts/Loop Structure.md>) when implementing Prestart or Services, or
+when diagnosing the managed phase order.
 
 ## Follow one button through the cycle
 

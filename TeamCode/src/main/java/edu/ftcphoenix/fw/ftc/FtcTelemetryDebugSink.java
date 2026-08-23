@@ -16,25 +16,21 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  * </p>
  *
  * <p>
- * Typical usage in a composition root:
+ * Typical managed usage in an ordinary {@link FtcRobotOpMode} declaration:
  * </p>
  *
  * <pre>{@code
  * private static final boolean DEBUG_DRIVE = false;
- * private DebugSink debugSink;
  *
- * public void init() {
- *     // Retain the adapter; do not allocate one every loop.
- *     debugSink = new FtcTelemetryDebugSink(telemetry);
- * }
- *
- * public void loop() {
- *     requiredTelemetry.emitTeleOp(status); // additive; does not commit
- *     if (DEBUG_DRIVE) {
- *         drive.debugDump(debugSink, "drive");
- *     }
- *
- *     telemetry.update(); // the complete-frame owner commits once
+ * @Override
+ * protected void configure(RobotProgram program) {
+ *     // Retain one adapter; the managed host owns the final frame commit.
+ *     DebugSink debugSink = new FtcTelemetryDebugSink(telemetry);
+ *     program.presenter((clock, frameTelemetry) -> {
+ *         if (DEBUG_DRIVE) {
+ *             drive.debugDump(debugSink, "drive");
+ *         }
+ *     });
  * }
  * }</pre>
  *

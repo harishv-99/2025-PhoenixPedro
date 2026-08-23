@@ -4,7 +4,7 @@ Use these guides after [Phoenix in one picture](<../getting-started/Framework Ov
 need the contracts behind the ordinary API.
 
 - [`Loop Structure`](<Loop Structure.md>) — the managed lifecycle, one `LoopClock`, phase order,
-  same-cycle behavior, telemetry, and the advanced explicit-host exception.
+  same-cycle behavior, and telemetry.
 - [`Sources & Signals`](<Sources and Signals.md>) — `Source<T>`, `ScalarSource`, `BooleanSource`,
   edges, memoization, selection, accumulation, debounce, and hysteresis.
 

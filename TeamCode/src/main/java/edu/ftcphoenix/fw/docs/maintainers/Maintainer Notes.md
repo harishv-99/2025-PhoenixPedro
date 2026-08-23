@@ -12,17 +12,63 @@ For the fixed-tag policy itself — detector library vs field-fixed layout, sele
 
 ## 1. Advanced notes
 
-### 1.1 `TaskRunner` in a custom host
+### 1.1 Advanced host ownership
 
-Ordinary robot code does not choose a runner count. Its framework-created `RobotProgram` owns one
-private `TaskRunner`, and robot code declares root or input-launched Tasks through the program.
-Different duration or interruption policy is not a reason to construct another runner; express
-that policy with Task composition, capability state, or a mechanism-owned output queue.
+Ordinary FTC robot code has one lifecycle spelling: subclass `FtcRobotOpMode` and declare roles
+through `configure(RobotProgram)`. The framework-created program privately owns the clock, binding
+graph, Task runner, phase order, telemetry commit, failure path, and cleanup. A different Task
+duration, interruption policy, preferred update order, or desire to profile whole-program phases
+is not a reason to recreate the FTC callbacks.
 
-Only an explicitly advanced custom portable host or diagnostic with lifecycle requirements that do
-not fit `FtcRobotOpMode` may own a `TaskRunner` directly. If such a host genuinely needs more than
-one, every runner must have disjoint command ownership and a documented update, cancellation,
-failure, and cleanup boundary. Do not present that exception as a second ordinary robot recipe.
+The `FtcTeleOpTesterOpMode` family is the specialized host for dynamic tester selection, resource
+acquisition after selection, exclusive tester screens, optional alternate Panels input, and
+repeated child cleanup. Use that family when those are the actual requirements. It is not an
+alternate match-robot grammar and should not be folded into `RobotProgram`'s frozen declaration
+graph and data-only prestart policy.
+
+Only an explicitly advanced portable host, diagnostic, or integration whose materially different
+lifecycle cannot truthfully fit either managed host may own raw FTC callbacks or replace the
+managed host as the whole-program lifecycle owner. Such a replacement also owns every `LoopClock`,
+`Bindings`, `TaskRunner`, phase-order decision, and telemetry commit it actually uses. Before
+accepting that exception, document its concrete caller and why the managed robot and tester hosts
+cannot express its lifecycle.
+
+That restriction concerns whole-host replacement, not bounded nested ownership. Managed Prestart
+selection owners and `BaseTeleOpTester` may own their local bindings, private `OutputTaskRunner`
+queues may own a local runner, and deterministic tests may construct the primitive under test.
+Those roles do not become competing FTC hosts: in production the established host still owns the
+callbacks, one program clock, final phase order, commit, and cleanup; a deterministic test owns only
+its isolated fixture lifetime.
+
+An approved advanced host must own and verify all of these obligations:
+
+- retain one stable resource graph and clean up every resource acquired before a partial INIT
+  failure;
+- define INIT, START, ACTIVE, blocked-or-not-ready, and STOP behavior, including the exact boundary
+  at which timed work may begin;
+- own one `LoopClock`, reset it at the documented lifecycle boundary, advance it exactly once per
+  host cycle, and give every child that same clock without allowing a second heartbeat;
+- make one explicit phase order that preserves the Phoenix dependencies Clock → upstream Services
+  → Bindings → Tasks → downstream Outputs/Drive → Presenters → one telemetry commit, omitting only
+  roles that the host does not own;
+- treat a `RuntimeException` from any lifecycle phase as terminal, retain the first failure as
+  primary, attach later cleanup failures as suppressed, and rethrow it; do not catch Java `Error`s;
+- on failure or STOP, best-effort cancel and clear Tasks, clear bindings, stop outputs including
+  drive in declaration order, stop Services in reverse declaration order, and release every owned
+  transport or resource; and
+- make repeated or reentrant STOP inert, prevent commands after terminal cleanup begins, and never
+  depend on a later loop to apply physical stop.
+
+Ordinary robot code does not choose a runner count. It declares root and input-launched Tasks
+through `RobotProgram`; different duration or interruption behavior belongs in Task composition,
+capability state, or a mechanism-owned output queue. An advanced host that directly owns a
+`TaskRunner` normally owns exactly one. If it genuinely needs more, every runner must have disjoint
+command ownership and a documented update, cancellation, failure, and cleanup boundary.
+
+Do not publish a callback-shaped advanced-host example as a second ordinary recipe. Keep
+`RobotProgram` construction and lifecycle private to `FtcRobotOpMode`; do not expose a factory,
+builder, session, or phase facade merely to give a custom host another spelling of the same
+lifecycle.
 
 ### 1.2 Idle behavior and safety
 
