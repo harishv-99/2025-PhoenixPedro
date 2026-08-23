@@ -172,7 +172,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 73 | BOUNDARY-01 | FTC boundary enforcement | Done | Relocated the FTC gamepad adapters without changing robot expressions and enforced the protected reusable core with one focused production-source rule. |
 | 74 | CI-01 | Framework verification in CI | Done | Split the existing hosted pipeline into truthful framework and documentation checks, run them for every pull request targeting master, and require both before merging. |
 | 75 | EXAMPLE-03 | Coherent timestamped mechanism-target coordination reference | Proposed | Reclassify this as a software architecture reference; physical shot and mechanism claims remain adopting-robot experiments. |
-| 76 | SAFE-04 | Fail-stop PowerOutput software contract | Proposed | Make command-cache and grouped failure behavior truthful at the software seam without claiming atomic or physical stop. |
+| 76 | SAFE-04 | Fail-stop PowerOutput software contract | Done | Make command-cache and grouped failure behavior truthful at the software seam without claiming atomic or physical stop. |
 | 77 | CONFIG-01 | Drive-guidance task configuration snapshot | Done | Validate and snapshot the existing five-answer task config without changing ordinary caller syntax or adding a parallel construction layer. |
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
 | 79 | DOC-03 | Generated Phoenix documentation site | Done | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
@@ -12384,8 +12384,9 @@ implementation.
 - **Problem to confirm:** the standard FTC motor and CR-servo adapters cache a command before the SDK
   write succeeds and their finite clamp still forwards `NaN`. The internal scaled/grouped outputs
   likewise cache before child writes, and a grouped write exception aborts later requested writes.
-  Grouped `stop()` already uses `CleanupActions` to attempt every child, but a child stop failure
-  prevents the group cache from reporting a successful zero. `getCommandedPower()` can therefore
+  Grouped `stop()` already uses `CleanupActions` to traverse every child across
+  `RuntimeException`s, while an `Error` can interrupt it; any failed stop prevents the group cache
+  from reporting a successful zero. `getCommandedPower()` can therefore
   imply success after a failed write or retain stale truth after failed cleanup. SAFE-03 can best-
   effort call the configured top-level output but cannot make that operation atomic or prove child/
   physical state.
@@ -12398,11 +12399,14 @@ implementation.
 - **Leading hypothesis:** keep the narrow `PowerOutput` interface and its seam-relative cached
   command. Require finite normalized input; for a non-finite raw hardware request, best-effort submit
   zero and then throw. Retain finite saturation at concrete hardware adapters and cache a command only
-  after its top-level operation returns normally. If a composite child write throws, stop issuing the
-  requested fan-out immediately, best-effort stop every child (including children not yet
-  written), preserve the original write failure, and suppress stop failures. Preserve grouped stop's
-  current all-child cleanup behavior; if a child stop throws, preserve the first stop failure and
-  suppress later ones. Set `getCommandedPower()` to `NaN` after any partial/failed write or stop and
+  after its top-level operation returns normally. If a composite child write throws a
+  `RuntimeException`, stop issuing the requested fan-out immediately and begin an ordered stop
+  traversal on a best-effort basis, including children not yet written. Continue that traversal across
+  `RuntimeException`s, preserve the original write failure, and suppress later distinct failures;
+  an `Error` remains uncaught and can interrupt it. Preserve grouped stop's current equivalent
+  traversal behavior; if a child stop throws a `RuntimeException`, preserve the first stop failure
+  and suppress later ones. Set
+  `getCommandedPower()` to `NaN` after any partial/failed write or stop and
   document that as unknown seam state; this public semantic change requires SAFE-04's own approval
   gate.
   Document that software fan-out is not atomic. Add no physical-readback claim, transaction API, or
@@ -12431,10 +12435,13 @@ implementation.
 - **Superseding completion boundary:** this paragraph replaces the earlier completion paragraph's
   representative-hardware prerequisite. Initialize seam command caches as unknown, reject non-finite
   requests by best-effort submitting zero, leaving the cache unknown, and throwing while suppressing
-  cleanup failures; retain finite adapter saturation and commit cached command truth only after the
+  distinct cleanup `RuntimeException`s; a cleanup `Error` remains uncaught. Retain finite adapter
+  saturation and commit cached command truth only after the
   complete top-level operation returns normally. Every failed or partial write or stop leaves the
-  affected top-level cache unknown. A grouped partial write abandons later requested writes, best-
-  effort stops every child, preserves the original write failure, and suppresses cleanup failures.
+  affected top-level cache unknown. A grouped partial write ending in a `RuntimeException` abandons
+  later requested writes and begins an ordered best-effort stop traversal. Cleanup continues across
+  `RuntimeException`s, preserving the original write failure and suppressing later distinct
+  failures. An `Error` remains uncaught and can interrupt later cleanup.
   Ordinary managed-runtime lifecycle failure remains terminal and invokes owned cleanup; any Gate 1
   retry allowance describes logical seam recovery only and cannot claim that physical continuation
   is safe. Whether Gate 1 selects terminal-to-later-commands or logical retry, a failed command may
@@ -12446,6 +12453,355 @@ implementation.
   physical zero, atomic fan-out, rollback, controller state after failure, or actuator safety; those
   remain adopting-robot observations. Do not add a transaction API or public per-child result merely
   to strengthen an unprovable physical claim.
+- **Gate 1 start (2026-08-23):** **Researching** on
+  `codex/safe-04-power-output-fail-stop`, based exactly on merged
+  `origin/master@81c43df42fe9807040a856292f82c9a220872089`. This starts source, caller,
+  construction-path, failure-order, documentation, and test research only. It does not approve the
+  leading retry/terminal design choice or any implementation change.
+- **Decision gate (2026-08-23):** **Ready; public failure/cache semantics and the bounded mecanum
+  expansion require explicit approval.** Gate 1 was completed on
+  `codex/safe-04-power-output-fail-stop`; no production Java, tests, or framework-guide
+  implementation has started. The smallest coherent design keeps every public signature and
+  ordinary call unchanged, makes Phoenix-owned cache truth success-only, makes every owner of a
+  private fan-out perform its own ordered fail-stop cleanup, and permits only logical seam recovery
+  after a later fully successful raw-output operation.
+- **Confirmed leaf failure trace:** `FtcHardware` has exactly two Phoenix `PowerOutput` leaf
+  implementations. The private FTC motor adapter initializes `last` to implicit `0.0`, assigns the
+  clamped request before grouped/single-motor mode preflight and the SDK write, and assigns zero
+  before its lifecycle zero write. A mode or SDK failure can therefore leave a requested value or
+  false zero in its cache. The CR-servo adapter has the same implicit-zero/cache-before-SDK pattern
+  and inherits the default `stop()`. `MathUtil.clampAbs(...)` currently passes `NaN` through and
+  converts infinities to finite endpoints, so all three non-finite raw requests can reach or be
+  misrepresented at the FTC boundary. The motor's established actionable mode-acquisition wrapper,
+  cause, and best-effort preflight cleanup remain distinct behavior to preserve.
+- **Confirmed scalar-composite trace:** there is no public or separate scaled-output class.
+  `FtcActuators` privately uses `IdentityGroupedPowerOutput` for exact signed-power fan-out and
+  `GroupedPowerOutput` for scale/bias fan-out. Both calculate and validate every child command before
+  effects, then assign the top-level cache before sequential child writes. A first or middle child
+  failure abandons later requested writes, performs no group-local cleanup, and leaves a false
+  coherent top-level command. Their current `stop()` already uses `CleanupActions` to traverse every
+  child across `RuntimeException`s and retain the first with later distinct failures suppressed;
+  an `Error` can interrupt it. A failed stop retains the previous cache rather than publishing
+  unknown state.
+- **Confirmed drive-composite trace and scope decision:** `MecanumDrivebase` is the other direct
+  owner of a private `PowerOutput` fan-out. It assigns all three scaled drive-component diagnostics
+  and four wheel diagnostics before writing front-left, front-right, back-left, and back-right in
+  order. A wheel write failure abandons the remainder without local cleanup; `stop()` assigns seven
+  zeros before effects and aborts later wheel stops on the first exception. `RobotProgram` owns one
+  `DriveCommandSink`, while the exclusive Pinpoint calibrator retains the concrete top-level
+  `MecanumDrivebase`; neither owner can access or clean up a skipped private wheel directly. SAFE-04
+  therefore includes Mecanum's four-output aggregation. This is a bounded expansion from the
+  scalar-group leading hypothesis, not a new public drive or output layer.
+- **Selected `PowerOutput` cache and command contract:**
+  - The public contract requires every conforming `PowerOutput`, including a custom implementation
+    supplied through `Plants.fromOutputs()`, to initialize its command cache as `Double.NaN`. That
+    means no complete top-level operation has yet established a known logical seam command. Every
+    `setPower(...)` or `stop()` first makes its affected top-level cache unknown and commits a value
+    only after the complete top-level operation returns normally. Any validation, preflight, child,
+    SDK, or cleanup `RuntimeException` therefore leaves that cache `NaN`. Phoenix-owned leaves and
+    composites enforce this normative interface behavior; affected test doubles follow it when they
+    claim to model the public cache contract.
+  - A finite FTC leaf request retains defensive saturation to `[-1.0, +1.0]`. The leaf publishes the
+    saturated value only after mode handling and the SDK write both return normally. Finite
+    out-of-domain group mappings retain their existing all-before-effects validation; rejection
+    issues no requested child fan-out and leaves the group cache unknown.
+  - A non-finite raw request is never saturated or forwarded as the requested command. The output
+    creates an actionable `IllegalArgumentException`, leaves its top-level cache unknown, attempts
+    its natural zero/stop operation, attaches any cleanup `RuntimeException` to that same primary
+    exception in order when distinct, and throws it. A cleanup `Error` remains uncaught. The motor
+    zero attempt does not acquire or restore a run mode. A zero attempt nested inside this failing
+    top-level call is cleanup, not a separate successful command: even when that cleanup returns
+    normally, the leaf remains `NaN`. Only a later independently invoked, fully successful
+    `setPower(...)` or `stop()` may recover it.
+  - After all child commands have been calculated and validated, a composite writes children in
+    stable declaration order. If a child write throws a `RuntimeException`, later requested writes
+    are abandoned and an immediate natural best-effort stop traversal begins in declaration order,
+    including the failed and not-yet-written children. Cleanup continues across
+    `RuntimeException`s; the exact child write exception remains primary and distinct cleanup
+    `RuntimeException`s are attached directly as suppressed exceptions in order. An `Error` remains
+    uncaught and can interrupt later cleanup.
+  - Composite `stop()` traverses children in stable order and continues across
+    `RuntimeException`s. It publishes top-level zero only if every child stop returns normally;
+    otherwise its cache is `NaN`, the first `RuntimeException` stays primary, and later distinct
+    failures are suppressed. An `Error` remains uncaught and can interrupt later stops. A child may
+    truthfully cache a successful cleanup while its enclosing failed composite remains unknown.
+- **Selected mecanum parity:** retain the current finite scaling, mixing, ratio-preserving
+  normalization, wheel order, constructor, and getters. Initialize all seven diagnostics to `NaN`
+  and publish a new component/wheel snapshot only after all four writes return normally. A direct
+  non-finite `DriveSignal` or non-finite derived wheel command is detected before requested fan-out,
+  leaves all diagnostics unknown, and begins a natural wheel-stop traversal before throwing an
+  actionable `IllegalArgumentException`. A wheel-write `RuntimeException` abandons later requested
+  writes, marks all seven diagnostics unknown, and begins the same traversal. Cleanup continues
+  across `RuntimeException`s, retaining the exact primary and suppressing distinct later failures;
+  an `Error` remains uncaught and can interrupt later cleanup. `stop()` traverses wheels in the same
+  order and continues across
+  `RuntimeException`s; an `Error` can interrupt later stops. It publishes seven zeros only after
+  complete success; a failed stop publishes seven `NaN` values.
+- **Retry and lifecycle decision:** a `PowerOutput` is a repeatable command seam, not a terminal
+  lifecycle owner. A later completely successful raw `setPower(...)` or `stop()` may recover its
+  logical cache from `NaN`; no hidden failed-output latch or reconstruction rule is added. A failed
+  command also never suppresses a later Plant, drive owner, or managed-host stop attempt. Separately,
+  `PlantUpdateCycle` retains an exact failure only within one cycle and mechanically permits a
+  different-cycle attempt in an isolated deterministic Plant fixture. Neither the raw output's
+  later independent invocation nor that isolated Plant-fixture behavior authorizes a robot host to
+  continue after a failure escapes a lifecycle phase: `FtcRobotOpMode` already terminalizes the
+  managed program, and `Maintainer Notes` requires the same terminal cleanup rule from an approved
+  advanced host. Gate 2 must correct the conflicting API/actuator-guide wording that currently
+  suggests an advanced host may retry. `Plant.stop()` remains terminal and single-use; raw
+  `PowerOutput.stop()` remains repeatable for isolated seam recovery and for every independently
+  owned cleanup attempt.
+- **Truth boundary:** a normal cache value establishes only the command submitted through that
+  configured top-level software seam. `NaN` means the seam cannot report one complete normally
+  returning command. Neither state proves SDK acceptance, controller state, per-child state,
+  rollback, atomic fan-out, electrical output, physical zero, actuator response, or safety. Group-
+  local cleanup, Plant fail-stop, and managed cleanup may therefore make repeated zero attempts
+  without claiming that any attempt physically succeeded.
+- **Complete public construction-path and sibling audit:**
+  - The raw FTC edge remains the two evidence-distinct motor factories
+    `FtcHardware.motorPower(HardwareMap, String, Direction)` and
+    `motorPower(DcMotorEx, Direction)`, plus the parallel named and completed-device CR-servo
+    factories; each returns `PowerOutput`. Named lookup and an already-owned SDK device are distinct
+    ownership/evidence seams, not duplicate beginner recipes. The coordinated motor-group helpers
+    remain package-private and return `List<PowerOutput>` only to framework owners.
+  - The adjacent raw factories were inspected rather than inferred: named and completed-device
+    `FtcHardware.servoPosition(...)` overloads return `PositionOutput`; the named and completed-
+    motor `motorPosition(...)` overloads return `PowerLimitedPositionOutput`; and the named and
+    completed-motor `motorVelocity(...)` overloads return `VelocityOutput`. `PowerOutput`,
+    `PositionOutput`, `PowerLimitedPositionOutput`, and `VelocityOutput` expose no public
+    constructors or static `of(...)` factories. These sibling command domains remain distinct from
+    SAFE-04's normalized-power contract.
+  - Ordinary mechanisms continue through `FtcActuators.plant(HardwareMap) -> StartStep`, then the
+    existing motor/CR-servo single-or-group answers and `.power() -> Plants.TargetStep<Plant>`.
+    The stages privately choose a leaf, exact group, or mapped group. No ordinary caller receives a
+    `PowerOutput` or answers a failure-policy question.
+  - The same ordinary root's sibling routes were traced because several privately own affected
+    power outputs. Motor `.velocity() -> MotorVelocityControlStep` branches to device-managed
+    velocity bounds or regulated feedback/`Plants.VelocityControlStep`; motor
+    `.position() -> MotorPositionControlStep` branches to device-managed or regulated feedback
+    position grammars, with temporary raw-power calibration search. Servo
+    `.position() -> ServoPositionPeriodicityStep` continues through bounded exact/mapped
+    `PositionPlant` construction. CR-servo `.position() -> CrServoPositionControlStep` continues
+    through regulated position feedback and also owns calibration-search power. Device-managed
+    position/velocity outputs remain sibling domains; regulated motor velocity/position, motor
+    calibration search, and regulated CR-servo position converge on the selected `PowerOutput`
+    semantics without exposing that output to the ordinary caller.
+  - The hardware-neutral advanced seam remains
+    `Plants.fromOutputs().power(PowerOutput) -> TargetStep<Plant>`. Its audited sibling answers are
+    `commandedPosition(PositionOutput) -> PositionPeriodicityStep<CommandedPositionBoundsStep>`,
+    `deviceManagedPosition(PositionOutput, ScalarSource)` returning
+    `DeviceManagedPositionStep<TargetStep<PositionPlant>>`, the `PowerLimitedPositionOutput`
+    overload returning `DeviceManagedPositionStep<SymmetricOutputPowerPolicyStep<PositionPlant>>`,
+    and `deviceManagedVelocity(VelocityOutput, ScalarSource)` returning
+    `VelocityBoundsStep<TargetStep<Plant>>`. The affected regulated roots are
+    `regulatedPosition(PowerOutput, ScalarSource)` returning
+    `PositionPeriodicityStep<FeedbackPositionBoundsStep<PositionControlStep>>` and
+    `regulatedVelocity(PowerOutput, ScalarSource)` returning
+    `VelocityBoundsStep<VelocityControlStep>`. These paths are required for simulation, tests,
+    custom adapters, and portable hosts; they do not duplicate the ordinary FTC mechanism recipe.
+  - Ordinary drive construction remains exactly `FtcDrives.mecanum(HardwareMap)` or
+    `FtcDrives.mecanum(HardwareMap, MecanumConfig)`, both returning `MecanumDrivebase`. The one public
+    `(PowerOutput, PowerOutput, PowerOutput, PowerOutput, MecanumDrivebase.Config)` constructor is
+    the distinct hardware-neutral custom-output seam. The supporting data factories remain
+    `MecanumDrivebase.Config.defaults()/copy()`,
+    `FtcDrives.MecanumWiringConfig.defaults()/copy()`, and
+    `FtcDrives.MecanumConfig.defaults()/copy()`; each construction owner snapshots the supplied
+    configuration. No new factory, wrapper, result, group, or transaction type is needed.
+- **Caller and staged-parameter audit:** executable production readers of
+  `PowerOutput.getCommandedPower()` are zero; existing assertions are test-only diagnostics.
+  Ordinary student paths are Phoenix scoring and the starter/reference/Pedro mechanisms with
+  privately owned inline `FtcActuators` Plants, plus starter/reference/field-relative/Phoenix robot
+  composition through `FtcDrives.mecanum(...)`. Advanced/exclusive paths remain explicitly
+  different: `ConfiguredDrivetrainVerificationTester` owns four separate per-wheel power Plants;
+  `PinpointPodOffsetCalibrator` owns one concrete Mecanum drivebase for exclusive calibration; and
+  `BasicPedroAutoMechanism` has one package-private completed-Plant constructor labeled as its
+  hardware-neutral seam. Production `FtcActuators` chains are inline and no public stage is stored,
+  reused, shared, or reinterpreted. Retained stages occur only in validation tests. `FtcDrives`
+  configurations are deliberately reusable data objects that their owners defensively snapshot,
+  not staged output owners. No production output is shared across independent Plants or drive sinks.
+- **Internal consumer audit:** the private direct `PowerPlant` submits its resolved normalized
+  command to the supplied output and delegates terminal stop. `RegulatedPowerChannel` submits the
+  regulator command, performs its own immediate nonterminal fail-stop, and already uses a distinct
+  success-only normalized-command cache. `MappedPositionPlant` directly writes and fail-stops its
+  optional calibration-search `PowerOutput`. Those owner-level paths can call `stop()` again after
+  the selected leaf/group-local cleanup, and a later managed-host cleanup can call it again; the
+  repeatable raw stop contract and exact primary/suppression order are therefore required by proven
+  internal callers rather than invented recovery policy.
+- **Ordinary call-site and cognitive-load comparison:** the selected design leaves the current and
+  proposed robot code byte-for-byte equivalent:
+
+  ```java
+  Plant intake = FtcActuators.plant(hardwareMap)
+          .motor(config.motorName, config.direction)
+          .power()
+          .targetFromNewCommand(0.0)
+          .build();
+
+  program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, profile.drive));
+  ```
+
+  | Design | New ordinary failure nouns | New ordinary decisions | Disposition |
+  | --- | ---: | ---: | --- |
+  | Current cache-before-success behavior | 0 | 0 | Rejected: false caches and incomplete private-child cleanup remain. |
+  | Selected success-only cache plus owner cleanup | 0 | 0 | Smallest truthful contract; existing calls and ownership remain. |
+  | Terminal failed-output latch | 1 hidden lifecycle state | 1 reconstruct-or-abort decision | Rejected: conflicts with isolated seam recovery and duplicates host terminalization. |
+  | `PowerCommandResult` return | 1 result type | At least 1 status/recovery branch | Rejected: cannot acknowledge SDK or physical state. |
+  | Transaction API | At least 2 transaction/result types | At least 2 commit/rollback decisions | Rejected: sequential SDK calls cannot provide atomicity or rollback. |
+  | Per-child status | At least 2 group/child-status types | At least 1 group policy plus N child interpretations | Rejected: leaks private composition without physical truth. |
+
+  The ordinary intake recipe still answers only motor identity, direction, the power capability, and
+  its initial target; SAFE-04 adds no answer, public noun, or failure branch.
+- **Alternatives rejected:** documentation alone preserves forwarding and false cache behavior.
+  Validating every Plant/robot caller leaves the raw and injected seams unsafe. A leaf-only change
+  leaves scalar groups and Mecanum as false owners; a scalar-group-only change leaves raw leaves and
+  the four-wheel owner false. Exposing child results leaks private composition and still cannot
+  prove physical state. Making a raw output terminal suppresses legitimate later cleanup/recovery
+  without making hardware continuation safe. Consolidating the exact and mapped private group
+  classes is unrelated cleanup; exact signed-zero identity and affine mapping remain distinct
+  internal capabilities.
+- **Sibling and item boundaries:** `PositionOutput`, `PowerLimitedPositionOutput`, and
+  `VelocityOutput` are separate public domains. The single-servo and power-limited-position
+  implementations provide useful success-only precedents; grouped position and FTC velocity have
+  analogous cache questions, but SAFE-04 neither invokes them nor needs to change them to make the
+  `PowerOutput`/Mecanum fan-out truthful. Record them for a later dedicated intake rather than
+  silently broadening this item. API-03 retains scale/bias and calibration-power validity, PERF-03
+  retains successful-write deduplication, and managed lifecycle terminalization remains unchanged.
+- **Bounded implementation/documentation scope:** if approved, limit production changes to the
+  `PowerOutput` Javadocs and normative cache/non-finite contract; FTC motor and CR-servo leaf
+  behavior plus the directly affected `FtcHardware` Javadocs, including removal of the obsolete
+  cache-before-attempt statement; the two private FtcActuators power groups plus their source
+  Javadocs; `MecanumDrivebase` diagnostics/fan-out cleanup plus its class, `drive()`, `stop()`, and
+  getter Javadocs; `DriveCommandSink.stop()`'s software-attempt/non-physical-truth wording; and only
+  small shared private cleanup helpers when they remove duplicated exception mechanics. In
+  `RegulatedPowerChannel`, replace the inaccurate comment that a normally returning software zero
+  call “proves” zero with seam-relative wording. In
+  `docs/ftc-boundary/FTC Actuators & Plants.md`, document the selected leaf/group cache and cleanup
+  semantics and replace both advanced-host retry claims with the authoritative distinction between
+  isolated primitive recovery and terminal host failure. Make the same documentation-only terminal-
+  host correction in `Plant.java`, `MappedVelocityPlant.java`, and `MappedPositionPlant.java` while
+  preserving their existing internal fail-stop mechanics. `Framework Principles.md`,
+  `docs/core-concepts/Loop Structure.md`, `docs/maintainers/Maintainer Notes.md`, and
+  `robots/phoenix/Phoenix Architecture.md` already state the necessary truth and terminal-host rules;
+  Gate 2 will conformance-check but not edit them. Do not change Phoenix application ownership/calls,
+  public signatures, builder grammar, motor-mode policy, mapping mathematics, position/velocity
+  output implementation behavior beyond its use of the strengthened `PowerOutput`, successful-write
+  deduplication, vendor integrations, or add project-specific references to framework documentation.
+- **Verification plan and baseline:** focused throwing fakes will cover motor and CR-servo initial,
+  exact/saturated finite, all three non-finite values, pre/post-side-effect failure, nested cleanup,
+  distinct suppression, and cache state after failed command → separately attempted stop → repeated
+  stop → later successful command. Three-child exact and mapped groups will cover `NaN` and both
+  infinities with no requested fan-out, all-child stop attempts, the synthetic primary, distinct
+  suppression order, and unknown top cache. A finite pre-effect mapping rejection after prior
+  success will prove no requested-write or cleanup effect and an unknown top cache. First/middle/
+  last requested-write and stop failures will prove requested-write abandonment, cleanup of every
+  child including untouched children, exact primary identity, top-level versus child caches, a
+  separate group stop after a failed command, repeated raw stop, and later successful write recovery.
+  Mecanum tests will cover all seven diagnostics, direct non-finite signals, each of front-left,
+  front-right, back-left, and back-right as the failing write/stop position, all-wheel cleanup,
+  repeated stop, and recovery. Plant integration will prove same-cycle exact failure replay,
+  different-cycle logical recovery only in an isolated fixture, and that output-local cleanup does
+  not suppress later owned cleanup; managed and approved advanced hosts remain terminal. The Gate 1
+  baseline passed 100 tests with zero failures/errors/skips: `FtcMotorPowerRunModeTest` 29,
+  `FtcHardwareCommandDomainValidationTest` 7, `FtcActuatorMappingDomainValidationTest` 16,
+  `DirectMecanumDriveApiTest` 5, `PlantUpdateCycleIntegrationTest` 4,
+  `RegulatedPowerChannelTest` 17, and `FtcRobotOpModeTest` 22. Gate 2, if approved, must also run the
+  focused suites, full `:TeamCode:testDebugUnitTest`, compile, XML counts, API/caller and
+  documentation/static checks, independent reviews, and Android Studio inspection.
+- **Evidence and completion boundary:** fake SDK/output tests can prove call order, exception
+  identity/suppression, software cache truth, retry/terminal boundaries, and best-effort attempt
+  counts. They cannot prove FTC SDK acceptance, controller behavior, electrical output, physical
+  zero, actuator motion, rollback, atomicity, or safety. SAFE-04 may complete from that explicitly
+  narrower software contract; representative hardware observations remain adopting-robot bring-up
+  evidence and must not be reported as a framework guarantee.
+- **Approval gate:** including Mecanum materially expands the original scalar-group leading
+  hypothesis, and initial/failed cache `NaN`, non-finite rejection, composite cleanup, and logical
+  recovery at an isolated seam are public behavior/lifecycle semantics even though signatures and
+  ordinary calls remain unchanged. Do not edit Java, tests, or framework guides until the user
+  explicitly approves this complete SAFE-04 design. Approval authorizes Gate 2 for SAFE-04 only; it
+  does not authorize publication or start another tracker item.
+- **Design approval (2026-08-23):** the user explicitly approved the complete recorded SAFE-04
+  design, including the bounded Mecanum expansion. SAFE-04 is **In progress** on
+  `codex/safe-04-power-output-fail-stop`, still based exactly on fetched
+  `origin/master@81c43df42fe9807040a856292f82c9a220872089`. Gate 2 implementation, synchronized
+  documentation, and verification are authorized for SAFE-04 only. This approval does not
+  authorize staging, committing, pushing, opening or merging a pull request, or starting another
+  tracker item.
+- **Gate 2 implementation (2026-08-23):** SAFE-04 is **Verifying** with an exact 17-file unstaged
+  diff on `codex/safe-04-power-output-fail-stop`, still based on
+  `origin/master@81c43df42fe9807040a856292f82c9a220872089`. The nine production Java files implement the
+  approved success-only `PowerOutput` caches, FTC motor/CR-servo non-finite fail-stop, ordered exact
+  and mapped group cleanup, seven-diagnostic Mecanum parity, immediate composite-drive stop
+  semantics, truthful regulated-output wording, and the isolated-primitive versus terminal-host
+  lifecycle distinction. One framework guide and the public/private Javadocs are synchronized; six
+  focused test files cover the new and preserved behavior. No public signature, staged-builder
+  grammar, ordinary caller, robot, tool, vendor integration, mapping formula, finite saturation,
+  Mecanum mix/normalization rule, or motor-mode policy changed.
+- **Implemented software contract:** every Phoenix-owned power leaf/group cache starts unknown,
+  becomes `NaN` at top-level operation entry, and commits only after complete normal return.
+  Non-finite leaf/group commands issue no requested invalid command, begin their natural zero/stop
+  cleanup, and retain the actionable primary across cleanup `RuntimeException`s. Group and Mecanum
+  requested writes abandon later commands after a child/wheel `RuntimeException`, traverse cleanup
+  in stable order, retain exact primary identity, and suppress later distinct
+  `RuntimeException`s. Explicit stops traverse all children across `RuntimeException`s and publish
+  zero only after complete success. An `Error` remains uncaught and can interrupt later cleanup.
+  Raw operations remain repeatable for separately owned cleanup or isolated seam recovery; no
+  managed or approved advanced host may continue after an escaping runtime failure. Mecanum null
+  input invalidates prior diagnostics without touching wheels, and custom-output reentrant parent
+  commands remain outside SAFE-04's one-owner contract rather than acquiring an invented nested-stop
+  precedence.
+- **Focused automated evidence (2026-08-23):** Android Studio JBR 21 ran the ten approved focused
+  suites with **132/132 tests** and zero failures, errors, or skips:
+  `PlantUpdateCycleIntegrationTest` 6, `RegulatedPowerChannelTest` 17,
+  `DirectMecanumDriveApiTest` 5, `MecanumDrivebaseFailStopTest` 15,
+  `FtcActuatorMappingDomainValidationTest` 16, `FtcGroupedPowerOutputFailStopTest` 9,
+  `FtcHardwareCommandDomainValidationTest` 7, `FtcMotorPowerRunModeTest` 29,
+  `FtcPowerOutputFailStopTest` 6, and `FtcRobotOpModeTest` 22. The tests observe cache state from
+  inside SDK/child/wheel callbacks to prove post-return commit timing; seed known state before
+  invalid attempts; cover `NaN`/both infinities, pre/post-effect failures, every fan-out position,
+  exact attempt counts/order, self/distinct suppression, repeated stop, logical recovery, null
+  Mecanum input, all seven diagnostics, Plant same-cycle retention/different-cycle isolated retry,
+  later Plant-owned cleanup, and managed-host terminalization.
+- **Full automated and static evidence (2026-08-23):**
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:phoenixJavadocs` passed.
+  The generated XML contained **216 suites / 1,977 tests / 0 failures / 0 errors / 0 skips**. A final
+  wording-only follow-up reran strict `phoenixJavadocs` and `DocumentationLinksTest` 9/9. The only
+  output was the repository's existing Java-8-on-JDK-21 and deprecated FTC controller-sample
+  warnings. Source search finds exactly four production `PowerOutput` realizations: the two private
+  FtcActuators groups, private FTC motor leaf, and private anonymous CR-servo leaf. The production
+  public/protected declaration diff adds only the anonymous adapter's required `stop()` override;
+  no API surface was added. All 17 changed/untracked files pass `git diff --check`, final-newline,
+  balanced-fence, and trailing-whitespace checks including the untracked tests.
+- **Independent Gate 2 reviews:** separate correctness, API/construction/scope, and adversarial
+  tests/documentation reviews are **CLEAN**. Findings resolved before the final runs included
+  successful top-level commit-timing evidence, invalidation after prior success, exact repeated
+  cleanup counts, a middle-wheel post-effect failure, null-drive diagnostic truth, and precise
+  `RuntimeException` versus uncaught-`Error` wording. Reentrant custom-output calls back into their
+  parent were independently classified as a competing-writer/lifecycle-precedence design outside
+  this approved item; addressing them would require a new decision gate rather than a hidden latch.
+- **Evidence boundary:** no Control Hub, motor controller, motor, CR servo, drivetrain, or robot was
+  exercised. Tests establish only call order, exception structure, and software-seam diagnostics;
+  they do not establish SDK/device acceptance, electrical output, physical zero, actuator response,
+  motion stop, atomic fan-out, rollback, or safety. Representative-hardware observation remains
+  useful adopting-robot bring-up evidence for direction, wiring, mode/controller behavior, actual
+  zero response, and motion, but it is not required by the approved narrower completion contract.
+- **Android Studio review handoff and publication coordinates (2026-08-23):** inspect the unstaged
+  diff on `codex/safe-04-power-output-fail-stop`. In `PowerOutput`, `FtcHardware`, and the two private
+  FtcActuators groups, confirm initial/entry `NaN`, post-return-only commit, non-finite zero handling,
+  motor-mode preservation, ordered cleanup, exact primary/suppression behavior, repeated stop, and
+  uncaught `Error`. In `MecanumDrivebase`/`DriveCommandSink`, confirm unchanged finite mixing and
+  wheel order, all-seven diagnostic timing, null/no-wheel behavior, all-wheel fail-stop/stop
+  traversal, and physical-truth disclaimers. Inspect the three new failure suites, Plant integration
+  additions, existing fake-contract adjustments, and actuator guide for the same lifecycle and
+  evidence boundary. Nothing is staged, committed, or published. The resolved publication
+  coordinates are branch `codex/safe-04-power-output-fail-stop`, origin push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target branch `master`.
+- **Manual review and Gate 3 authorization (2026-08-23):** the user supplied the complete
+  destination-specific authorization after the Android Studio handoff, approving the reviewed
+  SAFE-04 diff and explicitly authorizing one commit on
+  `codex/safe-04-power-output-fail-stop`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. SAFE-04 is **Done**. This authorization is limited to the reviewed 17-file diff and
+  named publication coordinates; it does not start SENSOR-01 or another tracker item and does not
+  convert the documented software evidence into a robot-hardware claim.
 
 ### ACT-01 - FTC actuator-group identity validation
 

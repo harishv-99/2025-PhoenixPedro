@@ -61,14 +61,20 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  * {@code [0.0, 1.0]}; direct motor/CR-servo power must preserve zero and remain in
  * {@code [-1.0, +1.0]}; device-managed velocity must preserve zero; and device-managed motor
  * position must round into FTC's signed 32-bit tick domain. Grouped outputs compute and validate
- * every child command before changing their group cache or writing any child. This prevents a
- * partial requested-command fan-out; if rejection propagates through a Plant update, the Plant may
+ * every child command before writing any child. A grouped power output marks its top-level command
+ * unknown at operation entry, publishes the requested command only after every child write returns
+ * normally, and begins an ordered best-effort stop traversal after a non-finite request or
+ * child-write {@link RuntimeException}. The traversal continues across {@code RuntimeException}s;
+ * an {@link Error} remains uncaught and can interrupt later cleanup.
+ * This prevalidation prevents a partial fan-out caused by predictable command rejection; it cannot
+ * make sequential SDK writes atomic. If rejection propagates through a Plant update, the Plant may
  * then invoke the group's natural stop as a separate fail-safe cleanup. Inverse-mapped grouped
  * feedback returns {@link Double#NaN} if any child conversion or aggregate is non-finite.
  * A motor-position child transform describes only the native position coordinate; temporary
  * calibration-search power is a separate normalized command and fans out identically through each
- * configured motor direction. Stopping a grouped output attempts every child in declaration order;
- * if several stops fail, the first failure remains primary and later failures are suppressed.</p>
+ * configured motor direction. Stopping a grouped output traverses children in declaration order
+ * and continues across {@link RuntimeException}s; the first remains primary and later distinct
+ * failures are suppressed. An {@link Error} remains uncaught and can interrupt later stops.</p>
  *
  * <h2>Grouped hardware names</h2>
  *
@@ -4373,14 +4379,17 @@ public final class FtcActuators {
     }
 
     /**
-     * Exact shared-power fan-out. Every child is validated before any write, and the original
-     * value is copied directly so identity includes the signed-zero bit pattern.
+     * Exact shared-power fan-out. Every child is validated before any requested write, and the
+     * original value is copied directly so identity includes the signed-zero bit pattern.
+     * A fan-out ending in a {@link RuntimeException} abandons later requested writes and begins an
+     * ordered best-effort stop traversal. The traversal continues across {@code RuntimeException}s;
+     * an {@link Error} remains uncaught and can interrupt later cleanup.
      */
     private static final class IdentityGroupedPowerOutput implements PowerOutput {
         private final List<PowerOutput> outputs;
         private final List<String> names;
         private final String family;
-        private double last;
+        private double last = Double.NaN;
 
         private IdentityGroupedPowerOutput(List<PowerOutput> outputs,
                                            List<String> names,
@@ -4396,6 +4405,12 @@ public final class FtcActuators {
 
         @Override
         public void setPower(double power) {
+            last = Double.NaN;
+            if (!Double.isFinite(power)) {
+                IllegalArgumentException failure = nonFiniteGroupedPower(family, power);
+                throw attemptAllStopsAfterFailure(failure, outputs, PowerOutput::stop);
+            }
+
             double[] childPowers = new double[outputs.size()];
             for (int i = 0; i < outputs.size(); i++) {
                 childPowers[i] = power;
@@ -4405,10 +4420,15 @@ public final class FtcActuators {
                         1.0,
                         family + " runtime child " + (i + 1) + " ('" + names.get(i) + "')");
             }
-            last = power;
-            for (int i = 0; i < outputs.size(); i++) {
-                outputs.get(i).setPower(childPowers[i]);
+
+            try {
+                for (int i = 0; i < outputs.size(); i++) {
+                    outputs.get(i).setPower(childPowers[i]);
+                }
+            } catch (RuntimeException failure) {
+                throw attemptAllStopsAfterFailure(failure, outputs, PowerOutput::stop);
             }
+            last = power;
         }
 
         @Override
@@ -4418,19 +4438,25 @@ public final class FtcActuators {
 
         @Override
         public void stop() {
+            last = Double.NaN;
             attemptAllStops(outputs, PowerOutput::stop);
             last = 0.0;
         }
     }
 
-    /** Child-mapped fan-out for direct normalized-power Plants. */
+    /**
+     * Child-mapped fan-out for direct normalized-power Plants. Every mapped command is validated
+     * before requested writes begin; a fan-out ending in a {@link RuntimeException} begins an
+     * ordered best-effort stop traversal. The traversal continues across {@code RuntimeException}s;
+     * an {@link Error} remains uncaught and can interrupt later cleanup.
+     */
     private static final class GroupedPowerOutput implements PowerOutput {
         private final List<PowerOutput> outputs;
         private final double[] scales;
         private final double[] biases;
         private final List<String> names;
         private final String family;
-        private double last;
+        private double last = Double.NaN;
 
         private GroupedPowerOutput(List<PowerOutput> outputs,
                                    double[] scales,
@@ -4448,6 +4474,12 @@ public final class FtcActuators {
 
         @Override
         public void setPower(double power) {
+            last = Double.NaN;
+            if (!Double.isFinite(power)) {
+                IllegalArgumentException failure = nonFiniteGroupedPower(family, power);
+                throw attemptAllStopsAfterFailure(failure, outputs, PowerOutput::stop);
+            }
+
             double[] childPowers = new double[outputs.size()];
             for (int i = 0; i < outputs.size(); i++) {
                 childPowers[i] = mappedChildCommand(
@@ -4458,10 +4490,15 @@ public final class FtcActuators {
                         1.0,
                         family + " runtime child " + (i + 1) + " ('" + names.get(i) + "')");
             }
-            last = power;
-            for (int i = 0; i < outputs.size(); i++) {
-                outputs.get(i).setPower(childPowers[i]);
+
+            try {
+                for (int i = 0; i < outputs.size(); i++) {
+                    outputs.get(i).setPower(childPowers[i]);
+                }
+            } catch (RuntimeException failure) {
+                throw attemptAllStopsAfterFailure(failure, outputs, PowerOutput::stop);
             }
+            last = power;
         }
 
         @Override
@@ -4471,6 +4508,7 @@ public final class FtcActuators {
 
         @Override
         public void stop() {
+            last = Double.NaN;
             attemptAllStops(outputs, PowerOutput::stop);
             last = 0.0;
         }
@@ -4622,12 +4660,32 @@ public final class FtcActuators {
     private static <T> void attemptAllStops(
             List<T> outputs,
             Consumer<? super T> stopAction) {
-        Runnable[] stopActions = new Runnable[outputs.size()];
+        CleanupActions.attemptAll(stopActions(outputs, stopAction));
+    }
+
+    private static <T> RuntimeException attemptAllStopsAfterFailure(
+            RuntimeException failure,
+            List<T> outputs,
+            Consumer<? super T> stopAction) {
+        return CleanupActions.attemptAllAfterFailure(
+                failure,
+                stopActions(outputs, stopAction));
+    }
+
+    private static <T> Runnable[] stopActions(
+            List<T> outputs,
+            Consumer<? super T> stopAction) {
+        Runnable[] actions = new Runnable[outputs.size()];
         for (int index = 0; index < outputs.size(); index++) {
             T output = outputs.get(index);
-            stopActions[index] = () -> stopAction.accept(output);
+            actions[index] = () -> stopAction.accept(output);
         }
-        CleanupActions.attemptAll(stopActions);
+        return actions;
+    }
+
+    private static IllegalArgumentException nonFiniteGroupedPower(String family, double power) {
+        return new IllegalArgumentException(family + " runtime power must be finite and inside "
+                + "[-1.0, 1.0], got " + power);
     }
 
     private static void ensureMotorFeedbackAvailable(List<MotorBuilder.Spec> motorSpecs, String domain) {

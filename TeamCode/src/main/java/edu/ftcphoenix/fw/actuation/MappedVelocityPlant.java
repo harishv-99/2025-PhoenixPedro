@@ -27,9 +27,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * keeps the mapping exception primary while invoking the output's natural stop best-effort:
  * successful cleanup publishes the same zero-applied stopped diagnostic state as {@link #stop()},
  * while a failed stop retains the prior applied/status/resolution facts and is suppressed. Unlike
- * explicit {@code stop()}, this internal fail-stop is nonterminal so an advanced host may correct
- * the cause and retry. A non-finite inverse conversion publishes measurement {@link Double#NaN}
- * and cannot be at target.</p>
+ * explicit {@code stop()}, this internal fail-stop does not terminalize the primitive; an isolated
+ * deterministic fixture may exercise a different-cycle attempt. A runtime failure escaping any
+ * managed or approved advanced host lifecycle phase is nevertheless terminal for that host. A
+ * non-finite inverse conversion publishes measurement {@link Double#NaN} and cannot be at
+ * target.</p>
  */
 final class MappedVelocityPlant implements Plant {
 

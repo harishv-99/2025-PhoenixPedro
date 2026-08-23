@@ -125,6 +125,49 @@ public final class PlantUpdateCycleIntegrationTest {
     }
 
     @Test
+    public void isolatedFixtureMayRetryAFailedPlantOnADifferentCycle() {
+        RuntimeException firstFailure = new IllegalStateException("first write failed");
+        RecoveringPowerOutput output = new RecoveringPowerOutput(firstFailure);
+        CountingResolver resolver = new CountingResolver(0.4);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromResolver(resolver)
+                .build();
+        ManualLoopClock time = new ManualLoopClock();
+
+        assertSame(firstFailure, expectRuntime(() -> plant.update(time.clock())));
+        assertEquals(1, output.writes);
+        assertEquals(1, output.stops);
+        assertEquals(0.0, output.getCommandedPower(), 0.0);
+
+        plant.update(time.nextCycle(0.02));
+
+        assertEquals(2, resolver.resolutions);
+        assertEquals(2, output.writes);
+        assertEquals(1, output.stops);
+        assertEquals(0.4, output.getCommandedPower(), 0.0);
+        assertEquals(0.4, plant.getAppliedTarget(), 0.0);
+    }
+
+    @Test
+    public void outputLocalFailStopDoesNotSuppressThePlantOwnedStopAttempt() {
+        RuntimeException writeFailure = new IllegalStateException("write failed after local stop");
+        LocallyFailStoppingPowerOutput output =
+                new LocallyFailStoppingPowerOutput(writeFailure);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromNewCommand(0.4)
+                .build();
+        ManualLoopClock time = new ManualLoopClock();
+
+        assertSame(writeFailure, expectRuntime(() -> plant.update(time.clock())));
+
+        assertEquals(1, output.writes);
+        assertEquals(2, output.stopAttempts);
+        assertEquals(0.0, output.getCommandedPower(), 0.0);
+    }
+
+    @Test
     public void reentrantHeartbeatFailsFastAndTheOuterAttemptRetainsThatFailure() {
         ManualLoopClock time = new ManualLoopClock();
         CountingResolver resolver = new CountingResolver(0.4);
@@ -274,6 +317,70 @@ public final class PlantUpdateCycleIntegrationTest {
         public void setPower(double power) {
             super.setPower(power);
             throw failure;
+        }
+    }
+
+    private static final class RecoveringPowerOutput implements PowerOutput {
+        private final RuntimeException firstFailure;
+        private double commandedPower = Double.NaN;
+        private int writes;
+        private int stops;
+
+        private RecoveringPowerOutput(RuntimeException firstFailure) {
+            this.firstFailure = firstFailure;
+        }
+
+        @Override
+        public void setPower(double power) {
+            commandedPower = Double.NaN;
+            writes++;
+            if (writes == 1) {
+                throw firstFailure;
+            }
+            commandedPower = power;
+        }
+
+        @Override
+        public double getCommandedPower() {
+            return commandedPower;
+        }
+
+        @Override
+        public void stop() {
+            commandedPower = Double.NaN;
+            stops++;
+            commandedPower = 0.0;
+        }
+    }
+
+    private static final class LocallyFailStoppingPowerOutput implements PowerOutput {
+        private final RuntimeException writeFailure;
+        private double commandedPower = Double.NaN;
+        private int writes;
+        private int stopAttempts;
+
+        private LocallyFailStoppingPowerOutput(RuntimeException writeFailure) {
+            this.writeFailure = writeFailure;
+        }
+
+        @Override
+        public void setPower(double power) {
+            commandedPower = Double.NaN;
+            writes++;
+            stopAttempts++;
+            throw writeFailure;
+        }
+
+        @Override
+        public double getCommandedPower() {
+            return commandedPower;
+        }
+
+        @Override
+        public void stop() {
+            commandedPower = Double.NaN;
+            stopAttempts++;
+            commandedPower = 0.0;
         }
     }
 

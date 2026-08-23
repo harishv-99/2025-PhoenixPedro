@@ -59,9 +59,15 @@ public interface DriveCommandSink {
     /**
      * Stop drive output immediately.
      *
-     * <p>Implementations should make a best effort to leave the drivetrain in a predictable,
-     * motionless state. Merely staging a zero command for a future heartbeat does not satisfy this
-     * contract.</p>
+     * <p>An implementation must immediately make its best-effort stop call at the owned realization
+     * boundary. A composite sink should attempt every independently owned child even when an
+     * earlier child throws a {@link RuntimeException}, retain the first such exception as primary,
+     * and suppress later distinct {@code RuntimeException}s. An {@link Error} remains uncaught.
+     * Merely staging a zero command for a future heartbeat does not satisfy this contract.</p>
+     *
+     * <p>A normal return means only that the sink's immediate stop calls returned normally. It does
+     * not prove atomic realization, SDK or device acceptance, physical zero output, or that motion
+     * has stopped.</p>
      */
     void stop();
 }

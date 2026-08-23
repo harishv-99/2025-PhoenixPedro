@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 
 /**
@@ -46,6 +47,23 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  * intended direction and ratios even at full-stick inputs, instead of independently
  * clamping each wheel. A final clamp to [-1, +1] is applied for numerical safety.
  * </p>
+ *
+ * <h2>Failure and diagnostics contract</h2>
+ *
+ * <p>All seven last-command diagnostics are {@link Double#NaN} until a complete
+ * {@link #drive(DriveSignal)} or {@link #stop()} operation returns normally. A drive command is
+ * committed to those diagnostics only after all four wheel writes return normally. A non-finite
+ * signal, a non-finite derived wheel power, a partial wheel write, or a failed stop leaves every
+ * diagnostic unknown ({@code NaN}). A later complete operation may establish known diagnostics
+ * again.</p>
+ *
+ * <p>On a rejected non-finite command or a wheel-write {@link RuntimeException}, the drivebase
+ * abandons any remaining requested wheel writes and immediately begins one best-effort stop
+ * traversal in front-left, front-right, back-left, back-right order. The traversal continues across
+ * {@code RuntimeException}s: the original command failure remains primary and distinct cleanup
+ * failures are suppressed onto it. An {@link Error} remains uncaught and can interrupt later
+ * cleanup. This ordering and bookkeeping contract does not make the four hardware writes atomic,
+ * prove that an SDK or device accepted a command, or prove physical motion stopped.</p>
  *
  * <h2>Typical FTC usage</h2>
  *
@@ -162,15 +180,15 @@ public final class MecanumDrivebase implements DriveCommandSink {
     private final Config cfg;
 
     // Last commanded drive components after drivebase scaling.
-    private double lastAxialCmd;
-    private double lastLateralCmd;
-    private double lastOmegaCmd;
+    private double lastAxialCmd = Double.NaN;
+    private double lastLateralCmd = Double.NaN;
+    private double lastOmegaCmd = Double.NaN;
 
     // Last commanded wheel powers (after normalization/clamping).
-    private double lastFlPower;
-    private double lastFrPower;
-    private double lastBlPower;
-    private double lastBrPower;
+    private double lastFlPower = Double.NaN;
+    private double lastFrPower = Double.NaN;
+    private double lastBlPower = Double.NaN;
+    private double lastBrPower = Double.NaN;
 
     /**
      * Construct a new mecanum drivebase.
@@ -215,23 +233,39 @@ public final class MecanumDrivebase implements DriveCommandSink {
      * to the hardware outputs (via {@link PowerOutput#setPower(double)}). It does not
      * "latch" the command for a later update.</p>
      *
+     * <p>All signal components and all four mixed wheel powers must be finite. Invalid commands are
+     * rejected before any requested wheel-power write. A null signal makes the diagnostics unknown
+     * and fails without touching the wheels. Non-finite rejection and a partial write ending in a
+     * {@link RuntimeException} use the class-level best-effort fail-stop behavior. A normal return
+     * records the fully submitted top-level command in the diagnostic getters; it does not report
+     * per-wheel hardware acceptance.</p>
+     *
      * <p><b>Rate limiting:</b> {@code MecanumDrivebase} is intentionally a sink, not a behavior
      * shaper. Use {@link DriveSource#rateLimited(double, double)} before calling this method.</p>
      *
      * @param s drive command (must not be {@code null})
+     * @throws NullPointerException if {@code s} is null
+     * @throws IllegalArgumentException if a signal component or derived wheel power is non-finite
+     * @throws RuntimeException if a wheel write or fail-stop action fails; a wheel-write failure
+     * remains primary and distinct fail-stop failures are suppressed onto it
      */
     @Override
     public void drive(DriveSignal s) {
+        markDiagnosticsUnknown();
         Objects.requireNonNull(s, "s");
+
+        if (!Double.isFinite(s.axial)
+                || !Double.isFinite(s.lateral)
+                || !Double.isFinite(s.omega)) {
+            throw failStop(new IllegalArgumentException(
+                    "MecanumDrivebase.drive requires finite DriveSignal components; got axial="
+                            + s.axial + ", lateral=" + s.lateral + ", omega=" + s.omega));
+        }
 
         // 1) Apply drivebase-level scaling from the config.
         double axialCmd = s.axial * cfg.maxAxial;
         double lateralCmd = s.lateral * cfg.maxLateral;
         double omegaCmd = s.omega * cfg.maxOmega;
-
-        lastAxialCmd = axialCmd;
-        lastLateralCmd = lateralCmd;
-        lastOmegaCmd = omegaCmd;
 
         // 2) Basic mecanum mixing with the scaled components.
         //    Sign conventions (robot-centric):
@@ -242,6 +276,17 @@ public final class MecanumDrivebase implements DriveCommandSink {
         double frP = axialCmd + lateralCmd + omegaCmd;
         double blP = axialCmd + lateralCmd - omegaCmd;
         double brP = axialCmd - lateralCmd + omegaCmd;
+
+        if (!Double.isFinite(flP)
+                || !Double.isFinite(frP)
+                || !Double.isFinite(blP)
+                || !Double.isFinite(brP)) {
+            throw failStop(new IllegalArgumentException(
+                    "MecanumDrivebase.drive derived non-finite wheel power before fanout; got"
+                            + " fl=" + flP + ", fr=" + frP + ", bl=" + blP + ", br=" + brP
+                            + " from scaled axial=" + axialCmd + ", lateral=" + lateralCmd
+                            + ", omega=" + omegaCmd));
+        }
 
         // 3) Normalize wheel powers if any exceeds |1.0| to preserve direction.
         double maxMag = Math.max(
@@ -256,38 +301,72 @@ public final class MecanumDrivebase implements DriveCommandSink {
         blP /= maxMag;
         brP /= maxMag;
 
-        // 4) Final clamp (mainly for numerical safety) and apply,
-        //    while tracking last commanded values.
-        lastFlPower = MathUtil.clamp(flP, -1.0, 1.0);
-        lastFrPower = MathUtil.clamp(frP, -1.0, 1.0);
-        lastBlPower = MathUtil.clamp(blP, -1.0, 1.0);
-        lastBrPower = MathUtil.clamp(brP, -1.0, 1.0);
+        // 4) Final clamp (mainly for numerical safety), then apply in documented order.
+        double flPower = MathUtil.clamp(flP, -1.0, 1.0);
+        double frPower = MathUtil.clamp(frP, -1.0, 1.0);
+        double blPower = MathUtil.clamp(blP, -1.0, 1.0);
+        double brPower = MathUtil.clamp(brP, -1.0, 1.0);
 
-        fl.setPower(lastFlPower);
-        fr.setPower(lastFrPower);
-        bl.setPower(lastBlPower);
-        br.setPower(lastBrPower);
+        try {
+            fl.setPower(flPower);
+            fr.setPower(frPower);
+            bl.setPower(blPower);
+            br.setPower(brPower);
+        } catch (RuntimeException writeFailure) {
+            throw failStop(writeFailure);
+        }
+
+        lastAxialCmd = axialCmd;
+        lastLateralCmd = lateralCmd;
+        lastOmegaCmd = omegaCmd;
+        lastFlPower = flPower;
+        lastFrPower = frPower;
+        lastBlPower = blPower;
+        lastBrPower = brPower;
     }
 
     /**
-     * Immediately stop all four drive outputs through their lifecycle stop hooks and reset last
-     * command bookkeeping.
+     * Immediately make a best-effort stop attempt through all four wheel lifecycle hooks in
+     * front-left, front-right, back-left, back-right order.
+     *
+     * <p>The traversal continues across {@link RuntimeException}s. The first remains primary, later
+     * distinct failures are suppressed in wheel order, and all diagnostics remain {@code NaN}. An
+     * {@link Error} remains uncaught and can interrupt later stops. Diagnostics become zero only
+     * after all four stop calls return normally. Either outcome describes calls at the software
+     * boundary, not physical device state.</p>
      */
     @Override
     public void stop() {
+        markDiagnosticsUnknown();
+        CleanupActions.attemptAll(fl::stop, fr::stop, bl::stop, br::stop);
+
         lastAxialCmd = 0.0;
         lastLateralCmd = 0.0;
         lastOmegaCmd = 0.0;
-
         lastFlPower = 0.0;
         lastFrPower = 0.0;
         lastBlPower = 0.0;
         lastBrPower = 0.0;
+    }
 
-        fl.stop();
-        fr.stop();
-        bl.stop();
-        br.stop();
+    private RuntimeException failStop(RuntimeException primaryFailure) {
+        markDiagnosticsUnknown();
+        return CleanupActions.attemptAllAfterFailure(
+                primaryFailure,
+                fl::stop,
+                fr::stop,
+                bl::stop,
+                br::stop);
+    }
+
+    private void markDiagnosticsUnknown() {
+        lastAxialCmd = Double.NaN;
+        lastLateralCmd = Double.NaN;
+        lastOmegaCmd = Double.NaN;
+        lastFlPower = Double.NaN;
+        lastFrPower = Double.NaN;
+        lastBlPower = Double.NaN;
+        lastBrPower = Double.NaN;
     }
 
     // ------------------------------------------------------------------------
@@ -330,49 +409,56 @@ public final class MecanumDrivebase implements DriveCommandSink {
     // ------------------------------------------------------------------------
 
     /**
-     * @return last commanded scaled axial command.
+     * @return last fully submitted scaled axial command, or {@code NaN} before the first complete
+     * operation and after a failed or partial operation
      */
     public double getLastAxialCmd() {
         return lastAxialCmd;
     }
 
     /**
-     * @return last commanded scaled lateral command.
+     * @return last fully submitted scaled lateral command, or {@code NaN} before the first complete
+     * operation and after a failed or partial operation
      */
     public double getLastLateralCmd() {
         return lastLateralCmd;
     }
 
     /**
-     * @return last commanded scaled omega command.
+     * @return last fully submitted scaled omega command, or {@code NaN} before the first complete
+     * operation and after a failed or partial operation
      */
     public double getLastOmegaCmd() {
         return lastOmegaCmd;
     }
 
     /**
-     * @return last commanded (normalized &amp; clamped) power for front-left wheel.
+     * @return last fully submitted normalized front-left power, or {@code NaN} before the first
+     * complete operation and after a failed or partial operation
      */
     public double getLastFlPower() {
         return lastFlPower;
     }
 
     /**
-     * @return last commanded (normalized &amp; clamped) power for front-right wheel.
+     * @return last fully submitted normalized front-right power, or {@code NaN} before the first
+     * complete operation and after a failed or partial operation
      */
     public double getLastFrPower() {
         return lastFrPower;
     }
 
     /**
-     * @return last commanded (normalized &amp; clamped) power for back-left wheel.
+     * @return last fully submitted normalized back-left power, or {@code NaN} before the first
+     * complete operation and after a failed or partial operation
      */
     public double getLastBlPower() {
         return lastBlPower;
     }
 
     /**
-     * @return last commanded (normalized &amp; clamped) power for back-right wheel.
+     * @return last fully submitted normalized back-right power, or {@code NaN} before the first
+     * complete operation and after a failed or partial operation
      */
     public double getLastBrPower() {
         return lastBrPower;

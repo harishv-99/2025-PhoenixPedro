@@ -139,8 +139,9 @@ public interface Plant {
      * <p>Open-loop plants default to {@code false} because Phoenix cannot prove physical arrival.
      * Framework-regulated feedback Plants additionally require the latest regulated actuation to
      * have completed normally; stop or a failed actuation invalidates completion evidence. A
-     * failed actuation may be retried by an advanced host after correcting its cause, while an
-     * explicit stop is terminal.</p>
+     * different-cycle attempt remains mechanically available to an isolated deterministic fixture,
+     * while any failure escaping a managed or approved advanced host lifecycle phase is terminal.
+     * An explicit stop is also terminal.</p>
      */
     default boolean atTarget() {
         return false;

@@ -54,7 +54,9 @@ public final class FtcHardware {
      *
      * <p>{@link PowerOutput#stop()} writes zero directly without acquiring or restoring a mode. A
      * deliberate handoff must stop the old updater before the new owner begins commanding the
-     * motor; this adapter does not make simultaneous writers valid.</p>
+     * motor; this adapter does not make simultaneous writers valid. The returned adapter has the
+     * same success-only cache and non-finite fail-stop contract documented by
+     * {@link #motorPower(DcMotorEx, Direction)}.</p>
      *
      * @param hw FTC hardware map used to look up the motor
      * @param name configured hardware name of the {@link DcMotorEx}
@@ -79,11 +81,17 @@ public final class FtcHardware {
      * not already in {@link DcMotor.RunMode#RUN_WITHOUT_ENCODER}, the command path first writes zero,
      * selects that raw-power mode, verifies it, and then writes the requested value. A failed mode
      * acquisition requests a best-effort zero and reports the motor, observed mode, and required
-     * mode while retaining the underlying and suppressed cleanup failures.</p>
+     * mode while retaining the underlying and suppressed cleanup {@link RuntimeException}s. An
+     * {@link Error} remains uncaught.</p>
      *
      * <p>The adapter never resets encoder position. Its {@link PowerOutput#stop()} implementation
      * writes zero without changing mode, so stopping an inactive output cannot steal mode ownership
-     * from another deliberate owner.</p>
+     * from another deliberate owner. The cached command starts unknown, is committed only after a
+     * complete successful command or stop, and becomes unknown before every later attempt. A
+     * non-finite command requests a best-effort zero without acquiring a mode, then throws an
+     * actionable {@link IllegalArgumentException}, suppressing a distinct cleanup
+     * {@link RuntimeException}. A cleanup {@link Error} remains uncaught. That fail-stop attempt
+     * does not establish a known cached command even when the zero write returns normally.</p>
      *
      * @param motor     FTC motor instance to command
      * @param direction logical forward direction for Phoenix commands
@@ -192,8 +200,9 @@ public final class FtcHardware {
     /**
      * FTC motor output whose power commands conditionally acquire the SDK's raw-power run mode.
      *
-     * <p>The cached command retains the adapter's existing seam-level behavior: it records the
-     * clamped request before attempting hardware access. It is not hardware acknowledgement.</p>
+     * <p>The cached command records only a clamped request whose complete top-level submission
+     * returned normally. It starts and remains unknown across failed command or stop attempts. It
+     * is not hardware acknowledgement.</p>
      */
     private static final class FtcMotorPowerOutput implements PowerOutput {
         private static final DcMotor.RunMode REQUIRED_MODE =
@@ -202,7 +211,7 @@ public final class FtcHardware {
         private final DcMotorEx motor;
         private final String description;
         private FtcMotorPowerGroup group;
-        private double last;
+        private double last = Double.NaN;
 
         private FtcMotorPowerOutput(DcMotorEx motor, String description) {
             this.motor = motor;
@@ -211,13 +220,19 @@ public final class FtcHardware {
 
         @Override
         public void setPower(double power) {
-            last = MathUtil.clampAbs(power, 1.0);
+            last = Double.NaN;
+            if (!Double.isFinite(power)) {
+                rejectNonFinitePower(power);
+            }
+
+            double next = MathUtil.clampAbs(power, 1.0);
             if (group != null) {
                 group.beforeCommand(this);
             } else {
                 acquireRequiredModeIfNeeded();
             }
-            motor.setPower(last);
+            motor.setPower(next);
+            last = next;
         }
 
         @Override
@@ -233,11 +248,27 @@ public final class FtcHardware {
          */
         @Override
         public void stop() {
+            last = Double.NaN;
             if (group != null) {
                 group.invalidateBatch();
             }
-            last = 0.0;
             motor.setPower(0.0);
+            last = 0.0;
+        }
+
+        private void rejectNonFinitePower(double power) {
+            IllegalArgumentException failure = nonFinitePowerFailure(
+                    power,
+                    "FTC motor " + description());
+            if (group != null) {
+                group.invalidateBatch();
+            }
+            try {
+                motor.setPower(0.0);
+            } catch (RuntimeException cleanupFailure) {
+                addSuppressedDistinct(failure, cleanupFailure);
+            }
+            throw failure;
         }
 
         private void acquireRequiredModeIfNeeded() {
@@ -344,6 +375,9 @@ public final class FtcHardware {
     /**
      * Create a Phoenix {@link PowerOutput} for a named FTC continuous-rotation servo.
      *
+     * <p>The returned adapter has the same finite saturation, success-only cache, and non-finite
+     * fail-stop contract documented by {@link #crServoPower(CRServo, Direction)}.</p>
+     *
      * @param hw        FTC hardware map used to look up the CR servo
      * @param name      configured hardware name of the {@link CRServo}
      * @param direction logical forward direction for Phoenix commands
@@ -359,8 +393,13 @@ public final class FtcHardware {
     /**
      * Create a Phoenix {@link PowerOutput} for an FTC continuous-rotation servo instance.
      *
-     * <p>The adapter configures the servo direction immediately and clamps every commanded value to
-     * {@code [-1.0, +1.0]} before forwarding it to the FTC SDK.</p>
+     * <p>The adapter configures the servo direction immediately and clamps every finite commanded
+     * value to {@code [-1.0, +1.0]} before forwarding it to the FTC SDK. Its cached command starts
+     * unknown, is committed only after a complete successful command or stop, and becomes unknown
+     * before every later attempt. A non-finite command requests a best-effort zero, then throws an
+     * actionable {@link IllegalArgumentException}, suppressing a distinct cleanup
+     * {@link RuntimeException}. A cleanup {@link Error} remains uncaught. That fail-stop attempt
+     * does not establish a known cached command even when the zero write returns normally.</p>
      *
      * @param servo FTC continuous-rotation servo to command
      * @param direction logical forward direction for Phoenix commands
@@ -376,17 +415,38 @@ public final class FtcHardware {
                 : CRServo.Direction.FORWARD);
 
         return new PowerOutput() {
-            private double last;
+            private double last = Double.NaN;
 
             @Override
             public void setPower(double power) {
-                last = MathUtil.clampAbs(power, 1.0);
-                servo.setPower(last);
+                last = Double.NaN;
+                if (!Double.isFinite(power)) {
+                    IllegalArgumentException failure = nonFinitePowerFailure(
+                            power,
+                            "FTC continuous-rotation servo");
+                    try {
+                        servo.setPower(0.0);
+                    } catch (RuntimeException cleanupFailure) {
+                        addSuppressedDistinct(failure, cleanupFailure);
+                    }
+                    throw failure;
+                }
+
+                double next = MathUtil.clampAbs(power, 1.0);
+                servo.setPower(next);
+                last = next;
             }
 
             @Override
             public double getCommandedPower() {
                 return last;
+            }
+
+            @Override
+            public void stop() {
+                last = Double.NaN;
+                servo.setPower(0.0);
+                last = 0.0;
             }
         };
     }
@@ -664,6 +724,19 @@ public final class FtcHardware {
                     + value);
         }
         return value;
+    }
+
+    private static IllegalArgumentException nonFinitePowerFailure(double power,
+                                                                  String outputDescription) {
+        return new IllegalArgumentException(outputDescription + " power command must be finite, got "
+                + power + "; use a finite normalized value in [-1.0, +1.0]");
+    }
+
+    private static void addSuppressedDistinct(RuntimeException primaryFailure,
+                                              RuntimeException cleanupFailure) {
+        if (cleanupFailure != primaryFailure) {
+            primaryFailure.addSuppressed(cleanupFailure);
+        }
     }
 
     private static int checkedMotorTargetTicks(double position) {

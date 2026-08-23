@@ -257,7 +257,48 @@ These checks happen before the cache, mode, target, or power effects owned by th
 adapter. The standard Servo adapter still clamps a finite direct expert command into `[0.0, 1.0]`,
 and the raw power adapters retain their finite saturation defense. Those clamps are last-resort
 boundary protection, not a way for an accepted Plant recipe to hide an invalid map. Raw
-`PowerOutput` write/cache/cleanup behavior after an adapter failure is a separate contract.
+`PowerOutput` write/cache/cleanup behavior follows the contract below.
+
+### Power-output command and failure truth
+
+Every conforming `PowerOutput`, including a custom adapter supplied through
+`Plants.fromOutputs()`, reports only top-level logical command truth. Its command cache starts as
+`NaN`, becomes unknown before every command or stop attempt, and publishes a value only after that
+complete operation returns normally. A throwing validation, preflight, child, SDK, or cleanup call
+leaves it unknown. A later independently invoked successful command or stop may establish a known
+logical value again.
+
+A non-finite raw request is never forwarded as requested power. The output creates an actionable
+`IllegalArgumentException` and best-effort invokes its natural zero behavior. After normal cleanup
+or a cleanup `RuntimeException`, it throws that primary with any distinct cleanup
+`RuntimeException` suppressed. A cleanup `Error` remains uncaught. That nested zero is cleanup, not
+a separate successful top-level command, and the top-level cache remains unknown. FTC motor cleanup
+writes zero without acquiring or restoring a run mode. Finite FTC motor and CR-servo requests
+retain their last-resort saturation to `[-1.0, +1.0]`, and publish the saturated value only after
+all adapter work returns normally.
+
+The exact and mapped FtcActuators power groups calculate and validate every child command before
+the first requested write. A finite mapping rejection therefore performs no requested child write
+or cleanup, while leaving the attempted group's cache unknown. A non-finite top-level request
+instead begins an ordered best-effort stop traversal and throws without requested fan-out. Once
+requested fan-out has begun, a child write `RuntimeException` abandons later requested writes and
+begins the same traversal, including the failed and not-yet-written children. Cleanup continues
+across `RuntimeException`s; the exact write failure remains primary and distinct cleanup
+`RuntimeException`s are suppressed in order. An `Error` remains uncaught and can interrupt later
+cleanup.
+
+Grouped `stop()` attempts every child in declaration order, continuing across
+`RuntimeException`s. It publishes group zero only if every child stop returns normally; otherwise
+the first `RuntimeException` remains primary, later distinct failures are suppressed, and the group
+cache is `NaN`. An `Error` remains uncaught and can interrupt later stops. A child may publish zero
+after its own successful cleanup while the enclosing failed group remains unknown. These ordered
+SDK calls are not atomic and do not roll back. Neither a finite cache value nor `NaN` proves SDK
+acceptance, controller state, electrical output, physical zero, actuator response, or safety.
+
+Raw output operations remain repeatable so an independently owned cleanup attempt is never
+suppressed and an isolated deterministic fixture can test logical recovery. That is not a robot-host
+recovery policy: a `RuntimeException` escaping any managed or approved advanced host lifecycle
+phase is terminal and triggers the host's owned best-effort cleanup.
 
 ---
 
@@ -679,7 +720,7 @@ named motor group for ordinary robot code.
 | Finite result inside `[-1.0, +1.0]` | Submit it unchanged, including exact boundaries and signed zero. |
 | Finite result outside `[-1.0, +1.0]` | Saturate it to the nearest boundary and submit the normalized value. |
 | `NaN` or either infinity | Do not submit it; best-effort stop the output, reset control state, and throw an actionable failure. |
-| Control evaluation or output write throws | Best-effort stop and reset, then rethrow the original failure with cleanup failures suppressed. |
+| Control evaluation or output write throws a `RuntimeException` | Best-effort stop and reset, then rethrow the original failure with cleanup `RuntimeException`s suppressed; an `Error` remains uncaught. |
 
 Finite saturation at this universal boundary is normal actuator-domain behavior. It does not reset
 control state. Standard control uses post-control `outputPowerLimitedTo(...)` for an intentional
@@ -696,12 +737,13 @@ control reset fails, the stop throws while retaining the truthful seam-level "ze
 fact. If the output stop itself throws, cleanup cannot invent that fact. Either way the Plant remains
 terminal, and `atTarget()` and `atTarget(value)` cannot become true from a later update.
 
-A runtime mapping, regulator, or output failure uses an internal nonterminal fail-stop,
-resets the control state it owns, and propagates the original failure. This is not public
-`Plant.stop()`: an advanced/custom host may correct the cause and retry a later update. The ordinary
-managed runtime instead treats the propagated failure as program-terminal cleanup. A successful
-internal output stop may publish target status `STOPPED` as a diagnostic fact even though that
-advanced retry remains possible; `PlantTargetStatus` is not a terminal-lifecycle query.
+A runtime mapping, regulator, or output failure uses an internal nonterminal fail-stop, resets the
+control state it owns, and propagates the original failure. This is not public `Plant.stop()`: an
+isolated deterministic fixture can exercise the primitive's mechanically available
+different-cycle attempt. It is not permission for a robot host to recover. The managed runtime and
+every approved advanced host treat a propagated lifecycle failure as terminal and perform owned
+best-effort cleanup. A successful internal output stop may publish target status `STOPPED` as a
+diagnostic fact; `PlantTargetStatus` is not a terminal-lifecycle query.
 
 The debug fields deliberately keep different kinds of truth separate:
 
@@ -914,10 +956,11 @@ Plant-unit feedback arithmetic must finish finite; otherwise measurement is unav
 
 A runtime forward-mapping overflow throws an actionable `IllegalStateException` before submitting
 the invalid command, then best-effort invokes the output's natural nonterminal fail-stop. It does
-not call terminal `Plant.stop()`, so an advanced host may correct the cause and retry a later update.
-If cleanup itself fails, that failure is suppressed under the original mapping failure and prior
-applied/status/resolution state is retained. This deterministic mapping policy does not claim that
-arbitrary SDK writes are transactional.
+not call terminal `Plant.stop()`, so an isolated deterministic fixture can exercise a later-cycle
+primitive attempt. A failure escaping any managed or approved advanced host remains terminal for
+that host. If cleanup itself fails, that failure is suppressed under the original mapping failure
+and prior applied/status/resolution state is retained. This deterministic mapping policy does not
+claim that arbitrary SDK writes are transactional.
 
 ---
 
