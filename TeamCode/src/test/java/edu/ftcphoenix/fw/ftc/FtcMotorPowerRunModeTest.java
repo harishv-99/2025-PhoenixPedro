@@ -57,7 +57,7 @@ public final class FtcMotorPowerRunModeTest {
         assertEquals(0, motor.getModeCalls);
         assertEquals(0, motor.setModeCalls);
         assertEquals(0, motor.setPowerCalls);
-        assertEquals(0.0, output.getCommandedPower(), EPSILON);
+        assertTrue(Double.isNaN(output.getCommandedPower()));
     }
 
     @Test

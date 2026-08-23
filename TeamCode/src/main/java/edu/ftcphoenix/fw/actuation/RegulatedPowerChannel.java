@@ -224,7 +224,7 @@ final class RegulatedPowerChannel {
 
     /**
      * Reassert terminal zero at the main and optional distinct companion outputs, attempting all
-     * physical stops but never resetting the regulator again.
+     * output stop operations but never resetting the regulator again.
      */
     void reassertTerminalOutputStop(PowerOutput companionOutput) {
         RuntimeException primary = null;
@@ -244,8 +244,9 @@ final class RegulatedPowerChannel {
             }
         }
 
-        // Keep the controller-reset result established by the terminal stop. Only physical output
-        // truth is refreshed here: successful reassertion proves zero; any failure makes it unknown.
+        // Keep the controller-reset result established by the terminal stop. Only seam-level
+        // command truth is refreshed here: normal reassertion submits zero; any failure makes that
+        // logical command unknown. Neither result proves physical output.
         publishStopDiagnostics(allOutputStopsSucceeded, lastResetSucceeded);
         terminalStopReassertRequired = false;
         if (primary != null) throw primary;

@@ -764,25 +764,39 @@ public final class FtcActuatorMappingDomainValidationTest {
             assertEquals(DcMotor.RunMode.RUN_TO_POSITION, second.mode);
         }
 
-        int firstPowerWrites = first.powerWrites;
-        int secondPowerWrites = second.powerWrites;
+        int firstPowerWritesBeforeInvalid = first.powerWrites;
+        int secondPowerWritesBeforeInvalid = second.powerWrites;
         int firstModeWrites = first.modeWrites;
         int secondModeWrites = second.modeWrites;
         DcMotor.RunMode firstMode = first.mode;
         DcMotor.RunMode secondMode = second.mode;
-        double firstPower = first.lastPower;
-        double secondPower = second.lastPower;
-        for (double invalidPower : new double[]{Double.NaN, -1.01, 1.01}) {
+
+        // Non-finite raw input owns a group-local all-child cleanup attempt. Finite domain
+        // rejection remains an all-before-effects validation path.
+        expect(IllegalArgumentException.class, () -> groupedSearch.setPower(Double.NaN));
+        assertTrue(Double.isNaN(groupedSearch.getCommandedPower()));
+        assertEquals(firstPowerWritesBeforeInvalid + 1, first.powerWrites);
+        assertEquals(secondPowerWritesBeforeInvalid + 1, second.powerWrites);
+        assertEquals(firstModeWrites, first.modeWrites);
+        assertEquals(secondModeWrites, second.modeWrites);
+        assertEquals(firstMode, first.mode);
+        assertEquals(secondMode, second.mode);
+        assertRawDoubleEquals(0.0, first.lastPower);
+        assertRawDoubleEquals(0.0, second.lastPower);
+
+        int firstPowerWritesAfterCleanup = first.powerWrites;
+        int secondPowerWritesAfterCleanup = second.powerWrites;
+        for (double invalidPower : new double[]{-1.01, 1.01}) {
             expect(IllegalStateException.class, () -> groupedSearch.setPower(invalidPower));
-            assertRawDoubleEquals(0.0, groupedSearch.getCommandedPower());
-            assertEquals(firstPowerWrites, first.powerWrites);
-            assertEquals(secondPowerWrites, second.powerWrites);
+            assertTrue(Double.isNaN(groupedSearch.getCommandedPower()));
+            assertEquals(firstPowerWritesAfterCleanup, first.powerWrites);
+            assertEquals(secondPowerWritesAfterCleanup, second.powerWrites);
             assertEquals(firstModeWrites, first.modeWrites);
             assertEquals(secondModeWrites, second.modeWrites);
             assertEquals(firstMode, first.mode);
             assertEquals(secondMode, second.mode);
-            assertRawDoubleEquals(firstPower, first.lastPower);
-            assertRawDoubleEquals(secondPower, second.lastPower);
+            assertRawDoubleEquals(0.0, first.lastPower);
+            assertRawDoubleEquals(0.0, second.lastPower);
         }
     }
 
