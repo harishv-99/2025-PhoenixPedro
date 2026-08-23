@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -45,18 +45,30 @@ As of 2026-07-19, no representative robot hardware is available. Do not substitu
 tests, SDK source inspection, or configuration metadata for a physical measurement required to
 select a production design or claim completion.
 
-- `SOURCE-03`, `SENSOR-01`, `PERF-01`, `PERF-03`, `CHECK-01`, and `SAFE-04` are **Deferred** under
-  their current completion contracts because each requires recorded signal, controller-performance,
-  assembled-robot, or representative-hardware evidence.
+- `SOURCE-03`, `PERF-03`, and `CHECK-01` remain **Deferred** under their current completion
+  contracts because selecting their production behavior still requires recorded signal,
+  controller/watchdog, assembled-robot, or representative-hardware evidence.
+- `SAFE-04` and `SENSOR-01` are **Proposed** again under explicitly narrower software-seam
+  completion contracts. Physical actuator response, motor-current accuracy, polling cost, and useful
+  thresholds remain adopting-robot validation; their decision gates may not claim those facts from
+  fakes.
+- `PERF-01` is **Proposed** only as an advanced opt-in manual-cache lifecycle decision gate.
+  Ordinary Phoenix programs leave the SDK-selected caching mode untouched (`OFF` after the FTC SDK
+  11.1 OpMode reset), and neither implementation nor completion may claim a performance benefit
+  without adopting-robot measurements.
 - A later decision gate may propose a narrower conservative software contract that makes physical
   observation adopting-robot validation rather than completion evidence. That is a material design
   change and still requires explicit user approval under the evidence gate.
 - Hardware that would merely increase confidence in an already testable software-seam contract does
   not block other items. Such work may proceed only when its completion claim explicitly stops at
   that seam and preserves physical validation as optional adoption evidence.
-- `AUTO-01` is also **Deferred**, for a different reason: the second materially different bounded
-  Auto caller needed to justify a reusable abstraction does not yet exist. Do not manufacture that
-  caller merely to advance the tracker.
+- `AUTO-01` is **Proposed** again because the pinned FTC_Decode adaptive routines supply a second
+  materially different real behavior to investigate. This closes only the demand gate: Gate 1 must
+  still prototype the behavior with Phoenix composition and may record a no-change result rather
+  than manufacture a generic repetition API.
+- `EXAMPLE-03` is **Proposed** again only under a narrower software-reference contract. It may prove
+  coherent timestamped coordination and bounded realization, but not projectile timing, shot
+  accuracy, tuning, or physical mechanism response.
 - While this policy is active, select the highest-priority item whose current behavior, design
   choice, and completion contract can all be established through source/caller inspection,
   deterministic tests, documentation, and compilation. Do not advance an item whose current
@@ -113,15 +125,15 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 26 | ACT-01 | FTC actuator-group identity validation | Done | Private SDK-equivalent actuator/mecanum validation reviewed, verified, and approved on 2026-07-17. |
 | 27 | COMMON-01 | Cleanup action aggregation | Done | The stateless cleanup-action primitive and five bounded migrations are implemented, verified, and approved; the generic INIT runtime remains deferred. |
 | 28 | TESTER-01 | Tester child lifecycle fail-stop | Done | Approved fail-stop policies are implemented, verified, and approved without changing valid public call sites. |
-| 29 | AUTO-01 | Compact bounded Auto continuation | Deferred | Wait for a second materially different real bounded-Auto caller; do not infer an API from PHX-04 alone. |
+| 29 | AUTO-01 | Compact bounded Auto continuation and fresh-attempt repetition | Proposed | Prototype the pinned adaptive-cycle behavior with current Phoenix composition before deciding whether any factory-backed repetition API is justified. |
 | 30 | SOURCE-03 | Composable scalar measurement conditioning | Deferred | Wait for recorded signal traces before choosing a public filtering algorithm or latency contract. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
 | 33 | VISION-01 | Shared webcam and Limelight vision ownership | Done | Parallel webcam/Limelight ownership, readiness, lifecycle recovery, migrations, documentation, and tests were approved on 2026-07-20. |
-| 34 | SENSOR-01 | Motor-current sensing | Deferred | Current completion requires controller polling measurements; revisit via a narrower conservative seam only through a new approved decision gate. |
+| 34 | SENSOR-01 | Cycle-memoized motor-current sensing | Proposed | Evaluate one explicit-amps read-only source; keep polling cost, accuracy, thresholds, and response policy outside its software completion claim. |
 | 35 | INPUT-01 | Safe contextual control activation | Done | Approved robot-first contextual controls, shared registration surface, lifecycle-safe tester handoffs, and regression coverage. |
 | 36 | HAPTIC-01 | Driver haptic feedback boundary | Done | Approved fixed-pulse sink, truthful FTC conversion, focused coverage, and full software verification; physical rumble behavior remains adopting-robot validation. |
-| 37 | PERF-01 | FTC hub bulk-cache ownership | Deferred | Wait for real hub-I/O benchmarks before changing the SDK automatic-caching default. |
+| 37 | PERF-01 | Optional FTC manual bulk-cache lifecycle ownership | Proposed | Evaluate one advanced opt-in owner without changing ordinary robots' existing SDK caching mode or claiming that manual mode improves a particular robot. |
 | 38 | PERF-02 | Loop phase diagnostics | Done | Approved and reviewed sequential profiler, bounded atomic statistics, off-by-default Phoenix telemetry integration, focused/full verification; enabled hardware overhead remains adopting-robot validation. |
 | 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
 | 40 | TARGET-01 | Lazy Plant target overlay selection | Done | Two-pass lazy target resolution, measured-hold re-entry, truthful diagnostics, documentation, and 22 focused tests are complete and approved. |
@@ -159,8 +171,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 72 | INPUT-02 | Binding update failure retention | Done | Retain exact same-cycle binding failures without replay, reject reentry, preserve explicit next-cycle and clear ownership, and keep robot code unchanged. |
 | 73 | BOUNDARY-01 | FTC boundary enforcement | Done | Relocated the FTC gamepad adapters without changing robot expressions and enforced the protected reusable core with one focused production-source rule. |
 | 74 | CI-01 | Framework verification in CI | Done | Split the existing hosted pipeline into truthful framework and documentation checks, run them for every pull request targeting master, and require both before merging. |
-| 75 | EXAMPLE-03 | Advanced moving-target reference | Deferred | Reactivate only when an in-repository robot supplies coherent owned timestamped pose and motion facts plus a measured moving-shot/flight model, or another real periodic mechanism exposes a missing planner-composition contract. |
-| 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 75 | EXAMPLE-03 | Coherent timestamped mechanism-target coordination reference | Proposed | Reclassify this as a software architecture reference; physical shot and mechanism claims remain adopting-robot experiments. |
+| 76 | SAFE-04 | Fail-stop PowerOutput software contract | Proposed | Make command-cache and grouped failure behavior truthful at the software seam without claiming atomic or physical stop. |
 | 77 | CONFIG-01 | Drive-guidance task configuration snapshot | Done | Validate and snapshot the existing five-answer task config without changing ordinary caller syntax or adding a parallel construction layer. |
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
 | 79 | DOC-03 | Generated Phoenix documentation site | Done | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
@@ -191,6 +203,31 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 104 | EXAMPLE-07 | Extensible hardware-free subsystem bench | Done | The reviewed test-only FTC device registry, consolidated example fixtures, bounded Starter/Reference scenarios, truthful evidence path, and destination-specific publication authorization are complete. |
 | 105 | DOC-06 | Explain Phoenix's value at first contact | Done | The reviewed candid SDK-versus-Phoenix explanation, canonical pointers, verification evidence, and destination-specific publication authorization are complete. |
 | 106 | EXAMPLE-08 | Reactive hardware-free subsystem scenarios | Done | The reviewed reactive lift/launcher scenarios, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
+| 107 | EXAMPLE-09 | Sensor-derived inventory status case study | Proposed | Teach active-low/debounced sensing and immutable robot-owned inventory status with authored software observations. |
+| 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Proposed | Teach typed multi-object selection, exactly-once live route construction, semantic milestones, and inventory-dependent early exit without new core season APIs. |
+| 109 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current Phoenix support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+
+### Current Cuberobot/DECODE program order (2026-08-22)
+
+The user's tracker-intake approval establishes this order without starting any decision gate or
+approving any public API:
+
+1. `SAFE-04` narrowed software-seam decision gate.
+2. `SENSOR-01` narrowed read-only current-source decision gate.
+3. `PERF-01` advanced opt-in manual-cache ownership decision gate.
+4. `EXAMPLE-09` sensor-derived inventory case study.
+5. `EXAMPLE-10` timestamped adaptive collection case study.
+6. `AUTO-01` bounded fresh-attempt composition decision gate, after the examples expose the complete
+   per-attempt Phoenix caller surface.
+7. `EXAMPLE-03` narrowed coherent timestamped mechanism-target coordination reference.
+8. `AUDIT-01` closure re-audit, last.
+
+Run one item per branch through the normal decision and approval gates. An approved, recorded, and
+verified no-change result is a valid **Done** disposition when a candidate abstraction does not
+reduce complete robot code; an item whose truthful contract still needs unavailable evidence remains
+**Deferred** with a reactivation trigger. `AUDIT-01` waits for the seven named earlier items to reach
+one of those terminal dispositions; it does not wait indefinitely for unavailable hardware
+measurements.
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -210,12 +247,12 @@ validation before lookup, allowing an adopting Bettabot to delete its duplicate 
 is promoted to measure the repeated lifecycle shell exposed by EXAMPLE-02; it must not turn that
 evidence into a base OpMode or hide loop order.
 
-AUTO-01 and SOURCE-03 remain high-value but explicitly evidence-gated. AUTO-01 needs a second
-materially different bounded routine—ideally Bettabot's first real route—before extracting a
-continuation abstraction. SOURCE-03 now has a second real flywheel caller in Cuttlefish, but still
-needs representative traces before selecting a filter whose delay could help or harm PIDF control.
-They follow the actionable research cluster instead of pretending missing physical/routine evidence
-is implementation-ready. The remaining unrelated items retain their prior relative order.
+At the 2026-07-17 review, AUTO-01 and SOURCE-03 remained high-value but explicitly evidence-gated.
+AUTO-01 still needed a second materially different bounded routine, while SOURCE-03 had a second
+real flywheel caller in Cuttlefish but no representative traces from which to choose filter delay.
+The 2026-08-22 Cuberobot/DECODE intake below reopens AUTO-01 for a software decision gate; SOURCE-03
+remains Deferred because the new repository supplies no scalar trace or algorithm-selection
+evidence.
 
 On 2026-07-28, the mechanism-target API review promoted TARGET-04, API-06, and TARGET-05 directly
 after EXAMPLE-01. The order deliberately proves equivalent-position behavior and truthful Task
@@ -233,7 +270,9 @@ address the adjacent calibration inputs. DOC-01 and a deliberately narrowed CLEA
 the remaining validation, boundary, and CI work. At that point EXAMPLE-03 remained the last
 actionable proposed item in this cluster rather than the default next item. The combined
 EXAMPLE-03/EXAMPLE-04 audit on 2026-08-14 later deferred it for real-caller and physical-model
-evidence. Deferred hardware/evidence items remain deferred regardless of their table position.
+evidence. At that review boundary, hardware/evidence items retained their recorded deferrals
+regardless of table position. The 2026-08-22 intake reclassifies only the explicitly narrowed items
+named in the current program above.
 
 On 2026-08-14, a tracker-only intake added EXAMPLE-04, RUNTIME-03, and DRIVE-03 without starting
 their decision gates or implementation. On 2026-08-19, the user reordered the remaining queue to
@@ -276,9 +315,10 @@ checks, independent adversarial review, Android Studio review, and destination-s
 authorization.
 Recording the program neither approves the later implementations nor permits compatibility shims or
 mixed-item PRs.
-EXAMPLE-03 remains **Deferred** outside that actionable sequence. EXAMPLE-04 remains **Proposed**
-after its curriculum scope was reopened, and its eventual rationalization must preserve the
-EXAMPLE-03 evidence gate recorded below.
+At that intake boundary, EXAMPLE-03 remained **Deferred** outside the actionable sequence and
+EXAMPLE-04 remained **Proposed**. EXAMPLE-04's later rationalization preserved the then-current
+EXAMPLE-03 evidence gate. The 2026-08-22 intake now reopens EXAMPLE-03 only by narrowing its
+completion claim to software coordination; physical moving-shot claims remain excluded.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -450,6 +490,55 @@ the TaskRunner; realize each Plant once in documented order; render diagnostics;
 once. This keeps
 the simple routine call site while preserving the Framework Principles' single heartbeat, one final
 writer, and explicit lifecycle ownership.
+
+### Cuberobot/DECODE capability benchmark and tracker intake (2026-08-22)
+
+This follow-up pins four distinct repositories rather than attributing every behavior to the small
+[`Cubelib` utility library at `4c2c1e5`](https://github.com/kleongf/Cubelib/tree/4c2c1e5eeabbf0ac61208240bb5a73f9fb8e6566):
+
+- [`FTC_Decode` at `6aa84a87`](https://github.com/kleongf/FTC_Decode/tree/6aa84a87eaa09c862eb707c4f604191bbcedb1d1)
+  is the primary later season-code snapshot used for the adaptive Auto, inventory, vision, and
+  moving-shot findings.
+- [`Decode/v3` at `2c0c6726`](https://github.com/kleongf/Decode/tree/2c0c6726cbb742096f8062fedb0f335500c11fbc)
+  independently corroborates earlier current-sensing and season development.
+- [`IntoTheDeep23641` at `5a3d1756`](https://github.com/kleongf/IntoTheDeep23641/tree/5a3d175604b806fb180cada53f06557e4d8a92c1),
+  inspected for the originally referenced Worlds robot, contains Pedro/library material but does
+  not expose its robot `TeamCode`. Therefore none of the later DECODE behaviors below is labeled the
+  exact Worlds implementation or verified event-deployed code; it is archived season-program source
+  evidence from the same author.
+
+The audit evaluates complete robot code and lifecycle, not only short wrapper calls. It copies
+requirements, not defects: Cubelib's mutable string-addressed FSM is restartable and has no Phoenix
+Task outcome/cancellation contract; `BlueFar30` clamps its numeric no-result sentinel before testing
+it; and `CachedMotor` can suppress an initial zero and records its cache before the SDK write
+succeeds.
+
+| Pinned capability evidence | Phoenix disposition | Tracker consequence |
+|---|---|---|
+| [`BlueFar30`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/BlueFar30.java#L193-L261) and [`RedFar30`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/RedFar30.java#L189-L245) normally build vision-selected collection routes and return routes from current pose, leave near route end or earlier only after both a safe progress threshold and inventory-full evidence, repeat within time/count bounds, and then park. Their intended prebuilt no-result fallback is unreachable because the numeric sentinel is clamped first. | Existing start-time Route Tasks, semantic Pedro callbacks, `parallelDeadline`, route outcomes, capability Tasks, and PHX-04 can express one attempt. The remaining question is whether fresh bounded repetition still forces students to copy lifecycle ceremony. | Reopen AUTO-01 for a software decision gate after EXAMPLE-10; add no FSM, generic race, or second scheduler. |
+| [`ArtifactVision`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/subsystems/ArtifactVision.java#L44-L155) projects multiple detector rays to field points and chooses a collection band. | Phoenix already owns a stable timestamped Limelight result, but lacks one compact robot-owned proof of typed unavailable handling, time/pose policy, deterministic selection, and exactly-once route construction. | Add EXAMPLE-10; keep detector interpretation and collection strategy out of protected core. |
+| [`Intake`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/subsystems/Intake.java#L19-L117) derives ordered capacity from three active-low sensors and exposes fullness to Auto. | Existing `FtcSensors`, Boolean debounce, services, immutable robot status, and the software bench can express this without a framework inventory type. | Add EXAMPLE-09 for the focused sensing/status lesson. |
+| [`Decode/v3` intake](https://github.com/kleongf/Decode/blob/2c0c6726cbb742096f8062fedb0f335500c11fbc/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/robot/subsystems/Intake.java#L46-L93) uses current as a mechanism fact; the archived snapshot also exposes explicit-amps acquisition in [`CachedMotor`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/CachedMotor.java#L46-L48). | A read-only, cycle-memoized explicit-amps source has a complete software contract. Accuracy, polling cost, thresholds, and response remain physical/robot policy. | Reopen SENSOR-01 under the narrower software-seam claim. |
+| [`BulkRead`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/lib/util/BulkRead.java#L7-L20) enables MANUAL cache mode, and [`CurrentRobot.update()`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/CurrentRobot.java#L114-L127) clears it before subsystem reads. | One advanced opt-in lifecycle owner can be evaluated from SDK contracts and managed-loop ordering without claiming speed. Ordinary Phoenix leaves the SDK-selected mode untouched; SDK 11.1 resets it to `OFF`. | Reopen PERF-01 only for lifecycle ownership; physical benefit remains adopting-robot measurement. |
+| Production [`Intake`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/subsystems/Intake.java#L31-L82) and the separately present [`CachedMotor`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/CachedMotor.java#L9-L44) suppress similar writes. | Source-level adoption does not establish watchdog, reconnect, mode/configuration invalidation, controller reset, or worthwhile savings. The generic helper's cache-before-success defect instead reinforces truthful output failure handling. | Keep PERF-03 Deferred; reopen SAFE-04's separate software fail-stop contract. |
+| [`SOTMUtil`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/SOTMUtil.java#L22-L60) computes one coordinated turret/flywheel/hood tuple which [`MainTeleop`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/teleop/MainTeleop.java#L280-L305) applies together. | Coherent timestamped dataflow and once-per-cycle realization are software-testable; projectile timing, calibration, and shot accuracy are not. | Reopen EXAMPLE-03 only as a software coordination reference, with robot-owned model and solution vocabulary. |
+
+The same audit keeps FIELD-01, DRIVE-02, SOURCE-03, CHECK-01, and PERF-03 Deferred: this source adds
+no real Phoenix route set, PTO topology, scalar traces, staged whole-robot check, or controller-safe
+write-suppression evidence that closes their recorded gates. It adds no `ROUTE-04`: a fresh
+attempt-local semantic latch published by native Pedro callbacks plus existing Task composition is
+the supported first implementation. Packaging/distribution is outside this robot-capability review.
+
+The user approved recording this complete tracker program with **“Implement the plan.”** That is
+tracker-intake authority only. It starts no Gate 1 investigation, approves no candidate API or
+semantic change, and authorizes no commit, push, pull request, merge, or subsequent item.
+
+On 2026-08-23, the user completed manual review and gave destination-specific publication
+authorization for the tracker-only diff on `codex/cuberobot-capability-tracker-intake`: commit it,
+push that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and
+merge it into `master`. The appended **“Then move to next”** authorizes starting only `SAFE-04`'s
+decision gate after the intake merge is verified; it does not approve a SAFE-04 design or
+implementation.
 
 ## Task definitions and decision records
 
@@ -3808,7 +3897,7 @@ writer, and explicit lifecycle ownership.
   - **Manual verification (2026-07-20):** the user reviewed the implementation in Android Studio
     and approved it with `VISION-01 looks good`.
 
-### SENSOR-01 - Motor-current sensing
+### SENSOR-01 - Cycle-memoized motor-current sensing
 
 - **Problem to confirm:** `FtcSensors` exposes battery voltage plus motor position and velocity, but
   not `DcMotorEx` current. Robot code that needs a jam, hard-stop, load, or homing fact must therefore
@@ -3843,6 +3932,22 @@ writer, and explicit lifecycle ownership.
   contract also requires polling-cost and SDK/controller behavior evidence. A later Gate 1 may ask
   the user to approve a conservative software-seam contract that moves those measurements to
   adopting-robot validation; do not make that reclassification silently.
+- **Tracker-only reactivation intake (2026-08-22):** **Proposed under the narrower software-seam
+  contract; no Gate 1 work has started.** The pinned Decode/v3 intake supplies active current-sensing
+  demand; FTC_Decode's `CachedMotor` independently exposes explicit-amps acquisition. The user
+  approved moving physical measurement out of this item's completion claim. Gate 1 must still
+  inventory every `FtcSensors` construction path and compare direct SDK use, actuator-owned
+  readback, current alerts, aggregation, and the single-source candidate before any public API is
+  approved.
+- **Superseding completion candidate:** evaluate only direct-`DcMotorEx` and named-`HardwareMap`
+  `ScalarSource` factories that call `getCurrent(CurrentUnit.AMPS)`, publish one successful raw
+  observation per `LoopClock.cycle()`, do not cache a thrown read, and permit reset to obtain a fresh
+  same-cycle sample. Tests must cover exact units, lookup/null failures, repeated consumers, reset,
+  thrown-read retry, raw non-finite propagation, and diagnostics. Accuracy, controller/physical
+  sample cadence, polling cost, bulk-cache interaction, unavailable-device behavior, useful
+  thresholds, filtering, dwell, jam recovery, homing, derating, and subsystem priority remain
+  explicit adopting-robot validation or robot policy. Do not add a current manager, threshold API,
+  direction overload, or Plant policy.
 
 ### INPUT-01 - Safe contextual control activation
 
@@ -4390,22 +4495,28 @@ writer, and explicit lifecycle ownership.
   controller hardware was available, so physical rumble support, feel, delivery, duration, and stop
   latency remain adopting-robot validation rather than software-test claims.
 
-### PERF-01 - FTC hub bulk-cache ownership
+### PERF-01 - Optional FTC manual bulk-cache lifecycle ownership
 
-- **Problem to confirm:** Phoenix has no explicit owner for Lynx bulk-caching policy. On sensor-heavy
-  robots, SDK automatic behavior may be sufficient, while manual caching can reduce repeated hub I/O
-  only if every hub is configured and cleared exactly once per OpMode cycle. Scattered clears make
-  same-cycle readings inconsistent.
+- **Problem to confirm:** Phoenix has no explicit owner for Lynx bulk-caching policy. Ordinary robot
+  programs currently leave the SDK-selected mode untouched. Manual caching can reduce repeated hub
+  I/O only if every hub is configured and cleared exactly once per OpMode cycle; scattered clears
+  make same-cycle readings inconsistent.
 - **External evidence:** Cuttlefish configures all Lynx modules for manual bulk caching during init
   and clears them once at the beginning of every outer loop in
   [`EnhancedOpMode`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/EnhancedOpMode.java).
-- **Alternatives to compare:** rely on SDK `AUTO`; configure manual caching directly in Phoenix;
-  create a tiny optional `fw.ftc` cycle owner; or hide it in a base OpMode/lifecycle framework.
-  Measure real loop I/O before selecting a default and specify INIT, repeated same-cycle calls, and
-  shutdown restoration.
-- **Leading hypothesis:** retain SDK automatic caching for the beginner path unless measurements show
-  a meaningful benefit. If manual mode is justified, one optional FTC composition-root owner discovers
-  the hubs, configures them once, and clears them idempotently by `LoopClock.cycle()`. No subsystem
+- **SDK contract:** the
+  [FTC Hardware 11.1 `LynxModule` Javadocs](https://javadoc.io/static/org.firstinspires.ftc/Hardware/11.1.0/com/qualcomm/hardware/lynx/LynxModule.html)
+  require an explicit clear in `MANUAL` mode. The published
+  [FTC Hardware 11.1 source artifact](https://repo1.maven.org/maven2/org/firstinspires/ftc/Hardware/11.1.0/Hardware-11.1.0-sources.jar)
+  initializes `LynxModule` to `OFF` and resets it to `OFF` in
+  `resetDeviceConfigurationForOpMode()`.
+- **Alternatives to compare:** leave the SDK-selected mode untouched; explicitly select SDK `AUTO`;
+  configure manual caching directly in a robot; create a tiny optional `fw.ftc` cycle owner; or hide
+  it in a base OpMode/lifecycle framework. Measure real loop I/O before recommending any mode and
+  specify INIT, repeated same-cycle calls, and shutdown restoration.
+- **Leading hypothesis:** leave the SDK-selected mode untouched for the beginner path. If an advanced
+  adopter explicitly chooses manual mode, one optional FTC composition-root owner discovers the
+  hubs, configures them once, and clears them idempotently by `LoopClock.cycle()`. No subsystem
   clears a cache and no base OpMode, global singleton, or loop-rate sleep is added.
 - **Completion:** benchmark results and hardware assumptions are recorded; fake/FTC tests cover all
   hubs, one clear per cycle, duplicate calls, INIT/active transitions, partial failure, and stop;
@@ -4414,6 +4525,30 @@ writer, and explicit lifecycle ownership.
 - **Pause record (2026-07-19):** **Deferred while real hub-I/O benchmarks are unavailable.** Fakes
   can verify one-clear-per-cycle mechanics but cannot establish that manual caching has enough
   benefit to justify a new owner or changing the beginner default.
+- **Tracker-only reactivation intake (2026-08-22):** **Proposed for an advanced opt-in lifecycle
+  decision gate; no implementation or performance recommendation is approved.** FTC_Decode's
+  repeated outer-loop use supplies source-level adoption evidence, while SDK caching semantics and
+  `RobotProgram` ordering make the ownership contract software-auditable. Gate 1 must compare a
+  robot-local first service, one narrow `fw.ftc` owner, documentation-only guidance, and no change;
+  it must reject a second host phase, base OpMode, singleton, or beginner default.
+- **Superseding completion candidate:** keep SDK caching untouched unless an adopter explicitly
+  installs the advanced owner. Before mutation, snapshot every hub and prior mode. At START, set all
+  selected hubs to MANUAL and clear every cache; then clear every hub once per new
+  `LoopClock.cycle()`. The caller contract installs this as the first declared `RobotProgram.Service`
+  so its declaration-ordered update precedes sensor-owning services; the current host has no phase or
+  introspection API that can enforce that placement. Each update claims `clock.cycle()` before its
+  first hub clear: reentry fails, same-cycle success is a no-op, and same-cycle failure rethrows the
+  exact retained failure without replaying any hub effect. Stop before any START mutation attempt is
+  a no-op; once a start mutation is attempted, exactly one cleanup pass remains claimable even if
+  START failed. A partial start terminates at its first failed effect and then runs that cleanup.
+  Per-cycle clear and final cleanup are best-effort across every applicable hub: preserve the first
+  failure and suppress later cleanup failures. Final cleanup clears every hub and restores every
+  captured mode because restoring a prior mode alone need not discard a MANUAL cache. Tests cover
+  documented first-service placement and declaration order, all-hub behavior, claim-before-effect,
+  reentry, same-cycle success/failure replay prevention, partial START failure, exact exception
+  retention/suppression, final clear, exact restoration, BLOCKED/no-mutation start, stop-before-start,
+  and repeated stop. Completion may not claim reduced loop time, bus traffic, controller freshness,
+  or benefit on a particular robot; PERF-02 plus adopting-robot measurements answer those questions.
 
 ### PERF-02 - Loop phase diagnostics
 
@@ -4633,6 +4768,14 @@ writer, and explicit lifecycle ownership.
 - **Pause record (2026-07-19):** **Deferred while per-adapter hardware measurements and controller
   behavior evidence are unavailable.** Fake tests cannot justify suppressing a real write or prove
   watchdog, reconnect, and configuration invalidation rules. Keep existing writes unchanged.
+- **Cuberobot/DECODE corroboration (2026-08-22):** **still Deferred.** FTC_Decode's production
+  `Intake` corroborates tolerance-based suppression, while the separately present `CachedMotor`
+  demonstrates why source availability alone is insufficient: the generic helper
+  initializes its cache to zero, can suppress an initial explicit zero, and records a new cached
+  value before the SDK write succeeds. No software-only narrowing proves that omitting a controller
+  transaction remains valid across watchdogs, reconnects, run-mode/configuration changes, or
+  controller resets. SAFE-04 owns truthful failure/cache semantics for writes that are attempted; it
+  does not authorize skipping writes.
 
 ### TUNE-01 - Live tuning to checked-in profile
 
@@ -9283,7 +9426,7 @@ writer, and explicit lifecycle ownership.
     were made project-neutral. No production Java behavior changed during that wording adjustment.
     Robot-hardware validation remains deliberately outstanding as documented above.
 
-### AUTO-01 - Compact bounded Auto continuation
+### AUTO-01 - Compact bounded Auto continuation and fresh-attempt repetition
 
 - **Problem to confirm:** PHX-04 keeps the supported public installation entry point short, but its
   two private Phoenix bounded-pre-park/coordinator Tasks contain 1,012 source lines. Because all code
@@ -9325,8 +9468,44 @@ writer, and explicit lifecycle ownership.
   reference prerequisite, but Phoenix remains the only caller with the complete bounded-continuation
   lifecycle. Resume when another real robot routine needs the behavior; do not manufacture a generic
   Auto DSL or count a one-route routine as evidence.
+- **Tracker-only reactivation intake (2026-08-22):** **Proposed; no Gate 1 prototype or API design
+  has started.** The pinned FTC_Decode
+  [`BlueFar30`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/BlueFar30.java#L193-L261)
+  and
+  [`RedFar30`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/RedFar30.java#L189-L245)
+  routines provide the materially different real behavior: both normally build vision-selected
+  collection routes and return routes from current pose, permit an exit near route end or earlier
+  only after a safe milestone and inventory-full evidence, repeat fresh attempts under time/count
+  bounds, and park. Their intended prebuilt no-result fallback is unreachable because the numeric
+  sentinel is clamped first. This closes the external demand prerequisite, not the Phoenix
+  abstraction decision. EXAMPLE-10 runs first so Gate 1 can measure a complete maintained per-attempt
+  Phoenix expression rather than manufacture an artificial caller; AUTO-01 must still prototype and
+  compare the whole bounded repeat-and-park routine.
+- **Required Gate 1 comparison:** express the pinned behavior with explicitly unrolled fixed
+  attempts, recursive/nested `Tasks.buildAtStart(...)`, a private robot coordinator, current
+  `sequence`/outcome/deadline factories, a narrowly factory-backed bounded repetition candidate,
+  and no change. First prototype early route exit using a fresh attempt-local semantic callback latch
+  and a deadline condition equivalent to
+  `route complete || near end || (safe to leave && inventory full)`, with the exact Route Task as a
+  companion and a retained robot-owned attempt-exit reason. Do not expose Pedro's raw normalized
+  progress or add `ROUTE-04` unless this supported expression proves materially inadequate.
+- **Conditional software contract:** if and only if the complete caller comparison justifies a core
+  primitive, every iteration obtains a fresh single-use Task from a factory, has an explicit hard
+  iteration bound, and evaluates continuation only between attempts. It claims `clock.cycle()` before
+  invoking the factory and permits at most one factory invocation and child start per cycle across
+  parent `start(...)`, `update(...)`, and rejected reentry—even when the child is terminal at
+  construction or completes with zero duration. It retains abnormal outcomes, cancels only the
+  current child, and records iteration/stop diagnostics. Gate 1 must record the exact outcome table:
+  only explicitly allowed terminal outcomes may continue, while outer cancellation/timeout or a
+  disallowed abnormal outcome invokes neither another factory nor the continuation. Tests cover
+  start-plus-immediate-same-cycle-update, zero-duration/terminal children, same-cycle/reentry
+  behavior, factory null/throw, outer timeout/cancellation, cleanup failure, and exact continuation
+  identity. Fixed phases, route meaning, inventory, match thresholds, scoring, park policy, and
+  recovery remain robot-owned. If EXAMPLE-10 finishes Deferred or Done with no maintained caller,
+  AUTO-01 must build its own bounded hardware-free prototype or return to Deferred. A tested no-
+  change or robot-local result is valid completion and is recorded as Done.
 
-### EXAMPLE-03 - Advanced moving-target reference
+### EXAMPLE-03 - Coherent timestamped mechanism-target coordination reference
 
 - **Combined disposition audit (2026-08-14):** EXAMPLE-04 audited this proposal as part of the one
   example-surface rationalization. EXAMPLE-03 did not become a second active item, and no moving-
@@ -9395,6 +9574,29 @@ writer, and explicit lifecycle ownership.
   prefer a narrow managed observed-periodic mechanism example; keep projectile physics, target
   choice, capability vocabulary, and fallback robot-owned. Do not add another Pedro reference or
   direct motor writer merely to reactivate this row.
+- **Tracker-only scope reclassification (2026-08-22):** **Proposed as a software coordination
+  reference; no implementation has started.** The pinned FTC_Decode SOTM caller supplies a real
+  multi-output need, but still supplies no measured model Phoenix can claim as physically correct.
+  The user approved separating those truths: this item may complete by proving one coherent
+  timestamped calculation/realization path, while shot accuracy, time of flight, tuning, mechanism
+  response, and game performance remain adopting-robot experiments.
+- **Narrowed decision gate and completion candidate:** compare documentation-only, a focused
+  hardware-free scenario, an optional Reference extension, and no change. Prefer one robot-owned
+  immutable solution snapshot with one named evaluation timestamp and explicit co-temporal input
+  policy. A memoized source publishes at most one successful value per `LoopClock.cycle()` while a
+  failed evaluation may be retried, and turret, flywheel, and hood intent consume that same published
+  snapshot. At least the turret path must compile through
+  `Source<PlantTargetRequest> -> PlantTargets.plan(...) -> bounded periodic PositionPlant`; the other
+  outputs may consume the snapshot directly so the lesson does not duplicate three complete
+  mechanisms. The example's model/table and solution vocabulary remain robot-owned; protected core
+  gains no shooter, projectile, or `ShotSolution` API. Scripted tests cover frame/unit signs,
+  same-cycle coherence, stale/reset/unavailable motion, finite/bounded requests, explicit stationary
+  fallback or fail-closed behavior, and unchanged private Plant ownership. Printed evidence includes
+  computed timestamp/age, selected mechanism targets/intents, and fallback reason. Hit/miss and
+  mechanism observations belong to a later adopting-robot experiment and are not completion evidence.
+  Gate 1 may retain
+  Deferred or record a verified no-change decision as Done if the complete example adds more student
+  concepts than the missing integration proof removes.
 
 ### BOUNDARY-01 - FTC boundary enforcement
 
@@ -12177,28 +12379,32 @@ writer, and explicit lifecycle ownership.
     `SAFE-03 looks good`. SAFE-03 is **Done**. Robot-hardware saturation and fail-stop observations
     remain part of normal adopting-robot bring-up rather than a claim from this unit-tested change.
 
-### SAFE-04 - PowerOutput failure cleanup and seam truth
+### SAFE-04 - Fail-stop PowerOutput software contract
 
 - **Problem to confirm:** the standard FTC motor and CR-servo adapters cache a command before the SDK
   write succeeds and their finite clamp still forwards `NaN`. The internal scaled/grouped outputs
-  likewise cache before child writes, and a child exception aborts the remaining write or stop loop.
-  `getCommandedPower()` can therefore imply success after a failed write, while a composite may leave
-  only some children stopped. SAFE-03 can best-effort call the configured top-level output but cannot
-  make that operation atomic or prove child/physical state.
+  likewise cache before child writes, and a grouped write exception aborts later requested writes.
+  Grouped `stop()` already uses `CleanupActions` to attempt every child, but a child stop failure
+  prevents the group cache from reporting a successful zero. `getCommandedPower()` can therefore
+  imply success after a failed write or retain stale truth after failed cleanup. SAFE-03 can best-
+  effort call the configured top-level output but cannot make that operation atomic or prove child/
+  physical state.
 - **Alternatives to compare:** retain expert-only raw behavior; validate every caller; strengthen only
-  FTC adapters; cache only after success; make composite writes/stops best-effort across every child;
-  expose per-child results; change `PowerOutput` to return a result; or add a transactional output
-  abstraction. Reproduce first/middle/last-child failures and distinguish the logical seam command,
-  child commands, SDK acceptance, and physical response before changing the contract.
+  FTC adapters; cache only after success; retain the existing all-child grouped-stop cleanup while
+  making its cache truth explicit; add grouped-write failure cleanup; expose per-child results; change
+  `PowerOutput` to return a result; or add a transactional output abstraction. Reproduce first/
+  middle/last-child failures and distinguish the logical seam command, child commands, SDK
+  acceptance, and physical response before changing the contract.
 - **Leading hypothesis:** keep the narrow `PowerOutput` interface and its seam-relative cached
   command. Require finite normalized input; for a non-finite raw hardware request, best-effort submit
   zero and then throw. Retain finite saturation at concrete hardware adapters and cache a command only
   after its top-level operation returns normally. If a composite child write throws, stop issuing the
-  requested nonzero command immediately, best-effort stop every child (including children not yet
-  written), preserve the original write failure, and suppress stop failures. If a child stop throws,
-  continue stop attempts for all remaining children, preserve the first stop failure, and suppress
-  later ones. Set `getCommandedPower()` to `NaN` after any partial/failed write or stop and document
-  that as unknown seam state; this public semantic change requires SAFE-04's own approval gate.
+  requested fan-out immediately, best-effort stop every child (including children not yet
+  written), preserve the original write failure, and suppress stop failures. Preserve grouped stop's
+  current all-child cleanup behavior; if a child stop throws, preserve the first stop failure and
+  suppress later ones. Set `getCommandedPower()` to `NaN` after any partial/failed write or stop and
+  document that as unknown seam state; this public semantic change requires SAFE-04's own approval
+  gate.
   Document that software fan-out is not atomic. Add no physical-readback claim, transaction API, or
   public per-child status unless a real operational caller proves it is needed.
 - **Boundary with other items:** API-03 owns construction-time scale/bias and calibration-power
@@ -12206,9 +12412,9 @@ writer, and explicit lifecycle ownership.
   low-level write/stop failure semantics and truthful cache state.
 - **Completion:** focused throwing-output/SDK-adapter tests cover non-finite raw commands, exact and
   excessive finite values, success-only caching, failures before and after a child side effect,
-  first/middle/last-child write and stop failures, immediate nonzero-write abandonment, all-child
-  best-effort stop cleanup, suppressed exceptions, `NaN` unknown-cache state, repeated stop, and
-  truthful top-level versus child diagnostics. Javadocs state exactly what
+  first/middle/last-child write and stop failures, requested-write abandonment including a failed
+  zero fan-out, all-child best-effort stop cleanup, suppressed exceptions, `NaN` unknown-cache state,
+  repeated stop, and truthful top-level versus child diagnostics. Javadocs state exactly what
   `getCommandedPower()` can and cannot prove; physical behavior is checked on representative motor,
   CR-servo, and grouped hardware before claiming completion.
 - **Pause record (2026-07-19):** **Deferred under the current representative-hardware completion
@@ -12216,6 +12422,30 @@ writer, and explicit lifecycle ownership.
   physical actuator observation. A later Gate 1 may propose and seek approval for a narrower
   fail-stop software contract that disclaims atomic and physical truth; until then, do not claim
   completion from fake outputs alone.
+- **Tracker-only reactivation intake (2026-08-22):** **Proposed under that narrower fail-stop
+  software contract; no Gate 1 work has started.** FTC_Decode's `CachedMotor` cache-before-success
+  pattern reinforces the misuse, but Phoenix's own traced cache/fan-out behavior remains the defect
+  to prove. Gate 1 must refresh every leaf, scaled, grouped, mecanum, Plant, tester, and direct-output
+  caller and decide whether a failed output is terminal until reconstruction or permits only logical
+  seam-cache recovery after a later fully successful call.
+- **Superseding completion boundary:** this paragraph replaces the earlier completion paragraph's
+  representative-hardware prerequisite. Initialize seam command caches as unknown, reject non-finite
+  requests by best-effort submitting zero, leaving the cache unknown, and throwing while suppressing
+  cleanup failures; retain finite adapter saturation and commit cached command truth only after the
+  complete top-level operation returns normally. Every failed or partial write or stop leaves the
+  affected top-level cache unknown. A grouped partial write abandons later requested writes, best-
+  effort stops every child, preserves the original write failure, and suppresses cleanup failures.
+  Ordinary managed-runtime lifecycle failure remains terminal and invokes owned cleanup; any Gate 1
+  retry allowance describes logical seam recovery only and cannot claim that physical continuation
+  is safe. Whether Gate 1 selects terminal-to-later-commands or logical retry, a failed command may
+  not suppress the next owned lifecycle `stop()` attempt; leaf and group outputs still receive one
+  best-effort zero/cleanup opportunity. Focused throwing-fake tests must prove initial/success/
+  failure/retry-or-terminal cache state, first/middle/last-child ordering, all-child cleanup attempts,
+  exception identity/suppression, leaf and grouped stop after a failed command, repeated stop, and
+  top-level versus child diagnostics. Completion explicitly does **not** prove SDK acceptance,
+  physical zero, atomic fan-out, rollback, controller state after failure, or actuator safety; those
+  remain adopting-robot observations. Do not add a transaction API or public per-child result merely
+  to strengthen an unprovable physical claim.
 
 ### ACT-01 - FTC actuator-group identity validation
 
@@ -21828,6 +22058,151 @@ writer, and explicit lifecycle ownership.
   `master`. EXAMPLE-08 is **Done**. This authorization is limited to the reviewed six files and
   publication coordinates; it does not start RUNTIME-03 or another tracker item, add a simulator
   or model layer, or convert software evidence into a robot-hardware claim.
+
+### EXAMPLE-09 - Sensor-derived inventory status case study
+
+- **Tracker-only intake status (2026-08-22):** **Proposed.** The user approved recording this task
+  in the Cuberobot/DECODE program. No decision gate, Java, test, guide, navigation, framework API,
+  robot composition, publication, or following item has started.
+- **Problem to confirm:** the curated Reference teaches one active-low lift switch, one launcher
+  object-present fact, debounce, and reactive device scenarios, but it does not show how several
+  semantic sensors become one trustworthy mechanism status consumed by both TeleOp and Auto.
+  Students may otherwise scatter raw active-low reads, counts, and reset flags across controls and
+  routines or copy a season-specific state machine.
+- **External evidence:** FTC_Decode's three active-low sensors produce ordered empty/first/second/
+  third states and an `isFull` fact consumed by its public season Auto code. That is source-level
+  evidence that the capability is useful, not proof of event deployment or that its sensor order,
+  capacity, reset policy, or public mutable fields should enter Phoenix core. Its lack of debounce
+  and contradiction handling are requirements to improve rather than patterns to copy.
+- **Dependencies:** RUNTIME-01, SOURCE-01, SOURCE-04, EXAMPLE-07, and EXAMPLE-08 are Done. This task
+  uses their managed service, cycle-safe Boolean composition, successful observation caching, fake
+  FTC device boundary, and command-before-observation scenario pattern. It does not depend on
+  SENSOR-01 because digital occupancy and motor current are different evidence.
+- **Alternatives to compare:** documentation-only; extend the current launcher's one-object status;
+  add one isolated optional Reference case study; add a new full robot/example package; or add a
+  generic framework inventory/counting API. Compare all production/example/test/setup lines and
+  student nouns, not only the status accessor. Keep the Starter and ordinary Reference hardware
+  requirements unchanged unless the complete caller comparison proves an extension is simpler.
+- **Leading hypothesis:** use existing `FtcSensors.digitalLow(...)`, Boolean debounce, one
+  declaration-ordered robot-owned service or sensor owner, and one immutable robot-owned status.
+  Raw electrical polarity is interpreted once; downstream code reads semantic occupancy/count/full
+  plus a contradiction reason for impossible bit patterns. The source remains Boolean-or-throw; it
+  does not relabel hardware read failure as a typed unavailable observation. A lifecycle-only
+  `NOT_OBSERVED` status before the first successful service update is optional if Gate 1 proves it
+  helps the complete lesson. Sensor order, capacity, and physical acquisition/ejection interpretation
+  remain the example robot's facts. Add no `Inventory`, game-piece, magazine, or season API to
+  protected core.
+- **Completion candidate:** a small compiling case and hardware-free scenario cover initial empty,
+  bounce/noise, ordered acquisition, authored sensor-level changes representing ejection or a shot,
+  out-of-order and contradictory signals, same-cycle repeated reads, owner/source reset, stop, and
+  fresh-lifetime behavior. The example never clears or mutates a second count independently of those
+  sensor observations. The status is immutable and the `full` source is derived from that same
+  coherent snapshot. Telemetry prints only the semantic sensor bits, derived count/status, and
+  contradiction reason that software computes; an operator separately records actual physical object
+  count and mechanism behavior. Documentation states **Proves / Does not prove / Next gate** and
+  links to existing active-low and software-bench lessons rather than lengthening the Starter path.
+- **Excluded claims:** software observations do not prove sensor placement, polarity, beam coverage,
+  debounce duration under vibration, object capacity, reliable acquisition/ejection, or game
+  performance. Physical bring-up validates those adopting-robot facts.
+
+### EXAMPLE-10 - Timestamped adaptive collection case study
+
+- **Tracker-only intake status (2026-08-22):** **Proposed after EXAMPLE-09.** No decision gate,
+  implementation, API, route, vision configuration, example navigation, or publication has started.
+- **Problem to confirm:** Phoenix separately documents stable Limelight frame timestamps, spatial
+  geometry, start-time route construction, route outcomes, native Pedro callbacks, companion Tasks,
+  and robot capabilities. There is no compact compiling proof that turns zero or more detections
+  into one typed robot-owned collection decision, constructs one route exactly once, and leaves that
+  route early only when a semantic safe-progress fact and coherent inventory fact permit it.
+- **External evidence:** FTC_Decode projects every detector ray to the floor, ranks a collection
+  band, starts a live-pose path, and leaves after near-end progress or after inventory becomes full
+  beyond a safe point. The implementation also exposes two hazards the Phoenix proof must remove:
+  it interprets a delayed frame with the current pose, and `BlueFar30` clamps `-1` before checking
+  that unavailable sentinel, making its intended no-result branch unreachable.
+- **Dependencies:** VISION-01/02, TIME-01, ROUTE-01/02/03, TASK-04, EXAMPLE-02, and EXAMPLE-09 must be
+  Done. A recorded EXAMPLE-09 no-change decision must still leave an existing semantic status or
+  `BooleanSource` this case can consume; otherwise EXAMPLE-10 remains Deferred until that dependency
+  is resolved. Use the managed one-heartbeat runtime and backend-owned frame timestamp. Detector SDK
+  types stay at the FTC/robot edge and are immediately converted into one immutable robot snapshot.
+- **Alternatives to compare:** a documentation snippet; a pure decision helper plus tests; a focused
+  optional example; a large vision/route robot; a generic detector-result map/lane; a generic route-
+  progress API; and no change. Count camera configuration, pose/time policy, projection, selection,
+  route construction, lifecycle, and tests in the complete student surface. Do not combine moving-
+  shot, full scoring, or alliance-route teaching into this item.
+- **Leading hypothesis:** keep camera interpretation and collection strategy robot-owned. Produce a
+  typed selected/unavailable result rather than a numeric sentinel. Every result retains the frame's
+  `LoopTimestamp`. The baseline must plainly impose a stationary/current-pose restriction; Gate 1 may
+  instead use a history-backed pose at that timestamp only if it finds an already maintained
+  production producer. Otherwise pose-history support requires a separate evidenced tracker item,
+  not a fake-only API added by this example. Start-time route construction consumes one frozen
+  decision exactly once.
+- **Scope boundary:** this case covers one collection attempt. Repetition, attempt counting, match-
+  time policy, and park takeover belong to AUTO-01. It consumes EXAMPLE-09's semantic status or
+  `BooleanSource`; it does not duplicate inventory state or move that robot-owned type into core.
+- **Route and Task pattern:** construct a fresh per-attempt semantic latch beside the PathChain and
+  retain a robot-owned exit reason. Native Pedro callbacks publish meanings such as `safeToLeave`
+  and `nearEnd`, not raw normalized progress outside the path boundary. A `Tasks.waitUntil(...)`
+  deadline observes
+  `routeTask.isComplete() || nearEnd || (safeToLeave && inventoryFull)` while the exact Route Task
+  and cancellation-safe collection Task run as companions under `parallelDeadline`. Deadline
+  completion cancels active companions before a later live-pose return; the exit reason distinguishes
+  intentional early route cancellation from failure, timeout, interruption, or replacement.
+  Add no `ROUTE-04`, generic race, second scheduler, or callback DSL without a separately evidenced
+  decision gate.
+- **Completion candidate:** deterministic tests cover zero/one/many detections, stale/reset/future
+  timestamps, non-finite angles, parallel/upward rays, off-field points, explicit unavailable
+  reasons, deterministic tie-breaking, immutable snapshots, exactly-once route build, construction
+  failure leaving the follower untouched, fresh milestone reset, same-cycle callback visibility,
+  sensor versus near-end exit, route failure/timeout/replacement, exact cancellation identity, and
+  stop. Software evidence prints frame age, accepted/rejected field points, selected target/band,
+  selection or fallback reason, semantic milestone, inventory status, and route outcome. The
+  operator records actual pickup and field behavior externally.
+- **Excluded claims:** authored frames and fake routes do not prove camera calibration, field
+  projection accuracy, localization history quality, detector reliability, route tracking,
+  collection reliability, collision clearance, cycle time, or game performance.
+
+### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
+
+- **Tracker-only intake status (2026-08-22):** **Proposed and deliberately last.** No re-audit has
+  started. This item is a closure gate, not a container for implementing another capability.
+- **Start condition:** SAFE-04, SENSOR-01, PERF-01, EXAMPLE-09, EXAMPLE-10, AUTO-01, and EXAMPLE-03
+  have each reached **Done** (including an approved, recorded, and verified no-change decision) or
+  **Deferred** with a concrete reactivation trigger.
+  This prerequisite list is frozen unless the user explicitly amends it; a Gate 1 split does not
+  silently enlarge AUDIT-01. It does not wait for unavailable hardware runs belonging to PERF-03 or
+  other deliberately hardware-gated items.
+- **Pinned scope and provenance:** pin current Phoenix when this audit starts, then compare it against
+  the exact Cubelib, FTC_Decode, Decode/v3, and IntoTheDeep23641 commits recorded by the 2026-08-22
+  intake. Preserve the caveat that Cubelib itself is the small utility/FSM library, the later DECODE
+  repositories contain the audited public season behaviors, and IntoTheDeep23641 does not expose the
+  exact Worlds robot TeamCode. Additional repositories require a separate user-approved scope change;
+  do not turn this closure check into an unsupported team ranking.
+- **Required capability matrix:** trace fixed and start-built routes; truthful route outcomes;
+  semantic route milestones; route-plus-mechanism lifetime; adaptive bounded fresh attempts and park;
+  multi-object vision-to-field selection; sensor-derived inventory; coordinated timestamped
+  mechanism targets/intents; motor current; bulk-cache ownership; write suppression; field symmetry;
+  diagnostics and software-bench evidence; reusable library distribution; and Cubelib's
+  weighted-setpoint/controller variation. Classify every frozen row as **implemented**, **already
+  supported**, **robot-specific**,
+  **deliberately rejected**, or **evidence-gated**, with an exact Phoenix call path, example,
+  rejection rationale, or reactivation trigger. Zero unclassified rows is required. Distribution
+  and weighted-controller variation currently warrant classification, not automatic implementation:
+  neither has the required Phoenix adopter/performance evidence for another task.
+- **Simplicity and truth audit:** compare complete robot-code concepts, owners, configuration,
+  lifecycle, telemetry, tests, and rough source lines—not a short outer facade call. Confirm that
+  supported Phoenix expressions retain one heartbeat, fresh single-use Tasks, one route execution
+  identity, one final writer, stable timestamps, and explicit outcomes. Confirm that no generic FSM,
+  shooter/projectile model, arbitrary vision map, inventory core type, raw route-progress DSL,
+  second scheduler, or unjustified hardware optimization was introduced.
+- **Evidence closure:** every pattern classified as implemented or already supported has deterministic
+  compiling evidence. Robot-specific or deliberately rejected rows have an explicit ownership or
+  simplicity rationale rather than a manufactured artifact. Every hardware claim names the required
+  physical experiment and separates computed telemetry from operator-recorded external outcomes.
+  Every remaining deferral names concrete evidence that would reactivate it.
+- **Output boundary:** AUDIT-01 updates only the tracker. If it finds a new capability or teaching
+  gap, create one separate **Proposed** item with its own later branch and decision gate; do not edit
+  teaching material or implement that gap under AUDIT-01. A zero-new-item result is successful
+  closure.
 
 ## Explicitly deferred architectural ideas
 
