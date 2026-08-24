@@ -20,8 +20,8 @@ drive code never imports the raw SDK `Gamepad` type.
 - [`FTC Actuators & Plants`](<FTC Actuators & Plants.md>) — staged construction for motors, servos,
   CR servos, grouped outputs, units, references, feedback, control strategy, and the narrow advanced
   FTC velocity-PIDF configuration handle used by the framework tuning workflow.
-- [`FTC Sensors`](<FTC Sensors.md>) — battery, encoder, distance, color, touch, digital, and analog
-  sources.
+- [`FTC Sensors`](<FTC Sensors.md>) — battery, motor-current, encoder, distance, color, touch,
+  digital, and analog sources.
 - [`FTC UI Helpers`](<FTC UI Helpers.md>) — selection menus, navigation, summaries, and hardware
   name pickers.
 - [`FTC Auto-to-TeleOp handoff`](<FTC Auto-to-TeleOp Handoff.md>) — advanced process-local,

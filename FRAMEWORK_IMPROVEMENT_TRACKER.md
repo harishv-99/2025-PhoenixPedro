@@ -130,7 +130,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
 | 33 | VISION-01 | Shared webcam and Limelight vision ownership | Done | Parallel webcam/Limelight ownership, readiness, lifecycle recovery, migrations, documentation, and tests were approved on 2026-07-20. |
-| 34 | SENSOR-01 | Cycle-memoized motor-current sensing | Proposed | Evaluate one explicit-amps read-only source; keep polling cost, accuracy, thresholds, and response policy outside its software completion claim. |
+| 34 | SENSOR-01 | Cycle-memoized motor-current sensing | Done | Approved explicit-amps direct/named sources, successful per-cycle memoization contract, synchronized guides, focused/full verification, and publication authorization completed. |
 | 35 | INPUT-01 | Safe contextual control activation | Done | Approved robot-first contextual controls, shared registration surface, lifecycle-safe tester handoffs, and regression coverage. |
 | 36 | HAPTIC-01 | Driver haptic feedback boundary | Done | Approved fixed-pulse sink, truthful FTC conversion, focused coverage, and full software verification; physical rumble behavior remains adopting-robot validation. |
 | 37 | PERF-01 | Optional FTC manual bulk-cache lifecycle ownership | Proposed | Evaluate one advanced opt-in owner without changing ordinary robots' existing SDK caching mode or claiming that manual mode improves a particular robot. |
@@ -3916,13 +3916,14 @@ implementation.
   motor current-alert facility; add a sampled multi-motor load snapshot; or create a framework power
   manager. Measure current-read cost and behavior under AUTO versus MANUAL bulk caching, and define
   unsupported/unavailable readings before choosing more than one simple source.
-- **Leading hypothesis:** add `DcMotorEx` and named-hardware overloads returning a
+- **Pre-Gate leading hypothesis:** add `DcMotorEx` and named-hardware overloads returning a
   cycle-memoized `ScalarSource` in explicit amps, matching the existing position/velocity source
   pattern. Robot code composes it with existing `above(...)`/hysteresis/filter primitives and owns
   the threshold, persistence, jam recovery, calibration, and subsystem priority. A read-only source
   never becomes another motor writer. Do not add a new current interface, universal limit, hidden
   automatic derating, or current-policy methods to `Plant`.
-- **Completion:** tests/fakes cover one hardware sample per `LoopClock.cycle()`, repeated consumers,
+- **Original completion (superseded by the narrowed 2026-08-23 Gate 1 decision below):** tests/fakes
+  cover one hardware sample per `LoopClock.cycle()`, repeated consumers,
   explicit amp units, reset, invalid/null configuration, unavailable/non-finite readings, and debug
   output; hardware measurements record polling cost and SDK/controller assumptions. Examples show
   one jam condition and one `PositionCalibrationTasks` stop condition while keeping recovery policy
@@ -3939,7 +3940,8 @@ implementation.
   inventory every `FtcSensors` construction path and compare direct SDK use, actuator-owned
   readback, current alerts, aggregation, and the single-source candidate before any public API is
   approved.
-- **Superseding completion candidate:** evaluate only direct-`DcMotorEx` and named-`HardwareMap`
+- **Narrowed completion intake (resolved and refined by Gate 1 below):** evaluate only
+  direct-`DcMotorEx` and named-`HardwareMap`
   `ScalarSource` factories that call `getCurrent(CurrentUnit.AMPS)`, publish one successful raw
   observation per `LoopClock.cycle()`, do not cache a thrown read, and permit reset to obtain a fresh
   same-cycle sample. Tests must cover exact units, lookup/null failures, repeated consumers, reset,
@@ -3948,6 +3950,352 @@ implementation.
   thresholds, filtering, dwell, jam recovery, homing, derating, and subsystem priority remain
   explicit adopting-robot validation or robot policy. Do not add a current manager, threshold API,
   direction overload, or Plant policy.
+- **Gate 1 start (2026-08-23):** **Researching** on
+  `codex/sensor-01-motor-current-source`, based exactly on merged
+  `origin/master@4f693a3390250f4d9e46e741ed26f0c14cb1aff5`. This starts source, SDK-boundary,
+  construction-path, sibling-API, caller, documentation, and deterministic-test research for the
+  narrowed read-only software contract only. It does not approve a public factory, implementation,
+  diagnostic tool, physical-current claim, publication, or another tracker item.
+- **Decision gate (2026-08-23):** **Ready; adding the two public FTC-boundary factories and their
+  observable sampling/reset contract requires explicit approval.** Gate 1 is complete on
+  `codex/sensor-01-motor-current-source`; no production Java, test, example, or framework-guide
+  implementation has started. The smallest coherent design adds one explicitly named amperage
+  capability to the existing sensor boundary, reuses the proven generic scalar-source lifecycle,
+  and leaves every threshold, filter, dwell, aggregation, homing, recovery, derating, and priority
+  decision with the adopting robot.
+- **Confirmed local gap and exact SDK trace:** `FtcSensors` currently has 27 public factories,
+  including battery voltage and direct/named motor position and velocity, but no current factory.
+  Exhaustive production/test searches find no `CurrentUnit`, `DcMotorEx.getCurrent(...)`, current-
+  alert, over-current, or proposed `motorCurrent...` caller, and there is no in-repository Phoenix
+  current tester. An
+  adopting mechanism must currently retain a raw `DcMotorEx`, choose `CurrentUnit.AMPS`, adapt the
+  clockless read with `ScalarSource.of(...)`, and remember `.memoized()` itself. In pinned FTC SDK
+  11.1.0, `DcMotorImplEx.getCurrent(unit)` delegates directly to its extended controller. The REV
+  Lynx controller sends one standalone engineering-unit motor-channel ADC command, then converts the
+  returned milliamps into the requested unit; motor `Direction` is not read or applied. This is a
+  distinct command path rather than the position/over-current bulk-data path.
+- **External-demand and provenance audit:** the pinned evidence establishes repeated raw-current
+  demand but no reusable response policy. SaMoTech's
+  [`Intake`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/robot/intake/Intake.java#L142-L159)
+  acquires explicit-amps samples into a moving average; its
+  [sensor-read default](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/robot/intake/sensors/IntakeSensorConstants.java#L6-L10)
+  is enabled and the
+  [robot update path](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/robot/Robot.java#L157-L165)
+  invokes the read, while
+  [`IntakeConstants`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/robot/intake/IntakeConstants.java#L20-L27)
+  disables the current-based fullness branch by default. LOAD's explicit-amps
+  [`Intake.getCurrent()`](https://github.com/LOAD-Robotics/Decode-Robot-Code/blob/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/LOADCode/Main_/Hardware_/Actuators_/Intake.java#L85-L87)
+  drives active
+  [jam reversal](https://github.com/LOAD-Robotics/Decode-Robot-Code/blob/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/LOADCode/Main_/Hardware_/Commands.java#L180-L189),
+  while its
+  [`Turret`](https://github.com/LOAD-Robotics/Decode-Robot-Code/blob/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/LOADCode/Main_/Hardware_/Actuators_/Turret.java#L382-L403)
+  uses current beside hall/timer evidence during zeroing. Tech Tigers acquires and averages
+  [drive](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/swerve/SwerveModule.java#L114-L126),
+  [intake](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/IntakeSubsystem.java#L187-L191),
+  and
+  [shooter](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/ShooterSubsystem.java#L522-L529)
+  current, publishes
+  [intake](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/IntakeSubsystem.java#L309-L316)
+  and
+  [shooter](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/ShooterSubsystem.java#L553-L554)
+  aggregates, rolls up
+  [four drive modules](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/SwervetrainSubsystem.java#L532-L547),
+  and sends those subsystem totals through one
+  [policy input](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/SensorSubsystem.java#L59-L86)
+  before applying a robot-specific
+  [threshold/dwell/mode/velocity/drive policy](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/CurrentManagementCalculator.java#L41-L75).
+  Decode/v3 builds a
+  [seven-sample intake history](https://github.com/kleongf/Decode/blob/2c0c6726cbb742096f8062fedb0f335500c11fbc/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/robot/subsystems/Intake.java#L46-L93)
+  consumed by
+  [Auto](https://github.com/kleongf/Decode/blob/2c0c6726cbb742096f8062fedb0f335500c11fbc/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/autonomous/BlueClose21Final.java#L239-L305)
+  and
+  [TeleOp](https://github.com/kleongf/Decode/blob/2c0c6726cbb742096f8062fedb0f335500c11fbc/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/teleop/MainTeleopV2.java#L86-L93),
+  and includes an enabled
+  [current/speed diagnostic](https://github.com/kleongf/Decode/blob/2c0c6726cbb742096f8062fedb0f335500c11fbc/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/test/IntakeCurrentSpeedTest.java#L21-L46);
+  its separate `stalling()` raw-read method has no caller in the pinned tree. FTC_Decode's
+  [`CachedMotor.getCurrent()`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/CachedMotor.java#L46-L48)
+  likewise corroborates the explicit-amps call shape but has no pinned-tree caller. These materially
+  different acquisition, classification, recovery, homing, and load-limiting uses justify one
+  shareable raw source and argue against a generic manager, alert threshold, aggregation rule, or
+  response owner.
+- **Selected public API and construction behavior:** add exactly these overloads to `FtcSensors`:
+
+  ```java
+  public static ScalarSource motorCurrentAmps(DcMotorEx motor)
+  public static ScalarSource motorCurrentAmps(HardwareMap hw, String name)
+  ```
+
+  The direct overload rejects a null motor with the existing `"motor is required"` convention and
+  returns `ScalarSource.of(() -> motor.getCurrent(CurrentUnit.AMPS)).memoized()`. The named overload
+  validates `HardwareMap` and then `name`, performs exactly one eager
+  `hw.get(DcMotorEx.class, name)` lookup during construction, and delegates to the direct overload.
+  Blank-name trimming, missing devices, wrong types, and possible device initialization retain the
+  SDK `HardwareMap` behavior already used by the position/velocity siblings. Apart from that SDK
+  lookup/initialization behavior, the adapter invokes no current read or motor/configuration writer
+  during construction; the direct overload invokes neither lookup nor motor operation.
+- **Selected observation, failure, and reset contract:** memoization belongs to each constructed
+  source instance. For a non-null shared `LoopClock`, the first normally returning SDK read in one
+  `clock.cycle()` publishes its exact `double`; every same-cycle consumer of that source receives
+  that exact value without another SDK read, and the next cycle is eligible for one new read. The
+  SDK interface returns an unvalidated `double`, so Phoenix forwards any normally returned value
+  from SDK, custom, or fake `DcMotorEx` implementations—including zero, negative finite values,
+  `NaN`, and either infinity—without validation or substitution and without claiming that real FTC
+  hardware normally emits all of them; the adapter memoizes that result for the cycle. If
+  `getCurrent(CurrentUnit.AMPS)` actually throws a `RuntimeException`, the generic
+  memoizer commits neither a value nor the cycle; the exact failure escapes and a later
+  nonrecursive same-cycle call may retry without receiving zero or a stale value. `reset()` clears
+  only this software memo after propagating the ordinary source reset, so a later read may sample
+  again even in the same cycle; it does not reset, configure, or probe the motor. Two independently
+  constructed sources for the same motor retain independent memos and can issue two reads, so the
+  mechanism owner must construct once and share the source.
+- **SDK failure and availability truth boundary:** the preceding exception rule applies only when
+  an exception escapes the SDK call. The pinned Lynx `getMotorCurrent(...)` implementation catches
+  several interrupted, runtime, and NACK failures, handles/logs them, and can return an
+  indistinguishable placeholder `0.0`. Phoenix cannot determine whether a normally returned zero is
+  a real current observation or that placeholder and must not relabel it unavailable. Source
+  inspection also shows that this current call has no Lynx bulk-cache branch; it does not establish
+  physical sample freshness, ADC cadence, controller support, read latency, loop cost, or behavior
+  under a particular hub/cache/firmware stack. A normal software observation therefore means only
+  that the configured `DcMotorEx` call returned normally, not that the current is physically
+  accurate or available.
+- **Diagnostics decision:** keep the one primitive-source grammar required by Framework Principles.
+  The selected source inherits the existing non-sampling structural dump: with prefix `current`, it
+  reports `current.class = MemoizedScalar` and `current.src.class = RawScalar` and performs no motor
+  call. It deliberately does not add a private hand-written current source, second cache, retained
+  hardware name, device-metadata read, or current-specific `lastAmps` key merely for telemetry. A
+  mechanism that needs live current in status or required presentation samples the one source in its
+  normal owner phase and retains that already-observed value in its status snapshot. A richer
+  last-observation diagnostic would belong in a separately justified generic source-diagnostics
+  decision, not as an asymmetric exception in SENSOR-01.
+- **Complete relevant public construction-path and sibling audit:** `FtcSensors` is a utility with
+  no public constructor. The lower-level spelling remains
+  `ScalarSource.of(DoubleSupplier).memoized()`; it is a generic core construction seam, not a second
+  FTC sensor factory.
+  - Motor position has four `ScalarSource` factories:
+    `motorPositionTicks(DcMotor)`, `motorPositionTicks(DcMotor, Direction)`,
+    `motorPositionTicks(HardwareMap, String)`, and
+    `motorPositionTicks(HardwareMap, String, Direction)`. Motor velocity has the parallel four with
+    `DcMotorEx`. The direct/named pair represents exact already-resolved identity versus an ordinary
+    eager named lookup; `Direction` exists only because a caller may select logical encoder sign.
+  - Battery voltage has `batteryVoltage(HardwareMap) -> ScalarSource` and
+    `batteryVoltage(Iterable<? extends VoltageSensor>) -> ScalarSource`. Its specialized
+    lowest-positive-finite reduction across a possibly multi-hub collection is an established
+    supply-voltage contract, not evidence for a sum/max/average/per-member motor-current aggregate.
+  - Distance has `distance(DistanceSensor, DistanceUnit) -> ScalarSource`,
+    `distanceCm(DistanceSensor) -> ScalarSource`, `distanceIn(DistanceSensor) -> ScalarSource`,
+    `distanceCm(HardwareMap, String) -> ScalarSource`, and
+    `distanceIn(HardwareMap, String) -> ScalarSource` because callers demonstrably choose different
+    distance units. Analog voltage has only `analogVoltage(AnalogInput) -> ScalarSource` and
+    `analogVoltage(HardwareMap, String) -> ScalarSource`. These siblings support fixed explicit amps
+    for the one proven current demand rather than exposing an unnecessary `CurrentUnit` answer.
+  - Color has `rgba(ColorSensor) -> Source<Rgba>` and
+    `rgba(HardwareMap, String) -> Source<Rgba>`; normalized color has
+    `normalizedRgba(NormalizedColorSensor) -> Source<NormalizedRgba>` and
+    `normalizedRgba(HardwareMap, String) -> Source<NormalizedRgba>`. Touch has
+    `touchPressed(TouchSensor) -> BooleanSource` and
+    `touchPressed(HardwareMap, String) -> BooleanSource`. Digital input has
+    `digitalHigh(DigitalChannel) -> BooleanSource`,
+    `digitalLow(DigitalChannel) -> BooleanSource`,
+    `digitalHigh(HardwareMap, String) -> BooleanSource`, and
+    `digitalLow(HardwareMap, String) -> BooleanSource`. These remaining ten factories complete the
+    27-factory inventory and reinforce the resolved-device/named-device construction pair; their
+    value types and active-state semantics do not add a motor-current construction path.
+  - The selected current pair therefore adds only
+    `motorCurrentAmps(DcMotorEx)` and `motorCurrentAmps(HardwareMap, String)`, both returning the
+    existing `ScalarSource`. `DcMotor.Direction` is neither read nor applied by the SDK current path
+    and Phoenix defines no direction-based current-sign contract, so no direction overload is
+    added. `Amps` in the method name fixes the unit. There is one fixed construction answer, so no
+    `FtcSensors.motor(...).currentAmps()` stage, reusable spec, public current type, or alias is
+    warranted.
+  - Existing internal production users prove both adjacent overload forms: `FtcActuators`
+    predominantly uses named position/velocity factories, while its already-resolved device-managed
+    paths, `FtcDeviceManagedVelocityPlant`, and `ReferenceLauncherMechanism` use direct-device
+    factories. `FtcHardware` remains command-only; `PlantSources` remains cached Plant
+    target/feedback status; and staged feedback answers consume complete `ScalarSource`s rather than
+    construct arbitrary electrical telemetry.
+- **Complete caller classification:** there is no current acquisition or current-alert caller in
+  production, Phoenix, modern examples, tools, legacy code, or tests, so no current caller migrates.
+  Phoenix application code also has no raw position/velocity/voltage sensor caller. Adjacent modern
+  production callers are the `FtcActuators`/`FtcDeviceManagedVelocityPlant` internals and
+  `ReferenceLauncherMechanism` described above. FTC diagnostic-edge tools intentionally retain raw
+  SDK position/velocity reads in `ActuatorBringUpTester`, `DcMotorPowerTester`,
+  `DcMotorPositionTester`, and `DcMotorVelocityTester`; they are exclusive hardware tools rather
+  than ordinary robot recipes and need no SENSOR-01 migration. The active raw position read in
+  `GameDayCode` is legacy, and Pedro tuning's analog encoder-voltage read remains a vendor tuning
+  edge. Battery and analog-voltage factories have documented examples but no external Java
+  production caller. None of those classified siblings justifies adding a current tester or
+  changing legacy/vendor code in this item.
+- **Staged-parameter and downstream-consumer audit:** SENSOR-01 introduces no builder or stored
+  intermediate stage. The direct factory consumes and closes over one exact motor; the named
+  factory consumes its `HardwareMap` and name once at eager lookup; `CurrentUnit.AMPS` is a
+  factory-owned sample-time constant rather than caller configuration.
+  `FtcActuators.nativeFeedback(ScalarSource)` has no production-Java caller; its unit-test callers
+  use inline lambdas or null checks, while the supported `Recommended Robot Design` teaching path
+  stores a named `ScalarSource` and passes it to the stage. The stage null-checks and stores the
+  exact supplied source, and the completed Plant owns feedback memoization. That arbitrary completed
+  feedback seam remains distinct from an actuator-owned current accessor: SENSOR-01 observes an FTC
+  device through the sensor boundary and does not make the output Plant own unrelated electrical
+  telemetry. Existing `externalEncoder(name[, direction])` stage callers use inline test literals;
+  those stages validate/copy their answers into deferred feedback suppliers rather than publish a
+  reusable feedback-spec noun. `voltageCompensationFrom(ScalarSource, ...)` has no Java caller; its
+  guide stores one shareable battery source before passing it, while the builder borrows that source
+  and validates the separate numeric policy. `PositionCalibrationTasks.until(BooleanSource)` stores,
+  resets, and samples an already-conditioned cue; `ReferenceLiftMechanism` retains one debounced
+  bottom-switch cue and supplies it to fresh single-use homing Tasks. A current-derived cue can use
+  that same downstream pattern. SENSOR-01 does not add a smoothing algorithm while SOURCE-03 remains
+  deferred.
+- **Ordinary call-site and cognitive-load comparison:** the policy code is intentionally identical;
+  the selected named factory removes only FTC acquisition ceremony:
+
+  ```java
+  // Selected Phoenix boundary spelling.
+  ScalarSource intakeCurrentAmps = FtcSensors.motorCurrentAmps(
+          hardwareMap, config.intakeMotorName);
+
+  // Robot policy remains outside acquisition.
+  BooleanSource jamEvidence = intakeCurrentAmps
+          .hysteresisAbove(config.jamEnterAmps, config.jamExitAmps)
+          .debouncedOn(config.jamDwellSec);
+  ```
+
+  A hardware-validated homing owner may supply an equivalently conditioned cue to
+  `PositionCalibrationTasks.search(...).until(hardStopEvidence)` and must still answer search power,
+  direction, reference, success handoff, timeout, cancellation, and failure policy explicitly.
+
+  The alternatives below are mutually exclusive sketches, not instructions to construct several
+  independently memoized sources for one motor:
+
+  | Design | Ordinary owner spelling | New concepts or decisions | Disposition |
+  | --- | --- | --- | --- |
+  | Direct SDK plus manual memoization | `ScalarSource currentAmps = ScalarSource.of(() -> intakeMotor.getCurrent(CurrentUnit.AMPS)).memoized();` | `DcMotorEx`, `CurrentUnit`, `ScalarSource.of`, `memoized`; unit and sampling choice at every owner | Rejected as the ordinary path; remains possible at the raw SDK edge. |
+  | Selected named `FtcSensors` overload | `ScalarSource currentAmps = FtcSensors.motorCurrentAmps(hardwareMap, config.intakeMotorName);` | One discoverable factory returning the existing `ScalarSource`; no framework policy decision | Smallest ordinary boundary; parallels position/velocity. |
+  | Selected resolved-device overload | `ScalarSource currentAmps = FtcSensors.motorCurrentAmps(intakeMotor);` | Same factory family when the owner already has the exact motor; no second lookup or policy | Retained exact-device seam; construct this or the named form once, then share it. |
+  | Unit-parameterized source | `ScalarSource current = FtcSensors.motorCurrent(intakeMotor, CurrentUnit.AMPS);` | Factory plus one unnecessary unit answer | Rejected; explicit-amps naming is shorter and unambiguous. |
+  | Actuator-owned readback | `ScalarSource currentAmps = intakePlant.currentAmps();` | New readback surface on an output owner; ambiguous grouped-motor meaning | Rejected; conflates sensing and writing and does not generalize truthfully to groups. |
+  | SDK current-alert family | `intakeMotor.setCurrentAlert(config.jamEnterAmps, CurrentUnit.AMPS); BooleanSource jamEvidence = BooleanSource.of(intakeMotor::isOverCurrent).memoized();` | Hardware threshold configuration/readback, Boolean-only observation, and threshold lifecycle | Rejected; mutates alert-threshold device configuration and does not expose raw current. |
+  | Multi-motor snapshot | `MotorCurrentSnapshot sample = MotorCurrentSnapshot.read(motors);` | New snapshot/member vocabulary, sequential-not-atomic reads, keying and partial-failure policy | Rejected; no caller proves that shared shape or semantics. |
+  | Current manager | `MotorCurrentManager currents = new MotorCurrentManager(hardwareMap, config.currentPolicy);` | New owner/lifecycle plus cadence, aggregation, thresholds, priorities, and response policy | Rejected; absorbs the materially different robot policies evidenced externally. |
+- **Alternatives rejected:** no change or documentation-only leaves every adopting robot responsible
+  for FTC subtype, unit, and memoization details despite the existing `FtcSensors` boundary. A
+  direct-device-only helper makes the ordinary named path retain raw lookup ceremony; a named-only
+  helper omits the proven exact-device seam used by adjacent sources and tests/custom adapters. An
+  actuator-owned or Plant-owned readback conflates sensing with writing and is undefined for grouped
+  motors: one member, sum, maximum, average, or per-child values. The SDK current-alert family
+  configures and reads back a device threshold plus Boolean over-threshold status and does not expose
+  the raw current observation; the pinned Lynx implementation follows different controller-command
+  and bulk-cache paths for that alert family.
+  A multi-motor “snapshot” is sequential rather than physically atomic and needs unproven keying and
+  partial-failure policy. A framework manager would absorb the heterogeneous ball-count, jam,
+  homing, and robot-load responses evidenced externally and could become a competing output-policy
+  owner. A new current interface or value object adds no contract beyond explicit-amps
+  `ScalarSource`. A direction overload has no SDK or Phoenix current-sign semantics. A custom raw
+  source solely for a richer debug dump violates the established primitive-leaf construction rule
+  and duplicates lifecycle state without improving the behavior contract.
+- **Bounded implementation and documentation scope if approved:** add the FTC `CurrentUnit` import,
+  the two factories, synchronized Javadocs, and one typical-use line in `FtcSensors.java`; add one
+  explicit motor-current section to `docs/ftc-boundary/FTC Sensors.md` covering construction,
+  sharing, raw/non-finite/placeholder truth, robot-owned policy, and adopting-hardware validation;
+  add motor current to the sensor inventory in `docs/ftc-boundary/README.md`; add the current source
+  to the measurement-readback snippet in
+  `docs/ftc-boundary/FTC Actuators & Plants.md`; and make the existing current-spike bullet in
+  `docs/design/Recommended Robot Design.md` name the boundary factory. Add one focused
+  `FtcSensorsMotorCurrentTest`. Do not change `ScalarSource`, `FtcHardware`, `FtcActuators`,
+  `PlantSources`, Plants, Position calibration, Phoenix application code, shared test hardware,
+  hardware testers, current alerts, bulk-cache ownership, or smoothing/filter APIs. No existing
+  caller migration or production threshold example is required.
+- **Deterministic verification plan:** the focused test will lock exactly the direct and named
+  overloads and `ScalarSource` return type; direct/null and named `HardwareMap`/name/missing/wrong-
+  type behavior plus lookup order/count; zero current reads during construction; exact
+  `CurrentUnit.AMPS` dispatch; two derived consumers sharing one read in a cycle and one new read in
+  the next cycle; two independently constructed sources over one motor issuing independent
+  same-cycle reads/caches, with resetting one leaving the other intact; reset permitting a fresh
+  same-cycle read without probing during reset; a seeded nonzero success in cycle N followed by the
+  exact escaping failure in cycle N+1 and a distinct same-cycle retry success, proving neither the
+  stale value nor zero was published; raw zero and negative values; and two same-cycle observations
+  of each `NaN`/infinity result proving exact propagation plus one-read memoization. It will also
+  prove no adapter-initiated power/mode/direction/alert call and non-sampling structural diagnostics.
+  Use a test-local dynamic `DcMotorEx` proxy and map-backed `HardwareMap`; do not widen the shared FTC
+  fake or claim that the fake models arbitrary SDK lookup-time device initialization. Run that test
+  with `FtcSensorsSuccessfulMemoizationTest`,
+  `ScalarSourceTest`, `FtcExternalEncoderFeedbackTest`, and `DocumentationLinksTest`, then run full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`. Finish with `git diff --check`
+  and static searches proving only the two production overloads, no current alert/manager/direction
+  API, no protected-core FTC import, no added sleep/busy-wait/private polling loop or explicit wait,
+  and no stale direct-SDK teaching path. The synchronous SDK call's actual latency remains outside
+  what that source scan can prove.
+- **Baseline and physical verification boundary:** before implementation, the existing
+  `FtcSensorsSuccessfulMemoizationTest` and `ScalarSourceTest` suites passed 19 tests with 0 failures,
+  0 errors, and 0 skipped, and `:TeamCode:compileDebugJavaWithJavac` succeeded under Android Studio
+  JBR 21.0.8 with only the established Java-21/source-8 and app-shell deprecation warnings. Software
+  completion can prove only lookup, unit dispatch, one successful SDK read per source/cycle between
+  resets with failed reads uncommitted, reset, raw propagation, non-sampling diagnostics, and absence
+  of writes. Controller support; wiring/name correctness; actual amperage sign, calibration,
+  resolution, noise, freshness, and cadence; read cost; cache/firmware interaction; disconnected,
+  disabled, startup, stall, and fault behavior; safe threshold/hysteresis/dwell/filter choices;
+  homing power/direction/timeout; jam recovery; derating; subsystem priority; and mechanism safety
+  remain adopting-robot observations. Gate 2 must stop in `Verifying` for Android Studio review and
+  may not convert any of those hardware facts into a software-test claim.
+- **Approval boundary:** because the selected design adds public framework factories and observable
+  sampling/reset semantics, Gate 1 stops here. Approval authorizes only SENSOR-01 Gate 2 on this
+  branch under the bounded scope above; it does not authorize another item, hardware claims,
+  staging, commit, push, pull request, or merge.
+- **Gate 2 approval and start (2026-08-23):** the user explicitly replied `Approve SENSOR-01`,
+  approving the recorded two-factory design and bounded implementation scope. After fetching,
+  `codex/sensor-01-motor-current-source` remains based exactly on
+  `origin/master@4f693a3390250f4d9e46e741ed26f0c14cb1aff5`. SENSOR-01 is **In progress**.
+  This approval authorizes implementation and verification only; it does not authorize staging,
+  commit, push, pull request, merge, another tracker item, or any robot-hardware claim.
+- **Implemented bounded design (2026-08-23):** **Verifying.** `FtcSensors` now exposes exactly
+  `motorCurrentAmps(DcMotorEx)` and `motorCurrentAmps(HardwareMap, String)`, both returning the
+  existing memoized `ScalarSource` and requesting only `CurrentUnit.AMPS`. The direct overload
+  validates the exact motor; the named overload validates `HardwareMap` before name, performs one
+  eager exact-type lookup, then reuses that resolved motor without construction-, reset-, or
+  later-cycle lookup repetition. Normally returned values pass through unchanged; an escaping
+  `RuntimeException` remains uncommitted and retryable in the same cycle; reset clears only the
+  software memo. Javadocs and the FTC sensor, boundary-index, measurement-readback, and recommended-
+  robot-design guides now teach construct-once/share ownership, pinned-Lynx placeholder-zero truth,
+  robot-owned policy, and the adopting-hardware boundary. No Phoenix application, Plant,
+  `FtcActuators`, protected-core source, tester, current-alert, manager, aggregation, direction,
+  filtering, threshold, or response API changed.
+- **Focused and full automated evidence (2026-08-23):** the new
+  `FtcSensorsMotorCurrentTest` passed all 10 tests, including exact two-overload reflection shape;
+  direct/named validation, lookup type/name/order/count, missing/wrong type, construction non-read,
+  exact amps dispatch, shared and independent memoization, reset isolation and same-cycle resample,
+  seeded prior success followed by escaping failure and distinct same-cycle retry, raw zero/negative/
+  `NaN`/infinity values, absence of every other motor/current-alert operation, and non-sampling
+  structural diagnostics. The approved focused set passed 49 tests with 0 failures, 0 errors, and 0
+  skipped. The complete `:TeamCode:testDebugUnitTest` run passed 217 suites / 1,987 tests with 0
+  failures, 0 errors, and 0 skipped, and `:TeamCode:compileDebugJavaWithJavac` succeeded under Android
+  Studio JBR 21.0.8. Only the established Java-21/source-8 and app-shell deprecation warnings remain.
+  `DocumentationLinksTest`, final diff/whitespace checks including the untracked focused test, and
+  static scans for exact API scope, protected-core direction, prohibited current policy, and added
+  polling/blocking behavior pass.
+- **Adversarial review evidence (2026-08-23):** independent API-family review repeated all 27 prior
+  public factory construction paths and found the two new overloads distinct, symmetric, and the
+  only justified public layer. Cross-reviews of implementation/tests and implementation/guides
+  required two corrections: the named-path test now proves one lifetime lookup across sampling,
+  reset, and later cycles; and Javadocs/guides now scope placeholder zero to the pinned FTC SDK's Lynx
+  implementation, distinguish values from bit patterns, state escaping-exception and validation/
+  lookup behavior, and preserve the `HardwareMap` initialization caveat. All three final rechecks
+  pass.
+- **Review, physical, and publication boundary (2026-08-23):** Android Studio review should inspect
+  the two factories/Javadocs in `FtcSensors`, the ten focused tests, and the four synchronized guide
+  edits; confirm construct-once/share, exact amps, no motor/configuration write, and no framework-
+  owned current response. Robot hardware is useful only for adoption: support, wiring, sign,
+  accuracy, noise, freshness/cadence, read cost, cache/firmware behavior, faults, thresholds, and safe
+  responses remain unverified physical/robot-policy facts. The resolved publication coordinates are
+  branch `codex/sensor-01-motor-current-source`, origin push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`; no remote item branch or
+  existing pull request was present at handoff. The seven-file reviewed diff remains unstaged and
+  uncommitted. Publication requires the exact combined review-and-destination authorization; it does
+  not authorize another item.
+- **Android Studio review and Gate 3 authorization (2026-08-23):** the user supplied the exact
+  combined approval: `SENSOR-01 looks good. Authorize committing the reviewed SENSOR-01 diff on
+  codex/sensor-01-motor-current-source, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.` This records the reviewed seven-file diff as **Done** and authorizes only the named
+  commit, branch publication, pull request, and merge destination. The approval does not convert any
+  adopting-hardware observation into framework evidence and does not start another tracker item.
 
 ### INPUT-01 - Safe contextual control activation
 
