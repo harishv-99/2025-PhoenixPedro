@@ -1322,7 +1322,12 @@ Use `FtcSensors` for raw measurement sources:
 ```java
 ScalarSource ticks = FtcSensors.motorPositionTicks(hardwareMap, "armMotor");
 ScalarSource vel = FtcSensors.motorVelocityTicksPerSec(hardwareMap, "flywheel");
+ScalarSource currentAmps = FtcSensors.motorCurrentAmps(hardwareMap, "intakeMotor");
 ```
+
+Motor current remains a raw, shareable measurement source rather than Plant/actuator readback or
+current-response policy. See [`FTC Sensors`](<FTC Sensors.md#motor-current>) for its sampling,
+returned-value, reset, and adopting-hardware boundaries.
 
 ### Plant status
 

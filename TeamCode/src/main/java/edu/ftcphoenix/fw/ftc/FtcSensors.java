@@ -12,6 +12,7 @@ import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.TouchSensor;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
+import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 import edu.ftcphoenix.fw.core.color.NormalizedRgba;
@@ -36,6 +37,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <pre>{@code
  * ScalarSource armTicks = FtcSensors.motorPositionTicks(hardwareMap, "arm");
+ * ScalarSource intakeCurrentAmps = FtcSensors.motorCurrentAmps(hardwareMap, "intake");
  * BooleanSource limit = FtcSensors.digitalLow(hardwareMap, "armLimit");
  * Source<NormalizedRgba> markColor = FtcSensors.normalizedRgba(hardwareMap, "markSensor");
  * }</pre>
@@ -436,6 +438,63 @@ public final class FtcSensors {
     // ------------------------------------------------------------------------------------------------
     // Encoder / motor measurements
     // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized scalar source that reads FTC motor current in amps.
+     *
+     * <p>The source requests {@link CurrentUnit#AMPS} from
+     * {@link DcMotorEx#getCurrent(CurrentUnit)}. It publishes one normally returned SDK observation
+     * per {@link LoopClock#cycle()} between resets, so every same-cycle consumer of this source sees
+     * the same value. An escaping {@link RuntimeException} is not cached and remains eligible for a
+     * later nonrecursive same-cycle retry. {@link ScalarSource#reset()} clears only the software memo
+     * and permits a new read, even in the same cycle; it does not reset or configure the motor.</p>
+     *
+     * <p>Returned values are forwarded without validation or substitution. In particular, a
+     * normally returned zero may be a real observation or an indistinguishable fallback from the
+     * pinned FTC SDK's Lynx controller implementation, so zero alone is not proof that current
+     * sensing is available. This adapter does not configure current alerts or choose thresholds,
+     * filtering, or response policy. Construct this source once per owning mechanism and share it
+     * among consumers.</p>
+     *
+     * @param motor FTC extended motor whose current should be sampled
+     * @return memoized scalar source producing current in amps
+     * @throws IllegalArgumentException if {@code motor} is {@code null}
+     */
+    public static ScalarSource motorCurrentAmps(DcMotorEx motor) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        return ScalarSource.of(() -> motor.getCurrent(CurrentUnit.AMPS)).memoized();
+    }
+
+    /**
+     * Create a memoized scalar source that reads current in amps from a named FTC motor.
+     *
+     * <p>The adapter performs the {@link DcMotorEx} lookup eagerly during construction and does not
+     * invoke {@link DcMotorEx#getCurrent(CurrentUnit)} until a consumer reads the returned source;
+     * any device initialization caused by lookup remains {@link HardwareMap} behavior. Sampling,
+     * failure, reset, and policy semantics are identical to
+     * {@link #motorCurrentAmps(DcMotorEx)}.</p>
+     *
+     * <p>The adapter validates {@code hw} before {@code name}, passes the exact name to
+     * {@link HardwareMap#get(Class, String)} without trimming, and propagates lookup, missing-device,
+     * and wrong-type failures unchanged.</p>
+     *
+     * @param hw FTC hardware map used to look up the extended motor
+     * @param name configured hardware name of the extended motor
+     * @return memoized scalar source producing current in amps from the named motor
+     * @throws IllegalArgumentException if {@code hw} or {@code name} is {@code null}, or if the
+     * hardware-map lookup rejects the name or device type
+     */
+    public static ScalarSource motorCurrentAmps(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return motorCurrentAmps(hw.get(DcMotorEx.class, name));
+    }
 
     /**
      * Create a memoized scalar source that reads an FTC motor or encoder position in native ticks.

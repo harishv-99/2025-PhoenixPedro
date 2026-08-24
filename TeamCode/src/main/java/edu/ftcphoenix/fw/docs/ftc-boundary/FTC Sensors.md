@@ -106,6 +106,49 @@ unwrapped by a layer that knows its period first.
 
 ---
 
+## Motor current
+
+Use `motorCurrentAmps(...)` for a raw per-motor current source in explicit amps:
+
+```java
+// Ordinary named construction resolves this DcMotorEx once, during construction.
+ScalarSource intakeCurrentAmps =
+        FtcSensors.motorCurrentAmps(hardwareMap, "intakeMotor");
+
+// If the owner already resolved the exact device, use the direct overload instead.
+// ScalarSource intakeCurrentAmps = FtcSensors.motorCurrentAmps(intakeMotor);
+```
+
+Named construction performs one eager `DcMotorEx` lookup. The adapter does not call `getCurrent(...)`
+during construction; any device initialization caused by lookup remains SDK `HardwareMap` behavior.
+
+Choose one construction form, construct the source once in the owning mechanism, and share that
+source with every consumer. Memoization belongs to the source instance, so independently wrapping
+the same motor can cause independent SDK reads. Between resets, the first normally returning read
+in a non-null `LoopClock.cycle()` publishes its exact `double`; same-cycle consumers reuse it. If
+the SDK read throws a `RuntimeException`, the failure escapes without being cached and a later
+nonrecursive same-cycle call may retry. `reset()` clears the software memo after propagating the
+ordinary upstream reset, permitting a fresh read even in the same cycle; it does not reset,
+configure, or probe the motor.
+
+The SDK current interface returns an unvalidated `double`, so Phoenix forwards every normally
+returned value unchanged, including zero, a negative finite value, `NaN`, or either infinity. This
+software contract does not claim that real FTC hardware normally produces every such value. The
+pinned FTC SDK's Lynx controller implementation can catch some current-read failures and return an
+indistinguishable placeholder `0.0`, so Phoenix cannot classify a normally returned zero as either
+a real observation or an unavailable reading.
+
+This adapter is read-only acquisition. It does not configure SDK current alerts, filter or
+aggregate samples, create a current manager, or choose thresholds, hysteresis, dwell, homing, jam
+recovery, derating, subsystem priorities, or another response. The adopting robot owns those
+decisions. Before using current for behavior or protection, validate the configured device and
+controller, wiring, firmware/cache behavior, accuracy and sign, calibration, resolution, noise,
+freshness, cadence, and loop read cost on the actual hardware. Also validate disconnected,
+disabled, startup, stall, and fault behavior plus every mechanism-specific threshold, filter,
+timeout, recovery, derating, priority, and safety choice.
+
+---
+
 ## Distance sensors
 
 Distance sensors are represented as a `ScalarSource` in your chosen unit.

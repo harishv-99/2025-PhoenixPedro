@@ -206,7 +206,8 @@ Examples:
 - touch sensor for homing
 - beam break for game-piece present
 - color sensor classifying an object
-- current spike indicating a jam or hard stop
+- robot-classified current spike based on `FtcSensors.motorCurrentAmps(...)` indicating a jam or
+  hard stop
 
 These sensors are telling you that something happened, not "how far away" you are. Treat them as
 signals that a supervisor or task reacts to.
