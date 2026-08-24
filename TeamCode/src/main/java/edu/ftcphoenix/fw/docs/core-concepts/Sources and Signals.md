@@ -180,6 +180,34 @@ Once an arbitrary stateful controller has been invoked, Phoenix cannot roll back
 integral/filter state. If that invocation throws, the returned source rethrows the same exception
 without invoking the controller again for the rest of that cycle; the next cycle may attempt again.
 
+### REV bulk caching is a separate FTC boundary
+
+Phoenix source memoization and REV/Lynx bulk caching operate at different layers. A memoized source
+publishes one successful result for one `LoopClock` cycle and has Phoenix's documented retry
+behavior before publication. The advanced `FtcBulkCaching.manual(hardwareMap)` service instead owns
+the lifetime of an SDK module-wide packet. It attempts to invalidate that packet before later
+services on a claimed cycle; it does not validate, timestamp, or republish the hardware values
+returned from it.
+
+Under the reviewed FTC SDK 11.1 behavior, the packet can back digital-input/touch state,
+analog-input voltage, motor position, motor velocity, motor busy/at-target state, and motor
+over-current status. Motor electrical current and battery voltage use separate ADC commands and are
+not cached by this mechanism. Do not infer packet eligibility for I2C, distance, color, vision, or
+vendor reads. Writes neither use nor invalidate the packet, so a post-write read may still observe
+pre-write cached state.
+
+SDK-managed bulk failures can install a fake zero/false packet that high-level getters cannot
+identify: position, velocity, and analog values then read zero; digital and over-current state read
+false; and cached motor busy can read true. `ForceStopException` instead escapes after the SDK
+clears without installing a packet. Cached `isBusy()` also uses bulk `!atTarget` before the `OFF`
+path's `RUN_TO_POSITION` guard, so its result can differ even without a bus failure.
+
+Memoizing any of those getters can consistently repeat the SDK observation; it cannot make a fake
+or stale observation fresh, valid, or physically coherent. Neither layer promises device success,
+transaction count, timing, or performance. The complete opt-in ownership, invalidation, restoration,
+and exclusivity contract is in
+[`FTC manual bulk caching`](<../ftc-boundary/FTC Manual Bulk Caching.md>).
+
 ## Reset follows ownership
 
 Calling `LoopClock.reset(...)` advances the cycle identity so old cycle caches cannot be reused. It

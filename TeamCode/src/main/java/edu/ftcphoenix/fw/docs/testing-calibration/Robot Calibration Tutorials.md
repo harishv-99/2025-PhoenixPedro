@@ -350,14 +350,21 @@ port, matched REV module address/serial/firmware, original bulk-caching mode, mo
 direction, and configured motor-type values. Those configured motor-type values are labeled
 metadata, not physical encoder identification.
 
-On a matched REV module, each accepted loop explicitly obtains one fresh bulk snapshot and reads
+On a matched REV module, each accepted loop explicitly requests one bulk snapshot and reads
 that motor port's position and direct velocity from the same packet. The tester applies the same
 configured-direction plus motor-type-orientation normalization as the FTC motor getters, so both
 values use the public motor coordinate. It observes but never changes the module's `OFF`, `MANUAL`,
-or `AUTO` caching mode. The explicit snapshot does clear and refill that module's current bulk cache,
-so use this isolated diagnostic as the only hub-cache owner in the OpMode; do not run it beside
-another same-cycle cache consumer. Each data row records snapshot coherence and that the configured
-mode was preserved.
+or `AUTO` caching mode. The explicit snapshot clears that module's current bulk cache before its
+transaction attempt; a normally returned real or fake response refills it. Use this isolated
+diagnostic as the only hub-cache owner in the OpMode. In particular, it is
+incompatible with `FtcBulkCaching.manual(hardwareMap)` and must not run beside that service or any
+other code that sets modes, clears caches, or calls `getBulkData()`. The tester runs through the
+separate `FtcTeleOpTesterOpMode` host, which has no `RobotProgram` service phase; do not install or
+simulate the manual-cache service there. Ordinary getters are consumers, not competing owners. Each
+data row records snapshot coherence and that the configured mode was preserved. See
+[`FTC manual bulk caching`](<../ftc-boundary/FTC Manual Bulk Caching.md>) for the exclusive managed
+owner contract. Here coherence means only that both decoded values came from one returned packet;
+it does not establish freshness, validity, or a physically simultaneous hardware observation.
 
 Each `ENCODER_VELOCITY_DATA` row records the session, motor name, loop cycle/time, enabled state,
 target power, the command held before measurement, the command issued afterward, position,
