@@ -22,6 +22,8 @@ drive code never imports the raw SDK `Gamepad` type.
   FTC velocity-PIDF configuration handle used by the framework tuning workflow.
 - [`FTC Sensors`](<FTC Sensors.md>) — battery, motor-current, encoder, distance, color, touch,
   digital, and analog sources.
+- [`FTC Manual Bulk Caching`](<FTC Manual Bulk Caching.md>) — advanced opt-in, first-service
+  lifecycle ownership for a robot that has deliberately selected module-wide `MANUAL` caching.
 - [`FTC UI Helpers`](<FTC UI Helpers.md>) — selection menus, navigation, summaries, and hardware
   name pickers.
 - [`FTC Auto-to-TeleOp handoff`](<FTC Auto-to-TeleOp Handoff.md>) — advanced process-local,

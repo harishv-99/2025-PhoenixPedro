@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -52,7 +52,7 @@ select a production design or claim completion.
   completion contracts. Physical actuator response, motor-current accuracy, polling cost, and useful
   thresholds remain adopting-robot validation; their decision gates may not claim those facts from
   fakes.
-- `PERF-01` is **Proposed** only as an advanced opt-in manual-cache lifecycle decision gate.
+- `PERF-01` is **Done** only as an advanced opt-in manual-cache lifecycle owner.
   Ordinary Phoenix programs leave the SDK-selected caching mode untouched (`OFF` after the FTC SDK
   11.1 OpMode reset), and neither implementation nor completion may claim a performance benefit
   without adopting-robot measurements.
@@ -133,7 +133,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 34 | SENSOR-01 | Cycle-memoized motor-current sensing | Done | Approved explicit-amps direct/named sources, successful per-cycle memoization contract, synchronized guides, focused/full verification, and publication authorization completed. |
 | 35 | INPUT-01 | Safe contextual control activation | Done | Approved robot-first contextual controls, shared registration surface, lifecycle-safe tester handoffs, and regression coverage. |
 | 36 | HAPTIC-01 | Driver haptic feedback boundary | Done | Approved fixed-pulse sink, truthful FTC conversion, focused coverage, and full software verification; physical rumble behavior remains adopting-robot validation. |
-| 37 | PERF-01 | Optional FTC manual bulk-cache lifecycle ownership | Proposed | Evaluate one advanced opt-in owner without changing ordinary robots' existing SDK caching mode or claiming that manual mode improves a particular robot. |
+| 37 | PERF-01 | Optional FTC manual bulk-cache lifecycle ownership | Done | The reviewed first-service owner, final invalidation/prior-mode restoration attempts, synchronized guides, software verification, Android Studio review, and destination-specific publication authorization are complete; adopting-robot performance validation remains separate. |
 | 38 | PERF-02 | Loop phase diagnostics | Done | Approved and reviewed sequential profiler, bounded atomic statistics, off-by-default Phoenix telemetry integration, focused/full verification; enabled hardware overhead remains adopting-robot validation. |
 | 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
 | 40 | TARGET-01 | Lazy Plant target overlay selection | Done | Two-pass lazy target resolution, measured-hold re-entry, truthful diagnostics, documentation, and 22 focused tests are complete and approved. |
@@ -4845,31 +4845,67 @@ implementation.
 
 ### PERF-01 - Optional FTC manual bulk-cache lifecycle ownership
 
-- **Problem to confirm:** Phoenix has no explicit owner for Lynx bulk-caching policy. Ordinary robot
-  programs currently leave the SDK-selected mode untouched. Manual caching can reduce repeated hub
-  I/O only if every hub is configured and cleared exactly once per OpMode cycle; scattered clears
-  make same-cycle readings inconsistent.
-- **External evidence:** Cuttlefish configures all Lynx modules for manual bulk caching during init
-  and clears them once at the beginning of every outer loop in
-  [`EnhancedOpMode`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/EnhancedOpMode.java).
-- **SDK contract:** the
+- **Confirmed problem:** Phoenix has no explicit owner for module-wide Lynx bulk-cache mode or
+  invalidation. Ordinary managed programs leave the SDK-selected mode untouched. An advanced robot
+  that selects `MANUAL` must otherwise repeat discovery, start-boundary mode changes, per-cycle
+  invalidation, partial-failure cleanup, and prior-mode restoration. One stray clear invalidates the
+  snapshot so a later eligible read can silently replace what subsequent same-cycle consumers see;
+  a direct bulk read clears and replaces it immediately.
+- **Pinned SDK contract and reset trace:** this repository pins FTC `Hardware` and `RobotCore`
+  11.1.0. The published
   [FTC Hardware 11.1 `LynxModule` Javadocs](https://javadoc.io/static/org.firstinspires.ftc/Hardware/11.1.0/com/qualcomm/hardware/lynx/LynxModule.html)
-  require an explicit clear in `MANUAL` mode. The published
-  [FTC Hardware 11.1 source artifact](https://repo1.maven.org/maven2/org/firstinspires/ftc/Hardware/11.1.0/Hardware-11.1.0-sources.jar)
-  initializes `LynxModule` to `OFF` and resets it to `OFF` in
-  `resetDeviceConfigurationForOpMode()`.
-- **Alternatives to compare:** leave the SDK-selected mode untouched; explicitly select SDK `AUTO`;
-  configure manual caching directly in a robot; create a tiny optional `fw.ftc` cycle owner; or hide
-  it in a base OpMode/lifecycle framework. Measure real loop I/O before recommending any mode and
-  specify INIT, repeated same-cycle calls, and shutdown restoration.
-- **Leading hypothesis:** leave the SDK-selected mode untouched for the beginner path. If an advanced
-  adopter explicitly chooses manual mode, one optional FTC composition-root owner discovers the
-  hubs, configures them once, and clears them idempotently by `LoopClock.cycle()`. No subsystem
-  clears a cache and no base OpMode, global singleton, or loop-rate sleep is added.
-- **Completion:** benchmark results and hardware assumptions are recorded; fake/FTC tests cover all
-  hubs, one clear per cycle, duplicate calls, INIT/active transitions, partial failure, and stop;
-  documentation places the owner at one explicit loop phase; robots that do not opt in need no extra
-  concepts.
+  describe `MANUAL` as the advanced mode requiring explicit cache clears. The inspected 11.1.0
+  source artifacts show that a module initializes to `OFF`, and the FTC OpMode manager invokes
+  `resetDeviceConfigurationForOpMode()` before user INIT, which selects `OFF`. FTC STOP attempts to
+  fail-safe modules but does not reset the cache mode before user cleanup, so an explicit adopter
+  must restore what it observed at START rather than depend on the next OpMode reset.
+- **Exact cached-read and invalidation semantics:** eligible Lynx-backed reads are digital
+  input/touch state,
+  analog-input voltage, motor position, velocity, busy/at-target, and over-current status. Motor
+  electrical current and battery voltage use separate ADC commands and are not included, so this
+  item does not cache or alter SENSOR-01's motor-current acquisition command; any surrounding bus-
+  timing interaction remains unproven. `OFF` bypasses the shared cache;
+  `MANUAL` shares one module snapshot until invalidation; and `AUTO` invalidates after a repeated
+  identical SDK-tagged command rather than at a Phoenix cycle boundary. `clearBulkCache()` clears
+  only local histories and the retained packet. `getBulkData()` performs its own local clear and
+  attempts a bulk transaction in every mode; a normally returning real or fake response replaces
+  the shared cache. Setting `OFF` clears, while a
+  `MANUAL`/`AUTO` transition can preserve the old packet and history. The selected contract can
+  therefore promise at most one periodic **owner-issued** clear attempt per module in a claimed
+  START/update cycle, exactly one on each successful pass, plus its documented terminal cleanup;
+  it can never promise one total SDK clear or one total hub transaction.
+- **Observation-semantic and failure boundary:** SDK 11.1 handles ordinary bulk NACK,
+  interruption, and non-ForceStop runtime failures internally and can cache a fake all-zero/false
+  packet until the next invalidation--the next claimed cycle under exclusive use of the selected
+  owner; high-level getters cannot inspect its fake marker. A `ForceStopException` instead escapes
+  after the internal clear without installing a packet. Position, velocity, and analog reads then
+  report zero, digital and over-current report false, and busy can report true when the fake is
+  installed. Cached-mode `isBusy()` also returns bulk `!atTarget` before the `OFF` path's
+  `RUN_TO_POSITION` guard, so enabling caching can change observable behavior even without a bus
+  failure. Writes neither use nor invalidate the snapshot, and a post-write read can still observe
+  pre-write cached state. No design may call the mode transparent or promise fresh, valid,
+  physically coherent, or successful sensor observations.
+- **External adoption evidence:** pinned FTC_Decode
+  [`BulkRead`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/lib/util/BulkRead.java#L7-L20)
+  discovers all modules and selects `MANUAL`, while
+  [`CurrentRobot.update()`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/CurrentRobot.java#L114-L127)
+  clears before subsystem updates. The accessible Cuttlefish
+  [fidelity port](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/core/EnhancedOpMode.java#L174-L253)
+  likewise selects `MANUAL` during INIT and clears at the beginning of each outer INIT/active loop.
+  These establish recurring lifecycle demand, but neither proves a Phoenix performance benefit or
+  supplies exact prior-mode restoration and failure semantics.
+- **Complete repository caller audit:** exactly three Java edges use Lynx cache APIs. The
+  `DcMotorPowerTester` diagnostic issues `getBulkData()` for an explicit one-module snapshot and its
+  calibration guide already requires it to be the sole cache owner. Legacy/vendor Pedro
+  `Tuning.AnalogMinMaxTuner` selects `MANUAL` and clears per raw OpMode loop. The disabled FTC
+  `ConceptMotorBulkRead` sample demonstrates `AUTO` and `MANUAL`. Neither latter edge restores a
+  prior mode, and none is a modern framework template. No Phoenix class, modern framework robot,
+  managed example, production `fw.ftc` owner, or test currently sets or clears bulk caching; pinned
+  Pedro Pathing 2.1.2 sources contain no cache API call. No existing caller migrates or adopts this
+  item.
+- **Original completion contract (superseded by the narrowed decision below):** benchmark results
+  and hardware assumptions were required before any owner could complete; fake/FTC tests were to
+  cover all hubs, duplicate calls, INIT/active transitions, partial failure, and stop.
 - **Pause record (2026-07-19):** **Deferred while real hub-I/O benchmarks are unavailable.** Fakes
   can verify one-clear-per-cycle mechanics but cannot establish that manual caching has enough
   benefit to justify a new owner or changing the beginner default.
@@ -4879,24 +4915,292 @@ implementation.
   `RobotProgram` ordering make the ownership contract software-auditable. Gate 1 must compare a
   robot-local first service, one narrow `fw.ftc` owner, documentation-only guidance, and no change;
   it must reject a second host phase, base OpMode, singleton, or beginner default.
-- **Superseding completion candidate:** keep SDK caching untouched unless an adopter explicitly
-  installs the advanced owner. Before mutation, snapshot every hub and prior mode. At START, set all
-  selected hubs to MANUAL and clear every cache; then clear every hub once per new
-  `LoopClock.cycle()`. The caller contract installs this as the first declared `RobotProgram.Service`
-  so its declaration-ordered update precedes sensor-owning services; the current host has no phase or
-  introspection API that can enforce that placement. Each update claims `clock.cycle()` before its
-  first hub clear: reentry fails, same-cycle success is a no-op, and same-cycle failure rethrows the
-  exact retained failure without replaying any hub effect. Stop before any START mutation attempt is
-  a no-op; once a start mutation is attempted, exactly one cleanup pass remains claimable even if
-  START failed. A partial start terminates at its first failed effect and then runs that cleanup.
-  Per-cycle clear and final cleanup are best-effort across every applicable hub: preserve the first
-  failure and suppress later cleanup failures. Final cleanup clears every hub and restores every
-  captured mode because restoring a prior mode alone need not discard a MANUAL cache. Tests cover
-  documented first-service placement and declaration order, all-hub behavior, claim-before-effect,
-  reentry, same-cycle success/failure replay prevention, partial START failure, exact exception
-  retention/suppression, final clear, exact restoration, BLOCKED/no-mutation start, stop-before-start,
-  and repeated stop. Completion may not claim reduced loop time, bus traffic, controller freshness,
-  or benefit on a particular robot; PERF-02 plus adopting-robot measurements answer those questions.
+- **Gate 1 start (2026-08-24):** **Researching** on
+  `codex/perf-01-manual-bulk-cache-owner`, based exactly on merged
+  `origin/master@a45c61f40a8cf26dd36653e947b32a0643e4bd89`. This starts the SDK-contract,
+  lifecycle, caller, construction-path, documentation, and deterministic-test decision audit for
+  the advanced opt-in software contract only. It does not approve implementation, a public API,
+  a default caching-mode change, a performance claim, publication, or another tracker item.
+- **Decision gate (2026-08-24):** **Ready; the public factory and module-wide START/update/STOP
+  ownership contract require explicit approval.** Gate 1 is complete on
+  `codex/perf-01-manual-bulk-cache-owner`; no production Java, test, example, or framework-guide
+  implementation has started. The leading opt-in hypothesis remains viable after narrowing every
+  claim to owner-issued lifecycle effects. Ordinary programs and Phoenix remain unchanged.
+- **Selected public API and one construction layer:** add one final `fw.ftc` utility with no public
+  constructor and exactly one public factory:
+
+  ```java
+  program.service(FtcBulkCaching.manual(hardwareMap)); // declare this service first
+  ```
+
+  `FtcBulkCaching.manual(HardwareMap)` returns only the existing `RobotProgram.Service`. The caller
+  does not need or receive cache status or another domain capability. A package-private lifecycle
+  owner and narrow package-private hub adapter provide deterministic tests around concrete
+  `LynxModule` without becoming supported construction paths. There is no public concrete owner,
+  constructor, `create`/`of` alias, builder, config object, mode argument, selected-hub overload,
+  status type, boolean enable flag, `AUTO`/`OFF` sibling, runtime toggle, singleton, or Phoenix
+  profile field.
+- **Construction-path, sibling, and staged-parameter audit:** this is the first Phoenix bulk-cache
+  factory. Existing FTC lifecycle owners with public constructors, such as
+  `FtcImuHeadingEstimator`, expose a separate retained domain capability; this owner exposes none.
+  `FtcHaptics.gamepad(Gamepad) -> HapticSink` supplies the closer utility/factory precedent. The
+  existing `program.service(Service)` registration and the new factory have distinct jobs:
+  construction versus declaration-ordered ownership. A factory that accepts and mutates
+  `RobotProgram` still cannot prove that no earlier service was declared, so it would add hidden
+  registration without enforcing the contract. There is one required hardware input and one fixed
+  answer, leaving no staged builder parameter, reusable specification noun, or direct-stage answer
+  to compare. The factory rejects null `HardwareMap`, discovers and defensively copies the unique
+  `hardwareMap.getAll(LynxModule.class)` result during configure/INIT, and fails actionably if no hub
+  is present; explicit adoption may not silently do nothing. An escaping discovery
+  `RuntimeException` propagates exactly before a service exists or any cache operation occurs.
+  Discovery order is unspecified but the owner preserves the returned order. Construction invokes
+  no mode read, mode write, cache clear, or bulk transaction.
+- **Ordinary call-site and concept comparison:** alternatives remain available only as mutually
+  exclusive policy choices; an adopter must not install more than one owner.
+
+  | Design | Representative composition-root spelling | Student decisions and result | Disposition |
+  | --- | --- | --- | --- |
+  | Leave SDK mode untouched | no cache declaration | Zero new concepts and current behavior | Remains the ordinary/default path. |
+  | Documentation-only/manual robot code | discover modules; snapshot modes; set, clear, deduplicate, aggregate failures, and restore in the robot | Every adopter recreates hazardous lifecycle and failure policy | Rejected as the advanced reusable answer. |
+  | Robot-local first `Service` | `program.service(new RobotBulkCacheService(hardwareMap));` | Placement is visible, but every robot still owns an asymmetric state machine and SDK details | Viable smallest-local fix, rejected because repeated demand is the same FTC boundary capability. |
+  | SDK `AUTO` | set every module to `AUTO` and later restore it | Selects duplicate-command invalidation, not a Phoenix-cycle owner; retains semantic and cleanup questions | Rejected for this item, not labeled inferior for every robot. |
+  | Selected optional owner | `program.service(FtcBulkCaching.manual(hardwareMap));` first | One explicit advanced mode choice, first-service placement, and exclusive ownership | Selected smallest reusable contract. |
+  | Public concrete owner | `program.service(new FtcManualBulkCaching(hardwareMap));` | Adds a retained public noun with no capability beyond `Service` | Rejected as a redundant public layer. |
+  | Factory that registers itself | `FtcBulkCaching.installManual(program, hardwareMap);` | Hides declaration and still cannot enforce first placement | Rejected. |
+  | Hidden base-host/default phase | automatic in every `FtcRobotOpMode` | Short call site but changes all robots, vendor integrations, and read semantics | Rejected. |
+  | New privileged first-service phase/API | `program.firstService(...)` | Can enforce placement only by expanding the core lifecycle for one advanced FTC policy | Rejected as disproportionate. |
+  | Global singleton | `BulkCacheOwner.install(...)` | Hides lifetime, conflicts across OpModes/tests, and weakens cleanup ownership | Rejected. |
+- **First-service ownership and managed-host interaction:** `RobotProgram` starts and updates services
+  in declaration order and stops them in reverse order. First declaration therefore lets this owner
+  establish `MANUAL` before later services start, clear before their active sensor reads, and restore
+  only after those services stop. A BLOCKED start invokes no service START and cleanup still calls
+  `stop()`, so blocked programs perform no cache operation. The current program surface exposes no
+  service count, priority, or first-slot assertion; first placement is an explicit composition-root
+  and Javadoc contract rather than a false runtime guarantee. Adding a second owner, or calling
+  `setBulkCachingMode`, `clearBulkCache`, or direct `getBulkData()` elsewhere while it is active,
+  violates exclusive ownership. This includes the explicit-snapshot motor tester, which must run as
+  a separate diagnostic rather than coexist with the service.
+- **Complete managed composition-path audit:** Phoenix TeleOp currently declares vision,
+  localization, and targeting services; Phoenix Auto declares one aggregate service. The field-
+  relative example declares `FtcImuHeadingEstimator`, and the basic Pedro example declares its
+  Pedro Auto service; the Starter and Reference robots declare no services. An adopter can achieve
+  the documented literal first position only by registering `FtcBulkCaching.manual(hardwareMap)` at
+  the top of `configure(...)`, before invoking helpers or constructors that make those declarations.
+  `FtcTeleOpTesterOpMode`, raw OpModes, the legacy/vendor tuning path, and FTC samples do not use
+  `RobotProgram`'s service phase and cannot adopt this owner without a separately justified host-
+  lifecycle feature; they remain outside PERF-01. No current production path is changed merely to
+  demonstrate the optional call.
+- **Exact START contract:** START validates a non-null `LoopClock`, then atomically consumes the
+  service's single start attempt and binds that clock before its first module callback. It reads and
+  retains every discovered module's actual cache mode, in preserved discovery order, before any
+  module mutation; a thrown read or null mode fails with no mode write or clear, consumes the start
+  attempt, and leaves only no-effect stop valid--a second START cannot retry the snapshot. After a
+  complete snapshot, it claims cleanup and the START `clock.cycle()` before the first effect, sets
+  every module to `MANUAL` in order, then clears every module in order. START halts and throws the
+  exact first `RuntimeException` from either pass; the managed `FtcRobotOpMode` then synchronously
+  invokes its fail-stop cleanup and suppresses any cleanup failures on that primary. Because a mode
+  mutation may have happened before a failure became visible, cleanup applies to every captured
+  module once mutation was attempted. A successful initial clear counts for the START cycle, so a
+  same-cycle update issues no second owner clear.
+- **Exact per-cycle contract:** active update requires the same clock object and a non-regressing
+  cycle. It claims each new `clock.cycle()` before its first effect. A repeated update after a
+  successful same-cycle pass is a no-op; after a same-cycle failed pass it rethrows the exact retained
+  `RuntimeException` instance without replaying an effect. On a later cycle it normally attempts
+  every module in stable order. Clear is best-effort across the full list: the first runtime failure
+  is primary and later runtime failures are suppressed in encounter order. A terminal reentrant
+  stop instead halts that ordinary pass after the in-flight callback and transfers to the deferred
+  cleanup contract below. Reentrant update fails before issuing an inner hub effect. The owner is
+  intended only for the managed OpMode heartbeat; it makes no cross-thread synchronization guarantee
+  and never advances or resets the clock.
+- **Exact STOP and reentry contract:** `stop()` claims terminal state before any cleanup effect.
+  Stop before START performs no module operation, remains idempotent, and terminalizes the single-use
+  service so later start/update calls fail before hardware effects. After a START mutation was
+  attempted, the one cleanup pass first attempts to clear **every** captured module, then attempts
+  to restore **every** exact captured mode, even if a prior cleanup step failed; the first runtime
+  failure is primary and later ones are suppressed in exact encounter order. The selected
+  deterministic cleanup policy uses global clear-then-restore passes; an explicit clear is required
+  because merely restoring `AUTO` or `MANUAL` need not discard the retained packet. Repeated stop,
+  and a stop call reentered while cleanup itself is running, are inert.
+
+  A first stop invoked reentrantly during the pre-mutation START snapshot claims terminal state but
+  performs no cleanup effect because no complete prior-mode snapshot or mutation claim exists. The
+  outer START issues no later callback and preserves an escaping snapshot-callback failure, or
+  otherwise throws the named reentrant-stop `IllegalStateException`. A first stop invoked
+  reentrantly from a START/update callback after cleanup has been claimed instead defers its one
+  cleanup pass until that in-flight callback returns, so the callback cannot mutate a module after
+  restoration. The outer START/update then issues no later ordinary effect, performs the deferred
+  two-pass cleanup, and cannot report success. If the in-flight callback also threw, that exact
+  failure remains primary and cleanup failures are suppressed on it; otherwise the exact cleanup
+  failure is primary, or the named `IllegalStateException` reports the reentrant stop when cleanup
+  succeeded. Framework-standard `Error` behavior remains uncaught rather than being relabeled as a
+  recoverable runtime failure.
+- **Reentrant START contract:** the valid outer START claims its single use before the first module
+  callback, so an inner START is exactly the duplicate-start error and performs no module callback
+  or effect. If the adapter callback lets that named `IllegalStateException` escape, it becomes the
+  outer snapshot/set/clear failure under the corresponding START cleanup rule; an adapter that
+  deliberately catches its own reentrant misuse cannot make the inner call succeed.
+- **Validation and error vocabulary:** null `HardwareMap` is an `IllegalArgumentException` naming
+  `FtcBulkCaching.manual(...)`; zero discovered hubs is an `IllegalStateException` directing the
+  caller to configure a `LynxModule` or leave the owner uninstalled. A null captured SDK mode is an
+  `IllegalStateException` naming START and the module's stable list index. Null START/update clocks
+  are `IllegalArgumentException`s naming the public operation and are rejected before consuming a
+  start attempt, claiming a cycle, or issuing an effect. Duplicate/failed-start retry,
+  update-before-start or after stop, different clock identity,
+  cycle regression, update reentry, and reentrant stop detection are `IllegalStateException`s that
+  name the public factory-owned service and the corrective action; package-private implementation
+  names do not escape through user-facing errors. Focused tests lock exception categories and the
+  actionable public vocabulary, while exact full messages remain synchronized in Javadocs/tests.
+- **Framework-Principles result:** the selected service is one explicit FTC-boundary resource owner,
+  uses the existing managed heartbeat without a competing loop or clock, leaves module observations
+  with existing sensor owners, makes composition-root order visible, and best-effort attempts to
+  restore every captured prior mode while discarding the owner's retained packet during cleanup. It
+  adds no sleep, busy wait, polling loop, subsystem cache clear, hidden host behavior,
+  protected-core FTC dependency, or output writer. Ordinary robot code needs no migration or new
+  concept. Manual caching is deliberately not enabled by default because it changes module-global
+  read and failure semantics and may conflict with opaque vendor code. There is no runtime “off” API:
+  STOP is the one lifecycle transition that attempts the terminal clear and exact-prior-mode
+  restoration.
+- **Bounded implementation and documentation scope if approved:** add `FtcBulkCaching` plus its
+  package-private tested lifecycle/hub seam in `fw.ftc`; add focused unit and managed-lifecycle
+  integration tests; add one advanced manual-caching guide under `docs/ftc-boundary` and index it;
+  synchronize `core-concepts/Loop Structure.md`, `core-concepts/Sources and Signals.md`, and the
+  existing explicit-snapshot warning in `testing-calibration/Robot Calibration Tutorials.md`.
+  Javadocs and guides must state first-service/exclusive ownership, INIT discovery/START capture,
+  exact prior-mode restoration attempts after intentional final invalidation, the fact that prior
+  packet/history contents are not restored, eligible and excluded reads, cached `isBusy()`/fake-
+  packet behavior, and the absence of freshness, validity, transaction-count, timing, or performance
+  guarantees. Do not
+  change `RobotProgram`, `FtcRobotOpMode`, `LoopClock`, `FtcSensors`, `FtcActuators`, any Plant,
+  Phoenix profiles/application code, Pedro integration, tester behavior, legacy/vendor/sample code,
+  or Framework Principles; add no production adoption or benchmark.
+- **Deterministic verification plan:** reflection locks the single public
+  `manual(HardwareMap) -> RobotProgram.Service` factory and absence of public implementation/sibling
+  paths. Focused fakes cover null/empty/throwing discovery, defensive copy and stable internal order,
+  zero cache effects during construction/INIT, all-mode snapshot before mutation, snapshot exception/
+  null with no mutation plus rejected second START, successful exact `OFF`/`AUTO`/`MANUAL` prior-mode
+  restoration after final invalidation, all-hub START set/clear and START-cycle deduplication, later-
+  cycle clears, same-cycle success no-op, exact same-cycle failure rethrow, later-cycle retry, best-
+  effort suppression order, null/different/regressed clocks, duplicate and callback-reentrant start,
+  update before start/after stop, update reentry, deferred reentrant-stop cleanup and exception
+  precedence, partial set/clear START failures, final-clear pass then all restoration attempts despite
+  failures, stop-before-start, and repeated stop. Managed integration proves first-
+  service start/update before a sensing service, reverse stop after it, host cleanup after START/update
+  failure, BLOCKED no mutation, and unchanged behavior with no opt-in. Run the new focused suites with
+  `FtcRobotOpModeTest`, `RobotProgramPrestartAndHandoffTest`, `ModernFtcHostBoundaryTest`, and
+  `DocumentationLinksTest`, then full `:TeamCode:testDebugUnitTest` and
+  `:TeamCode:compileDebugJavaWithJavac`; finish with diff/whitespace checks and static searches for
+  exact public scope, all cache callers, protected-core FTC imports, and added blocking/polling code.
+- **Gate 1 baseline (2026-08-24):** the existing `FtcRobotOpModeTest`,
+  `RobotProgramPrestartAndHandoffTest`, `ModernFtcHostBoundaryTest`, and `DocumentationLinksTest`
+  passed 4 suites / 50 tests with 0 failures, 0 errors, and 0 skipped, and
+  `:TeamCode:compileDebugJavaWithJavac` succeeded under Android Studio JBR 21. Output contained only
+  the established Java-21/source-8 and app-shell deprecation warnings. This validates the unchanged
+  host/documentation baseline, not the unimplemented owner.
+- **Gate 1 adversarial review (2026-08-24):** three independent read-only reviews repeated the pinned
+  SDK trace, public-construction/redundant-layer audit, repository-caller classification, managed-host
+  ordering, documentation scope, and deterministic test design. Corrections narrowed STOP and bulk-
+  failure claims, separated prior-mode restoration attempts from intentionally discarded cache
+  contents, qualified active clears under failure/reentry, made reentrant lifecycle deferral and
+  exception precedence complete, consumed failed START snapshots, fixed public error vocabulary, and
+  added every managed composition path plus discovery/reentry cases. Final SDK, API/lifecycle, and
+  caller/docs rechecks found no remaining issue.
+- **Physical and performance boundary:** software inspection and deterministic tests can prove only
+  discovery, ordering, owner-issued effects, lifecycle state, failure propagation, and final-
+  invalidation/prior-mode-restoration attempts.
+  A real adopting robot must decide whether manual mode is useful and validate its own module set,
+  firmware/vendor interaction, read mix, loop timing, bus traffic, stale-after-write consequences,
+  fake-packet/fault behavior, and affected sensor/control semantics. PERF-02 can measure loop phases;
+  neither this item nor fakes prove lower latency, fewer transactions, coherent physical sampling,
+  freshness, correctness, or benefit. Those facts are not required to implement the narrowed
+  lifecycle-only seam and remain adopting-robot validation.
+- **Approval boundary:** because the design adds a public FTC factory and observable module-wide
+  lifecycle semantics, Gate 1 stops here. Approval authorizes only PERF-01 Gate 2 on this branch
+  under the bounded scope above; it does not authorize hardware claims, staging, commit, push, pull
+  request, merge, production adoption, a default-mode change, or another tracker item.
+- **Gate 2 approval and start (2026-08-24):** the user explicitly replied `Approve PERF-01`,
+  approving the recorded one-factory, first-service, exclusive manual-cache lifecycle design and
+  bounded implementation scope. After fetching, `codex/perf-01-manual-bulk-cache-owner` remains
+  based exactly on `origin/master@a45c61f40a8cf26dd36653e947b32a0643e4bd89`. PERF-01 is
+  **In progress**. This approval authorizes implementation and verification only; it does not
+  authorize a performance/default-mode claim, Phoenix adoption, staging, commit, push, pull request,
+  merge, or another tracker item.
+- **Gate 2 implementation (2026-08-24):** PERF-01 is **Verifying** with an exact 11-file unstaged
+  diff on `codex/perf-01-manual-bulk-cache-owner`, still based exactly on current
+  `origin/master@a45c61f40a8cf26dd36653e947b32a0643e4bd89`. The three new production Java files add
+  the sole public `FtcBulkCaching.manual(HardwareMap) -> RobotProgram.Service` factory, a
+  package-private single-use lifecycle owner, and its package-private fakeable hub seam. Two new
+  focused suites cover the public, lifecycle, failure, reentry, restoration, and managed-host
+  contracts. The new advanced FTC guide and four synchronized guide/index edits document literal
+  first-service placement, exclusive cache ownership, eligible/excluded reads, final invalidation,
+  exact prior-mode restoration attempts, discarded prior packet/history, and the evidence boundary.
+  `RobotProgram`, `FtcRobotOpMode`, `LoopClock`, sensor/actuator/Plant code, Phoenix, integrations,
+  tester behavior, legacy/vendor/sample code, and Framework Principles are unchanged; no robot
+  adopts the owner and ordinary programs still leave the SDK-selected mode untouched.
+- **Implemented software contract:** construction eagerly discovers and defensively retains every
+  configured Lynx module without a cache effect. START binds one exact clock, captures every prior
+  mode before mutation, claims cleanup and its cycle before the first set, then sets all modules to
+  `MANUAL` before the ordered initial clear. Active updates claim each non-regressing new cycle
+  before effects, deduplicate same-cycle success, retain and replay the exact same-cycle failure,
+  retry in a later cycle, and aggregate ordinary clear failures across all modules. Terminal state
+  is claimed before cleanup; mutation-eligible cleanup makes one global all-module clear pass and
+  then one exact-mode restoration pass, preserving primary identity and ordered suppression.
+  Reentrant STOP defers cleanup until the in-flight callback returns and prevents later ordinary
+  effects; pre-mutation STOP stays effect-free. The periodic path uses no captured lambda or other
+  functional object per hub/cycle. `Error` remains uncaught under the recorded framework boundary.
+- **Focused automated evidence (2026-08-24):** Android Studio JBR 21 ran the six selected suites with
+  **78/78 tests** and zero failures, errors, or skips: `FtcBulkCachingTest` 23,
+  `FtcBulkCachingManagedLifecycleTest` 5, `FtcRobotOpModeTest` 22,
+  `RobotProgramPrestartAndHandoffTest` 12, `ModernFtcHostBoundaryTest` 7, and
+  `DocumentationLinksTest` 9. The new fakes prove all-mode snapshot-before-mutation, stable effect
+  order, partial START cleanup eligibility, exact same-cycle replay/later retry, clock rejection,
+  duplicate/reentrant START, update reentry, deferred STOP at snapshot/START/update boundaries,
+  earlier-primary plus later-callback/cleanup suppression order, global cleanup passes, exact prior-
+  mode restoration, idempotent terminal behavior, first-service/reverse-stop ordering, BLOCKED
+  inertness, host fail-stop suppression, and unchanged no-opt-in lifecycle behavior.
+- **Full automated and static evidence (2026-08-24):**
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed with **219 suites / 2,015
+  tests / 0 failures / 0 errors / 0 skips**, and strict `:TeamCode:phoenixJavadocs` passed separately.
+  Output contained only the established Java-21/source-8 and deprecated FTC controller-shell
+  warnings. Reflection and compiled-bytecode inspection show one public factory and no public
+  implementation/sibling path; the compiled lifecycle owner contains no lambda call site. Complete
+  source search still classifies cache-management callers only at the new `fw.ftc` boundary, the
+  isolated motor diagnostic, legacy Pedro tuning, and the disabled FTC sample. No Phoenix or modern
+  robot adopts the factory, no protected-core FTC dependency or blocking/polling loop was added, and
+  all 11 files pass diff, final-newline, trailing-whitespace, and scope checks.
+- **Independent Gate 2 reviews:** separate production lifecycle, API/construction/scope,
+  documentation/SDK-truth, and adversarial-test reviews are **CLEAN** after corrections. Resolved
+  findings qualified no-effect STOP, clear attempts, normal-return packet replacement, and owner-
+  only INIT inertness; removed avoidable per-hub/per-cycle captured lambdas; and added the only
+  previously uncovered preceding-failure/deferred-STOP suppression path plus post-snapshot
+  reentrant-START cleanup evidence. The concrete private `LynxModule` adapter cannot be safely run
+  through a successful local-JVM hardware fake; its direct one-to-one wiring and sole construction
+  path were inspected statically, while the complete state machine runs through the approved narrow
+  hub seam. Final rechecks found no remaining software, API, documentation, test, or scope issue.
+- **Hardware and performance boundary:** no Control Hub, Expansion Hub, module firmware, physical
+  sensor, motor controller, or adopting robot was exercised. The evidence establishes only software
+  discovery, lifecycle order, owner-issued attempts, exception structure, terminal invalidation, and
+  prior-mode restoration attempts. It does not establish SDK/device success, a real packet's
+  freshness/validity/coherence, total cache-clear or transaction count, loop-time improvement, bus-
+  traffic reduction, vendor compatibility, fault response, or benefit. Those remain adopting-robot
+  measurement and validation, and PERF-01 makes no default-mode or performance claim.
+- **Android Studio review handoff and publication coordinates (2026-08-24):** inspect the unstaged
+  11-file diff on `codex/perf-01-manual-bulk-cache-owner`. In `FtcBulkCaching` and the private owner,
+  confirm sole-factory scope, effect-free eager discovery, snapshot-before-mutation, first-service
+  START/update ordering, cycle claim/replay/retry, terminal reentry deferral, global final clear then
+  exact prior-mode restoration attempts, and public error vocabulary. Inspect both new test suites
+  for exact effect/exception ordering, then the five guide changes for exclusive ownership, cached-
+  observation truth, tester isolation, and no-default/no-performance boundaries. Nothing is staged,
+  committed, or published. Read-only GitHub checks found no remote branch or pull request with this
+  head. The resolved publication coordinates are branch
+  `codex/perf-01-manual-bulk-cache-owner`, origin push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target branch `master`.
+- **Manual review and Gate 3 authorization (2026-08-24):** after the Android Studio handoff, the
+  user supplied the exact combined approval: `PERF-01 looks good. Authorize committing the reviewed
+  PERF-01 diff on codex/perf-01-manual-bulk-cache-owner, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.` PERF-01 is **Done**; Gate 3 may stage and publish only the reviewed 11-file diff at those
+  named coordinates. This approval does not establish robot-hardware or performance evidence,
+  enable manual caching by default, adopt it in Phoenix, or start another tracker item.
 
 ### PERF-02 - Loop phase diagnostics
 

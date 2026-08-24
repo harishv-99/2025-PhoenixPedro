@@ -179,6 +179,35 @@ For the `FtcHaptics` adapter, both pulse and stop are queued, best-effort SDK co
 retains only the latest undelivered request, and a delivered request displaces the current effect;
 neither call reports physical delivery, and controller support varies.
 
+### 3.2 Advanced manual bulk caching is a first service
+
+Ordinary programs leave the FTC SDK's module cache mode untouched. A robot that has separately
+measured and selected REV/Lynx `MANUAL` caching can opt into its lifecycle owner at the very top of
+`configure(...)`:
+
+```java
+program.service(FtcBulkCaching.manual(hardwareMap)); // declare this service first
+```
+
+The factory discovers modules during configuration/INIT but performs no cache operation then. At
+START the first service captures every actual prior mode before mutation, attempts the ordered
+`MANUAL` mode pass, and begins initial invalidation only if every mode write succeeds. In each
+claimed active cycle it runs after the clock advances and before later services, making at most one
+owner-issued clear attempt per module and exactly one per module on a successful pass. Successful
+START already owns that cycle, so the same-cycle service update is a no-op.
+
+Because services stop in reverse declaration order, literal first placement also keeps the owner
+active until dependent services have stopped. Its terminal cleanup first attempts to invalidate
+every captured module, then attempts to restore every exact prior mode. It does not and cannot
+restore the prior retained packet or command histories. The current `RobotProgram` API does not
+enforce first placement; the composition root must make it true, and no other cache owner or direct
+cache-management caller may coexist with the service.
+
+This is an advanced opt-in, not a default phase or a Phoenix adoption. It supplies lifecycle order,
+not freshness, validity, transaction-count, timing, or performance guarantees. See
+[`FTC manual bulk caching`](<../ftc-boundary/FTC Manual Bulk Caching.md>) for the exact eligible reads,
+failure semantics, cleanup contract, and tester incompatibility.
+
 ---
 
 ## 4. Idempotency: “safe if called twice”
