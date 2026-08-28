@@ -68,6 +68,14 @@ public final class FtcTestHardware extends HardwareMap {
         return probe;
     }
 
+    /** Registers a second FTC name for an existing digital probe to test identity validation. */
+    public void addDigitalInputAlias(String name, DigitalProbe probe) {
+        String key = availableKey(name);
+        DigitalProbe required = java.util.Objects.requireNonNull(probe, "probe is required");
+        devices.put(key, required.channel);
+        digitalInputs.put(key, required);
+    }
+
     /** Registers one continuous-rotation servo. */
     public CrServoProbe addCrServo(String name) {
         String key = availableKey(name);
@@ -325,6 +333,10 @@ public final class FtcTestHardware extends HardwareMap {
         private final DigitalChannel channel;
         private DigitalChannel.Mode mode = DigitalChannel.Mode.INPUT;
         private boolean high = true;
+        private int stateReadCalls;
+        private int modeWriteCalls;
+        private RuntimeException readFailure;
+        private Runnable beforeNextRead;
 
         private DigitalProbe(String label) {
             this.label = label;
@@ -349,6 +361,26 @@ public final class FtcTestHardware extends HardwareMap {
             return mode;
         }
 
+        /** Returns the number of SDK state reads. */
+        public int stateReadCalls() {
+            return stateReadCalls;
+        }
+
+        /** Returns the number of SDK input/output mode writes. */
+        public int modeWriteCalls() {
+            return modeWriteCalls;
+        }
+
+        /** Makes later state reads throw this exact failure; null restores successful reads. */
+        public void setReadFailure(RuntimeException readFailure) {
+            this.readFailure = readFailure;
+        }
+
+        /** Runs one callback immediately before the next state read. */
+        public void beforeNextRead(Runnable callback) {
+            beforeNextRead = callback;
+        }
+
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) {
             String name = method.getName();
@@ -357,10 +389,18 @@ public final class FtcTestHardware extends HardwareMap {
             }
             if (matches(method, "setMode", DigitalChannel.Mode.class)) {
                 mode = (DigitalChannel.Mode) args[0];
+                modeWriteCalls++;
                 return null;
             }
             if (matches(method, "getMode")) return mode;
-            if (matches(method, "getState")) return high;
+            if (matches(method, "getState")) {
+                stateReadCalls++;
+                Runnable callback = beforeNextRead;
+                beforeNextRead = null;
+                if (callback != null) callback.run();
+                if (readFailure != null) throw readFailure;
+                return high;
+            }
             throw unsupported("digital input", label, method);
         }
     }

@@ -130,12 +130,38 @@ public final class FtcTestHardwareTest {
 
         assertFalse(channel.getState());
         assertFalse(input.high());
+        assertEquals(1, input.stateReadCalls());
         assertEquals(-0.4, transfer.power(), 0.0);
         assertEquals(1, transfer.powerWrites());
         assertEquals(DcMotorSimple.Direction.REVERSE, transfer.direction());
         assertEquals(0.7, release.position(), 0.0);
         assertEquals(1, release.positionWrites());
         assertEquals(Servo.Direction.REVERSE, release.direction());
+    }
+
+    @Test
+    public void digitalProbeRecordsConfigurationFailureCallbackAndAliases() {
+        FtcTestHardware hardware = new FtcTestHardware();
+        FtcTestHardware.DigitalProbe input = hardware.addDigitalInput("first");
+        hardware.addDigitalInputAlias("sameDevice", input);
+        DigitalChannel first = hardware.get(DigitalChannel.class, "first");
+        DigitalChannel alias = hardware.get(DigitalChannel.class, "sameDevice");
+
+        first.setMode(DigitalChannel.Mode.OUTPUT);
+        assertEquals(1, input.modeWriteCalls());
+        assertSame(first, alias);
+
+        RuntimeException failure = new RuntimeException("injected read failure");
+        final int[] callbacks = {0};
+        input.beforeNextRead(() -> callbacks[0]++);
+        input.setReadFailure(failure);
+        assertSame(failure, assertThrows(RuntimeException.class, alias::getState));
+        assertEquals(1, callbacks[0]);
+        assertEquals(1, input.stateReadCalls());
+
+        input.setReadFailure(null);
+        assertTrue(first.getState());
+        assertEquals(2, input.stateReadCalls());
     }
 
 }
