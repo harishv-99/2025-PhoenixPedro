@@ -95,6 +95,14 @@ meet tolerance. It does not prove that an object launched or scored.
 feeding. A team that needs object-gated feeding must add that policy explicitly rather than treating
 a telemetry row as an interlock.
 
+The optional `ReferenceInventoryStatusService` shows the next step without adding inventory to the
+framework. Three separately debounced active-low inputs become one immutable cached snapshot. Its
+`conditionedOccupiedPositionCount` counts asserted sensor positions, not proven physical objects;
+`OrderIssue` describes an observation outside the example's ordered-fill pattern without diagnosing
+a broken sensor. A presenter reads the full snapshot once, while an Auto Task may observe the same
+cached `fullSource()`. The software scenario proves that derivation for authored levels, not the
+sensor placement, capacity, or collection result on a robot.
+
 ## Print computed evidence; observe visible evidence
 
 The locked Reference flywheel experiment prints what software must calculate: trial number and
@@ -128,6 +136,7 @@ team rejects the configuration. Neither observation should be converted silently
 
 - Electrical conditioning: [`ReferenceLiftMechanism.java`](<../../../../robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
 - Cached launcher evidence: [`ReferenceLauncherMechanism.java`](<../../../../robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+- Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService.java`](<../../../../robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
 - Hardware-free feedback cases: [Hardware-free Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>)
 - Safe experiment card and workflow: [Subsystem Experiments](<../../examples/Subsystem Experiments.md>)
 - Evidence vocabulary: [Glossary](<../../reference/Glossary.md#evidence>)

@@ -93,6 +93,60 @@ readiness. The same pattern can support separate focused cases for swapped names
 non-finite measurements, or an incorrect inclusive tolerance. It does not predict spin-up time,
 voltage sag, load recovery, vibration, launch result, or safe wheel speed.
 
+## Optional inventory service: three observations, one snapshot
+
+[`ReferenceInventoryStatusService.java`](<../../../robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
+is an optional robot-owned example, not a framework inventory type and not part of the ordinary
+Reference robot. A custom OpMode can declare it before consumers:
+
+```java
+ReferenceInventoryStatusService inventory = program.service(
+        new ReferenceInventoryStatusService(
+                hardwareMap, ReferenceInventoryStatusService.Config.defaults()));
+
+program.presenter((clock, telemetry) -> {
+    ReferenceInventoryStatusService.Status status = inventory.status();
+    telemetry.addData("inventory.count", status.conditionedOccupiedPositionCount);
+    telemetry.addData("inventory.orderIssue", status.orderIssue);
+});
+
+program.rootTask(Tasks.waitUntil(inventory.fullSource(), 1.0));
+```
+
+The service phase samples first, second, then third once per cycle and publishes only after all
+three conditioned reads succeed. `status()` and `fullSource()` read that same cache; neither
+resamples hardware. If manual bulk caching is deliberately enabled, declare its cache owner first
+and this inventory service second.
+
+The ordered patterns are `000`, `100`, `110`, and `111`. The eight possible conditioned bit
+patterns remain visible: count is the number of occupied sensor positions, while `OrderIssue`
+describes `SECOND_WITHOUT_FIRST` or `THIRD_WITHOUT_SECOND`. Only ordered `111` is `full`. Before the
+first successful START observation and after STOP, `observed` is false; that is different from a
+successful conditioned `000` observation.
+
+The hardware-free scenario begins with explicit HIGH levels, injects a LOW pulse shorter than the
+debounce delay, then supplies stable LOW observations for the first, second, and third positions.
+It later clears earlier inputs to expose both order issues. Those authored changes can represent an
+ejection or shot in a test story, but the probe does not manufacture that physical event.
+
+### Inventory scenario proves
+
+For the authored cycles, the production/example owner applies active-low polarity and independent
+debounce state, publishes an atomic immutable truth-table result, and gives presenters and Tasks
+the same cached `full` fact.
+
+### Inventory scenario does not prove
+
+Software observations do not establish wiring or pullups, active-low meaning, sensor placement or
+coverage, position order, physical object count, debounce under vibration, acquisition/ejection/
+shot reliability, safety, timing, or game benefit.
+
+### Inventory next gate
+
+An adopting team must review the three configured inputs, observe raw and conditioned states on
+the robot, deliberately move objects through every position, and record physical outcomes. Keep
+the service robot-owned when the team's capacity, ordering, and policy differ from this example.
+
 ## Adapt the pattern to one team subsystem
 
 1. Start from the subsystem's data-only production configuration.

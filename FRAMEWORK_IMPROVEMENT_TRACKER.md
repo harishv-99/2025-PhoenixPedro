@@ -203,7 +203,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 104 | EXAMPLE-07 | Extensible hardware-free subsystem bench | Done | The reviewed test-only FTC device registry, consolidated example fixtures, bounded Starter/Reference scenarios, truthful evidence path, and destination-specific publication authorization are complete. |
 | 105 | DOC-06 | Explain Phoenix's value at first contact | Done | The reviewed candid SDK-versus-Phoenix explanation, canonical pointers, verification evidence, and destination-specific publication authorization are complete. |
 | 106 | EXAMPLE-08 | Reactive hardware-free subsystem scenarios | Done | The reviewed reactive lift/launcher scenarios, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
-| 107 | EXAMPLE-09 | Sensor-derived inventory status case study | Proposed | Teach active-low/debounced sensing and immutable robot-owned inventory status with authored software observations. |
+| 107 | EXAMPLE-09 | Sensor-derived inventory status case study | Done | The reviewed simplified optional service, hardware-free evidence, synchronized teaching, and destination-specific publication authorization are complete. |
 | 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Proposed | Teach typed multi-object selection, exactly-once live route construction, semantic milestones, and inventory-dependent early exit without new core season APIs. |
 | 109 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current Phoenix support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
@@ -23072,6 +23072,11 @@ implementation.
 - **Tracker-only intake status (2026-08-22):** **Proposed.** The user approved recording this task
   in the Cuberobot/DECODE program. No decision gate, Java, test, guide, navigation, framework API,
   robot composition, publication, or following item has started.
+- **Gate 1 start (2026-08-24):** the user directed `Proceed with the task EXAMPLE-09`. The isolated
+  branch `codex/example-09-sensor-derived-inventory-status` starts exactly from current
+  `origin/master@2a71f49eb958912b0d9907813c1687be01e2f7f4`; EXAMPLE-09 is **Researching**. This
+  authorizes the decision gate and tracker record only. It does not approve Java, tests, guides,
+  navigation, robot composition, publication, EXAMPLE-10, or any other tracker item.
 - **Problem to confirm:** the curated Reference teaches one active-low lift switch, one launcher
   object-present fact, debounce, and reactive device scenarios, but it does not show how several
   semantic sensors become one trustworthy mechanism status consumed by both TeleOp and Auto.
@@ -23112,6 +23117,365 @@ implementation.
 - **Excluded claims:** software observations do not prove sensor placement, polarity, beam coverage,
   debounce duration under vibration, object capacity, reliable acquisition/ejection, or game
   performance. Physical bring-up validates those adopting-robot facts.
+- **Decision gate (2026-08-24):** **Ready; the optional public example service, status vocabulary,
+  and START/update/STOP contract require explicit approval.** Gate 1 is complete on
+  `codex/example-09-sensor-derived-inventory-status`, still based exactly on
+  `origin/master@2a71f49eb958912b0d9907813c1687be01e2f7f4`. No production/example Java,
+  test utility, scenario, guide, navigation, robot composition, or framework API implementation has
+  started. The confirmed gap is narrow: Phoenix already has the needed input, debounce, service,
+  source, status, clock, and software-bench primitives, but no compiling example shows several
+  conditioned observations becoming one coherent robot-owned inventory status for both mode clients.
+- **Pinned demand and behavior trace:** the pinned FTC_Decode
+  [`Intake`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/subsystems/Intake.java#L19-L117)
+  owns three active-low digital channels and advances mutable `EMPTY`/`FIRST`/`SECOND`/`THIRD`
+  fields. Its state is monotonic until a separate reset, does not debounce, does not decrement when
+  a sensor clears, and does not surface out-of-order patterns. Pinned
+  [`BlueFar30`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/BlueFar30.java#L193-L261)
+  consumes `isFull` after a safe route-progress threshold to leave collection early. This proves a
+  concrete season-source caller, not event deployment, sensor placement, physical capacity, or that
+  Phoenix should copy the mutable state machine.
+- **Complete Phoenix caller and phase audit:** the only modern production callers of
+  `FtcSensors.digitalLow(...)` are the Reference lift's one bottom switch and the Reference
+  launcher's one object-present input. The lift and launcher each publish cached status, but there
+  is no three-position inventory/count/full owner or consumer. Reference TeleOp controls issue
+  commands without reading status; Reference Auto composes lift and launcher Tasks only; the
+  two-family `ReferenceCapabilities` surface is test-pinned. The launcher is a downstream
+  `RobotProgram.Output`, so extending it would sample after bindings and Tasks, too late for a
+  same-cycle Auto decision, and would make three new sensors mandatory for every existing Reference
+  construction and flywheel experiment. A sensing `RobotProgram.Service` instead starts before the
+  root Task and updates before bindings, Tasks, and outputs. If a robot has opted into PERF-01 manual
+  bulk caching, that cache owner remains the literal first service and this sensing owner follows it.
+- **Existing API, parameter, and construction-layer audit:** `FtcSensors` already provides distinct
+  direct-`DigitalChannel` and named-`HardwareMap` active-low factories, and each raw SDK source
+  publishes only one successful observation per cycle. `BooleanSource.debouncedOnOff(...)` already
+  supplies independent ON/OFF timing and successful-only same-cycle state. `RobotProgram.service(...)`
+  is the sole ordinary declaration path and returns the exact owner. The selected case needs five
+  mutable data-only configuration facts--three position sensor names plus occupied/vacated debounce
+  seconds--and one `HardwareMap + Config` constructor. There is no second realization, so add no
+  capability interface; no staged choice, so add no builder; and no hardware-neutral/source-injection
+  constructor, list/varargs capacity path, static `of`/`create` alias, reset method, or generic core
+  `Inventory` type. Hardware-free proof must exercise the unchanged production constructor.
+- **Selected public example surface:** add exactly one top-level public class under
+  `edu.ftcphoenix.robots.examples.reference.capability.inventory`:
+
+  ```java
+  public final class ReferenceInventoryStatusService implements RobotProgram.Service {
+      public static final class Config {
+          public String firstPositionSensorName;
+          public String secondPositionSensorName;
+          public String thirdPositionSensorName;
+          public double occupiedDebounceSec;
+          public double vacatedDebounceSec;
+          public static Config defaults();
+      }
+
+      public enum OrderIssue {
+          NONE, SECOND_WITHOUT_FIRST, THIRD_WITHOUT_SECOND
+      }
+
+      public static final class Status {
+          public final boolean observed;
+          public final boolean firstPositionOccupied;
+          public final boolean secondPositionOccupied;
+          public final boolean thirdPositionOccupied;
+          public final int conditionedOccupiedPositionCount;
+          public final boolean full;
+          public final OrderIssue orderIssue;
+          // Owner-created only; no public constructor accepting derived peer values.
+      }
+
+      public ReferenceInventoryStatusService(HardwareMap hardwareMap, Config config);
+      public Status status();
+      public BooleanSource fullSource();
+      public void start(LoopClock clock);
+      public void update(LoopClock clock);
+      public void stop();
+  }
+  ```
+
+  The mutable `Config` follows the existing Reference configuration style; the long-lived service
+  validates and snapshots it. `Status` is an immutable owner-created snapshot. `status()` and the
+  one stable `fullSource()` identity read only the last successfully published snapshot and never
+  touch hardware. The full source is justified by a distinct concrete caller: pinned Auto and the
+  already-recorded EXAMPLE-10 need a `BooleanSource` Task/deadline gate, while a presenter needs the
+  full status. It adds no debounce, cache, reset authority, or independent state; freshness comes
+  only from the preceding service phase.
+- **Configuration and FTC-boundary contract:** copy and validate all five fields before the first
+  lookup: names are non-null, trimmed, non-empty, and pairwise distinct as case-sensitive FTC keys;
+  delays are finite and non-negative. Resolve all three `DigitalChannel` objects before configuring
+  any one of them, reject duplicate resolved device identities, then pass each device through the
+  existing direct `FtcSensors.digitalLow(channel).debouncedOnOff(...)` path with a separately
+  constructed debouncer. Construction may perform the documented input-mode configuration only
+  after complete name/device resolution; it performs no state read and publishes `NOT_OBSERVED`.
+  Reusing delay values never means sharing one stateful `DebounceBoolean` instance.
+- **Exact status truth table:** every successful publication sets `observed=true` and preserves all
+  three conditioned semantic bits. `conditionedOccupiedPositionCount` is the number of asserted
+  conditioned positions, including in an out-of-order pattern; it is never labeled a physical
+  object count. The ordered patterns are `000 -> 0`, `100 -> 1`, `110 -> 2`, and `111 -> 3/full`, all
+  with `OrderIssue.NONE`. Check the later adjacency first: `001` and `101` publish
+  `THIRD_WITHOUT_SECOND`; `010` and `011` publish `SECOND_WITHOUT_FIRST`. An order issue is normal
+  visible evidence under this example robot's authored ordered-fill model, not an exception, sensor-
+  fault diagnosis, or physical impossibility claim. `full` and `fullSource()` are true only for an
+  observed, ordered `111` snapshot. Before a first successful START publication and after STOP,
+  `observed=false`, every bit/count/full is false or zero, and `orderIssue=NONE`; this is distinct
+  from a successfully observed conditioned-empty snapshot.
+- **Exact START and publication contract:** START validates a non-null clock, consumes the owner's
+  single start attempt, binds that exact clock, explicitly resets all three owned source graphs and
+  the cached status, then claims the reset-created START cycle before the first digital read. It
+  samples and publishes once before `RobotProgram` starts the Auto root Task. Because START has
+  `dtSec()==0`, an already-LOW input with a positive occupied debounce begins its dwell there but
+  does not become occupied immediately; the published conditioned-empty bits do not claim the robot
+  is physically empty. A read `RuntimeException` escapes unchanged, leaves status `NOT_OBSERVED`,
+  consumes the start attempt, and lets the managed host fail-stop. Duplicate START, START after
+  STOP, and update before a successful START fail before another hardware read.
+- **Exact per-cycle and failure contract:** active update requires the exact bound clock and a non-
+  regressing `clock.cycle()`. The service claims each new cycle before the first hardware read and
+  samples first/second/third in that stable order into locals. Only after all three conditioned
+  reads and status construction succeed does one assignment publish the new immutable object. A
+  repeat after same-cycle success is a no-op and retains the exact status identity; a repeat after
+  failure rethrows the exact retained `RuntimeException` without another read; a later cycle may
+  retry in direct/custom use. Reentrant update fails before an inner read. A later-input failure may
+  occur after earlier child source/debounce state successfully advanced; publication is atomic, but
+  the owner does not falsely claim simultaneous sampling or rollback of child observations. In the
+  ordinary managed host, the first escaping failure immediately prevents downstream phases and
+  triggers cleanup, so no later-cycle retry occurs in that OpMode.
+- **Exact STOP contract:** STOP claims terminal state and replaces the public snapshot with
+  `NOT_OBSERVED` before best-effort reset of every owned source graph. Stop before START is safe and
+  terminalizes this single-use owner; repeated stop is inert; update after stop fails before reads.
+  The owner advances no clock, performs no output write, owns no physical command, offers no public
+  reset/restart shortcut, and makes no cross-thread scheduling guarantee. A fresh OpMode lifetime
+  constructs and declares a fresh service.
+- **Mode-client spelling and service order:** the optional case keeps composition explicit without
+  changing `ReferenceProfile`, `ReferenceRobot`, `ReferenceCapabilities`, its controls, or its Auto:
+
+  ```java
+  ReferenceInventoryStatusService inventory = program.service(
+          new ReferenceInventoryStatusService(
+                  hardwareMap, ReferenceInventoryStatusService.Config.defaults()));
+
+  program.presenter((clock, telemetry) -> {
+      ReferenceInventoryStatusService.Status status = inventory.status();
+      telemetry.addData("inventory.count", status.conditionedOccupiedPositionCount);
+      telemetry.addData("inventory.orderIssue", status.orderIssue);
+  });
+
+  program.rootTask(Tasks.waitUntil(inventory.fullSource(), 1.0));
+  ```
+
+  A TeleOp presenter captures `status()` once per frame and only formats it. Auto composes the
+  stable cached full projection into ordinary Tasks. If PERF-01 is intentionally adopted, its
+  manual-cache declaration appears before the inventory declaration; EXAMPLE-09 neither depends on
+  nor enables bulk caching.
+- **Complete alternative and student-cost comparison:** planning estimates count the complete
+  production/example, test, and teaching surface rather than only an accessor:
+
+  | Design | Approximate checked-in delta | Student-facing cost and disposition |
+  | --- | --- | --- |
+  | No change / documentation only | 0 production; 60-110 docs; each adopter invents about 120-200 Java lines | Leaves roughly 13 ordering, lifecycle, count, contradiction, reset, and status decisions to each team; rejected because the compiling gap and EXAMPLE-10 dependency remain. |
+  | Extend Reference launcher | 120-220 production changes; 250-450 tests; 60-100 docs | Short retained call but wrong downstream phase, mandatory three-sensor expansion, and at least 10 existing launcher/root/experiment/test files in the regression surface; rejected. |
+  | **Selected isolated service** | 220-320 production/example; 300-550 tests; 70-120 docs | Five physical configuration values, one visible service declaration, and four tightly nested public nouns; smallest complete status-and-Auto lesson. |
+  | New full robot/example | 500-750 production/example; 800-1,500 tests; 120-220 docs | Adds roughly 8-12 unrelated profile/root/controls/capability nouns to teach one read-only fact; rejected. |
+  | Generic protected-core inventory API | 350-650 production; 500-900 tests; 150-250 docs | Still cannot own robot-specific position order, capacity, debounce, contradiction, or Auto policy and adds roughly 5-7 framework nouns; rejected. |
+
+  A static helper returning count/status is also rejected because it does not own sensor lifecycle or
+  upstream publication. A monotonic mutable counter/reset state machine is rejected because it can
+  drift from current sensor evidence. Wiring the case into the ordinary Reference robot is rejected
+  because a focused optional concept must not expand its hardware contract.
+- **Bounded implementation and documentation scope if approved:** add the one service class and its
+  Javadocs; add one focused owner/status suite and one typed hardware-free scenario; narrowly extend
+  test-only `FtcTestHardware.DigitalProbe` and its test with state-read counting, injected read
+  failure, a one-shot read callback for lifecycle-reentry proof, input-mode effect evidence, and only
+  the alias support required to prove device-identity rejection. Update the existing
+  `Hardware-free Reference Scenarios.md`, examples `README.md`,
+  `Framework Components Through Examples.md`, and `Evidence and Experiments.md` with the optional
+  registration, TeleOp/Auto consumption, truth table, causal scenario, and **Proves / Does not prove
+  / Next gate** boundary. Do not add a new guide/navigation route, change the Starter or ordinary
+  Reference graph, add a generic framework type, change `FtcSensors`, `BooleanSource`, `RobotProgram`,
+  any Plant/output, Phoenix, Pedro, legacy/vendor/sample code, or implement EXAMPLE-10.
+- **Deterministic verification plan:** focused tests lock the sole public construction path and
+  stable full-source identity; configuration validation/snapshot before lookups; all-device
+  resolution before input-mode effects; duplicate names/identities; three independent debounce
+  owners; no construction reads; INIT `NOT_OBSERVED`; exact-START publication with zero charged
+  time; all eight bit patterns/count/full/order issues; immutable prior snapshots; full projection
+  from the same cache; same-cycle success/no reads; claimed-cycle exact failure replay/no extra
+  reads/no partial status; later-cycle recovery in direct use; null/different/regressed clocks;
+  duplicate/reentrant START/update; stop-before-start, active stop, repeated stop, and fresh owner.
+  The reactive scenario covers explicit initial HIGH levels, sub-delay bounce, stable first/second/
+  third acquisition, authored reverse sensor changes representing ejection or a shot, and an out-of-
+  order pattern without converting those inputs into physical verdicts. Run the focused inventory,
+  `FtcTestHardwareTest`, existing Boolean/source and Reference scenario/mechanism/root suites, and
+  `DocumentationLinksTest`; then full `:TeamCode:testDebugUnitTest`,
+  `:TeamCode:compileDebugJavaWithJavac`, and `:TeamCode:phoenixJavadocs`. Finish with API/caller,
+  FTC-boundary, blocking/polling, stale-status, documentation-link, diff, and whitespace checks.
+- **Gate 1 baseline (2026-08-24):** Android Studio JBR 21 passed the existing
+  `BooleanSourceTest` (16), `FtcTestHardwareTest` (5), lift and launcher software-scenario suites
+  (2 each), `ReferenceLauncherMechanismTest` (12), `ReferenceRobotTest` (7), and
+  `DocumentationLinksTest` (9): **7 suites / 53 tests / 0 failures / 0 errors / 0 skipped** across
+  two focused invocations. Compilation succeeded. Output contained only the repository's existing
+  Java-21/source-8 and app-shell deprecation warnings. This establishes the unchanged source,
+  example, fixture, root, and documentation baseline; it does not test the unimplemented service.
+- **Gate 1 adversarial review (2026-08-24):** three independent read-only reviews audited current
+  callers/construction layers, alternative simplicity, effectful-owner semantics, the complete
+  truth table, exact-start timing, test evidence, and teaching scope. Corrections moved sensing out
+  of the launcher/output phase, required complete device resolution before configuration, separated
+  `NOT_OBSERVED` from conditioned empty, replaced fault-sounding `Contradiction` with descriptive
+  `OrderIssue`, defined invalid-pattern precedence, made count explicitly conditioned rather than
+  physical, retained exact same-cycle service failures under Framework Principles, sampled once at
+  START without charging INIT time, made source resets explicit, and limited `fullSource()` to a
+  stable cached projection justified by the concrete Auto/EXAMPLE-10 caller. Final review found no
+  remaining design blocker under those conditions.
+- **Framework-Principles and physical-evidence result:** the selected owner uses the one managed
+  clock without advancing it, occupies the existing upstream service phase, publishes at most one
+  complete successful immutable status per cycle, keeps FTC types at robot/example and `fw.ftc`
+  boundaries, leaves presenters side-effect-free, adds no output writer or competing scheduler, and
+  keeps sensor order/capacity with the example robot instead of protected core. It adds no sleep,
+  busy wait, polling loop, second clock, generic season API, or hidden ordinary-robot hardware.
+  Software tests can establish configuration, polarity selection, filtering semantics, status
+  derivation, phase/lifecycle behavior, failure propagation, and authored-scenario outcomes only.
+  An adopting team must physically establish wiring/pullups, active-low meaning, placement/order,
+  beam coverage, debounce under vibration, object-to-sensor mapping, actual capacity, reliable
+  acquisition/ejection/shot behavior, safety, timing, and game benefit.
+- **Approval boundary:** because the design adds a public robot-example service and observable
+  lifecycle/status semantics, Gate 1 stops here. Approval authorizes only EXAMPLE-09 Gate 2 on this
+  branch under the bounded scope above; it does not authorize staging, commit, push, pull request,
+  merge, ordinary Reference/Phoenix adoption, physical claims, EXAMPLE-10, or another tracker item.
+- **Gate 2 implementation authorization (2026-08-27):** the user approved exactly
+  **“Approve EXAMPLE-09 optional Reference inventory-status service, fixed three-position
+  active-low/debounced sensing, immutable cached status, stable fullSource projection, and bounded
+  hardware-free example design.”** EXAMPLE-09 is **In progress** on
+  `codex/example-09-sensor-derived-inventory-status`. This authorizes only the bounded Gate 2 code,
+  tests, documentation, and verification above; it does not authorize staging, publication,
+  ordinary Reference/Phoenix adoption, physical claims, EXAMPLE-10, or another tracker item.
+- **Gate 2 implementation and exact scope (2026-08-27):** EXAMPLE-09 is **Verifying** with an
+  unstaged, uncommitted **10-file** diff: this tracker; one new optional robot-example service; two
+  new focused inventory test/scenario files; the existing test-only FTC registry and its suite; and
+  the four approved teaching pages. `ReferenceInventoryStatusService` has one public
+  `HardwareMap + Config` construction path, three privately owned active-low/debounced source
+  graphs, one immutable cached `Status`, and one stable cached `fullSource()` projection. The
+  ordinary Reference and Phoenix graphs, capabilities, controls, mechanisms, and OpModes remain
+  unchanged; no protected-core API, new guide route, generic inventory type, output writer, or
+  EXAMPLE-10 work was added.
+- **Gate 2 deterministic evidence (2026-08-27):** Android Studio JBR 21 passed the final focused
+  inventory and `FtcTestHardwareTest` invocation: **3 suites / 16 tests / 0 failures / 0 errors / 0
+  skipped**. The complete `:TeamCode:testDebugUnitTest` suite passed **2,026 tests / 0 failures / 0
+  errors / 0 skipped**; `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:phoenixJavadocs` also
+  succeeded. The full suite includes `DocumentationLinksTest`. `git diff --check`, the tracked-plus-
+  untracked trailing-whitespace scan, caller/construction searches, blocking/polling scan, and
+  boundary-import review are clean. Output contains only the repository's existing Java-21/source-8
+  and app-shell deprecation warnings.
+- **Gate 2 adversarial review (2026-08-27):** the public-construction audit found one distinct
+  layer only: `Config.defaults()` supplies a mutable data-only baseline and the sole constructor
+  snapshots its five values before lookup; there is no facade factory, alias constructor, staged
+  builder, `of` method, source-injection seam, or redundant sibling API. The four public nouns each
+  carry distinct robot-example meaning (`Service`, `Config`, `Status`, `OrderIssue`), while
+  `fullSource()` exists for the concrete Task/Auto consumer and adds no state or sampling authority.
+  Lifecycle review confirmed exact START sampling, independently timed sources, all-eight-pattern
+  precedence, atomic publication, same-cycle success/failure replay, later-cycle recovery, reentry
+  rejection, active-only identity, and terminal reset. Documentation explicitly labels conditioned
+  position count, order evidence, software-only proof, and adopting-robot physical gates. No
+  Framework Principles conflict or remaining review blocker was found.
+- **Android Studio and publication handoff (2026-08-27):** inspect the new inventory service's
+  constructor validation/effect order, START/update/STOP state machine, failure replay, truth table,
+  cached `fullSource()`, all focused tests, the test-fixture additions, and the four teaching-page
+  boundaries. Robot hardware is useful only for an adopting team's wiring, pullups, polarity,
+  placement/order, beam coverage, debounce-under-vibration, capacity, acquisition/ejection/shot,
+  safety, timing, and game-benefit validation; it is not required to review this software contract.
+  The exact publication coordinates are branch
+  `codex/example-09-sensor-derived-inventory-status`, origin push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target branch `master`. No file is staged,
+  committed, pushed, or merged, and EXAMPLE-10 has not started.
+- **Gate 1 reopened from review (2026-08-28):** the user correctly identified that the 259-line
+  service lets defensive lifecycle machinery visually dominate the inventory lesson and directed
+  simplification. The previous publication handoff is withdrawn; EXAMPLE-09 is **Researching** and
+  remains unstaged/uncommitted. This is a material revision of the approved public/lifecycle
+  contract, so implementation pauses until the revised design below is approved.
+- **Defensive-programming ownership audit:** ordinary managed services do not need to independently
+  prove that `RobotProgram` calls them once in declaration order with its one clock; that is already
+  the host's contract and tests. The existing `FtcSensors.digitalLow(...).memoized()` leaves own the
+  raw hardware read cache, `BooleanSource.debouncedOnOff(...)` owns independent debounce and
+  same-cycle behavior, and generic `Source<T>.memoized()` already owns successful per-cycle object
+  caching plus sampling/reset reentry protection. Current ordinary Pedro and Phoenix services are
+  thin adapters over those owned components. `FtcManualBulkCachingService` is deliberately much
+  more defensive because it mutates shared hub modes, must restore prior hardware state, and can be
+  stopped reentrantly from vendor callbacks; those hazards do not generalize to this read-only
+  example. The inventory service therefore duplicated host/source guarantees without distinct
+  value: bound-clock identity, cycle regression, exact failed-cycle exception replay, a bespoke
+  update-in-progress flag, single-use service state, and suppressed reset-failure aggregation.
+- **Framework-abstraction decision:** do **not** add a generic managed-service base class,
+  `CyclePublisher`, lifecycle guard, or new `RobotProgram` registration layer under EXAMPLE-09.
+  Existing abstractions already cover the stable reusable parts, while the remaining lifecycle and
+  cleanup needs differ materially among vision, localization, targeting, Pedro, bulk caching, and
+  sensor publication. A new wrapper would introduce another public construction path and ask
+  students to understand a generic lifecycle noun merely to hide code that this managed example
+  should not contain. Reconsider a focused helper only after at least a second production owner has
+  the same value-publication, reset, failure, and lifecycle contract; record that as its own tracker
+  item rather than expanding this example.
+- **Revised smallest design:** retain the public robot-example nouns and ordinary call site:
+  `Config`, immutable `Status`, descriptive `OrderIssue`, the sole `HardwareMap + Config`
+  constructor, `status()`, stable cached `fullSource()`, and `RobotProgram.Service`. Retain complete
+  configuration snapshot/validation, all-device resolution before input-mode effects, distinct
+  resolved identities, three separately constructed active-low/debounced sources, exact START
+  reset/sample with zero charged time, atomic publication after three successful reads, and
+  `NOT_OBSERVED` before START/after STOP. Remove the bespoke clock/lifecycle/failure state machine.
+  `start(clock)` resets the three source graphs then delegates to the same small sampling method as
+  `update(clock)`; `update(clock)` reads first/second/third into locals and publishes one new status;
+  `stop()` resets the public status before directly resetting the three non-resource source graphs.
+  The managed host owns invocation legality and fail-stop. Existing source decorators own
+  same-cycle successful-read caching and reentry errors. A read failure escapes and leaves the prior
+  status unchanged, but a direct/custom caller may retry in the same cycle according to the
+  documented Source contract; exact failure replay is no longer promised.
+- **Revised test and documentation disposition:** retain configuration/effect ordering, identity,
+  no-construction-read, START timing, independent debounce, all eight patterns, immutable snapshot,
+  cached projection, atomic publication, stop reset, and the reactive scenario. Remove tests and
+  prose that teach duplicate START/update-before-START/different-clock/regressed-clock, exact
+  same-cycle failure replay, service-level reentry, or single-use service semantics. Continue to
+  state that ordinary callers declare the service once through `RobotProgram`, while custom hosts
+  are responsible for honoring `RobotProgram.Service` lifecycle. No framework/core production file
+  changes, ordinary Reference/Phoenix adoption, or EXAMPLE-10 work enter scope.
+- **Revised approval boundary:** this smaller design materially changes the previously approved
+  lifecycle/error contract and remains a public example API, so Gate 1 stops again. Approval
+  authorizes only simplifying the existing EXAMPLE-09 diff to the revised scope above, updating its
+  tests/docs/tracker, and rerunning Gate 2 verification. It does not authorize a new framework
+  abstraction, staging, publication, EXAMPLE-10, or another tracker item.
+- **Revised Gate 2 authorization (2026-08-28):** the user approved exactly **“Approve simplified
+  EXAMPLE-09 using RobotProgram and existing Source lifecycle guarantees, with no new framework
+  abstraction.”** EXAMPLE-09 is **In progress** on the same isolated branch and base. This
+  authorizes only simplifying the existing implementation/tests/docs to the revised scope and
+  rerunning verification; it does not authorize staging, publication, a core API, EXAMPLE-10, or
+  another tracker item.
+- **Revised Gate 2 implementation (2026-08-28):** EXAMPLE-09 is again **Verifying** with the same
+  unstaged/uncommitted 10-file boundary. The service fell from **259 to 184 lines**; its operational
+  lifecycle is now three short methods: START resets and delegates to update, update samples three
+  existing source graphs into locals before one atomic publication, and STOP clears status then
+  resets those non-resource graphs. Removed fields and code include the bound clock, claimed cycle,
+  retained failure, start/active/stopped/updating state, cycle-regression branch, exact failure
+  replay, service-level reentry guard, and suppressed reset aggregation. Tests no longer teach those
+  custom-host defenses; they retain the domain, construction, START timing, Source caching, atomic
+  failure, status, debounce, and scenario evidence. No core/framework production file or new public
+  abstraction was added.
+- **Revised verification (2026-08-28):** Android Studio JBR 21 passed the focused inventory and
+  test-hardware selection: **3 suites / 14 tests / 0 failures / 0 errors / 0 skipped**. The complete
+  `:TeamCode:testDebugUnitTest` suite passed **2,024 tests / 0 failures / 0 errors / 0 skipped**;
+  `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:phoenixJavadocs` succeeded. The full suite
+  includes `DocumentationLinksTest`. `git diff --check`, tracked-plus-untracked whitespace,
+  construction/caller, no-new-abstraction, boundary, and blocking/polling scans are clean. Output
+  contains only the existing Java-21/source-8 and app-shell deprecation warnings.
+- **Revised adversarial result and review handoff (2026-08-28):** the example now relies on the
+  managed host for legal lifecycle invocation and one clock, and on existing Source decorators for
+  successful same-cycle sensor caching, debounce state, reset, and reentry diagnostics. Robot code
+  retains only robot-owned configuration, meaning, complete-read atomic publication, and cached
+  status. This is the smallest current design with no redundant public construction layer. Review
+  the shortened service, pruned tests, and revised design record in Android Studio. Publication
+  coordinates remain branch `codex/example-09-sensor-derived-inventory-status`, push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. No staging, commit,
+  push, PR, merge, hardware claim, EXAMPLE-10, or next item has occurred.
+- **Gate 3 review and publication authorization (2026-08-28):** the user supplied the exact
+  combined authorization: **“EXAMPLE-09 looks good. Authorize committing the reviewed EXAMPLE-09
+  diff on codex/example-09-sensor-derived-inventory-status, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This records Android Studio approval of the simplified 10-file diff and authorizes only
+  its commit, push, pull request, and merge into the named destination. EXAMPLE-09 is **Done**. It
+  does not start EXAMPLE-10 or convert software evidence into a robot-hardware claim.
 
 ### EXAMPLE-10 - Timestamped adaptive collection case study
 
