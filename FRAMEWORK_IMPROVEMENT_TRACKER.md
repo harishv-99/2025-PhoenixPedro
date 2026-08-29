@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-24
+Last updated: 2026-08-29
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -205,11 +205,12 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 106 | EXAMPLE-08 | Reactive hardware-free subsystem scenarios | Done | The reviewed reactive lift/launcher scenarios, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 107 | EXAMPLE-09 | Sensor-derived inventory status case study | Done | The reviewed simplified optional service, hardware-free evidence, synchronized teaching, and destination-specific publication authorization are complete. |
 | 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Done | The reviewed bounded example-only implementation, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
-| 109 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current Phoenix support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 109 | LOCALIZATION-01 | Optional bounded timestamped pose history | Proposed | Decide whether a separately owned pose-history capability can address confirmed timestamp/pose limitations without burdening every estimator or inventing untruthful interpolation. |
+| 110 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current Phoenix support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
-### Current Cuberobot/DECODE program order (2026-08-22)
+### Current Cuberobot/DECODE program order (amended 2026-08-28)
 
-The user's tracker-intake approval establishes this order without starting any decision gate or
+The user's tracker-intake approvals establish this order without starting any decision gate or
 approving any public API:
 
 1. `SAFE-04` narrowed software-seam decision gate.
@@ -217,15 +218,16 @@ approving any public API:
 3. `PERF-01` advanced opt-in manual-cache ownership decision gate.
 4. `EXAMPLE-09` sensor-derived inventory case study.
 5. `EXAMPLE-10` timestamped adaptive collection case study.
-6. `AUTO-01` bounded fresh-attempt composition decision gate, after the examples expose the complete
+6. `LOCALIZATION-01` optional bounded timestamped pose-history decision gate.
+7. `AUTO-01` bounded fresh-attempt composition decision gate, after the examples expose the complete
    per-attempt Phoenix caller surface.
-7. `EXAMPLE-03` narrowed coherent timestamped mechanism-target coordination reference.
-8. `AUDIT-01` closure re-audit, last.
+8. `EXAMPLE-03` narrowed coherent timestamped mechanism-target coordination reference.
+9. `AUDIT-01` closure re-audit, last.
 
 Run one item per branch through the normal decision and approval gates. An approved, recorded, and
 verified no-change result is a valid **Done** disposition when a candidate abstraction does not
 reduce complete robot code; an item whose truthful contract still needs unavailable evidence remains
-**Deferred** with a reactivation trigger. `AUDIT-01` waits for the seven named earlier items to reach
+**Deferred** with a reactivation trigger. `AUDIT-01` waits for the eight named earlier items to reach
 one of those terminal dispositions; it does not wait indefinitely for unavailable hardware
 measurements.
 
@@ -23511,7 +23513,8 @@ implementation.
   typed selected/unavailable result rather than a numeric sentinel. Every result retains the frame's
   `LoopTimestamp`. The baseline must plainly impose a stationary/current-pose restriction; Gate 1 may
   instead use a history-backed pose at that timestamp only if it finds an already maintained
-  production producer. Otherwise pose-history support requires a separate evidenced tracker item,
+  production producer. Otherwise pose-history support requires the separate evidenced
+  `LOCALIZATION-01` decision gate,
   not a fake-only API added by this example. Start-time route construction consumes one frozen
   decision exactly once.
 - **Scope boundary:** this case covers one collection attempt. Repetition, attempt counting, match-
@@ -23557,8 +23560,8 @@ implementation.
   a current same-cycle `PoseEstimate` only while the robot and its rigid camera have remained
   stationary from exposure through selection. Software checks pose availability, finite geometry,
   and a current-epoch/same-cycle pose timestamp; it does not claim to prove stationarity. A public
-  history owner, interpolation policy, retention bound, or Phoenix-capability expansion requires a
-  separate evidenced tracker item.
+  history owner, interpolation policy, retention bound, or Phoenix-capability expansion belongs to
+  `LOCALIZATION-01`, not this example item.
 - **Pinned detector-coordinate contract:** FTC SDK 11.1's `DetectorResult` exposes principal-pixel
   `getTargetXDegreesNoCrosshair()` and `getTargetYDegreesNoCrosshair()` and parses those values
   directly from Limelight's `tx_nocross`/`ty_nocross` JSON fields. Limelight's detector-result
@@ -23602,7 +23605,7 @@ implementation.
   | Large adaptive robot/OpMode | A short outer constructor would hide another profile, root, host, localization/drive service, inventory, intake, presenters, and placeholder hardware graph; it would duplicate much of the Basic Pedro reference to teach one interaction. | Rejected: too many unrelated owners and configuration decisions. |
   | Generic detector map/lane or ray/band selector | Adds framework names for vendor result mapping, floor assumptions, game-object eligibility, collection regions, ranking, and fallback without a second stable cross-robot caller. | Rejected: camera interpretation and strategy remain robot-owned. |
   | Generic route-progress/milestone API or race/scheduler | Exposes weaker normalized progress or another execution model even though native Pedro callbacks, `waitUntil`, `parallelDeadline`, and exact route status already express the need. | Rejected: no distinct capability. |
-  | Public pose history | Adds retention, interpolation, reset, discontinuity, and lifecycle contracts not required by a stationary one-attempt proof. | Deferred to a separate evidence-backed item if a moving-frame production caller appears. |
+  | Public pose history | Adds retention, interpolation, reset, discontinuity, and lifecycle contracts not required by a stationary one-attempt proof. | Deferred to the separate `LOCALIZATION-01` decision gate. |
 
 - **Selected package and ownership:** add only a focused sibling under
   `edu.ftcphoenix.robots.examples.pedro.adaptive`. Its three public top-level roles are
@@ -23792,16 +23795,84 @@ implementation.
   does not start AUTO-01 or another item, and it does not convert software evidence into a robot-
   hardware claim.
 
+### LOCALIZATION-01 - Optional bounded timestamped pose history
+
+- **Tracker-only intake status (2026-08-28):** **Proposed before AUTO-01.** After reviewing
+  EXAMPLE-10's stationary/current-pose limitation, the user approved adding this separate tracker
+  item. No Gate 1 decision, public type, implementation, example migration, test, staging, or
+  publication is approved by intake.
+- **Problem to confirm:** delayed observations may need the field-to-robot pose from capture time,
+  not merely the current loop. EXAMPLE-10 therefore imposes a physical stationarity promise because
+  it cannot look up that pose at the Limelight exposure timestamp. Phoenix already
+  exposes `TimeAwareSource<T>`, but its production helpers are fixed or explicitly current-only.
+  Fusion and EKF retain private predictor-replay histories that do not expose arbitrary historical
+  field-pose lookup. Gate 1 must determine whether this is now a recurring stable framework need
+  rather than one example-specific pressure point. History for an articulated camera or mechanism
+  transform is a distinct `TimeAwareSource` ownership question and is not silently included here.
+- **Dependencies and order:** TIME-01, CYCLE-02, CONFIG-04, SPATIAL-01, VISION-02, RUNTIME-01, and
+  EXAMPLE-10 are Done. Run this decision gate before AUTO-01 so the adaptive-composition audit uses
+  the final timestamped-selection story. AUTO-01 may begin after LOCALIZATION-01 reaches Done,
+  including an approved verified no-change result, or Deferred with a concrete reactivation trigger.
+- **Leading hypothesis, not an approved design:** if current callers justify a reusable owner,
+  prefer one optional localization-owned bounded recorder sampled once per managed cycle after the
+  final high-rate current-pose update. Consumers receive a read-only timestamped query; individual
+  estimators do not each grow hidden buffers, and sparse AprilTag/Limelight measurement estimators
+  are not presented as continuous trajectories. A specialized planar contract is the conservative
+  starting hypothesis, but Gate 1 must compare it against truthful 6-DOF interpolation and may
+  select no framework change.
+- **Required semantic decisions:** distinguish an as-published trajectory from retrospectively
+  corrected/smoothed history; choose the owner of explicit pose rebase and discontinuity barriers;
+  decide whether the existing permissive `TimeAwareSource<T>` contract is sufficient or a pose-
+  specific typed lookup must report exact, interpolated, evicted, reset, gap, and after-latest
+  outcomes. Define quality provenance, finite validation, same-cycle/failure semantics, START/STOP
+  clearing, and declaration order without adding a second localization heartbeat.
+- **Required bounds and interpolation decisions:** compare planar x/y plus shortest-path yaw against
+  genuine 6-DOF rotation interpolation. Any positive design must bound both retention duration and
+  maximum sample count, define a maximum interpolation gap, preserve exact endpoints, reject
+  interpolation across unavailable/reset/rebase segments, and never extrapolate, clamp, choose the
+  nearest sample, or silently substitute the current pose.
+- **Alternatives to compare:** no change with the documented stationary/current-only restriction;
+  a robot-local recorder; a separately owned specialized framework recorder; history inside every
+  estimator; a generic `TimeAwareSources.history(...)`; exposing the fusion/EKF replay buffers; and
+  a retrospective localization smoother. Compare complete ordinary robot declarations, concepts,
+  lifecycle/reset ownership, errors, memory bounds, tests, and implementation cost rather than only
+  the final lookup expression.
+- **Example impact boundary:** EXAMPLE-09's sensor-derived inventory service and stable
+  `fullSource()` do not depend on pose history and remain unchanged. If Gate 1 later approves and the
+  framework implements a history capability, EXAMPLE-10 is the likely compiling proof consumer:
+  only its vision service, declaration example, unavailable reasons, guide, and focused tests should
+  change to query the field pose at the detector-frame timestamp. Its path owner, one-attempt Task
+  graph, inventory gating, semantic milestones, fallback, and route outcomes remain unchanged. A
+  no-change or Deferred result leaves EXAMPLE-10 exactly as published.
+- **Gate 1 verification candidate:** trace every production, Phoenix, tool, and modern-example pose
+  producer and timestamped consumer plus every public estimator construction path. Prototype the
+  credible call sites and specify deterministic tests for exact/bracketed lookup, yaw wrap, empty/
+  old/future/wrong-clock queries, unavailable and non-finite gaps, clock reset, explicit rebase,
+  same-cycle idempotence/failure retention/reentry, time and hard-count pruning under tiny or zero
+  dt, START/STOP clearing, configuration snapshots, and service ordering. Gate 1 may narrow or reject
+  this list when it records the selected ownership and API.
+- **Approval boundary:** this intake adds only the Proposed tracker record and ordering/cross-
+  references. Starting Gate 1 requires a later explicit user direction. Any public API, framework
+  implementation, EXAMPLE-10 migration, Phoenix capability, hardware claim, AUTO-01 work, staging,
+  or publication remains outside this intake.
+- **Tracker-intake review and publication authorization (2026-08-29):** the user supplied the exact
+  combined authorization: **“LOCALIZATION-01 looks good. Authorize committing the reviewed
+  LOCALIZATION-01 diff on codex/localization-01-optional-pose-history, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This approves publication of only the reviewed one-file tracker intake.
+  LOCALIZATION-01 remains **Proposed**; Gate 1, any public API or implementation, EXAMPLE-10
+  migration, hardware claims, AUTO-01, and another item have not started.
+
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 
 - **Tracker-only intake status (2026-08-22):** **Proposed and deliberately last.** No re-audit has
   started. This item is a closure gate, not a container for implementing another capability.
-- **Start condition:** SAFE-04, SENSOR-01, PERF-01, EXAMPLE-09, EXAMPLE-10, AUTO-01, and EXAMPLE-03
-  have each reached **Done** (including an approved, recorded, and verified no-change decision) or
-  **Deferred** with a concrete reactivation trigger.
-  This prerequisite list is frozen unless the user explicitly amends it; a Gate 1 split does not
-  silently enlarge AUDIT-01. It does not wait for unavailable hardware runs belonging to PERF-03 or
-  other deliberately hardware-gated items.
+- **Start condition:** SAFE-04, SENSOR-01, PERF-01, EXAMPLE-09, EXAMPLE-10, LOCALIZATION-01, AUTO-01,
+  and EXAMPLE-03 have each reached **Done** (including an approved, recorded, and verified no-change
+  decision) or **Deferred** with a concrete reactivation trigger.
+  The user's 2026-08-28 LOCALIZATION-01 intake approval explicitly amends this otherwise frozen
+  prerequisite list. A Gate 1 split does not silently enlarge AUDIT-01. It does not wait for
+  unavailable hardware runs belonging to PERF-03 or other deliberately hardware-gated items.
 - **Pinned scope and provenance:** pin current Phoenix when this audit starts, then compare it against
   the exact Cubelib, FTC_Decode, Decode/v3, and IntoTheDeep23641 commits recorded by the 2026-08-22
   intake. Preserve the caveat that Cubelib itself is the small utility/FSM library, the later DECODE
@@ -23810,8 +23881,9 @@ implementation.
   do not turn this closure check into an unsupported team ranking.
 - **Required capability matrix:** trace fixed and start-built routes; truthful route outcomes;
   semantic route milestones; route-plus-mechanism lifetime; adaptive bounded fresh attempts and park;
-  multi-object vision-to-field selection; sensor-derived inventory; coordinated timestamped
-  mechanism targets/intents; motor current; bulk-cache ownership; write suppression; field symmetry;
+  multi-object vision-to-field selection; optional timestamped pose history; sensor-derived
+  inventory; coordinated timestamped mechanism targets/intents; motor current; bulk-cache ownership;
+  write suppression; field symmetry;
   diagnostics and software-bench evidence; reusable library distribution; and Cubelib's
   weighted-setpoint/controller variation. Classify every frozen row as **implemented**, **already
   supported**, **robot-specific**,
