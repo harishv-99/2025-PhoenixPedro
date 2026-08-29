@@ -204,7 +204,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 105 | DOC-06 | Explain Phoenix's value at first contact | Done | The reviewed candid SDK-versus-Phoenix explanation, canonical pointers, verification evidence, and destination-specific publication authorization are complete. |
 | 106 | EXAMPLE-08 | Reactive hardware-free subsystem scenarios | Done | The reviewed reactive lift/launcher scenarios, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 107 | EXAMPLE-09 | Sensor-derived inventory status case study | Done | The reviewed simplified optional service, hardware-free evidence, synchronized teaching, and destination-specific publication authorization are complete. |
-| 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Proposed | Teach typed multi-object selection, exactly-once live route construction, semantic milestones, and inventory-dependent early exit without new core season APIs. |
+| 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Done | The reviewed bounded example-only implementation, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 109 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current Phoenix support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
 ### Current Cuberobot/DECODE program order (2026-08-22)
@@ -23481,6 +23481,12 @@ implementation.
 
 - **Tracker-only intake status (2026-08-22):** **Proposed after EXAMPLE-09.** No decision gate,
   implementation, API, route, vision configuration, example navigation, or publication has started.
+- **Gate 1 start (2026-08-28):** after EXAMPLE-09 merged, the user directed `next task`. The isolated
+  branch `codex/example-10-timestamped-adaptive-collection` starts directly from merged
+  `origin/master@1b00f4e971f295680e5ce82d3001c5d02f76c211`; EXAMPLE-10 is **Researching**. This
+  authorizes only source/caller research, design comparison, tracker recording, and deterministic
+  baseline checks. It does not authorize production/example Java, tests, guides, navigation,
+  publication, AUTO-01, EXAMPLE-03, AUDIT-01, or another tracker item.
 - **Problem to confirm:** Phoenix separately documents stable Limelight frame timestamps, spatial
   geometry, start-time route construction, route outcomes, native Pedro callbacks, companion Tasks,
   and robot capabilities. There is no compact compiling proof that turns zero or more detections
@@ -23532,6 +23538,259 @@ implementation.
 - **Excluded claims:** authored frames and fake routes do not prove camera calibration, field
   projection accuracy, localization history quality, detector reliability, route tracking,
   collection reliability, collision clearance, cycle time, or game performance.
+- **Confirmed local gap and caller trace (2026-08-28):** source inspection confirms the intake
+  hypothesis. `FtcLimelightVisionLane.ResultSnapshot` already retains one stable exposure-time
+  `LoopTimestamp` and an unmodifiable outer detector list, but its Javadoc correctly warns that SDK
+  result elements may still retain vendor-owned mutable structures. No production or example caller
+  currently reads `detectorResults()`. `PhoenixVisionFactory` constructs the AprilTag-specialized
+  owner and returns only `AprilTagVisionLane`; `PhoenixRobot` and `PhoenixCapabilities` expose no
+  detector result, so this optional case must not downcast that lane or open a second owner for the
+  same Limelight. `PedroPathingRuntime.motionPredictor()` supplies the maintained current Phoenix-
+  field `PoseEstimate`; `currentPedroPose()` is only a defensive vendor-frame current snapshot and
+  is not timestamped vision evidence. `ReferenceInventoryStatusService.fullSource()` now supplies
+  the exact cached semantic fact required by the collection deadline without another sensor read.
+- **Pose-history result:** `TimeAwareSource<T>` is a valid abstraction seam, but the only production
+  factories are fixed and explicitly current-only. The fusion and EKF estimators retain private
+  correction-replay histories; neither exports a maintained field-pose lookup at an arbitrary
+  `LoopTimestamp`. Pedro history appears only in vendor/legacy/tuning material. EXAMPLE-10 therefore
+  cannot truthfully compensate a moving robot's delayed detector frame. The selected contract uses
+  a current same-cycle `PoseEstimate` only while the robot and its rigid camera have remained
+  stationary from exposure through selection. Software checks pose availability, finite geometry,
+  and a current-epoch/same-cycle pose timestamp; it does not claim to prove stationarity. A public
+  history owner, interpolation policy, retention bound, or Phoenix-capability expansion requires a
+  separate evidenced tracker item.
+- **Pinned detector-coordinate contract:** FTC SDK 11.1's `DetectorResult` exposes principal-pixel
+  `getTargetXDegreesNoCrosshair()` and `getTargetYDegreesNoCrosshair()` and parses those values
+  directly from Limelight's `tx_nocross`/`ty_nocross` JSON fields. Limelight's detector-result
+  contract defines horizontal angle as positive right and vertical angle as positive down. The
+  robot/FTC edge therefore converts degrees immediately to the Phoenix camera-frame ray
+  `(forward=1, left=-tan(tx), up=-tan(ty))`; camera mount and field transforms happen only after
+  that explicit sign conversion. Crosshair-relative values, corners, class metadata, confidence,
+  and SDK objects are not retained because this case does not need them. This avoids both the
+  pinned implementation's crosshair dependency and an unnecessary confidence-scale policy.
+- **Existing public-construction-path audit:** no sibling or framework API addition is needed.
+  `FtcLimelightVisionLane` has one public `HardwareMap + Config` owner constructor plus
+  `Config.defaults()`/`copy()`; there is no generic-owner factory sibling. `RouteTask` has no public
+  constructor, while `RouteTasks` intentionally exposes exactly four named factories: eager timed,
+  eager without Task timeout, start-built timed, and start-built without Task timeout. Both routes
+  in this case need the distinct timed start-built form: collection freezes current decision and
+  pose once, while return snapshots pose only after the outbound companions have been cancelled.
+  `Tasks.waitUntil(BooleanSource)` is the untimed semantic deadline because the collection
+  `RouteTask` already owns the hard timeout; `Tasks.parallelDeadline(...)` is the sole lifetime
+  composition and `Tasks.buildAtStart(...)` is sufficient for conditional return policy. No staged
+  Phoenix builder or reusable builder-parameter type is added. Pedro's `PathBuilder` stays private
+  to the path owner; its callback thresholds are validated config values used inline once rather
+  than exposed, stored, shared, or independently validated builder fragments.
+- **Current route callers and preserved roles:** `BasicPedroAutoRoutine` uses the eager timed form
+  for fixed geometry. `PhoenixPedroAutoRoutineFactory` uses eager timed outbound and timed start-
+  built live-pose return routes. `PhoenixPedroPathFactory` already demonstrates a native callback
+  publishing robot meaning instead of exposing normalized progress. `RouteTask.getRouteStatus()`
+  retains the exact execution and is the only valid attempt-policy observation; the adapter's
+  latest-route status cannot represent the older collection attempt after return begins.
+  `SequenceTask` does not invent robot policy from every cancellation-like child outcome, so the
+  example must retain its own exit reason and explicitly decide whether return is allowed.
+- **Alternatives and complete student cost:** the comparison counts configuration, resource
+  lifecycle, immutable SDK projection, timestamp/pose policy, floor geometry, ranking, route
+  construction, callback meaning, cancellation, status, tests, and teaching—not only the final
+  facade call.
+
+  | Design | Ordinary robot-code shape and conceptual decisions | Disposition |
+  | --- | --- | --- |
+  | No change / documentation snippet | Each team writes a Limelight owner/close hook, timestamp checks, pose policy, projection, sentinel handling, route factory, callback latches, deadline, cancellation, and outcome policy; roughly 300-500 repeated Java lines. | Rejected: a snippet cannot compile-prove immutable SDK projection, exactly-once route construction, callback visibility, or exact cancellation identity. |
+  | Pure selector helper plus tests | `selector.selectWhileStationary(clock, frame, pose)` removes about half the math, but every caller still owns the camera resource/cache and the complete attempt lifecycle. | Rejected as incomplete for the confirmed integration-teaching gap. The pure math remains package-private inside the selected owner. |
+  | **Focused optional example** | Three visible roles: declare one vision service after localization, construct one path owner from the Pedro runtime, then construct one attempt from the cached decision, existing `fullSource()`, and existing Basic Pedro intake capability. Students choose camera/pipeline/mount and freshness, collection region/band, fallback/return geometry and two semantic callback points, and two route timeouts exactly once. | Selected: the smallest complete compiling proof, with no ordinary Reference/Phoenix adoption and no new framework noun. |
+  | Large adaptive robot/OpMode | A short outer constructor would hide another profile, root, host, localization/drive service, inventory, intake, presenters, and placeholder hardware graph; it would duplicate much of the Basic Pedro reference to teach one interaction. | Rejected: too many unrelated owners and configuration decisions. |
+  | Generic detector map/lane or ray/band selector | Adds framework names for vendor result mapping, floor assumptions, game-object eligibility, collection regions, ranking, and fallback without a second stable cross-robot caller. | Rejected: camera interpretation and strategy remain robot-owned. |
+  | Generic route-progress/milestone API or race/scheduler | Exposes weaker normalized progress or another execution model even though native Pedro callbacks, `waitUntil`, `parallelDeadline`, and exact route status already express the need. | Rejected: no distinct capability. |
+  | Public pose history | Adds retention, interpolation, reset, discontinuity, and lifecycle contracts not required by a stationary one-attempt proof. | Deferred to a separate evidence-backed item if a moving-frame production caller appears. |
+
+- **Selected package and ownership:** add only a focused sibling under
+  `edu.ftcphoenix.robots.examples.pedro.adaptive`. Its three public top-level roles are
+  `AdaptiveCollectionVisionService`, `AdaptiveCollectionPaths`, and
+  `AdaptiveCollectionAttempt`. Projection/ranking data structures and the per-attempt milestone
+  latch remain package-private or private. The optional case reuses `BasicPedroAutoMechanism` for
+  one fresh bounded, cancellation-safe collection Task and consumes a `BooleanSource` such as
+  EXAMPLE-09's `fullSource()`; it does not modify either owner. It adds no OpMode, profile,
+  composition-root clone, Phoenix capability, protected-core type, generic detector interface,
+  framework callback DSL, scheduler, or second LoopClock.
+- **Selected public surface and layer value:** each stateful role has exactly one public constructor,
+  each mutable data-only nested `Config` has only `defaults()`, and there are no overloads, public
+  builders, or parallel factories.
+
+  ```java
+  AdaptiveCollectionVisionService(
+          HardwareMap hardwareMap,
+          AbsolutePoseEstimator currentFieldPose,
+          AdaptiveCollectionVisionService.Config config);
+  AdaptiveCollectionVisionService.Decision decision();
+
+  AdaptiveCollectionPaths(
+          PedroPathingRuntime runtime,
+          AdaptiveCollectionPaths.Config config);
+
+  AdaptiveCollectionAttempt(
+          AdaptiveCollectionVisionService vision,
+          AdaptiveCollectionPaths paths,
+          BooleanSource inventoryFull,
+          BasicPedroAutoMechanism intake,
+          AdaptiveCollectionAttempt.Config config);
+  Task task();
+  AdaptiveCollectionAttempt.Status status();
+  ```
+
+  The vision-service layer has distinct value: it is the sole generic Limelight resource owner,
+  samples after the already-owned localization heartbeat, immediately removes SDK mutability, and
+  atomically publishes a cached timestamped decision. The path layer has distinct value: it owns
+  Phoenix-to-Pedro field conversion, live Pedro start pose, fallback/return geometry, and native
+  callbacks. The attempt layer has distinct value: it owns one Task graph and one coherent outcome
+  snapshot. `task()` returns the one stable single-use root owned by that attempt; `status()` is the
+  read-only presenter surface. No public layer merely duplicates another construction path.
+- **Ordinary declaration shape:** the runtime/localization service must be declared before the
+  vision service so its cached `PoseEstimate` is same-cycle; all Tasks still run later in the fixed
+  managed phase order. The camera configuration, selection configuration, path configuration, and
+  attempt configuration are each authored once and defensively snapshotted by their long-lived
+  owner.
+
+  ```java
+  AdaptiveCollectionVisionService vision = program.service(
+          new AdaptiveCollectionVisionService(
+                  hardwareMap, runtime.motionPredictor(), visionConfig));
+  AdaptiveCollectionPaths paths = new AdaptiveCollectionPaths(runtime, pathsConfig);
+  AdaptiveCollectionAttempt attempt = new AdaptiveCollectionAttempt(
+          vision, paths, inventory.fullSource(), intake, attemptConfig);
+  program.rootTask(attempt.task());
+  program.presenter((clock, telemetry) -> present(telemetry, attempt.status()));
+  ```
+
+  The adopting composition root still owns the explicit physical claim that the robot remains
+  stationary while a decision eligible for freezing is produced. The example does not add a
+  caller-authored `stationary=true` flag or velocity threshold and pretend that it proves that fact.
+- **Vision decision contract:** `AdaptiveCollectionVisionService.Config` nests and snapshots the
+  existing generic Limelight Config plus `CameraMountConfig`, a positive finite maximum frame age,
+  an inclusive finite Phoenix-field collection box, and a positive band width no larger than that
+  box's Y span. START clears the cache and performs one ordinary update; each later service phase
+  obtains one confirmed result and the already-updated pose cache, converts only the two principal-
+  pixel angles into immutable local values, and publishes once after a complete calculation. STOP
+  restores the not-observed decision and closes the sole Limelight owner; existing lane idempotence
+  and `RobotProgram` lifecycle guarantees are reused rather than reimplemented.
+
+  `Decision` always retains the exact frame `LoopTimestamp`. It offers `hasSelection()` plus guarded
+  selected-band access, or a typed `UnavailableReason`; it never returns `-1`, `NaN`, `null`, or a
+  clamped sentinel as a target. Reasons distinguish unavailable/reset-or-future/stale frames,
+  unavailable/not-current pose, zero detections, no projectable floor intersections, and no points
+  inside the collection box. Non-finite angles/rays/poses, parallel or upward rays, non-positive or
+  non-finite floor intersections, and off-box points are rejected before ranking. Candidate bands
+  are normalized inside the configured box and ranked by greatest contained point count, then lower
+  band start Y; vendor list order cannot change the winner.
+- **Route and exact-exit contract:** one fresh `AdaptiveCollectionAttempt` creates one fresh semantic
+  milestone latch, one timed start-built collection `RouteTask`, one bounded Basic Pedro collection
+  Task, one untimed wait deadline, and one timed start-built return `RouteTask`. The collection route
+  factory reads and freezes exactly one cached `Decision`; a selected band produces its configured
+  collection X/heading plus chosen Y, while an unavailable decision produces the explicit fallback
+  target. It snapshots the current Pedro start pose and builds one PathChain exactly once. Two
+  validated native callbacks only latch `safeToLeave` and `nearEnd`; they never start a route.
+
+  The deadline evaluates exact terminal route status first, then `nearEnd`, then
+  `safeToLeave && inventoryFull`. Fullness before safe progress and safe progress alone cannot end
+  the phase. It records `ROUTE_COMPLETED`, `NEAR_END`, or `INVENTORY_FULL_AFTER_SAFE` before
+  `parallelDeadline` cancels the exact active collection route and intake Task, preserving the
+  intentional reason even though the route subsequently reports `CANCELLED`. Follower stall/
+  timeout, Task timeout, interruption, replacement, cancellation, failure, and unknown terminal
+  state retain distinct attempt reasons. Only completed, near-end, or safe-plus-full collection
+  exits may start the live-pose return after cancellation finishes. Direct outer cancellation,
+  construction failure, and abnormal route endings build no return. Collection and return route
+  statuses remain separate; no latest-route observation overwrites collection truth.
+- **Framework-Principles result:** the design uses the one managed clock without advancing it,
+  reads localization before targeting and Tasks, keeps SDK types at the FTC/robot edge, converts
+  field coordinates only at the Pedro boundary, returns fresh single-use Tasks, retains exact route
+  execution identity, keeps the mechanism Plant as the sole writer, makes active companion
+  cancellation restore the Basic intake's idle request, and leaves presenters read-only. Camera
+  ownership, field geometry, game selection, route geometry, inventory meaning, and mechanism
+  realization stay distinct. No preimplementation hardware gate is required because stationarity
+  and calibration are explicitly adopting-robot preconditions rather than software claims.
+- **Bounded Gate 2 scope:** add the three public example roles and at most one package-private pure
+  projection/ranking helper; four focused hardware-free tests for vision/service, paths, attempt,
+  and the complete scenario; one new `Timestamped Adaptive Collection.md` case-study guide; and
+  small synchronized links/rows in the examples README, `Framework Components Through Examples`,
+  `Pedro Autonomous Reference`, `Spatial Queries`, and `Role Paths`. Do not change framework core,
+  `fw.ftc`, the Pedro integration, `FtcLimelightVisionLane`, `RouteTasks`, `Tasks`, ordinary Basic/
+  Reference/Phoenix robots, existing mechanisms/services, manifests, legacy/sample/vendor code,
+  AUTO-01, EXAMPLE-03, or AUDIT-01.
+- **Deterministic verification plan and baseline:** focused tests will cover configuration snapshot/
+  validation and sole-owner close; real SDK detector-angle copying into immutable local values;
+  zero/one/many detections; unavailable/reset/future/stale timestamps; wrong-clock wiring failure;
+  unavailable/stale pose; non-finite angles and poses; parallel/upward/non-positive rays; off-box
+  points; typed reasons; deterministic tie-breaking; guarded target access; previous-decision
+  immutability; decision freeze and route build exactly once; null/throw construction with follower
+  untouched; fresh milestone state; same-cycle managed callback visibility; full-before-safe,
+  safe-only, safe-plus-full, and near-end exits; simultaneous precedence; every precise terminal
+  route reason; exact collection cancellation identity; cancellation-safe intake idle; conditional
+  live-pose return; outer cancellation; and STOP cleanup. The 2026-08-28 Android Studio JBR 21
+  baseline passed **8 focused suites / 117 tests / 0 failures / 0 errors / 0 skipped** plus
+  `:TeamCode:compileDebugJavaWithJavac`; only the existing Java-8 source/target deprecation warning
+  was emitted. Gate 2 will run the focused additions, the complete TeamCode unit suite, compile,
+  Javadocs, documentation-link checks, `git diff --check`, and a tracked-plus-untracked whitespace
+  scan.
+- **Hardware and evidence boundary:** software will report frame age, decision reason, accepted/
+  projected/in-box counts, selected band or fallback, semantic milestones, inventory-full cache,
+  exact collection exit, and separate collection/return route status. An adopting team must still
+  validate the configured detector pipeline, principal-pixel angle signs on its firmware, camera
+  extrinsics and rigidity, stationary interval, field alignment, projection accuracy, route
+  clearance and callback placement, inventory timing, physical STOP, pickup reliability, and match
+  benefit. No authored software result establishes those facts.
+- **Approval boundary:** EXAMPLE-10 is **Ready**. The selected design remains aligned with the leading
+  example-only hypothesis, but it adds public example owners plus observable camera, Task,
+  cancellation, fallback, and status semantics, so the workflow skill requires an explicit design
+  approval before any Java, test, or guide edit. Approval authorizes only the bounded Gate 2 scope
+  above on `codex/example-10-timestamped-adaptive-collection`; it does not authorize staging,
+  publication, framework/Phoenix API changes, physical claims, AUTO-01, or another item.
+- **Gate 2 approval (2026-08-28):** the user approved the optional example-only
+  `AdaptiveCollectionVisionService`, `AdaptiveCollectionPaths`, and `AdaptiveCollectionAttempt`
+  design with stationary/current-pose typed timestamped selection, explicit unavailable fallback,
+  semantic safe/near-end milestones, inventory-gated early exit, truthful route outcomes, and no
+  new framework API. EXAMPLE-10 is **In progress**. This authorizes only the bounded implementation,
+  documentation, focused tests, review, and verification above; it does not authorize staging,
+  publication, physical claims, AUTO-01, or another item.
+- **Gate 2 implementation result (2026-08-28):** the bounded diff adds the three approved public
+  example owners plus one package-private pure projection/ranking helper under
+  `edu.ftcphoenix.robots.examples.pedro.adaptive`. It adds the four approved hardware-neutral test
+  classes, the `Timestamped Adaptive Collection.md` case-study guide, and small navigation/context
+  updates. No protected-core Java, framework API, Phoenix robot API, OpMode, profile, or unrelated
+  example changed. Each public owner still has exactly one public constructor and each Config still
+  begins only through `defaults()`.
+- **Final simplicity and Framework-Principles review:** three independent read-only reviews covered
+  Task/route lifecycle and cancellation, framework ownership/API/student cost, and test/document
+  truthfulness. Review removed the camera service's redundant fixed-decision test lifecycle in
+  favor of one package-private hardware-neutral decision supplier at the attempt boundary, clarified
+  that the path transform must match the immutable runtime transform, and strengthened tests for
+  count-first band ranking, completed-route return, and null start-built route failure. The reviewers'
+  follow-up spot checks found no remaining correctness, lifecycle, ownership, public-surface,
+  simplicity, or documentation defect. The final graph uses only existing `RobotProgram`, source,
+  Task, RouteTask, Pedro-runtime, camera-lane, localization, and Basic-intake guarantees.
+- **Software verification (2026-08-28):** the focused adaptive package run passed 28 tests in four
+  suites (vision 9, paths 7, attempt 10, scenario 2) with zero failures, errors, or skips. The final
+  complete `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passed 2,052 tests
+  in 225 suites with zero failures, errors, or skips. `:TeamCode:phoenixJavadocs` and the focused
+  `DocumentationLinksTest` both passed. `git diff --check`, the tracked-plus-untracked trailing-
+  whitespace scan, the new-production blocking-loop scan, and the exact public-surface/scope audit
+  were clean. Gradle emitted only the repository's existing Java-8 source/target deprecation warning.
+- **Hardware boundary after implementation:** no software result proves the physical stationarity
+  promise, camera signs/extrinsics/rigidity, detector quality, projection accuracy, field alignment,
+  route clearance/callback placement, inventory timing, pickup reliability, physical STOP, cycle
+  time, or match benefit. Those checks remain adopting-robot validation, not prerequisites for
+  reviewing this software diff.
+- **Verification/publication boundary:** EXAMPLE-10 is **Verifying**. The complete diff remains
+  unstaged on `codex/example-10-timestamped-adaptive-collection` for Android Studio inspection.
+  Gate 2 still does not authorize staging, commit, push, pull request, merge, AUTO-01, or another
+  tracker item; publication requires the destination-specific combined authorization prompt.
+- **Gate 3 review and publication authorization (2026-08-28):** the user supplied the exact
+  combined authorization: **“EXAMPLE-10 looks good. Authorize committing the reviewed EXAMPLE-10
+  diff on codex/example-10-timestamped-adaptive-collection, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This records Android Studio approval of the complete 15-file diff and authorizes only
+  its commit, push, pull request, and merge into the named destination. EXAMPLE-10 is **Done**. It
+  does not start AUTO-01 or another item, and it does not convert software evidence into a robot-
+  hardware claim.
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 

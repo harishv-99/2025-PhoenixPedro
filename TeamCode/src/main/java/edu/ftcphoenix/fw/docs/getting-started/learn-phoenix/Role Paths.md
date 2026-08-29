@@ -23,6 +23,10 @@ Some examples deliberately sit outside the common robot path:
   robot-centric mecanum.
 - [Pedro Autonomous Reference](<../../examples/Pedro Autonomous Reference.md>) owns third-party
   follower lifecycle and route outcomes; do not move that policy into a generic composition root.
+- [Timestamped Adaptive Collection](<../../examples/Timestamped Adaptive Collection.md>) is an
+  optional one-attempt satellite for delayed detector frames, start-time Pedro geometry, semantic
+  milestones, inventory-gated exit, and exact collection/return outcomes. It is not a required
+  vision layer or a complete Auto cycle.
 - `ReferenceParkingPlan` is a controller-free geometry helper, not behavior executed by Reference
   Auto.
 - `ReferenceTestersOpMode` uses the specialized tester lifecycle. A tester must create its own

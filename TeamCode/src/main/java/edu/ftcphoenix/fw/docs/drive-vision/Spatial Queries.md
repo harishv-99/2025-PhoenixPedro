@@ -203,6 +203,12 @@ Rule of thumb:
 
 > Anything derived from a delayed sensor frame should carry or derive a timestamp. Any moving frame used to interpret that sensor should be sampled at that timestamp when possible.
 
+The optional [Timestamped adaptive collection](<../examples/Timestamped Adaptive Collection.md>)
+case study shows the truthful current-only alternative when no maintained pose history exists. It
+projects one delayed detector frame only under an explicit physical promise that the robot and
+rigid camera stayed stationary through selection. A same-cycle current pose check cannot prove
+that promise or compensate motion.
+
 ## Selecting lane results
 
 The base query returns every lane result. Use selectors when you want priority behavior:

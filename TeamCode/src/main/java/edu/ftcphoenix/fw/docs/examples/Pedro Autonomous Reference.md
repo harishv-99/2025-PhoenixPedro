@@ -167,6 +167,12 @@ lifecycle through the adapter. Pedro's generated native tuning tools use a separ
 factory and exclusive raw-Follower/Pinpoint lifecycle. Neither is a second ordinary runtime
 construction answer.
 
+For a route whose geometry genuinely depends on a delayed detector frame and live start pose, see
+the optional [Timestamped adaptive collection](<Timestamped Adaptive Collection.md>) case study. It
+keeps the basic six-role reference unchanged while demonstrating typed unavailable fallback,
+semantic native callbacks, inventory-gated early exit, and separate exact statuses for collection
+and return.
+
 ## Expected result
 
 The checked-in host remains `@Disabled` and compiles as a reference. After an adopting team
@@ -200,6 +206,7 @@ placement/readiness, follower stability, field alignment, route clearance, or ph
 ## Related reading
 
 - [`Your first Pedro Auto`](<../getting-started/First Pedro Auto.md>)
+- [`Timestamped adaptive collection`](<Timestamped Adaptive Collection.md>)
 - [`Pedro Pathing integration contract`](<../../integrations/pedro/README.md>)
 - [`Tasks and Macros`](<../design/Tasks & Macros Quickstart.md>)
 - [`Robot Capabilities and Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>)

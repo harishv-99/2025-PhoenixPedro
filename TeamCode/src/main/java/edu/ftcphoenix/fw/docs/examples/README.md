@@ -18,6 +18,7 @@ cleanup ceremony.
 | [Framework Components Through Examples](<Framework Components Through Examples.md>) | A problem-driven lookup for the canonical example or guide behind each concept. |
 | [Field-relative Drive](<Field-relative Drive.md>) | Optional station-defined driver “up”; it is an example composition, not part of Phoenix drive. |
 | [Pedro Autonomous Reference](<Pedro Autonomous Reference.md>) | Optional third-party route integration after the ordinary Tasks and guidance lessons. |
+| [Timestamped Adaptive Collection](<Timestamped Adaptive Collection.md>) | Optional one-attempt case study: immutable delayed-frame selection, explicit fallback, semantic Pedro milestones, inventory-gated exit, and exact route outcomes. |
 | [Subsystem Experiments](<Subsystem Experiments.md>) | How to turn a subsystem question into a locked, measurable trial with team-authored success criteria. |
 | [BIOBUZZ Capability Map](<BIOBUZZ Capability Map.md>) | A provisional season helper that points to canonical lessons without duplicating robot code. |
 
