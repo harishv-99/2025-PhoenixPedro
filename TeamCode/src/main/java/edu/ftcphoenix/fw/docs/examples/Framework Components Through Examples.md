@@ -45,11 +45,12 @@ them. A small robot simply leaves out unused packages.
 | Localization and field geometry | [AprilTag Localization & Fixed Layouts](<../drive-vision/AprilTag Localization & Fixed Layouts.md>) | Pose evidence belongs upstream of guidance; frames and units stay explicit. |
 | Guided parking and conservative footprint | [Drive Guidance](<../drive-vision/Drive Guidance.md>) | A reviewed target pose may guide into a known-clear full box; corner-inside is literal status only. |
 | Pedro route Tasks | `BasicPedroAutoPaths`, `BasicPedroAutoRoutine` | The example builds fixed geometry eagerly; use the named start-time factory only for genuinely live geometry, and preserve truthful route outcomes. |
+| Timestamped vision-selected route | [Timestamped Adaptive Collection](<Timestamped Adaptive Collection.md>) | Freeze one immutable typed decision, build live geometry once, publish semantic path milestones, and keep collection/return outcomes separate. |
 | Controller tuning and calibration | [Control Tuning Workflow](<../testing-calibration/Control Tuning Workflow.md>) | Use supported tools to establish controller evidence before robot behavior depends on it. |
 
 The ordinary Reference robot does not wire field-relative drive, Prestart, the optional inventory
 service, parking guidance,
-Pedro, AprilTags, localization, haptics, or supervisors. Rows for those concepts deliberately point
+Pedro, adaptive collection, AprilTags, localization, haptics, or supervisors. Rows for those concepts deliberately point
 to focused examples, guides, Javadocs, or production references instead of pretending one example
 owns every capability.
 
