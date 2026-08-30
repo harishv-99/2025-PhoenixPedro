@@ -78,6 +78,28 @@ left value determines the combined result. The combinator does not add a cache: 
 operand owns its own same-cycle protection, and no operand is sampled when the composite itself is
 not sampled. Use `choose(...)` when only one selected producer should be sampled.
 
+### `TimeAwareSource<T>`
+
+A `TimeAwareSource<T>` answers at an explicit `LoopTimestamp` through `getAt(clock, timestamp)`.
+Use it when a delayed observation must be interpreted with state from that observation's time, such
+as a camera frame captured while the robot or an articulated mount was moving. The interface carries
+the timestamp but does not impose one validation policy on every implementation: fixed and
+current-only adapters may intentionally ignore the request as documented. A validating domain owner
+such as `PlanarPoseHistory` instead treats another clock as a wiring error and reports a prior epoch
+or materially future request as typed unavailable evidence.
+
+This interface does not promise that every implementation stores history. Fixed and explicitly
+current-only adapters remain useful. When historical policy is domain-specific, prefer a named
+owner that supplies a stable `TimeAwareSource` projection. For example, `PlanarPoseHistory` owns
+bounded planar-pose samples and exposes `lookupSource()` with exact/interpolated/typed-unavailable
+results. The localization owner calls `recordCurrent(clock)` after its authoritative estimator
+update; consumers only query the projection.
+
+The projection is borrowed. Its `reset()` is deliberately a no-op because a downstream consumer
+must not erase shared localization history. The composition owner retains the concrete
+`PlanarPoseHistory` and calls its `reset()` at START/STOP. This is the same ownership rule used by
+other read projections: a common interface does not transfer lifecycle authority.
+
 ## Creating ordinary sources: one grammar
 
 For a clock-aware object value in robot code, use `Source.of(sample)` and then compose the existing

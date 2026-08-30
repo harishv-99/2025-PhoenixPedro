@@ -13,6 +13,8 @@ The short version:
 - **`HeadingEstimator`** answers the narrower "which field direction is the robot facing?"
 - **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last accepted motion baseline?"
 - **`CorrectedPoseEstimator`** combines a motion predictor with one absolute correction source.
+- **`PoseTrajectoryEstimator`** is the continuity-aware capability shared by motion predictors and
+  corrected estimators; optional `PlanarPoseHistory` records one such authoritative stream.
 
 That split matters because a camera can be shared by localization, alignment, and other vision jobs while the localization stack remains free to choose whether it trusts a raw AprilTag solve, a direct smart-camera pose, or another absolute field-anchor signal.
 
@@ -139,6 +141,76 @@ Phoenix currently ships two implementations:
 - `OdometryCorrectionEkfEstimator` — optional covariance-aware corrected localizer
 
 Both expose the same high-level contract, so robot code and tools can swap between them intentionally.
+
+### 2.4 Trajectory continuity and optional planar history
+
+`MotionPredictor` and `CorrectedPoseEstimator` are both `PoseTrajectoryEstimator`s. In addition to
+their cached pose, they expose one opaque publisher-local `trajectorySegmentId()`. Equality is the
+only valid operation on that value. Physical motion and ordinary accepted corrections stay in the
+same corrected segment. A deliberate pose reset or coordinate rebase changes it. If Fusion or EKF
+pushes an accepted correction into its private predictor, the raw predictor changes segment while
+the final corrected trajectory does not. If a corrected estimator instead observes an unexpected
+predictor rebase, it clears replay state, changes its own segment, and establishes a fresh base from
+coherent current evidence rather than applying a motion interval across the reset.
+
+Sparse AprilTag and Limelight field-pose estimators remain plain `AbsolutePoseEstimator`s. Their
+delayed frames are measurements, not a continuous high-rate trajectory that can honestly be
+interpolated.
+
+When a robot needs its historical planar field pose, construct one optional `PlanarPoseHistory`
+over the authoritative final stream:
+
+```java
+PlanarPoseHistory.Config historyCfg = PlanarPoseHistory.Config.defaults();
+historyCfg.retentionSec = 0.50;
+historyCfg.maxSamples = 128;
+
+PlanarPoseHistory poseHistory =
+        new PlanarPoseHistory(localization.globalEstimator(), historyCfg);
+TimeAwareSource<PlanarPoseHistory.Lookup> poseAtTime = poseHistory.lookupSource();
+```
+
+For odometry-only Pedro code, bind `runtime.motionPredictor()` instead. Do not construct one history
+inside every localization implementation. If a robot deliberately records both raw odometry and a
+corrected global estimate, those are two different datasets and should have two explicitly owned
+history instances.
+
+The existing localization lifecycle owner retains the concrete history and makes order explicit:
+
+```java
+// START: after the shared clock reset
+poseHistory.reset();
+globalEstimator.setPose(startingPose);
+localization.update(clock);
+poseHistory.recordCurrent(clock);
+
+// LOOP
+localization.update(clock);
+poseHistory.recordCurrent(clock);   // before timestamped downstream consumers
+
+// STOP: after owned localization resources stop
+poseHistory.reset();
+```
+
+`recordCurrent(clock)` reads only the estimator's cached publication; it never advances or resets
+localization. The stable `lookupSource()` is a borrowed read-only projection, so calling `reset()`
+on that projection cannot clear the concrete owner's history. Only `poseHistory.reset()` clears it
+and releases its clock binding for another lifecycle.
+
+The default lookup horizon is 0.50 seconds with a hard bound of 128 samples; each successful record
+heartbeat also prunes samples beyond that horizon. Interpolation spans at most 0.10 seconds, 12
+inches of translation, and pi/2 radians of shortest-path yaw. Configuration is a mutable authoring
+draft that the owner validates and snapshots. A lookup preserves eligible exact samples;
+otherwise it linearly interpolates field x/y, interpolates yaw over the shortest wrapped path, and
+uses the lower of the two endpoint qualities. It never extrapolates, clamps, chooses a nearest
+sample, or falls
+back to current pose. Typed unavailable results distinguish an empty or evicted history, an invalid
+request time, before/after bounds, a continuity gap, and an excessive time, translation, or yaw
+bracket. A request timestamp from another `LoopClock` is a wiring error.
+
+This is as-published history, not retrospective smoothing. A later correction never rewrites an
+older entry. A large but accepted correction remains in the corrected estimator's segment, while
+the history's translation/yaw bounds reject only that interpolation bracket.
 
 ---
 
@@ -641,7 +713,8 @@ Examples:
 The rule of thumb is simple:
 
 - if the signal directly answers "where is the robot on the field?" it should probably implement `AbsolutePoseEstimator`
-- if the signal is primarily incremental motion (wheel encoders, IMU-integrated yaw, dead-reckoning) it should probably implement `MotionPredictor` or feed one
+- if a high-rate absolute publisher also promises interpolation-safe continuity segments, it should implement `PoseTrajectoryEstimator`
+- if the signal is primarily incremental motion (wheel encoders, IMU-integrated yaw, dead-reckoning) it should implement `MotionPredictor` or feed one; `MotionPredictor` already includes the trajectory contract
 
 That is why the framework does **not** need a bespoke fusion class for every sensor combination. It needs a few principled roles and then clear composition.
 

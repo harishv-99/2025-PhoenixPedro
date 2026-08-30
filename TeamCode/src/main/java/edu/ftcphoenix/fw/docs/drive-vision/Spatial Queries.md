@@ -204,10 +204,12 @@ Rule of thumb:
 > Anything derived from a delayed sensor frame should carry or derive a timestamp. Any moving frame used to interpret that sensor should be sampled at that timestamp when possible.
 
 The optional [Timestamped adaptive collection](<../examples/Timestamped Adaptive Collection.md>)
-case study shows the truthful current-only alternative when no maintained pose history exists. It
-projects one delayed detector frame only under an explicit physical promise that the robot and
-rigid camera stayed stationary through selection. A same-cycle current pose check cannot prove
-that promise or compensate motion.
+case study uses `PlanarPoseHistory.lookupSource()` to query the authoritative field-to-robot pose at
+the detector frame timestamp. Exact and bounded interpolated lookups therefore support a moving
+robot without pretending that its current pose existed at exposure. A reset, unavailable sample,
+eviction, out-of-range request, or excessive time/translation/yaw bracket produces a typed fallback
+instead of current-pose substitution. That planar robot-pose history does not solve an articulated
+camera mount: a moving turret or arm still needs its own timestamp-aware frame source.
 
 ## Selecting lane results
 

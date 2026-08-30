@@ -68,6 +68,7 @@ public final class PinpointOdometryPredictorLifecycleTest {
         assertEquals(GoBildaPinpointDriver.DeviceStatus.NOT_READY,
                 predictor.lastDeviceStatus());
         assertFalse(predictor.getEstimate().hasPose);
+        assertEquals(0L, predictor.trajectorySegmentId());
 
         // The owner retained a validated snapshot rather than the mutable draft.
         config.quality = 0.01;
@@ -77,6 +78,7 @@ public final class PinpointOdometryPredictorLifecycleTest {
         time.nextCycle(0.02);
         predictor.update(time.clock());
         assertEquals(0.63, predictor.getEstimate().quality, 0.0);
+        assertEquals(0L, predictor.trajectorySegmentId());
     }
 
     @Test
@@ -255,9 +257,15 @@ public final class PinpointOdometryPredictorLifecycleTest {
         predictor.update(time.clock());
         LoopTimestamp measuredTimestamp = predictor.getEstimate().timestamp;
         long measuredCycle = predictor.getKinematicSnapshot().cycle;
+        long segmentBeforeRebase = predictor.trajectorySegmentId();
+        device.setPositionObserver = () -> assertEquals(
+                segmentBeforeRebase + 1L,
+                predictor.trajectorySegmentId()
+        );
 
         predictor.setPose(new Pose2d(40.0, -20.0, Math.PI * 3.0));
 
+        assertEquals(segmentBeforeRebase + 1L, predictor.trajectorySegmentId());
         assertEquals(GoBildaPinpointDriver.DeviceStatus.READY,
                 predictor.lastDeviceStatus());
         assertTrue(predictor.getEstimate().hasPose);
@@ -278,6 +286,7 @@ public final class PinpointOdometryPredictorLifecycleTest {
         // Facing pi means field -X is +X motion in the rebased robot-relative delta.
         assertEquals(1.0, afterRebase.deltaPose.xInches, EPSILON);
         assertEquals(0.0, predictor.getKinematicSnapshot().totalHeadingRad, EPSILON);
+        assertEquals(segmentBeforeRebase + 1L, predictor.trajectorySegmentId());
     }
 
     @Test
@@ -291,7 +300,9 @@ public final class PinpointOdometryPredictorLifecycleTest {
         time.nextCycle(0.1);
         predictor.update(time.clock());
 
+        device.resetObserver = () -> assertEquals(1L, predictor.trajectorySegmentId());
         predictor.resetPosAndIMU();
+        assertEquals(1L, predictor.trajectorySegmentId());
         assertEquals(GoBildaPinpointDriver.DeviceStatus.NOT_READY,
                 predictor.lastDeviceStatus());
         assertFalse(predictor.getEstimate().hasPose);
@@ -299,6 +310,7 @@ public final class PinpointOdometryPredictorLifecycleTest {
         assertEquals(0.0, predictor.getKinematicSnapshot().totalHeadingRad, EPSILON);
 
         predictor.setPose(new Pose2d(20.0, 30.0, 0.5));
+        assertEquals(2L, predictor.trajectorySegmentId());
         assertTrue(predictor.getEstimate().hasPose);
         assertFalse(predictor.getEstimate().timestamp.isAvailable());
         assertFalse(predictor.getKinematicSnapshot().hasVelocity);
@@ -311,7 +323,9 @@ public final class PinpointOdometryPredictorLifecycleTest {
         predictor.update(time.clock());
         assertFalse(predictor.getLatestMotionDelta().hasDelta);
 
+        device.recalibrateObserver = () -> assertEquals(3L, predictor.trajectorySegmentId());
         predictor.recalibrateIMU();
+        assertEquals(3L, predictor.trajectorySegmentId());
         assertEquals(GoBildaPinpointDriver.DeviceStatus.NOT_READY,
                 predictor.lastDeviceStatus());
         assertFalse(predictor.getEstimate().hasPose);
@@ -367,9 +381,11 @@ public final class PinpointOdometryPredictorLifecycleTest {
         }
         assertEquals(writesBefore, device.setPositionCount);
         assertFalse(predictor.getEstimate().hasPose);
+        assertEquals(0L, predictor.trajectorySegmentId());
 
         predictor.setPose(new Pose2d(1.0, 2.0, Math.PI * 2.0));
         assertEquals(writesBefore + 1, device.setPositionCount);
+        assertEquals(1L, predictor.trajectorySegmentId());
         assertEquals(0.0, predictor.getEstimate().fieldToRobotPose.yawRad, EPSILON);
     }
 
@@ -383,11 +399,13 @@ public final class PinpointOdometryPredictorLifecycleTest {
         time.nextCycle(0.1);
         predictor.update(time.clock());
         device.setPositionFailure = new IllegalStateException("write failed");
+        device.setPositionObserver = () -> assertEquals(1L, predictor.trajectorySegmentId());
 
         RuntimeException failure = capture(() ->
                 predictor.setPose(new Pose2d(10.0, 0.0, 0.0)));
 
         assertSame(device.setPositionFailure, failure);
+        assertEquals(1L, predictor.trajectorySegmentId());
         assertEquals(GoBildaPinpointDriver.DeviceStatus.READY,
                 predictor.lastDeviceStatus());
         assertFalse(predictor.getEstimate().hasPose);
@@ -398,6 +416,39 @@ public final class PinpointOdometryPredictorLifecycleTest {
         time.nextCycle(0.1);
         predictor.update(time.clock());
         assertFalse(predictor.getLatestMotionDelta().hasDelta);
+    }
+
+    @Test
+    public void failedResetAndRecalibrationAdvanceSegmentBeforeVendorEffects() {
+        FakeDevice device = new FakeDevice();
+        PinpointOdometryPredictor predictor = predictor(device);
+
+        RuntimeException resetFailure = new IllegalStateException("reset failed after effect");
+        device.resetFailure = resetFailure;
+        device.resetObserver = () -> assertEquals(1L, predictor.trajectorySegmentId());
+
+        RuntimeException observedResetFailure = capture(predictor::resetPosAndIMU);
+
+        assertSame(resetFailure, observedResetFailure);
+        assertEquals(1L, predictor.trajectorySegmentId());
+        assertEquals(2, device.resetCount);
+        assertFalse(predictor.getEstimate().hasPose);
+        assertEquals(GoBildaPinpointDriver.DeviceStatus.NOT_READY,
+                predictor.lastDeviceStatus());
+
+        RuntimeException recalibrateFailure =
+                new IllegalStateException("recalibration failed after effect");
+        device.recalibrateFailure = recalibrateFailure;
+        device.recalibrateObserver = () -> assertEquals(2L, predictor.trajectorySegmentId());
+
+        RuntimeException observedRecalibrateFailure = capture(predictor::recalibrateIMU);
+
+        assertSame(recalibrateFailure, observedRecalibrateFailure);
+        assertEquals(2L, predictor.trajectorySegmentId());
+        assertEquals(1, device.recalibrateCount);
+        assertFalse(predictor.getEstimate().hasPose);
+        assertEquals(GoBildaPinpointDriver.DeviceStatus.NOT_READY,
+                predictor.lastDeviceStatus());
     }
 
     @Test
@@ -505,6 +556,11 @@ public final class PinpointOdometryPredictorLifecycleTest {
         RuntimeException customResolutionFailure;
         RuntimeException updateFailure;
         RuntimeException setPositionFailure;
+        RuntimeException resetFailure;
+        RuntimeException recalibrateFailure;
+        Runnable resetObserver;
+        Runnable recalibrateObserver;
+        Runnable setPositionObserver;
         int resetCount;
         int recalibrateCount;
         int updateCount;
@@ -549,11 +605,23 @@ public final class PinpointOdometryPredictorLifecycleTest {
         public void resetPosAndIMU() {
             effects.add("reset");
             resetCount++;
+            if (resetObserver != null) {
+                resetObserver.run();
+            }
+            if (resetFailure != null) {
+                throw resetFailure;
+            }
         }
 
         @Override
         public void recalibrateIMU() {
             recalibrateCount++;
+            if (recalibrateObserver != null) {
+                recalibrateObserver.run();
+            }
+            if (recalibrateFailure != null) {
+                throw recalibrateFailure;
+            }
         }
 
         @Override
@@ -594,6 +662,9 @@ public final class PinpointOdometryPredictorLifecycleTest {
         @Override
         public void setPosition(Pose2D pose) {
             setPositionCount++;
+            if (setPositionObserver != null) {
+                setPositionObserver.run();
+            }
             if (setPositionFailure != null) {
                 throw setPositionFailure;
             }

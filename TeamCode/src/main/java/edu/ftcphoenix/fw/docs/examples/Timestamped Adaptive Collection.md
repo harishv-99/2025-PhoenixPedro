@@ -5,8 +5,10 @@ attempt. Start with the [Pedro autonomous reference](<Pedro Autonomous Reference
 lifecycle and exact route outcomes are new.
 
 This optional case study teaches how to turn one delayed Limelight detector frame into one bounded,
-explainable collection attempt. It adds robot-example code only. It is not a new Phoenix framework
-lane, a complete autonomous cycle, or a drop-in OpMode.
+explainable collection attempt. Its adaptive vision, path, and attempt roles are robot-example code;
+their timestamp alignment deliberately demonstrates the optional framework `PlanarPoseHistory`
+capability. The case study is not a new Phoenix framework lane, a complete autonomous cycle, or a
+drop-in OpMode.
 
 ## What the example proves
 
@@ -15,7 +17,8 @@ The example follows one chain of evidence:
 ```text
 confirmed camera frame + its capture timestamp
         -> immutable angle snapshot
-        -> stationary/current-pose floor projection
+        -> exact or safely interpolated planar pose-history lookup
+        -> capture-time floor projection
         -> selected collection band or typed unavailable reason
         -> one selected or explicit-fallback Pedro route
         -> route + cancellation-safe intake
@@ -27,7 +30,7 @@ Three example-owned roles keep that chain visible:
 
 | Role | Owns | Does not own |
 |---|---|---|
-| [`AdaptiveCollectionVisionService`](<../../../robots/examples/pedro/adaptive/AdaptiveCollectionVisionService.java>) | The Limelight resource, immediate SDK-value copying, floor projection, deterministic band selection, and one cached immutable decision. | Localization heartbeat, proof that the robot stayed stationary, route geometry, inventory meaning, or intake hardware. |
+| [`AdaptiveCollectionVisionService`](<../../../robots/examples/pedro/adaptive/AdaptiveCollectionVisionService.java>) | The Limelight resource, immediate SDK-value copying, capture-time history lookup, floor projection, deterministic band selection, and one cached immutable decision. | Localization or history heartbeat/reset, route geometry, inventory meaning, or intake hardware. |
 | [`AdaptiveCollectionPaths`](<../../../robots/examples/pedro/adaptive/AdaptiveCollectionPaths.java>) | Phoenix-to-Pedro target conversion, live Pedro start-pose snapshots, selected/fallback/return geometry, and two native semantic callbacks. | Camera interpretation, route execution policy, inventory, or follower lifecycle. |
 | [`AdaptiveCollectionAttempt`](<../../../robots/examples/pedro/adaptive/AdaptiveCollectionAttempt.java>) | One fresh Task graph, milestone/inventory exit policy, exact collection and return status, and conditional return. | A scheduler, repeated cycles, match-time policy, parking, or mechanism realization. |
 
@@ -35,20 +38,55 @@ An adopting robot should reuse its existing intake capability and semantic inven
 case study uses `BasicPedroAutoMechanism` only to keep the companion Task concrete and
 cancellation-safe.
 
-## Declare it after localization
+## Declare the history owner before vision
 
-The existing Pedro service must update localization and the follower before this vision service.
-The vision service reads the estimator's already-published current-cycle pose; it does not advance
-the estimator itself. Set `pathsConfig.fieldTransform` to the same immutable transform used when
-the adopting robot configured its Pedro runtime; the current defaults both select
-`decodeInvertedFtc()`. Declare the owners in that dependency order:
+The existing Pedro/localization service remains the one heartbeat and lifecycle owner. Give it one
+[`PlanarPoseHistory`](<../../localization/PlanarPoseHistory.java>) over the authoritative high-rate
+trajectory estimator. At START it resets the history, applies the starting pose, updates
+localization, and records the resulting current sample. Each active LOOP updates localization and
+immediately records before downstream services. At STOP it stops its owned resources and resets the
+concrete history. Do not register the history as a second `RobotProgram.Service`, and do not ask the
+vision service to update or reset it.
+
+The relevant addition inside that existing service is deliberately small:
+
+```java
+// Constructed once by the composition root and retained by the existing localization service.
+PlanarPoseHistory.Config poseHistoryConfig = PlanarPoseHistory.Config.defaults();
+PlanarPoseHistory poseHistory = new PlanarPoseHistory(
+        runtime.motionPredictor(), poseHistoryConfig);
+
+// Existing localization service START:
+poseHistory.reset();
+applyStartingPose.run();
+localization.update(clock);
+poseHistory.recordCurrent(clock);
+autoDrive.update(clock);
+
+// Existing localization service LOOP:
+localization.update(clock);
+poseHistory.recordCurrent(clock);
+autoDrive.update(clock);
+
+// Existing localization service STOP, after stopping its owned resources:
+poseHistory.reset();
+```
+
+`retentionSec` must retain the earlier bracket endpoint for the oldest frame this consumer accepts,
+while `maxSamples` remains the independent hard memory bound. The interpolation time, translation,
+and yaw limits should reject a bracket that the adopting robot cannot treat as credible motion
+evidence. These values are robot configuration, not Limelight or route policy.
+
+Then declare vision after that existing service and give it only the stable read-only lookup
+projection. Set `pathsConfig.fieldTransform` to the same immutable transform used when the adopting
+robot configured its Pedro runtime; the current defaults both select `decodeInvertedFtc()`:
 
 ```java
 // The adopting composition root has already registered its Pedro/localization service.
 AdaptiveCollectionVisionService vision = program.service(
         new AdaptiveCollectionVisionService(
                 hardwareMap,
-                runtime.motionPredictor(),
+                poseHistory.lookupSource(),
                 visionConfig));
 
 AdaptiveCollectionPaths paths = new AdaptiveCollectionPaths(runtime, pathsConfig);
@@ -63,12 +101,12 @@ program.rootTask(attempt.task());
 program.presenter((clock, telemetry) -> present(telemetry, attempt.status()));
 ```
 
-`RobotProgram` starts the vision service at FTC START, updates it once in each upstream service
-phase, cancels the root Task before stopping resources, and closes services in reverse declaration
-order. `task()` returns the attempt's one stable single-use root. Construct a fresh
+`RobotProgram` starts the already-declared localization service before vision, updates services in
+that same order, cancels the root Task before stopping resources, and closes services in reverse
+declaration order. `task()` returns the attempt's one stable single-use root. Construct a fresh
 `AdaptiveCollectionAttempt` for another attempt.
 
-The three mutable `Config` values are authoring drafts. Each long-lived owner snapshots the fields
+The four mutable `Config` values are authoring drafts. Each long-lived owner snapshots the fields
 it retains. `defaults()` supplies finite software examples only; it does not claim that a pipeline,
 camera mount, field target, callback point, timeout, or route is physically correct.
 
@@ -88,31 +126,47 @@ vertical positive down, so the Phoenix camera-frame ray is:
 (forward, left, up) = (1, -tan(horizontalAngle), -tan(verticalAngle))
 ```
 
-The configured robot-to-camera pose and current field-to-robot pose rotate and translate that ray.
-The selector rejects non-finite values, parallel/upward rays, non-positive floor intersections,
-and points outside the inclusive collection box. It then considers fixed-width Y bands, choosing
-the band containing the most projected points and breaking a tie by the lower band start. Vendor
-list order therefore cannot change the result.
+The configured robot-to-camera pose and the history's field-to-robot pose at exposure time rotate
+and translate that ray. Because the maintained history is planar, the service deliberately lifts
+its `Pose2d` into a `Pose3d` with z, pitch, and roll equal to zero before composing the calibrated
+3D camera mount. That one configured mount must remain fixed relative to the robot; an articulated
+or moving camera needs its own timestamp-aware mount transform and is outside this example service.
+The selector rejects non-finite values, parallel/upward rays, non-positive floor intersections, and
+points outside the inclusive collection box. It then considers fixed-width Y bands, choosing the
+band containing the most projected points and breaking a tie by the lower band start. Vendor list
+order therefore cannot change the result.
 
 The immutable `Decision` reports the frame timestamp and age, detector/projectable/in-box counts,
-and either guarded selected-band accessors or one guarded `UnavailableReason`. No selected target is
+and either guarded selected-band accessors or one guarded `UnavailableReason`. If calculation
+reached the pose query, `hasPoseLookup()` is true and `poseLookup()` returns that exact immutable
+lookup, including its exact/interpolated kind or typed unavailable reason. Frame-level rejection
+can happen before a query, so `poseLookup()` is guarded separately. No selected target is
 represented by `-1`, `NaN`, `null`, or another value that could accidentally be clamped into a
-valid route.
+valid route. A custom history projection that returns a lookup for any timestamp other than the
+requested exposure is a wiring error; pass the stable `PlanarPoseHistory.lookupSource()` projection.
+`AdaptiveCollectionAttempt.Status` retains that exact `Decision`, so a presenter can
+report the same lookup kind or unavailable reason without resampling history.
 
-## The stationary/current-pose limit
+## History-backed moving projection
 
-Phoenix does not currently expose a maintained field-pose history lookup for an arbitrary
-`LoopTimestamp`. A current pose cannot truthfully reconstruct where a moving robot was when an old
-frame was exposed.
+`PlanarPoseHistory` records the authoritative estimator's final as-published pose once per managed
+cycle. It preserves exact endpoints and otherwise interpolates field X/Y, shortest-path yaw, and
+minimum endpoint quality only when the bracket remains within every configured bound. A later
+correction does not rewrite earlier samples: this is an as-published trajectory, not a retrospective
+smoother.
 
-This example consequently has an explicit physical precondition:
+The vision service queries that history with the frame's original `LoopTimestamp`. It accepts exact
+and interpolated results, so remaining stationary between exposure and selection is no longer a
+precondition. It never extrapolates, clamps, selects the nearest pose, or substitutes the current
+pose. Empty, evicted, reset/discontinuous, excessive-time, excessive-translation,
+excessive-yaw, and after-latest outcomes therefore select the explicit fallback route and remain
+inspectable through the retained lookup.
 
-> The robot and its rigidly mounted camera remain stationary from frame exposure through selection.
-
-Software checks that the pose exists, is finite, and has a timestamp current at the same managed
-clock boundary. Those checks do not prove stationarity. Do not use this example for moving-frame
-latency compensation; first add and validate a real pose-history owner under a separately reviewed
-design.
+The history's read-only `lookupSource()` cannot clear its owner; its `reset()` is deliberately a
+no-op. Every starting-pose application and coordinate rebase must pass through the authoritative
+trajectory estimator so its segment identity changes, and the existing localization service must
+own the concrete history reset at START and STOP. An out-of-band rebase or incorrect service order
+breaks that ownership contract; vision cannot infer or repair it.
 
 ## One route decision, built once
 
@@ -164,13 +218,14 @@ route status after a newer route starts.
 
 ## What software tests cannot establish
 
-The hardware-free tests prove copying, timestamp gates, geometry rejection, deterministic
-selection, fallback reachability, exactly-once construction, milestone precedence, cancellation
-identity, intake cleanup, outcome retention, and conditional return. They do not establish:
+The hardware-free tests prove copying, frame timestamp gates, exact and interpolated history
+consumption, retained typed history gaps, geometry rejection, deterministic selection, fallback
+reachability, exactly-once construction, milestone precedence, cancellation identity, intake
+cleanup, outcome retention, and conditional return. They do not establish:
 
 - the selected Limelight detector pipeline or its behavior on the installed firmware;
 - camera height, orientation, rigidity, or principal-angle signs on the physical setup;
-- field alignment, stationary timing, or floor-projection accuracy;
+- estimator accuracy, camera/loop time synchronization, or floor-projection accuracy;
 - collision-free paths or correct callback placement;
 - sensor timing, pickup reliability, cycle time, or match benefit; or
 - physical drivetrain, intake, and camera cleanup on STOP.

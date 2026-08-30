@@ -131,6 +131,54 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
         verifyPushEnabledManualRebasePublishesAndPushesOnlyOnce(Kind.EKF);
     }
 
+    @Test
+    public void manualAnchorStartsExactlyOneCorrectedTrajectorySegment() {
+        verifyManualAnchorStartsExactlyOneCorrectedTrajectorySegment(Kind.FUSION);
+        verifyManualAnchorStartsExactlyOneCorrectedTrajectorySegment(Kind.EKF);
+    }
+
+    @Test
+    public void expectedCorrectionPushStaysWithinTheCorrectedTrajectory() {
+        verifyExpectedCorrectionPushStaysWithinTheCorrectedTrajectory(Kind.FUSION);
+        verifyExpectedCorrectionPushStaysWithinTheCorrectedTrajectory(Kind.EKF);
+    }
+
+    @Test
+    public void unexpectedPredictorRebaseStartsANewSegmentAndDropsCrossingMotion() {
+        verifyUnexpectedPredictorRebaseStartsANewSegmentAndDropsCrossingMotion(Kind.FUSION);
+        verifyUnexpectedPredictorRebaseStartsANewSegmentAndDropsCrossingMotion(Kind.EKF);
+    }
+
+    @Test
+    public void nontransactionalManualPushFailureStartsANewFailClosedSegment() {
+        verifyNontransactionalManualPushFailureStartsANewFailClosedSegment(Kind.FUSION);
+        verifyNontransactionalManualPushFailureStartsANewFailClosedSegment(Kind.EKF);
+    }
+
+    @Test
+    public void rejectedManualAnchorStillObservesAPreexistingPredictorRebase() {
+        verifyRejectedManualAnchorStillObservesAPreexistingPredictorRebase(Kind.FUSION);
+        verifyRejectedManualAnchorStillObservesAPreexistingPredictorRebase(Kind.EKF);
+    }
+
+    @Test
+    public void nontransactionalCorrectionPushFailureStartsANewFailClosedSegment() {
+        verifyNontransactionalCorrectionPushFailureStartsANewFailClosedSegment(Kind.FUSION);
+        verifyNontransactionalCorrectionPushFailureStartsANewFailClosedSegment(Kind.EKF);
+    }
+
+    @Test
+    public void correctionFailureAfterRebasingPredictorRetainsTheContinuityBarrier() {
+        verifyCorrectionFailureAfterRebasingPredictorRetainsTheContinuityBarrier(Kind.FUSION);
+        verifyCorrectionFailureAfterRebasingPredictorRetainsTheContinuityBarrier(Kind.EKF);
+    }
+
+    @Test
+    public void clockEpochResetAloneDoesNotChangeTrajectorySegment() {
+        verifyClockEpochResetAloneDoesNotChangeTrajectorySegment(Kind.FUSION);
+        verifyClockEpochResetAloneDoesNotChangeTrajectorySegment(Kind.EKF);
+    }
+
     private static void verifyRepeatedSameCycleUpdateIsAnExactNoOp(Kind kind) {
         Fixture fixture = new Fixture(kind);
         LoopTimestamp t0 = initializeFromPredictor(fixture, 0.0);
@@ -622,6 +670,227 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
         assertEquals(1, fixture.predictor.setPoseCalls);
     }
 
+    private static void verifyManualAnchorStartsExactlyOneCorrectedTrajectorySegment(Kind kind) {
+        Fixture fixture = new Fixture(kind, true);
+        initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+
+        fixture.estimator.setPose(new Pose2d(100.0, 0.0, 0.0));
+
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertEquals(1L, fixture.predictor.trajectorySegmentId());
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp laterTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(102.0, laterTimestamp, MotionDelta.none(laterTimestamp));
+        fixture.correction.publishNone(laterTimestamp);
+        fixture.estimator.update(fixture.time.clock());
+
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+    }
+
+    private static void verifyExpectedCorrectionPushStaysWithinTheCorrectedTrajectory(Kind kind) {
+        Fixture fixture = new Fixture(kind, true);
+        LoopTimestamp initialTimestamp = initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp correctionTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(
+                4.0,
+                correctionTimestamp,
+                motion(4.0, initialTimestamp, correctionTimestamp)
+        );
+        fixture.correction.publish(6.0, correctionTimestamp);
+        fixture.estimator.update(fixture.time.clock());
+
+        assertEquals(1L, fixture.predictor.trajectorySegmentId());
+        assertEquals(initialSegment, fixture.estimator.trajectorySegmentId());
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp laterTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(
+                fixture.estimator.getEstimate().fieldToRobotPose.xInches + 1.0,
+                laterTimestamp,
+                MotionDelta.none(laterTimestamp)
+        );
+        fixture.correction.publishNone(laterTimestamp);
+        fixture.estimator.update(fixture.time.clock());
+
+        assertEquals(initialSegment, fixture.estimator.trajectorySegmentId());
+    }
+
+    private static void verifyUnexpectedPredictorRebaseStartsANewSegmentAndDropsCrossingMotion(
+            Kind kind) {
+        Fixture fixture = new Fixture(kind);
+        LoopTimestamp initialTimestamp = initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+
+        fixture.predictor.setPose(new Pose2d(50.0, 0.0, 0.0));
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp rebasedTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(
+                55.0,
+                rebasedTimestamp,
+                motion(55.0, initialTimestamp, rebasedTimestamp)
+        );
+        fixture.correction.publishNone(rebasedTimestamp);
+        fixture.estimator.update(fixture.time.clock());
+
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertEquals(55.0, fixture.estimator.getEstimate().fieldToRobotPose.xInches, EPSILON);
+        assertEquals(0, fixture.estimator.getCorrectionStats().acceptedCorrectionCount);
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp laterTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(
+                57.0,
+                laterTimestamp,
+                motion(2.0, rebasedTimestamp, laterTimestamp)
+        );
+        fixture.correction.publishNone(laterTimestamp);
+        fixture.estimator.update(fixture.time.clock());
+
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertEquals(57.0, fixture.estimator.getEstimate().fieldToRobotPose.xInches, EPSILON);
+    }
+
+    private static void verifyNontransactionalManualPushFailureStartsANewFailClosedSegment(
+            Kind kind) {
+        Fixture fixture = new Fixture(kind, true);
+        initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+        RuntimeException failure = new IllegalStateException("manual push failed after effect");
+        fixture.predictor.setPoseFailure = failure;
+
+        RuntimeException observed = captureRuntime(
+                () -> fixture.estimator.setPose(new Pose2d(20.0, 0.0, 0.0))
+        );
+
+        assertSame(failure, observed);
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertFalse(fixture.estimator.getEstimate().hasPose);
+        assertEquals(1L, fixture.predictor.trajectorySegmentId());
+
+        fixture.predictor.setPoseFailure = null;
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp blockedTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.estimate = PoseEstimate.noPose(blockedTimestamp);
+        fixture.predictor.delta = MotionDelta.none(blockedTimestamp);
+        fixture.correction.publish(99.0, blockedTimestamp);
+        fixture.estimator.update(fixture.time.clock());
+        assertFalse(fixture.estimator.getEstimate().hasPose);
+        assertEquals(0, fixture.estimator.getCorrectionStats().acceptedCorrectionCount);
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp recoveryTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(5.0, recoveryTimestamp, MotionDelta.none(recoveryTimestamp));
+        fixture.estimator.update(fixture.time.clock());
+        assertTrue(fixture.estimator.getEstimate().hasPose);
+        assertEquals(5.0, fixture.estimator.getEstimate().fieldToRobotPose.xInches, EPSILON);
+        assertEquals(0, fixture.estimator.getCorrectionStats().acceptedCorrectionCount);
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp laterTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(5.0, laterTimestamp, MotionDelta.none(laterTimestamp));
+        fixture.estimator.update(fixture.time.clock());
+        assertEquals(0, fixture.estimator.getCorrectionStats().acceptedCorrectionCount);
+    }
+
+    private static void verifyRejectedManualAnchorStillObservesAPreexistingPredictorRebase(
+            Kind kind) {
+        Fixture fixture = new Fixture(kind, true);
+        initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+
+        fixture.predictor.setPose(new Pose2d(50.0, 0.0, 0.0));
+        RuntimeException failure = new IllegalStateException("manual push rejected");
+        fixture.predictor.setPoseFailure = failure;
+        fixture.predictor.setPoseFailureAfterEffect = false;
+
+        RuntimeException observed = captureRuntime(
+                () -> fixture.estimator.setPose(new Pose2d(20.0, 0.0, 0.0))
+        );
+
+        assertSame(failure, observed);
+        assertEquals(1L, fixture.predictor.trajectorySegmentId());
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertFalse(fixture.estimator.getEstimate().hasPose);
+    }
+
+    private static void verifyNontransactionalCorrectionPushFailureStartsANewFailClosedSegment(
+            Kind kind) {
+        Fixture fixture = new Fixture(kind, true);
+        LoopTimestamp initialTimestamp = initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+        RuntimeException failure = new IllegalStateException("correction push failed after effect");
+        fixture.predictor.setPoseFailure = failure;
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp correctionTimestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(
+                2.0,
+                correctionTimestamp,
+                motion(2.0, initialTimestamp, correctionTimestamp)
+        );
+        fixture.correction.publish(4.0, correctionTimestamp);
+
+        RuntimeException first = captureRuntime(
+                () -> fixture.estimator.update(fixture.time.clock())
+        );
+
+        assertSame(failure, first);
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertFalse(fixture.estimator.getEstimate().hasPose);
+        assertEquals(0, fixture.estimator.getCorrectionStats().acceptedCorrectionCount);
+
+        RuntimeException repeated = captureRuntime(
+                () -> fixture.estimator.update(fixture.time.clock())
+        );
+        assertSame(first, repeated);
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertEquals(1, fixture.predictor.setPoseCalls);
+    }
+
+    private static void verifyCorrectionFailureAfterRebasingPredictorRetainsTheContinuityBarrier(
+            Kind kind) {
+        Fixture fixture = new Fixture(kind);
+        initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+        RuntimeException failure = new IllegalStateException("correction failed after rebase");
+
+        fixture.time.nextCycle(1.0);
+        LoopTimestamp timestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(1.0, timestamp, MotionDelta.none(timestamp));
+        fixture.correction.publishNone(timestamp);
+        fixture.correction.duringUpdate = () ->
+                fixture.predictor.setPose(new Pose2d(50.0, 0.0, 0.0));
+        fixture.correction.failure = failure;
+
+        RuntimeException observed = captureRuntime(
+                () -> fixture.estimator.update(fixture.time.clock())
+        );
+
+        assertSame(failure, observed);
+        assertEquals(initialSegment + 1L, fixture.estimator.trajectorySegmentId());
+        assertFalse(fixture.estimator.getEstimate().hasPose);
+        assertEquals(1L, fixture.predictor.trajectorySegmentId());
+    }
+
+    private static void verifyClockEpochResetAloneDoesNotChangeTrajectorySegment(Kind kind) {
+        Fixture fixture = new Fixture(kind);
+        initializeFromPredictor(fixture, 0.0);
+        long initialSegment = fixture.estimator.trajectorySegmentId();
+
+        fixture.time.clock().reset(0.0);
+        LoopTimestamp timestamp = fixture.time.clock().nowTimestamp();
+        fixture.predictor.publish(0.0, timestamp, MotionDelta.none(timestamp));
+        fixture.correction.publishNone(timestamp);
+        fixture.estimator.update(fixture.time.clock());
+
+        assertEquals(initialSegment, fixture.estimator.trajectorySegmentId());
+    }
+
     private static LoopTimestamp initializeFromPredictor(Fixture fixture, double xInches) {
         LoopTimestamp timestamp = fixture.time.clock().nowTimestamp();
         fixture.predictor.publish(xInches, timestamp, MotionDelta.none(timestamp));
@@ -728,7 +997,10 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
         PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
         MotionDelta delta = MotionDelta.none(LoopTimestamp.unavailable());
         RuntimeException failure;
+        RuntimeException setPoseFailure;
+        boolean setPoseFailureAfterEffect = true;
         Runnable duringUpdate;
+        long trajectorySegmentId;
 
         void publish(double xInches, LoopTimestamp timestamp, MotionDelta nextDelta) {
             estimate = new PoseEstimate(pose(xInches), true, 1.0, timestamp);
@@ -752,6 +1024,11 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
         }
 
         @Override
+        public long trajectorySegmentId() {
+            return trajectorySegmentId;
+        }
+
+        @Override
         public MotionDelta getLatestMotionDelta() {
             return delta;
         }
@@ -760,9 +1037,18 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
         public void setPose(Pose2d pose) {
             setPoseCalls++;
             lastSetPoseX = pose.xInches;
+            if (setPoseFailure != null && !setPoseFailureAfterEffect) {
+                throw setPoseFailure;
+            }
+            trajectorySegmentId++;
             LoopTimestamp timestamp = estimate != null && estimate.timestamp != null
                     ? estimate.timestamp
                     : LoopTimestamp.unavailable();
+            if (setPoseFailure != null) {
+                estimate = PoseEstimate.noPose(timestamp);
+                delta = MotionDelta.none(timestamp);
+                throw setPoseFailure;
+            }
             estimate = new PoseEstimate(
                     new Pose3d(
                             pose.xInches,
@@ -783,6 +1069,8 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
     private static final class RecordingCorrection implements AbsolutePoseEstimator {
         int updateCalls;
         PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+        RuntimeException failure;
+        Runnable duringUpdate;
 
         void publish(double xInches, LoopTimestamp timestamp) {
             estimate = new PoseEstimate(pose(xInches), true, 1.0, timestamp);
@@ -795,6 +1083,12 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
         @Override
         public void update(LoopClock clock) {
             updateCalls++;
+            if (duringUpdate != null) {
+                duringUpdate.run();
+            }
+            if (failure != null) {
+                throw failure;
+            }
         }
 
         @Override

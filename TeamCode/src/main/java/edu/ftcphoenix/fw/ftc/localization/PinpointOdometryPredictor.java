@@ -330,6 +330,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     private boolean hasPreviousPhysicalHeading;
     private double previousPhysicalHeadingRad;
     private double totalHeadingRad;
+    private long trajectorySegmentId;
     private GoBildaPinpointDriver.DeviceStatus lastDeviceStatus =
             GoBildaPinpointDriver.DeviceStatus.NOT_READY;
 
@@ -562,6 +563,21 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     }
 
     /**
+     * Returns the identity of the current interpolation-safe trajectory segment.
+     *
+     * <p>The initial construction reset establishes this predictor's first segment before the
+     * instance can publish a pose, so construction leaves this value at {@code 0}. Every later
+     * deliberate pose/IMU reset, recalibration, or pose rebase attempt advances the identity after
+     * validating authored input and before invoking the nontransactional vendor operation. The
+     * advanced identity is retained even if that operation throws because hardware continuity can
+     * no longer be proven.</p>
+     */
+    @Override
+    public long trajectorySegmentId() {
+        return trajectorySegmentId;
+    }
+
+    /**
      * Returns the most recent timestamped motion increment computed from successive Pinpoint poses.
      */
     @Override
@@ -598,8 +614,10 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
      *
      * <p>Published pose and motion are invalidated before the vendor operation. If that operation
      * throws after acting partially, callers therefore observe unavailable state rather than a
-     * replayable pre-reset delta. The call returns without waiting for calibration; keep the drive
-     * owner stopped until a later poll reports exact READY and publishes a measured sample.</p>
+     * replayable pre-reset delta. The trajectory segment advances before that nontransactional
+     * operation and remains advanced on failure. The call returns without waiting for calibration;
+     * keep the drive owner stopped until a later poll reports exact READY and publishes a measured
+     * sample.</p>
      */
     public void resetPosAndIMU() {
         // The vendor call is not transactional. Invalidate both internal and published state
@@ -615,6 +633,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 timestamp,
                 0.0
         );
+        advanceTrajectorySegment();
         odo.resetPosAndIMU();
     }
 
@@ -623,8 +642,9 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
      *
      * <p>The operation returns immediately and forces all measured pose, velocity, and motion
      * unavailable. The robot must remain stationary until a later poll captures exact READY and
-     * establishes fresh physical baselines. Recalibration never restores an earlier cached pose as
-     * though calibration had completed.</p>
+     * establishes fresh physical baselines. The trajectory segment advances before the
+     * nontransactional vendor operation and remains advanced on failure. Recalibration never
+     * restores an earlier cached pose as though calibration had completed.</p>
      */
     public void recalibrateIMU() {
         LoopTimestamp timestamp = lastTimestamp();
@@ -639,6 +659,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 totalHeadingRad
         );
 
+        advanceTrajectorySegment();
         odo.recalibrateIMU();
     }
 
@@ -647,7 +668,8 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
      *
      * <p>Null, non-finite, or unrepresentable poses fail before any cache or vendor effect. After
      * validation, published pose and motion fail closed before the nontransactional vendor write;
-     * the commanded coordinate becomes visible only after that write succeeds.</p>
+     * the trajectory segment advances before that write and remains advanced on failure. The
+     * commanded coordinate becomes visible only after that write succeeds.</p>
      *
      * <p>A coordinate rebase does not change cached device status and does not prove physical
      * readiness. If exact READY and corresponding completed-poll baselines still exist, the rebase
@@ -686,6 +708,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 totalHeadingRad
         );
 
+        advanceTrajectorySegment();
         odo.setPosition(set);
 
         LoopTimestamp publishedTimestamp = canPreserveMeasuredEvidence
@@ -716,6 +739,11 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                     totalHeadingRad
             );
         }
+    }
+
+    /** Begin a new segment before one nontransactional vendor discontinuity attempt. */
+    private void advanceTrajectorySegment() {
+        trajectorySegmentId++;
     }
 
     private LoopTimestamp lastTimestamp() {

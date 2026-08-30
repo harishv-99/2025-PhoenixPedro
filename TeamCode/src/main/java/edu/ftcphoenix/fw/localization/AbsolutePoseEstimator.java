@@ -6,17 +6,22 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Common interface for components that output an absolute robot pose in field coordinates.
  *
- * <p>Phoenix distinguishes between two localization-side concepts:</p>
+ * <p>Phoenix distinguishes three nested localization-side concepts:</p>
  * <ul>
  *   <li>{@link AbsolutePoseEstimator}: something that answers <em>"where is the robot on the field?"</em></li>
- *   <li>{@link MotionPredictor}: something that answers both <em>"where is the robot now?"</em> and
+ *   <li>{@link PoseTrajectoryEstimator}: a high-rate absolute estimator that also identifies
+ *       interpolation-safe trajectory segments</li>
+ *   <li>{@link MotionPredictor}: a trajectory estimator that answers both
+ *       <em>"where is the robot now?"</em> and
  *       <em>"how did it move since the last accepted motion baseline?"</em></li>
  * </ul>
  *
  * <p>Most consumers such as drive guidance, go-to-pose tasks, targeting, and telemetry only need an
- * absolute pose, so they should depend on this interface. Fusion-style localizers that replay or
- * blend incremental motion should depend on {@link MotionPredictor} for the predictor side and on
- * {@code AbsolutePoseEstimator} for the correction side.</p>
+ * absolute pose, so they should depend on this interface. Historical trajectory consumers depend
+ * on {@link PoseTrajectoryEstimator}; sparse delayed measurements do not claim that capability.
+ * Fusion-style localizers that replay or blend incremental motion should depend on
+ * {@link MotionPredictor} for the predictor side and on {@code AbsolutePoseEstimator} for the
+ * correction side.</p>
  *
  * <p>Common examples:</p>
  * <ul>
