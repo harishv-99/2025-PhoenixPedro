@@ -306,6 +306,11 @@ public final class OdometryCorrectionEstimatorTimestampTest {
         }
 
         @Override
+        public long trajectorySegmentId() {
+            return 0L;
+        }
+
+        @Override
         public MotionDelta getLatestMotionDelta() {
             return delta;
         }

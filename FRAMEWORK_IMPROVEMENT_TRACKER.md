@@ -205,7 +205,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 106 | EXAMPLE-08 | Reactive hardware-free subsystem scenarios | Done | The reviewed reactive lift/launcher scenarios, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 107 | EXAMPLE-09 | Sensor-derived inventory status case study | Done | The reviewed simplified optional service, hardware-free evidence, synchronized teaching, and destination-specific publication authorization are complete. |
 | 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Done | The reviewed bounded example-only implementation, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
-| 109 | LOCALIZATION-01 | Optional bounded timestamped pose history | Proposed | Decide whether a separately owned pose-history capability can address confirmed timestamp/pose limitations without burdening every estimator or inventing untruthful interpolation. |
+| 109 | LOCALIZATION-01 | Optional bounded timestamped pose history | Done | The reviewed shared history/continuity implementation, EXAMPLE-10 migration, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 110 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current Phoenix support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-28)
@@ -23794,6 +23794,19 @@ implementation.
   its commit, push, pull request, and merge into the named destination. EXAMPLE-10 is **Done**. It
   does not start AUTO-01 or another item, and it does not convert software evidence into a robot-
   hardware claim.
+- **LOCALIZATION-01 follow-up migration (2026-08-29):** LOCALIZATION-01's approved shared
+  `PlanarPoseHistory` supersedes this example's original stationary/current-pose restriction.
+  `AdaptiveCollectionVisionService` now consumes only the stable read-only history projection,
+  queries the authoritative field-to-robot pose at the Limelight exposure timestamp, and retains
+  the exact or typed-unavailable lookup in its immutable decision. Exact and bounded interpolated
+  results support a moving robot; unavailable, reset/discontinuous, evicted, out-of-range, or
+  excessive-bracket results keep the existing explicit fallback. Paths, attempt composition,
+  inventory exit, milestones, route outcomes, and the remaining hardware claims stay unchanged;
+  the prior physical-stationarity promise is specifically superseded. Camera extrinsics/rigidity,
+  detector quality, projection accuracy, field alignment, route clearance/callback placement,
+  inventory timing, pickup reliability, physical STOP, cycle time, and match benefit remain
+  adopting-robot checks. The concrete history and its START/LOOP/STOP ordering remain owned by the
+  adopting localization service; the example does not add another service or Phoenix API.
 
 ### LOCALIZATION-01 - Optional bounded timestamped pose history
 
@@ -23862,6 +23875,186 @@ implementation.
   master.”** This approves publication of only the reviewed one-file tracker intake.
   LOCALIZATION-01 remains **Proposed**; Gate 1, any public API or implementation, EXAMPLE-10
   migration, hardware claims, AUTO-01, and another item have not started.
+- **Gate 1 start (2026-08-29):** after the tracker intake merged, the user directed `next`. The
+  isolated branch `codex/localization-01-optional-pose-history` is synchronized to merged
+  `origin/master@efeac890b35d6aa56cdaf4ce9f6e82a9d519c67d`; LOCALIZATION-01 is **Researching**.
+  This authorizes only source/caller and public-construction-path research, design and ordinary-call-
+  site comparison, tracker recording, and deterministic baseline checks. It does not authorize a
+  public API, framework/example/test/guide implementation, staging, publication, AUTO-01, or another
+  item.
+- **Confirmed producer and consumer trace (2026-08-29):** the gap is real, but recurring public
+  demand is not yet established. `PinpointOdometryPredictor`, `OdometryCorrectionFusionEstimator`,
+  and `OdometryCorrectionEkfEstimator` can publish one current high-rate planar trajectory sample
+  per managed cycle. `AprilTagPoseEstimator` and `LimelightFieldPoseEstimator` instead publish
+  sparse, delayed measurement evidence and must not be presented as continuous trajectories. The
+  fusion and EKF estimators each retain a private planar predictor-replay deque for projecting a
+  delayed correction forward; those two copies are one estimator-family implementation detail, not
+  consumers of an arbitrary public corrected-pose history, and they do not expose the estimator's
+  as-published field trajectory. Their retention is also time-only rather than time-and-count
+  bounded. `TimeAwareSource<T>` deliberately permits a current-only implementation and promises only
+  a value “at or near” a timestamp; its production helpers remain only fixed and current-only.
+- **Complete current-caller audit:** drive guidance, pose lock, go-to-pose Tasks, absolute-pose
+  spatial solving, Phoenix targeting and drive assist, Pedro's passive localizer, presenters,
+  Auto-to-TeleOp handoff, calibration/tester tools, and the Basic Pedro example consume only a
+  cached current `PoseEstimate`. The timestamped consumers in `AprilTagSpatialSolveLane`,
+  `SpatialControlFrames`, and `SpatialSolveRequest` query camera or tool transforms, not historical
+  field-to-robot pose. That articulated-mechanism problem remains a distinct `TimeAwareSource`
+  ownership question. The only concrete in-repository field-pose-at-frame-time caller is
+  EXAMPLE-10's `AdaptiveCollectionVisionService`; it explicitly accepts current pose plus a physical
+  stationarity promise. Its pinned FTC_Decode motivation is the same collection use case, not a
+  second independent adopter. No other maintained modern robot requests arbitrary historical
+  field-to-robot pose.
+- **Public construction-path audit:** the concrete producer surfaces remain singular and distinct:
+  `new AprilTagPoseEstimator(sensor, layout, config)`,
+  `new LimelightFieldPoseEstimator(lane, motionPredictor, config)`,
+  `new PinpointOdometryPredictor(hardwareMap, config)`, and the Fusion/EKF constructors that each
+  receive one `MotionPredictor`, one correction `AbsolutePoseEstimator`, and the applicable config.
+  `FtcOdometryAprilTagLocalizationLane` adds exactly two aggregate paths: its ordinary
+  `HardwareMap + vision + layout + Config` constructor owns Pinpoint construction, while
+  `withPredictor(...)` uses the exact predictor already owned by an integration such as
+  `PedroPathingRuntime`. The runtime exposes that predictor only as `MotionPredictor`; Phoenix
+  TeleOp uses the ordinary lane and Phoenix Auto uses the injected-predictor path. None currently
+  owns or promises public trajectory history, and adding history to every path merely for symmetry
+  would not create a distinct capability.
+- **Reset/discontinuity blocker:** `PoseResetter.setPose(Pose2d)` exposes no reset generation or
+  discontinuity event. Pinpoint and the corrected estimators can rebase coordinates inside the same
+  `LoopClock` epoch; a successful rebase may retain an earlier measured timestamp. Fusion/EKF may
+  also push a correction into the predictor. A passive recorder that sees only successive
+  `PoseEstimate`s therefore cannot distinguish physical motion from a coordinate teleport and could
+  interpolate a pose the robot never occupied. Jump heuristics would be untruthful. A positive
+  design must place `recordCurrent(...)` and an explicit rebase barrier under the same localization
+  owner that performs every coordinate reset, without inventing a second estimator heartbeat or a
+  generic reset-generation API for this one caller.
+- **Ordinary robot-code and ownership comparison:** the comparison includes declaration order,
+  reset ownership, semantic decisions, and failure behavior rather than only the lookup expression.
+  The table records the preliminary research recommendation; the approved selected contract below
+  supersedes that preliminary disposition.
+
+  | Design | Ordinary declaration and student-supplied decisions | Preliminary disposition |
+  | --- | --- | --- |
+  | Current EXAMPLE-10 / no framework change | Declare the existing vision service with the maintained current estimator; choose camera geometry, freshness, and the explicit exposure-through-selection stationarity restriction. No new framework noun, buffer, heartbeat, or reset contract. | **Preliminary recommendation, superseded below:** the only then-proven caller stayed truthful and bounded. |
+  | Robot-local recorder | The robot declares and services its own ring buffer, then chooses producer, timestamp rules, planar/6-DOF interpolation, quality provenance, time/count/gap bounds, reset barriers, lookup outcomes, and service order. | Credible local escape hatch, but not a reusable teaching answer; it repeats the hard policy and lifecycle work. |
+  | Specialized planar framework recorder | Construct one optional history owner, record the final as-published estimate immediately after localization in the existing service, mark every explicit rebase, and pass a read-only typed query to vision. Students choose retention seconds, maximum samples, maximum interpolation gap, authoritative producer, and fallback handling. | **Selected at Gate 1 below:** this was the strongest positive shape once the user confirmed its general future value. |
+  | Separate `PoseHistoryService` | Declare localization, then another sampling service, then vision; also coordinate resets outside both service APIs. | Rejected: adds a public lifecycle noun and an order/reset hazard rather than removing one. |
+  | Estimator decorator | Replace the estimator reference with a history wrapper and route every update/reset through it. | Rejected: obscures the lane/runtime's existing update owner, can be bypassed by raw reset references, and creates partial-success semantics. |
+  | History in every estimator | Configure buffers separately on Pinpoint, AprilTag, Limelight, Fusion, and EKF and select one at each consumer. | Rejected: duplicates storage/API/tests and falsely implies sparse measurement estimators are trajectories. |
+  | Generic `TimeAwareSources.history(...)` | Supply sampling lifecycle, timestamp extraction, interpolation, validation, gap, eviction, and reset policy for each value type. | Rejected: moves every pose-specific decision back into robot code and cannot fit the permissive existing lookup result honestly. |
+  | Expose Fusion/EKF replay buffers | Query each estimator's private raw-predictor interpolation. | Rejected: wrong trajectory/provenance, unavailable to Pedro-only users, estimator-specific, and not hard-count bounded. |
+  | Retrospective smoother | Maintain a lag window and rewrite past poses after delayed corrections. | Rejected: this is a new localization architecture requiring process/measurement models, covariance, lag, correction order, and relinearization—not optional history. |
+
+- **Selected public contract (approved 2026-08-29):** add one protected-core planar, bounded
+  `PlanarPoseHistory` sampled by the existing localization owner immediately after the final
+  high-rate estimator update. It records the as-published trajectory; later corrections do not
+  rewrite past entries. It linearly interpolates field x/y and shortest-path yaw, preserves exact
+  endpoints, uses the minimum endpoint quality for an interpolation, bounds both retention duration
+  and sample count, enforces maximum bracket time/translation/yaw deltas, and never extrapolates,
+  clamps, chooses nearest, or substitutes current pose. Unavailable or non-current estimates and a
+  source continuity change form interpolation gaps. Its immutable lookup distinguishes exact,
+  interpolated, and typed unavailable outcomes; wrong-clock use fails actionably. Genuine 6-DOF
+  history remains separate because current high-rate producers are planar and Phoenix has no
+  quaternion interpolation contract. The owner clears at START/STOP, never updates or resets its
+  borrowed estimator, and follows the existing same-cycle success/failure/reentry discipline.
+- **Trajectory-continuity contract:** add `PoseTrajectoryEstimator` above `MotionPredictor` and
+  `CorrectedPoseEstimator`, with one opaque publisher-local `trajectorySegmentId()`. Pinpoint,
+  Fusion, and EKF publish only this small continuity state; they do not maintain separate history
+  implementations. Definite manual resets/rebases change the segment. Normal accepted Fusion/EKF
+  corrections remain within the final corrected trajectory; an expected correction push may change
+  the raw Pinpoint segment without changing the final segment. An unexpected borrowed-predictor
+  rebase clears corrected-estimator replay state, changes the final segment, and fails closed until
+  coherent evidence resumes. Sparse AprilTag and Limelight measurement estimators remain
+  `AbsolutePoseEstimator`s rather than pretending to be continuous trajectories. `PoseResetter`
+  remains the command boundary; no listener or global reset manager is added.
+- **Framework Principles result and Gate 1 approval:** the audit established that reset ownership is
+  already layered and clear; the missing piece is a truthful common continuity observation. The
+  user confirmed that the independent production caller will arrive when future robot code adopts
+  this generally useful capability, then explicitly selected **history plus continuity**, the
+  **existing localization owner** as recorder lifecycle owner, **planar** scope, and **reset-only
+  final segments** with bounded interpolation rejecting implausible correction brackets. This
+  supersedes the earlier deferral recommendation. There is one shared recorder per authoritative
+  output, no history inside each localization implementation, no new `RobotProgram.Service`, no
+  Phoenix capability, and no duplicated runtime configuration.
+- **Selected defaults and lifecycle:** the defensive configuration defaults to 0.50 seconds of
+  retention, 128 samples, a 0.10-second maximum interpolation gap, 12.0 inches maximum interpolated
+  translation, and pi/2 maximum interpolated yaw; sample count validates within 2..4096. START
+  clears history, applies the starting pose, updates localization, and records before downstream
+  consumers. LOOP updates then records before downstream consumers. STOP clears history after owned
+  resources stop. Odometry-only code binds the runtime predictor; corrected localization binds the
+  global estimator. Raw and corrected histories, when deliberately both retained, are distinct
+  datasets rather than duplicate algorithms.
+- **Implementation verification plan:** deterministic tests must cover
+  config snapshots and invalid bounds; exact endpoints; x/y and ±π yaw interpolation; timestamp and
+  quality provenance; empty, before-first, evicted, reset/gap, excessive-gap, after-latest,
+  unavailable, prior-epoch, future, and wrong-clock queries; no-pose/non-finite/non-current samples;
+  explicit and failed rebases; equal, regressing, tiny-positive, and skipped-cycle time; time and
+  hard-count pruning; same-cycle success/failure/reentry; START/STOP clearing and service order; and
+  proof that later corrections do not rewrite prior samples. EXAMPLE-10 would be the compiling proof
+  consumer, with its path, attempt, inventory, milestone, fallback, and outcome owners unchanged.
+  Software can prove this contract; moving-camera compensation accuracy remains adopting-robot
+  hardware validation and would not be inferred from unit tests.
+- **Gate 1 baseline evidence:** the focused `LoopTimestampTest`, `TimeAwareSourcesTest`,
+  `PinpointOdometryPredictorUpdateStateTest`, `PinpointOdometryPredictorLifecycleTest`, and
+  `AdaptiveCollectionVisionServiceTest` run passed **40 tests, 0 failures, 0 errors, 0 skipped**.
+  Gradle emitted only the existing JDK 21 versus Java 8 source/target deprecation warnings. This
+  baseline verifies the current clock, source, predictor lifecycle, and stationary-example behavior;
+  it does not implement or validate pose history.
+- **Gate 2 implementation start (2026-08-29):** after reviewing the complete positive design, the
+  user directed **“Implement the plan.”** LOCALIZATION-01 is therefore **In progress**. This
+  authorizes the selected tracker, public contract, core implementation, Pinpoint/Fusion/EKF
+  continuity wiring, focused tests, EXAMPLE-10 migration, and synchronized framework/example
+  teaching. It does not authorize staging, publication, hardware claims, AUTO-01, or another item.
+- **Implementation result (2026-08-29):** protected core now exposes the narrow
+  `PoseTrajectoryEstimator` continuity capability and one optional `PlanarPoseHistory` owner with a
+  defensive `Config`, a stable borrowed `TimeAwareSource<Lookup>` projection, and immutable exact,
+  interpolated, or typed-unavailable results. The owner records only an authoritative estimator's
+  cached planar publication, is bounded by both time and count, rejects excessive time/translation/
+  yaw brackets, never rewrites old samples, and never extrapolates, clamps, chooses nearest, or
+  substitutes current pose. Its concrete `reset()` alone clears samples and releases lifecycle clock
+  ownership; resetting the borrowed projection is deliberately harmless.
+- **Continuity and failure result:** `MotionPredictor` and `CorrectedPoseEstimator` now share the
+  trajectory contract while sparse AprilTag and Limelight estimators remain ordinary absolute-pose
+  measurements. Pinpoint advances its raw segment before validated nontransactional pose/IMU reset
+  operations and retains the boundary on failure. Fusion and EKF keep ordinary accepted corrections
+  in the final corrected segment, hide expected private-predictor pushes, start a final segment for
+  manual anchors or unexpected predictor rebases, sever crossing replay, and publish unavailable
+  until coherent predictor evidence resumes after an uncertain child effect. A child rebase that
+  predates a transactionally rejected manual anchor is also retained rather than masked.
+- **Lifecycle and EXAMPLE-10 result:** no new `RobotProgram.Service`, Phoenix capability, reset
+  manager, or per-estimator history buffer was added. A deterministic managed-program test proves
+  the existing localization owner clears, anchors, updates, and records at START; updates and records
+  before timestamped consumers in LOOP; and clears after reverse-order STOP cleanup. EXAMPLE-10's
+  vision service now queries the stable history projection at the exact Limelight exposure time,
+  retains that exact lookup in its immutable decision, supports bounded moving-robot interpolation,
+  rejects a mismatched custom-provider timestamp before projection/cache publication, and preserves
+  explicit unavailable fallback. Its paths, attempt, inventory gate, milestones, and route outcomes
+  remain unchanged; its configured camera transform is explicitly fixed/rigid.
+- **Adversarial review result:** independent continuity, history, example/documentation, and public-
+  scope reviews found and drove fixes for nontransactional child-reset failure handling, rebases
+  observed around failing callbacks and manual anchors, stale correction admission during recovery,
+  extreme finite yaw interpolation, non-heartbeat retention queries, full-unit configuration naming,
+  timestamp-coherent EXAMPLE-10 projection, fixed-camera scope, managed lifecycle proof, and durable
+  tracker/document wording. Follow-up reviews report no remaining material correctness, ownership,
+  lifecycle, API-scope, example, or documentation issue.
+- **Software verification (2026-08-29):** the focused history/managed-lifecycle/Pinpoint/Fusion/EKF/
+  adaptive-vision run passed **87 tests in seven suites** with zero failures, errors, or skips. The
+  final complete `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passed
+  **2,081 tests in 227 suites** with zero failures, errors, or skips. `:TeamCode:phoenixJavadocs` and
+  the focused `DocumentationLinksTest` passed. `git diff --check`, the tracked-plus-untracked
+  trailing-whitespace scan, the new-production blocking-loop scan, and the public-surface/scope
+  audit were clean. Gradle emitted only the repository's existing Java-8 source/target deprecation
+  warning.
+- **Hardware boundary after implementation:** no software result proves real Pinpoint reset,
+  recalibration, or pose-rebase behavior; physical localization accuracy and loop cadence; suitable
+  retention/interpolation thresholds; camera extrinsics/rigidity and detector quality; moving-robot
+  projection accuracy; field alignment; route clearance; pickup reliability; cycle time; or match
+  benefit. Those remain adopting-robot validation and are not inferred from unit tests.
+- **Gate 3 review and publication authorization (2026-08-29):** the user supplied the exact
+  combined authorization: **“LOCALIZATION-01 looks good. Authorize committing the reviewed
+  LOCALIZATION-01 diff on codex/localization-01-optional-pose-history, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This records Android Studio approval of the complete reviewed diff and authorizes only
+  its commit, push, pull request, and merge into the named destination. LOCALIZATION-01 is **Done**.
+  It does not start AUTO-01 or another item, and it does not turn software evidence into a hardware
+  claim.
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 

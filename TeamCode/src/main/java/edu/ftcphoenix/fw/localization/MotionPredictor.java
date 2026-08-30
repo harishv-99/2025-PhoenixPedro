@@ -22,7 +22,7 @@ package edu.ftcphoenix.fw.localization;
  * positive elapsed time, the predictor publishes no usable delta and retains its accepted motion
  * baseline so that movement is included when a strictly later sample arrives.</p>
  */
-public interface MotionPredictor extends AbsolutePoseEstimator {
+public interface MotionPredictor extends PoseTrajectoryEstimator {
 
     /**
      * Returns the most recent motion increment produced by the predictor.

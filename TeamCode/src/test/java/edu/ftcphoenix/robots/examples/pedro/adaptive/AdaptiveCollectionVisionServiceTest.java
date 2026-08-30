@@ -15,18 +15,19 @@ import java.util.Collections;
 import java.util.List;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.source.TimeAwareSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightVisionLane;
-import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
+import edu.ftcphoenix.fw.localization.PlanarPoseHistory;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
+import edu.ftcphoenix.fw.localization.PoseTrajectoryEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -43,60 +44,55 @@ public final class AdaptiveCollectionVisionServiceTest {
         assertArrayEquals(
                 new Class<?>[]{
                         HardwareMap.class,
-                        AbsolutePoseEstimator.class,
+                        TimeAwareSource.class,
                         AdaptiveCollectionVisionService.Config.class
                 },
                 publicConstructors[0].getParameterTypes()
         );
 
-        for (Field field : AdaptiveCollectionVisionService.Config.class.getFields()) {
-            assertFalse("Config must not pretend to prove stationarity: " + field.getName(),
-                    field.getName().toLowerCase().contains("stationary"));
-        }
-
-        FakePoseEstimator pose = new FakePoseEstimator();
+        UnusedPoseLookup poseHistory = new UnusedPoseLookup();
         FakeFrameOwner frames = new FakeFrameOwner();
 
         AdaptiveCollectionVisionService.Config config = validConfig();
         config.limelight = null;
-        assertInvalid(config, pose, frames);
+        assertInvalid(config, poseHistory, frames);
 
         config = validConfig();
         config.cameraMount = null;
-        assertInvalid(config, pose, frames);
+        assertInvalid(config, poseHistory, frames);
 
         for (double invalid : new double[]{
                 0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY
         }) {
             config = validConfig();
             config.maxFrameAgeSec = invalid;
-            assertInvalid(config, pose, frames);
+            assertInvalid(config, poseHistory, frames);
 
             config = validConfig();
             config.bandWidthInches = invalid;
-            assertInvalid(config, pose, frames);
+            assertInvalid(config, poseHistory, frames);
         }
 
         config = validConfig();
         config.minCollectionFieldXInches = 4.0;
         config.maxCollectionFieldXInches = 3.0;
-        assertInvalid(config, pose, frames);
+        assertInvalid(config, poseHistory, frames);
 
         config = validConfig();
         config.minCollectionFieldYInches = 4.0;
         config.maxCollectionFieldYInches = 4.0;
-        assertInvalid(config, pose, frames);
+        assertInvalid(config, poseHistory, frames);
 
         config = validConfig();
         config.maxCollectionFieldYInches = Double.NaN;
-        assertInvalid(config, pose, frames);
+        assertInvalid(config, poseHistory, frames);
 
         config = validConfig();
         config.bandWidthInches = 41.0;
-        assertInvalid(config, pose, frames);
+        assertInvalid(config, poseHistory, frames);
 
         assertThrows(NullPointerException.class,
-                () -> new AdaptiveCollectionVisionService(pose, validConfig(), null));
+                () -> new AdaptiveCollectionVisionService(poseHistory, validConfig(), null));
         assertThrows(NullPointerException.class,
                 () -> new AdaptiveCollectionVisionService(null, validConfig(), frames));
 
@@ -106,18 +102,14 @@ public final class AdaptiveCollectionVisionServiceTest {
         AdaptiveCollectionVisionService.Config invalidNestedConfig = config;
         assertThrows(IllegalArgumentException.class,
                 () -> new AdaptiveCollectionVisionService(
-                        hardwareMap, pose, invalidNestedConfig));
+                        hardwareMap, poseHistory, invalidNestedConfig));
         assertEquals(0, hardwareMap.lookupCalls);
     }
 
     @Test
     public void configurationIsSnapshottedBeforeLaterAuthoringMutation() {
-        ManualLoopClock time = new ManualLoopClock();
-        FakePoseEstimator pose = new FakePoseEstimator();
-        FakeFrameOwner frames = new FakeFrameOwner();
-        AdaptiveCollectionVisionService.Config config = validConfig();
-        AdaptiveCollectionVisionService service =
-                new AdaptiveCollectionVisionService(pose, config, frames);
+        Fixture fixture = new Fixture();
+        AdaptiveCollectionVisionService.Config config = fixture.config;
 
         config.cameraMount = CameraMountConfig.identity();
         config.maxFrameAgeSec = 1.0e-9;
@@ -128,15 +120,15 @@ public final class AdaptiveCollectionVisionServiceTest {
         config.bandWidthInches = 1.0;
         config.limelight.hardwareName = "mutated";
 
-        pose.publishCurrent(time.clock(), Pose3d.zero());
-        LoopTimestamp exposure = time.clock().timestampSecondsAgo(0.1);
-        frames.frame = observed(exposure, detectorForFloorPoint(10.0, 0.0));
-        service.start(time.clock());
+        LoopTimestamp exposure = fixture.recordCurrentPose(Pose3d.zero());
+        fixture.time.nextCycle(0.1);
+        fixture.frames.frame = observed(exposure, detectorForFloorPoint(10.0, 0.0));
+        fixture.service.start(fixture.time.clock());
 
-        assertTrue(service.decision().hasSelection());
-        assertSame(exposure, service.decision().frameTimestamp());
-        assertEquals(0.1, service.decision().frameAgeSec(), EPSILON);
-        assertEquals(-5.0, service.decision().selectedBandCenterYInches(), EPSILON);
+        assertTrue(fixture.service.decision().hasSelection());
+        assertSame(exposure, fixture.service.decision().frameTimestamp());
+        assertEquals(0.1, fixture.service.decision().frameAgeSec(), EPSILON);
+        assertEquals(-5.0, fixture.service.decision().selectedBandCenterYInches(), EPSILON);
     }
 
     @Test
@@ -168,13 +160,17 @@ public final class AdaptiveCollectionVisionServiceTest {
     @Test
     public void zeroOneAndManyDetectionsPublishTypedDeterministicDecisions() {
         Fixture fixture = new Fixture();
-        fixture.publishCurrentPose(Pose3d.zero());
+        fixture.recordCurrentPose(Pose3d.zero());
         fixture.frames.frame = observed(
                 fixture.time.clock().nowTimestamp(), Collections.emptyList());
         fixture.service.start(fixture.time.clock());
         assertUnavailable(fixture.service.decision(),
                 AdaptiveCollectionVisionService.UnavailableReason.ZERO_DETECTIONS);
         assertEquals(1, fixture.frames.reads);
+        assertEquals(0, fixture.poseLookups.queries);
+        assertFalse(fixture.service.decision().hasPoseLookup());
+        assertThrows(IllegalStateException.class,
+                fixture.service.decision()::poseLookup);
         assertEquals(0, fixture.pose.updateCalls);
 
         fixture.nextObservation(detectorForFloorPoint(10.0, 0.0));
@@ -239,9 +235,12 @@ public final class AdaptiveCollectionVisionServiceTest {
                 AdaptiveCollectionVisionService.UnavailableReason.FRAME_UNAVAILABLE);
         assertSame(LoopTimestamp.unavailable(),
                 unavailable.service.decision().frameTimestamp());
+        assertFalse(unavailable.service.decision().hasPoseLookup());
+        assertThrows(IllegalStateException.class,
+                unavailable.service.decision()::poseLookup);
 
         Fixture stale = new Fixture();
-        stale.publishCurrentPose(Pose3d.zero());
+        stale.recordCurrentPose(Pose3d.zero());
         stale.frames.frame = observed(
                 stale.time.clock().timestampSecondsAgo(0.251),
                 detectorForFloorPoint(10.0, 0.0));
@@ -249,11 +248,14 @@ public final class AdaptiveCollectionVisionServiceTest {
         assertUnavailable(stale.service.decision(),
                 AdaptiveCollectionVisionService.UnavailableReason.FRAME_STALE);
         assertEquals(0.251, stale.service.decision().frameAgeSec(), EPSILON);
+        assertEquals(0, stale.poseLookups.queries);
 
         Fixture inclusiveBoundary = new Fixture();
-        inclusiveBoundary.publishCurrentPose(Pose3d.zero());
+        LoopTimestamp inclusiveExposure =
+                inclusiveBoundary.recordCurrentPose(Pose3d.zero());
+        inclusiveBoundary.time.nextCycle(0.25);
         inclusiveBoundary.frames.frame = observed(
-                inclusiveBoundary.time.clock().timestampSecondsAgo(0.25),
+                inclusiveExposure,
                 detectorForFloorPoint(10.0, 0.0));
         inclusiveBoundary.service.start(inclusiveBoundary.time.clock());
         assertTrue(inclusiveBoundary.service.decision().hasSelection());
@@ -261,7 +263,7 @@ public final class AdaptiveCollectionVisionServiceTest {
         Fixture reset = new Fixture();
         LoopTimestamp priorEpoch = reset.time.clock().nowTimestamp();
         reset.time.clock().reset(0.0);
-        reset.publishCurrentPose(Pose3d.zero());
+        reset.recordCurrentPose(Pose3d.zero());
         reset.frames.frame = observed(priorEpoch, detectorForFloorPoint(10.0, 0.0));
         reset.service.start(reset.time.clock());
         assertUnavailable(reset.service.decision(),
@@ -270,14 +272,14 @@ public final class AdaptiveCollectionVisionServiceTest {
         Fixture future = new Fixture(1.0);
         LoopTimestamp later = future.time.clock().nowTimestamp();
         future.time.clock().update(0.5);
-        future.publishCurrentPose(Pose3d.zero());
+        future.recordCurrentPose(Pose3d.zero());
         future.frames.frame = observed(later, detectorForFloorPoint(10.0, 0.0));
         future.service.start(future.time.clock());
         assertUnavailable(future.service.decision(),
                 AdaptiveCollectionVisionService.UnavailableReason.FRAME_RESET_OR_FUTURE);
 
         Fixture wrongClock = new Fixture();
-        wrongClock.publishCurrentPose(Pose3d.zero());
+        wrongClock.recordCurrentPose(Pose3d.zero());
         wrongClock.frames.frame = observed(
                 wrongClock.time.clock().nowTimestamp(),
                 detectorForFloorPoint(10.0, 0.0));
@@ -293,55 +295,135 @@ public final class AdaptiveCollectionVisionServiceTest {
     }
 
     @Test
-    public void poseMustBeAvailableFiniteAndCurrentButServiceNeverAdvancesIt() {
-        Fixture unavailable = new Fixture();
-        unavailable.frames.frame = observed(
-                unavailable.time.clock().nowTimestamp(),
-                detectorForFloorPoint(10.0, 0.0));
-        unavailable.pose.estimate = PoseEstimate.noPose(
-                unavailable.time.clock().nowTimestamp());
-        unavailable.service.start(unavailable.time.clock());
-        assertUnavailable(unavailable.service.decision(),
-                AdaptiveCollectionVisionService.UnavailableReason.POSE_UNAVAILABLE);
-        assertEquals(0, unavailable.pose.updateCalls);
+    public void exactAndInterpolatedHistoryLookupsSupportMovingProjectionAndAreRetained() {
+        Fixture exact = new Fixture();
+        LoopTimestamp exactTimestamp = exact.recordCurrentPose(Pose3d.zero());
+        exact.frames.frame = observed(
+                exactTimestamp, detectorForFloorPoint(10.0, 0.0));
+        exact.service.start(exact.time.clock());
 
-        Fixture nonFinite = new Fixture();
-        nonFinite.frames.frame = observed(
-                nonFinite.time.clock().nowTimestamp(),
-                detectorForFloorPoint(10.0, 0.0));
-        nonFinite.pose.estimate = pose(
-                new Pose3d(Double.NaN, 0.0, 0.0, 0.0, 0.0, 0.0),
-                nonFinite.time.clock().nowTimestamp());
-        nonFinite.service.start(nonFinite.time.clock());
-        assertUnavailable(nonFinite.service.decision(),
-                AdaptiveCollectionVisionService.UnavailableReason.POSE_UNAVAILABLE);
+        AdaptiveCollectionVisionService.Decision exactDecision = exact.service.decision();
+        assertTrue(exactDecision.hasSelection());
+        assertTrue(exactDecision.hasPoseLookup());
+        assertSame(exact.poseLookups.lastLookup, exactDecision.poseLookup());
+        assertEquals(PlanarPoseHistory.Lookup.Kind.EXACT,
+                exactDecision.poseLookup().kind());
+        assertSame(exactTimestamp, exactDecision.poseLookup().timestamp());
+        assertThrows(IllegalStateException.class,
+                exactDecision.poseLookup()::unavailableReason);
 
-        Fixture stale = new Fixture();
-        stale.frames.frame = observed(
-                stale.time.clock().nowTimestamp(),
-                detectorForFloorPoint(10.0, 0.0));
-        stale.pose.estimate = pose(Pose3d.zero(),
-                stale.time.clock().timestampSecondsAgo(0.001));
-        stale.service.start(stale.time.clock());
-        assertUnavailable(stale.service.decision(),
-                AdaptiveCollectionVisionService.UnavailableReason.POSE_NOT_CURRENT);
+        Fixture moving = new Fixture();
+        moving.recordCurrentPose(new Pose3d(0.0, -4.0, 0.0, 0.0, 0.0, 0.0));
+        moving.time.nextCycle(0.1);
+        moving.recordCurrentPose(new Pose3d(6.0, 4.0, 0.0, 0.0, 0.0, 0.0));
+        LoopTimestamp exposure = moving.time.clock().timestampSecondsAgo(0.05);
+        moving.frames.frame = observed(exposure, detectorForFloorPoint(10.0, 0.0));
+        moving.service.start(moving.time.clock());
 
-        Fixture reset = new Fixture();
-        LoopTimestamp priorEpoch = reset.time.clock().nowTimestamp();
-        reset.time.clock().reset(0.0);
-        reset.frames.frame = observed(
-                reset.time.clock().nowTimestamp(),
+        AdaptiveCollectionVisionService.Decision movingDecision = moving.service.decision();
+        assertTrue(movingDecision.hasSelection());
+        assertSame(moving.poseLookups.lastLookup, movingDecision.poseLookup());
+        assertEquals(PlanarPoseHistory.Lookup.Kind.INTERPOLATED,
+                movingDecision.poseLookup().kind());
+        assertEquals(3.0, movingDecision.poseLookup().fieldToRobotPose().xInches, EPSILON);
+        assertEquals(0.0, movingDecision.poseLookup().fieldToRobotPose().yInches, EPSILON);
+        assertEquals(-10.0, movingDecision.selectedBandStartYInches(), EPSILON);
+        assertEquals(0.0, movingDecision.selectedBandEndYInches(), EPSILON);
+        assertSame(exposure, movingDecision.poseLookup().timestamp());
+        assertEquals(0, moving.pose.updateCalls);
+    }
+
+    @Test
+    public void mismatchedHistoryTimestampFailsWithoutReplacingTheCachedDecision() {
+        Fixture fixture = new Fixture();
+        LoopTimestamp firstTimestamp = fixture.recordCurrentPose(Pose3d.zero());
+        fixture.frames.frame = observed(
+                firstTimestamp,
+                detectorForFloorPoint(10.0, 0.0)
+        );
+        fixture.service.start(fixture.time.clock());
+        AdaptiveCollectionVisionService.Decision retained = fixture.service.decision();
+        assertTrue(retained.hasSelection());
+
+        fixture.time.nextCycle(0.1);
+        LoopTimestamp nextTimestamp = fixture.recordCurrentPose(
+                new Pose3d(4.0, 4.0, 0.0, 0.0, 0.0, 0.0)
+        );
+        fixture.frames.frame = observed(
+                nextTimestamp,
+                detectorForFloorPoint(10.0, 0.0)
+        );
+        fixture.poseLookups.forcedLookup = fixture.poseHistory.lookupSource().getAt(
+                fixture.time.clock(),
+                firstTimestamp
+        );
+
+        IllegalStateException failure = assertThrows(
+                IllegalStateException.class,
+                () -> fixture.service.update(fixture.time.clock())
+        );
+
+        assertTrue(failure.getMessage().contains("different timestamp"));
+        assertSame(retained, fixture.service.decision());
+    }
+
+    @Test
+    public void historyFailuresRetainExactTypedLookupForExplicitFallback() {
+        Fixture empty = new Fixture();
+        empty.frames.frame = observed(
+                empty.time.clock().nowTimestamp(), detectorForFloorPoint(10.0, 0.0));
+        empty.service.start(empty.time.clock());
+        assertHistoryUnavailable(
+                empty,
+                PlanarPoseHistory.Lookup.UnavailableReason.EMPTY
+        );
+
+        Fixture afterLatest = new Fixture();
+        afterLatest.recordCurrentPose(Pose3d.zero());
+        afterLatest.time.nextCycle(0.1);
+        afterLatest.frames.frame = observed(
+                afterLatest.time.clock().nowTimestamp(),
                 detectorForFloorPoint(10.0, 0.0));
-        reset.pose.estimate = pose(Pose3d.zero(), priorEpoch);
-        reset.service.start(reset.time.clock());
-        assertUnavailable(reset.service.decision(),
-                AdaptiveCollectionVisionService.UnavailableReason.POSE_NOT_CURRENT);
+        afterLatest.service.start(afterLatest.time.clock());
+        assertHistoryUnavailable(
+                afterLatest,
+                PlanarPoseHistory.Lookup.UnavailableReason.AFTER_LATEST
+        );
+
+        Fixture largeCorrection = new Fixture();
+        largeCorrection.recordCurrentPose(Pose3d.zero());
+        largeCorrection.time.nextCycle(0.1);
+        largeCorrection.recordCurrentPose(
+                new Pose3d(13.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+        largeCorrection.frames.frame = observed(
+                largeCorrection.time.clock().timestampSecondsAgo(0.05),
+                detectorForFloorPoint(10.0, 0.0));
+        largeCorrection.service.start(largeCorrection.time.clock());
+        assertHistoryUnavailable(
+                largeCorrection,
+                PlanarPoseHistory.Lookup.UnavailableReason.INTERPOLATION_TRANSLATION_GAP
+        );
+
+        Fixture resetGap = new Fixture();
+        resetGap.recordCurrentPose(Pose3d.zero());
+        resetGap.time.nextCycle(0.1);
+        resetGap.pose.trajectorySegment++;
+        resetGap.recordCurrentPose(
+                new Pose3d(1.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+        resetGap.frames.frame = observed(
+                resetGap.time.clock().timestampSecondsAgo(0.05),
+                detectorForFloorPoint(10.0, 0.0));
+        resetGap.service.start(resetGap.time.clock());
+        assertHistoryUnavailable(
+                resetGap,
+                PlanarPoseHistory.Lookup.UnavailableReason.DISCONTINUITY
+        );
     }
 
     @Test
     public void invalidRaysAndOffBoxPointsFailClosedWithExactCounts() {
         Fixture rays = new Fixture();
-        rays.publishCurrentPose(Pose3d.zero());
+        rays.recordCurrentPose(Pose3d.zero());
         rays.frames.frame = observed(rays.time.clock().nowTimestamp(), Arrays.asList(
                 new AdaptiveCollectionVisionService.DetectorAngles(Double.NaN, 45.0),
                 new AdaptiveCollectionVisionService.DetectorAngles(0.0, 0.0),
@@ -356,7 +438,7 @@ public final class AdaptiveCollectionVisionServiceTest {
         assertEquals(0, noProjection.projectablePointCount());
 
         Fixture offBox = new Fixture();
-        offBox.publishCurrentPose(Pose3d.zero());
+        offBox.recordCurrentPose(Pose3d.zero());
         offBox.frames.frame = observed(
                 offBox.time.clock().nowTimestamp(),
                 detectorForFloorPoint(100.0, 0.0));
@@ -367,18 +449,14 @@ public final class AdaptiveCollectionVisionServiceTest {
         assertEquals(1, outside.projectablePointCount());
         assertEquals(0, outside.inBoxPointCount());
 
-        AdaptiveCollectionVisionService.Config belowFloorConfig = validConfig();
-        belowFloorConfig.cameraMount = CameraMountConfig.of(0, 0, -10, 0, 0, 0);
-        ManualLoopClock time = new ManualLoopClock();
-        FakePoseEstimator pose = new FakePoseEstimator();
-        pose.publishCurrent(time.clock(), Pose3d.zero());
-        FakeFrameOwner frames = new FakeFrameOwner();
-        frames.frame = observed(
-                time.clock().nowTimestamp(), detectorForFloorPoint(10.0, 0.0));
-        AdaptiveCollectionVisionService belowFloor =
-                new AdaptiveCollectionVisionService(pose, belowFloorConfig, frames);
-        belowFloor.start(time.clock());
-        assertUnavailable(belowFloor.decision(),
+        Fixture belowFloor = new Fixture();
+        belowFloor.config.cameraMount = CameraMountConfig.of(0, 0, -10, 0, 0, 0);
+        belowFloor.rebuildService();
+        LoopTimestamp belowFloorTimestamp = belowFloor.recordCurrentPose(Pose3d.zero());
+        belowFloor.frames.frame = observed(
+                belowFloorTimestamp, detectorForFloorPoint(10.0, 0.0));
+        belowFloor.service.start(belowFloor.time.clock());
+        assertUnavailable(belowFloor.service.decision(),
                 AdaptiveCollectionVisionService.UnavailableReason
                         .NO_PROJECTABLE_FLOOR_INTERSECTIONS);
     }
@@ -393,7 +471,7 @@ public final class AdaptiveCollectionVisionServiceTest {
         fixture.config.bandWidthInches = 2.0;
         fixture.rebuildService();
 
-        fixture.publishCurrentPose(new Pose3d(5.0, 6.0, 0.0,
+        fixture.recordCurrentPose(new Pose3d(5.0, 6.0, 0.0,
                 Math.PI / 2.0, 0.0, 0.0));
         fixture.frames.frame = observed(
                 fixture.time.clock().nowTimestamp(),
@@ -409,7 +487,7 @@ public final class AdaptiveCollectionVisionServiceTest {
     @Test
     public void publicationIsAtomicAndStopClearsBeforeIdempotentOwnerClose() {
         Fixture fixture = new Fixture();
-        fixture.publishCurrentPose(Pose3d.zero());
+        fixture.recordCurrentPose(Pose3d.zero());
         fixture.frames.frame = observed(
                 fixture.time.clock().nowTimestamp(),
                 detectorForFloorPoint(10.0, 0.0));
@@ -426,6 +504,7 @@ public final class AdaptiveCollectionVisionServiceTest {
         assertUnavailable(fixture.service.decision(),
                 AdaptiveCollectionVisionService.UnavailableReason.NOT_OBSERVED);
         assertEquals(1, fixture.frames.closeCalls);
+        assertEquals(0, fixture.poseLookups.resetCalls);
         fixture.service.stop();
         assertEquals(1, fixture.frames.closeCalls);
         assertThrows(IllegalStateException.class,
@@ -438,10 +517,27 @@ public final class AdaptiveCollectionVisionServiceTest {
     }
 
     private static void assertInvalid(AdaptiveCollectionVisionService.Config config,
-                                      FakePoseEstimator pose,
+                                      TimeAwareSource<PlanarPoseHistory.Lookup> poseHistory,
                                       FakeFrameOwner frames) {
         assertThrows(RuntimeException.class,
-                () -> new AdaptiveCollectionVisionService(pose, config, frames));
+                () -> new AdaptiveCollectionVisionService(poseHistory, config, frames));
+    }
+
+    private static void assertHistoryUnavailable(
+            Fixture fixture,
+            PlanarPoseHistory.Lookup.UnavailableReason reason) {
+        AdaptiveCollectionVisionService.Decision decision = fixture.service.decision();
+        assertUnavailable(decision,
+                AdaptiveCollectionVisionService.UnavailableReason.POSE_HISTORY_UNAVAILABLE);
+        assertTrue(decision.hasPoseLookup());
+        assertSame(fixture.poseLookups.lastLookup, decision.poseLookup());
+        assertFalse(decision.poseLookup().isAvailable());
+        assertEquals(PlanarPoseHistory.Lookup.Kind.UNAVAILABLE,
+                decision.poseLookup().kind());
+        assertEquals(reason, decision.poseLookup().unavailableReason());
+        assertSame(decision.frameTimestamp(), decision.poseLookup().timestamp());
+        assertThrows(IllegalStateException.class,
+                decision.poseLookup()::fieldToRobotPose);
     }
 
     private static void assertUnavailable(
@@ -463,6 +559,16 @@ public final class AdaptiveCollectionVisionServiceTest {
         config.minCollectionFieldYInches = -20.0;
         config.maxCollectionFieldYInches = 20.0;
         config.bandWidthInches = 10.0;
+        return config;
+    }
+
+    private static PlanarPoseHistory.Config validHistoryConfig() {
+        PlanarPoseHistory.Config config = PlanarPoseHistory.Config.defaults();
+        config.retentionSec = 1.0;
+        config.maxSamples = 32;
+        config.maxInterpolationGapSec = 0.2;
+        config.maxInterpolationTranslationInches = 12.0;
+        config.maxInterpolationYawRad = Math.PI / 2.0;
         return config;
     }
 
@@ -523,6 +629,8 @@ public final class AdaptiveCollectionVisionServiceTest {
     private static final class Fixture {
         final ManualLoopClock time;
         final FakePoseEstimator pose = new FakePoseEstimator();
+        final PlanarPoseHistory poseHistory;
+        final CapturingPoseLookup poseLookups;
         final FakeFrameOwner frames = new FakeFrameOwner();
         final AdaptiveCollectionVisionService.Config config = validConfig();
         AdaptiveCollectionVisionService service;
@@ -533,15 +641,19 @@ public final class AdaptiveCollectionVisionServiceTest {
 
         Fixture(double initialTimeSec) {
             time = new ManualLoopClock(initialTimeSec);
+            poseHistory = new PlanarPoseHistory(pose, validHistoryConfig());
+            poseLookups = new CapturingPoseLookup(poseHistory.lookupSource());
             rebuildService();
         }
 
         void rebuildService() {
-            service = new AdaptiveCollectionVisionService(pose, config, frames);
+            service = new AdaptiveCollectionVisionService(poseLookups, config, frames);
         }
 
-        void publishCurrentPose(Pose3d fieldToRobotPose) {
+        LoopTimestamp recordCurrentPose(Pose3d fieldToRobotPose) {
             pose.publishCurrent(time.clock(), fieldToRobotPose);
+            poseHistory.recordCurrent(time.clock());
+            return pose.estimate.timestamp;
         }
 
         void nextObservation(AdaptiveCollectionVisionService.DetectorAngles angle) {
@@ -550,14 +662,15 @@ public final class AdaptiveCollectionVisionServiceTest {
 
         void nextObservation(List<AdaptiveCollectionVisionService.DetectorAngles> angles) {
             time.nextCycle(0.01);
-            publishCurrentPose(Pose3d.zero());
+            recordCurrentPose(Pose3d.zero());
             frames.frame = observed(time.clock().nowTimestamp(), angles);
             service.update(time.clock());
         }
     }
 
-    private static final class FakePoseEstimator implements AbsolutePoseEstimator {
+    private static final class FakePoseEstimator implements PoseTrajectoryEstimator {
         PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+        long trajectorySegment;
         int updateCalls;
 
         @Override
@@ -570,8 +683,49 @@ public final class AdaptiveCollectionVisionServiceTest {
             return estimate;
         }
 
+        @Override
+        public long trajectorySegmentId() {
+            return trajectorySegment;
+        }
+
         void publishCurrent(LoopClock clock, Pose3d fieldToRobotPose) {
             estimate = pose(fieldToRobotPose, clock.nowTimestamp());
+        }
+    }
+
+    private static final class CapturingPoseLookup
+            implements TimeAwareSource<PlanarPoseHistory.Lookup> {
+        private final TimeAwareSource<PlanarPoseHistory.Lookup> delegate;
+        PlanarPoseHistory.Lookup lastLookup;
+        PlanarPoseHistory.Lookup forcedLookup;
+        int queries;
+        int resetCalls;
+
+        CapturingPoseLookup(TimeAwareSource<PlanarPoseHistory.Lookup> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public PlanarPoseHistory.Lookup getAt(LoopClock clock, LoopTimestamp timestamp) {
+            queries++;
+            lastLookup = forcedLookup != null
+                    ? forcedLookup
+                    : delegate.getAt(clock, timestamp);
+            return lastLookup;
+        }
+
+        @Override
+        public void reset() {
+            resetCalls++;
+            delegate.reset();
+        }
+    }
+
+    private static final class UnusedPoseLookup
+            implements TimeAwareSource<PlanarPoseHistory.Lookup> {
+        @Override
+        public PlanarPoseHistory.Lookup getAt(LoopClock clock, LoopTimestamp timestamp) {
+            throw new AssertionError("invalid construction must not query pose history");
         }
     }
 

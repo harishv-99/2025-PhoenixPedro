@@ -116,7 +116,7 @@ public final class PinpointOdometryPredictorConfigApiTest {
     }
 
     @Test
-    public void predictorKeepsOnePublicConstructorAndNinePublicOperations() throws Exception {
+    public void predictorKeepsOnePublicConstructorAndTenPublicOperations() throws Exception {
         long publicConstructors = Arrays.stream(PinpointOdometryPredictor.class.getDeclaredConstructors())
                 .filter(constructor -> Modifier.isPublic(constructor.getModifiers()))
                 .count();
@@ -133,13 +133,14 @@ public final class PinpointOdometryPredictorConfigApiTest {
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .filter(method -> !method.isSynthetic())
                 .collect(Collectors.toList());
-        assertEquals(9, publicMethodList.size());
+        assertEquals(10, publicMethodList.size());
         Set<String> publicMethods = publicMethodList.stream()
                 .map(Method::getName)
                 .collect(Collectors.toSet());
         assertEquals(setOf(
                 "update",
                 "getEstimate",
+                "trajectorySegmentId",
                 "getLatestMotionDelta",
                 "getKinematicSnapshot",
                 "lastDeviceStatus",

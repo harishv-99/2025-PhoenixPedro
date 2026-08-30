@@ -700,6 +700,7 @@ public final class OdometryCorrectionEstimatorValidationTest {
         MotionDelta delta = MotionDelta.none(LoopTimestamp.unavailable());
         RuntimeException setPoseFailure;
         int setPoseCalls;
+        long trajectorySegmentId;
 
         void publish(Pose3d pose,
                      double quality,
@@ -725,6 +726,11 @@ public final class OdometryCorrectionEstimatorValidationTest {
         }
 
         @Override
+        public long trajectorySegmentId() {
+            return trajectorySegmentId;
+        }
+
+        @Override
         public MotionDelta getLatestMotionDelta() {
             return delta;
         }
@@ -735,6 +741,7 @@ public final class OdometryCorrectionEstimatorValidationTest {
             if (setPoseFailure != null) {
                 throw setPoseFailure;
             }
+            trajectorySegmentId++;
             LoopTimestamp timestamp = estimate.timestamp;
             estimate = new PoseEstimate(
                     new Pose3d(

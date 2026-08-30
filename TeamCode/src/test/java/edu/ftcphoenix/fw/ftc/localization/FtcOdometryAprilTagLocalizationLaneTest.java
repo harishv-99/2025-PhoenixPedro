@@ -934,6 +934,11 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
         }
 
         @Override
+        public long trajectorySegmentId() {
+            return 0L;
+        }
+
+        @Override
         public MotionDelta getLatestMotionDelta() {
             return delta;
         }

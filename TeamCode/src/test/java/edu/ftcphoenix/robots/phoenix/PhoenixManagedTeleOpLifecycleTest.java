@@ -333,6 +333,11 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         }
 
         @Override
+        public long trajectorySegmentId() {
+            return 0L;
+        }
+
+        @Override
         public MotionDelta getLatestMotionDelta() {
             return delta;
         }

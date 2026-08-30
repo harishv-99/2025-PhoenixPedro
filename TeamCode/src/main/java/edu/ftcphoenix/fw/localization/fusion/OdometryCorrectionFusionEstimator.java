@@ -52,6 +52,12 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  * now scales with the accepted correction measurement's own quality instead of treating
  * every fresh correction as equally trustworthy. Manual {@link #setPose(Pose2d)} anchors clear
  * that recent-correction hold so resets do not masquerade as fresh camera corrections.</p>
+ *
+ * <p><b>Trajectory continuity:</b> ordinary accepted corrections remain in this estimator's
+ * as-published corrected trajectory, including an expected push into the predictor. A manual pose
+ * anchor starts a new corrected segment. If the borrowed predictor changes segment unexpectedly,
+ * this estimator starts a new segment, clears delayed replay state, ignores the crossing motion,
+ * and publishes only from a coherent current predictor pose.</p>
  */
 public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator {
 
@@ -247,10 +253,16 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     private static final class PredictorPosePushFailure extends RuntimeException {
         final RuntimeException original;
+        final boolean predictorSegmentChanged;
+        final long predictorSegmentId;
 
-        PredictorPosePushFailure(RuntimeException original) {
+        PredictorPosePushFailure(RuntimeException original,
+                                 boolean predictorSegmentChanged,
+                                 long predictorSegmentId) {
             super(original);
             this.original = original;
+            this.predictorSegmentChanged = predictorSegmentChanged;
+            this.predictorSegmentId = predictorSegmentId;
         }
     }
 
@@ -266,6 +278,15 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
     private final Deque<PredictorSample> predictorHistory = new ArrayDeque<PredictorSample>();
+
+    // The corrected trajectory has its own continuity identity. Normal accepted corrections stay
+    // within that trajectory, while a manual anchor or an unexpected predictor rebase starts a
+    // new segment. Expected correction pushes synchronize the borrowed predictor identity without
+    // leaking its raw reset into the corrected trajectory.
+    private long trajectorySegmentId = 0L;
+    private boolean predictorTrajectorySegmentKnown = false;
+    private long predictorTrajectorySegmentId = 0L;
+    private boolean awaitingPredictorEvidenceAfterDiscontinuity = false;
 
     // One estimator instance owns one state transition per shared-loop cycle. The attempt is
     // claimed before child updates because those updates and predictor rebases may have effects
@@ -533,6 +554,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         int beforeOutOfOrderCount = skippedOutOfOrderCorrectionCount;
         int beforeReplayedCount = replayedCorrectionCount;
         int beforeProjectedCount = projectedCorrectionCount;
+        boolean beforeAwaitingPredictorEvidence =
+                awaitingPredictorEvidenceAfterDiscontinuity;
 
         try {
             updateOnceMutating(clock);
@@ -563,6 +586,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             skippedOutOfOrderCorrectionCount = beforeOutOfOrderCount;
             replayedCorrectionCount = beforeReplayedCount;
             projectedCorrectionCount = beforeProjectedCount;
+            awaitingPredictorEvidenceAfterDiscontinuity =
+                    beforeAwaitingPredictorEvidence;
+            retainFailClosedPredictorPushFailure(
+                    pushFailure,
+                    clock.nowTimestamp()
+            );
             throw pushFailure.original;
         }
     }
@@ -573,9 +602,32 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
         invalidateHistoryAcrossReset(nowTimestamp);
 
-        // Update sources.
-        predictor.update(clock);
-        correction.update(clock);
+        // Update sources. A borrowed predictor discontinuity is observed before correction work so
+        // a later correction failure cannot leave the old corrected trajectory published.
+        try {
+            predictor.update(clock);
+        } catch (RuntimeException failure) {
+            if (observeUnexpectedPredictorTrajectorySegment()) {
+                failClosedAfterPredictorDiscontinuity(nowTimestamp);
+            }
+            throw failure;
+        }
+        if (observeUnexpectedPredictorTrajectorySegment()) {
+            beginTrajectoryFromCurrentPredictorAfterUnexpectedRebase(clock, nowTimestamp);
+            return;
+        }
+        try {
+            correction.update(clock);
+        } catch (RuntimeException failure) {
+            if (observeUnexpectedPredictorTrajectorySegment()) {
+                failClosedAfterPredictorDiscontinuity(nowTimestamp);
+            }
+            throw failure;
+        }
+        if (observeUnexpectedPredictorTrajectorySegment()) {
+            beginTrajectoryFromCurrentPredictorAfterUnexpectedRebase(clock, nowTimestamp);
+            return;
+        }
 
         final PoseEstimate predictorEst = predictor.getEstimate();
         final MotionDelta predictorDelta = predictor.getLatestMotionDelta();
@@ -595,6 +647,22 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         final boolean predictorClaimedInvalidMotion = predictorDelta != null
                 && predictorDelta.hasDelta
                 && !predictorMotionUsable;
+        final boolean correctionsBlockedForDiscontinuity =
+                awaitingPredictorEvidenceAfterDiscontinuity;
+        if (correctionsBlockedForDiscontinuity) {
+            // Do not admit any delayed frame captured before a fresh predictor base is published.
+            lastEvaluatedCorrectionTimestamp = nowTimestamp;
+        }
+
+        if (observeUnexpectedPredictorTrajectorySegment()) {
+            beginTrajectoryAfterUnexpectedPredictorRebase(
+                    nowTimestamp,
+                    predictorEst,
+                    currentPredictorPose,
+                    currentPredictorTimestamp
+            );
+            return;
+        }
 
         if (predictorClaimedInvalidMotion && initialized) {
             if (currentPredictorPose != null) {
@@ -620,7 +688,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         // If we are not initialized yet, pick an initial pose.
         if (!initialized) {
             boolean initializedFromCorrection = false;
-            if (correctionEnabled
+            if (!correctionsBlockedForDiscontinuity
+                    && correctionEnabled
                     && cfg.enableInitializeFromCorrection
                     && shouldEvaluateCorrectionMeasurement(correctionEst, clock)) {
                 evaluatedCorrectionThisLoop = true;
@@ -653,6 +722,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                                 currentPredictorTimestamp,
                                 pushedToPredictor
                         );
+                        awaitingPredictorEvidenceAfterDiscontinuity = false;
                         initializedFromCorrection = true;
                     }
                 } else {
@@ -668,6 +738,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 setReplayBase(currentPredictorTimestamp, fusedPose, currentPredictorPose);
                 markPredictorMotionCovered(currentPredictorTimestamp);
                 rememberPredictorMotionRebase(currentPredictorPose);
+                awaitingPredictorEvidenceAfterDiscontinuity = false;
             } else if (!initialized && !initializedFromCorrection) {
                 // No pose from either source yet.
                 lastEstimate = PoseEstimate.noPose(nowTimestamp);
@@ -705,6 +776,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
         // Apply correction if available.
         if (correctionEnabled
+                && !correctionsBlockedForDiscontinuity
                 && !evaluatedCorrectionThisLoop
                 && shouldEvaluateCorrectionMeasurement(correctionEst, clock)) {
             if (!isCorrectionAcceptable(correctionEst, clock)) {
@@ -756,6 +828,11 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         return lastEstimate;
     }
 
+    @Override
+    public long trajectorySegmentId() {
+        return trajectorySegmentId;
+    }
+
     /**
      * Manually anchors the corrected/global estimator to a known field pose.
      *
@@ -763,8 +840,10 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
      *
      * <p>The pose must be non-null with finite x/y/heading. Validation and all derived-state
      * checks precede predictor or local effects. When the configured predictor supports
-     * {@link PoseResetter}, its rejection leaves this estimator's complete local pose, replay,
-     * history, diagnostics, and statistics unchanged.</p>
+     * {@link PoseResetter}, a transactional rejection before any child continuity change leaves
+     * this estimator's complete local state unchanged. If the child segment changed before or
+     * during the rejected push, this estimator retains that boundary and publishes no pose rather
+     * than preserving state that may cross coordinate systems.</p>
      */
     @Override
     public void setPose(Pose2d pose) {
@@ -798,6 +877,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         try {
             pushedToPredictor = pushPoseToPredictor(candidatePose);
         } catch (PredictorPosePushFailure pushFailure) {
+            retainFailClosedPredictorPushFailure(pushFailure, nowTimestamp);
             throw pushFailure.original;
         }
 
@@ -805,6 +885,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         // the staged finite candidate.
         fusedPose = candidatePose;
         initialized = true;
+        awaitingPredictorEvidenceAfterDiscontinuity = false;
         clearRecentCorrectionState();
         rebaseAfterPoseChange(
                 nowTimestamp,
@@ -816,6 +897,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         double quality = (predictorEst != null && predictorEst.hasPose)
                 ? finiteQualityOrZero(predictorEst.quality)
                 : 1.0;
+        synchronizePredictorTrajectorySegment();
+        trajectorySegmentId++;
         lastEstimate = new PoseEstimate(fusedPose, true, quality, nowTimestamp);
     }
 
@@ -1010,14 +1093,128 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     private boolean pushPoseToPredictor(Pose3d candidatePose) {
         if (cfg.enablePushCorrectedPoseToPredictor && predictor instanceof PoseResetter) {
+            long segmentBeforePush = predictor.trajectorySegmentId();
             try {
                 ((PoseResetter) predictor).setPose(candidatePose.toPose2d());
             } catch (RuntimeException failure) {
-                throw new PredictorPosePushFailure(failure);
+                long segmentAfterFailure = predictor.trajectorySegmentId();
+                boolean continuityChanged = segmentAfterFailure != segmentBeforePush
+                        || (predictorTrajectorySegmentKnown
+                        && segmentAfterFailure != predictorTrajectorySegmentId);
+                throw new PredictorPosePushFailure(
+                        failure,
+                        continuityChanged,
+                        segmentAfterFailure
+                );
             }
+            synchronizePredictorTrajectorySegment();
             return true;
         }
         return false;
+    }
+
+    private void synchronizePredictorTrajectorySegment() {
+        predictorTrajectorySegmentId = predictor.trajectorySegmentId();
+        predictorTrajectorySegmentKnown = true;
+    }
+
+    private boolean observeUnexpectedPredictorTrajectorySegment() {
+        long currentSegmentId = predictor.trajectorySegmentId();
+        if (!predictorTrajectorySegmentKnown) {
+            predictorTrajectorySegmentId = currentSegmentId;
+            predictorTrajectorySegmentKnown = true;
+            return false;
+        }
+        if (currentSegmentId == predictorTrajectorySegmentId) {
+            return false;
+        }
+        predictorTrajectorySegmentId = currentSegmentId;
+        trajectorySegmentId++;
+        return true;
+    }
+
+    private void beginTrajectoryAfterUnexpectedPredictorRebase(
+            LoopTimestamp nowTimestamp,
+            PoseEstimate predictorEstimate,
+            Pose3d currentPredictorPose,
+            LoopTimestamp currentPredictorTimestamp) {
+        failClosedAfterPredictorDiscontinuity(nowTimestamp);
+
+        if (currentPredictorPose == null) {
+            return;
+        }
+
+        fusedPose = currentPredictorPose;
+        initialized = true;
+        awaitingPredictorEvidenceAfterDiscontinuity = false;
+        lastPredictorPose = currentPredictorPose;
+        resetPredictorHistory(currentPredictorTimestamp, currentPredictorPose);
+        setReplayBase(currentPredictorTimestamp, fusedPose, currentPredictorPose);
+        markPredictorMotionCovered(currentPredictorTimestamp);
+        rememberPredictorMotionRebase(currentPredictorPose);
+        double quality = predictorEstimate != null
+                ? finiteQualityOrZero(predictorEstimate.quality)
+                : 0.0;
+        lastEstimate = new PoseEstimate(fusedPose, true, quality, nowTimestamp);
+    }
+
+    private void beginTrajectoryFromCurrentPredictorAfterUnexpectedRebase(
+            LoopClock clock,
+            LoopTimestamp nowTimestamp) {
+        PoseEstimate predictorEstimate;
+        try {
+            predictorEstimate = predictor.getEstimate();
+        } catch (RuntimeException failure) {
+            failClosedAfterPredictorDiscontinuity(nowTimestamp);
+            throw failure;
+        }
+        boolean timestampCurrent = predictorEstimate != null
+                && isTimestampCurrent(predictorEstimate.timestamp, clock);
+        Pose3d predictorPose = predictorEstimate != null
+                && predictorEstimate.hasPose
+                && timestampCurrent
+                && isFinitePlanarPose(predictorEstimate.fieldToRobotPose)
+                ? planarize(predictorEstimate.fieldToRobotPose)
+                : null;
+        beginTrajectoryAfterUnexpectedPredictorRebase(
+                nowTimestamp,
+                predictorEstimate,
+                predictorPose,
+                timestampCurrent
+                        ? predictorEstimate.timestamp
+                        : LoopTimestamp.unavailable()
+        );
+    }
+
+    private void retainFailClosedPredictorPushFailure(
+            PredictorPosePushFailure failure,
+            LoopTimestamp nowTimestamp) {
+        if (!failure.predictorSegmentChanged) {
+            return;
+        }
+        predictorTrajectorySegmentKnown = true;
+        predictorTrajectorySegmentId = failure.predictorSegmentId;
+        trajectorySegmentId++;
+        failClosedAfterPredictorDiscontinuity(nowTimestamp);
+    }
+
+    private void failClosedAfterPredictorDiscontinuity(LoopTimestamp nowTimestamp) {
+        predictorHistory.clear();
+        replayBaseValid = false;
+        replayBaseTimestamp = LoopTimestamp.unavailable();
+        replayBaseFusedPose = Pose3d.zero();
+        replayBasePredictorPose = Pose3d.zero();
+        lastCoveredPredictorMotionEndTimestamp = LoopTimestamp.unavailable();
+        clearPredictorMotionRebase();
+        clearRecentCorrectionState();
+        // A correction measured at or before the observed rebase may describe the old coordinate
+        // segment. Require a strictly newer measurement before correction resumes.
+        lastEvaluatedCorrectionTimestamp = nowTimestamp;
+        initialized = false;
+        awaitingPredictorEvidenceAfterDiscontinuity = true;
+        lastPredictorPose = Pose3d.zero();
+        awaitPredictorMotionRebase();
+        lastEstimate = PoseEstimate.noPose(nowTimestamp);
     }
 
     private void clearRecentCorrectionState() {
