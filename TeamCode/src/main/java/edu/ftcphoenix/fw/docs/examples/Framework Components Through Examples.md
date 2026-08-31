@@ -40,6 +40,7 @@ them. A small robot simply leaves out unused packages.
 | Shared capability vocabulary | `ReferenceLift`, `ReferenceLauncher`, `ReferenceCapabilities` | TeleOp and Auto call the same mode-neutral robot meanings; an aggregate is useful only for a real multi-family client. |
 | Sensors and status | reference lift/launcher status | Mechanisms condition sensors and publish cached evidence; presenters only format it. |
 | Several sensors into one coherent fact | `ReferenceInventoryStatusService` | An optional robot-owned service samples three active-low inputs upstream, publishes one immutable status, and exposes a cached `fullSource()` for Tasks. |
+| One timestamped calculation into coordinated mechanism intent | `ReferenceCoordinatedShotService`, `ReferenceTurretMechanism`, and [Reference scenarios](<Hardware-free Reference Scenarios.md>) | Publish one immutable turret/flywheel/hood solution, degrade explicitly when motion cannot be trusted, and let one bounded periodic Plant own turret realization. |
 | Haptics | `HapticSink` Javadocs and `FtcHaptics.gamepad(...)` | Bind a semantic edge to a short cue and stop the sink during total cleanup. |
 | AprilTag observation and offsets | [Drive Guidance](<../drive-vision/Drive Guidance.md>) | Keep camera ownership, field facts, tag selection, and aim policy distinct. |
 | Localization and field geometry | [AprilTag Localization & Fixed Layouts](<../drive-vision/AprilTag Localization & Fixed Layouts.md>) | Pose evidence belongs upstream of guidance; frames and units stay explicit. |
@@ -49,9 +50,9 @@ them. A small robot simply leaves out unused packages.
 | Controller tuning and calibration | [Control Tuning Workflow](<../testing-calibration/Control Tuning Workflow.md>) | Use supported tools to establish controller evidence before robot behavior depends on it. |
 
 The ordinary Reference robot does not wire field-relative drive, Prestart, the optional inventory
-service, parking guidance,
-Pedro, adaptive collection, AprilTags, localization, haptics, or supervisors. Rows for those concepts deliberately point
-to focused examples, guides, Javadocs, or production references instead of pretending one example
+or coordinated-shot services, the optional turret, parking guidance, Pedro, adaptive collection,
+AprilTags, localization, haptics, or supervisors. Rows for those concepts deliberately point to
+focused examples, guides, Javadocs, or production references instead of pretending one example
 owns every capability.
 
 ## What stays advanced

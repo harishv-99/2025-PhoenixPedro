@@ -231,20 +231,33 @@ a snapshot of that query cycle; call `query.get(clock)` again when you need a cu
 
 The same selector/gate concepts should be used by Drive Guidance and mechanism target request builders so “valid enough” means the same thing across the framework.
 
-## Direct query example: simple turret visual PID
+## Bounded query consumer: coordinated turret
 
-A quick visual-servo turret can use the facing error directly and skip Plant target planning:
+The optional
+[`ReferenceCoordinatedShotService`](<../../../robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
+is a complete robot-owned translation-query consumer. It selects one gated translation, preserves
+that solution's observation timestamp, and maps robot-forward/robot-left geometry into one observed
+periodic-equivalent turret request plus flywheel and hood intent. The separate
+[`ReferenceTurretMechanism`](<../../../robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
+owns the live planner, cable bounds, unavailable hold, PositionPlant, hardware update, and stop.
 
 ```java
-SpatialQueryResult result = turretTagQuery.get(clock);
-SpatialFacingSelection facing = SpatialQuerySelectors.firstValidFacing(result, gate);
+ReferenceCoordinatedShotService shot = program.service(
+        new ReferenceCoordinatedShotService(
+                localization,
+                ReferenceCoordinatedShotService.Config.defaults()));
 
-if (facing != null) {
-    double power = turretPid.update(facing.facingErrorRad(), clock.dtSec());
-    turretMotor.setPower(power);
-} else {
-    turretMotor.setPower(0.0);
-}
+program.output(new ReferenceTurretMechanism(
+        hardwareMap,
+        ReferenceTurretMechanism.Config.defaults(),
+        shot));
 ```
 
-This is simple, but you must handle cable limits, unreachable targets, and loss behavior yourself. For a position-controlled turret, prefer the Plant target planning path described in [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>).
+This keeps field geometry and robot kinematics upstream of one final bounded Plant path. It does not
+write motor power from the query loop, infer that planner selection means physical arrival, or hide
+target-loss behavior in an imperative `else` branch. See
+[`Mechanism Target Planning.md`](<Mechanism Target Planning.md>) for the request/planner boundary and
+the [hardware-free Reference scenario](<../examples/Hardware-free Reference Scenarios.md>) for the
+software evidence and explicit physical limits of this illustrative, uncalibrated example. Neither
+owner is wired into the ordinary Reference robot, and no default establishes physical accuracy,
+safety, cable limits, or a trustworthy turret zero.
