@@ -92,9 +92,10 @@ Rules:
 
 * `start(...)` and `update(...)` must **return quickly** (no blocking).
 * A `Task` object is **single-use**: it may enter `start(...)` once. To repeat behavior, call the
-  macro/builder again or use a `Supplier<Task>` so each run receives a fresh object. Framework
-  Tasks throw a clear error on a second start; custom Task implementations must honor the same
-  contract.
+  macro/builder again or use a `Supplier<Task>` so each run receives a fresh object. For bounded
+  clock-aware repetition, `Tasks.repeatWhileSuccessful(...)` invokes such a factory for each
+  admitted child. Framework Tasks throw a clear error on a second start; custom Task
+  implementations must honor the same contract.
 * Use fields inside the task to remember your own state.
 * `isComplete()` becomes `true` when the task is done.
 * `cancel()` is the cooperative early-stop hook. Before `start(...)` it is a side-effect-free
@@ -200,6 +201,9 @@ Common factories (high‑level view):
 
 * **Composition**
 
+    * `Tasks.repeatWhileSuccessful(String debugName, int maxIterations,
+      BooleanSource mayStartIteration, Supplier<? extends Task> taskFactory)` – admit and run at
+      most that many fresh Tasks, continuing only after exact success.
     * `Tasks.sequence(Task... steps)` – run tasks one after another.
     * `Tasks.parallelAll(Task... steps)` – run tasks in parallel and finish when all are done.
     * `Tasks.parallelDeadline(Task deadline, Task... companions)` – run bounded companions only
@@ -209,7 +213,8 @@ Common factories (high‑level view):
 
 > `Tasks.*` is the one public construction layer for generic composition and ordinary leaf Tasks,
 > including `runOnce(...)`, `waitUntil(...)`, `sequence(...)`, `parallelAll(...)`,
-> `parallelDeadline(...)`, `withTimeout(...)`, and `branchOnOutcome(...)`.
+> `parallelDeadline(...)`, `repeatWhileSuccessful(...)`, `withTimeout(...)`, and
+> `branchOnOutcome(...)`.
 > `RunForSecondsTask` remains directly constructible because its start/update/finish callback
 > capability is distinct from a fixed wait.
 
@@ -243,30 +248,96 @@ non-normal status continues, starts a fallback, or aborts. Direct cancellation n
 fallback. Cleanup belongs to the phase that created the request and goes through robot capabilities,
 not direct Plant or hardware writes.
 
-### 3.2 Put a continuation outside its time budget
+### 3.2 Admit bounded fresh attempts between iterations
 
-Use `withTimeout(...)` when a parent owns a hard budget around one complete Task or composite. When
-the continuation is valid after every non-throwing terminal outcome of that Task, an autonomous
-routine can keep it after the timed region:
+Use `repeatWhileSuccessful(...)` when one policy wants a bounded series of fresh attempts and can
+decide whether another attempt may start:
 
 ```java
-Task auto = Tasks.sequence(
-        Tasks.withTimeout(preParkWork, 25.0),
-        parkFromCurrentPose
+Task attempts = Tasks.repeatWhileSuccessful(
+        "adaptiveCollection.attempts",
+        MAX_ATTEMPTS,
+        clock -> clock.nowSec() < LATEST_NEW_ATTEMPT_SEC
+                && (latestAttempt == null || latestAttemptPermitsAnother()),
+        this::buildFreshAttemptTask
 );
 ```
 
-If `preParkWork` finishes at 18 seconds, the park starts then. If it is still active at 25 seconds,
-the wrapper calls its ordinary active `cancel()` and starts the park only after that cleanup returns
-and the child is terminal. Once the park starts, no timer remains to interrupt or restart it.
-Cancelling the outer sequence (including FTC STOP) does not start the park. This is a bounded
-continuation, not Java `finally`; mandatory physical cleanup belongs in the active Task's
-`cancel()` implementation.
+The admission source is checked once before every proposed child, including the first. If the first
+decision is false, the wrapper completes with `SUCCESS` without invoking the factory. A true
+decision invokes the factory once and starts its fresh child. After that child reports exact
+`SUCCESS`, the wrapper waits for a later `LoopClock.cycle()` before it may check admission for the
+next child. Reaching `MAX_ATTEMPTS` or receiving a false later decision also completes the wrapper
+with `SUCCESS`.
 
-If route status or another domain result can suppress the continuation, keep the same timed A/B
-shape inside a robot-owned policy coordinator instead of relying on bare `sequence(...)` to decide.
-Phoenix does this so interruption, replacement, cancellation, failure, and unknown route endings do
-not start its park.
+Only exact child `SUCCESS` permits another decision. A child ending with `TIMEOUT`, `CANCELLED`, or
+`UNKNOWN` stops the wrapper and becomes its exact outcome; there is no next condition sample or
+factory call. A terminal child reporting `null` or `NOT_DONE`, a null/reused/self child from the
+factory, or a lifecycle callback that throws is a contract failure. The wrapper fails closed and
+does not admit another attempt.
+
+The wrapper invokes at most one factory and starts at most one child in a shared clock cycle. That
+remains true when the parent starts and is first-updated in the same cycle, when a child completes
+inside `start(...)`, and on repeated or reentrant calls. A repeated same-cycle update is a no-op; a
+reentrant lifecycle callback fails closed instead of creating or restarting a child. Active
+cancellation makes the wrapper terminal and cancels only its current start-attempted child;
+cancellation before start, after completion, or while no child is active has no child side effects.
+
+This is a **soft admission gate**. It can refuse a new attempt based on time, inventory, or the
+latest attempt's exact robot-owned status, but it cannot interrupt an attempt that is already
+running. It is deliberately not an arbitrary retry, active-child race, or `finally` facility:
+unsuccessful children are not restarted, and takeover/continuation policy stays explicit in the
+surrounding Task graph.
+
+### 3.3 Put a required continuation outside its hard time budget
+
+Use `withTimeout(...)` when a parent owns a hard budget around one complete Task or composite. A
+bounded Auto normally combines the soft latest-start rule above with a distinct hard takeover:
+
+```java
+Task preParkWork = Tasks.sequence(preload, attempts);
+Task boundedPrePark = Tasks.withTimeout(preParkWork, PARK_TAKEOVER_ELAPSED_SEC);
+
+RouteTask<MyRoute> park = RouteTasks.followBuiltAtStart(
+        "park",
+        routeFollower,
+        parkPaths::buildFromCurrentPose,
+        PARK_ROUTE_TIMEOUT_SEC
+);
+
+Task auto = Tasks.sequence(boundedPrePark, park);
+program.rootTask(auto);
+```
+
+The timeout contains **all** pre-park work, including preload, so its elapsed budget begins with
+the root at FTC START. If that graph finishes early, the sequence starts park immediately. If it is
+still active, the first lifecycle call at or after `PARK_TAKEOVER_ELAPSED_SEC` cancels the active
+pre-park graph and starts park only after cancellation returns and the direct timed child reports
+terminal. Every nested Task is still required to honor the framework rule that active cancellation
+makes it terminal. This is a software guarantee at that cooperative Task boundary, not proof that
+the physical robot will finish parking by the end of the match.
+
+Park is outside the timeout, so the old pre-park cutoff cannot cancel or restart it. The
+`followBuiltAtStart(...)` supplier reads the live pose and builds exactly one park route when that
+Route Task starts; do not wrap it in another `Tasks.buildAtStart(...)` layer.
+
+A direct `sequence(...)` advances to park after every non-throwing, cooperatively settled
+`boundedPrePark` outcome. That includes early completion and timeout takeover, and is appropriate
+only when the robot's declared strategy is to attempt park in every such case. Direct cancellation
+of the outer sequence—including FTC STOP—never starts a later child. A lifecycle or cleanup
+exception propagated by the pre-park graph also fails closed and suppresses park. A custom nested
+Task that silently returns from cancellation while remaining active violates the Task contract; a
+terminal composite cannot prove that hidden descendant state. This is a bounded continuation, not
+Java `finally`; mandatory physical cleanup belongs in the active owner's cancellation behavior or
+persistent capability state.
+
+Keep references to `boundedPrePark`, the repetition Task, the latest attempt's exact status, and the
+park `RouteTask`. The sequence's aggregate `TaskOutcome` is intentionally too coarse to replace the
+attempt exit reason, the timeout wrapper outcome, or the park's exact `RouteStatus`.
+
+If a domain result should suppress the continuation, keep the same timed A/B shape inside a
+robot-owned policy coordinator instead of relying on bare `sequence(...)` to decide. Direct
+cancellation still must not launch fallback.
 
 An outer timeout is intentionally different from operation-owned timeouts. A route-local timeout
 can retain `RouteStatus.TASK_TIMEOUT`; a feedback move can apply its timeout target; a gated output
@@ -598,8 +669,8 @@ implementation class. One public generic leaf remains because it exposes a disti
 * `RunForSecondsTask` – when you want full control over what happens during the time window (custom callbacks each loop).
 
 Even inside a team-specific helper factory, compose child Tasks through `Tasks.*`, such as
-`sequence(...)`, `parallelAll(...)`, `parallelDeadline(...)`, `withTimeout(...)`, or
-`branchOnOutcome(...)`. Implement
+`sequence(...)`, `parallelAll(...)`, `parallelDeadline(...)`, `repeatWhileSuccessful(...)`,
+`withTimeout(...)`, or `branchOnOutcome(...)`. Implement
 `Task` directly only when the behavior genuinely needs a new state machine rather than another
 spelling of existing composition.
 
@@ -685,6 +756,15 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
     * Task instances are single-use, including sequences and parallel groups.
     * Save a macro method, `Supplier<Task>`, or `OutputTaskFactory` and ask it for a fresh task each
       time instead.
+    * For bounded successful repetition, pass that fresh factory to
+      `Tasks.repeatWhileSuccessful(...)`; do not return the same Task identity twice.
+
+* **Do not confuse admission time with takeover time.**
+
+    * A `repeatWhileSuccessful(...)` condition can prevent another child from starting, but it
+      cannot cancel the child already running.
+    * Put all work that must yield by a hard cutoff inside `withTimeout(...)`, then put a required
+      continuation after that wrapper in the outer sequence.
 
 * **Give every runner exactly one lifecycle owner.**
 
@@ -717,8 +797,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
   `cancelAndClear()` is the total-abort operation and lifecycle failures clear owned work before
   they are rethrown.
 * **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`,
-  `parallelDeadline`, `withTimeout`, `noop`, ...) are the main building blocks you should reach for
-  first.
+  `parallelDeadline`, `repeatWhileSuccessful`, `withTimeout`, `noop`, ...) are the main building
+  blocks you should reach for first.
 * **`ScalarTasks.set(target, value)`** is the direct deferred-write path when the request itself is
   numeric: build it directly, add a timed branch, or add a feedback-aware branch.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement

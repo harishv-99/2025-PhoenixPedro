@@ -216,6 +216,112 @@ return ran. Present `Status.exitReason()`, `collectionRouteStatus()`, and
 `returnRouteStatus()` when strategy needs that truth; never replace them with the adapter's latest
 route status after a newer route starts.
 
+## Bound repeated attempts and reserve park takeover
+
+One `AdaptiveCollectionAttempt` deliberately does not own repetition, match time, or parking. An
+Auto owner can compose fresh attempts with two separate gates:
+
+1. a **soft admission gate** that declines to start another attempt after a conservative latest
+   start time; and
+2. a **hard takeover** that cancels whichever pre-park phase is active at the reserved park cutoff.
+
+The compiling
+[`AdaptiveCollectionBoundedAutoScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcphoenix/robots/examples/pedro/adaptive/AdaptiveCollectionBoundedAutoScenarioTest.java>)
+is the hardware-neutral integration proof for this complete graph; it is not an FTC robot template.
+
+The soft gate alone is not sufficient: it is sampled only between attempts, so an admitted attempt
+may still run past the latest-start threshold. Conversely, the hard cutoff should not decide
+whether a completed attempt's exact status makes another one sensible. Keep both decisions visible:
+
+```java
+private AdaptiveCollectionAttempt latestAttempt;
+private Task attempts;
+private Task boundedPrePark;
+private RouteTask<PathChain> park;
+
+private Task buildFreshAttemptTask() {
+    latestAttempt = new AdaptiveCollectionAttempt(
+            vision,
+            paths,
+            inventoryFull,
+            intake,
+            attemptConfig
+    );
+    return latestAttempt.task();
+}
+
+private boolean latestAttemptPermitsAnother() {
+    AdaptiveCollectionAttempt.Status status = latestAttempt.status();
+    AdaptiveCollectionAttempt.ExitReason exit = status.exitReason();
+    boolean intentionalCollectionExit =
+            exit == AdaptiveCollectionAttempt.ExitReason.ROUTE_COMPLETED
+            || exit == AdaptiveCollectionAttempt.ExitReason.NEAR_END
+            || exit == AdaptiveCollectionAttempt.ExitReason.INVENTORY_FULL_AFTER_SAFE;
+    return status.complete()
+            && intentionalCollectionExit
+            && status.returnRouteStatus() == RouteStatus.COMPLETED;
+}
+
+// Inside configure(program), after declaring the robot owners used above:
+attempts = Tasks.repeatWhileSuccessful(
+        "adaptiveCollection.attempts",
+        MAX_ATTEMPTS,
+        clock -> clock.nowSec() < LATEST_NEW_ATTEMPT_SEC
+                && (latestAttempt == null || latestAttemptPermitsAnother()),
+        this::buildFreshAttemptTask
+);
+
+Task preParkWork = Tasks.sequence(preload, attempts);
+boundedPrePark = Tasks.withTimeout(preParkWork, PARK_TAKEOVER_ELAPSED_SEC);
+
+park = RouteTasks.followBuiltAtStart(
+        "adaptiveCollection.park",
+        routeFollower,
+        this::buildParkFromCurrentPose,
+        PARK_ROUTE_TIMEOUT_SEC
+);
+
+program.rootTask(Tasks.sequence(boundedPrePark, park));
+```
+
+`MAX_ATTEMPTS` is the hard count bound. `LATEST_NEW_ATTEMPT_SEC` is deliberately earlier than
+`PARK_TAKEOVER_ELAPSED_SEC`; it may prevent the first attempt too when preload consumed the safe
+window. `repeatWhileSuccessful(...)` checks that rule before every proposed child and constructs a
+fresh `AdaptiveCollectionAttempt` only after admission. It repeats only after the child reports
+exact `TaskOutcome.SUCCESS`. Because the attempt's aggregate success is intentionally broader than
+its route history, `latestAttemptPermitsAnother()` also requires one of the three intentional
+collection exits and an exact completed return route. A timeout, cancellation, unknown Task
+outcome, abnormal collection exit, or incomplete return cannot create another attempt.
+
+The hard timeout wraps **all** pre-park work, including preload, and begins when that first root
+child starts at FTC START. If pre-park work settles early, the outer sequence starts park
+immediately. Otherwise, on the first managed lifecycle call at or after
+`PARK_TAKEOVER_ELAPSED_SEC`, `withTimeout(...)` cooperatively cancels the active preload or exact
+attempt graph. Park starts exactly once only after that cancellation returns and the direct timed
+child reports terminal. Every nested Task must still honor the framework rule that active
+cancellation makes it terminal. This is a software boundary guarantee; route duration, drivetrain
+behavior, and physical completion before the 30-second match end still require adopting-robot
+validation.
+
+Park is outside the timeout. Once it starts, the expired pre-park budget cannot cancel or restart
+it. `followBuiltAtStart(...)` invokes `buildParkFromCurrentPose()` exactly once after pre-park
+cleanup, so that method reads the then-current pose and builds one route. Do not add a surrounding
+`Tasks.buildAtStart(...)`; the typed route factory already owns that boundary.
+
+The direct outer `sequence(...)` means "attempt park after every non-throwing, cooperatively settled
+pre-park result." It therefore advances after an early finish, a hard timeout, or another valid
+terminal pre-park outcome. Before park starts, direct cancellation of the outer root, FTC STOP, a
+lifecycle exception, or a cleanup exception propagated by the pre-park graph suppresses park. A
+custom nested Task that silently returns from cancellation while remaining active violates the Task
+contract; a terminal composite cannot prove that hidden descendant state. This continuation is not
+Java `finally`, and Phoenix does not add a general race, retry, or finally API for it.
+
+Retain the objects shown above for diagnostics. `latestAttempt.status()` keeps the collection exit
+and both exact route statuses; `boundedPrePark.getOutcome()` keeps the enclosing result, and its
+debug snapshot records whether the hard timeout fired; `park.getRouteStatus()` retains the exact
+park execution. The final sequence outcome is intentionally a coarse scheduling summary and must
+not replace those facts.
+
 ## What software tests cannot establish
 
 The hardware-free tests prove copying, frame timestamp gates, exact and interpolated history
@@ -228,11 +334,13 @@ cleanup, outcome retention, and conditional return. They do not establish:
 - estimator accuracy, camera/loop time synchronization, or floor-projection accuracy;
 - collision-free paths or correct callback placement;
 - sensor timing, pickup reliability, cycle time, or match benefit; or
-- physical drivetrain, intake, and camera cleanup on STOP.
+- physical drivetrain, intake, and camera cleanup on STOP; or
+- whether the selected takeover time and park route can physically finish before match end.
 
 Validate those facts on the adopting robot with conservative motion, clear space, and an operator
-ready to stop it. Repetition, attempt-count/match-time limits, recovery, and parking remain outer
-Auto strategy rather than hidden behavior in this one-attempt example.
+ready to stop it. The outer Task graph above makes repetition, match-time bounds, and park takeover
+explicit; their values and physical success remain adopting-robot strategy rather than hidden
+behavior in this one-attempt owner.
 
 ## Related reading
 

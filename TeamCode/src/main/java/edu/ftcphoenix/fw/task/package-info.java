@@ -8,6 +8,9 @@
  * intentional direct-update exception. {@link
  * edu.ftcphoenix.fw.task.TaskRunner} owns sequential execution and fails closed when task lifecycle
  * code throws; {@link edu.ftcphoenix.fw.task.OutputTaskRunner} adds source-driven scalar output and
- * returns to its idle output after abort or failure.</p>
+ * returns to its idle output after abort or failure. Factory-backed bounded repetition is exposed
+ * only through {@link edu.ftcphoenix.fw.task.Tasks#repeatWhileSuccessful(String, int,
+ * edu.ftcphoenix.fw.core.source.BooleanSource, java.util.function.Supplier)} so every admitted
+ * iteration receives a fresh single-use child.</p>
  */
 package edu.ftcphoenix.fw.task;

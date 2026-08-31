@@ -26,7 +26,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>A Task instance may enter {@link #start(LoopClock)} once. Framework Tasks throw an actionable
  * {@link IllegalStateException} if the same instance is started again, whether it is still active
  * or already complete. Build a fresh Task for repeated behavior using the relevant builder or
- * macro method, a {@code Supplier<Task>}, or an {@link OutputTaskFactory}.</p>
+ * macro method, a {@code Supplier<Task>}, an {@link OutputTaskFactory}, or bounded
+ * {@link Tasks#repeatWhileSuccessful(String, int,
+ * edu.ftcphoenix.fw.core.source.BooleanSource, java.util.function.Supplier)} composition.</p>
  *
  * <p>A runner may call {@code start(clock)} and the first {@code update(clock)} in the same loop
  * cycle. In that case {@link LoopClock#dtSec()} describes the loop interval before the task
