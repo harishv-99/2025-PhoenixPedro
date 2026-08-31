@@ -1,5 +1,7 @@
 # Testing and calibration
 
+**Learning mode:** Router
+
 Calibrate one physical fact at a time. Keep the robot clear of people, begin with conservative
 commands, know how to stop the OpMode, and do not treat a successful build as proof of safe motion.
 

@@ -1,5 +1,10 @@
 # From requirement to robot
 
+**Learning mode:** Architecture reference
+
+Use this page to assign requirements to owners, then
+follow a linked buildable module to author the selected slice.
+
 **Question:** When the team identifies a robot need, which code owner should change?
 
 **Reading time:** about 9 minutes

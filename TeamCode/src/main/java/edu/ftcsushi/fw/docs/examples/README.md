@@ -1,5 +1,7 @@
 # Examples
 
+**Learning mode:** Router
+
 Start with [Sushi in one picture](<../getting-started/Framework Overview.md>) for the continuous
 Starter execution trace, then [set up and verify the project](<../getting-started/Build and Run.md>).
 To make a first tested change, use

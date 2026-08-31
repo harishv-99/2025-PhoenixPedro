@@ -1,5 +1,7 @@
 # Framework components through examples
 
+**Learning mode:** Architecture reference
+
 This is a season-spanning lookup, not a second learning path. Start with
 [Sushi in one picture](<../getting-started/Framework Overview.md>) for the complete Starter
 execution story, then [choose a Sushi topic](<../getting-started/Beginner's Guide.md>) when one
@@ -82,7 +84,7 @@ program.presenter((clock, telemetry) -> presentLift(telemetry, lift.status()));
 
 - `RobotProgram.output(...)`: transfers an output owner into managed lifecycle order.
 - `RobotProgram.callbackBindings()`: supplies synchronous TeleOp callback registration.
-- Capability Task factories such as `moveToHeight(...)`: create fresh single-use Auto behavior.
+- Capability Task factories such as `moveTo(Height)`: create fresh single-use Auto behavior.
 - `RobotProgram.presenter(...)`: adds read-only status to the shared telemetry frame.
 
 ## What stays advanced

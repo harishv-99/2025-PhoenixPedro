@@ -1,5 +1,10 @@
 # Controls and intent
 
+**Learning mode:** Architecture reference
+
+This page explains controls ownership and APIs. The
+Starter buildable module supplies the complete controls file and focused test.
+
 **Question:** How does a human action become robot intent without putting gamepad policy inside a
 mechanism?
 

@@ -1,5 +1,7 @@
 # Control Tuning Workflow
 
+**Learning mode:** Architecture reference
+
 Live control tuning while hardware moves is an experiment, not ordinary robot operation.
 Sushi therefore gives velocity and position tuning one framework-owned workflow:
 
@@ -17,49 +19,104 @@ factory. It does not repeat a motor name, controller type, gain schema, target o
 
 ## Choose the workflow that matches production
 
+## Files you will create
+
+- `ReferencePanelsTuningOpMode.java` — one disabled, exclusive Panels host for the tuning workflow.
+
+The maintained Reference launcher already supplies
+`ReferenceLauncherMechanism.createFlywheelPlantForTuning(...)`. Your own mechanism should expose the
+same narrowly named advanced seam and build its production and tuning Plants through one private
+canonical recipe. Do not share a live Plant between the match and tuner.
+
 ### Critical code
 
-The mechanism-owned fresh-Plant and reference-task factories are project-specific.
+This is the complete decision made by the Reference tuning host:
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferencePanelsTuningOpMode.java -->
 ```java
-// ...inside a robot-specific tester factory...
-// Velocity: FTC device-managed or Sushi standard software control.
+// docs: Copy the reviewed profile once; the factory snapshots it again for each fresh Plant.
+ReferenceLauncherMechanism.Config launcher = ReferenceProfile.current().launcher;
+// docs: This range is permission for typed targets, not an automatic sweep.
 return FtcPanelsTuners.velocityControl(
-        "Flywheel velocity control",
-        ScalarRange.bounded(config.minimumTestVelocity,
-                            config.maximumTestVelocity),
-        hardwareMap -> Shooter.createVelocityPlantForTuning(hardwareMap, config));
-
-// Position: already referenced, statically mapped, or assume-current capable.
-return FtcPanelsTuners.positionControl(
-        "Arm position control",
-        ScalarRange.bounded(config.minimumTestAngleRad,
-                            config.maximumTestAngleRad),
-        hardwareMap -> Arm.createPositionPlantForTuning(hardwareMap, config));
-
-// Position that needs a home/index search. A fresh Task is built for each attempt.
-return FtcPanelsTuners.positionControl(
-        "Lift position control",
-        ScalarRange.bounded(config.minimumTestHeightIn,
-                            config.maximumTestHeightIn),
-        hardwareMap -> Lift.createPositionPlantForTuning(hardwareMap, config),
-        (hardwareMap, plant) -> Lift.createReferenceTask(hardwareMap, plant, config));
+        "Reference Flywheel Velocity Control",
+        ScalarRange.bounded(0.0, launcher.maximumVelocityTicksPerSec),
+        // docs: The workflow becomes the returned Plant's only heartbeat and stop owner.
+        hardwareMap -> ReferenceLauncherMechanism.createFlywheelPlantForTuning(
+                hardwareMap,
+                launcher));
 ```
 
 **What to notice**
 
 - Robot code supplies a finite experiment envelope and a factory for a fresh Plant from the production recipe.
 - The completed Plant selects the controller topology; the tuning entry does not repeat controller or motor details.
-- A mechanism that needs homing supplies a factory for a fresh single-use reference `Task` on every attempt.
+- A position mechanism that needs homing uses the `positionControl(...)` overload with a factory for
+  a fresh single-use reference `Task` on every attempt.
 
 **Key APIs**
 
 - `FtcPanelsTuners.velocityControl(...)` — creates the supported velocity-controller experiment.
 - `FtcPanelsTuners.positionControl(...)` — creates referenced or reference-task-assisted position experiments.
 - `ScalarRange.bounded(...)` — limits operator-entered physical targets for the session.
+
+## Complete working slice
+
+The class stays `@Disabled` until a team reviews its hardware names, directions, target range, and
+STOP plan. Remove `@Disabled` only for the controlled tuning session.
+
+<details>
+<summary><code>ReferencePanelsTuningOpMode.java</code></summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferencePanelsTuningOpMode.java -->
+```java
+package edu.ftcsushi.robots.examples.reference.opmode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+
+import edu.ftcsushi.fw.actuation.ScalarRange;
+import edu.ftcsushi.fw.integrations.panels.FtcPanelsTeleOpTesterOpMode;
+import edu.ftcsushi.fw.integrations.panels.FtcPanelsTuners;
+import edu.ftcsushi.fw.tools.tester.TeleOpTester;
+import edu.ftcsushi.robots.examples.reference.capability.launcher.ReferenceLauncherMechanism;
+import edu.ftcsushi.robots.examples.reference.robot.ReferenceProfile;
+
+/** Disabled Panels host for learning the exclusive control-tuning workflow safely. */
+@TeleOp(name = "FW Reference: Tuning (Panels)", group = "FW Examples")
+@Disabled
+public final class ReferencePanelsTuningOpMode extends FtcPanelsTeleOpTesterOpMode {
+
+    /** Requires exactly one Panels client so one operator owns every tuning decision. */
+    public ReferencePanelsTuningOpMode() {
+        super(InputSource.PANELS, PanelsClientRequirement.EXACTLY_ONE);
+    }
+
+    /** Creates one tuner that owns a fresh Plant from the production flywheel recipe. */
+    @Override
+    protected TeleOpTester createTester() {
+        ReferenceLauncherMechanism.Config launcher = ReferenceProfile.current().launcher;
+        return FtcPanelsTuners.velocityControl(
+                "Reference Flywheel Velocity Control",
+                ScalarRange.bounded(0.0, launcher.maximumVelocityTicksPerSec),
+                hardwareMap -> ReferenceLauncherMechanism.createFlywheelPlantForTuning(
+                        hardwareMap,
+                        launcher));
+    }
+}
+```
+
+</details>
+
+## Verify the slice
+
+Compile the exact file before enabling hardware motion:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac
+```
+
+The checkpoint is `BUILD SUCCESSFUL`; it proves the host and API signatures compile, not that the
+flywheel wiring, direction, range, gains, or motion are safe.
 
 Both standard software control and FTC device-managed control use these same robot-facing
 factories. The completed Plant decides which exact fields Panels shows:
@@ -329,16 +386,8 @@ Sort them by strictly increasing distance, then declare the table directly:
 
 Replace these demonstration rows with accepted experiment evidence.
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-// ...inside checked-in robot configuration...
-InterpolatingTable1D velocityByRange = InterpolatingTable1D.ofSortedPairs(
-        24.0, 3500.0,
-        30.0, 3600.0,
-        36.0, 3700.0);
-```
+In checked-in robot configuration, construct the accepted table with
+`InterpolatingTable1D.ofSortedPairs(24.0, 3500.0, 30.0, 3600.0, 36.0, 3700.0)`.
 
 **What to notice**
 

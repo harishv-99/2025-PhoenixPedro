@@ -1,11 +1,16 @@
 # Field-relative Drive
 
+**Learning mode:** Architecture reference
+
 **Source entry:** [`FieldRelativeDriveExample.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.java>)
 
 Study this after the robot-relative [`StarterTeleOp`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>).
 The example keeps the ordinary managed lifecycle: the OpMode only configures a `RobotProgram`, the
 heading estimator is an upstream service, and the final drivetrain still consumes a robot-centric
 `DriveSignal`.
+
+**Buildable promise:** copy the complete files in the collapsed working slice after copying the
+Starter. The slice replaces only the host, profile, prestart, controls, and composition root.
 
 ## What “up” means
 
@@ -47,19 +52,14 @@ magnetic north or the SDK's power-on zero as FTC field +X.
 
 Full localization uses the same drive source directly:
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleControls.java -->
 ```java
-HeadingEstimator heading = fusedAbsolutePoseEstimator;
-
-DriveSource drive = new GamepadDriveSource(
+drive = new GamepadDriveSource(
         driver.leftX(),
         driver.leftY(),
         driver.rightX(),
-        GamepadDriveSource.Config.defaults()
+        config
 ).fieldRelativeTo(heading, prestart::frozenControlUpFieldHeadingRad);
-// ...declare this DriveSource with the robot's one final DriveCommandSink...
 ```
 
 **What to notice**
@@ -82,20 +82,9 @@ DriveSource drive = new GamepadDriveSource(
 
 ### Critical code
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-DriveSignal signal = drive.get(clock);
-HeadingEstimate estimate = heading.getHeadingEstimate();
-if (!estimate.hasHeading) {
-    assertEquals(0.0, signal.axial, 0.0);
-    assertEquals(0.0, signal.lateral, 0.0);
-    // finite manual rotation remains available
-    assertEquals(driverOmega, signal.omega, 0.0);
-}
-// ...there is no silent robot-relative translation fallback...
-```
+The focused loss tests sample the declared `DriveSource`, supply unavailable heading evidence, and
+assert axial/lateral zero while preserving finite manual omega. The complete controls file below is
+the production code; the assertion belongs in the focused test rather than in the robot class.
 
 **What to notice**
 
@@ -116,5 +105,93 @@ available. There is no silent switch to robot-relative translation.
 The station-authored direction stays fixed for the match. This baseline deliberately omits runtime
 re-zero and restore state: changing driver meaning mid-match is robot policy, not required
 field-relative conversion.
+
+## Files you will create
+
+Create `FieldRelativeDriveExample`, `FieldRelativeExampleProfile`, `FieldRelativeExamplePrestart`,
+`FieldRelativeExampleControls`, and `FieldRelativeExampleRobot` in the packages shown by the
+maintained example. These two complete files show the FTC entry and the only field-relative intent
+conversion; the profile, prestart, and root supply the reviewed station facts and lifecycle owners
+described above.
+
+## Complete working slice
+
+<details>
+<summary>Complete working slice: FTC host</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.java -->
+```java
+package edu.ftcsushi.robots.examples.fieldrelative.opmode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+
+import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
+import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.robots.examples.fieldrelative.robot.FieldRelativeExampleProfile;
+import edu.ftcsushi.robots.examples.fieldrelative.robot.FieldRelativeExampleRobot;
+
+/** Managed example of explicit station-relative TeleOp drive using the Hub IMU. */
+@TeleOp(name = "FW Example: Field-relative drive", group = "FW Examples")
+@Disabled
+public final class FieldRelativeDriveExample extends FtcRobotOpMode {
+    @Override
+    protected void configure(RobotProgram program) {
+        new FieldRelativeExampleRobot(hardwareMap).declareTeleOp(
+                program, FieldRelativeExampleProfile.current(), gamepad1);
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Complete working slice: controls owner</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleControls.java -->
+```java
+package edu.ftcsushi.robots.examples.fieldrelative.robot;
+
+import edu.ftcsushi.fw.drive.DriveSource;
+import edu.ftcsushi.fw.drive.source.GamepadDriveSource;
+import edu.ftcsushi.fw.ftc.input.GamepadDevice;
+import edu.ftcsushi.fw.localization.HeadingEstimator;
+
+/** Owns the field-relative example's driver meanings. */
+final class FieldRelativeExampleControls {
+    private final DriveSource drive;
+
+    FieldRelativeExampleControls(GamepadDevice driver,
+                                 HeadingEstimator heading,
+                                 FieldRelativeExamplePrestart prestart,
+                                 GamepadDriveSource.Config config) {
+        drive = new GamepadDriveSource(
+                driver.leftX(),
+                driver.leftY(),
+                driver.rightX(),
+                config
+        ).fieldRelativeTo(heading, prestart::frozenControlUpFieldHeadingRad);
+    }
+
+    DriveSource drive() {
+        return drive;
+    }
+}
+```
+
+</details>
+
+## Verify the slice
+
+Run:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
+  :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.fieldrelative.*
+```
+
+Expected checkpoint: compilation and the field-relative focused tests pass. Translation still
+fails closed when heading evidence is unavailable; no software check proves Hub orientation or
+physical drive direction.
 
 [Back to examples](<README.md>)

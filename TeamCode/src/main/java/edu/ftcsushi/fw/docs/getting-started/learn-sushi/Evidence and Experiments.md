@@ -1,5 +1,10 @@
 # Evidence and experiments
 
+**Learning mode:** Architecture reference
+
+This page explains what each evidence level proves;
+the linked scenario and experiment modules contain the code-authoring work.
+
 **Question:** What does a boolean, status row, or experiment result actually prove?
 
 **Reading time:** about 8 minutes

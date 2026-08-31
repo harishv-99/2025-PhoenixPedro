@@ -1,5 +1,10 @@
 # Your first mechanism
 
+**Learning mode:** Router
+
+This compatibility URL directs you to the current mechanism lesson or
+physical runbook.
+
 This URL is retained for existing bookmarks. The earlier supervised hardware build-along is no
 longer the primary Sushi learning route. Choose the destination that matches what you are doing.
 

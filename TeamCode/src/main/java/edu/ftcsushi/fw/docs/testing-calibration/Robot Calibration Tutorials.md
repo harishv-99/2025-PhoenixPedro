@@ -1,5 +1,7 @@
 # Robot calibration tutorials
 
+**Learning mode:** Operational runbook
+
 This is the framework's start-to-finish path for the calibration steps most FTC robots need before
 mechanisms, localization, and driver assists are trustworthy.
 

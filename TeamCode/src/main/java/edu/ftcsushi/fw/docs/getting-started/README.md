@@ -1,5 +1,9 @@
 # Getting started
 
+**Learning mode:** Router
+
+This page chooses a lesson; it is not itself a code-authoring module.
+
 Sushi has one ordinary robot-programming path:
 
 1. extend `FtcRobotOpMode`;

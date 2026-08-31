@@ -61,7 +61,9 @@ public final class DocumentationLinksTest {
 
         Pattern javaFence = Pattern.compile("(?m)^```java\\s*$");
         Pattern markedFence = Pattern.compile(
-                "(?m)^<!-- (source-excerpt: ([^>]+)|teaching-shape) -->\\r?\\n"
+                "(?m)^<!-- (?:(source-excerpt|annotated-source-excerpt|source-file|"
+                        + "annotated-source-file): "
+                        + "([^>]+)|(teaching-shape)) -->\\r?\\n"
                         + "```java\\r?\\n([\\s\\S]*?)\\r?\\n```");
         List<String> failures = new ArrayList<String>();
         for (Path page : learningPages) {
@@ -71,9 +73,10 @@ public final class DocumentationLinksTest {
             int markedCount = 0;
             while (marked.find()) {
                 markedCount++;
-                String snippet = marked.group(3);
+                String marker = marked.group(1);
                 String sourcePath = marked.group(2);
-                if (sourcePath == null) {
+                String snippet = marked.group(4);
+                if (marked.group(3) != null) {
                     int contextStart = Math.max(0, marked.start() - 240);
                     String context = markdown.substring(contextStart, marked.start());
                     if (!context.contains("Abbreviated shape (omissions shown):")) {
@@ -96,12 +99,25 @@ public final class DocumentationLinksTest {
                             + ": invalid source excerpt path " + sourcePath.trim());
                     continue;
                 }
-                String normalizedSnippet = normalizeExcerpt(snippet);
-                String normalizedSource = normalizeExcerpt(readUtf8(source));
-                if (normalizedSnippet.isEmpty()
-                        || !normalizedSource.contains(normalizedSnippet)) {
+                if (marker.startsWith("annotated-")) {
+                    snippet = stripDocumentationAnnotations(
+                            repositoryRoot, page, snippet, failures);
+                } else if (snippet.contains("// docs:")) {
                     failures.add(repositoryRelativePath(repositoryRoot, page)
-                            + ": excerpt does not occur contiguously in "
+                            + ": // docs: comments require annotated-source-excerpt");
+                }
+                String normalizedSnippet = normalizeExcerpt(snippet);
+                String sourceText = readUtf8(source);
+                String normalizedSource = normalizeExcerpt(sourceText);
+                boolean wholeFile = marker.endsWith("source-file");
+                boolean matches = wholeFile
+                        ? normalizedSource.equals(normalizedSnippet)
+                        : containsDedentedBlock(sourceText, normalizedSnippet);
+                if (normalizedSnippet.isEmpty() || !matches) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + (wholeFile
+                            ? ": complete file does not match "
+                            : ": excerpt does not occur contiguously in ")
                             + sourcePath.trim());
                 }
             }
@@ -159,6 +175,90 @@ public final class DocumentationLinksTest {
             }
         }
         assertTrue("Student learning block failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void studentLearningPagesDeclareAndHonorTheirLearningMode() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        Path docsRoot = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/fw/docs");
+        List<Path> pages = new ArrayList<Path>();
+        collectMarkdownFiles(docsRoot.resolve("getting-started"), pages);
+        collectMarkdownFiles(docsRoot.resolve("examples"), pages);
+        collectMarkdownFiles(docsRoot.resolve("testing-calibration"), pages);
+        Pattern modePattern = Pattern.compile(
+                "(?m)^\\*\\*Learning mode:\\*\\* (Buildable implementation|"
+                        + "Operational runbook|Architecture reference|Router)\\s*$");
+        List<String> failures = new ArrayList<String>();
+        for (Path page : pages) {
+            String markdown = readUtf8(page);
+            Matcher modes = modePattern.matcher(markdown);
+            if (!modes.find()) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": missing supported Learning mode");
+                continue;
+            }
+            String mode = modes.group(1);
+            if (modes.find()) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": declares more than one Learning mode");
+            }
+            if (!"Buildable implementation".equals(mode)) {
+                continue;
+            }
+            requireText(repositoryRoot, page, markdown,
+                    "### Critical code", "Critical code", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "**What to notice**", "What to notice", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "**Key APIs", "Key APIs", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "## Files you will create", "Files you will create", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "## Complete working slice", "Complete working slice", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "## Verify the slice", "Verify the slice", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "<details>", "collapsed complete files", failures);
+            Matcher manifest = Pattern.compile("<!-- buildable-files: ([^>]+) -->")
+                    .matcher(markdown);
+            if (!manifest.find()) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": buildable page lacks a buildable-files manifest");
+            } else {
+                Set<String> declaredFiles = new LinkedHashSet<String>(
+                        Arrays.asList(manifest.group(1).trim().split("\\s*\\|\\s*")));
+                Set<String> completeFiles = new LinkedHashSet<String>();
+                Matcher complete = Pattern.compile(
+                        "<!-- (?:annotated-)?source-file: ([^>]+) -->")
+                        .matcher(markdown);
+                while (complete.find()) {
+                    completeFiles.add(complete.group(1).trim());
+                    int openDetails = markdown.lastIndexOf("<details>", complete.start());
+                    int closeDetails = markdown.lastIndexOf("</details>", complete.start());
+                    if (openDetails < 0 || closeDetails > openDetails) {
+                        failures.add(repositoryRelativePath(repositoryRoot, page)
+                                + ": complete source file is not inside collapsed details: "
+                                + complete.group(1).trim());
+                    }
+                }
+                if (!declaredFiles.equals(completeFiles)) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + ": buildable-files manifest " + declaredFiles
+                            + " does not equal complete source files " + completeFiles);
+                }
+            }
+            if (markdown.contains("<!-- teaching-shape -->")) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": buildable page contains teaching-shape pseudocode");
+            }
+            if (!markdown.contains("gradlew.bat")) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": buildable page lacks an exact Gradle verification command");
+            }
+        }
+        assertTrue("Student learning-mode failures: " + failures, failures.isEmpty());
     }
 
     @Test
@@ -583,8 +683,10 @@ public final class DocumentationLinksTest {
         assertTrue("First robot-code lesson is missing", Files.isRegularFile(firstRobotCode));
         assertTrue("First robot-code lesson exceeds 1,200 prose words",
                 proseWordCount(firstRobotCode) <= 1200);
-        assertTrue("First robot-code lesson exceeds five Java excerpts",
-                javaFenceCount(firstRobotCode) <= 5);
+        // Two collapsed, complete files make the lesson reproducible; four short excerpts orient
+        // the student to the surrounding owners without adding to the initially displayed code.
+        assertTrue("First robot-code lesson exceeds six Java excerpts",
+                javaFenceCount(firstRobotCode) <= 6);
         assertTrue("First robot-code lesson exceeds 35 displayed Java lines",
                 displayedJavaLineCount(firstRobotCode) <= 35);
         String firstRobotCodeText = readUtf8(firstRobotCode);
@@ -638,8 +740,9 @@ public final class DocumentationLinksTest {
                 "From Requirement to Robot.md")) {
             topicWords += proseWordCount(topics.resolve(topic));
         }
-        assertTrue("Six Sushi topic pages exceed 4,600 prose words: " + topicWords,
-                topicWords <= 4600);
+        // Learning-mode orientation makes each topic's intended use explicit without adding code.
+        assertTrue("Six Sushi topic pages exceed 4,800 prose words: " + topicWords,
+                topicWords <= 4800);
         assertTrue("Role Paths exceeds 500 prose words",
                 proseWordCount(topics.resolve("Role Paths.md")) <= 500);
     }
@@ -793,6 +896,18 @@ public final class DocumentationLinksTest {
         return count;
     }
 
+    private static void requireText(Path repositoryRoot,
+                                    Path page,
+                                    String markdown,
+                                    String required,
+                                    String description,
+                                    List<String> failures) {
+        if (!markdown.contains(required)) {
+            failures.add(repositoryRelativePath(repositoryRoot, page)
+                    + ": missing " + description);
+        }
+    }
+
     private static String normalizeExcerpt(String text) {
         String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
         int first = 0;
@@ -803,14 +918,78 @@ public final class DocumentationLinksTest {
         while (last > first && lines[last - 1].trim().isEmpty()) {
             last--;
         }
+        int commonIndent = Integer.MAX_VALUE;
+        for (int index = first; index < last; index++) {
+            if (!lines[index].trim().isEmpty()) {
+                commonIndent = Math.min(commonIndent, leadingSpaces(lines[index]));
+            }
+        }
+        if (commonIndent == Integer.MAX_VALUE) {
+            commonIndent = 0;
+        }
         StringBuilder normalized = new StringBuilder();
         for (int index = first; index < last; index++) {
             if (normalized.length() > 0) {
                 normalized.append('\n');
             }
-            normalized.append(lines[index].trim());
+            String line = lines[index];
+            int remove = Math.min(commonIndent, leadingSpaces(line));
+            normalized.append(line.substring(remove));
         }
         return normalized.toString();
+    }
+
+    private static int leadingSpaces(String line) {
+        int count = 0;
+        while (count < line.length() && line.charAt(count) == ' ') {
+            count++;
+        }
+        return count;
+    }
+
+    private static boolean containsDedentedBlock(String source, String normalizedSnippet) {
+        if (normalizedSnippet.isEmpty()) {
+            return false;
+        }
+        String[] sourceLines = source.replace("\r\n", "\n").replace('\r', '\n')
+                .split("\n", -1);
+        int snippetLineCount = normalizedSnippet.split("\n", -1).length;
+        for (int start = 0; start + snippetLineCount <= sourceLines.length; start++) {
+            StringBuilder candidate = new StringBuilder();
+            for (int index = 0; index < snippetLineCount; index++) {
+                if (index > 0) {
+                    candidate.append('\n');
+                }
+                candidate.append(sourceLines[start + index]);
+            }
+            if (normalizeExcerpt(candidate.toString()).equals(normalizedSnippet)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String stripDocumentationAnnotations(Path repositoryRoot,
+                                                         Path page,
+                                                         String snippet,
+                                                         List<String> failures) {
+        StringBuilder stripped = new StringBuilder();
+        String[] lines = snippet.replace("\r\n", "\n").replace('\r', '\n')
+                .split("\n", -1);
+        for (String line : lines) {
+            if (line.trim().startsWith("// docs:")) {
+                continue;
+            }
+            if (line.contains("// docs:")) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": // docs: must occupy a standalone comment line");
+            }
+            if (stripped.length() > 0) {
+                stripped.append('\n');
+            }
+            stripped.append(line);
+        }
+        return stripped.toString();
     }
 
     private static Path configuredDocsRoot(Path repositoryRoot, String config) {
@@ -1016,14 +1195,21 @@ public final class DocumentationLinksTest {
 
     private static int displayedJavaLineCount(Path path) throws IOException {
         boolean insideJava = false;
+        int collapsedDetailsDepth = 0;
         int count = 0;
         for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
             String trimmed = line.trim();
+            if (trimmed.equalsIgnoreCase("<details>")) {
+                collapsedDetailsDepth++;
+            } else if (trimmed.equalsIgnoreCase("</details>")
+                    && collapsedDetailsDepth > 0) {
+                collapsedDetailsDepth--;
+            }
             if (!insideJava && trimmed.equals("```java")) {
                 insideJava = true;
             } else if (insideJava && trimmed.equals("```")) {
                 insideJava = false;
-            } else if (insideJava && !trimmed.isEmpty()) {
+            } else if (insideJava && collapsedDetailsDepth == 0 && !trimmed.isEmpty()) {
                 count++;
             }
         }

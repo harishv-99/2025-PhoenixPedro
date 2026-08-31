@@ -1,5 +1,10 @@
 # Build and run Sushi
 
+**Learning mode:** Operational runbook
+
+Complete these checks on the existing project; this page
+does not ask you to author a robot subsystem.
+
 ## Goal
 
 Prove that the project and TeamCode module build before changing robot configuration or enabling

@@ -1,5 +1,10 @@
 # Build a robot step by step
 
+**Learning mode:** Operational runbook
+
+This page coordinates build-season checkpoints and routes
+each coding checkpoint to a buildable module; it is not a standalone source listing.
+
 Use this page as the team's build-season home. It does not require every subsystem to finish before
 the next one starts. Instead, move each subsystem through a small evidence-based slice, integrate it
 as soon as it is accepted, and return here for the next checkpoint.
@@ -135,17 +140,26 @@ bounds under load, or game-piece performance.
 
 ### Critical code
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- annotated-source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
 ```java
-FakeScalarOutput output = new FakeScalarOutput();
-Lift mechanism = new LiftMechanism(Plants.fromOutputs(output));
+StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+config.collectPower = 0.37;
+config.ejectPower = -0.22;
 
-mechanism.setHeight(Height.LOW);
-mechanism.update(clock);
-assertEquals(expectedTarget, output.lastValue(), tolerance);
-// ...
+FtcTestHardware hardware = new FtcTestHardware();
+FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
+StarterIntakeMechanism intake = new StarterIntakeMechanism(hardware, config);
+ManualLoopClock time = new ManualLoopClock();
+
+intake.setMode(StarterIntake.Mode.COLLECT);
+assertEquals(StarterIntake.Mode.COLLECT, intake.status().mode());
+assertEquals(0.0, intake.status().appliedTargetPower(), 0.0);
+// docs: A semantic request is staged; the motor has not been written yet.
+assertEquals(0, motor.powerWrites());
+
+intake.update(time.clock());
+assertEquals(config.collectPower, intake.status().appliedTargetPower(), 0.0);
+assertEquals(config.collectPower, motor.power(), 0.0);
 ```
 
 **What to notice**
@@ -156,8 +170,8 @@ assertEquals(expectedTarget, output.lastValue(), tolerance);
 
 **Key APIs**
 
-- `Plants.fromOutputs(...)` — hardware-neutral Plant construction seam.
-- `LoopClock` — the one cycle/time identity used by the mechanism and Tasks.
+- `FtcTestHardware` — test-only `HardwareMap` whose probes record final device commands.
+- `ManualLoopClock` — explicit control of the one cycle/time identity used by the mechanism.
 
 **Do next:** Begin with [Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>).
 Use [Hardware-free Reference scenarios](<../examples/Hardware-free Reference Scenarios.md>) for

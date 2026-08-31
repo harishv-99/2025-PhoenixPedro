@@ -1,5 +1,10 @@
 # Your first Pedro Auto
 
+**Learning mode:** Architecture reference
+
+This optional module presents the maintained fixed
+route slice, composition, outcome policy, and software verification without claiming robot safety.
+
 ## Goal
 
 Understand the checked-in managed Pedro reference in software: one fixed route, one action after
@@ -20,7 +25,10 @@ test, complete Pedro's official [`tuning`](https://pedropathing.com/docs/pathing
 Pedro's official [`coordinate system`](https://pedropathing.com/docs/pathing/reference/coordinates),
 and complete the adopting robot's calibration guide.
 
-**Files for this lesson:**
+## Files you will create
+
+Copy the six maintained files below into one robot-owned package bubble. Keep the host disabled;
+the software checkpoint compiles and tests this graph without authorizing motion.
 
 - [`BasicPedroProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroProfile.java>) — fresh local
   Pedro and intake configuration plus the false-by-default motion permission;
@@ -116,18 +124,14 @@ known-clear-box composition in [`Drive Guidance`](<../drive-vision/Drive Guidanc
 `BasicPedroAutoRoutine.build(...)` creates the route Task with a diagnostic name and a finite Task
 timeout:
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java -->
 ```java
-// ...
 Task followPracticeRoute = RouteTasks.follow(
         "BasicPracticeRoute",
-        routes,
-        practiceRoute,
+        Objects.requireNonNull(routes, "routes"),
+        Objects.requireNonNull(practiceRoute, "practiceRoute"),
         ROUTE_TIMEOUT_SEC
 );
-// ...
 ```
 
 **What to notice**
@@ -200,16 +204,18 @@ keeps reusable capabilities in its root and Auto strategy in an Auto-owned routi
 `BasicPedroAutoExample` selects one fresh, local profile and gives the complete active
 configuration to the composition root:
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java -->
 ```java
-// ...
-robot = new BasicPedroAutoRobot(
-        program,
-        hardwareMap,
-        BasicPedroProfile.current());
-// ...
+robot = testRobotFactory == null
+        ? new BasicPedroAutoRobot(
+                program,
+                hardwareMap,
+                BasicPedroProfile.current()
+        )
+        : Objects.requireNonNull(
+                testRobotFactory.apply(program),
+                "testRobotFactory.apply(program)"
+        );
 ```
 
 **What to notice**
@@ -219,6 +225,76 @@ robot = new BasicPedroAutoRobot(
 
 **Key APIs:** `RobotProgram` owns the managed lifecycle; `BasicPedroAutoRobot` composes Pedro and the
 mechanism once.
+
+## Complete working slice
+
+<details>
+<summary>Complete working slice: BasicPedroAutoExample.java</summary>
+
+The complete disabled FTC host shows the package, imports, annotations, ordinary construction, and
+test-only seam. The other five complete owners are presented in the linked
+[Pedro autonomous reference](<../examples/Pedro Autonomous Reference.md>).
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java -->
+```java
+package edu.ftcsushi.robots.examples.pedro.opmode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+
+import java.util.Objects;
+import java.util.function.Function;
+
+import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
+import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroAutoRobot;
+import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroProfile;
+
+/**
+ * Disabled, compiling FTC host for the independent basic Pedro Auto reference.
+ *
+ * <p>The adjacent {@link BasicPedroProfile} keeps the example's local software baseline and
+ * false-by-default motion permission visible without borrowing an adopting robot's hardware
+ * configuration or Pedro constants. This generic example demonstrates the complete underlying
+ * {@link FtcRobotOpMode}/{@link RobotProgram} grammar without constructing another robot.</p>
+ */
+@Autonomous(name = "FW Pedro Auto: Basic Reference", group = "Framework Examples")
+@Disabled
+public final class BasicPedroAutoExample extends FtcRobotOpMode {
+
+    private final Function<RobotProgram, BasicPedroAutoRobot> testRobotFactory;
+    private BasicPedroAutoRobot robot;
+
+    /** Creates the disabled Driver Station entry using the independent local example profile. */
+    public BasicPedroAutoExample() {
+        testRobotFactory = null;
+    }
+
+    /** Test-only construction seam; it is deliberately not a public extension API. */
+    BasicPedroAutoExample(
+            Function<RobotProgram, BasicPedroAutoRobot> testRobotFactory
+    ) {
+        this.testRobotFactory = Objects.requireNonNull(testRobotFactory, "testRobotFactory");
+    }
+
+    /** Construct robot-specific owners and declare their managed roles during FTC INIT. */
+    @Override
+    protected void configure(RobotProgram program) {
+        robot = testRobotFactory == null
+                ? new BasicPedroAutoRobot(
+                        program,
+                        hardwareMap,
+                        BasicPedroProfile.current()
+                )
+                : Objects.requireNonNull(
+                        testRobotFactory.apply(program),
+                        "testRobotFactory.apply(program)"
+                );
+    }
+}
+```
+
+</details>
 
 `BasicPedroProfile.current()` returns three fresh authored answers: the complete
 `PedroPathingRuntime.Config` in `pedro`, the example mechanism's Config in `intake`, and
@@ -249,7 +325,7 @@ Follower, Mecanum, path-constraint, field-transform, and intake facts. Keep
 Do not create another runtime factory, import season hardware values, or create a second mechanism
 owner merely to fit the reference.
 
-## 6. Compile while the host remains disabled
+## Verify the slice
 
 Keep the example disabled while adapting configuration and geometry:
 

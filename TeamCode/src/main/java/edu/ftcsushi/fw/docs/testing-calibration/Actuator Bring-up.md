@@ -1,5 +1,7 @@
 # Actuator bring-up: direction and safe endpoints
 
+**Learning mode:** Operational runbook
+
 Use **HW: Actuator Bring-up** before putting a new motor or servo into a mechanism OpMode. It is the
 one ordinary Sushi tool for answering two hardware questions:
 

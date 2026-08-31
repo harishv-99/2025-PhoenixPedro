@@ -1,5 +1,7 @@
 # Guided calibration walkthroughs
 
+**Learning mode:** Architecture reference
+
 The tester framework separates:
 
 - **one canonical generic tool per hardware fact**, such as `HW: Actuator Bring-up`; and
@@ -90,80 +92,32 @@ framework's canonical actuator tool:
 3. optionally, a **robot-specific configured-system verification** when it proves something the raw
    device wizard cannot
 
-## Example
+Do not add a robot-specific wrapper that merely repeats the two generic `StandardTesters` entries.
+A custom walkthrough earns its place only when it adds checked-in robot configuration, truthful
+status, or a robot-specific ordering constraint that the canonical menu cannot express.
 
 ### Critical code
+
+When a robot really has those extra facts, the registration has this shape:
 
 Abbreviated shape (omissions shown):
 
 <!-- teaching-shape -->
 ```java
-public final class ExampleRobotTesters {
-
-    public static void register(TesterSuite suite) {
-        suite.add(
-                "Guide: Example Calibration Walkthrough",
-                "Recommended bring-up order for a fresh robot.",
-                ExampleRobotTesters::createWalkthrough
-        );
-
-        suite.add(
-                "Example: Calibration & Localization",
-                "Robot-configured calibration tools.",
-                ExampleRobotTesters::createCalibrationSuite
-        );
-
-    }
-
-    public static TesterSuite createWalkthrough() {
-        CalibrationWalkthroughBuilder guide = new CalibrationWalkthroughBuilder("Example Calibration Walkthrough");
-
-        guide.addStep(
-                "HW: Actuator Bring-up",
-                "Establish one configured device's direction and optional safe endpoints.",
-                StandardTesters::createActuatorBringUp
-        );
-
-        guide.addStep(
-                "Calib: Camera Mount",
-                "Solve and paste RobotConfig.Vision.cameraMount.",
-                ExampleRobotTesters::cameraMountStatus,
-                ExampleRobotTesters::cameraMountCalibrator
-        );
-
-        guide.addStep(
-                "Calib: Pinpoint Axis Check",
-                "Verify +X forward, +Y left, heading CCW+.",
-                ExampleRobotTesters::pinpointAxesStatus,
-                ExampleRobotTesters::pinpointAxisCheck
-        );
-
-        guide.addStep(
-                "Calib: Pinpoint Pod Offsets",
-                "Estimate and paste Pinpoint pod offsets.",
-                ExampleRobotTesters::pinpointOffsetsStatus,
-                ExampleRobotTesters::pinpointPodOffsets
-        );
-
-        return guide.build();
-    }
-
-    // ...status methods and fresh tester factories...
-}
+// ...inside the robot-specific tester registry...
+CalibrationWalkthroughBuilder guide = new CalibrationWalkthroughBuilder("Robot calibration");
+guide.addStep("Verify robot offsets", RobotCalibration::offsetStatus,
+        RobotCalibration::createOffsetVerifier);
+TesterSuite walkthrough = guide.build();
 ```
 
 **What to notice**
 
-- The walkthrough orders existing tester factories; it does not reimplement their controls or safety behavior.
-- A status supplier is attached only where a durable configuration or human acknowledgement can answer `OK` or `TODO`.
-- Each stored factory produces a fresh tester owner when the student opens that step.
+- The status supplier reports durable evidence; it does not claim completion because a menu opened.
+- The tester factory creates a fresh owner only after the student selects the step.
 
-**Key APIs**
-
-- `TesterSuite.add(...)` — registers the two robot-facing entrypoints.
-- `CalibrationWalkthroughBuilder.addStep(...)` — adds an ordered untracked or status-tracked step.
-- `CalibrationWalkthroughBuilder.build()` — returns the ordinary `TesterSuite` used by the tester host.
-- `StandardTesters.createActuatorBringUp()` — reuses the canonical generic actuator workflow.
+**Key APIs:** `CalibrationWalkthroughBuilder.addStep(...)` adds ordered evidence and a fresh tester
+factory; `build()` produces the ordinary `TesterSuite` used by the host.
 
 ## Where robot-specific status should live
 

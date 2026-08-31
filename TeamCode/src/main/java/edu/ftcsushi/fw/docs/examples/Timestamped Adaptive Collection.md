@@ -1,5 +1,11 @@
 # Timestamped adaptive collection
 
+**Learning mode:** Architecture reference
+
+This page explains how maintained owners cooperate in an advanced graph. It is deliberately not a
+blank-file tutorial: use the verified excerpts to understand the boundaries, then adapt the
+maintained example and its tests as a unit.
+
 **Audience:** teams that already have a managed Pedro robot and need one vision-selected collection
 attempt. Start with the [Pedro autonomous reference](<Pedro Autonomous Reference.md>) if route
 lifecycle and exact route outcomes are new.
