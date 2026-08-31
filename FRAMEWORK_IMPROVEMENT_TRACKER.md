@@ -213,7 +213,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 109 | LOCALIZATION-01 | Optional bounded timestamped pose history | Done | The reviewed shared history/continuity implementation, EXAMPLE-10 migration, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 110 | BRAND-01 | Sushi framework identity and namespace migration | Done | The reviewed Sushi namespace/API/tooling/documentation migration, software evidence, and destination-specific publication authorization are complete. |
 | 111 | BRAND-02 | Isolate the production application from Sushi teaching and shared code | Done | The reviewed one-way application bubble, independent teaching, framework-only documentation site, application-owned tooling, boundary regressions, software evidence, and destination-specific publication authorization are complete. |
-| 112 | DOC-07 | Self-contained student learning pages | Verifying | Put source-truthful critical code, explicit observations, and key APIs beside every substantive student learning concept without turning routers into tutorials or changing robot behavior. |
+| 112 | DOC-07 | Self-contained student learning pages | Done | Put source-truthful critical code, explicit observations, and key APIs beside every substantive student learning concept without turning routers into tutorials or changing robot behavior. |
 | 113 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
@@ -25004,6 +25004,11 @@ implementation.
   `codex/doc-07-self-contained-learning-pages`, push to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, pull-request creation, and merge into
   `master`. This authorization covers DOC-07 only and does not start AUDIT-01 or another item.
+- **Publication result (2026-08-31):** **Done.** Reviewed commit `f18fa09` was pushed on
+  `codex/doc-07-self-contained-learning-pages`; GitHub pull request #122 passed the required Sushi
+  framework and documentation-artifact jobs and merged into `master` as `0ba5392`. The published
+  merge contains the verified DOC-07 documentation and enforcement diff. No subsequent framework
+  item was started.
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 
