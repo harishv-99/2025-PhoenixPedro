@@ -30,22 +30,17 @@ import edu.ftcsushi.fw.localization.MotionPredictor;
 /**
  * Production Pedro Auto runtime with one drivetrain writer and one Pinpoint hardware owner.
  *
- * <p>The following short form documents production Phoenix managed Auto:</p>
+ * <p>An ordinary managed Auto constructs the runtime during configuration, gives it one
+ * robot-owned service heartbeat, and declares one fresh root Task:</p>
  * <pre>{@code
- * PhoenixProfile profile = PhoenixProfile.current();
- * PedroPathingRuntime runtime = PedroPathingRuntime.create(...);
- * robot.declareAuto(
- *         program,
- *         profile,
- *         runtime.driveAdapter(),
- *         runtime.motionPredictor(),
- *         frozenEligibleTagIds,
- *         BooleanSource.constant(true),
- *         BooleanSource.constant(false),
- *         () -&gt; runtime.setStartingPose(frozenPedroStartPose())
- * );
+ * PedroPathingRuntime runtime = PedroPathingRuntime.create(hardwareMap, pedroConfig);
+ * program.service(pedroService(runtime, declaredStartPose));
  * program.rootTask(rootRoutine);
  * }</pre>
+ * <p>Here {@code pedroService(...)} is application code that applies the start pose at START,
+ * updates {@link #motionPredictor()} before {@link #driveAdapter()} each active cycle, and stops
+ * the drive adapter during cleanup. The maintained Basic Pedro example contains that complete
+ * service shape.</p>
  *
  * <p>The runtime-created {@link PinpointOdometryPredictor} is the only object that initializes,
  * polls, resets, or rebases Pinpoint. Pedro receives a passive same-cycle view of its snapshots.

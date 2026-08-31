@@ -1,7 +1,6 @@
 package edu.ftcsushi.robots.phoenix.opmode;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 import java.util.Objects;
 
@@ -24,6 +23,7 @@ import edu.ftcsushi.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcsushi.robots.phoenix.autonomous.pedro.PhoenixPedroAutoContext;
 import edu.ftcsushi.robots.phoenix.autonomous.pedro.PhoenixPedroAutoRoutineFactory;
 import edu.ftcsushi.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
+import edu.ftcsushi.robots.phoenix.pedro.PhoenixPedroConfiguration;
 
 /** Internal one-path declaration of a complete managed Phoenix Pedro autonomous program. */
 final class PhoenixAutoProgram {
@@ -68,7 +68,7 @@ final class PhoenixAutoProgram {
         PhoenixRobot robot = new PhoenixRobot(requiredHost.hardwareMap);
         pedroRuntime = PedroPathingRuntime.create(
                 requiredHost.hardwareMap,
-                Constants.phoenixAutoRuntimeConfig(
+                PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                         profile.localization == null ? null : profile.localization.predictor,
                         profile.drive == null ? null : profile.drive.wiring,
                         profile.drive != null && profile.drive.enableZeroPowerBrake

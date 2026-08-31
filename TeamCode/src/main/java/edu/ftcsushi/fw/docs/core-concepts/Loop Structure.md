@@ -85,7 +85,7 @@ robot's intended realization order.
 
 ## 3. The canonical managed program
 
-The compiling [`StarterTeleOp`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) shows the
+The compiling [`StarterTeleOp`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>) shows the
 ordinary complete host. It overrides one configuration method, not five FTC lifecycle methods:
 
 ```java
@@ -352,28 +352,27 @@ Give such an adapter one stable composition-root heartbeat every Auto loop. If `
 `clock.cycle()` so the root and Task calls still produce exactly one vendor update. Vendor methods
 that secretly perform an update during a mode transition must count as that cycle's heartbeat.
 
-Production Phoenix uses the same managed grammar for TeleOp and Pedro Auto. Its Auto service owns
+The managed basic Pedro reference makes the persistent ownership visible. Its Auto service owns
 the following upstream order:
 
 ```text
-Clock → Vision readiness → Localization → Targeting → Pedro heartbeat → Auto Tasks → Scoring Plants → Telemetry
+Clock → Localization → Pedro heartbeat → Auto Tasks → Mechanism Plants → Telemetry
 ```
 
-`PhoenixAutoOpMode` supplies only `PhoenixAutoSetup`; inherited final FTC callbacks own the shared
-clock and managed lifecycle. INIT selection is data-only. At START, `Prestart` freezes the spec,
-then the program resets its clock and the service applies the frozen Pedro pose before the order
-above. A selector root uses `Tasks.buildAtStart(...)`; fixed roots and paths are built eagerly.
-The Phoenix/Pedro hardware graph is constructed once during configuration and is never retried or
-replaced inside the same OpMode.
+`BasicPedroAutoExample` supplies only `configure(program)`; inherited final FTC callbacks own the
+shared clock and managed lifecycle. At START the program resets its clock, then the service applies
+the declared Pedro start pose before the order above. The complete hardware graph and fixed route
+are constructed once during configuration and are never retried or replaced inside the same
+OpMode. A larger robot may insert vision or targeting services before the follower heartbeat while
+preserving the same one-owner, declaration-ordered service phase.
 
 The production Pedro runtime shares the localization phase's one Pinpoint predictor. Its Pedro
 `Localizer` is passive: the downstream heartbeat verifies and consumes that current-cycle snapshot
 instead of polling odometry again. Accepted corrections pushed into the predictor are therefore
 visible to path control in the same heartbeat.
 
-The managed basic Pedro reference uses the same dependency: one service owns localization before
-the recurring Pedro heartbeat; the program runs that service before its root Task and downstream
-mechanism output.
+One service therefore owns localization before the recurring Pedro heartbeat; the program runs
+that service before its root Task and downstream mechanism output.
 
 The heartbeat precedes the Task runner so the adapter can classify and retain route completion,
 timeout/stall, interruption, replacement, or an unknown terminal transition before the Task reads

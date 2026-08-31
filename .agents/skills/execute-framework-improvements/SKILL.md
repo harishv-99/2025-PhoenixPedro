@@ -16,7 +16,8 @@ GitHub rather than relying on chat memory.
    - `TeamCode/src/main/java/edu/ftcsushi/fw/Framework Principles.md`
    - `FRAMEWORK_IMPROVEMENT_TRACKER.md`
    - the relevant framework guides and Javadocs
-   - `Phoenix Architecture.md` when Phoenix robot code is in scope
+   - applicable application-local instructions and architecture documentation when application code
+     is in scope
 2. Inspect `git status`, the current branch, recent commits, and the relevant remote branch or pull
    request. Preserve all user changes.
 3. Treat the tracker as the durable workflow state and Git/GitHub as the publication state. Do not
@@ -27,7 +28,7 @@ GitHub rather than relying on chat memory.
 
 1. Move a proposed item to `Researching` while investigating, then record its decision gate:
    - confirmed current behavior or traced failure path;
-   - every relevant production, Phoenix, tool, and modern example caller;
+   - every relevant production-application, tool, and modern example caller;
    - for each sibling API family, every supported public construction path: facade factories,
      constructors, static `of` methods, overloads, and declared return types;
    - for each staged-builder parameter type, whether callers store, reuse, compose, share, or

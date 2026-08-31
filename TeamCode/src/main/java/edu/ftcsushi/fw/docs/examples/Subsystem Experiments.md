@@ -90,7 +90,7 @@ or reject. Do not persist trial results on the Robot Controller.
 
 ## Worked locked card: Reference flywheel spin-up
 
-[`ReferenceFlywheelSpinUpExperiment.java`](<../../../robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
+[`ReferenceFlywheelSpinUpExperiment.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
 answers one narrow question: how quickly do both flywheels reach the reviewed velocity condition
 from the card's starting state? The trial action changes only flywheel velocity and never requests
 a release or transfer pulse. Because it updates the complete production mechanism, normal active

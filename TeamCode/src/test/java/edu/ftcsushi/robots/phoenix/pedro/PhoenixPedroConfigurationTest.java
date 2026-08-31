@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.pedroPathing;
+package edu.ftcsushi.robots.phoenix.pedro;
 
 import com.pedropathing.drivetrain.Drivetrain;
 import com.pedropathing.follower.Follower;
@@ -37,14 +37,14 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Verifies the project exposes one pure Phoenix-to-Pedro configuration path. */
-public final class ConstantsTest {
+public final class PhoenixPedroConfigurationTest {
 
     private static final double EPSILON = 1e-9;
 
     @Test
     public void publicSurfaceIsOnePureMapperWithNoMutableGlobals() throws Exception {
         List<String> publicFields = new ArrayList<String>();
-        for (Field field : Constants.class.getDeclaredFields()) {
+        for (Field field : PhoenixPedroConfiguration.class.getDeclaredFields()) {
             if (Modifier.isPublic(field.getModifiers())) {
                 publicFields.add(field.getName());
             }
@@ -52,7 +52,7 @@ public final class ConstantsTest {
         assertTrue(publicFields.toString(), publicFields.isEmpty());
 
         List<String> publicMethods = new ArrayList<String>();
-        for (Method method : Constants.class.getDeclaredMethods()) {
+        for (Method method : PhoenixPedroConfiguration.class.getDeclaredMethods()) {
             if (Modifier.isPublic(method.getModifiers())) {
                 publicMethods.add(method.getName());
             }
@@ -60,7 +60,7 @@ public final class ConstantsTest {
         assertEquals(1, publicMethods.size());
         assertEquals("phoenixAutoRuntimeConfig", publicMethods.get(0));
 
-        Method mapper = Constants.class.getDeclaredMethod(
+        Method mapper = PhoenixPedroConfiguration.class.getDeclaredMethod(
                 "phoenixAutoRuntimeConfig",
                 PinpointOdometryPredictor.Config.class,
                 FtcDrives.MecanumWiringConfig.class,
@@ -75,7 +75,7 @@ public final class ConstantsTest {
         assertEquals(0, mapper.getExceptionTypes().length);
         assertFalse(mapper.isVarArgs());
 
-        Method nativeToolFactory = Constants.class.getDeclaredMethod(
+        Method nativeToolFactory = PhoenixPedroConfiguration.class.getDeclaredMethod(
                 "createToolOnlyNativeFollower",
                 HardwareMap.class
         );
@@ -109,7 +109,7 @@ public final class ConstantsTest {
         predictor.yawScalar = 1.001;
         predictor.quality = 0.63;
 
-        PedroPathingRuntime.Config mapped = Constants.phoenixAutoRuntimeConfig(
+        PedroPathingRuntime.Config mapped = PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 predictor,
                 wiring,
                 true
@@ -152,12 +152,12 @@ public final class ConstantsTest {
 
     @Test
     public void mapperPreservesRelevantNullAndInvalidDraftEvidenceForRuntimeValidation() {
-        assertNull(Constants.phoenixAutoRuntimeConfig(
+        assertNull(PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 null,
                 FtcDrives.MecanumWiringConfig.defaults(),
                 true
         ).predictor);
-        assertNull(Constants.phoenixAutoRuntimeConfig(
+        assertNull(PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 PinpointOdometryPredictor.Config.defaults(),
                 null,
                 true
@@ -168,7 +168,7 @@ public final class ConstantsTest {
         FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
         wiring.frontLeftName = null;
         wiring.frontLeftDirection = null;
-        PedroPathingRuntime.Config raw = Constants.phoenixAutoRuntimeConfig(
+        PedroPathingRuntime.Config raw = PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 predictor,
                 wiring,
                 false
@@ -189,12 +189,12 @@ public final class ConstantsTest {
         PinpointOdometryPredictor.Config sourcePredictor = predictor.copy();
         FtcDrives.MecanumWiringConfig sourceWiring = wiring.copy();
 
-        PedroPathingRuntime.Config first = Constants.phoenixAutoRuntimeConfig(
+        PedroPathingRuntime.Config first = PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 predictor,
                 wiring,
                 true
         );
-        PedroPathingRuntime.Config second = Constants.phoenixAutoRuntimeConfig(
+        PedroPathingRuntime.Config second = PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 predictor,
                 wiring,
                 true
@@ -314,12 +314,12 @@ public final class ConstantsTest {
         PedroPathingRuntime.Config runtimeConfig = freshMappedRuntime();
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
 
-        Follower first = Constants.createToolOnlyNativeFollowerForTest(
+        Follower first = PhoenixPedroConfiguration.createToolOnlyNativeFollowerForTest(
                 hardwareMap,
                 runtimeConfig,
                 construction
         );
-        Follower second = Constants.createToolOnlyNativeFollowerForTest(
+        Follower second = PhoenixPedroConfiguration.createToolOnlyNativeFollowerForTest(
                 hardwareMap,
                 runtimeConfig,
                 construction
@@ -355,7 +355,7 @@ public final class ConstantsTest {
     public void nativeToolInvalidRuntimeDraftProducesNoConstructionEffect() {
         FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
         wiring.frontRightName = wiring.frontLeftName;
-        PedroPathingRuntime.Config runtimeConfig = Constants.phoenixAutoRuntimeConfig(
+        PedroPathingRuntime.Config runtimeConfig = PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 PinpointOdometryPredictor.Config.defaults(),
                 wiring,
                 true
@@ -363,7 +363,7 @@ public final class ConstantsTest {
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
 
         try {
-            Constants.createToolOnlyNativeFollowerForTest(
+            PhoenixPedroConfiguration.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
                     runtimeConfig,
                     construction
@@ -382,7 +382,7 @@ public final class ConstantsTest {
         String canonicalRoot = PedroPathingRuntime.Config.class.getCanonicalName();
 
         assertCanonicalNullPreflight(
-                Constants.phoenixAutoRuntimeConfig(
+                PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                         null,
                         FtcDrives.MecanumWiringConfig.defaults(),
                         true
@@ -391,7 +391,7 @@ public final class ConstantsTest {
         );
 
         assertCanonicalNullPreflight(
-                Constants.phoenixAutoRuntimeConfig(
+                PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                         PinpointOdometryPredictor.Config.defaults(),
                         null,
                         true
@@ -403,7 +403,7 @@ public final class ConstantsTest {
                 PinpointOdometryPredictor.Config.defaults();
         invalidPredictor.quality = Double.NaN;
         assertCanonicalInvalidPreflight(
-                Constants.phoenixAutoRuntimeConfig(
+                PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                         invalidPredictor,
                         FtcDrives.MecanumWiringConfig.defaults(),
                         true
@@ -474,7 +474,7 @@ public final class ConstantsTest {
     private static PinpointConstants invokePinpointConstantsFrom(
             PinpointOdometryPredictor.Config predictor
     ) throws Exception {
-        Method method = Constants.class.getDeclaredMethod(
+        Method method = PhoenixPedroConfiguration.class.getDeclaredMethod(
                 "pinpointConstantsFrom",
                 PinpointOdometryPredictor.Config.class
         );
@@ -485,7 +485,7 @@ public final class ConstantsTest {
     private static void assertWrappedFailure(RecordingNativeConstruction construction,
                                              RuntimeException expectedCause) {
         try {
-            Constants.createToolOnlyNativeFollowerForTest(
+            PhoenixPedroConfiguration.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
                     freshMappedRuntime(),
                     construction
@@ -500,7 +500,7 @@ public final class ConstantsTest {
                                                      String exactMessage) {
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
         try {
-            Constants.createToolOnlyNativeFollowerForTest(
+            PhoenixPedroConfiguration.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
                     runtimeConfig,
                     construction
@@ -517,7 +517,7 @@ public final class ConstantsTest {
                                                         String exactMessage) {
         RecordingNativeConstruction construction = new RecordingNativeConstruction();
         try {
-            Constants.createToolOnlyNativeFollowerForTest(
+            PhoenixPedroConfiguration.createToolOnlyNativeFollowerForTest(
                     new HardwareMap(null, null),
                     runtimeConfig,
                     construction
@@ -530,7 +530,7 @@ public final class ConstantsTest {
     }
 
     private static PedroPathingRuntime.Config freshMappedRuntime() {
-        return Constants.phoenixAutoRuntimeConfig(
+        return PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 PinpointOdometryPredictor.Config.defaults(),
                 FtcDrives.MecanumWiringConfig.defaults(),
                 true
@@ -546,7 +546,7 @@ public final class ConstantsTest {
     }
 
     private static final class RecordingNativeConstruction
-            implements Constants.NativeToolConstruction {
+            implements PhoenixPedroConfiguration.NativeToolConstruction {
         final List<String> events = new ArrayList<String>();
         final List<MecanumConstants> mecanumConstants =
                 new ArrayList<MecanumConstants>();

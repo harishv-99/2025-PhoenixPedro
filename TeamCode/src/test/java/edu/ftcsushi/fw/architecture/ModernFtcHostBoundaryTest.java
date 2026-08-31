@@ -42,6 +42,7 @@ import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.fw.input.binding.CallbackBindings;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskBindings;
+import edu.ftcsushi.testfixtures.host.CrossScopeRawMemberOwner;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -53,8 +54,13 @@ import static org.junit.Assert.fail;
 public final class ModernFtcHostBoundaryTest {
 
     private static final String PRODUCTION_JAVA_ROOT = "TeamCode/src/main/java";
-    private static final String SUSHI_SOURCE_PREFIX = "edu/ftcsushi/";
-    private static final String PRODUCTION_PACKAGE_ROOT = "edu.ftcsushi";
+    private static final Set<String> SHARED_HOST_PACKAGE_ROOTS =
+            Collections.unmodifiableSet(new LinkedHashSet<String>(Arrays.asList(
+                    "edu.ftcsushi.fw",
+                    "edu.ftcsushi.robots.examples"
+            )));
+    private static final Set<String> FIXTURE_PACKAGE_ROOTS =
+            Collections.singleton("edu.ftcsushi.fw.architecture");
     private static final List<String> FTC_CALLBACKS = Arrays.asList(
             "init",
             "init_loop",
@@ -68,36 +74,77 @@ public final class ModernFtcHostBoundaryTest {
                     FtcTeleOpTesterOpMode.class.getName()
             )));
 
-    /**
-     * Exact custom-host type names belong here only after a review records why a managed robot or
-     * tester host cannot own that lifecycle.
-     */
-    private static final Map<String, String> CUSTOM_HOST_EXEMPTIONS = Collections.emptyMap();
-
     private static boolean initializationProbeRan;
 
     @Test
     public void productionOpModesUseOnlyApprovedOrReasonedHostFamilies() throws IOException {
-        Path repositoryRoot = findRepositoryRoot(Paths.get(System.getProperty("user.dir")));
-        List<TypeDeclaration> declarations = discoverProductionTypes(repositoryRoot);
+        List<String> violations = new ArrayList<String>(validateScopedProductionHosts(
+                Paths.get(System.getProperty("user.dir")),
+                SHARED_HOST_PACKAGE_ROOTS,
+                Collections.<String, String>emptyMap(),
+                true
+        ));
+        validateRobotProgramBoundary(violations);
+
+        assertNoViolations(violations);
+    }
+
+    /**
+     * Test-only verifier for one framework, example, or application-owned package scope.
+     *
+     * <p>The caller owns every exact custom-host name and rationale. Production sources are still
+     * discovered from the complete main tree so an off-path declaration cannot evade its selected
+     * scope.</p>
+     */
+    public static List<String> validateScopedProductionHosts(
+            Path startingPath,
+            Set<String> packageRoots,
+            Map<String, String> customHostExemptions,
+            boolean requireApprovedRawRoots) throws IOException {
+        Set<String> requiredPackageRoots = Collections.unmodifiableSet(
+                new LinkedHashSet<String>(packageRoots));
+        Map<String, String> requiredExemptions = Collections.unmodifiableMap(
+                new LinkedHashMap<String, String>(customHostExemptions));
+        List<String> violations = new ArrayList<String>();
+        if (requiredPackageRoots.isEmpty()) {
+            violations.add("host verification requires at least one package root");
+            return Collections.unmodifiableList(violations);
+        }
+        for (String packageRoot : requiredPackageRoots) {
+            if (packageRoot == null || packageRoot.trim().isEmpty()
+                    || !packageRoot.equals(packageRoot.trim())) {
+                violations.add("host verification requires nonblank exact package roots");
+            }
+        }
+        if (!violations.isEmpty()) {
+            return Collections.unmodifiableList(violations);
+        }
+
+        Path repositoryRoot = findRepositoryRoot(startingPath);
+        List<TypeDeclaration> declarations = discoverProductionTypes(
+                repositoryRoot,
+                requiredPackageRoots);
         Map<String, TypeDeclaration> topLevelDeclarations = declarationsByName(declarations);
         Map<String, Class<?>> topLevelTypes = loadProductionTypes(declarations);
-        List<String> violations = new ArrayList<String>();
         Map<String, TypeDeclaration> declarationsByName =
                 new LinkedHashMap<String, TypeDeclaration>(topLevelDeclarations);
         Map<String, Class<?>> typesByName = collectInspectableTypes(
                 topLevelTypes,
                 topLevelDeclarations,
                 declarationsByName,
+                requiredPackageRoots,
                 violations
         );
 
-        validateCustomHostExemptions(CUSTOM_HOST_EXEMPTIONS, typesByName, violations);
-        validateApprovedRawRoots(declarationsByName, typesByName, violations);
+        validateExemptionScope(requiredExemptions, requiredPackageRoots, violations);
+        validateCustomHostExemptions(requiredExemptions, typesByName, violations);
+        if (requireApprovedRawRoots) {
+            validateApprovedRawRoots(declarationsByName, typesByName, violations);
+        }
         int opModeCount = validateOpModeTypes(
                 typesByName,
                 declarationsByName,
-                CUSTOM_HOST_EXEMPTIONS,
+                requiredExemptions,
                 violations
         );
 
@@ -106,14 +153,12 @@ public final class ModernFtcHostBoundaryTest {
                     + ": discovery found no FTC OpMode subtype; the production scan or classpath "
                     + "is not exercising the intended namespace");
         }
-        validateRobotProgramBoundary(violations);
         validateNoTypedRobotProgramExposure(
                 typesByName,
                 declarationsByName,
                 violations
         );
-
-        assertNoViolations(violations);
+        return Collections.unmodifiableList(violations);
     }
 
     @Test
@@ -230,6 +275,17 @@ public final class ModernFtcHostBoundaryTest {
         assertContains(violations, "stale");
         assertContains(violations, "already belongs to an approved host family");
         assertContains(violations, "nonblank rationale");
+
+        Map<String, String> outOfScope = Collections.singletonMap(
+                "edu.ftcsushi.robots.application.RawHost",
+                "fixture rationale");
+        List<String> scopeViolations = new ArrayList<String>();
+        validateExemptionScope(
+                outOfScope,
+                Collections.singleton("edu.ftcsushi.fw"),
+                scopeViolations);
+        assertEquals(1, scopeViolations.size());
+        assertContains(scopeViolations, "outside the verified package scope");
     }
 
     @Test
@@ -244,6 +300,7 @@ public final class ModernFtcHostBoundaryTest {
                         "package edu.ftcsushi.robots.hidden;",
                         "public abstract class HiddenHost extends OpMode {}"
                 ),
+                Collections.singleton("edu.ftcsushi.robots"),
                 declarations,
                 failures
         );
@@ -277,6 +334,7 @@ public final class ModernFtcHostBoundaryTest {
                 topLevelTypes,
                 declarations,
                 inspectableDeclarations,
+                FIXTURE_PACKAGE_ROOTS,
                 violations
         );
 
@@ -309,7 +367,52 @@ public final class ModernFtcHostBoundaryTest {
                 exemptionViolations
         );
         assertTrue(exemptionViolations.toString(), exemptionViolations.isEmpty());
+        List<String> reviewedViolations = new ArrayList<String>();
+        validateOpModeTypes(
+                inspectableTypes,
+                inspectableDeclarations,
+                exactNestedExemption,
+                reviewedViolations);
+        for (String violation : reviewedViolations) {
+            assertFalse(violation,
+                    violation.contains(PublicNestedRawOpModeFixture.class.getName()));
+        }
         assertTrue(PublicNestedRawOpModeFixture.class.getName().contains("$"));
+    }
+
+    @Test
+    public void inheritedMemberDiscoveryDoesNotCrossCallerPackageScope() {
+        Map<String, Class<?>> topLevelTypes = new LinkedHashMap<String, Class<?>>();
+        topLevelTypes.put(
+                CrossScopeInheritanceEntryFixture.class.getName(),
+                CrossScopeInheritanceEntryFixture.class
+        );
+        TypeDeclaration declaration = new TypeDeclaration(
+                CrossScopeInheritanceEntryFixture.class.getName(),
+                "fixtures/CrossScopeInheritanceEntry.java",
+                3
+        );
+        Map<String, TypeDeclaration> declarations =
+                new LinkedHashMap<String, TypeDeclaration>();
+        declarations.put(CrossScopeInheritanceEntryFixture.class.getName(), declaration);
+        Map<String, TypeDeclaration> inspectableDeclarations =
+                new LinkedHashMap<String, TypeDeclaration>(declarations);
+        List<String> violations = new ArrayList<String>();
+
+        Map<String, Class<?>> inspectableTypes = collectInspectableTypes(
+                topLevelTypes,
+                declarations,
+                inspectableDeclarations,
+                FIXTURE_PACKAGE_ROOTS,
+                violations
+        );
+
+        assertTrue(violations.toString(), violations.isEmpty());
+        assertTrue(inspectableTypes.containsKey(CrossScopeInheritanceEntryFixture.class.getName()));
+        assertFalse(inspectableTypes.containsKey(
+                CrossScopeRawMemberOwner.InheritedPublicRawOpModeFixture.class.getName()));
+        assertFalse(inspectableDeclarations.containsKey(
+                CrossScopeRawMemberOwner.InheritedPublicRawOpModeFixture.class.getName()));
     }
 
     @Test
@@ -336,6 +439,7 @@ public final class ModernFtcHostBoundaryTest {
                 topLevelTypes,
                 declarations,
                 inspectableDeclarations,
+                FIXTURE_PACKAGE_ROOTS,
                 violations
         );
 
@@ -359,6 +463,7 @@ public final class ModernFtcHostBoundaryTest {
             Map<String, Class<?>> topLevelTypes,
             Map<String, TypeDeclaration> topLevelDeclarations,
             Map<String, TypeDeclaration> declarationsByName,
+            Set<String> packageRoots,
             List<String> violations) {
         Map<String, Class<?>> inspectable =
                 new LinkedHashMap<String, Class<?>>(topLevelTypes);
@@ -373,6 +478,7 @@ public final class ModernFtcHostBoundaryTest {
                     inspectable,
                     declarationsByName,
                     inspectedTypeNames,
+                    packageRoots,
                     violations
             );
         }
@@ -385,6 +491,7 @@ public final class ModernFtcHostBoundaryTest {
             Map<String, Class<?>> inspectable,
             Map<String, TypeDeclaration> declarationsByName,
             Set<String> inspectedTypeNames,
+            Set<String> packageRoots,
             List<String> violations) {
         if (!inspectedTypeNames.add(owner.getName())) {
             return;
@@ -392,7 +499,7 @@ public final class ModernFtcHostBoundaryTest {
 
         Map<String, Class<?>> memberTypes = new LinkedHashMap<String, Class<?>>();
         try {
-            addVisibleSushiMemberTypes(memberTypes, owner.getDeclaredClasses());
+            addVisibleScopedMemberTypes(memberTypes, owner.getDeclaredClasses(), packageRoots);
         } catch (LinkageError error) {
             violations.add(locationOf(topLevelDeclaration)
                     + ": could not inspect declared member types of " + owner.getName() + ": "
@@ -404,7 +511,7 @@ public final class ModernFtcHostBoundaryTest {
         }
 
         try {
-            addVisibleSushiMemberTypes(memberTypes, owner.getClasses());
+            addVisibleScopedMemberTypes(memberTypes, owner.getClasses(), packageRoots);
         } catch (LinkageError error) {
             violations.add(locationOf(topLevelDeclaration)
                     + ": could not inspect inherited public member types of " + owner.getName()
@@ -418,7 +525,10 @@ public final class ModernFtcHostBoundaryTest {
         Class<?> superclass = owner.getSuperclass();
         while (superclass != null) {
             try {
-                addVisibleSushiMemberTypes(memberTypes, superclass.getDeclaredClasses());
+                addVisibleScopedMemberTypes(
+                        memberTypes,
+                        superclass.getDeclaredClasses(),
+                        packageRoots);
             } catch (LinkageError error) {
                 violations.add(locationOf(topLevelDeclaration)
                         + ": could not inspect inherited protected member types declared by "
@@ -461,18 +571,20 @@ public final class ModernFtcHostBoundaryTest {
                     inspectable,
                     declarationsByName,
                     inspectedTypeNames,
+                    packageRoots,
                     violations
             );
         }
     }
 
-    private static void addVisibleSushiMemberTypes(
+    private static void addVisibleScopedMemberTypes(
             Map<String, Class<?>> destination,
-            Class<?>[] candidates) {
+            Class<?>[] candidates,
+            Set<String> packageRoots) {
         for (Class<?> candidate : candidates) {
             int modifiers = candidate.getModifiers();
             if ((Modifier.isPublic(modifiers) || Modifier.isProtected(modifiers))
-                    && candidate.getName().startsWith(PRODUCTION_PACKAGE_ROOT + ".")) {
+                    && isWithinAny(candidate.getName(), packageRoots)) {
                 destination.put(candidate.getName(), candidate);
             }
         }
@@ -506,7 +618,9 @@ public final class ModernFtcHostBoundaryTest {
                         + ": " + type.getName() + " directly extends raw FTC OpMode; only "
                         + APPROVED_RAW_HOST_ROOTS + " or an exact reasoned exemption may do so");
             }
-            validateFinalCallbacks(type, declaration, violations);
+            if (!exactExemption) {
+                validateFinalCallbacks(type, declaration, violations);
+            }
         }
         return opModeCount;
     }
@@ -558,6 +672,19 @@ public final class ModernFtcHostBoundaryTest {
             } else if (isApprovedHostFamily(type)) {
                 violations.add("custom-host exemption for " + typeName
                         + " is redundant: it already belongs to an approved host family");
+            }
+        }
+    }
+
+    private static void validateExemptionScope(
+            Map<String, String> exemptions,
+            Set<String> packageRoots,
+            List<String> violations) {
+        for (String typeName : exemptions.keySet()) {
+            if (typeName != null && !typeName.trim().isEmpty()
+                    && !isWithinAny(typeName, packageRoots)) {
+                violations.add("custom-host exemption for " + typeName
+                        + " is outside the verified package scope " + packageRoots);
             }
         }
     }
@@ -922,7 +1049,9 @@ public final class ModernFtcHostBoundaryTest {
                 + " from test working directory " + startingPath.toAbsolutePath().normalize());
     }
 
-    private static List<TypeDeclaration> discoverProductionTypes(Path repositoryRoot)
+    private static List<TypeDeclaration> discoverProductionTypes(
+            Path repositoryRoot,
+            Set<String> packageRoots)
             throws IOException {
         final Path sourceRoot = repositoryRoot.resolve(PRODUCTION_JAVA_ROOT).normalize();
         final List<Path> javaSources = new ArrayList<Path>();
@@ -946,7 +1075,12 @@ public final class ModernFtcHostBoundaryTest {
                     Files.readAllBytes(sourceFile),
                     StandardCharsets.UTF_8
             );
-            collectProductionSource(relativePath, source, declarations, failures);
+            collectProductionSource(
+                    relativePath,
+                    source,
+                    packageRoots,
+                    declarations,
+                    failures);
         }
 
         if (javaSources.isEmpty()) {
@@ -964,23 +1098,24 @@ public final class ModernFtcHostBoundaryTest {
     private static void collectProductionSource(
             String mainSourceRelativePath,
             String source,
+            Set<String> packageRoots,
             Map<String, TypeDeclaration> declarations,
             List<String> failures) {
         String normalizedPath = mainSourceRelativePath.replace('\\', '/');
         String displayPath = PRODUCTION_JAVA_ROOT + "/" + normalizedPath;
-        boolean physicallyUnderSushi = normalizedPath.startsWith(SUSHI_SOURCE_PREFIX);
+        boolean physicallyUnderScope = isUnderPackagePath(normalizedPath, packageRoots);
         ParsedSource parsed;
         try {
             parsed = parseSource(displayPath, source);
         } catch (IllegalArgumentException discoveryFailure) {
-            if (physicallyUnderSushi) {
+            if (physicallyUnderScope) {
                 failures.add(discoveryFailure.getMessage());
             }
             return;
         }
 
-        boolean declaresSushi = isSushiPackage(parsed.packageName);
-        if (!physicallyUnderSushi && !declaresSushi) {
+        boolean declaresScope = isWithinAny(parsed.packageName, packageRoots);
+        if (!physicallyUnderScope && !declaresScope) {
             return;
         }
 
@@ -1000,9 +1135,24 @@ public final class ModernFtcHostBoundaryTest {
         }
     }
 
-    private static boolean isSushiPackage(String packageName) {
-        return PRODUCTION_PACKAGE_ROOT.equals(packageName)
-                || packageName.startsWith(PRODUCTION_PACKAGE_ROOT + ".");
+    private static boolean isUnderPackagePath(String relativePath, Set<String> packageRoots) {
+        for (String packageRoot : packageRoots) {
+            String pathRoot = packageRoot.replace('.', '/') + "/";
+            if (relativePath.startsWith(pathRoot)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isWithinAny(String classOrPackageName, Set<String> packageRoots) {
+        for (String packageRoot : packageRoots) {
+            if (classOrPackageName.equals(packageRoot)
+                    || classOrPackageName.startsWith(packageRoot + ".")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static ParsedSource parseSource(String sourcePath, String source) {
@@ -1443,6 +1593,10 @@ public final class ModernFtcHostBoundaryTest {
 
     public static final class PublicInheritedMemberEntryFixture
             extends SkippedPackagePrivateBaseFixture {
+    }
+
+    public static final class CrossScopeInheritanceEntryFixture
+            extends CrossScopeRawMemberOwner {
     }
 
     private abstract static class UnapprovedHostFixture extends OpMode {

@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.robots;
+package edu.ftcsushi.robots.phoenix.legacy;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;

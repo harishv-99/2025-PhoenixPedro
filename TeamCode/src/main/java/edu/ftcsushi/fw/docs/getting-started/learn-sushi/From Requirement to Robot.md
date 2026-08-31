@@ -12,12 +12,12 @@ by reading; no worksheet, code edit, or hardware run is required.
 
 > TeleOp and Auto must be able to collect, eject, and stop one intake.
 
-[`StarterIntake`](<../../../../robots/examples/starter/capability/intake/StarterIntake.java>) names
-those shared robot meanings. [`StarterProfile`](<../../../../robots/examples/starter/robot/StarterProfile.java>)
+[`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>) names
+those shared robot meanings. [`StarterProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>)
 owns the motor name, direction, powers, and motion permission.
-[`StarterIntakeMechanism`](<../../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>)
+[`StarterIntakeMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>)
 privately owns the Plant that realizes them. Controls decide which buttons request them;
-[`StarterAuto`](<../../../../robots/examples/starter/opmode/StarterAuto.java>) composes a fresh timed
+[`StarterAuto`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>) composes a fresh timed
 Task through the same capability; status separates the semantic request from the cached applied
 target.
 
@@ -53,7 +53,7 @@ Task home();
 Status status();
 ```
 
-[`ReferenceLift.java`](<../../../../robots/examples/reference/capability/lift/ReferenceLift.java>)
+[`ReferenceLift.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLift.java>)
 does not mention an FTC motor, switch polarity, encoder scaling, or homing power. Those physical and
 realization details belong to the Config and mechanism.
 
@@ -93,7 +93,7 @@ inspect hardware and evidence instead of rewriting Auto sequencing.
 The Reference launcher shows the same path applied to paired flywheels, a transfer overlay, a
 release Plant, and outcome-aware launch policy. Its public client still asks for `launchOne()` and
 reads status; the mechanism keeps the multi-device realization private. Study
-[`ReferenceLauncher.java`](<../../../../robots/examples/reference/capability/launcher/ReferenceLauncher.java>)
+[`ReferenceLauncher.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.java>)
 only when that additional coordination helps your robot.
 
 The [BIOBUZZ capability map](<../../examples/BIOBUZZ Capability Map.md>) routes possible season
@@ -112,6 +112,6 @@ mode-neutral behavior.
 ## Go deeper when needed
 
 - Capability/client ownership: [Robot Capabilities and Mode Clients](<../../design/Robot Capabilities & Mode Clients.md>)
-- Complete Reference composition: [`ReferenceRobot.java`](<../../../../robots/examples/reference/robot/ReferenceRobot.java>)
+- Complete Reference composition: [`ReferenceRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.java>)
 - Topic-specific routes: [Role paths](<Role Paths.md>)
 - [Choose another Sushi topic](<../Beginner's Guide.md>)

@@ -19,7 +19,7 @@ setMode(COLLECT) -> remember Mode.COLLECT -> map it to configured power
 There is no second writer for a button, Task, or emergency. Temporary and guarded intent must join
 the final target resolver; the Plant remains the only actuator writer.
 
-[`StarterIntakeMechanism`](<../../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>)
+[`StarterIntakeMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>)
 receives `HardwareMap` plus data-only configuration, copies and validates that configuration, then
 constructs its private Plant:
 
@@ -80,13 +80,13 @@ change a request, but terminal cleanup follows and no later normal update is pro
 ## How the pattern scales
 
 The
-[`ReferenceLiftMechanism`](<../../../../robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
+[`ReferenceLiftMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
 adds bounded public inches, encoder conversion, a required homing reference, tolerance, and cached
 measurement. Homing is a non-blocking Task that establishes the reference; the Plant still owns
 coordinates and final output.
 
 The
-[`ReferenceLauncherMechanism`](<../../../../robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+[`ReferenceLauncherMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
 cohesively owns several Plants, a temporary transfer overlay, and per-wheel velocity evidence. Its
 one `update(clock)` defines their order. `ready` requires a positive request and both wheels within
 tolerance; it cannot prove that a game piece scored.

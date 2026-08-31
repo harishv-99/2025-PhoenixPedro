@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.pedroPathing;
+package edu.ftcsushi.robots.phoenix.pedro;
 
 import com.pedropathing.drivetrain.Drivetrain;
 import com.pedropathing.follower.Follower;
@@ -37,9 +37,9 @@ import edu.ftcsushi.robots.phoenix.PhoenixProfile;
  * factory so their vendor-owned update lifecycle remains compatible with Pedro's stock tools. That
  * exclusive diagnostic path is deliberately unavailable as a second production API.</p>
  */
-public final class Constants {
+public final class PhoenixPedroConfiguration {
 
-    private Constants() {
+    private PhoenixPedroConfiguration() {
         // Project constants/factories only.
     }
 

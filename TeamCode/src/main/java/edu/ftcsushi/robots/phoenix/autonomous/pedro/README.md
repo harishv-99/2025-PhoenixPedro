@@ -41,17 +41,17 @@ The runtime construction in step 4 has one effect boundary:
 ```java
 PedroPathingRuntime runtime = PedroPathingRuntime.create(
         hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(
+        PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 profile.localization.predictor,
                 profile.drive.wiring,
                 profile.drive.enableZeroPowerBrake));
 ```
 
-`Constants.phoenixAutoRuntimeConfig(predictor, wiring, enableZeroPowerBrake)` is pure. It raw-copies
-only those three inputs, combines them with fresh checked-in Pedro follower/constraint tuning and
-the field transform, and returns an independent `PedroPathingRuntime.Config`. It accepts and retains
-no aggregate `PhoenixProfile`, creates no hardware, and does not make unrelated profile sections
-part of Pedro configuration validation.
+`PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(predictor, wiring,
+enableZeroPowerBrake)` is pure. It raw-copies only those three inputs, combines them with fresh
+checked-in Pedro follower/constraint tuning and the field transform, and returns an independent
+`PedroPathingRuntime.Config`. It accepts and retains no aggregate `PhoenixProfile`, creates no
+hardware, and does not make unrelated profile sections part of Pedro configuration validation.
 
 `PedroPathingRuntime.create(...)` raw-copies and validates the complete captured Config before
 hardware lookup, the Pinpoint reset request, motor output, Follower construction, or Pedro-static
@@ -77,8 +77,8 @@ a failed Follower may already have changed Pedro statics. Those limits are anoth
 OpMode never retries construction in place.
 
 Pedro's completed-Follower adapter constructor remains an advanced custom-host seam, while the
-project's package-local native-Follower factory exists only for exclusive generated tuning tools
-and `PedroTest`. Phoenix Auto uses neither alternate seam.
+application-owned package-local native-Follower factory exists only for exclusive generated tuning
+tools and `PedroTest`. Phoenix Auto uses neither alternate seam.
 
 INIT selection changes only `PhoenixAutoSpec` data: alliance, start position, and strategy. The
 last choice opens a read-only summary; it does not create a second confirmation state. On FTC START,

@@ -8,22 +8,21 @@ fixed practice route, one Plant-backed mechanism capability, explicit route-outc
 stable follower heartbeat, and deterministic cleanup. It is not the first-route tutorial; start
 with [`Your first Pedro Auto`](<../getting-started/First Pedro Auto.md>) for the guided source tour.
 
-Start with the compiling [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>)
+Start with the compiling [`BasicPedroAutoExample.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java>)
 entry. Its six-file example uses the ordinary `FtcRobotOpMode`/`RobotProgram` grammar, one local
-data-only profile, and the project's pinned Pedro Pathing dependency. Production Phoenix Auto uses
-`PhoenixAutoOpMode`; this package has no `PhoenixProfile` or project `pedroPathing.Constants`
-configuration dependency and is the independent reference for another robot.
+data-only profile, and the project's pinned Pedro Pathing dependency. It is independent of every
+production application package and keeps all example configuration beside the example.
 
 ## The six reference roles
 
 | File | Role | Adapt for another robot |
 |---|---|---|
-| [`BasicPedroProfile.java`](<../../../robots/examples/pedro/robot/BasicPedroProfile.java>) | Fresh local Pedro/runtime and intake configuration plus the false-by-default motion permission. | Replace and physically review every active fact, then permit only the complete supervised run. |
-| [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) | Thin FTC host: invalidates stale match handoff, selects the local profile, and constructs the composition root. | Keep the host declarative; choose the adopting robot's profile here. |
-| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/robot/BasicPedroAutoRobot.java>) | Composition root: gates configuration, constructs/registers the runtime and mechanism, declares one fresh root Task, and wires additive presenters in safety-significant order. | Keep the managed role shape; add an owner only when it has a distinct lifecycle job. |
-| [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) | Geometry owner: declares the physical start pose and eagerly builds one fixed Pedro route. | Replace start/end poses and route geometry in Pedro field inches and radians. |
-| [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>) | Strategy owner: maps route success, timeout, and cancellation-like outcomes to explicit Task behavior. | Compose the robot's capability Tasks and state every non-success policy. |
-| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>) | Mechanism output: snapshots data-only configuration, privately owns one Plant, and creates fresh cancellation-safe Tasks. | Prefer the robot's existing capability; otherwise build the real mechanism with the same ownership boundary. |
+| [`BasicPedroProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroProfile.java>) | Fresh local Pedro/runtime and intake configuration plus the false-by-default motion permission. | Replace and physically review every active fact, then permit only the complete supervised run. |
+| [`BasicPedroAutoExample.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java>) | Thin FTC host: selects the local profile and constructs the composition root. | Keep the host declarative; choose the adopting robot's profile here. |
+| [`BasicPedroAutoRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroAutoRobot.java>) | Composition root: gates configuration, constructs/registers the runtime and mechanism, declares one fresh root Task, and wires additive presenters in safety-significant order. | Keep the managed role shape; add an owner only when it has a distinct lifecycle job. |
+| [`BasicPedroAutoPaths.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) | Geometry owner: declares the physical start pose and eagerly builds one fixed Pedro route. | Replace start/end poses and route geometry in Pedro field inches and radians. |
+| [`BasicPedroAutoRoutine.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>) | Strategy owner: maps route success, timeout, and cancellation-like outcomes to explicit Task behavior. | Compose the robot's capability Tasks and state every non-success policy. |
+| [`BasicPedroAutoMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>) | Mechanism output: snapshots data-only configuration, privately owns one Plant, and creates fresh cancellation-safe Tasks. | Prefer the robot's existing capability; otherwise build the real mechanism with the same ownership boundary. |
 
 These roles are robot code. The short routine expression is strategy, while construction,
 lifecycle, capability realization, and physical configuration stay with their actual owners.
@@ -32,8 +31,8 @@ lifecycle, capability realization, and physical configuration stay with their ac
 
 ### INIT
 
-`BasicPedroAutoExample.configure(...)` first invalidates any recent Phoenix match handoff, then
-selects one fresh local profile and invokes the sole ordinary composition-root construction path:
+`BasicPedroAutoExample.configure(...)` selects one fresh local profile and invokes the sole
+ordinary composition-root construction path:
 
 ```java
 robot = new BasicPedroAutoRobot(
@@ -65,10 +64,6 @@ registers the mechanism immediately after construction and declares one root Tas
 does not start a route or actuate the mechanism. If path or intake construction fails after runtime
 registration, managed failure cleanup best-effort stops the already-owned Pedro drive; a mechanism
 that completed its Plant before failing stops that Plant before ownership transfer.
-
-`PhoenixMatchHandoff.clear()` is the one deliberate Phoenix-specific exception. It is handoff
-safety, not hardware configuration: this generic diagnostic Auto must not leave a recent match
-snapshot for a later TeleOp.
 
 The framework advances only the clock and presenters during INIT. Placement and test warnings stay
 visible without creating a second hardware graph or selector retry path.

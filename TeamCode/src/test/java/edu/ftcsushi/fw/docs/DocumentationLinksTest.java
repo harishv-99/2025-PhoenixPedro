@@ -7,6 +7,7 @@ import org.junit.rules.TemporaryFolder;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -50,26 +51,31 @@ public final class DocumentationLinksTest {
     public void documentationSiteNavigationTargetsExistingMarkdown() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
-        Path docsRoot = repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcsushi");
         String config = new String(
                 Files.readAllBytes(repositoryRoot.resolve("zensical.toml")),
                 StandardCharsets.UTF_8);
+        Path docsRoot = configuredDocsRoot(repositoryRoot, config);
         Matcher entries = Pattern.compile("=\\s*\\\"([^\\\"]+\\.md)\\\"").matcher(config);
         List<String> failures = new ArrayList<String>();
         while (entries.find()) {
             String target = entries.group(1);
-            if (!Files.isRegularFile(docsRoot.resolve(target))) {
-                failures.add(target);
+            Path resolved = docsRoot.resolve(target).toAbsolutePath().normalize();
+            if (!resolved.startsWith(docsRoot.toAbsolutePath().normalize())) {
+                failures.add(target + " (escapes docs_dir)");
+            } else if (!Files.isRegularFile(resolved)) {
+                failures.add(target + " (missing)");
             }
         }
         assertTrue("Missing documentation navigation targets: " + failures, failures.isEmpty());
     }
 
     @Test
-    public void sushiFrameworkIdentityAndPhoenixRobotBoundaryStayExplicit() throws IOException {
+    public void sushiFrameworkIdentityAndDocumentationBoundaryStayExplicit() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
         String rootReadme = readUtf8(repositoryRoot.resolve("README.md"));
+        String namespaceReadme = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/README.md"));
         String docsHome = readUtf8(repositoryRoot.resolve(
                 "TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md"));
         String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
@@ -77,20 +83,20 @@ public final class DocumentationLinksTest {
 
         assertTrue("Root README must identify Sushi as the framework",
                 rootReadme.startsWith("# Sushi framework"));
-        assertTrue("Root README must distinguish the Phoenix production robot",
-                rootReadme.contains("Sushi is the framework; Phoenix is the specific "
-                        + "production robot"));
-        assertTrue("Documentation home must distinguish the Phoenix production robot",
-                docsHome.contains("Sushi is the framework; Phoenix is the specific "
-                        + "production robot"));
+        assertTrue("Namespace README must identify Sushi as the framework",
+                namespaceReadme.startsWith("# Sushi framework"));
+        assertTrue("Documentation home must identify Sushi",
+                docsHome.startsWith("# Sushi documentation"));
+        Path configuredDocsRoot = configuredDocsRoot(repositoryRoot, config);
         assertTrue("Documentation site must use the Sushi identity",
                 config.contains("site_name = \"Sushi Framework\"")
                         && config.contains("\"Learn Sushi topics\"")
-                        && config.contains("docs_dir = \"TeamCode/src/main/java/edu/ftcsushi\"")
+                        && configuredDocsRoot.equals(repositoryRoot.resolve(
+                                "TeamCode/src/main/java/edu/ftcsushi/fw").toAbsolutePath()
+                                .normalize())
+                        && config.contains("{ \"Home\" = \"docs/README.md\" }")
+                        && !config.contains("= \"fw/")
                         && !config.contains("ftcphoenix"));
-        assertTrue("Production Phoenix robot navigation must retain its robot identity",
-                config.contains("\"Production Phoenix robot\"")
-                        && config.contains("robots/phoenix/Phoenix Architecture.md"));
         assertTrue("Strict API documentation must use the Sushi task and title",
                 build.contains("tasks.register('sushiJavadocs', Javadoc)")
                         && build.contains("Sushi Framework API")
@@ -123,9 +129,11 @@ public final class DocumentationLinksTest {
 
         assertNoStaleFrameworkBranding(
                 repositoryRoot,
-                repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcsushi"),
+                repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcsushi/fw"),
                 Arrays.asList(
                         repositoryRoot.resolve("README.md"),
+                        repositoryRoot.resolve(
+                                "TeamCode/src/main/java/edu/ftcsushi/README.md"),
                         repositoryRoot.resolve("AGENTS.md"),
                         repositoryRoot.resolve(
                                 ".agents/skills/execute-framework-improvements/SKILL.md"),
@@ -135,6 +143,55 @@ public final class DocumentationLinksTest {
                         repositoryRoot.resolve("TeamCode/build.gradle"),
                         repositoryRoot.resolve("requirements-docs.txt"),
                         repositoryRoot.resolve("zensical.toml")));
+
+        assertNoProductionApplicationReferences(
+                repositoryRoot,
+                repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcsushi/fw"),
+                Arrays.asList(
+                        repositoryRoot.resolve(
+                                "TeamCode/src/main/java/edu/ftcsushi/README.md"),
+                        repositoryRoot.resolve("TeamCode/build.gradle")));
+    }
+
+    @Test
+    public void currentTrackerGuidanceDoesNotDependOnTheProductionApplication()
+            throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        List<String> lines = Files.readAllLines(
+                repositoryRoot.resolve("FRAMEWORK_IMPROVEMENT_TRACKER.md"),
+                StandardCharsets.UTF_8);
+        Pattern applicationReference = Pattern.compile("(?i)phoenix");
+        Pattern nonTerminalQueueRow = Pattern.compile(
+                "^\\| \\d+ \\|.*\\| (?:Proposed|Researching|Ready|In progress|Verifying|Deferred)"
+                        + " \\|.*$");
+        Pattern completedQueueRow = Pattern.compile(
+                "^\\| \\d+ \\|.*\\| Done \\|.*$");
+        List<String> failures = new ArrayList<String>();
+        boolean inspectBlock = false;
+
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index);
+            if (line.startsWith("## Design authority and goal")
+                    || line.startsWith("### AUDIT-01 - ")) {
+                inspectBlock = true;
+            } else if (line.startsWith("## External competition capability benchmark")) {
+                inspectBlock = false;
+            }
+
+            if ((inspectBlock || nonTerminalQueueRow.matcher(line).matches())
+                    && !completedQueueRow.matcher(line).matches()) {
+                String semanticText = line.replace("2025-PhoenixPedro", "");
+                Matcher match = applicationReference.matcher(semanticText);
+                if (match.find()) {
+                    failures.add("FRAMEWORK_IMPROVEMENT_TRACKER.md:" + (index + 1)
+                            + ": " + match.group());
+                }
+            }
+        }
+
+        assertTrue("Production application references remain in current tracker guidance: "
+                + failures, failures.isEmpty());
     }
 
     @Test
@@ -158,13 +215,13 @@ public final class DocumentationLinksTest {
                         "Documentation home",
                         "Getting started"),
                 Arrays.asList(
-                        "fw/docs/getting-started/Framework Overview.md",
-                        "fw/docs/getting-started/Build and Run.md",
-                        "fw/docs/getting-started/First Sushi Robot Code.md",
-                        "fw/docs/getting-started/Test a Mechanism Without Hardware.md",
-                        "fw/docs/getting-started/Beginner's Guide.md",
-                        "fw/docs/README.md",
-                        "fw/docs/getting-started/README.md"));
+                        "docs/getting-started/Framework Overview.md",
+                        "docs/getting-started/Build and Run.md",
+                        "docs/getting-started/First Sushi Robot Code.md",
+                        "docs/getting-started/Test a Mechanism Without Hardware.md",
+                        "docs/getting-started/Beginner's Guide.md",
+                        "docs/README.md",
+                        "docs/getting-started/README.md"));
 
         Matcher learningGroup = Pattern.compile(
                 "\\{\\s*\"Learn Sushi topics\"\\s*=\\s*\\[([^]]+)]\\s*},",
@@ -183,13 +240,13 @@ public final class DocumentationLinksTest {
                         "From requirement to robot",
                         "Role paths"),
                 Arrays.asList(
-                        "fw/docs/getting-started/learn-sushi/Robot Roles.md",
-                        "fw/docs/getting-started/learn-sushi/Controls and Intent.md",
-                        "fw/docs/getting-started/learn-sushi/Plants and Hardware.md",
-                        "fw/docs/getting-started/learn-sushi/Tasks and Autonomous.md",
-                        "fw/docs/getting-started/learn-sushi/Evidence and Experiments.md",
-                        "fw/docs/getting-started/learn-sushi/From Requirement to Robot.md",
-                        "fw/docs/getting-started/learn-sushi/Role Paths.md"));
+                        "docs/getting-started/learn-sushi/Robot Roles.md",
+                        "docs/getting-started/learn-sushi/Controls and Intent.md",
+                        "docs/getting-started/learn-sushi/Plants and Hardware.md",
+                        "docs/getting-started/learn-sushi/Tasks and Autonomous.md",
+                        "docs/getting-started/learn-sushi/Evidence and Experiments.md",
+                        "docs/getting-started/learn-sushi/From Requirement to Robot.md",
+                        "docs/getting-started/learn-sushi/Role Paths.md"));
 
         Matcher examplesGroup = Pattern.compile(
                 "\\{\\s*\"Examples\"\\s*=\\s*\\[([^]]+)]\\s*},",
@@ -208,14 +265,14 @@ public final class DocumentationLinksTest {
                         "Subsystem experiments",
                         "BIOBUZZ capability map"),
                 Arrays.asList(
-                        "fw/docs/examples/README.md",
-                        "fw/docs/examples/Modern Starter Robot.md",
-                        "fw/docs/examples/Hardware-free Reference Scenarios.md",
-                        "fw/docs/examples/Framework Components Through Examples.md",
-                        "fw/docs/examples/Field-relative Drive.md",
-                        "fw/docs/examples/Pedro Autonomous Reference.md",
-                        "fw/docs/examples/Subsystem Experiments.md",
-                        "fw/docs/examples/BIOBUZZ Capability Map.md"));
+                        "docs/examples/README.md",
+                        "docs/examples/Modern Starter Robot.md",
+                        "docs/examples/Hardware-free Reference Scenarios.md",
+                        "docs/examples/Framework Components Through Examples.md",
+                        "docs/examples/Field-relative Drive.md",
+                        "docs/examples/Pedro Autonomous Reference.md",
+                        "docs/examples/Subsystem Experiments.md",
+                        "docs/examples/BIOBUZZ Capability Map.md"));
         assertTrue("Primary navigation still exposes the old build-along labels",
                 !config.contains("Your first mechanism")
                         && !config.contains("Your first TeleOp")
@@ -530,6 +587,17 @@ public final class DocumentationLinksTest {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
 
+    private static Path configuredDocsRoot(Path repositoryRoot, String config) {
+        Matcher assignment = Pattern.compile(
+                "(?m)^[ \\t]*docs_dir[ \\t]*=[ \\t]*\"([^\"]+)\"[ \\t]*$")
+                .matcher(config);
+        assertTrue("zensical.toml must declare one active docs_dir", assignment.find());
+        String configuredPath = assignment.group(1);
+        assertTrue("zensical.toml must not declare multiple active docs_dir values",
+                !assignment.find());
+        return repositoryRoot.resolve(configuredPath).toAbsolutePath().normalize();
+    }
+
     private static void assertNoStaleFrameworkBranding(
             final Path repositoryRoot,
             Path authoredSourceRoot,
@@ -570,6 +638,117 @@ public final class DocumentationLinksTest {
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             lineNumber++;
             Matcher match = staleBranding.matcher(line);
+            if (match.find()) {
+                failures.add(repositoryRelativePath(repositoryRoot, file) + ":" + lineNumber
+                        + ": " + match.group());
+            }
+        }
+    }
+
+    private static void assertNoProductionApplicationReferences(
+            final Path repositoryRoot,
+            Path frameworkSourceRoot,
+            List<Path> supportingFiles) throws IOException {
+        final Pattern applicationReference = Pattern.compile("(?i)phoenix");
+        final List<String> failures = new ArrayList<String>();
+
+        for (Path supportingFile : supportingFiles) {
+            collectProductionApplicationReferences(
+                    repositoryRoot,
+                    supportingFile,
+                    applicationReference,
+                    failures);
+        }
+        collectProductionApplicationReferencesUnder(
+                repositoryRoot,
+                frameworkSourceRoot,
+                applicationReference,
+                failures);
+        collectProductionApplicationReferencesUnder(
+                repositoryRoot,
+                repositoryRoot.resolve(".agents"),
+                applicationReference,
+                failures);
+        collectProductionApplicationReferencesUnder(
+                repositoryRoot,
+                repositoryRoot.resolve(".github"),
+                applicationReference,
+                failures);
+        try (DirectoryStream<Path> rootEntries = Files.newDirectoryStream(repositoryRoot)) {
+            for (Path entry : rootEntries) {
+                if (Files.isRegularFile(entry)
+                        && !entry.getFileName().toString().equals(
+                                "FRAMEWORK_IMPROVEMENT_TRACKER.md")
+                        && isMaintainedSharedText(entry)) {
+                    collectProductionApplicationReferences(
+                            repositoryRoot,
+                            entry,
+                            applicationReference,
+                            failures);
+                }
+            }
+        }
+
+        assertTrue("Production application references remain in shared Sushi surfaces: "
+                + failures, failures.isEmpty());
+    }
+
+    private static void collectProductionApplicationReferencesUnder(
+            final Path repositoryRoot,
+            Path root,
+            final Pattern applicationReference,
+            final List<String> failures) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        if (Files.isRegularFile(root)) {
+            collectProductionApplicationReferences(
+                    repositoryRoot,
+                    root,
+                    applicationReference,
+                    failures);
+            return;
+        }
+        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
+                    throws IOException {
+                if (isMaintainedSharedText(file)) {
+                    collectProductionApplicationReferences(
+                            repositoryRoot,
+                            file,
+                            applicationReference,
+                            failures);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private static boolean isMaintainedSharedText(Path file) {
+        String fileName = file.getFileName().toString().toLowerCase(Locale.ROOT);
+        return fileName.endsWith(".java")
+                || fileName.endsWith(".md")
+                || fileName.endsWith(".toml")
+                || fileName.endsWith(".gradle")
+                || fileName.endsWith(".properties")
+                || fileName.endsWith(".txt")
+                || fileName.endsWith(".yml")
+                || fileName.endsWith(".yaml")
+                || fileName.endsWith(".json")
+                || fileName.endsWith(".xml");
+    }
+
+    private static void collectProductionApplicationReferences(
+            Path repositoryRoot,
+            Path file,
+            Pattern applicationReference,
+            List<String> failures) throws IOException {
+        int lineNumber = 0;
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            lineNumber++;
+            String semanticText = line.replace("2025-PhoenixPedro", "");
+            Matcher match = applicationReference.matcher(semanticText);
             if (match.find()) {
                 failures.add(repositoryRelativePath(repositoryRoot, file) + ":" + lineNumber
                         + ": " + match.group());

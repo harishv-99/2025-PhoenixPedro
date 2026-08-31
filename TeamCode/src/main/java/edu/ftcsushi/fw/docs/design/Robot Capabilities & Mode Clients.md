@@ -231,16 +231,16 @@ Keep the composition-root constructor resource-only. It may retain the stable FT
 to construct the selected graph; pass configuration and mode-active inputs synchronously to the
 mode declaration instead.
 
-Production Phoenix's sole root constructor is:
+The Reference example keeps that constructor literal:
 
 ```java
-PhoenixRobot robot = new PhoenixRobot(hardwareMap);
+ReferenceRobot robot = new ReferenceRobot(hardwareMap);
 ```
 
-`declareTeleOp(...)` receives the one local profile and both Gamepads. `declareAuto(...)` receives
-the local profile and Auto-only drive, predictor, targeting-policy, and starting-pose roles. The
-root retains no aggregate profile, Telemetry, or dormant Gamepads. Avoid constructing half the
-robot or retaining mode-inactive dependencies in the resource-only constructor.
+`declareTeleOp(...)` receives one local profile and its active Gamepad. `declareAuto(...)` receives
+the local profile and returns only its mode-neutral capabilities. The root retains no aggregate
+profile, Telemetry, or dormant Gamepads. Avoid constructing half the robot or retaining mode-inactive
+dependencies in the resource-only constructor.
 
 ### `configure(RobotProgram)`
 
@@ -291,11 +291,10 @@ hardware-accuracy check.
 
 See
 [`FTC Auto-to-TeleOp Handoff`](<../ftc-boundary/FTC Auto-to-TeleOp Handoff.md>)
-for the exact carrier contract and example. Production Phoenix restores the snapshot during its
-managed TeleOp declaration, after localization is registered and before START. The pose restores
-localization; the frozen Auto alliance only seeds TeleOp's visible, still-editable draft. Its
-managed Pedro Auto registers `RobotProgram.stopHandoff(...)`, which captures only after a normally
-active match run becomes terminal and publishes only after complete cleanup succeeds.
+for the exact carrier contract and a neutral robot-owned snapshot example. A managed match Auto
+registers `RobotProgram.stopHandoff(...)`; a later TeleOp consumes after its normal owners exist but
+before START. Delivered values seed only the robot facts named by that wrapper, while every
+missing, stale, or repeated-consumption result keeps an explicit fallback.
 
 ### Managed INIT, START, loop, and STOP
 
@@ -339,37 +338,22 @@ cancellation-like results. Direct cancellation cancels the active phase and must
 Any cleanup goes through the same robot capability family and clears only transient or held requests
 owned by the failed phase, leaving unrelated mechanism intent to its actual owner.
 
-### Production Phoenix uses one managed path
+### Maintained examples keep each approach separate
 
-Production `PhoenixTeleOp` is an ordinary `FtcRobotOpMode`. Its only override is
-`configure(program)`, which delegates to one package-private `PhoenixTeleOpProgram`. That owner
-receives the entry's explicit `PhoenixAlliance.RED` default, installs the visible D-pad-only
-`PhoenixTeleOpPrestart`, creates one fresh `PhoenixProfile.current()` graph, runs the centralized
-drive-versus-scoring motor collision preflight, constructs `new PhoenixRobot(hardwareMap)`, and
-passes the profile, both Gamepads, and the prestart's START-frozen singleton scoring-tag source to
-`declareTeleOp(...)`. It then consumes the optional pose-and-alliance snapshot after localization
-exists and registers additive presenters. Each long-lived owner captures only its active Config;
-the root never copies or retains the aggregate profile.
-`PhoenixTeleOpControls` declares callbacks through the program's callback surface, scoring is
-declared before the one final drive, and the program owns the sole TeleOp clock, lifecycle,
-telemetry commit, and fail-stop cleanup.
+The Starter example shows the smallest parallel TeleOp and Auto clients. `StarterTeleOp` binds one
+controls owner and final drive source; `StarterAuto` builds one fresh root Task from the same intake
+capability. Both construct `StarterRobot` through `configure(program)`, and neither owns another
+clock, runner, telemetry commit, or manual cleanup path.
 
-Phoenix Auto is parallel: every Phoenix-season entry extends `PhoenixAutoOpMode` and returns one
-`PhoenixAutoSetup`. `PhoenixAutoProgram` declares one data-only prestart selector/readiness owner,
-creates its own fresh current profile, performs the same centralized preflight before Pedro or
-Phoenix hardware effects, and declares the complete stable hardware/service graph, one root Task,
-and presenters into `RobotProgram`. Auto supplies no dormant Gamepads. The narrow pure
-`Constants.phoenixAutoRuntimeConfig(predictor, wiring, enableZeroPowerBrake)` mapper accepts no
-aggregate profile; the Pedro runtime remains the hardware/effect and whole-Config validation
-boundary.
-Fixed setup uses `fromFixedSpec(...)`; selector setup uses `fromInitSelection(...)` and defers only
-the selected Task graph through `Tasks.buildAtStart(...)`.
+The Reference example expands that same shape with lift and launcher capability families.
+`ReferenceRobot.declareTeleOp(...)` binds driver meanings while
+`ReferenceRobot.declareAuto(...)` returns `ReferenceCapabilities` for the selected routine. The
+Basic Pedro example separately demonstrates a persistent vendor heartbeat, truthful route status,
+and one Auto-only root. It does not make Pedro configuration part of the Reference or Starter
+robots.
 
-The program freezes selection before its clock reset, supports a fail-closed `BLOCKED` state, and
-uses `stopHandoff(...)` for capture-before-cleanup/publish-after-success semantics. There is no
-Phoenix private Auto clock/runner, raw FTC callback host, same-OpMode hardware rebuild, or parallel
-manual lifecycle API. Custom calibration tools and portable hosts remain advanced exceptions; they
-do not define the ordinary robot recipe.
+Each example is an independent application of the managed grammar. Copy the example closest to the
+problem being solved rather than combining their profiles, roots, or lifecycle owners.
 
 ---
 

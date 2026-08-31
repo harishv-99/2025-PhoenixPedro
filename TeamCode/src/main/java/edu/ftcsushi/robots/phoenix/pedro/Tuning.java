@@ -1,11 +1,11 @@
-package org.firstinspires.ftc.teamcode.pedroPathing;
+package edu.ftcsushi.robots.phoenix.pedro;
 
-import static org.firstinspires.ftc.teamcode.pedroPathing.Tuning.changes;
-import static org.firstinspires.ftc.teamcode.pedroPathing.Tuning.drawCurrent;
-import static org.firstinspires.ftc.teamcode.pedroPathing.Tuning.drawCurrentAndHistory;
-import static org.firstinspires.ftc.teamcode.pedroPathing.Tuning.follower;
-import static org.firstinspires.ftc.teamcode.pedroPathing.Tuning.stopRobot;
-import static org.firstinspires.ftc.teamcode.pedroPathing.Tuning.telemetryM;
+import static edu.ftcsushi.robots.phoenix.pedro.Tuning.changes;
+import static edu.ftcsushi.robots.phoenix.pedro.Tuning.drawCurrent;
+import static edu.ftcsushi.robots.phoenix.pedro.Tuning.drawCurrentAndHistory;
+import static edu.ftcsushi.robots.phoenix.pedro.Tuning.follower;
+import static edu.ftcsushi.robots.phoenix.pedro.Tuning.stopRobot;
+import static edu.ftcsushi.robots.phoenix.pedro.Tuning.telemetryM;
 
 import com.bylazar.configurables.PanelsConfigurables;
 import com.bylazar.configurables.annotations.Configurable;
@@ -92,10 +92,10 @@ public class Tuning extends SelectableOpMode {
     @Override
     public void onSelect() {
         if (follower == null) {
-            follower = Constants.createToolOnlyNativeFollower(hardwareMap);
+            follower = PhoenixPedroConfiguration.createToolOnlyNativeFollower(hardwareMap);
             PanelsConfigurables.INSTANCE.refreshClass(this);
         } else {
-            follower = Constants.createToolOnlyNativeFollower(hardwareMap);
+            follower = PhoenixPedroConfiguration.createToolOnlyNativeFollower(hardwareMap);
         }
 
         follower.setStartingPose(new Pose());

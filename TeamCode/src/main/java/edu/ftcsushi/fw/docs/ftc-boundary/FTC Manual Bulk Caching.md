@@ -5,10 +5,10 @@ already decided to use REV/Lynx `MANUAL` bulk caching. It owns module discovery,
 deduplicated Sushi-cycle invalidation attempts, and terminal cleanup inside the managed
 `FtcRobotOpMode` lifecycle.
 
-This owner is not installed by default, and the production Phoenix robot does not currently adopt it. An
-ordinary program leaves the SDK-selected cache mode untouched (`OFF` after the FTC SDK 11.1 OpMode
-reset). Installing the owner changes module-wide read and failure semantics; it does not by itself
-prove lower latency, fewer transactions, fresher observations, or any other performance benefit.
+This owner is not installed by default. An ordinary program leaves the SDK-selected cache mode
+untouched (`OFF` after the FTC SDK 11.1 OpMode reset). Installing the owner changes module-wide read
+and failure semantics; it does not by itself prove lower latency, fewer transactions, fresher
+observations, or any other performance benefit.
 
 ## Declare the one owner first
 

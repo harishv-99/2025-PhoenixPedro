@@ -17,9 +17,9 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) — the smallest
+- [`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>) — the smallest
   managed TeleOp entry;
-- [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) — its parallel
+- [`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>) — its parallel
   managed Auto entry.
 
 **Safety:** Keep the starter OpModes `@Disabled` during this lesson. A software build requires no

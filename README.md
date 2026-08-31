@@ -4,9 +4,6 @@ Sushi is a non-blocking FTC robot framework built into an FTC SDK project. Ordin
 declares mechanisms, controls, Tasks, drive, and telemetry once; the managed runtime owns FTC
 lifecycle and loop order.
 
-Sushi is the framework; Phoenix is the specific production robot implemented under
-`edu.ftcsushi.robots.phoenix`.
-
 The FTC SDK remains the OpMode and device-access foundation; [Sushi adds value](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md#why-use-sushi>)
 when behavior must be coordinated, reused by TeleOp and Auto, and checked in software as a robot grows.
 
@@ -35,7 +32,6 @@ is the ordinary managed TeleOp-and-Auto example. Framework changes follow the
 
 - [`Sushi Cheat Sheet`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/reference/Sushi Cheat Sheet.md>)
 - [`Common Problems`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/troubleshooting/Common Problems.md>)
-- [`Phoenix production robot`](<TeamCode/src/main/java/edu/ftcsushi/robots/phoenix/README.md>)
 
 ## Searchable documentation site
 

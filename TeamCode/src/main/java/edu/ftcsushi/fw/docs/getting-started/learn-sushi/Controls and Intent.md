@@ -15,7 +15,7 @@ electrical HIGH or LOW signal. A trigger is instead a `ScalarSource` from `0.0` 
 derive a Boolean meaning with, for example, `rightTrigger().above(0.2)`.
 
 The complete Starter intake mapping lives in
-[`StarterTeleOpControls`](<../../../../robots/examples/starter/robot/StarterTeleOpControls.java>):
+[`StarterTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>):
 
 ```java
 requiredCallbacks.onRise(driver.a(),
@@ -32,7 +32,7 @@ A pressed -> BooleanSource true -> rising edge -> setMode(COLLECT)
 ```
 
 The binding owns what A means. The
-[`StarterIntake`](<../../../../robots/examples/starter/capability/intake/StarterIntake.java>)
+[`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>)
 capability names what the robot should do. Its mechanism owns how hardware realizes that request.
 Holding A for twenty cycles produces one rising edge; COLLECT persists because `setMode` replaced
 the held request.
@@ -65,7 +65,7 @@ requiredTasks.onRise(gamepad.x(), requiredLift::home);
 
 `lift::home` is a factory. Each eligible press returns a **fresh, single-use Task**; controls never
 run it in a private loop. The
-[`ReferenceTeleOpControls`](<../../../../robots/examples/reference/robot/ReferenceTeleOpControls.java>)
+[`ReferenceTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceTeleOpControls.java>)
 also uses this rule for launcher spin-up/feed behavior. Declaration order remains observable when
 multiple buttons rise in one cycle.
 

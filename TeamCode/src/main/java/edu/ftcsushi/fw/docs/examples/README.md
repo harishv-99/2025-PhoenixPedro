@@ -22,7 +22,4 @@ cleanup ceremony.
 | [Subsystem Experiments](<Subsystem Experiments.md>) | How to turn a subsystem question into a locked, measurable trial with team-authored success criteria. |
 | [BIOBUZZ Capability Map](<BIOBUZZ Capability Map.md>) | A provisional season helper that points to canonical lessons without duplicating robot code. |
 
-The production [Phoenix robot](<../../../robots/phoenix/README.md>) is useful architectural evidence,
-but it is not the beginner template.
-
 [Back to the Sushi docs home](<../README.md>)

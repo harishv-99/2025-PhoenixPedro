@@ -7,7 +7,7 @@ Starter robot; no hardware setup or code changes are required.
 
 ## Start with the OpMode
 
-[`StarterTeleOp.java`](<../../../../robots/examples/starter/opmode/StarterTeleOp.java>) contains the
+[`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>) contains the
 ordinary entry point:
 
 ```java
@@ -20,7 +20,7 @@ protected void configure(RobotProgram program) {
 
 The OpMode chooses the profile and mode, then delegates **code composition**. This is different
 from electrical wiring: the profile names configured FTC devices, while
-[`StarterRobot`](<../../../../robots/examples/starter/robot/StarterRobot.java>) constructs the
+[`StarterRobot`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java>) constructs the
 software owners and declares their relationships once.
 
 ```text
@@ -55,16 +55,16 @@ A **Plant** is the mechanism-owned object that resolves a requested actuator tar
 the final hardware write. [Plants and hardware](<Plants and Hardware.md>) follows that path.
 
 These are ownership boundaries, not a reason to create extra classes. The Starter exposes one
-[`StarterIntake`](<../../../../robots/examples/starter/capability/intake/StarterIntake.java>)
+[`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>)
 capability directly because that is all its clients need.
 
 ## How the pattern scales
 
-The [`ReferenceRobot`](<../../../../robots/examples/reference/robot/ReferenceRobot.java>) adds lift
+The [`ReferenceRobot`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.java>) adds lift
 and launcher capability families without changing the roles. TeleOp controls and
-[`ReferenceAutoRoutines`](<../../../../robots/examples/reference/autonomous/ReferenceAutoRoutines.java>)
+[`ReferenceAutoRoutines`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/autonomous/ReferenceAutoRoutines.java>)
 call the same mode-neutral capabilities; their mechanisms still privately own hardware realization.
-Its multi-family [`ReferenceCapabilities`](<../../../../robots/examples/reference/robot/ReferenceCapabilities.java>)
+Its multi-family [`ReferenceCapabilities`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceCapabilities.java>)
 handoff is useful to that Auto routine, but it is not a registry every robot must copy.
 
 ## Check your understanding

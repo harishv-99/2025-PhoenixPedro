@@ -46,58 +46,32 @@ and publishes current finite pose and velocity, the passive localizer rejects th
 adapter fail-stops drive. Its diagnostic includes the predictor's cached last device status; it
 never polls the device through a second owner.
 
-```java
-PhoenixProfile profile = PhoenixProfile.current();
-PhoenixRobot robot = new PhoenixRobot(hardwareMap);
-PedroPathingRuntime pedro =
-        PedroPathingRuntime.create(
-                hardwareMap,
-                Constants.phoenixAutoRuntimeConfig(
-                        profile.localization.predictor,
-                        profile.drive.wiring,
-                        profile.drive.enableZeroPowerBrake));
+The maintained Basic Pedro example keeps those facts in an independent profile and transfers the
+whole managed graph through one composition-root declaration:
 
-robot.declareAuto(
+```java
+BasicPedroAutoRobot robot = new BasicPedroAutoRobot(
         program,
-        profile,
-        pedro.driveAdapter(),
-        pedro.motionPredictor(),
-        frozenEligibleTagIds,
-        BooleanSource.constant(true),
-        BooleanSource.constant(false),
-        () -> pedro.setStartingPose(frozenPedroStartPose())
-);
-program.rootTask(rootRoutine);
+        hardwareMap,
+        BasicPedroProfile.current());
 ```
 
-Phoenix's
-`Constants.phoenixAutoRuntimeConfig(predictor, wiring, enableZeroPowerBrake)` is only a pure project
-mapper. It raw-copies those narrow Pinpoint/drivetrain inputs, combines them with fresh checked-in
-Pedro tuning, and returns an independent runtime Config. It accepts and retains no aggregate
-profile, constructs no hardware, and is not a second runtime factory. Unrelated vision, scoring,
-targeting, or Auto sections are outside that mapping; the runtime remains the authoritative
-whole-Config validation boundary.
-
-The production Phoenix program obtains one fresh `PhoenixProfile.current()` graph, performs its
-package-private drive-versus-scoring motor collision preflight before hardware effects, then passes
-the profile synchronously into `declareAuto(...)`. `PhoenixRobot` itself is a HardwareMap-only root,
-and each long-lived owner captures only its active configuration. This preflight is robot policy,
-not a generic Pedro requirement; another adopting robot must enforce its own cross-owner hardware
-relationships.
-
-Those boolean sources keep ordinary Auto aim enabled with no manual override. Advanced direct
-assembly can provide other clock-aware targeting policies through the same managed declaration;
-the adapter heartbeat and cleanup still belong to `RobotProgram`.
+The root performs its intake-versus-drive motor ownership preflight before hardware effects, then
+constructs the runtime and immediately registers one private service. That service applies the
+declared start pose at START, updates `motionPredictor()` before `driveAdapter()` every active
+cycle, and owns final drive stop. Each long-lived owner snapshots only its active configuration;
+the root retains no mutable aggregate profile. Cross-owner hardware relationships remain robot
+policy, not a generic Pedro requirement.
 
 The managed service calls the adapter once at START and once per active loop. Route and guidance
 Tasks may call the same adapter hook; `PedroPathingDriveAdapter` deduplicates by
 `LoopClock.cycle()`, including updates hidden inside vendor calls.
 
 At START, the program has already frozen any `RobotProgram.Prestart` policy and reset the shared
-clock. The production Phoenix program then applies the frozen start pose, updates vision readiness,
-localization,
-targeting, and the Pedro heartbeat, starts/first-updates the root Task, and finally realizes robot
-outputs. There is no separate Pedro or Auto clock.
+clock. In its service phase, the robot-owned service applies the declared start pose and updates
+localization and the Pedro heartbeat. `RobotProgram` then starts/first-updates the root Task and
+finally realizes robot outputs. A larger application may declare vision or policy services earlier
+in the same service phase. There is no separate Pedro or Auto clock.
 
 ## Routes
 
@@ -124,9 +98,9 @@ Never infer success solely from Pedro becoming idle.
 ## Cleanup
 
 `RobotProgram` cancels the root first, stops downstream mechanism outputs, then stops services in
-reverse declaration order. Phoenix's managed Pedro service makes `stop()` write physical zero
-immediately, including after reentrant callbacks, before targeting reset and vision close finish.
-The adapter's stop and same-cycle deduplication are idempotent.
+reverse declaration order. The Pedro service makes `stop()` write physical zero immediately,
+including after reentrant callbacks. The adapter's stop and same-cycle deduplication are
+idempotent.
 
 After validation succeeds, an SDK or vendor constructor can still fail after partial hardware
 effects. Construction creates the stoppable Mecanum drivetrain first and best-effort breaks it if a
@@ -144,11 +118,10 @@ owner. After adaptation, that host must route heartbeat and stop through the ada
 creating peer lifecycle writers. Assembly code already holds the supplied vendor reference, so the
 adapter intentionally adds neither a Follower getter nor a parallel pose-observation API.
 
-Generated Pedro tuning OpModes and `PedroTest` instead use the project package's package-local
-native-Follower factory. Their native `PinpointLocalizer` and raw `Follower.update()` lifecycle are
-required by Pedro's stock tools and are exclusive to those OpModes. That tool graph is neither the
-completed-Follower adapter seam nor a second production option, and it must never coexist with a
-production runtime.
+Application-owned generated Pedro tuning OpModes may instead use a package-private native-Follower
+factory. Their native localizer and raw `Follower.update()` lifecycle are exclusive to those
+OpModes. That tool graph is neither the completed-Follower adapter seam nor a second production
+option, and it must never coexist with a managed runtime.
 
 ## What validation does not prove
 

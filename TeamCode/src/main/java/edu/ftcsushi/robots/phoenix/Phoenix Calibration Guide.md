@@ -399,7 +399,7 @@ runtime hardware boundary:
 ```java
 PedroPathingRuntime runtime = PedroPathingRuntime.create(
         hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(
+        PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 profile.localization.predictor,
                 profile.drive.wiring,
                 profile.drive.enableZeroPowerBrake));
@@ -412,7 +412,8 @@ the complete graph before hardware lookup or its non-blocking Pinpoint reset req
 its sole predictor into `FtcOdometryAprilTagLocalizationLane.withPredictor(...)`. Phoenix must not
 construct Pedro's native Pinpoint localizer as a second production owner.
 
-Pedro's generated tuning menu and `PedroTest` use a package-local tool-only native factory instead.
+Phoenix's application-owned Pedro tuning menu and `PedroTest` use a package-local tool-only native
+factory instead.
 That exclusive OpMode graph derives the same hardware name, offsets, resolution, directions, and
 yaw scalar from the checked-in localization recipe, but owns Pedro's native `PinpointLocalizer` and raw Follower heartbeat.
 It is not a production runtime option and must never coexist with Phoenix Auto. The separate public

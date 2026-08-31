@@ -23,9 +23,9 @@ section explicitly labels a custom hardware adapter or other advanced boundary. 
 compare low-level builder alternatives may declare a short local solely to keep the API difference
 visible; production mechanism code assigns the selected build to a private field, as the complete
 examples do. The compiling
-[`StarterIntakeMechanism`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) shows an
+[`StarterIntakeMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) shows an
 ordinary direct-power private-Plant owner. The managed
-[`ReferenceLauncherMechanism`](<../../../robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+[`ReferenceLauncherMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
 adds paired velocity, servo, sensor, overlay, and outcome-aware Task examples without exposing
 manual OpMode lifecycle code.
 
