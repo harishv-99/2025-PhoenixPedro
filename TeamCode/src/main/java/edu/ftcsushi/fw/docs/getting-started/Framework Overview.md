@@ -24,9 +24,12 @@ Sushi runs it later.
 
 ## The student entry point
 
+### Critical code
+
 An ordinary Sushi OpMode overrides one method. This is the complete method from
 [`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>):
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java -->
 ```java
 @Override
 protected void configure(RobotProgram program) {
@@ -34,6 +37,14 @@ protected void configure(RobotProgram program) {
     new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
 }
 ```
+
+**What to notice**
+
+- The OpMode chooses configuration and delegates composition once.
+- `RobotProgram` owns the loop and cleanup after `configure(...)` returns.
+
+**Key APIs:** `FtcRobotOpMode` is the managed FTC host; `RobotProgram` is the declaration and
+lifecycle surface.
 
 `StarterProfile` supplies checked-in configuration. `StarterRobot` performs code composition: it
 constructs the intake, controls, and drivetrain owners, registers the controls' bindings, and
@@ -140,16 +151,6 @@ Three distinctions keep that trace truthful:
 
 The composition root connects those owners. It should not become a control script. Mechanisms keep
 their Plants private so controls, Tasks, and Auto all use the same visible intent-to-hardware path.
-
-## Optional source check
-
-Without changing a file, find `intake.motorName` and `intake.collectPower` in
-[`StarterProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>), the A binding
-in [`StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>),
-and the intake construction in
-[`StarterRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java>). The profile owns
-the two configuration values, controls own the button meaning, and the composition root constructs
-and declares the mechanism that privately owns the hardware path.
 
 ## Choose one next route
 

@@ -60,14 +60,30 @@ copied package or test; do not edit the canonical example.
 
 ## 3. Change one operator meaning, then prove it
 
+### Critical code
+
 Open only the copied `robot/StarterTeleOpControls.java`. In `bind(...)`, change `driver.a()` to
 `driver.y()` for COLLECT. The final registration is:
 
+After your lesson edit, this is an abbreviated shape.
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 requiredCallbacks.onRise(
         driver.y(),
         () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
+// ...the other bindings stay unchanged...
 ```
+
+**What to notice**
+
+- The edit changes an operator meaning without changing the capability or mechanism.
+- The unchanged test first turns red, proving it observes the control contract.
+
+**Key APIs:** `CallbackBindings.onRise(...)` declares the edge meaning; `StarterIntake.setMode(...)`
+is the semantic capability request.
 
 Run the focused test again **without changing the test**. It should fail because the test still
 presses A and expects COLLECT. That red result is useful evidence: the test noticed the real control
@@ -83,9 +99,12 @@ or claims that a motor moved.
 
 ## 4. Reveal the next owner only when you need it
 
+### Critical code
+
 **Where does FTC enter the robot?** Open the copied `opmode/StarterTeleOp.java`. Its complete
 ordinary declaration is only:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java -->
 ```java
 @Override
 protected void configure(RobotProgram program) {
@@ -101,6 +120,7 @@ composition root to declare the robot; it is not a loop or control script.
 [`StarterIntake.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>).
 TeleOp and Auto share these robot words:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java -->
 ```java
 enum Mode {
     STOPPED,
@@ -114,6 +134,7 @@ Controls call the capability, not a motor or numeric power.
 **How does COLLECT reach one output?** Open the copied
 `capability/intake/StarterIntakeMechanism.java`. Its request path is:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
 @Override
 public void setMode(Mode mode) {
@@ -129,6 +150,7 @@ writer.
 
 **How does Auto reuse the same meaning?** Open the copied `opmode/StarterAuto.java` last:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
 ```java
 StarterProfile profile = StarterProfile.current();
 StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
@@ -137,6 +159,18 @@ program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
 
 `collectForSeconds(...)` creates a fresh, single-use Task. The managed loop advances it without
 sleeping or blocking, while the same mechanism remains the final output owner.
+
+**What to notice**
+
+- OpMode, capability, mechanism, and Auto each own one different decision.
+- Both modes share `StarterIntake.Mode`; only the mechanism maps it to output power.
+- Auto creates fresh temporal work but never becomes a second hardware writer.
+
+**Key APIs**
+
+- `FtcRobotOpMode.configure(...)` — one managed composition entry.
+- `Plant.commandTarget()` — the mechanism's persistent request within one realization graph.
+- `program.rootTask(...)` — one fresh managed Auto root.
 
 ## Checkpoint and next route
 

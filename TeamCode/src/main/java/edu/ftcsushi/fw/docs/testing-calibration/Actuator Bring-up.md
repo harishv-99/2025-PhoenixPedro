@@ -93,9 +93,15 @@ An incremental encoder's raw values are not durable endpoints. If the safe captu
 `11452`, the useful fact is the `4110`-tick travel. A later homing/reference action establishes
 where Plant `0.0` is for that run.
 
+### Critical code
+
 Using ticks as Plant units:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...begin the position-Plant recipe...
 .bounded(0.0, 4110.0)
 .nativeUnits()
 .needsReference("lift not homed")
@@ -103,11 +109,27 @@ Using ticks as Plant units:
 
 Using meaningful units, such as an 18-inch lift:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...begin the position-Plant recipe...
 .bounded(0.0, 18.0)
 .scaleToNative(4110.0 / 18.0)
 .needsReference("lift not homed")
 ```
+
+**What to notice**
+
+- `bounded(...)` declares the legal public target interval; it is not a hardware-limit detector.
+- The unit mapping and runtime reference answer different questions and stay explicit.
+- The captured span is useful, while an incremental encoder's arbitrary startup count is not a durable zero.
+
+**Key APIs**
+
+- `bounded(min, max)` — declares the Plant-coordinate target range.
+- `nativeUnits()` / `scaleToNative(...)` — selects how Plant coordinates convert to native units.
+- `needsReference(reason)` — prevents position use until a runtime reference is established.
 
 Do not paste the arbitrary raw minimum as a permanent zero. Use a limit switch, index, absolute
 sensor, or deliberately chosen startup pose through the position-reference APIs described in
@@ -154,24 +176,51 @@ clearance are still required.
 Suppose a 270-degree programmed servo is mechanically allowed to move a plate through only 180
 degrees. You capture native commands `0.17` and `0.83`, then choose degrees as Plant units:
 
+### Critical code
+
+Replace the demonstration endpoints with backed-off captures from your mechanism.
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...begin the servo position-Plant recipe...
 .bounded(0.0, 180.0)
 .rangeMapsToNative(0.17, 0.83)
 ```
 
 For a claw whose public coordinate is simply closed-to-open:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...begin the servo position-Plant recipe...
 .bounded(0.0, 1.0)
 .rangeMapsToNative(0.32, 0.76)
 ```
 
 A reversed linkage may truthfully be:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...begin the servo position-Plant recipe...
 .bounded(0.0, 1.0)
 .rangeMapsToNative(0.76, 0.32)
 ```
+
+**What to notice**
+
+- Plant bounds use mechanism meaning; native endpoints remain FTC logical servo commands.
+- Reversed native endpoints are valid and must not be sorted.
+- The affine mapping commands the servo but does not measure shaft angle or arrival.
+
+**Key APIs**
+
+- `bounded(min, max)` — declares legal targets in the mechanism's public units.
+- `rangeMapsToNative(nativeAtMin, nativeAtMax)` — maps those two bounds to logical servo commands.
 
 `rangeMapsToNative(...)` performs an affine command-space mapping from the two Plant bounds to the
 two native endpoints. It does not reprogram the servo, measure angle, linearize a nonlinear

@@ -10,13 +10,28 @@ or moving hardware.
 
 ## Start with one timed intake
 
+### Critical code
+
 Starter Auto declares the same intake capability used by TeleOp, then chooses its routine:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...
 StarterIntake intake = new StarterRobot(hardwareMap)
         .declareAuto(program, profile);
 program.rootTask(intake.collectForSeconds(0.75));
+// ...
 ```
+
+**What to notice**
+
+- Auto reuses the same capability vocabulary as TeleOp.
+- The OpMode selects one fresh root Task; the mechanism remains the hardware writer.
+
+**Key APIs:** `program.rootTask(...)` declares the one managed Auto root; `Task` is cooperative,
+single-use work.
 
 [`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>) owns that routine
 choice. `StarterRobot` only declares the intake output and presenter. At START, the fresh root Task
@@ -32,17 +47,29 @@ velocity. The Starter uses `setMode(...)` because its public request and status 
 
 ## Every run needs a fresh Task
 
+### Critical code
+
 Each `Task` instance may start only once. Calling `collectForSeconds(...)`, `home()`, `moveTo(...)`,
 or `launchOne()` is calling a factory method that returns new work. Call it again for another run;
 never save and restart the old object.
 
 That is why a repeatable TeleOp macro binds a supplier:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 tasks.onRise(gamepad.x(), lift::home);
 tasks.onRise(gamepad.y(), launcher::launchOne);
 callbacks.onRise(gamepad.b(), launcher::abortLaunches);
+// ...additional control meanings omitted...
 ```
+
+**What to notice:** method references such as `lift::home` manufacture a new Task on every accepted
+edge; they do not reuse a stored instance.
+
+**Key APIs:** `TaskBindings.onRise(...)` accepts fresh-Task suppliers;
+`CallbackBindings.onRise(...)` accepts synchronous callbacks.
 
 Each X or Y rising edge constructs a fresh Task. B is a synchronous callback, so it calls the abort
 method directly.

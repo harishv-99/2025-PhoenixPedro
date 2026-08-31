@@ -56,8 +56,11 @@ and complete the adopting robot's calibration guide.
 
 ## 1. Start with the geometry
 
+### Critical code
+
 `BasicPedroAutoPaths` declares a 12-inch line in Pedro field coordinates:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoPaths.java -->
 ```java
 private static final double START_X_INCHES = 24.0;
 private static final double START_Y_INCHES = 24.0;
@@ -69,6 +72,7 @@ private static final double END_HEADING_RAD = 0.0;
 
 Its constructor builds that fixed route through the configured runtime:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoPaths.java -->
 ```java
 practiceRoute = requiredRuntime.pathBuilder()
         .addPath(new BezierLine(pedroStartPose, pedroEndPose))
@@ -78,6 +82,14 @@ practiceRoute = requiredRuntime.pathBuilder()
         )
         .build();
 ```
+
+**What to notice**
+
+- Fixed geometry is constructed eagerly, before the Task starts.
+- Inches, radians, and the robot footprint remain visible physical facts.
+
+**Key APIs:** Pedro `Pose` names field geometry; `PedroRuntime.pathBuilder()` creates the robot-owned
+fixed route.
 
 Fixed geometry is built during configuration. Route geometry that genuinely depends on a live
 fact uses the separately documented start-time route factory; this first route does not need it.
@@ -99,25 +111,43 @@ known-clear-box composition in [`Drive Guidance`](<../drive-vision/Drive Guidanc
 
 ## 2. Follow the route as a Task
 
+### Critical code
+
 `BasicPedroAutoRoutine.build(...)` creates the route Task with a diagnostic name and a finite Task
 timeout:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...
 Task followPracticeRoute = RouteTasks.follow(
         "BasicPracticeRoute",
         routes,
         practiceRoute,
         ROUTE_TIMEOUT_SEC
 );
+// ...
 ```
+
+**What to notice**
+
+- One Task owns one route start and a finite timeout boundary.
+- Robot code does not drive the raw vendor lifecycle beside the adapter.
+
+**Key APIs:** `RouteTasks.follow(...)` wraps one per-start execution; its returned `Task` is
+single-use cooperative work.
 
 Robot code does not call the raw Pedro follower's start, update, or break methods. The route adapter
 owns that boundary and reports the result for this exact run.
 
 ## 3. Make the result policy explicit
 
+### Critical code
+
 The route ending determines which mechanism behavior is allowed:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java -->
 ```java
 return Tasks.branchOnOutcome(
         followPracticeRoute,
@@ -125,6 +155,14 @@ return Tasks.branchOnOutcome(
         requiredMechanism.idleTask()
 );
 ```
+
+**What to notice**
+
+- Confirmed success, recoverable timeout, and cancellation-like failure lead to different actions.
+- Robot-owned Auto policy interprets retained evidence; the integration does not choose strategy.
+
+**Key APIs:** `Tasks.branchOnOutcome(...)` selects success and timeout continuations while failing
+closed for cancellation-like or failed endings.
 
 For this routine:
 
@@ -157,15 +195,30 @@ keeps reusable capabilities in its root and Auto strategy in an Auto-owned routi
 
 ## 5. Review the local profile and use the one root boundary
 
+### Critical code
+
 `BasicPedroAutoExample` selects one fresh, local profile and gives the complete active
 configuration to the composition root:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...
 robot = new BasicPedroAutoRobot(
         program,
         hardwareMap,
         BasicPedroProfile.current());
+// ...
 ```
+
+**What to notice**
+
+- A fresh profile keeps route, follower, mechanism, and permission facts together.
+- The composition root declares one managed service/output/root graph.
+
+**Key APIs:** `RobotProgram` owns the managed lifecycle; `BasicPedroAutoRobot` composes Pedro and the
+mechanism once.
 
 `BasicPedroProfile.current()` returns three fresh authored answers: the complete
 `PedroPathingRuntime.Config` in `pedro`, the example mechanism's Config in `intake`, and

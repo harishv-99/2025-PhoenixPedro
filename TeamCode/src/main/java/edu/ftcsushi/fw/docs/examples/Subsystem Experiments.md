@@ -90,6 +90,52 @@ or reject. Do not persist trial results on the Robot Controller.
 
 ## Worked locked card: Reference flywheel spin-up
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+@Override
+protected void onInit() {
+    validateCriteria();
+    if (!reviewedForMotion) return;
+    launcher = new ReferenceLauncherMechanism(ctx.hw, launcherConfig);
+}
+
+private void beginTrial() {
+    trialNumber++;
+    startedAtSec = clock.nowSec();
+    launcher.setTargetVelocityTicksPerSec(targetVelocityTicksPerSec);
+    // ...RUNNING is exclusive; A cannot start an overlapping trial...
+}
+
+private void finishTrial(TrialState result, ReferenceLauncher.Status status, double elapsedSec) {
+    // ...copy elapsed time and both wheel measurements into retained terminal fields...
+    trialState = result;
+    launcher.abortLaunches(); // freeze evidence before changing the persistent request
+}
+
+@Override
+protected void onStop() {
+    if (launcher != null) launcher.stop();
+}
+```
+
+**What to notice**
+
+- Criteria are copied and validated before hardware construction; the checked-in motion lock stays false.
+- INIT constructs the selected tester but does not command motion.
+- One bounded trial freezes evidence before requesting reusable idle, so deceleration cannot rewrite its result.
+- STOP terminally cleans the owned mechanism even after abort or partial progress.
+
+**Key APIs**
+
+- `BaseTeleOpTester`: supplies the shared non-blocking tester lifecycle and clock.
+- `ReferenceFlywheelSpinUpCriteria`: owns the locked question, command, and powered-time boundary.
+- `ReferenceLauncher.Status`: provides computed per-wheel evidence without declaring the lab-card decision.
+- `FtcTeleOpTesterOpMode`: hosts a fresh tester tree without creating another FTC loop.
+
 [`ReferenceFlywheelSpinUpExperiment.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
 answers one narrow question: how quickly do both flywheels reach the reviewed velocity condition
 from the card's starting state? The trial action changes only flywheel velocity and never requests

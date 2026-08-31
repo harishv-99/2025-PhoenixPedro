@@ -75,9 +75,14 @@ software fakes. They do not move hardware.
 
 ## 4. Find the learning sources
 
+### Critical code
+
 Open the two starter entry files. Both contain `@Disabled`, so they compile but do not appear on the
 Driver Station yet:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 @TeleOp(name = "FW Starter: TeleOp", group = "FW Examples")
 @Disabled
@@ -85,6 +90,16 @@ public final class StarterTeleOp extends FtcRobotOpMode {
     // ...
 }
 ```
+
+**What to notice**
+
+- `@Disabled` keeps a compiling lesson OpMode off the Driver Station menu.
+- The ordinary entry extends the managed FTC host instead of owning a private loop.
+
+**Key APIs**
+
+- `FtcRobotOpMode` — Sushi's ordinary FTC lifecycle host.
+- `@Disabled` — FTC registration guard; removing it is a separate hardware-readiness decision.
 
 Do not remove `@Disabled` merely to follow the source-based walkthrough. A later physical run must
 first review every hardware name, direction,

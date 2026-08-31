@@ -48,6 +48,120 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void studentLearningJavaExcerptsDeclareAndMatchTheirSourceTruth()
+            throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        Path docsRoot = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/fw/docs");
+        List<Path> learningPages = new ArrayList<Path>();
+        collectMarkdownFiles(docsRoot.resolve("getting-started"), learningPages);
+        collectMarkdownFiles(docsRoot.resolve("examples"), learningPages);
+        collectMarkdownFiles(docsRoot.resolve("testing-calibration"), learningPages);
+
+        Pattern javaFence = Pattern.compile("(?m)^```java\\s*$");
+        Pattern markedFence = Pattern.compile(
+                "(?m)^<!-- (source-excerpt: ([^>]+)|teaching-shape) -->\\r?\\n"
+                        + "```java\\r?\\n([\\s\\S]*?)\\r?\\n```");
+        List<String> failures = new ArrayList<String>();
+        for (Path page : learningPages) {
+            String markdown = readUtf8(page);
+            int fenceCount = matcherCount(javaFence.matcher(markdown));
+            Matcher marked = markedFence.matcher(markdown);
+            int markedCount = 0;
+            while (marked.find()) {
+                markedCount++;
+                String snippet = marked.group(3);
+                String sourcePath = marked.group(2);
+                if (sourcePath == null) {
+                    int contextStart = Math.max(0, marked.start() - 240);
+                    String context = markdown.substring(contextStart, marked.start());
+                    if (!context.contains("Abbreviated shape (omissions shown):")) {
+                        failures.add(repositoryRelativePath(repositoryRoot, page)
+                                + ": teaching shape lacks visible abbreviated-shape label");
+                    }
+                    if (!snippet.contains("// ...")) {
+                        failures.add(repositoryRelativePath(repositoryRoot, page)
+                                + ": teaching shape lacks // ... omission marker");
+                    }
+                    continue;
+                }
+
+                Path source = repositoryRoot.resolve(sourcePath.trim())
+                        .toAbsolutePath().normalize();
+                if (!source.startsWith(repositoryRoot.toAbsolutePath().normalize())
+                        || !Files.isRegularFile(source)
+                        || !source.getFileName().toString().endsWith(".java")) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + ": invalid source excerpt path " + sourcePath.trim());
+                    continue;
+                }
+                String normalizedSnippet = normalizeExcerpt(snippet);
+                String normalizedSource = normalizeExcerpt(readUtf8(source));
+                if (normalizedSnippet.isEmpty()
+                        || !normalizedSource.contains(normalizedSnippet)) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + ": excerpt does not occur contiguously in "
+                            + sourcePath.trim());
+                }
+            }
+            if (fenceCount != markedCount) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": found " + fenceCount + " Java fences but " + markedCount
+                        + " provenance markers");
+            }
+        }
+        assertTrue("Student learning excerpt provenance failures: " + failures,
+                failures.isEmpty());
+    }
+
+    @Test
+    public void substantiveStudentLearningPagesKeepInlineLearningBlocks() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
+        List<String> pages = Arrays.asList(
+                "examples/Field-relative Drive.md",
+                "examples/Framework Components Through Examples.md",
+                "examples/Hardware-free Reference Scenarios.md",
+                "examples/Modern Starter Robot.md",
+                "examples/Pedro Autonomous Reference.md",
+                "examples/Subsystem Experiments.md",
+                "examples/Timestamped Adaptive Collection.md",
+                "getting-started/Build a Robot Step by Step.md",
+                "getting-started/Build and Run.md",
+                "getting-started/First Pedro Auto.md",
+                "getting-started/First Sushi Robot Code.md",
+                "getting-started/Framework Overview.md",
+                "getting-started/Test a Mechanism Without Hardware.md",
+                "getting-started/learn-sushi/Controls and Intent.md",
+                "getting-started/learn-sushi/Evidence and Experiments.md",
+                "getting-started/learn-sushi/From Requirement to Robot.md",
+                "getting-started/learn-sushi/Plants and Hardware.md",
+                "getting-started/learn-sushi/Robot Roles.md",
+                "getting-started/learn-sushi/Tasks and Autonomous.md",
+                "testing-calibration/Actuator Bring-up.md",
+                "testing-calibration/Control Tuning Workflow.md",
+                "testing-calibration/Guided Calibration Walkthroughs.md",
+                "testing-calibration/Robot Calibration Tutorials.md");
+
+        List<String> failures = new ArrayList<String>();
+        for (String page : pages) {
+            String markdown = readUtf8(repositoryRoot.resolve(docs + page));
+            if (!markdown.contains("### Critical code")) {
+                failures.add(page + ": missing Critical code");
+            }
+            if (!markdown.contains("**What to notice**")) {
+                failures.add(page + ": missing What to notice");
+            }
+            if (!markdown.contains("**Key APIs")) {
+                failures.add(page + ": missing Key APIs");
+            }
+        }
+        assertTrue("Student learning block failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
     public void documentationSiteNavigationTargetsExistingMarkdown() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
@@ -524,8 +638,8 @@ public final class DocumentationLinksTest {
                 "From Requirement to Robot.md")) {
             topicWords += proseWordCount(topics.resolve(topic));
         }
-        assertTrue("Six Sushi topic pages exceed 4,200 prose words: " + topicWords,
-                topicWords <= 4200);
+        assertTrue("Six Sushi topic pages exceed 4,600 prose words: " + topicWords,
+                topicWords <= 4600);
         assertTrue("Role Paths exceeds 500 prose words",
                 proseWordCount(topics.resolve("Role Paths.md")) <= 500);
     }
@@ -656,6 +770,47 @@ public final class DocumentationLinksTest {
 
     private static String readUtf8(Path path) throws IOException {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+    }
+
+    private static void collectMarkdownFiles(Path root, final List<Path> files)
+            throws IOException {
+        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                if (file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".md")) {
+                    files.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private static int matcherCount(Matcher matcher) {
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    private static String normalizeExcerpt(String text) {
+        String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
+        int first = 0;
+        while (first < lines.length && lines[first].trim().isEmpty()) {
+            first++;
+        }
+        int last = lines.length;
+        while (last > first && lines[last - 1].trim().isEmpty()) {
+            last--;
+        }
+        StringBuilder normalized = new StringBuilder();
+        for (int index = first; index < last; index++) {
+            if (normalized.length() > 0) {
+                normalized.append('\n');
+            }
+            normalized.append(lines[index].trim());
+        }
+        return normalized.toString();
     }
 
     private static Path configuredDocsRoot(Path repositoryRoot, String config) {

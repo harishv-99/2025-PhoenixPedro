@@ -27,6 +27,8 @@ mechanism. Prove software contracts first and physical behavior separately.
 
 ## Scale when the requirement needs feedback: a lift
 
+### Critical code
+
 Suppose the team decides:
 
 > TeleOp and Auto must select LOW and HIGH. Auto must be able to wait for arrival, and the lift must
@@ -46,12 +48,25 @@ Work from that meaning toward hardware:
 
 The mode-neutral vocabulary stays small:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...
 void setHeight(Height height);
 Task moveTo(Height height);
 Task home();
 Status status();
+// ...
 ```
+
+**What to notice**
+
+- The capability names robot meanings and evidence, not FTC device details.
+- TeleOp may replace a persistent request; Auto may create fresh work that waits for feedback.
+
+**Key APIs:** `Task` represents non-blocking work; capability `Status` is the shared read-only
+evidence vocabulary.
 
 [`ReferenceLift.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLift.java>)
 does not mention an FTC motor, switch polarity, encoder scaling, or homing power. Those physical and

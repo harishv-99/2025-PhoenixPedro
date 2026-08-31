@@ -59,9 +59,15 @@ It should end with `BUILD SUCCESSFUL`.
 
 ## 2. Follow request, heartbeat, and output
 
+### Critical code
+
 The central scenario has this shape:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...
 StarterIntakeMechanism.Config config =
         StarterIntakeMechanism.Config.defaults();
 config.collectPower = 0.37;
@@ -86,7 +92,20 @@ assertEquals(config.ejectPower, motor.power(), 0.0);
 intake.setMode(StarterIntake.Mode.STOPPED);
 intake.update(time.nextCycle(0.02));
 assertEquals(0.0, motor.power(), 0.0);
+// ...
 ```
+
+**What to notice**
+
+- `setMode(...)` changes semantic intent but performs no motor write.
+- `update(clock)` is the one heartbeat that turns the Plant request into a recorded command.
+- The production mechanism is unchanged; only `HardwareMap` supplies recording test devices.
+
+**Key APIs**
+
+- `FtcTestHardware` and `MotorProbe` — test-only FTC registry and command recorder.
+- `ManualLoopClock` — explicit shared cycle/time control for a deterministic scenario.
+- `StarterIntakeMechanism.update(...)` — the production output heartbeat under test.
 
 `setMode(...)` changes semantic intent and stages a Plant request. It does not write the motor.
 `update(...)` is the one output heartbeat that realizes the final command. The probe records that

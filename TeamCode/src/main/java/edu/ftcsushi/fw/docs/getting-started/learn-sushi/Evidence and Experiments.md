@@ -50,19 +50,32 @@ software question.
 
 ## Start with the Starter status
 
+### Critical code
+
 The Starter presenter reads one cached snapshot:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
 StarterIntake.Status status = intake.status();
 telemetry.addData("intake.mode", status.mode());
 telemetry.addData("intake.appliedTargetPower", status.appliedTargetPower());
 ```
 
+**What to notice**
+
+- The presenter formats one already-computed snapshot; it does not sample hardware.
+- Requested mode and applied target are shown as different facts.
+
+**Key APIs:** capability `status()` publishes a cached semantic snapshot; `Telemetry.addData(...)`
+formats evidence without owning decisions.
+
 `mode` describes the current semantic command. `appliedTargetPower` is the Plant's cached final
 target after its resolver and guards. It is **not** motor feedback and does not prove that the motor
 moved. The presenter formats existing facts; it does not resample hardware or make policy.
 
 ## A semantic boolean is not an electrical level
+
+### Critical code
 
 `gamepad.y()` is already semantic: it is `true` while Y is pressed. A gamepad trigger is different
 again—it is a `ScalarSource` from `0.0` released to `1.0` fully pressed.
@@ -74,10 +87,19 @@ An FTC `DigitalChannel` reports an electrical level. Sushi makes the chosen pola
 
 The Reference lift deliberately selects and conditions active-low input:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.java -->
 ```java
 bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
         .debouncedOnOff(0.02, 0.02);
 ```
+
+**What to notice**
+
+- Electrical polarity is selected once at the mechanism boundary.
+- Debounce conditions the chosen meaning; it does not discover or invert that meaning.
+
+**Key APIs:** `FtcSensors.digitalLow(...)` adapts an active-low FTC channel;
+`BooleanSource.debouncedOnOff(...)` conditions the semantic fact over shared-clock time.
 
 For its reviewed wiring, released is HIGH/false and depressed is LOW/true. `digitalLow` does not
 discover the circuit or mechanical state; the robot author chooses it because LOW means “bottom

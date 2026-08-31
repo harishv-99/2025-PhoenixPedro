@@ -10,6 +10,8 @@ motion is required.
 
 ## Follow the Starter intake
 
+### Critical code
+
 ```text
 setMode(COLLECT) -> remember Mode.COLLECT -> map it to configured power
                  -> persistent Plant command target -> Plant.update(shared clock)
@@ -23,6 +25,7 @@ the final target resolver; the Plant remains the only actuator writer.
 receives `HardwareMap` plus data-only configuration, copies and validates that configuration, then
 constructs its private Plant:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
 plant = FtcActuators.plant(
                 Objects.requireNonNull(hardwareMap, "hardwareMap is required")
@@ -33,6 +36,14 @@ plant = FtcActuators.plant(
         .build();
 ```
 
+**What to notice**
+
+- The mechanism constructs and privately owns the complete Plant graph.
+- The builder names one motor, one target source, and a safe initial zero request.
+
+**Key APIs:** `FtcActuators.plant(hardwareMap)` begins ordinary FTC construction;
+`targetFromNewCommand(...)` creates the Plant-owned persistent command source.
+
 The builder answers which FTC motor is owned, its logical direction, the public target kind, and
 where the final target comes from. A direct-power Plant owns normalized range `[-1, +1]` and begins
 with a zero command. Construction does not command motion; the managed output phase later calls
@@ -41,9 +52,15 @@ with a zero command. Construction does not command motion; the managed output ph
 `setMode(...)` keeps the named request and maps it forward to the configured power. It does not
 write hardware. Status reports that retained request directly:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
 return new Status(requestedMode, plant.getAppliedTarget());
 ```
+
+**What to notice:** semantic request and applied numeric target remain separate facts.
+
+**Key APIs:** `Plant.getAppliedTarget()` reports the cached resolved command; it is not motor
+feedback.
 
 The mechanism never guesses a mode by reading a power back. Collect and eject powers therefore do
 not need to be unique, though both Starter action powers must still be finite, nonzero, and inside

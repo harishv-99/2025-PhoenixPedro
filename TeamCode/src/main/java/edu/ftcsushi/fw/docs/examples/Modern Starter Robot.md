@@ -69,33 +69,43 @@ physical motion.
 
 ## The entire FTC hosts
 
+### Critical code
+
 TeleOp has one ordinary override:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java -->
 ```java
-public final class StarterTeleOp extends FtcRobotOpMode {
-    @Override
-    protected void configure(RobotProgram program) {
-        StarterProfile profile = StarterProfile.current();
-        new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
-    }
+@Override
+protected void configure(RobotProgram program) {
+    StarterProfile profile = StarterProfile.current();
+    new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
 }
 ```
 
 Auto is parallel:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
 ```java
-public final class StarterAuto extends FtcRobotOpMode {
-    private static final double COLLECT_DURATION_SEC = 0.75;
-
-    @Override
-    protected void configure(RobotProgram program) {
-        StarterProfile profile = StarterProfile.current();
-        StarterIntake intake =
-                new StarterRobot(hardwareMap).declareAuto(program, profile);
-        program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
-    }
+@Override
+protected void configure(RobotProgram program) {
+    StarterProfile profile = StarterProfile.current();
+    StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
+    program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
 }
 ```
+
+**What to notice**
+
+- Both FTC hosts override only `configure(...)`; the framework owns every later callback.
+- TeleOp declares bindings/drive, while Auto declares one fresh root Task from the same capability.
+- Each host selects a fresh profile synchronously and stores no lifecycle state.
+
+**Key APIs**
+
+- `FtcRobotOpMode`: ordinary managed FTC host.
+- `RobotProgram`: declaration surface for lifecycle owners and behavior.
+- `StarterProfile.current()`: fresh data-only robot configuration.
+- `RobotProgram.rootTask(...)`: declares one managed Auto root.
 
 Neither file stores a clock, runner, lifecycle flags, robot field, profile field, or STOP method.
 The declaration consumes the fresh profile synchronously; each constructed owner retains only its
@@ -104,22 +114,21 @@ declarations when the method returns, and owns all later callbacks.
 
 ## Declaration-only composition
 
+### Critical code
+
 The TeleOp root constructs and immediately transfers each lifecycle owner:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
-import edu.ftcsushi.fw.ftc.input.GamepadDevice;
-
 StarterIntakeMechanism intake = program.output(
-        new StarterIntakeMechanism(hardwareMap, profile.intake));
-
-StarterTeleOpControls controls =
-        new StarterTeleOpControls(new GamepadDevice(gamepad1));
+        new StarterIntakeMechanism(hardwareMap, activeProfile.intake));
+StarterTeleOpControls controls = new StarterTeleOpControls(
+        new GamepadDevice(requiredGamepad));
 controls.bind(program.callbackBindings(), intake);
 
 program.drive(
         controls.driveSource(),
-        FtcDrives.mecanum(hardwareMap, profile.drive));
-
+        FtcDrives.mecanum(hardwareMap, activeProfile.drive));
 program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
 ```
 
@@ -137,12 +146,26 @@ and stops the sink during cleanup.
 The Auto declaration method constructs the same capability realization and returns the capability
 to its mode client:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
 StarterIntakeMechanism intake = program.output(
-        new StarterIntakeMechanism(hardwareMap, profile.intake));
+        new StarterIntakeMechanism(hardwareMap, activeProfile.intake));
 program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
 return intake;
 ```
+
+**What to notice**
+
+- The root wires owners and order; it does not contain TeleOp meanings or Auto strategy.
+- Controls call the capability, and one drive sink owns final drivetrain writes.
+- Auto receives the same mode-neutral capability rather than a parallel mechanism API.
+
+**Key APIs**
+
+- `RobotProgram.output(...)`: registers mechanism lifecycle immediately.
+- `controls.bind(...)`: maps stable operator meanings to capability calls once.
+- `RobotProgram.drive(...)`: connects one `DriveSource` to one final sink.
+- `RobotProgram.presenter(...)`: observes snapshots without owning behavior.
 
 `StarterAuto` then chooses and declares
 `intake.collectForSeconds(COLLECT_DURATION_SEC)`. Strategy therefore stays with the Auto client
@@ -151,19 +174,19 @@ rather than inside the composition root. There is no one-member capability aggre
 
 ## Mechanism and controls ownership
 
+### Critical code
+
 `StarterIntakeMechanism` receives `HardwareMap` plus a data-only config, defensively copies and
 validates the complete snapshot before its first hardware lookup, constructs its final
 command-backed Plant, and implements the downstream role. Its central rule stays small:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
+@Override
 public void setMode(Mode mode) {
     Mode requested = Objects.requireNonNull(mode, "mode");
     plant.commandTarget().set(powerFor(requested));
     requestedMode = requested;
-}
-
-public Status status() {
-    return new Status(requestedMode, plant.getAppliedTarget());
 }
 ```
 
@@ -175,18 +198,21 @@ that its chosen values produce the intended collect and eject actions on its har
 
 The same owner applies the downstream lifecycle:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
-public final class StarterIntakeMechanism
-        implements StarterIntake, RobotProgram.Output {
-    @Override
-    public void update(LoopClock clock) {
-        plant.update(clock);
-    }
+@Override
+public Status status() {
+    return new Status(requestedMode, plant.getAppliedTarget());
+}
 
-    @Override
-    public void stop() {
-        plant.stop();
-    }
+@Override
+public void update(LoopClock clock) {
+    plant.update(clock);
+}
+
+@Override
+public void stop() {
+    plant.stop();
 }
 ```
 
@@ -194,14 +220,31 @@ The controls constructor creates stable input sources without changing the callb
 explicit, one-shot `bind(...)` call receives `CallbackBindings` first and the capability second. It
 can declare mappings but cannot update or clear the program-owned graph:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java -->
 ```java
-requiredCallbacks.onRise(driver.a(),
-        () -> intake.setMode(StarterIntake.Mode.COLLECT));
-requiredCallbacks.onRise(driver.b(),
-        () -> intake.setMode(StarterIntake.Mode.EJECT));
-requiredCallbacks.onRise(driver.x(),
-        () -> intake.setMode(StarterIntake.Mode.STOPPED));
+requiredCallbacks.onRise(
+        driver.a(),
+        () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
+requiredCallbacks.onRise(
+        driver.b(),
+        () -> requiredIntake.setMode(StarterIntake.Mode.EJECT));
+requiredCallbacks.onRise(
+        driver.x(),
+        () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
 ```
+
+**What to notice**
+
+- The mechanism maps semantic intent into its private Plant and publishes requested/applied facts separately.
+- The same owner advances and terminally stops the Plant; Tasks and controls never write hardware directly.
+- Controls register meanings once against the capability, not the concrete motor or Plant.
+
+**Key APIs**
+
+- `Plant.commandTarget()`: stable source-graph command seam owned by the mechanism.
+- `RobotProgram.Output`: managed update/stop role for final realization.
+- `CallbackBindings.onRise(...)`: synchronous semantic edge binding.
+- `StarterIntake.Status`: immutable requested/applied evidence for presenters and tests.
 
 ## Managed lifecycle and order
 
