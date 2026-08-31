@@ -7,9 +7,12 @@ Starter robot; no hardware setup or code changes are required.
 
 ## Start with the OpMode
 
+### Critical code
+
 [`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>) contains the
 ordinary entry point:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java -->
 ```java
 @Override
 protected void configure(RobotProgram program) {
@@ -17,6 +20,16 @@ protected void configure(RobotProgram program) {
     new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
 }
 ```
+
+**What to notice**
+
+- The OpMode chooses the profile and mode; it does not become the composition root.
+- `StarterRobot` wires owners, while `RobotProgram` advances them.
+
+**Key APIs**
+
+- `FtcRobotOpMode.configure(...)` — the one ordinary FTC composition entry.
+- `RobotProgram` — managed declarations, heartbeat, telemetry commit, and cleanup.
 
 The OpMode chooses the profile and mode, then delegates **code composition**. This is different
 from electrical wiring: the profile names configured FTC devices, while

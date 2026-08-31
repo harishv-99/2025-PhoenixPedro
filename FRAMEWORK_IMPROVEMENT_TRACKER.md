@@ -213,7 +213,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 109 | LOCALIZATION-01 | Optional bounded timestamped pose history | Done | The reviewed shared history/continuity implementation, EXAMPLE-10 migration, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 110 | BRAND-01 | Sushi framework identity and namespace migration | Done | The reviewed Sushi namespace/API/tooling/documentation migration, software evidence, and destination-specific publication authorization are complete. |
 | 111 | BRAND-02 | Isolate the production application from Sushi teaching and shared code | Done | The reviewed one-way application bubble, independent teaching, framework-only documentation site, application-owned tooling, boundary regressions, software evidence, and destination-specific publication authorization are complete. |
-| 112 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 112 | DOC-07 | Self-contained student learning pages | Verifying | Put source-truthful critical code, explicit observations, and key APIs beside every substantive student learning concept without turning routers into tutorials or changing robot behavior. |
+| 113 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -24901,6 +24902,108 @@ implementation.
   its commit, push, pull request, and merge into the named destination. BRAND-02 is **Done**. It does
   not start `AUDIT-01` or another item, rename the repository, add a framework API, or convert the
   software evidence into a robot-hardware claim.
+
+### DOC-07 - Self-contained student learning pages
+
+- **Gate 1 status and approval (2026-08-31):** **Ready** on
+  `codex/doc-07-self-contained-learning-pages`, created from merged
+  `origin/master@a01149f635b38609d9622a4bd85e1561afb75a10`. The user asked whether students
+  can learn the critical code, concepts, and APIs without opening source files, selected all
+  student learning pages rather than the new anchor alone, selected exact source excerpts over
+  teaching pseudocode or full-method dumps, selected a repeated **critical code / what to notice /
+  key APIs** structure, approved the decision-complete plan, and then requested implementation.
+- **Confirmed current behavior:** the selected Getting Started, Examples, and Testing/Calibration
+  surface contains 32 Markdown pages. Twelve contain no Java fence, including the new eight-stage
+  build-season anchor, Subsystem Experiments, and Framework Components Through Examples. Modern
+  Starter is the strongest source reference with seven Java excerpts; the six beginner topic pages
+  each contain one or two excerpts and an understanding check. No selected page uses an explicit
+  Key APIs section consistently. The corpus is accurate and well linked, but students still need
+  to follow source links to discover several critical call shapes and API names.
+- **Current source and caller boundary:** maintained examples under
+  `edu.ftcsushi.robots.examples` remain the compiling authority. The learning pages also teach
+  framework-owned FTC testers, calibration workflows, `FtcRobotOpMode`/`RobotProgram`, capability
+  and Plant ownership, Tasks, sources, field-relative drive, Pedro route Tasks, and hardware-free
+  scenarios. DOC-07 changes no constructor, factory, declared return type, configuration path,
+  lifecycle, robot caller, production application, or public API. If source inspection finds a
+  behavior that cannot be taught truthfully, that defect becomes a separate Proposed item rather
+  than an implementation change hidden in DOC-07.
+- **Alternatives and simplicity comparison:** no change preserves compact pages but fails the
+  user's no-source-file learning goal. Enriching only Build a Robot Step by Step gives one useful
+  overview but leaves the detailed examples uneven. One summary per page improves lookup but
+  separates code from the concept it explains. Full methods make pages source mirrors and defeat
+  progressive disclosure. Teaching pseudocode introduces an uncompiled second story. The selected
+  design puts one short exact excerpt beside each substantive code concept, followed by two to four
+  observations and a compact API-role list; workflow-only sections keep takeaways and evidence
+  boundaries without artificial Java.
+- **Chosen design and source-truth contract:** audit all student learning pages in Getting Started,
+  Examples, and Testing/Calibration. Pure indexes, role routers, capability maps, and compatibility
+  redirects remain compact and route to enriched pages. Exact excerpts carry a repository-relative
+  provenance marker and must occur contiguously in their maintained Java source after newline and
+  indentation normalization. A genuinely abbreviated shape is visibly labeled, uses `// ...`, and
+  never claims to compile independently. Starter remains the copyable path; Reference remains a
+  pattern library. Existing first-contact prose and displayed-code budgets remain unless an exact
+  student-value comparison justifies a narrow increase.
+- **Rejected designs:** do not create a new tutorial source tree, teaching API, code generator,
+  hand-authored HTML copy, automatic source-to-Markdown generator, or framework/robot behavior
+  change. Do not force Java into safety, physical procedure, routing, or evidence-only sections.
+  Do not turn deep design/reference/Javadocs into a duplicate beginner course.
+- **Bounded implementation:** enrich the eight-stage anchor and substantive learning pages; repair
+  the largest gaps in hardware-free lift/launcher scenarios, experiment/tester lifecycle, Pedro
+  route-result policy, adaptive route decisions, field-relative loss behavior, and continuous
+  capability integration. Reuse or restructure already-good excerpts. Add explicit observations,
+  key API roles, and truthful evidence/next gates. Synchronize indexes only enough to describe the
+  enriched destination.
+- **Verification plan:** extend `DocumentationLinksTest` with the learning-page inventory and
+  routing-only exceptions, required learning-block structure, exact-source provenance checks,
+  valid links/anchors/fences/accessibility metadata, and preserved progressive-disclosure budgets.
+  Run the focused documentation suite, full TeamCode unit tests and compile, strict Sushi Javadocs,
+  `git diff --check`, tracked/untracked whitespace checks, and the strict Zensical build where the
+  pinned renderer is available. Inspect the rendered desktop and narrow layouts. No robot-hardware
+  validation is relevant because DOC-07 changes no physical behavior and makes no new physical
+  claim.
+- **Gate 2 start (2026-08-31):** the approved documentation-only design is now **In progress** on
+  the item branch above. Getting Started, Examples, and Testing/Calibration have non-overlapping
+  edit ownership; the root agent owns tracker state, source-provenance enforcement, integration,
+  adversarial review, and verification.
+- **Gate 2 implementation result (2026-08-31):** **Verifying.** Twenty-three substantive student
+  pages now place critical code, observations, and API roles beside the concepts they teach; the
+  testing/calibration router remains compact. The eight-stage build-season anchor now serves as the
+  step-by-step route from capability criteria through software evidence, isolated bring-up,
+  experiments, continuous TeleOp integration, route qualification, and complete rehearsals. Across
+  the selected learning roots, 26 Java fences are exact maintained-source excerpts and 34 are
+  visibly abbreviated teaching shapes for cross-owner or procedural composition. The six topic
+  pages remain below a narrowly revised 4,600-word aggregate ceiling (4,573 words); the increase
+  pays specifically for inline learning blocks and leaves all per-page Java limits unchanged.
+- **Enforcement result:** `DocumentationLinksTest` now inventories every enriched destination,
+  requires the repeated learning block, requires every Java fence to declare exact-source or
+  teaching-shape provenance, resolves exact markers to repository Java, and rejects an excerpt that
+  is not found in that source. Teaching shapes must be visibly labeled and contain an omission
+  marker. Routers and evidence-only stages are not forced to contain artificial Java.
+- **Adversarial review and corrections:** independent review found release-blocking invented/stale
+  examples (`TaskResult`, `branchOnResult`, a nonexistent two-callback `program.output`, stale test
+  hardware accessors, and method-style status fields). Those examples were removed and replaced by
+  exact excerpts from `StarterRobot`, `StarterAuto`, `BasicPedroAutoRoutine`,
+  `ReferenceLiftSoftwareScenarioTest`, and `ReferenceLauncherSoftwareScenarioTest`. Review also
+  found that Modern Starter had converted exact source into pseudocode; its host, composition,
+  mechanism, and controls examples are exact again. No production-source defect or API change was
+  needed.
+- **Automated Gate 2 evidence (2026-08-31):** Android Studio JBR 21 passed focused
+  `DocumentationLinksTest` (14 tests, zero failures/errors/skips) and the complete
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run
+  (235 suites, 2,140 tests, zero failures/errors/skips). `git diff --check` passed; its only output
+  was the repository's expected LF-to-CRLF checkout warnings. No robot-hardware test was run or
+  claimed because DOC-07 changes documentation and documentation enforcement only.
+- **Gate 2 Android Studio review stop:** inspect the exact unstaged diff on
+  `codex/doc-07-self-contained-learning-pages`, especially the rendered Build a Robot Step by Step,
+  Modern Starter Robot, Hardware-free Reference Scenarios, and representative narrow viewport.
+  Confirm code readability, source-truth markers, learning-block rhythm, and that routers remain
+  compact. Publication is not authorized until the user supplies the exact approval sentence
+  presented at handoff.
+- **Android Studio review and publication authorization (2026-08-31):** the user supplied the
+  requested approval sentence authorizing commit of the reviewed DOC-07 diff on
+  `codex/doc-07-self-contained-learning-pages`, push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, pull-request creation, and merge into
+  `master`. This authorization covers DOC-07 only and does not start AUDIT-01 or another item.
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 

@@ -55,6 +55,36 @@ AprilTags, localization, haptics, or supervisors. Rows for those concepts delibe
 focused examples, guides, Javadocs, or production references instead of pretending one example
 owns every capability.
 
+## Representative capability slice
+
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+ReferenceLiftMechanism lift = program.output(
+        new ReferenceLiftMechanism(hardwareMap, profile.lift));
+controls.bind(program.callbackBindings(), lift);
+program.rootTask(autoMode ? lift.moveTo(ReferenceLift.Height.HIGH) : Tasks.noop());
+program.presenter((clock, telemetry) -> presentLift(telemetry, lift.status()));
+// ...the mechanism alone updates/stops its private Plant...
+```
+
+**What to notice**
+
+- TeleOp controls and Auto Tasks are parallel clients of one mode-neutral capability vocabulary.
+- The composition root constructs owners but does not contain either mode's behavior script.
+- The mechanism realizes the capability and owns the one output/Plant lifecycle.
+- The presenter reads status; it does not resample hardware or decide behavior.
+
+**Key APIs**
+
+- `RobotProgram.output(...)`: transfers an output owner into managed lifecycle order.
+- `RobotProgram.callbackBindings()`: supplies synchronous TeleOp callback registration.
+- Capability Task factories such as `moveToHeight(...)`: create fresh single-use Auto behavior.
+- `RobotProgram.presenter(...)`: adds read-only status to the shared telemetry frame.
+
 ## What stays advanced
 
 Custom Task state machines, regulators, vendor adapters, vision processors, dynamic frames,

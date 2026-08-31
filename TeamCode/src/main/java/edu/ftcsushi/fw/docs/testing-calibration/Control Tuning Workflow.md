@@ -17,7 +17,15 @@ factory. It does not repeat a motor name, controller type, gain schema, target o
 
 ## Choose the workflow that matches production
 
+### Critical code
+
+The mechanism-owned fresh-Plant and reference-task factories are project-specific.
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...inside a robot-specific tester factory...
 // Velocity: FTC device-managed or Sushi standard software control.
 return FtcPanelsTuners.velocityControl(
         "Flywheel velocity control",
@@ -40,6 +48,18 @@ return FtcPanelsTuners.positionControl(
         hardwareMap -> Lift.createPositionPlantForTuning(hardwareMap, config),
         (hardwareMap, plant) -> Lift.createReferenceTask(hardwareMap, plant, config));
 ```
+
+**What to notice**
+
+- Robot code supplies a finite experiment envelope and a factory for a fresh Plant from the production recipe.
+- The completed Plant selects the controller topology; the tuning entry does not repeat controller or motor details.
+- A mechanism that needs homing supplies a factory for a fresh single-use reference `Task` on every attempt.
+
+**Key APIs**
+
+- `FtcPanelsTuners.velocityControl(...)` — creates the supported velocity-controller experiment.
+- `FtcPanelsTuners.positionControl(...)` — creates referenced or reference-task-assisted position experiments.
+- `ScalarRange.bounded(...)` — limits operator-entered physical targets for the session.
 
 Both standard software control and FTC device-managed control use these same robot-facing
 factories. The completed Plant decides which exact fields Panels shows:
@@ -305,12 +325,30 @@ A practical shooter workflow is:
 After review, copy only the accepted finite distance/velocity rows into checked-in configuration.
 Sort them by strictly increasing distance, then declare the table directly:
 
+### Critical code
+
+Replace these demonstration rows with accepted experiment evidence.
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...inside checked-in robot configuration...
 InterpolatingTable1D velocityByRange = InterpolatingTable1D.ofSortedPairs(
         24.0, 3500.0,
         30.0, 3600.0,
         36.0, 3700.0);
 ```
+
+**What to notice**
+
+- Only externally accepted trials become checked-in robot configuration.
+- Distance keys must be finite and strictly increasing; construction rejects duplicate or unordered rows.
+- Runtime sensor availability still must be checked before using a lookup result to command hardware.
+
+**Key APIs**
+
+- `InterpolatingTable1D.ofSortedPairs(...)` — constructs and validates a finite, ordered calibration table.
 
 `ofSortedPairs(...)` owns the authored-data check: every distance and velocity must be finite, and
 duplicate or out-of-order distances are rejected during construction. Robot code does not need a

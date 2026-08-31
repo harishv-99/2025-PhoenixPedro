@@ -40,6 +40,8 @@ cancellation-safe.
 
 ## Declare the history owner before vision
 
+### Critical code
+
 The existing Pedro/localization service remains the one heartbeat and lifecycle owner. Give it one
 [`PlanarPoseHistory`](<../../localization/PlanarPoseHistory.java>) over the authoritative high-rate
 trajectory estimator. At START it resets the history, applies the starting pose, updates
@@ -48,8 +50,10 @@ immediately records before downstream services. At STOP it stops its owned resou
 concrete history. Do not register the history as a second `RobotProgram.Service`, and do not ask the
 vision service to update or reset it.
 
-The relevant addition inside that existing service is deliberately small:
+The relevant addition inside that existing service is deliberately small.
+Abbreviated shape (omissions shown):
 
+<!-- teaching-shape -->
 ```java
 // Constructed once by the composition root and retained by the existing localization service.
 PlanarPoseHistory.Config poseHistoryConfig = PlanarPoseHistory.Config.defaults();
@@ -70,6 +74,7 @@ autoDrive.update(clock);
 
 // Existing localization service STOP, after stopping its owned resources:
 poseHistory.reset();
+// ...the localization service remains the only record/reset owner...
 ```
 
 `retentionSec` must retain the earlier bracket endpoint for the oldest frame this consumer accepts,
@@ -79,8 +84,10 @@ evidence. These values are robot configuration, not Limelight or route policy.
 
 Then declare vision after that existing service and give it only the stable read-only lookup
 projection. Set `pathsConfig.fieldTransform` to the same immutable transform used when the adopting
-robot configured its Pedro runtime; the current defaults both select `decodeInvertedFtc()`:
+robot configured its Pedro runtime; the current defaults both select `decodeInvertedFtc()`.
+Abbreviated shape (omissions shown):
 
+<!-- teaching-shape -->
 ```java
 // The adopting composition root has already registered its Pedro/localization service.
 AdaptiveCollectionVisionService vision = program.service(
@@ -99,7 +106,22 @@ AdaptiveCollectionAttempt attempt = new AdaptiveCollectionAttempt(
 
 program.rootTask(attempt.task());
 program.presenter((clock, telemetry) -> present(telemetry, attempt.status()));
+// ...construct a fresh AdaptiveCollectionAttempt for another attempt...
 ```
+
+**What to notice**
+
+- The authoritative localization owner records history once before vision consumes it.
+- Vision receives only `lookupSource()`, so it cannot reset or become a peer history owner.
+- One `AdaptiveCollectionAttempt` exposes one stable single-use root Task and retained status.
+- Services update in declaration order and stop in reverse order under `RobotProgram`.
+
+**Key APIs**
+
+- `PlanarPoseHistory.recordCurrent(...)`: records the estimator's final published pose once per cycle.
+- `PlanarPoseHistory.lookupSource()`: supplies read-only timestamp lookup without reset authority.
+- `AdaptiveCollectionVisionService`: freezes a typed selection/fallback decision from one frame.
+- `AdaptiveCollectionAttempt.task()`: returns the one single-use Task graph for that attempt.
 
 `RobotProgram` starts the already-declared localization service before vision, updates services in
 that same order, cancels the root Task before stopping resources, and closes services in reverse
@@ -170,6 +192,38 @@ breaks that ownership contract; vision cannot infer or repair it.
 
 ## One route decision, built once
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+RouteTask<PathChain> collection = RouteTasks.followBuiltAtStart(
+        "adaptiveCollection.collect",
+        follower,
+        this::buildCollectionRoute,
+        config.collectionTimeoutSec);
+
+Task exit = Tasks.waitUntil(new CollectionExitSource());
+Task phase = Tasks.parallelDeadline(
+        exit, collection, intake.collectTask(config.collectionTimeoutSec));
+// ...record the semantic exit before deadline cancellation settles companions...
+```
+
+**What to notice**
+
+- One immutable decision is frozen; route construction does not resample vision.
+- `followBuiltAtStart(...)` reads live start pose and builds geometry exactly once.
+- Semantic callbacks publish facts; they do not start or cancel Tasks themselves.
+- The deadline owns companion lifetime while retained statuses preserve why it ended.
+
+**Key APIs**
+
+- `RouteTasks.followBuiltAtStart(...)`: defers only live-dependent geometry to route start.
+- `Tasks.waitUntil(...)`: expresses the bounded semantic exit condition cooperatively.
+- `Tasks.parallelDeadline(...)`: cancels active companions when the named deadline settles.
+- `AdaptiveCollectionAttempt.Status`: retains decision, milestones, exit reason, and route results.
+
 When the attempt starts, it freezes exactly one cached `Decision`. The collection
 `RouteTask` uses `RouteTasks.followBuiltAtStart(...)`, so its supplier reads one live Pedro start
 pose and builds one path exactly once:
@@ -231,8 +285,13 @@ is the hardware-neutral integration proof for this complete graph; it is not an 
 
 The soft gate alone is not sufficient: it is sampled only between attempts, so an admitted attempt
 may still run past the latest-start threshold. Conversely, the hard cutoff should not decide
-whether a completed attempt's exact status makes another one sensible. Keep both decisions visible:
+whether a completed attempt's exact status makes another one sensible. Keep both decisions visible.
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 private AdaptiveCollectionAttempt latestAttempt;
 private Task attempts;
@@ -282,7 +341,22 @@ park = RouteTasks.followBuiltAtStart(
 );
 
 program.rootTask(Tasks.sequence(boundedPrePark, park));
+// ...retain latestAttempt, boundedPrePark, and park for exact diagnostics...
 ```
+
+**What to notice**
+
+- Admission checks time and the previous exact result before constructing a fresh child.
+- The hard timeout wraps all pre-park work; park stays outside the expired budget.
+- Park geometry resolves once after cooperative pre-park cancellation completes.
+- Count, latest-start time, and takeover time remain explicit robot strategy.
+
+**Key APIs**
+
+- `Tasks.repeatWhileSuccessful(...)`: admits bounded fresh children only after exact success.
+- `Tasks.withTimeout(...)`: bounds and cooperatively cancels the active pre-park graph.
+- `Tasks.sequence(...)`: starts park only after the direct timed child becomes terminal.
+- `RouteTask.getRouteStatus()`: retains the exact park result independently of root outcome.
 
 `MAX_ATTEMPTS` is the hard count bound. `LATEST_NEW_ATTEMPT_SEC` is deliberately earlier than
 `PARK_TAKEOVER_ELAPSED_SEC`; it may prevent the first attempt too when preload consumed the safe

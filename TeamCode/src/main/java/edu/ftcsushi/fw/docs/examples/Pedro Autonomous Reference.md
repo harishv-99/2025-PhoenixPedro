@@ -34,12 +34,29 @@ lifecycle, capability realization, and physical configuration stay with their ac
 `BasicPedroAutoExample.configure(...)` selects one fresh local profile and invokes the sole
 ordinary composition-root construction path:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 robot = new BasicPedroAutoRobot(
         program,
         hardwareMap,
         BasicPedroProfile.current());
+// ...the robot declares the service, output, root Task, and presenters...
 ```
+
+**What to notice**
+
+- The FTC host chooses one fresh profile and delegates the complete graph to the composition root.
+- The checked-in motion permission is false; construction validity is not physical authorization.
+- `RobotProgram` owns later lifecycle callbacks, cleanup, and the shared heartbeat.
+
+**Key APIs**
+
+- `FtcRobotOpMode.configure(...)`: the ordinary thin FTC host seam.
+- `BasicPedroProfile.current()`: returns fresh data-only example configuration.
+- `BasicPedroAutoRobot`: declares owners and managed order; it is not the Auto strategy script.
+- `RobotProgram`: owns lifecycle, Tasks, outputs, presenters, and cleanup.
 
 `BasicPedroProfile.current()` returns a fresh outer value, a fresh
 `PedroPathingRuntime.Config pedro` graph, a fresh `BasicPedroAutoMechanism.Config intake`, and
@@ -115,6 +132,36 @@ later construction step fails and preserves any stop failure as suppressed evide
 cause and restart the OpMode rather than retrying construction in place.
 
 ## Route-result policy
+
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+RouteTask<PathChain> route = RouteTasks.follow(
+        "basicPedro.practiceRoute", follower, paths.practiceRoute(), 4.0);
+
+Task routine = Tasks.branchOnOutcome(
+        route,
+        intake.collectTask(0.50),
+        intake.idleTask());
+// ...retain both route.getRouteStatus() and routine.getOutcome() for presentation...
+```
+
+**What to notice**
+
+- `branchOnOutcome(...)` uses the exact route Task outcome; the retained route status supplies finer diagnostics.
+- Endpoint success runs collection; timeout runs an explicit idle fallback; cancellation-like endings abort.
+- A successful fallback may make the root successful while the route fact remains `TASK_TIMEOUT`.
+- Vendor idle/not-busy is never promoted to endpoint success.
+
+**Key APIs**
+
+- `RouteTasks.follow(...)`: adapts one route start into a single-use timed `RouteTask`.
+- `RouteTask.getRouteStatus()`: retains the integration/Task boundary classification for that start.
+- `RouteStatus`: distinguishes completion, follower stall, Task timeout, cancellation, failure, and unknown endings.
+- `TaskOutcome`: describes the selected aggregate strategy branch, not the route geometry result.
 
 `BasicPedroAutoRoutine` follows one route with a four-second Task timeout and branches on the
 retained result from that exact start:

@@ -44,6 +44,31 @@ will establish success.
 
 **Does not prove:** That the proposed mechanism, limits, timing, or hardware will meet the criteria.
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+interface Lift {
+    void setHeight(Height height); // shared TeleOp/Auto meaning
+    Task moveTo(Height height);    // fresh work when Auto must wait
+    Status status();               // evidence, not a hardware command
+    // ...
+}
+```
+
+**What to notice**
+
+- The interface names robot behavior, not motors, encoders, or buttons.
+- A persistent request and work that waits for evidence are different operations.
+- Status reports facts; it does not own policy.
+
+**Key APIs**
+
+- `Task` — cooperative, single-use work that may span loop cycles.
+- Capability methods — the mode-neutral vocabulary shared by TeleOp and Auto.
+
 **Do next:** Use [From requirement to robot](<learn-sushi/From Requirement to Robot.md>) to place
 each meaning with one owner, and [Evidence and experiments](<learn-sushi/Evidence and Experiments.md>)
 to choose the required evidence.
@@ -62,6 +87,30 @@ hardware resource will have one owner. TeleOp and Auto use the same mode-neutral
 
 **Does not prove:** Hardware names, directions, safe powers, calibration, clearance, or readiness for
 motion.
+
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+@Override
+protected void configure(RobotProgram program) {
+    TeamProfile profile = TeamProfile.current();
+    new TeamRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
+    // ...
+}
+```
+
+**What to notice**
+
+- The OpMode selects a profile and mode, then delegates composition once.
+- `RobotProgram` owns the managed lifecycle; the OpMode does not write its own loop.
+
+**Key APIs**
+
+- `FtcRobotOpMode` — ordinary managed FTC host.
+- `RobotProgram` — declarations, one heartbeat, loop phases, telemetry, and cleanup.
 
 **Do next:** Copy and adapt the [Modern starter robot](<../examples/Modern Starter Robot.md>). Use
 [Robot roles](<learn-sushi/Robot Roles.md>) when ownership is unclear and
@@ -84,6 +133,32 @@ copy a command into its own simulated measurement.
 **Does not prove:** Motion, direction, encoder scale, sensor placement, controller tuning, safe
 bounds under load, or game-piece performance.
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+FakeScalarOutput output = new FakeScalarOutput();
+Lift mechanism = new LiftMechanism(Plants.fromOutputs(output));
+
+mechanism.setHeight(Height.LOW);
+mechanism.update(clock);
+assertEquals(expectedTarget, output.lastValue(), tolerance);
+// ...
+```
+
+**What to notice**
+
+- The production mechanism and its update path stay real; only the device boundary is replaced.
+- A request has no output effect until the shared-clock heartbeat runs.
+- Feedback must be supplied independently rather than copied from the command.
+
+**Key APIs**
+
+- `Plants.fromOutputs(...)` — hardware-neutral Plant construction seam.
+- `LoopClock` — the one cycle/time identity used by the mechanism and Tasks.
+
 **Do next:** Begin with [Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>).
 Use [Hardware-free Reference scenarios](<../examples/Hardware-free Reference Scenarios.md>) for
 feedback, independent measurements, or coordinated-policy patterns.
@@ -101,6 +176,16 @@ the intended direction and stops when commanded.
 
 **Does not prove:** That the complete subsystem meets its performance target or that the production
 robot is ready for ordinary driving.
+
+**What to notice**
+
+- This stage is an evidence procedure, not a new production command path.
+- A diagnostic owns its fresh hardware graph exclusively and must provide an immediate abort/STOP.
+
+**Key APIs**
+
+- Tester OpModes — isolated, supervised device workflows.
+- `Plant.stop()` — terminal cleanup for that Plant lifetime, not an active-match idle command.
 
 **Do next:** Use the [testing and calibration question selector](<../testing-calibration/README.md#when-hardware-is-available-choose-one-question>).
 Use dedicated tester or diagnostic OpModes for isolated bring-up. Do not use the production TeleOp
@@ -120,6 +205,16 @@ controller reporting `TARGET_REACHED` is one computed fact, not an automatic ove
 **Does not prove:** Performance outside the tested configuration, load, environment, or command
 envelope.
 
+**What to notice**
+
+- Lock criteria before trials so software does not silently redefine success.
+- Keep computed evidence and operator-observed physical evidence distinct.
+
+**Key APIs**
+
+- `TaskOutcome` — retained software outcome such as success, timeout, or cancellation.
+- Mechanism `Status` snapshots — already-computed facts for telemetry and experiment decisions.
+
 **Do next:** Follow [Subsystem experiments](<../examples/Subsystem Experiments.md>). Promote only an
 accepted configuration into the production profile; revise and repeat otherwise.
 
@@ -138,6 +233,28 @@ every active owner.
 
 **Does not prove:** Match reliability merely because each subsystem worked alone. Exercise realistic
 combinations and repeat after material mechanical or configuration changes.
+
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
+```java
+StarterIntakeMechanism intake = program.output(
+        new StarterIntakeMechanism(hardwareMap, activeProfile.intake));
+StarterTeleOpControls controls = new StarterTeleOpControls(
+        new GamepadDevice(requiredGamepad));
+controls.bind(program.callbackBindings(), intake);
+```
+
+**What to notice**
+
+- Controls request capability meanings; the mechanism remains the final hardware owner.
+- Declaration order makes the managed update path visible in one composition root.
+
+**Key APIs**
+
+- `program.callbackBindings()` — synchronous semantic control requests.
+- `program.taskBindings()` — rising-edge suppliers that create fresh Tasks.
+- `program.output(...)` — one managed output heartbeat and cleanup declaration.
 
 **Do next:** Use [Controls and intent](<learn-sushi/Controls and Intent.md>) and
 [Robot capabilities and mode clients](<../design/Robot Capabilities & Mode Clients.md>). Return to
@@ -159,6 +276,28 @@ and stopping behavior.
 **Does not prove:** That vendor idle means endpoint success or that individually successful routes
 form a reliable full Auto.
 
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java -->
+```java
+return Tasks.branchOnOutcome(
+        followPracticeRoute,
+        requiredMechanism.collectTask(COLLECT_DURATION_SEC),
+        requiredMechanism.idleTask()
+);
+```
+
+**What to notice**
+
+- Route completion is retained evidence; robot-owned policy chooses the next action.
+- Fixed geometry is built eagerly, while live-fact geometry resolves once at Task start.
+- Timeout, cancellation, and follower failure are not endpoint success.
+
+**Key APIs**
+
+- Route Task helpers — one Task boundary around one route execution.
+- `TaskOutcome` and route result types — facts that Auto policy must interpret explicitly.
+
 **Do next:** Learn the shared behavior vocabulary in
 [Tasks and autonomous](<learn-sushi/Tasks and Autonomous.md>). For Pedro, use
 [Your first Pedro Auto](<First Pedro Auto.md>) in software, then complete its required drivetrain,
@@ -178,6 +317,25 @@ checklist under the rehearsed conditions.
 
 **Does not prove:** That later mechanical, wiring, configuration, route, or policy changes are safe.
 Material changes return the affected slice to its earliest invalidated checkpoint.
+
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
+```java
+StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
+program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
+```
+
+**What to notice**
+
+- Rehearse the same managed root and cleanup path that will run in the match.
+- A complete run retains its terminal outcome; a later code/configuration change invalidates only
+  the evidence it affects.
+
+**Key APIs**
+
+- `program.rootTask(...)` — the single managed Auto root.
+- `Task.cancel()` and declared output cleanup — cooperative active-work and hardware shutdown.
 
 **Do next:** Keep [Common Problems](<../troubleshooting/Common Problems.md>) and the
 [Sushi Cheat Sheet](<../reference/Sushi Cheat Sheet.md>) available during iteration. Record any new

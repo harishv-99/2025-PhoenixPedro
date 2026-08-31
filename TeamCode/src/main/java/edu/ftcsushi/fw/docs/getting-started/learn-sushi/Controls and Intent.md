@@ -9,6 +9,8 @@ without a gamepad or robot.
 
 ## A button becomes a capability request
 
+### Critical code
+
 [`GamepadDevice`](<../../../ftc/input/GamepadDevice.java>) adapts the FTC gamepad to Sushi sources.
 `gamepad.a()` is a `BooleanSource` that is `true` while A is pressed. That meaning is not an
 electrical HIGH or LOW signal. A trigger is instead a `ScalarSource` from `0.0` to `1.0`; code can
@@ -17,14 +19,27 @@ derive a Boolean meaning with, for example, `rightTrigger().above(0.2)`.
 The complete Starter intake mapping lives in
 [`StarterTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>):
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...
 requiredCallbacks.onRise(driver.a(),
         () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
 requiredCallbacks.onRise(driver.b(),
         () -> requiredIntake.setMode(StarterIntake.Mode.EJECT));
 requiredCallbacks.onRise(driver.x(),
         () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
+// ...
 ```
+
+**What to notice**
+
+- Buttons map to semantic modes, never directly to motor power.
+- The callback owner and capability dependency are explicit in each registration.
+
+**Key APIs:** `CallbackBindings.onRise(...)` declares an edge meaning; `BooleanSource` provides the
+cycle-aware input fact.
 
 ```text
 A pressed -> BooleanSource true -> rising edge -> setMode(COLLECT)
@@ -54,14 +69,25 @@ requires an explicitly chosen field frame and is demonstrated only in the option
 
 ## How the pattern scales: callback or Task?
 
+### Critical code
+
 Use a callback when an action completes synchronously by replacing intent. Use a Task binding when
 non-blocking behavior unfolds over several managed cycles:
 
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceTeleOpControls.java -->
 ```java
 requiredCallbacks.onRise(gamepad.dpadUp(),
         () -> requiredLift.setHeight(ReferenceLift.Height.HIGH));
 requiredTasks.onRise(gamepad.x(), requiredLift::home);
 ```
+
+**What to notice**
+
+- A synchronous height selection is a callback; homing across cycles is a Task.
+- `requiredLift::home` is a factory, so each eligible edge receives fresh work.
+
+**Key APIs:** `TaskBindings.onRise(...)` accepts a Task supplier; `CallbackBindings.onRise(...)`
+accepts an immediate semantic callback.
 
 `lift::home` is a factory. Each eligible press returns a **fresh, single-use Task**; controls never
 run it in a private loop. The

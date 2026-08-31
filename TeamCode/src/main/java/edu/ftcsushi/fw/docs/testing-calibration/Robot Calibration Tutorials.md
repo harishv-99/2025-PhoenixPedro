@@ -154,7 +154,15 @@ sensor condition before position targets are safe.
 
 A reference search is a normal non-blocking `Task`:
 
+### Critical code
+
+Replace the demonstration mechanism, cue, powers, holds, and timeout with reviewed robot facts.
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...inside the mechanism's fresh homing-task factory...
 Task homeLift = PositionCalibrationTasks.search(lift)
         .withPower(-0.20)
         .until(bottomSwitch)
@@ -188,7 +196,11 @@ search.
 For an indexer or tray, the condition can be a color detector, magnet sensor, beam break, or custom
 BooleanSource:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
+// ...inside the mechanism's fresh indexing-task factory...
 Task indexTray = PositionCalibrationTasks.search(tray)
         .withPower(0.12)
         .until(paintedMarkSeen)
@@ -197,6 +209,21 @@ Task indexTray = PositionCalibrationTasks.search(tray)
         .failAfterSec(5.0)
         .build();
 ```
+
+**What to notice**
+
+- Each attempt builds a fresh single-use `Task`; the mechanism remains the sole Plant heartbeat owner.
+- The search stages temporary raw output and must end with an explicit hold or resume policy.
+- Timeout/cancellation stops and releases the search without redefining the persistent target graph.
+- Finite software validation does not prove switch polarity, physical zero, clearance, or safe power.
+
+**Key APIs**
+
+- `PositionCalibrationTasks.search(plant)` — starts the non-blocking reference-task recipe.
+- `until(BooleanSource)` — supplies the independently owned reference cue.
+- `establishReferenceAt(...)` — anchors the public coordinate at the cue sample.
+- `holdAfterReference(...)` / `resumeTargeting()` — explicitly chooses the post-reference request policy.
+- `failAfterSec(...)` — gives the search a bounded lifetime.
 
 `resumeTargeting()` preserves the Plant's persistent command and final target resolver. It requests
 a nonterminal stop of the temporary raw output and releases the search; it does not call terminal

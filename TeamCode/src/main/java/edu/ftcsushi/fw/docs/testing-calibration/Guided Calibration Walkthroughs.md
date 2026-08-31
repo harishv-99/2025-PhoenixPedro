@@ -92,6 +92,11 @@ framework's canonical actuator tool:
 
 ## Example
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 public final class ExampleRobotTesters {
 
@@ -142,8 +147,23 @@ public final class ExampleRobotTesters {
 
         return guide.build();
     }
+
+    // ...status methods and fresh tester factories...
 }
 ```
+
+**What to notice**
+
+- The walkthrough orders existing tester factories; it does not reimplement their controls or safety behavior.
+- A status supplier is attached only where a durable configuration or human acknowledgement can answer `OK` or `TODO`.
+- Each stored factory produces a fresh tester owner when the student opens that step.
+
+**Key APIs**
+
+- `TesterSuite.add(...)` — registers the two robot-facing entrypoints.
+- `CalibrationWalkthroughBuilder.addStep(...)` — adds an ordered untracked or status-tracked step.
+- `CalibrationWalkthroughBuilder.build()` — returns the ordinary `TesterSuite` used by the tester host.
+- `StandardTesters.createActuatorBringUp()` — reuses the canonical generic actuator workflow.
 
 ## Where robot-specific status should live
 

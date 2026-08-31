@@ -77,6 +77,11 @@ the production TeleOp.
 4. [`Control Tuning Workflow`](<Control Tuning Workflow.md>) — ready-made velocity and position
    experiments for supported FTC device-managed and Sushi standard controllers.
 
+Each substantive runbook puts the critical call shape, the concepts to notice, and the important
+APIs beside the step that uses them. Physical procedures deliberately stay procedure-first: code
+can describe the owner and safety policy, but only a supervised hardware run can establish
+direction, clearance, reference truth, response quality, or subsystem success.
+
 Robot code calls `FtcPanelsTuners.velocityControl(...)` or `positionControl(...)` and supplies a
 factory for one fresh Plant built from its production owner's canonical recipe. The completed
 Plant selects the supported controller topology. The framework owns draft capture, the controller

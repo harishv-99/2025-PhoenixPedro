@@ -40,6 +40,36 @@ steps remain visible in each test.
 
 ## Referenced lift: position and active-low input
 
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftSoftwareScenarioTest.java -->
+```java
+scenario.currentTask = scenario.lift.home();
+scenario.currentTask.start(scenario.time.clock());
+scenario.currentTask.update(scenario.time.clock());
+scenario.lift.update(scenario.time.clock());
+
+assertFalse(scenario.currentTask.isComplete());
+assertEquals(scenario.config.homingPower, scenario.motor.power(), 0.0);
+
+scenario.bottomSwitch.setHigh(false); // LOW is the explicitly injected pressed fact.
+scenario.advance(0.01);
+```
+
+**What to notice**
+
+- The test constructs the production mechanism through its ordinary `HardwareMap + Config` path.
+- Command output and switch/encoder input remain independent; the test authors every observation.
+- Each cycle updates the Task before the mechanism, matching the managed realization order.
+- Success proves homing policy for supplied observations, not physical polarity, safety, or motion.
+
+**Key APIs**
+
+- `FtcTestHardware`: creates a test-only FTC device registry and typed probes.
+- `ManualLoopClock`: supplies the one explicit cycle/time heartbeat.
+- `ReferenceLift.home()`: creates a fresh, single-use homing Task.
+- `RobotProgram.Output.update(...)`: runs the unchanged production output phase.
+
 The
 [`ReferenceLiftSoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftSoftwareScenarioTest.java>)
 adds one motor and one digital input using the names from `ReferenceLiftMechanism.Config.defaults()`.
@@ -70,6 +100,37 @@ the encoder scale is physically correct.
 
 ## Launcher: independent wheel measurements
 
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherSoftwareScenarioTest.java -->
+```java
+double targetTicksPerSec = scenario.config.launchVelocityTicksPerSec;
+assertEquals(targetTicksPerSec,
+        scenario.left.commandedVelocityTicksPerSec(), EPSILON);
+assertEquals(targetTicksPerSec,
+        scenario.right.commandedVelocityTicksPerSec(), EPSILON);
+assertEquals(0.0,
+        scenario.launcher.status().leftMeasuredVelocityTicksPerSec, EPSILON);
+assertEquals(0.0,
+        scenario.launcher.status().rightMeasuredVelocityTicksPerSec, EPSILON);
+assertFalse("a recorded command is not measured feedback",
+        scenario.launcher.status().ready);
+```
+
+**What to notice**
+
+- One request reaches both wheel outputs, but each wheel measurement is injected independently.
+- Readiness requires both measurements; commanded velocity is never treated as measured velocity.
+- A fresh `launchOne()` Task owns the spin-up/feed phases and cleanup for one attempt.
+- The scenario can expose software gating mistakes, but cannot predict physical spin-up or launch success.
+
+**Key APIs**
+
+- `ReferenceLauncher.launchOne()`: returns one fresh outcome-aware launch Task.
+- `ReferenceLauncher.Status`: separates requested velocity, per-wheel evidence, and aggregate readiness.
+- `FtcTestHardware.MotorProbe`: records commands and accepts independently authored measurements.
+- `TaskOutcome`: retains software success, timeout, or cancellation for the exact attempt.
+
 The
 [`ReferenceLauncherSoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherSoftwareScenarioTest.java>)
 registers both flywheel motors plus the transfer CR servo, release servo, and object input before
@@ -99,6 +160,11 @@ voltage sag, load recovery, vibration, launch result, or safe wheel speed.
 is an optional robot-owned example, not a framework inventory type and not part of the ordinary
 Reference robot. A custom OpMode can declare it before consumers:
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 ReferenceInventoryStatusService inventory = program.service(
         new ReferenceInventoryStatusService(
@@ -111,7 +177,21 @@ program.presenter((clock, telemetry) -> {
 });
 
 program.rootTask(Tasks.waitUntil(inventory.fullSource(), 1.0));
+// ...the service owns sampling; readers share its cached snapshot...
 ```
+
+**What to notice**
+
+- The service is declared before consumers, so it publishes one snapshot upstream each cycle.
+- Presenter and Task read the same cache; neither samples three sensors again.
+- The robot owns the meaning of ordered occupancy and any order issue.
+
+**Key APIs**
+
+- `RobotProgram.service(...)`: declares the stable upstream observation owner.
+- `ReferenceInventoryStatusService.status()`: returns the immutable cached snapshot.
+- `ReferenceInventoryStatusService.fullSource()`: projects the same cache for Task composition.
+- `Tasks.waitUntil(...)`: waits cooperatively for cached semantic evidence.
 
 The service phase samples first, second, then third once per cycle and publishes only after all
 three conditioned reads succeed. `status()` and `fullSource()` read that same cache; neither
@@ -156,6 +236,11 @@ form an optional, example-only pair. They are not framework shooter types and th
 Reference robot does not wire either owner. A custom managed OpMode can register its localization
 owner first, then the calculation service, then the hardware output:
 
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 ReferenceCoordinatedShotService shot = program.service(
         new ReferenceCoordinatedShotService(
@@ -167,7 +252,21 @@ ReferenceTurretMechanism turret = program.output(
                 hardwareMap,
                 ReferenceTurretMechanism.Config.defaults(),
                 shot));
+// ...flywheel, hood, and presenter read the same published solution...
 ```
+
+**What to notice**
+
+- The shot service borrows localization and publishes one coherent timestamped solution.
+- The turret is downstream and remains the sole motor/Plant lifecycle owner.
+- Degraded modes distinguish unavailable geometry from usable stationary fallback.
+
+**Key APIs**
+
+- `MotionPredictor`: supplies borrowed timestamped motion evidence without ownership transfer.
+- `ReferenceCoordinatedShotService.solution()`: returns one immutable multi-output calculation.
+- `RobotProgram.service(...)`: orders calculation before output realization.
+- `RobotProgram.output(...)`: transfers the turret's Plant heartbeat and STOP ownership.
 
 `localization` is the custom robot's already-owned `MotionPredictor`; the shot service borrows it
 and never updates, resets, or stops it. The managed service phase publishes before the output phase,

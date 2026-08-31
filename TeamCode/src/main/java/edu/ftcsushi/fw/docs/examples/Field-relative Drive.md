@@ -47,6 +47,9 @@ magnetic north or the SDK's power-on zero as FTC field +X.
 
 Full localization uses the same drive source directly:
 
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
 ```java
 HeadingEstimator heading = fusedAbsolutePoseEstimator;
 
@@ -56,12 +59,55 @@ DriveSource drive = new GamepadDriveSource(
         driver.rightX(),
         GamepadDriveSource.Config.defaults()
 ).fieldRelativeTo(heading, prestart::frozenControlUpFieldHeadingRad);
+// ...declare this DriveSource with the robot's one final DriveCommandSink...
 ```
+
+**What to notice**
+
+- `fieldRelativeTo(...)` reshapes translation intent; the downstream signal remains robot-centric.
+- The heading owner updates upstream, and reading its estimate does not trigger localization again.
+- Control-up is a frozen station fact, separate from the robot's initial field heading.
+
+**Key APIs**
+
+- `HeadingEstimator`: exposes cached heading availability, quality, and timestamp evidence.
+- `GamepadDriveSource`: maps stable input Sources into robot drive intent.
+- `DriveSource.fieldRelativeTo(...)`: rotates accepted field/control translation into robot axes.
+- `RobotProgram.drive(...)`: gives one sink final drive-write ownership.
 
 `AbsolutePoseEstimator` projects its already-cached yaw, availability, quality, and timestamp into
 `HeadingEstimate`. The drive source does not cause a second localization update.
 
 ## Loss behavior
+
+### Critical code
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+DriveSignal signal = drive.get(clock);
+HeadingEstimate estimate = heading.getHeadingEstimate();
+if (!estimate.hasHeading) {
+    assertEquals(0.0, signal.axial, 0.0);
+    assertEquals(0.0, signal.lateral, 0.0);
+    // finite manual rotation remains available
+    assertEquals(driverOmega, signal.omega, 0.0);
+}
+// ...there is no silent robot-relative translation fallback...
+```
+
+**What to notice**
+
+- Missing, stale, low-quality, or non-finite heading disables translation instead of changing driver meaning.
+- Manual omega is independent and remains available when finite.
+- Runtime re-zero/restore is deliberately absent; that would be robot-owned policy.
+
+**Key APIs**
+
+- `HeadingEstimate`: carries the heading plus availability, quality, and timestamp truth.
+- `DriveSignal`: keeps forward, left, and counter-clockwise omega components explicit.
+- `LoopClock`: supplies the current reset epoch and age boundary used to judge evidence.
 
 Fresh accepted heading evidence rotates control-frame translation into the robot frame. Missing,
 non-finite, stale, or low-quality evidence disables translation while leaving finite manual omega
