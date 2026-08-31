@@ -1,6 +1,8 @@
 # Choose a Sushi topic
 
-Start with [Sushi in one picture](<Framework Overview.md>). After you can trace the Starter A
+This page is the topic lookup used by
+[Build a robot step by step](<Build a Robot Step by Step.md>). Start with
+[Sushi in one picture](<Framework Overview.md>). After you can trace the Starter A
 button from gamepad intent to the mechanism-owned hardware command, choose only the topic that
 answers your current question. These are independent deep dives, not required course chapters.
 

@@ -279,4 +279,5 @@ mechanism owner, root declaration, telemetry, and cleanup represented by the lin
 
 **Full lifecycle reference:** [`Pedro autonomous reference`](<../examples/Pedro Autonomous Reference.md>)
 
-**Return to:** [`Sushi documentation hub`](<../README.md>)
+**Return to:** [`Build a robot step by step`](<Build a Robot Step by Step.md>) or the
+[`Sushi documentation hub`](<../README.md>)

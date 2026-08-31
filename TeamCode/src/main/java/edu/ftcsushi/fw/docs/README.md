@@ -13,8 +13,10 @@ Plants realize mechanism targets, and one managed program owns the loop.
    hardware-free, tested change in a copied team package.
 3. [Test its mechanism without hardware](<getting-started/Test a Mechanism Without Hardware.md>)
    to follow semantic intent through the real mechanism and Plant to a recorded actuator command.
-4. [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) that matches the job in front of
-   you. The topic pages are optional deep dives, not a required course sequence.
+4. Use [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) as the team's
+   season anchor, returning to it after each software, hardware, integration, and Auto checkpoint.
+5. [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) when the current checkpoint needs a
+   deeper answer. The topic pages are lookups, not a required course sequence.
 
 Physical device work starts separately at [Testing and calibration](<testing-calibration/README.md>).
 
@@ -25,6 +27,7 @@ Physical device work starts separately at [Testing and calibration](<testing-cal
 | Understand how the framework executes | [Sushi in one picture](<getting-started/Framework Overview.md>) |
 | Write and test the first team code without hardware | [Your first Sushi robot code](<getting-started/First Sushi Robot Code.md>) |
 | Exercise a real mechanism and Plant without hardware | [Test a mechanism without hardware](<getting-started/Test a Mechanism Without Hardware.md>) |
+| Move from requirements to a match-ready robot one checkpoint at a time | [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) |
 | Learn one framework area in depth | [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) |
 | Decide where new robot code belongs | [From requirement to robot](<getting-started/learn-sushi/From Requirement to Robot.md>) |
 | Remember the ordinary API shape | [Sushi Cheat Sheet](<reference/Sushi Cheat Sheet.md>) |

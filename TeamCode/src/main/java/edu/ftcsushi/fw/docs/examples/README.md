@@ -5,7 +5,8 @@ Starter execution trace, then [set up and verify the project](<../getting-starte
 To make a first tested change, use
 [Your first Sushi robot code](<../getting-started/First Sushi Robot Code.md>), then
 [test its mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>). Then
-[choose a Sushi topic](<../getting-started/Beginner's Guide.md>) or use this page to find the
+[return to the build-season workflow](<../getting-started/Build a Robot Step by Step.md>) and use
+this page or [choose a Sushi topic](<../getting-started/Beginner's Guide.md>) to find the
 smallest example that teaches the concept you need. All ordinary examples use the managed
 `FtcRobotOpMode`/`RobotProgram` lifecycle; students do not need to copy clock, loop, telemetry, or
 cleanup ceremony.

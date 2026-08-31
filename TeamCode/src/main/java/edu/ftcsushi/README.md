@@ -10,8 +10,9 @@ New to Sushi? Start with [`Sushi in one picture`](<fw/docs/getting-started/Frame
 [`set up and verify the project`](<fw/docs/getting-started/Build and Run.md>), and complete
 [`your first Sushi robot code`](<fw/docs/getting-started/First Sushi Robot Code.md>). Next,
 [`test its mechanism without hardware`](<fw/docs/getting-started/Test a Mechanism Without Hardware.md>).
-Then [`choose a topic`](<fw/docs/getting-started/Beginner's Guide.md>) only when you need a deeper
-answer.
+Then use [`Build a robot step by step`](<fw/docs/getting-started/Build a Robot Step by Step.md>) as
+the team's season anchor, and [`choose a topic`](<fw/docs/getting-started/Beginner's Guide.md>) only
+when the current checkpoint needs a deeper answer.
 
 The [`Sushi documentation home`](<fw/docs/README.md>) is the canonical map for every guide,
 example, troubleshooting path, and maintainer reference.

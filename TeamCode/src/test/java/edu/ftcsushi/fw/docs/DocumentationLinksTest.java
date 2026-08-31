@@ -211,6 +211,7 @@ public final class DocumentationLinksTest {
                         "Set up and verify the project",
                         "Write your first Sushi robot code",
                         "Test a mechanism without hardware",
+                        "Build a robot step by step",
                         "Choose a Sushi topic",
                         "Documentation home",
                         "Getting started"),
@@ -219,6 +220,7 @@ public final class DocumentationLinksTest {
                         "docs/getting-started/Build and Run.md",
                         "docs/getting-started/First Sushi Robot Code.md",
                         "docs/getting-started/Test a Mechanism Without Hardware.md",
+                        "docs/getting-started/Build a Robot Step by Step.md",
                         "docs/getting-started/Beginner's Guide.md",
                         "docs/README.md",
                         "docs/getting-started/README.md"));
@@ -290,6 +292,75 @@ public final class DocumentationLinksTest {
                 "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Task and Auto.md",
                 "learn-sushi/Tasks and Autonomous.md",
                 "../testing-calibration/Robot Calibration Tutorials.md");
+    }
+
+    @Test
+    public void buildSeasonAnchorKeepsTheEvidenceBasedStudentWorkflow() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        Path anchorPath = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
+                        + "Build a Robot Step by Step.md");
+        assertTrue("Build-season anchor is missing", Files.isRegularFile(anchorPath));
+
+        String anchor = readUtf8(anchorPath);
+        String[] requiredStageHeadings = {
+            "## 1. Define behavior and success criteria",
+            "## 2. Establish the compiling robot skeleton",
+            "## 3. Build one subsystem software slice",
+            "## 4. Bring up hardware in isolation",
+            "## 5. Run a bounded subsystem experiment",
+            "## 6. Integrate continuously and grow TeleOp",
+            "## 7. Qualify routes and autonomous policy separately",
+            "## 8. Rehearse the complete robot"
+        };
+        int priorStage = -1;
+        for (String stage : requiredStageHeadings) {
+            int stageIndex = anchor.indexOf(stage);
+            assertTrue("Build-season anchor is missing stage: " + stage, stageIndex >= 0);
+            assertTrue("Build-season stages are out of order: " + stage,
+                    stageIndex > priorStage);
+            priorStage = stageIndex;
+        }
+
+        String[] requiredEvidenceLabels = {
+            "**Goal:**", "**Produce:**", "**Prove:**", "**Does not prove:**", "**Do next:**"
+        };
+        for (String label : requiredEvidenceLabels) {
+            int occurrences = anchor.split(Pattern.quote(label), -1).length - 1;
+            assertTrue("Every build-season stage must contain evidence label " + label
+                            + "; found " + occurrences,
+                    occurrences == requiredStageHeadings.length);
+        }
+
+        String[] requiredDestinations = {
+            "learn-sushi/From Requirement to Robot.md",
+            "../examples/Modern Starter Robot.md",
+            "Test a Mechanism Without Hardware.md",
+            "../testing-calibration/README.md",
+            "../examples/Subsystem Experiments.md",
+            "../design/Robot Capabilities & Mode Clients.md",
+            "First Pedro Auto.md",
+            "../troubleshooting/Common Problems.md"
+        };
+        for (String destination : requiredDestinations) {
+            assertTrue("Build-season anchor is missing destination: " + destination,
+                    anchor.contains(destination));
+        }
+
+        assertTrue("Build-season anchor must distinguish tester OpModes from production TeleOp",
+                anchor.contains("dedicated tester or diagnostic OpModes")
+                        && anchor.contains("production TeleOp")
+                        && anchor.contains("raw device tester"));
+        assertTrue("Build-season anchor must keep integration continuous",
+                anchor.contains("Return to")
+                        && anchor.contains("step 3 for the next subsystem slice"));
+        assertTrue("Build-season anchor must include an accessible Mermaid title",
+                anchor.contains("accTitle: Build-season robot workflow"));
+        assertTrue("Build-season anchor must include an accessible Mermaid description",
+                anchor.contains("accDescr:"));
+        assertTrue("Build-season anchor must include a diagram text fallback",
+                anchor.contains("**Text version:**"));
     }
 
     @Test

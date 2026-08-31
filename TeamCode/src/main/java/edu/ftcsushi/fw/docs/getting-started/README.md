@@ -22,9 +22,12 @@ The exercise reveals one owner at a time; it does not require reading all seven 
 
 Next, [test its mechanism without hardware](<Test a Mechanism Without Hardware.md>). That second
 software lesson keeps the production `HardwareMap + Config` constructor and private Plant while a
-test-only hardware registry records its actuator command. Then [choose a Sushi topic](<Beginner's Guide.md>)
-for the problem in front of you. These pages are optional deep dives rather than a required
-sequence. [Role paths](<learn-sushi/Role Paths.md>) provides a more detailed map.
+test-only hardware registry records its actuator command. Then use
+[Build a robot step by step](<Build a Robot Step by Step.md>) as the team's season anchor. It routes
+each subsystem from requirements through software evidence, physical validation, experiments, and
+continuous integration before complete Auto. [Choose a Sushi topic](<Beginner's Guide.md>) only for
+the deeper problem at the current checkpoint. [Role paths](<learn-sushi/Role Paths.md>) provides a
+role-based lookup.
 
 ## Set up or work with physical hardware
 
@@ -56,3 +59,5 @@ example. It is an optional integration topic and does not authorize a physical r
 **First coding exercise:** [Your first Sushi robot code](<First Sushi Robot Code.md>)
 
 **First mechanism scenario:** [Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>)
+
+**Build-season anchor:** [Build a robot step by step](<Build a Robot Step by Step.md>)
