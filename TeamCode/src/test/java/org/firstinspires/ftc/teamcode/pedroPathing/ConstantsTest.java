@@ -21,11 +21,11 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
-import edu.ftcphoenix.fw.core.hal.Direction;
-import edu.ftcphoenix.fw.ftc.FtcDrives;
-import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
-import edu.ftcphoenix.fw.integrations.pedro.PedroFieldTransform;
-import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
+import edu.ftcsushi.fw.core.hal.Direction;
+import edu.ftcsushi.fw.ftc.FtcDrives;
+import edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor;
+import edu.ftcsushi.fw.integrations.pedro.PedroFieldTransform;
+import edu.ftcsushi.fw.integrations.pedro.PedroPathingRuntime;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

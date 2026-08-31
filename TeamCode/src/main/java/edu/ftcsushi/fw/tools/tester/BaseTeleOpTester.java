@@ -1,0 +1,172 @@
+package edu.ftcsushi.fw.tools.tester;
+
+import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.ftc.input.Gamepads;
+import edu.ftcsushi.fw.input.binding.Bindings;
+
+/**
+ * Convenience base class for Sushi testers.
+ *
+ * <p>Provides:</p>
+ * <ul>
+ *   <li>{@link TesterContext} via {@link #ctx}</li>
+ *   <li>{@link Gamepads} wrapper via {@link #gamepads}</li>
+ *   <li>{@link Bindings} via {@link #bindings}</li>
+ *   <li>A shared per-loop {@link LoopClock} via {@link #clock} (from {@link TesterContext})</li>
+ * </ul>
+ *
+ * <h2>One loop, one heartbeat</h2>
+ * <p>Testers must use the <b>shared</b> {@link LoopClock} from {@link TesterContext} so that per-cycle
+ * systems (button edge tracking, bindings) can be made idempotent by {@link LoopClock#cycle()} across
+ * nested callers (e.g., a menu calling into a tester).</p>
+ *
+ * <p>This base class therefore does <b>not</b> create or update its own clock. The runner (OpMode or
+ * tester suite) advances {@link TesterContext#clock} once per OpMode cycle.</p>
+ *
+ * <h2>Update order</h2>
+ * <p>Each {@code initLoop()} / {@code loop()} call executes in this order:</p>
+ * <ol>
+ *   <li>{@code bindings.update(clock)} – performs the binding root's one effectful cycle attempt</li>
+ *   <li>{@code onInitLoop(dtSec)} or {@code onLoop(dtSec)} – tester-specific logic</li>
+ * </ol>
+ *
+ * <h2>Binding failures</h2>
+ * <p>After a successful binding update, another call in the same cycle is a no-op. If an
+ * activation, source, or callback throws a {@link RuntimeException}, {@link Bindings} retains that
+ * exact failure and rethrows it on a same-cycle call without replaying callbacks. Recursive update
+ * is rejected before a second traversal begins.</p>
+ *
+ * <p>This base class propagates the failure, so the corresponding tester-specific loop hook is not
+ * called. The runner owns stop/cleanup and any decision to permit a fresh attempt in a later cycle.
+ * A deliberate {@link Bindings#clear()} rebuild resets binding attempt state but does not roll back
+ * source state or external effects. Ordinary robot programs instead use the terminal fail-stop
+ * cleanup owned by {@link edu.ftcsushi.fw.ftc.FtcRobotOpMode}.</p>
+ *
+ */
+public abstract class BaseTeleOpTester implements TeleOpTester {
+
+    protected TesterContext ctx;
+    protected Gamepads gamepads;
+    protected final Bindings bindings = new Bindings();
+
+    /**
+     * Shared per-loop heartbeat provided by the runner via {@link TesterContext}.
+     *
+     * <p>This is assigned in {@link #init(TesterContext)} and should be treated as read-only
+     * by testers (do not call {@code clock.update(...)} here).</p>
+     */
+    protected LoopClock clock;
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final void init(TesterContext ctx) {
+        this.ctx = ctx;
+        this.clock = ctx.clock;
+
+        // Each tester gets its own Gamepads wrapper.
+        this.gamepads = Gamepads.create(ctx.gamepad1, ctx.gamepad2);
+
+        onInit();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public final void initLoop(double dtSec) {
+        // Per-cycle systems first.
+        bindings.update(clock);
+
+        onInitLoop(dtSec);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public final void start() {
+        onStart();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public final void loop(double dtSec) {
+        // Per-cycle systems first.
+        bindings.update(clock);
+
+        onLoop(dtSec);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public final void stop() {
+        onStop();
+    }
+
+    /**
+     * Override to set up bindings and internal state.
+     *
+     * <p>Called once when the tester is entered.</p>
+     */
+    protected void onInit() {
+        // Default: no-op.
+    }
+
+    /**
+     * Override to implement INIT-phase behavior (selection menus, camera selection, etc).
+     *
+     * <p>Called every INIT loop while this tester is active.</p>
+     */
+    protected void onInitLoop(double dtSec) {
+        // Default: no-op.
+    }
+
+    /**
+     * Override to implement RUN-phase tester behavior.
+     *
+     * <p>Called every RUN loop while this tester is active.</p>
+     */
+    protected abstract void onLoop(double dtSec);
+
+    /**
+     * Optional hook called once when the OpMode transitions from INIT to RUN.
+     */
+    protected void onStart() {
+        // Default: no-op.
+    }
+
+    /**
+     * Optional hook called once when the tester is stopped (or when returning to menu).
+     *
+     * <p>This hook may follow an {@link #onInit()} call that acquired some resources and then
+     * threw. Clean only resources that were successfully acquired; do not assume initialization
+     * reached its final line.</p>
+     */
+    protected void onStop() {
+        // Default: no-op.
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Telemetry helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Convenience: clear telemetry and draw a consistent header.
+     */
+    protected final void telemHeader(String title) {
+        ctx.telemetry.clearAll();
+        ctx.telemetry.addLine("=== " + title + " ===");
+    }
+
+    /**
+     * Convenience: small control hint line.
+     */
+    protected final void telemHint(String hint) {
+        ctx.telemetry.addLine(hint);
+    }
+
+    /**
+     * Convenience: always remember to update.
+     */
+    protected final void telemUpdate() {
+        ctx.telemetry.update();
+    }
+}

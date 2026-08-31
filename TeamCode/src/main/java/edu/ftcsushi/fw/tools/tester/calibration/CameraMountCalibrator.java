@@ -1,0 +1,1044 @@
+package edu.ftcsushi.fw.tools.tester.calibration;
+
+import com.qualcomm.robotcore.hardware.HardwareDevice;
+
+import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+
+import java.util.Locale;
+import java.util.Objects;
+import java.util.function.Function;
+
+import edu.ftcsushi.fw.core.geometry.Pose3d;
+import edu.ftcsushi.fw.core.source.BooleanSource;
+import edu.ftcsushi.fw.field.TagLayout;
+import edu.ftcsushi.fw.field.TagLayouts;
+import edu.ftcsushi.fw.ftc.FtcGameTagLayout;
+import edu.ftcsushi.fw.ftc.FtcTagLayoutDebug;
+import edu.ftcsushi.fw.ftc.FtcTelemetryDebugSink;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
+import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
+import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
+import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
+import edu.ftcsushi.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcsushi.fw.input.binding.Bindings;
+
+/**
+ * Calibrates {@code robotToCameraPose} (camera mount extrinsics) using:
+ * <ul>
+ *   <li>Known AprilTag field layout (framework-owned current-game fixed layout by default), and</li>
+ *   <li>A manually-entered / adjustable known robot pose {@code fieldToRobotPose}.</li>
+ * </ul>
+ *
+ * <h2>Camera selection</h2>
+ * <p>
+ * A {@code null} preferred hardware name shows the configured vision-device picker. A valid
+ * preferred name is attempted first; a clean open/setup failure exposes that same replacement
+ * picker with the failed name highlighted. Blank preferred names are rejected as configuration
+ * errors.
+ * </p>
+ *
+ * <h2>Core math</h2>
+ * <pre>
+ * fieldToTagPose = fieldToRobotPose · robotToCameraPose · cameraToTagPose
+ * => robotToCameraPose = inv(fieldToRobotPose) · fieldToTagPose · inv(cameraToTagPose)
+ * </pre>
+ *
+ * <h2>Controls (gamepad1)</h2>
+ * <ul>
+ *   <li><b>PICKER (no camera chosen yet)</b>: Dpad Up/Down highlight, A choose, X refresh</li>
+ *   <li><b>CALIBRATE (camera chosen)</b>:
+ *     <ul>
+ *       <li>Y/X: increment/decrement tag ID</li>
+ *       <li>A: capture sample (average mount)</li>
+ *       <li>B: clear captured samples</li>
+ *       <li>Dpad: adjust known robot pose (XY)</li>
+ *       <li>LB/RB: adjust known robot yaw</li>
+ *       <li>START: fine/coarse step</li>
+ *       <li>BACK: return to camera picker (change camera)</li>
+ *     </ul>
+ *   </li>
+ * </ul>
+ */
+public final class CameraMountCalibrator extends BaseTeleOpTester {
+
+    private static final double DEFAULT_MAX_AGE_SEC = 0.35;
+    private static final int DEFAULT_TAG_ID = 1;
+    private static final Pose3d DEFAULT_P_FIELD_TO_ROBOT = Pose3d.zero();
+
+    /** Mutable, data-only authoring configuration for one camera-mount calibration owner. */
+    public static final class Config {
+
+        /** Preferred configured vision-device name, or {@code null} to show the picker. */
+        public String preferredVisionDeviceName;
+
+        /** Hardware type enumerated by the replacement picker. */
+        public Class<? extends HardwareDevice> visionDeviceType;
+
+        /** Nonblank title shown by the replacement picker. */
+        public String visionPickerTitle;
+
+        /** Fixed field-tag facts used by the mount solve. */
+        public TagLayout fixedTagLayout;
+
+        /** Maximum accepted detection-frame age in seconds. */
+        public double maxDetectionAgeSec;
+
+        private Config() {
+        }
+
+        /**
+         * Returns a fresh software-valid authoring draft.
+         *
+         * <p>The current-game layout is a borrowed field-fact source. The calibrator snapshots it
+         * when constructed; defaults do not claim that the selected camera, mount, or field setup
+         * has been physically verified.</p>
+         */
+        public static Config defaults() {
+            Config c = new Config();
+            c.preferredVisionDeviceName = null;
+            c.visionDeviceType = WebcamName.class;
+            c.visionPickerTitle = "Select Camera";
+            c.fixedTagLayout = FtcGameTagLayout.currentGameFieldFixed();
+            c.maxDetectionAgeSec = DEFAULT_MAX_AGE_SEC;
+            return c;
+        }
+    }
+
+    // Captured owner configuration
+    private final String preferredVisionDeviceName;
+    private final Class<? extends HardwareDevice> visionDeviceType;
+    private final String visionPickerTitle;
+    private final Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder;
+    private final TagLayout layout;
+    private final String layoutPolicySummary;
+    private final double maxDetectionAgeSec;
+
+    /** Factory captured for the initial preferred-name attempt; picker attempts replace it. */
+    private AprilTagVisionLaneFactory pendingVisionLaneFactory;
+
+    // Runtime state
+    private AprilTagVisionLane visionLane;
+    private AprilTagSensor tagSensor;
+
+    private boolean visionReady = false;
+    private boolean visionClosingOrTerminal = false;
+    private boolean visionTerminalRequested = false;
+    private boolean visionCleanupFailed = false;
+    private RuntimeException visionFailure = null;
+    private String selectedCameraName = null;
+    private String visionInitError = null;
+    private String activeVisionDescription = null;
+    private VisionReadiness visionReadiness = VisionReadiness.notReady("No vision device is open");
+
+    private HardwareNamePicker cameraPicker;
+
+    private int selectedTagId = DEFAULT_TAG_ID;
+    private Pose3d fieldToRobotPose = DEFAULT_P_FIELD_TO_ROBOT;
+    private boolean fineSteps = true;
+
+    // Input/UI mode
+    private boolean editMode = false;
+
+    private enum EditField {
+        TAG_ID("Tag ID"),
+        ROBOT_X("Robot X"),
+        ROBOT_Y("Robot Y"),
+        ROBOT_YAW("Robot Yaw");
+
+        final String label;
+
+        EditField(String label) {
+            this.label = label;
+        }
+    }
+
+    private EditField editField = EditField.ROBOT_X;
+
+    private Pose3d lastRobotToCameraSample = null;
+    private Pose3d lastObservedCameraToTag = null;
+
+    private final PoseAverager avg = new PoseAverager();
+
+    /**
+     * Creates one backend-neutral camera-mount calibration owner.
+     *
+     * <p>The constructor defensively captures and validates all data before invoking
+     * {@code visionLaneFactoryBuilder}. A non-null preferred name is trimmed and causes exactly one
+     * effect-free builder application here; {@code null} selects the replacement picker. A blank
+     * preferred name is invalid. The builder must only capture backend configuration and return a
+     * deferred factory: it must not inspect the hardware map, open a portal, or acquire another FTC
+     * resource. Every later picker selection applies the builder once for that normalized name.
+     * The returned factory must open a fresh, independently owned lane for every attempt; the
+     * factory object itself need not have a new identity. Any backend template or custom SDK
+     * library borrowed by the builder must remain stable for this tester's full lifetime and every
+     * possible retry.</p>
+
+     * <p>The picker type is only an enumeration contract; it cannot prove which backend an
+     * arbitrary function returns or that the function honored the selected name. Lane accessors,
+     * description, and asynchronous readiness remain post-open facts.</p>
+     *
+     * <p>The factory's lane supplies detection ownership. Its camera-mount answer is deliberately
+     * irrelevant to this calibration workflow because the mount is the fact being measured.</p>
+     *
+     * @param config mutable authoring draft captured by this owner
+     * @param visionLaneFactoryBuilder effect-free selected-name-to-factory behavior
+     * @throws NullPointerException if an active object answer is null
+     * @throws IllegalArgumentException if a name, title, layout, or age is invalid
+     */
+    public CameraMountCalibrator(
+            Config config,
+            Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder
+    ) {
+        Config source = Objects.requireNonNull(config, "CameraMountCalibrator.Config must not be null");
+
+        this.preferredVisionDeviceName = normalizePreferredName(
+                source.preferredVisionDeviceName,
+                "CameraMountCalibrator.Config.preferredVisionDeviceName"
+        );
+        this.visionDeviceType = Objects.requireNonNull(
+                source.visionDeviceType,
+                "CameraMountCalibrator.Config.visionDeviceType must not be null"
+        );
+        this.visionPickerTitle = requireTrimmedNonblank(
+                source.visionPickerTitle,
+                "CameraMountCalibrator.Config.visionPickerTitle"
+        );
+        TagLayout authoredLayout = Objects.requireNonNull(
+                source.fixedTagLayout,
+                "CameraMountCalibrator.Config.fixedTagLayout must not be null"
+        );
+        this.layoutPolicySummary = policySummary(authoredLayout);
+        this.layout = snapshotLayout(
+                authoredLayout,
+                "CameraMountCalibrator.Config.fixedTagLayout"
+        );
+        this.maxDetectionAgeSec = requireFiniteNonnegative(
+                source.maxDetectionAgeSec,
+                "CameraMountCalibrator.Config.maxDetectionAgeSec"
+        );
+        this.visionLaneFactoryBuilder = Objects.requireNonNull(
+                visionLaneFactoryBuilder,
+                "CameraMountCalibrator visionLaneFactoryBuilder must not be null"
+        );
+
+        if (!layout.ids().isEmpty()) {
+            selectedTagId = layout.ids().iterator().next();
+        }
+        selectedCameraName = preferredVisionDeviceName;
+        if (preferredVisionDeviceName != null) {
+            pendingVisionLaneFactory = requireVisionFactory(
+                    this.visionLaneFactoryBuilder.apply(preferredVisionDeviceName),
+                    preferredVisionDeviceName
+            );
+        }
+    }
+
+    private static String normalizePreferredName(String value, String context) {
+        if (value == null) {
+            return null;
+        }
+        return requireTrimmedNonblank(value, context);
+    }
+
+    private static String requireTrimmedNonblank(String value, String context) {
+        Objects.requireNonNull(value, context + " must not be null");
+        String normalized = value.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(
+                    context + " must contain a non-whitespace character; received '" + value + "'"
+            );
+        }
+        return normalized;
+    }
+
+    private static double requireFiniteNonnegative(double value, String context) {
+        if (!Double.isFinite(value) || value < 0.0) {
+            throw new IllegalArgumentException(
+                    context + " must be finite and >= 0; received " + value
+            );
+        }
+        return value;
+    }
+
+    private static TagLayout snapshotLayout(TagLayout layout, String context) {
+        try {
+            return TagLayouts.snapshot(layout);
+        } catch (RuntimeException failure) {
+            throw new IllegalArgumentException(
+                    context + " is invalid: " + String.valueOf(failure.getMessage()),
+                    failure
+            );
+        }
+    }
+
+    private static String policySummary(TagLayout layout) {
+        return layout instanceof FtcGameTagLayout
+                ? ((FtcGameTagLayout) layout).policySummaryLine()
+                : null;
+    }
+
+    private static AprilTagVisionLaneFactory requireVisionFactory(
+            AprilTagVisionLaneFactory factory,
+            String selectedName
+    ) {
+        if (factory == null) {
+            throw new IllegalStateException(
+                    "visionLaneFactoryBuilder returned null for " + selectedName
+            );
+        }
+        return factory;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String name() {
+        return "Camera Mount Calibrator";
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onInit() {
+        cameraPicker = new HardwareNamePicker(
+                ctx.hw,
+                visionDeviceType,
+                visionPickerTitle,
+                "Dpad: highlight | A: choose | X: refresh"
+        );
+        cameraPicker.refresh();
+        if (selectedCameraName != null && !selectedCameraName.isEmpty()) {
+            cameraPicker.setPreferredName(selectedCameraName);
+        }
+
+        // Camera menu navigation is ONLY active before visionReady.
+        cameraPicker.bind(
+                bindings,
+                gamepads.p1().dpadUp(),
+                gamepads.p1().dpadDown(),
+                gamepads.p1().a(),
+                gamepads.p1().x(),
+                () -> visionLane == null && !visionClosingOrTerminal && !visionCleanupFailed,
+                chosen -> {
+                    preparePickerSelection(chosen);
+                }
+        );
+
+        Bindings.ControlContext calibrationControls = bindings.contextWhen(
+                BooleanSource.of(() -> visionReady),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
+        // B clears samples once vision is already running.
+        calibrationControls.onRise(gamepads.p1().b(), avg::clear);
+
+        // Capture sample (only when vision is ready)
+        calibrationControls.onRise(gamepads.p1().a(), () -> {
+            if (lastRobotToCameraSample != null) {
+                avg.add(lastRobotToCameraSample);
+            }
+        });
+
+        // Calibration controls (only when vision is ready)
+        calibrationControls.onRise(gamepads.p1().y(), () -> selectedTagId++);
+
+        calibrationControls.onRise(gamepads.p1().x(),
+                () -> selectedTagId = Math.max(1, selectedTagId - 1));
+
+        calibrationControls.onRise(gamepads.p1().start(), () -> fineSteps = !fineSteps);
+
+        // Toggle edit mode (RS). Edit mode lets you select which variable you're changing
+        // instead of remembering which button maps to which axis.
+        calibrationControls.onRise(gamepads.p1().rightStickButton(), () -> editMode = !editMode);
+
+        // D-pad:
+        //  - QUICK mode: dpad X adjusts X, dpad Y adjusts Y (requested)
+        //  - EDIT mode: up/down selects a field, left/right changes its value
+        calibrationControls.onRise(gamepads.p1().dpadUp(), () -> {
+            if (editMode) {
+                cycleEditField(-1);
+            } else {
+                adjustRobotPose(0.0, +stepXY(), 0.0);
+            }
+        });
+        calibrationControls.onRise(gamepads.p1().dpadDown(), () -> {
+            if (editMode) {
+                cycleEditField(+1);
+            } else {
+                adjustRobotPose(0.0, -stepXY(), 0.0);
+            }
+        });
+
+        calibrationControls.onRise(gamepads.p1().dpadLeft(), () -> {
+            if (editMode) {
+                adjustEditField(-1);
+            } else {
+                adjustRobotPose(-stepXY(), 0.0, 0.0);
+            }
+        });
+        calibrationControls.onRise(gamepads.p1().dpadRight(), () -> {
+            if (editMode) {
+                adjustEditField(+1);
+            } else {
+                adjustRobotPose(+stepXY(), 0.0, 0.0);
+            }
+        });
+
+        // Yaw adjustment. In QUICK mode we keep the classic LB/RB mapping.
+        // In EDIT mode, bumpers behave like +/- on the selected field.
+        calibrationControls.onRise(gamepads.p1().leftBumper(), () -> {
+            if (editMode) {
+                adjustEditField(-1);
+            } else {
+                adjustRobotPose(0.0, 0.0, +stepYawRad());
+            }
+        });
+        calibrationControls.onRise(gamepads.p1().rightBumper(), () -> {
+            if (editMode) {
+                adjustEditField(+1);
+            } else {
+                adjustRobotPose(0.0, 0.0, -stepYawRad());
+            }
+        });
+
+        // If user provided a camera name, try to bring vision up immediately in INIT.
+        ensureVisionReady();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean onBackPressed() {
+        if (visionClosingOrTerminal || visionCleanupFailed) {
+            return true;
+        }
+        if (visionLane == null) {
+            return false;
+        }
+
+        // Return to the camera picker. This allows you to re-select the active vision
+        // device without leaving the tester suite.
+        visionReady = false;
+        pendingVisionLaneFactory = null;
+        visionReadiness = VisionReadiness.notReady("No vision device is open");
+        visionInitError = null;
+
+        editMode = false;
+        editField = EditField.ROBOT_X;
+
+        RuntimeException cleanupFailure = closeVisionLaneOnce();
+        tagSensor = null;
+        activeVisionDescription = null;
+
+        lastRobotToCameraSample = null;
+        lastObservedCameraToTag = null;
+
+        avg.clear();
+
+        if (cleanupFailure != null) {
+            blockVisionSelection(cleanupFailure);
+            return true;
+        }
+        if (!visionTerminalRequested) {
+            visionClosingOrTerminal = false;
+        }
+
+        // Rebuild menu entries and keep the last chosen camera highlighted.
+        resetCameraPickerChoice();
+
+        return true;
+    }
+
+    @Override
+    protected void onStop() {
+        visionTerminalRequested = true;
+        pendingVisionLaneFactory = null;
+        visionReady = false;
+        visionReadiness = VisionReadiness.notReady("Vision tester is stopping");
+        tagSensor = null;
+        activeVisionDescription = null;
+        RuntimeException cleanupFailure = closeVisionLaneOnce();
+        if (cleanupFailure != null) {
+            visionCleanupFailed = true;
+            visionFailure = cleanupFailure;
+            throw cleanupFailure;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onInitLoop(double dtSec) {
+        refreshVisionReadiness();
+        if (!visionReady) {
+            renderCameraPicker();
+            return;
+        }
+
+        updateSolveAndTelemetry();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onLoop(double dtSec) {
+        refreshVisionReadiness();
+        if (!visionReady) {
+            renderCameraPicker();
+            return;
+        }
+
+        updateSolveAndTelemetry();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Vision init / camera enumeration
+    // ---------------------------------------------------------------------------------------------
+
+    /** Captures one picker selection before opening its deferred owner. */
+    private void preparePickerSelection(String chosenName) {
+        if (visionLane != null || visionClosingOrTerminal || visionCleanupFailed) {
+            return;
+        }
+
+        String normalized;
+        try {
+            normalized = requireTrimmedNonblank(
+                    chosenName,
+                    "CameraMountCalibrator selected vision device name"
+            );
+            selectedCameraName = normalized;
+            AprilTagVisionLaneFactory selectedFactory = requireVisionFactory(
+                    visionLaneFactoryBuilder.apply(normalized),
+                    normalized
+            );
+            pendingVisionLaneFactory = selectedFactory;
+        } catch (RuntimeException failure) {
+            pendingVisionLaneFactory = null;
+            recordCleanSelectionFailure("Failed to configure AprilTag camera", failure);
+            return;
+        }
+
+        ensureVisionReady();
+    }
+
+    private void ensureVisionReady() {
+        if (visionLane != null) {
+            refreshVisionReadiness();
+            return;
+        }
+        if (visionClosingOrTerminal) return;
+        if (visionCleanupFailed) return;
+        AprilTagVisionLaneFactory factory = pendingVisionLaneFactory;
+        if (factory == null) return;
+        pendingVisionLaneFactory = null;
+
+        visionFailure = null;
+        boolean ownerPublished = false;
+        try {
+            AprilTagVisionLane openedLane = factory.open(ctx.hw);
+            if (openedLane == null) {
+                throw new IllegalStateException(
+                        "vision lane factory returned null for " + selectedCameraName);
+            }
+            visionLane = openedLane;
+            ownerPublished = true;
+            tagSensor = Objects.requireNonNull(
+                    visionLane.tagSensor(),
+                    "AprilTag vision lane returned a null tag sensor"
+            );
+            activeVisionDescription = factory.description();
+
+            visionReady = false;
+            visionReadiness = VisionReadiness.notReady("Vision device is opening");
+            visionInitError = null;
+            refreshVisionReadiness();
+        } catch (RuntimeException e) {
+            boolean unpublishedCleanupUncertain = !ownerPublished
+                    && e.getSuppressed().length > 0;
+            tagSensor = null;
+            activeVisionDescription = null;
+            visionReady = false;
+            visionReadiness = VisionReadiness.notReady("Vision initialization failed");
+            RuntimeException cleanupFailure = closeVisionLaneOnce();
+            visionFailure = e;
+            if (cleanupFailure != null) {
+                if (cleanupFailure != e) {
+                    e.addSuppressed(cleanupFailure);
+                }
+                visionCleanupFailed = true;
+            } else if (unpublishedCleanupUncertain) {
+                // A framework constructor can fail before publishing its lane and attach a failed
+                // rollback/close attempt. There is no safe owner reference to close again.
+                visionCleanupFailed = true;
+            } else if (!visionTerminalRequested) {
+                visionClosingOrTerminal = false;
+                resetCameraPickerChoice();
+            }
+            visionInitError = visionFailureMessage("Failed to start AprilTag camera", e);
+        }
+    }
+
+    /** Refreshes asynchronous camera readiness without opening a competing owner. */
+    private void refreshVisionReadiness() {
+        AprilTagVisionLane lane = visionLane;
+        if (lane == null || visionClosingOrTerminal || visionCleanupFailed) {
+            visionReady = false;
+            return;
+        }
+        try {
+            VisionReadiness current = lane.readiness(ctx.clock);
+            if (current == null) {
+                throw new IllegalStateException(
+                        "AprilTag vision lane returned a null readiness result"
+                );
+            }
+            visionReadiness = current;
+            visionReady = visionReadiness.isReady();
+        } catch (RuntimeException failure) {
+            visionReady = false;
+            visionReadiness = VisionReadiness.notReady("Vision readiness check failed");
+            tagSensor = null;
+            activeVisionDescription = null;
+            RuntimeException cleanupFailure = closeVisionLaneOnce();
+            visionFailure = failure;
+            if (cleanupFailure != null) {
+                if (cleanupFailure != failure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+                visionCleanupFailed = true;
+            } else if (!visionTerminalRequested) {
+                visionClosingOrTerminal = false;
+                resetCameraPickerChoice();
+            }
+            visionInitError = visionFailureMessage("Vision readiness failed", failure);
+        }
+    }
+
+    /** Records an effect-free builder/selection failure and returns to the same picker. */
+    private void recordCleanSelectionFailure(String prefix, RuntimeException failure) {
+        visionFailure = failure;
+        tagSensor = null;
+        activeVisionDescription = null;
+        visionReady = false;
+        visionReadiness = VisionReadiness.notReady("Vision initialization failed");
+        if (!visionTerminalRequested) {
+            visionClosingOrTerminal = false;
+            resetCameraPickerChoice();
+        }
+        visionInitError = visionFailureMessage(prefix, failure);
+    }
+
+    private void resetCameraPickerChoice() {
+        if (cameraPicker == null) {
+            return;
+        }
+        cameraPicker.clearChoice();
+        cameraPicker.refresh();
+        if (selectedCameraName != null && !selectedCameraName.isEmpty()) {
+            cameraPicker.setPreferredName(selectedCameraName);
+        }
+    }
+
+    /**
+     * Detaches and closes the currently owned vision lane once.
+     *
+     * <p>Detaching before the callback keeps reentrant and repeated shutdown paths from reaching
+     * the same lane again.</p>
+     *
+     * @return the close failure, or {@code null} when no lane was owned or close succeeded
+     */
+    private RuntimeException closeVisionLaneOnce() {
+        visionClosingOrTerminal = true;
+        AprilTagVisionLane lane = visionLane;
+        visionLane = null;
+        if (lane == null) {
+            return null;
+        }
+        try {
+            lane.close();
+            return null;
+        } catch (RuntimeException cleanupFailure) {
+            return cleanupFailure;
+        }
+    }
+
+    /** Blocks further selection after cleanup leaves hardware ownership uncertain. */
+    private void blockVisionSelection(RuntimeException cleanupFailure) {
+        visionCleanupFailed = true;
+        visionFailure = cleanupFailure;
+        visionInitError = visionFailureMessage("Failed to stop AprilTag camera", cleanupFailure);
+    }
+
+    /** Formats the primary failure first and retains any suppressed cleanup diagnostics. */
+    private String visionFailureMessage(String prefix, RuntimeException failure) {
+        StringBuilder message = new StringBuilder(prefix)
+                .append(": ")
+                .append(failure.getClass().getSimpleName())
+                .append(": ")
+                .append(String.valueOf(failure.getMessage()));
+        for (Throwable suppressed : failure.getSuppressed()) {
+            message.append("\nCleanup also failed: ")
+                    .append(suppressed.getClass().getSimpleName())
+                    .append(": ")
+                    .append(String.valueOf(suppressed.getMessage()));
+        }
+        if (visionCleanupFailed) {
+            message.append("\nVision cleanup is uncertain. Stop and restart this OpMode.");
+        }
+        return message.toString();
+    }
+
+    private void renderCameraPicker() {
+        Telemetry t = ctx.telemetry;
+        t.clearAll();
+
+        if (cameraPicker != null) {
+            cameraPicker.render(t);
+        }
+
+        t.addLine("");
+        t.addLine("Chosen: " + (selectedCameraName == null ? "(none)" : selectedCameraName));
+        if (visionLane != null) {
+            t.addData("Vision readiness", visionReadiness.isReady() ? "READY" : "WAITING");
+            t.addData("Vision status", visionReadiness.reason());
+            t.addLine("Press BACK to close this owner and choose another device.");
+        }
+        if (visionCleanupFailed) {
+            t.addLine("VISION DEVICE SELECTION DISABLED.");
+            t.addLine("Stop and restart this OpMode before selecting another device.");
+        } else if (visionLane == null) {
+            t.addLine("Press A to choose the active vision device and initialize AprilTags.");
+            t.addLine("Press X to refresh camera list.");
+            t.addLine("Press BACK to exit to the tester menu.");
+        }
+
+        if (activeVisionDescription != null && !activeVisionDescription.isEmpty()) {
+            t.addLine("Backend: " + activeVisionDescription);
+        }
+
+        if (visionInitError != null) {
+            t.addLine("");
+            t.addLine("Vision init error:");
+            t.addLine(visionInitError);
+        }
+
+        t.update();
+    }
+
+    private void updateSolveAndTelemetry() {
+        AprilTagObservation obs = tagSensor.get(ctx.clock).forId(
+                ctx.clock,
+                selectedTagId,
+                maxDetectionAgeSec
+        );
+        lastObservedCameraToTag = (obs.hasTarget) ? obs.cameraToTagPose : null;
+
+        lastRobotToCameraSample = null;
+
+        if (obs.hasTarget) {
+            Pose3d fieldToTagPose = layout.getFieldToTagPose(obs.id);
+            if (fieldToTagPose != null) {
+                Pose3d cameraToTagPose = obs.cameraToTagPose;
+
+                Pose3d robotToCameraPose = fieldToRobotPose.inverse()
+                        .then(fieldToTagPose)
+                        .then(cameraToTagPose.inverse());
+
+                lastRobotToCameraSample = robotToCameraPose;
+
+            }
+        }
+
+        renderCalibrationTelemetry();
+    }
+
+    private void renderCalibrationTelemetry() {
+        Telemetry t = ctx.telemetry;
+        t.clearAll();
+
+        t.addLine("=== Camera Mount Calibrator ===");
+        t.addData("Camera", selectedCameraName);
+        if (activeVisionDescription != null && !activeVisionDescription.isEmpty()) {
+            t.addData("Backend", activeVisionDescription);
+        }
+        t.addData("Mode [RS]", editMode ? "EDIT" : "QUICK");
+        if (editMode) {
+            t.addData("Selected field [Dpad U/D]", editField.label);
+        }
+        t.addData("Step [START]", "%s (XY %.2f in | Yaw %.1f°)",
+                fineSteps ? "FINE" : "COARSE",
+                stepXY(),
+                Math.toDegrees(stepYawRad()));
+        t.addData(editableFieldLabel(EditField.TAG_ID, "Y/X"), "%d", selectedTagId);
+        t.addData(editableFieldLabel(EditField.ROBOT_X, "Dpad L/R"), "%.2f in", fieldToRobotPose.xInches);
+        t.addData(editableFieldLabel(EditField.ROBOT_Y, "Dpad U/D"), "%.2f in", fieldToRobotPose.yInches);
+        t.addData(editableFieldLabel(EditField.ROBOT_YAW, "LB/RB"), "%.1f°", Math.toDegrees(fieldToRobotPose.yawRad));
+        t.addData("Samples [A capture | B clear]", avg.count());
+        t.addData("MaxAge", "%.0f ms", maxDetectionAgeSec * 1000.0);
+
+        t.addLine("");
+        t.addLine("Units: inches (angles shown in degrees)");
+        t.addLine("Field frame: FTC Field Coordinate System (origin=center, +Z up)");
+        t.addLine("FTC axes hint: stand at Red Wall center facing field: +X to your right, +Y away from Red Wall");
+        t.addLine("AprilTag note: observation uses SDK rawPose (native AprilTag/OpenCV) converted to Sushi camera axes");
+        t.addLine("             (SDK ftcPose is a convenience reframe; don't mix with game database fieldOrientation)");
+        if (!editMode) {
+            t.addLine("Quick controls: tag [Y/X] | robot X [Dpad L/R] | robot Y [Dpad U/D] | yaw [LB/RB]");
+        } else {
+            t.addLine("Edit controls: Dpad U/D chooses the field; Dpad L/R or LB/RB changes the selected value.");
+        }
+        t.addLine("BACK: return to the camera picker. Hold the robot still while capturing.");
+
+        // Show the known field pose of the selected tag (from the fixed layout or an override layout).
+        t.addLine("");
+        t.addLine("Selected tag pose from layout (fieldToTagPose):");
+        Pose3d selectedTagPose = (layout != null) ? layout.getFieldToTagPose(selectedTagId) : null;
+        if (selectedTagPose == null) {
+            t.addLine("  (tag not present in layout)");
+        } else {
+            addPoseLine(t, "fieldToTagPose(layout)", selectedTagPose);
+        }
+        if (layoutPolicySummary != null) {
+            t.addData("Layout policy", layoutPolicySummary);
+        }
+        FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(t), "layout");
+
+        t.addLine("");
+        t.addLine("Known robot pose (fieldToRobotPose):");
+        addPoseLine(t, "fieldToRobotPose", fieldToRobotPose);
+
+        t.addLine("");
+        t.addLine("Observation (cameraToTagPose):");
+        if (lastObservedCameraToTag == null) {
+            t.addLine("  No fresh detection for selected tag ID.");
+        } else {
+            addPoseLine(t, "cameraToTagPose(obs)", lastObservedCameraToTag);
+        }
+
+        t.addLine("");
+        Pose3d mean = avg.meanOrNull();
+
+        t.addLine("Mount solve (robotToCameraPose):");
+        if (lastRobotToCameraSample == null) {
+            t.addLine("  Need: (1) fresh detection AND (2) this tag present in layout.");
+        } else {
+            addPoseLine(t, "robotToCameraPose(sample)", lastRobotToCameraSample);
+
+            double mountNorm = translationNormInches(lastRobotToCameraSample);
+            if (mountNorm > 36.0) {
+                t.addLine(String.format(Locale.US,
+                        "WARNING: mount translation is large (|t|=%.1f in). Check fieldToRobotPose + tag ID.",
+                        mountNorm
+                ));
+            }
+
+            if (mean != null) {
+                Pose3d avgToSamplePose = mean.inverse().then(lastRobotToCameraSample);
+                double sampleDeltaTrans = translationDistanceInches(mean, lastRobotToCameraSample);
+                t.addLine(String.format(Locale.US,
+                        "Sample vs avg mount: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
+                        sampleDeltaTrans,
+                        Math.toDegrees(avgToSamplePose.yawRad),
+                        Math.toDegrees(avgToSamplePose.pitchRad),
+                        Math.toDegrees(avgToSamplePose.rollRad)
+                ));
+            }
+
+            if (mean != null && selectedTagPose != null && lastObservedCameraToTag != null) {
+                // Compare the live observation against the captured-average mount, not against the
+                // just-solved sample. Using the same sample on both sides is a tautology and hides
+                // bad robot-pose inputs, bad tag-size metadata, and other setup mistakes.
+                Pose3d avgPredictedCameraToTag = fieldToRobotPose.then(mean).inverse().then(selectedTagPose);
+                Pose3d avgPredToObsPose = avgPredictedCameraToTag.inverse().then(lastObservedCameraToTag);
+                double trans = translationNormInches(avgPredToObsPose);
+                double observedRange = translationNormInches(lastObservedCameraToTag);
+                double predictedRange = translationNormInches(avgPredictedCameraToTag);
+
+                t.addLine(String.format(Locale.US,
+                        "Avg residual: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
+                        trans,
+                        Math.toDegrees(avgPredToObsPose.yawRad),
+                        Math.toDegrees(avgPredToObsPose.pitchRad),
+                        Math.toDegrees(avgPredToObsPose.rollRad)
+                ));
+                t.addLine(String.format(Locale.US,
+                        "Range check: obs=%.2f in | avgPred=%.2f in | Δ=%.2f in",
+                        observedRange,
+                        predictedRange,
+                        observedRange - predictedRange
+                ));
+            } else if (mean == null) {
+                t.addLine("Residual check: capture at least one sample to compare against an averaged mount.");
+            }
+        }
+
+        t.addLine("");
+        t.addLine(String.format(Locale.US, "Captured samples: %d", avg.count()));
+
+        if (mean == null) {
+            t.addLine("Average: (none yet) Press A a few times while holding still.");
+        } else {
+            t.addLine("Average mount (paste into CameraMountConfig.of / ofDegrees):");
+            addPoseLine(t, "robotToCameraPose(avg)", mean);
+
+            t.addLine(String.format(Locale.US,
+                    "CameraMountConfig.of(%.3f, %.3f, %.3f, %.6f, %.6f, %.6f)",
+                    mean.xInches, mean.yInches, mean.zInches,
+                    mean.yawRad, mean.pitchRad, mean.rollRad
+            ));
+
+            t.addLine(String.format(Locale.US,
+                    "CameraMountConfig.ofDegrees(%.3f, %.3f, %.3f, %.1f, %.1f, %.1f)",
+                    mean.xInches, mean.yInches, mean.zInches,
+                    Math.toDegrees(mean.yawRad), Math.toDegrees(mean.pitchRad), Math.toDegrees(mean.rollRad)
+            ));
+        }
+
+        t.update();
+    }
+
+    private String editableFieldLabel(EditField field, String quickControl) {
+        if (!editMode) {
+            return field.label + " [" + quickControl + "]";
+        }
+        return (editField == field ? "> " : "  ") + field.label
+                + (editField == field ? " [Dpad L/R or LB/RB]" : "");
+    }
+
+    private static void addPoseLine(Telemetry t, String label, Pose3d p) {
+        t.addLine(String.format(Locale.US,
+                "  %s: x=%.2f y=%.2f z=%.2f | yaw=%.1f° pitch=%.1f° roll=%.1f°",
+                label,
+                p.xInches, p.yInches, p.zInches,
+                Math.toDegrees(p.yawRad),
+                Math.toDegrees(p.pitchRad),
+                Math.toDegrees(p.rollRad)
+        ));
+    }
+
+    private static double translationDistanceInches(Pose3d a, Pose3d b) {
+        double dx = b.xInches - a.xInches;
+        double dy = b.yInches - a.yInches;
+        double dz = b.zInches - a.zInches;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    private static double translationNormInches(Pose3d p) {
+        double dx = p.xInches;
+        double dy = p.yInches;
+        double dz = p.zInches;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // Robot pose adjustment
+    private double stepXY() {
+        return fineSteps ? 0.25 : 1.0;
+    }
+
+    private double stepYawRad() {
+        return Math.toRadians(fineSteps ? 0.5 : 2.0);
+    }
+
+    private void adjustRobotPose(double dxInches, double dyInches, double dyawRad) {
+        fieldToRobotPose = new Pose3d(
+                fieldToRobotPose.xInches + dxInches,
+                fieldToRobotPose.yInches + dyInches,
+                fieldToRobotPose.zInches,
+                fieldToRobotPose.yawRad + dyawRad,
+                fieldToRobotPose.pitchRad,
+                fieldToRobotPose.rollRad
+        );
+    }
+
+
+    // Edit-mode helpers
+    private void cycleEditField(int delta) {
+        EditField[] fields = EditField.values();
+        int idx = editField.ordinal();
+        int next = (idx + delta) % fields.length;
+        if (next < 0) next += fields.length;
+        editField = fields[next];
+    }
+
+    private void adjustEditField(int dir) {
+        switch (editField) {
+            case TAG_ID:
+                if (dir > 0) {
+                    selectedTagId++;
+                } else {
+                    selectedTagId = Math.max(1, selectedTagId - 1);
+                }
+                break;
+            case ROBOT_X:
+                adjustRobotPose(dir * stepXY(), 0.0, 0.0);
+                break;
+            case ROBOT_Y:
+                adjustRobotPose(0.0, dir * stepXY(), 0.0);
+                break;
+            case ROBOT_YAW:
+                adjustRobotPose(0.0, 0.0, dir * stepYawRad());
+                break;
+        }
+    }
+
+    // Averager
+    private static final class PoseAverager {
+        private int n = 0;
+
+        private double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
+        private double sumSinYaw = 0.0, sumCosYaw = 0.0;
+        private double sumSinPitch = 0.0, sumCosPitch = 0.0;
+        private double sumSinRoll = 0.0, sumCosRoll = 0.0;
+
+        void clear() {
+            n = 0;
+            sumX = sumY = sumZ = 0.0;
+            sumSinYaw = sumCosYaw = 0.0;
+            sumSinPitch = sumCosPitch = 0.0;
+            sumSinRoll = sumCosRoll = 0.0;
+        }
+
+        int count() {
+            return n;
+        }
+
+        void add(Pose3d p) {
+            n++;
+            sumX += p.xInches;
+            sumY += p.yInches;
+            sumZ += p.zInches;
+
+            sumSinYaw += Math.sin(p.yawRad);
+            sumCosYaw += Math.cos(p.yawRad);
+
+            sumSinPitch += Math.sin(p.pitchRad);
+            sumCosPitch += Math.cos(p.pitchRad);
+
+            sumSinRoll += Math.sin(p.rollRad);
+            sumCosRoll += Math.cos(p.rollRad);
+        }
+
+        Pose3d meanOrNull() {
+            if (n <= 0) return null;
+
+            double x = sumX / n;
+            double y = sumY / n;
+            double z = sumZ / n;
+
+            double yaw = Math.atan2(sumSinYaw, sumCosYaw);
+            double pitch = Math.atan2(sumSinPitch, sumCosPitch);
+            double roll = Math.atan2(sumSinRoll, sumCosRoll);
+
+            return new Pose3d(x, y, z, yaw, pitch, roll);
+        }
+    }
+}

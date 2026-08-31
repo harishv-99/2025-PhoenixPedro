@@ -16,12 +16,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.hal.Direction;
-import edu.ftcphoenix.fw.ftc.FtcDrives;
-import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
-import edu.ftcphoenix.fw.integrations.pedro.PedroFieldTransform;
-import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
-import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
+import edu.ftcsushi.fw.core.hal.Direction;
+import edu.ftcsushi.fw.ftc.FtcDrives;
+import edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor;
+import edu.ftcsushi.fw.integrations.pedro.PedroFieldTransform;
+import edu.ftcsushi.fw.integrations.pedro.PedroPathingRuntime;
+import edu.ftcsushi.robots.phoenix.PhoenixProfile;
 
 /**
  * Project-specific Pedro tuning and pure Phoenix-to-Pedro configuration mapping.

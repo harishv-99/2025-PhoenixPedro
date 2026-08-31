@@ -1,0 +1,591 @@
+package edu.ftcsushi.fw.drive;
+
+import java.util.Objects;
+
+import edu.ftcsushi.fw.core.control.SlewRateLimiter;
+import edu.ftcsushi.fw.core.debug.DebugSink;
+import edu.ftcsushi.fw.core.source.BooleanSource;
+import edu.ftcsushi.fw.core.source.Source;
+import edu.ftcsushi.fw.core.time.LoopClock;
+
+/**
+ * Source of high-level drive commands for a drivetrain.
+ *
+ * <p>A {@link DriveSource} takes in the current loop timing (via {@link LoopClock}) and produces a
+ * {@link DriveSignal} each loop.</p>
+ *
+ * <p>Conceptually this is Sushi's drive-specific specialization of {@link Source}: the general
+ * source model still applies, but drive gets extra composition helpers because chassis command
+ * arbitration is common across many robots.</p>
+ *
+ * <p>Typical implementations include:</p>
+ * <ul>
+ *   <li>{@code GamepadDriveSource} – map gamepad sticks to a drive signal.</li>
+ *   <li>A motion planner – follow a trajectory and emit commands.</li>
+ *   <li>A closed-loop heading controller – maintain or turn to a target angle.</li>
+ * </ul>
+ *
+ * <h2>Semantics</h2>
+ * <ul>
+ *   <li>{@link #get(LoopClock)} is called once per loop by the OpMode (or owning robot class).</li>
+ *   <li>Implementations may be stateless (pure function of current inputs) or stateful
+ *       (e.g., with internal filters, rate limiters, etc.).</li>
+ *   <li>The returned {@link DriveSignal} is typically expected to be in the range [-1, +1] per
+ *       component when driving a normalized-power drivebase, but callers may clamp if needed.</li>
+ * </ul>
+ *
+ * <h2>Composition helpers</h2>
+ * <p>This interface provides a few default methods for simple composition, so that higher-level
+ * code can build up complex behaviors by <em>wrapping</em> existing sources rather than creating
+ * many small concrete classes.</p>
+ *
+ * <ul>
+ *   <li>{@link #scaledWhen(BooleanSource, double, double)} – conditional slow mode with
+ *       separate translation vs rotation scaling.</li>
+ *   <li>{@link #scaled(double, double)} – unconditional scaling (useful for always-on “microdrive”).</li>
+ *   <li>{@link #overlayWhen(BooleanSource, DriveOverlay, DriveOverlayMask)} – conditionally
+ *       apply a {@link DriveOverlay} to override one or more components of this source.</li>
+ *   <li>{@link DriveOverlayStack#on(DriveSource)} – build a readable stack of multiple overlays.</li>
+ *   <li>{@link #rateLimited(double, double)} – smooth drive commands at the source layer.</li>
+ *   <li>{@link #blendedWith(DriveSource, double)} – blend this source with another using
+ *       {@link DriveSignal#lerp(DriveSignal, double)}.</li>
+ * </ul>
+ */
+public interface DriveSource extends Source<DriveSignal> {
+
+    /**
+     * Produce a drive signal for the current loop.
+     *
+     * <p>Implementations should return a non-null {@link DriveSignal} every time they are called.
+     * If a source has nothing to do (or is disabled), it should return {@link DriveSignal#zero()}.</p>
+     *
+     * @param clock loop timing helper; implementations may use this for dt-based smoothing,
+     *              rate limiting, or controller updates
+     * @return drive command for this loop (never null)
+     */
+    @Override
+    DriveSignal get(LoopClock clock);
+
+    /**
+     * Optional debug hook: emit a compact summary of this source's state.
+     *
+     * <p>The default implementation only records the implementing class name. Concrete sources are
+     * encouraged to override this to include additional details such as last output, configuration
+     * parameters, and any internal filter/controller state.</p>
+     *
+     * <p>Framework classes consistently follow the pattern that if {@code dbg} is {@code null}, the
+     * method simply does nothing. This lets callers freely pass either a real sink or a
+     * {@code NullDebugSink} (or {@code null}) without having to guard every call.</p>
+     *
+     * @param dbg    debug sink to write to (may be {@code null})
+     * @param prefix key prefix for all entries (may be {@code null} or empty)
+     */
+    default void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+        // Default: record the implementing class name.
+        // Concrete sources are encouraged to override this to include additional details.
+        dbg.addData(p + ".class", getClass().getSimpleName());
+    }
+
+    /**
+     * Return a new {@link DriveSource} that conditionally applies slow-mode scaling.
+     *
+     * <p>This wrapper is meant to match the Sushi TeleOp conventions used by
+     * {@link edu.ftcsushi.fw.drive.source.GamepadDriveSource}: translation (axial/lateral) and
+     * rotation (omega) are often slowed by different amounts.</p>
+     *
+     * <p>When {@code when} is {@code true}, the returned source produces:</p>
+     * <ul>
+     *   <li>{@code axial'}   = {@code axial}   × {@code translationScale}</li>
+     *   <li>{@code lateral'} = {@code lateral} × {@code translationScale}</li>
+     *   <li>{@code omega'}   = {@code omega}   × {@code omegaScale}</li>
+     * </ul>
+     *
+     * <p>Typical scales are in (0, 1], but no clamping is performed here. If you need a strict
+     * output range, call {@link DriveSignal#clamped()} at the point you send the command to a
+     * drivebase.</p>
+     *
+     * <p>Example (using the FTC-boundary
+     * {@link edu.ftcsushi.fw.ftc.input.GamepadDevice GamepadDevice} adapter):</p>
+     * <pre>{@code
+     * GamepadDevice driver = gamepads.p1();
+     * DriveSource manual = new GamepadDriveSource(
+     *         driver.leftX(),
+     *         driver.leftY(),
+     *         driver.rightX(),
+     *         GamepadDriveSource.Config.defaults()
+     * );
+     * DriveSource slowable = manual.scaledWhen(
+     *         driver.rightBumper(),
+     *         0.35,  // translation scale
+     *         0.20); // omega scale
+     * }</pre>
+     *
+     * @param when             condition indicating when the scales should be applied (non-null)
+     * @param translationScale scale factor for axial/lateral (often in (0, 1])
+     * @param omegaScale       scale factor for omega (often in (0, 1])
+     * @return wrapped {@link DriveSource} that conditionally scales output
+     */
+    default DriveSource scaledWhen(BooleanSource when, double translationScale, double omegaScale) {
+        Objects.requireNonNull(when, "when must not be null");
+
+        // If both scales are 1.0, no need to wrap.
+        if (translationScale == 1.0 && omegaScale == 1.0) {
+            return this;
+        }
+
+        // NOTE: Do not use a lambda here.
+        // Lambdas cannot override debugDump(), and debuggability is a first-class Sushi principle.
+        DriveSource self = this;
+        return new DriveSource() {
+            private boolean lastEnabled = false;
+            private DriveSignal lastBase = DriveSignal.zero();
+            private DriveSignal lastOut = DriveSignal.zero();
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                lastBase = self.get(clock);
+                lastEnabled = when.getAsBoolean(clock);
+                lastOut = lastEnabled ? lastBase.scaled(translationScale, omegaScale) : lastBase;
+                return lastOut;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                lastEnabled = false;
+                lastBase = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+                self.reset();
+                when.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+                dbg.addData(p + ".class", "ScaledWhenDriveSource")
+                        .addData(p + ".scaledWhen.enabled", lastEnabled)
+                        .addData(p + ".scaledWhen.translationScale", translationScale)
+                        .addData(p + ".scaledWhen.omegaScale", omegaScale)
+                        .addData(p + ".scaledWhen.lastBase", lastBase)
+                        .addData(p + ".scaledWhen.lastOut", lastOut);
+                when.debugDump(dbg, p + ".scaledWhen.when");
+                self.debugDump(dbg, p + ".source");
+            }
+        };
+    }
+
+    /**
+     * Return a new {@link DriveSource} that always scales translation and rotation.
+     *
+     * <p>This is the unconditional sibling of {@link #scaledWhen(BooleanSource, double, double)}.
+     * It's useful for building “always slow” sources such as:</p>
+     *
+     * <ul>
+     *   <li>driver 2 D-pad microdrive, or</li>
+     *   <li>a low-speed autonomous nudge source.</li>
+     * </ul>
+     */
+    default DriveSource scaled(double translationScale, double omegaScale) {
+        if (translationScale == 1.0 && omegaScale == 1.0) {
+            return this;
+        }
+        // NOTE: Do not use a lambda here.
+        // Lambdas cannot override debugDump(), and debuggability is a first-class Sushi principle.
+        DriveSource self = this;
+        return new DriveSource() {
+            private DriveSignal lastBase = DriveSignal.zero();
+            private DriveSignal lastOut = DriveSignal.zero();
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                lastBase = self.get(clock);
+                lastOut = lastBase.scaled(translationScale, omegaScale);
+                return lastOut;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                lastBase = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+                dbg.addData(p + ".class", "ScaledDriveSource")
+                        .addData(p + ".scaled.translationScale", translationScale)
+                        .addData(p + ".scaled.omegaScale", omegaScale)
+                        .addData(p + ".scaled.lastBase", lastBase)
+                        .addData(p + ".scaled.lastOut", lastOut);
+                self.debugDump(dbg, p + ".source");
+            }
+        };
+    }
+
+    /**
+     * Return a new {@link DriveSource} that limits how quickly drive commands change.
+     *
+     * <p>This is the drive equivalent of {@code ScalarSource.rateLimited(...)}. Rate limiting
+     * belongs at the source layer because it shapes robot behavior before the command reaches the
+     * drivebase. The drivebase can then stay a simple mixer/sink that turns one current
+     * {@link DriveSignal} into wheel powers.</p>
+     *
+     * <p>The limiter uses the elapsed time reported by {@link LoopClock}; it does not guess future
+     * loop timing. Multiple reads during the same loop are idempotent because the underlying
+     * {@link SlewRateLimiter}s are cycle-aware.</p>
+     *
+     * @param maxTranslationDeltaPerSec maximum axial/lateral command change per second
+     * @param maxOmegaDeltaPerSec       maximum rotational command change per second
+     * @return wrapped source with per-axis slew-rate limiting
+     */
+    default DriveSource rateLimited(double maxTranslationDeltaPerSec, double maxOmegaDeltaPerSec) {
+        return rateLimited(maxTranslationDeltaPerSec, maxTranslationDeltaPerSec, maxOmegaDeltaPerSec);
+    }
+
+    /**
+     * Return a new {@link DriveSource} with independent axial, lateral, and omega rate limits.
+     *
+     * @param maxAxialDeltaPerSec   maximum axial command change per second
+     * @param maxLateralDeltaPerSec maximum lateral command change per second
+     * @param maxOmegaDeltaPerSec   maximum rotational command change per second
+     */
+    default DriveSource rateLimited(double maxAxialDeltaPerSec,
+                                    double maxLateralDeltaPerSec,
+                                    double maxOmegaDeltaPerSec) {
+        DriveSource self = this;
+        return new DriveSource() {
+            private final SlewRateLimiter axialLimiter = new SlewRateLimiter(maxAxialDeltaPerSec);
+            private final SlewRateLimiter lateralLimiter = new SlewRateLimiter(maxLateralDeltaPerSec);
+            private final SlewRateLimiter omegaLimiter = new SlewRateLimiter(maxOmegaDeltaPerSec);
+            private long lastCycle = Long.MIN_VALUE;
+            private DriveSignal lastBase = DriveSignal.zero();
+            private DriveSignal lastOut = DriveSignal.zero();
+
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+                if (clock != null && cycle == lastCycle) {
+                    return lastOut;
+                }
+                if (clock == null) {
+                    // Preserve legacy clockless sampling without letting it alias a real cycle.
+                    lastCycle = Long.MIN_VALUE;
+                }
+
+                DriveSignal base = self.get(clock);
+                DriveSignal out = new DriveSignal(
+                        axialLimiter.calculate(base.axial, clock),
+                        lateralLimiter.calculate(base.lateral, clock),
+                        omegaLimiter.calculate(base.omega, clock));
+
+                lastBase = base;
+                lastOut = out;
+                if (clock != null) {
+                    // A failed upstream sample must remain retryable in this cycle.
+                    lastCycle = cycle;
+                }
+                return out;
+            }
+
+            @Override
+            public void reset() {
+                axialLimiter.reset();
+                lateralLimiter.reset();
+                omegaLimiter.reset();
+                lastCycle = Long.MIN_VALUE;
+                lastBase = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+                self.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+                dbg.addData(p + ".class", "RateLimitedDriveSource")
+                        .addData(p + ".rateLimited.lastBase", lastBase)
+                        .addData(p + ".rateLimited.lastOut", lastOut);
+                axialLimiter.debugDump(dbg, p + ".rateLimited.axial");
+                lateralLimiter.debugDump(dbg, p + ".rateLimited.lateral");
+                omegaLimiter.debugDump(dbg, p + ".rateLimited.omega");
+                self.debugDump(dbg, p + ".source");
+            }
+        };
+    }
+
+    /**
+     * Return a new {@link DriveSource} that conditionally applies a {@link DriveOverlay}.
+     *
+     * <p>When enabled, the overlay's output replaces the corresponding components of this source,
+     * as selected by {@code requestedMask} <em>and</em> the overlay's dynamic mask.</p>
+     *
+     * <p>This is Sushi's primary “override” mechanism and is intended to be used for both:
+     * </p>
+     * <ul>
+     *   <li>driver assist (e.g., aim overlay overrides omega), and</li>
+     *   <li>multi-driver arbitration (e.g., driver 2 overrides translation while driver 1 still
+     *       controls everything else).</li>
+     * </ul>
+     *
+     * <p>Example: auto-aim overrides rotation while holding a button. The
+     * {@code GamepadDevice} is the FTC-boundary
+     * {@link edu.ftcsushi.fw.ftc.input.GamepadDevice GamepadDevice} adapter.</p>
+     * <pre>{@code
+     * GamepadDevice driver = pads.p1();
+     * DriveSource manual = new GamepadDriveSource(
+     *         driver.leftX(),
+     *         driver.leftY(),
+     *         driver.rightX(),
+     *         GamepadDriveSource.Config.defaults()
+     * );
+     * // aimPlan is a complete DriveGuidancePlan owned by the robot's targeting service.
+     * DriveSource assisted = manual.overlayWhen(
+     *         driver.x(),
+     *         aimPlan.overlay(),
+     *         DriveOverlayMask.OMEGA_ONLY);
+     * }</pre>
+     */
+    default DriveSource overlayWhen(BooleanSource when, DriveOverlay overlay, DriveOverlayMask requestedMask) {
+        Objects.requireNonNull(when, "when must not be null");
+        Objects.requireNonNull(overlay, "overlay must not be null");
+        Objects.requireNonNull(requestedMask, "requestedMask must not be null");
+
+        DriveSource self = this;
+
+        return new DriveSource() {
+            private boolean lastEnabled = false;
+            private long lastCycle = Long.MIN_VALUE;
+            private DriveSignal lastOut = DriveSignal.zero();
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+                if (clock != null && cycle == lastCycle) {
+                    return lastOut;
+                }
+                if (clock == null) {
+                    // Preserve legacy clockless sampling without letting it alias a real cycle.
+                    lastCycle = Long.MIN_VALUE;
+                }
+
+                DriveSignal base = self.get(clock);
+
+                boolean enabled = when.getAsBoolean(clock);
+
+                if (!enabled) {
+                    if (lastEnabled) {
+                        overlay.onDisable(clock);
+                        lastEnabled = false;
+                    }
+                    return rememberSuccessfulResult(clock, cycle, base);
+                }
+
+                if (!lastEnabled) {
+                    overlay.onEnable(clock);
+                    lastEnabled = true;
+                }
+
+                DriveOverlayOutput out = overlay.get(clock);
+                if (out == null) {
+                    // Be defensive; treat as “no override”.
+                    return rememberSuccessfulResult(clock, cycle, base);
+                }
+
+                DriveOverlayMask eff = out.mask.intersect(requestedMask);
+                if (eff.isNone()) {
+                    return rememberSuccessfulResult(clock, cycle, base);
+                }
+
+                double axial = eff.axial ? out.signal.axial : base.axial;
+                double lateral = eff.lateral ? out.signal.lateral : base.lateral;
+                double omega = eff.omega ? out.signal.omega : base.omega;
+
+                return rememberSuccessfulResult(
+                        clock, cycle, new DriveSignal(axial, lateral, omega));
+            }
+
+            private DriveSignal rememberSuccessfulResult(LoopClock clock,
+                                                         long cycle,
+                                                         DriveSignal result) {
+                lastOut = result;
+                if (clock != null) {
+                    // Commit the cycle only after base, gate, lifecycle, and overlay all succeed.
+                    lastCycle = cycle;
+                }
+                return result;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                // reset() has no LoopClock, so abandon activation without inventing onDisable(null).
+                lastEnabled = false;
+                lastCycle = Long.MIN_VALUE;
+                lastOut = DriveSignal.zero();
+                self.reset();
+                when.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+                dbg.addData(p + ".class", "OverlayWhenDriveSource");
+                dbg.addData(p + ".overlay.enabled", lastEnabled);
+                dbg.addData(p + ".overlay.requestedMask", requestedMask.toString());
+                when.debugDump(dbg, p + ".overlay.when");
+                overlay.debugDump(dbg, p + ".overlay");
+                self.debugDump(dbg, p + ".base");
+            }
+        };
+    }
+
+    /**
+     * Convenience overload: requested mask defaults to {@link DriveOverlayMask#ALL}.
+     */
+    default DriveSource overlayWhen(BooleanSource when, DriveOverlay overlay) {
+        return overlayWhen(when, overlay, DriveOverlayMask.ALL);
+    }
+
+    /**
+     * Convenience overload: adapt a {@link DriveSource} into an overlay with the given mask.
+     */
+    default DriveSource overlayWhen(BooleanSource when, DriveSource override, DriveOverlayMask requestedMask) {
+        Objects.requireNonNull(override, "override DriveSource must not be null");
+        DriveSource composed = overlayWhen(
+                when, DriveOverlays.fromDriveSource(override, requestedMask), requestedMask);
+
+        // Keep the source-adapter overload structurally resettable without adding a lifecycle/reset
+        // method to DriveOverlay. The generic overlay overload cannot assume ownership of an
+        // overlay's private collaborators, while this overload knows the supplied source edge.
+        return new DriveSource() {
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                return composed.get(clock);
+            }
+
+            @Override
+            public void reset() {
+                composed.reset();
+                override.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                composed.debugDump(dbg, prefix);
+            }
+        };
+    }
+
+    /**
+     * Return a new {@link DriveSource} that blends this source with another.
+     *
+     * <p>The blend is performed using {@link DriveSignal#lerp(DriveSignal, double)} with a fixed
+     * {@code alpha}:</p>
+     * <ul>
+     *   <li>{@code alpha = 0} → pure output of this source</li>
+     *   <li>{@code alpha = 1} → pure output of {@code other}</li>
+     *   <li>Values in-between produce a simple linear mix</li>
+     * </ul>
+     *
+     * <p>This is useful for "driver-assist" behaviors, where you want to mix manual control with
+     * an automatic behavior (e.g., auto-align) at some fixed strength.</p>
+     *
+     * @param other another {@link DriveSource} to blend with (non-null)
+     * @param alpha blend factor in [0, 1] (values outside this range are clamped)
+     * @return wrapped {@link DriveSource} that blends the two sources
+     */
+    default DriveSource blendedWith(DriveSource other, double alpha) {
+        Objects.requireNonNull(other, "other DriveSource must not be null");
+        final double alphaClamped = Math.max(0.0, Math.min(1.0, alpha));
+        // NOTE: Do not use a lambda here.
+        // Lambdas cannot override debugDump(), and debuggability is a first-class Sushi principle.
+        DriveSource self = this;
+        return new DriveSource() {
+            private DriveSignal lastA = DriveSignal.zero();
+            private DriveSignal lastB = DriveSignal.zero();
+            private DriveSignal lastOut = DriveSignal.zero();
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                lastA = self.get(clock);
+                lastB = other.get(clock);
+                lastOut = lastA.lerp(lastB, alphaClamped);
+                return lastOut;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                lastA = DriveSignal.zero();
+                lastB = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+                self.reset();
+                other.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+                dbg.addData(p + ".class", "BlendedDriveSource")
+                        .addData(p + ".blend.alpha", alphaClamped)
+                        .addData(p + ".blend.lastA", lastA)
+                        .addData(p + ".blend.lastB", lastB)
+                        .addData(p + ".blend.lastOut", lastOut);
+                self.debugDump(dbg, p + ".a");
+                other.debugDump(dbg, p + ".b");
+            }
+        };
+    }
+}

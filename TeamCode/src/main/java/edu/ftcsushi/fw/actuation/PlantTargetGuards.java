@@ -1,0 +1,318 @@
+package edu.ftcsushi.fw.actuation;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import edu.ftcsushi.fw.core.control.SlewRateLimiter;
+import edu.ftcsushi.fw.core.debug.DebugSink;
+import edu.ftcsushi.fw.core.source.BooleanSource;
+import edu.ftcsushi.fw.core.time.LoopClock;
+
+/**
+ * Dynamic plant-level target guards.
+ *
+ * <p>Target guards are for hardware protection, not ordinary robot behavior policy. Behavior
+ * should decide what the robot wants by composing {@code ScalarSource}s, using tools such as
+ * {@code BooleanSource.choose(...)}, {@code PlantTargets.overlay(...)}, and
+ * {@code ScalarSource.fallbackUnless(...)}. Target guards decide what a specific piece of hardware
+ * may safely apply after that behavior target has been sampled.</p>
+ *
+ * <p>A max-rate guard initializes directly to the first guarded candidate it sees, then limits
+ * subsequent changes using the actual elapsed loop time. That avoids surprising first-loop jumps to
+ * an arbitrary zero. If startup must be physically rate-limited from a measured position, initialize
+ * the command target from that measurement or use a position reference policy such as
+ * {@code assumeCurrentPositionIs(...)} before requesting a distant target.</p>
+ *
+ * <p>When a Plant with a fixed range is built, every constant fallback is checked against that
+ * Plant's declared range. This includes mapped position/velocity Plants and normalized power Plants.
+ * Plant implementations also enforce a final finite/range postcondition after this guard chain
+ * runs, because hold-last and rate-limiter state are dynamic.</p>
+ *
+ * <h2>Common mechanism-constructor usage</h2>
+ * <p>This is the Plant-building portion of the mechanism/subsystem constructor. The owner receives
+ * {@code HardwareMap} and a data-only config, snapshots that config, and privately owns the
+ * resulting Plant and its update/stop lifecycle.</p>
+ * <pre>{@code
+ * LiftConfig cfg = config.copy();
+ * this.lift = FtcActuators.plant(hardwareMap)
+ *     .motor(cfg.motorName, cfg.direction)
+ *     .position()
+ *     .deviceManaged()
+ *     .nonPeriodic()
+ *     .bounded(0.0, 4200.0)
+ *     .nativeUnits()
+ *     .alreadyReferenced()
+ *     .positionTolerance(20.0)
+ *     .targetGuards()
+ *         .maxTargetRate(1200.0)
+ *         .holdLastTargetUnless("wristClear", wristClear)
+ *         .doneTargetGuards()
+ *     .targetFromNewCommand(0.0)
+ *     .build();
+ * }</pre>
+ */
+final class PlantTargetGuards {
+
+    /**
+     * Result of applying target guards.
+     */
+    static final class Result {
+        final double target;
+        final PlantTargetStatus status;
+
+        Result(double target, PlantTargetStatus status) {
+            this.target = target;
+            this.status = Objects.requireNonNull(status, "status");
+        }
+    }
+
+    /**
+     * Builder for a guard chain.
+     */
+    static final class Builder {
+        private final List<GuardRule> rules = new ArrayList<>();
+        private Double maxUpPerSec;
+        private Double maxDownPerSec;
+
+        /**
+         * Limit applied target change symmetrically in units/sec; the rate must be finite and > 0.
+         */
+        Builder maxTargetRate(double maxDeltaPerSec) {
+            return maxTargetRates(maxDeltaPerSec, maxDeltaPerSec);
+        }
+
+        /**
+         * Limit applied target change with separate up/down rates in units/sec; each rate must be finite and > 0.
+         */
+        Builder maxTargetRates(double maxUpPerSec, double maxDownPerSec) {
+            requireRate(maxUpPerSec, "maxUpPerSec");
+            requireRate(maxDownPerSec, "maxDownPerSec");
+            this.maxUpPerSec = maxUpPerSec;
+            this.maxDownPerSec = maxDownPerSec;
+            return this;
+        }
+
+        /**
+         * Hold the previous applied target while {@code allowed} is low.
+         */
+        Builder holdLastTargetUnless(String name, BooleanSource allowed) {
+            Objects.requireNonNull(allowed, "allowed");
+            return holdLastTargetUnless(name, (candidate, clock) -> allowed.getAsBoolean(clock));
+        }
+
+        /**
+         * Hold the previous applied target while the target-aware gate rejects the candidate.
+         */
+        Builder holdLastTargetUnless(String name, PlantTargetGate gate) {
+            rules.add(GuardRule.holdLast(cleanName(name), Objects.requireNonNull(gate, "gate")));
+            return this;
+        }
+
+        /**
+         * Replace the candidate with {@code fallbackTarget} while {@code allowed} is low.
+         * A Plant with a fixed range rejects this guard at build time if the fallback is outside its
+         * declared target range.
+         */
+        Builder fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
+            Objects.requireNonNull(allowed, "allowed");
+            return fallbackTargetUnless(name, (candidate, clock) -> allowed.getAsBoolean(clock), fallbackTarget);
+        }
+
+        /**
+         * Replace the candidate with {@code fallbackTarget} while the target-aware gate rejects it.
+         * A Plant with a fixed range rejects this guard at build time if the fallback is outside its
+         * declared target range.
+         */
+        Builder fallbackTargetUnless(String name, PlantTargetGate gate, double fallbackTarget) {
+            if (!Double.isFinite(fallbackTarget)) {
+                throw new IllegalArgumentException("fallbackTarget must be finite, got " + fallbackTarget);
+            }
+            rules.add(GuardRule.fallback(cleanName(name), Objects.requireNonNull(gate, "gate"), fallbackTarget));
+            return this;
+        }
+
+        /**
+         * Build an immutable guard chain.
+         */
+        PlantTargetGuards build() {
+            SlewRateLimiter limiter = null;
+            if (maxUpPerSec != null) limiter = new SlewRateLimiter(maxUpPerSec, maxDownPerSec);
+            return new PlantTargetGuards(rules.toArray(new GuardRule[0]), limiter);
+        }
+
+        private static void requireRate(double rate, String name) {
+            if (!Double.isFinite(rate) || rate <= 0.0) {
+                throw new IllegalArgumentException(name + " must be finite and > 0, got " + rate);
+            }
+        }
+    }
+
+    private enum RuleKind {HOLD_LAST, FALLBACK}
+
+    private static final class GuardRule {
+        final RuleKind kind;
+        final String name;
+        final PlantTargetGate gate;
+        final double fallbackTarget;
+        boolean lastAllowed = true;
+
+        private GuardRule(RuleKind kind, String name, PlantTargetGate gate, double fallbackTarget) {
+            this.kind = kind;
+            this.name = name;
+            this.gate = gate;
+            this.fallbackTarget = fallbackTarget;
+        }
+
+        static GuardRule holdLast(String name, PlantTargetGate gate) {
+            return new GuardRule(RuleKind.HOLD_LAST, name, gate, 0.0);
+        }
+
+        static GuardRule fallback(String name, PlantTargetGate gate, double fallbackTarget) {
+            return new GuardRule(RuleKind.FALLBACK, name, gate, fallbackTarget);
+        }
+    }
+
+    private final GuardRule[] rules;
+    private final SlewRateLimiter limiter;
+    private double lastOut;
+    private PlantTargetStatus lastStatus = PlantTargetStatus.STOPPED;
+    private boolean hasApplied;
+
+    private PlantTargetGuards(GuardRule[] rules, SlewRateLimiter limiter) {
+        this.rules = Objects.requireNonNull(rules, "rules");
+        this.limiter = limiter;
+    }
+
+    /**
+     * Empty guard chain.
+     */
+    static PlantTargetGuards none() {
+        return new PlantTargetGuards(new GuardRule[0], null);
+    }
+
+    /**
+     * Start a new guard-chain builder.
+     */
+    static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Apply the guard chain to a candidate target.
+     *
+     * <p>This method applies the dynamic chain itself. Framework Plant implementations additionally
+     * verify the returned target against their final finite/range invariant before hardware writes.</p>
+     *
+     * @param candidate       candidate after behavior sampling and static range/reference handling
+     * @param currentStatus   status before dynamic guards, usually accepted or clamped
+     * @param previousApplied previous applied plant target
+     * @param clock           current loop clock
+     */
+    Result apply(double candidate,
+                 PlantTargetStatus currentStatus,
+                 double previousApplied,
+                 LoopClock clock) {
+        PlantTargetStatus status = Objects.requireNonNull(currentStatus, "currentStatus");
+        double out = candidate;
+
+        for (GuardRule rule : rules) {
+            boolean allowed = rule.gate.allowsTarget(out, clock);
+            rule.lastAllowed = allowed;
+            if (allowed) continue;
+            if (rule.kind == RuleKind.HOLD_LAST) {
+                out = previousApplied;
+                status = PlantTargetStatus.holdingLast(rule.name);
+                break;
+            }
+            out = rule.fallbackTarget;
+            status = PlantTargetStatus.fallbackActive(rule.name);
+        }
+
+        if (limiter != null) {
+            double limited = limiter.calculate(out, clock);
+            if (limiter.wasLimited()) {
+                status = PlantTargetStatus.rateLimited("rate limited toward target");
+            }
+            out = limited;
+        }
+
+        hasApplied = true;
+        lastOut = out;
+        lastStatus = status;
+        return new Result(out, status);
+    }
+
+    /**
+     * Validate static fallback rules after a Plant binds this guard chain to its fixed range.
+     */
+    void validateFallbackTargets(ScalarRange configuredRange, String plantName) {
+        Objects.requireNonNull(configuredRange, "configuredRange");
+        String owner = cleanName(plantName);
+        for (GuardRule rule : rules) {
+            if (rule.kind != RuleKind.FALLBACK || configuredRange.contains(rule.fallbackTarget)) {
+                continue;
+            }
+            throw new IllegalArgumentException(owner + " target guard '" + rule.name
+                    + "' has fallback target " + rule.fallbackTarget
+                    + " outside configured plant-unit range [" + configuredRange.minValue
+                    + ", " + configuredRange.maxValue + "]. Choose a fallback inside the Plant's"
+                    + " declared range.");
+        }
+    }
+
+    /**
+     * Reconcile dynamic guard state when the Plant's final safety check changes the actual target.
+     */
+    void reconcileAppliedTarget(double target, PlantTargetStatus status, LoopClock clock) {
+        if (!Double.isFinite(target)) {
+            throw new IllegalArgumentException("final applied Plant target must be finite, got " + target);
+        }
+        if (limiter != null) limiter.reset(target, clock);
+        hasApplied = true;
+        lastOut = target;
+        lastStatus = Objects.requireNonNull(status, "status");
+    }
+
+    /**
+     * Reset dynamic state such as rate limiters and remembered guard output.
+     */
+    void reset() {
+        if (limiter != null) limiter.reset();
+        hasApplied = false;
+        lastOut = 0.0;
+        lastStatus = PlantTargetStatus.STOPPED;
+        for (GuardRule rule : rules) rule.lastAllowed = true;
+    }
+
+    /**
+     * True when no dynamic guard rules or rate limiter are configured.
+     */
+    boolean isEmpty() {
+        return rules.length == 0 && limiter == null;
+    }
+
+    /**
+     * Emit guard state for debug telemetry.
+     */
+    void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) return;
+        String p = (prefix == null || prefix.isEmpty()) ? "targetGuards" : prefix;
+        dbg.addData(p + ".class", "PlantTargetGuards")
+                .addData(p + ".ruleCount", rules.length)
+                .addData(p + ".lastOut", lastOut)
+                .addData(p + ".lastStatus", lastStatus.toString());
+        for (int i = 0; i < rules.length; i++) {
+            GuardRule rule = rules[i];
+            dbg.addData(p + ".rule" + i + ".name", rule.name)
+                    .addData(p + ".rule" + i + ".kind", rule.kind.name())
+                    .addData(p + ".rule" + i + ".lastAllowed", rule.lastAllowed);
+        }
+        if (limiter != null) limiter.debugDump(dbg, p + ".limiter");
+    }
+
+    private static String cleanName(String name) {
+        if (name == null || name.trim().isEmpty()) return "interlock";
+        return name.trim();
+    }
+}
