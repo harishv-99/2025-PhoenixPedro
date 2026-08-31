@@ -192,4 +192,6 @@ the [`Control tuning workflow`](<../testing-calibration/Control Tuning Workflow.
 controller experiments. The [Evidence and experiments](<../getting-started/learn-sushi/Evidence and Experiments.md>)
 chapter explains the full evidence ladder and how to read status without overclaiming it.
 
+[Return to the build-season workflow](<../getting-started/Build a Robot Step by Step.md>)
+
 [Back to the examples index](<README.md>)

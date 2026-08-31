@@ -61,6 +61,11 @@ start with the one physical question that must be answered rather than running e
 Stop after collecting the evidence needed for that question. A later question begins a separate
 reviewed test; one successful result does not validate unrelated hardware or behavior.
 
+After accepting the result, return to the relevant checkpoint in
+[Build a robot step by step](<../getting-started/Build a Robot Step by Step.md>) to run the bounded
+subsystem experiment or integrate the accepted configuration. Do not turn a diagnostic OpMode into
+the production TeleOp.
+
 ## Student runbooks
 
 1. [`Actuator bring-up`](<Actuator Bring-up.md>) — the one ordinary device-first workflow for

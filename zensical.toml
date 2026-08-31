@@ -13,6 +13,7 @@ nav = [
     { "Set up and verify the project" = "docs/getting-started/Build and Run.md" },
     { "Write your first Sushi robot code" = "docs/getting-started/First Sushi Robot Code.md" },
     { "Test a mechanism without hardware" = "docs/getting-started/Test a Mechanism Without Hardware.md" },
+    { "Build a robot step by step" = "docs/getting-started/Build a Robot Step by Step.md" },
     { "Choose a Sushi topic" = "docs/getting-started/Beginner's Guide.md" },
     { "Documentation home" = "docs/README.md" },
     { "Getting started" = "docs/getting-started/README.md" },

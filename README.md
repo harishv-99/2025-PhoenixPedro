@@ -19,7 +19,9 @@ There is one source-based beginner entry:
    to copy the Starter and prove one code change without robot hardware.
 4. [`Test its mechanism without hardware`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Test a Mechanism Without Hardware.md>)
    through the same production mechanism and Plant used on the robot.
-5. [`Choose a Sushi topic`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Beginner's Guide.md>)
+5. Use [`Build a robot step by step`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build a Robot Step by Step.md>)
+   as the team's season workflow and return to it after each checkpoint.
+6. [`Choose a Sushi topic`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Beginner's Guide.md>)
    relevant to your work, or use the canonical
    [`Sushi documentation hub`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>)
    later as a searchable reference.
