@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-29
+Last updated: 2026-08-30
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -62,10 +62,11 @@ select a production design or claim completion.
 - Hardware that would merely increase confidence in an already testable software-seam contract does
   not block other items. Such work may proceed only when its completion claim explicitly stops at
   that seam and preserves physical validation as optional adoption evidence.
-- `AUTO-01` is **Proposed** again because the pinned FTC_Decode adaptive routines supply a second
-  materially different real behavior to investigate. This closes only the demand gate: Gate 1 must
-  still prototype the behavior with Phoenix composition and may record a no-change result rather
-  than manufacture a generic repetition API.
+- `AUTO-01` is **Done** under the approved narrow software contract. Protected core owns
+  only bounded fresh-Task repetition after exact success; existing timeout and sequence composition
+  own hard takeover and continuation, while attempt eligibility, cutoff values, and parking remain
+  robot policy. Deterministic tests may prove that lifecycle boundary, but path timing, mechanism
+  response, physical parking success, and match benefit remain adopting-robot validation.
 - `EXAMPLE-03` is **Proposed** again only under a narrower software-reference contract. It may prove
   coherent timestamped coordination and bounded realization, but not projectile timing, shot
   accuracy, tuning, or physical mechanism response.
@@ -125,7 +126,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 26 | ACT-01 | FTC actuator-group identity validation | Done | Private SDK-equivalent actuator/mecanum validation reviewed, verified, and approved on 2026-07-17. |
 | 27 | COMMON-01 | Cleanup action aggregation | Done | The stateless cleanup-action primitive and five bounded migrations are implemented, verified, and approved; the generic INIT runtime remains deferred. |
 | 28 | TESTER-01 | Tester child lifecycle fail-stop | Done | Approved fail-stop policies are implemented, verified, and approved without changing valid public call sites. |
-| 29 | AUTO-01 | Compact bounded Auto continuation and fresh-attempt repetition | Proposed | Prototype the pinned adaptive-cycle behavior with current Phoenix composition before deciding whether any factory-backed repetition API is justified. |
+| 29 | AUTO-01 | Compact bounded Auto continuation and fresh-attempt repetition | Done | The bounded fresh-Task repetition primitive, soft-admission/hard-takeover composition, and hardware-free adaptive scenario were reviewed, verified, and approved on 2026-08-30. |
 | 30 | SOURCE-03 | Composable scalar measurement conditioning | Deferred | Wait for recorded signal traces before choosing a public filtering algorithm or latency contract. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
@@ -10082,6 +10083,279 @@ implementation.
 
 ### AUTO-01 - Compact bounded Auto continuation and fresh-attempt repetition
 
+- **Gate 1 research start (2026-08-30):** after LOCALIZATION-01 reached Done, the user directed
+  **“proceed to next task.”** AUTO-01 is therefore **Researching** on
+  `codex/auto-01-bounded-fresh-attempts` from `origin/master`. This authorizes the bounded caller,
+  prototype, construction-path, simplicity, and verification-design audit only. It does not approve
+  a public API, framework/Phoenix/example implementation, staging, publication, EXAMPLE-03,
+  AUDIT-01, or another item.
+- **Gate 1 decision (2026-08-30):** **Ready; public Task-composition approval is required before
+  implementation.** The complete caller comparison now supports one narrow protected-core
+  primitive, tentatively named `Tasks.repeatOnSuccess(...)`. It repeats fresh single-use Tasks under
+  one hard count bound and one clock-aware between-iteration decision. It does not add an Auto DSL,
+  route helper, scheduler, retry policy, typed repeat result, cleanup callback, or Phoenix-specific
+  continuation API.
+  - **Pinned behavior and maintained caller:** the pinned FTC_Decode
+    [`BlueFar30`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/BlueFar30.java#L193-L261)
+    and
+    [`RedFar30`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/RedFar30.java#L189-L245)
+    both run at most eight fresh collection/return attempts. Only after a shot completes do they
+    stop for elapsed time greater than 27.5 seconds or the count limit; the time rule does not cancel
+    an active attempt. Their alliance geometry differs, but their reusable repeat lifecycle is the
+    same. EXAMPLE-10 now supplies the maintained Phoenix expression for one attempt:
+    `AdaptiveCollectionAttempt` owns a fresh semantic milestone latch, exact collection and return
+    Route Tasks, `route terminal || near end || (safe to leave && inventory full)`, an immutable
+    status snapshot, and the three intentional exit reasons that permit its live-pose return.
+    AUTO-01 will compose that attempt; it will not reopen its route, inventory, or vision design.
+  - **Confirmed missing capability:** `Tasks.sequence(...)` composes already-created identities and
+    may start several terminal-at-start children in one lifecycle call. `Tasks.buildAtStart(...)`
+    invokes one factory and starts one child, but its `Supplier` receives no `LoopClock` and it owns
+    no bounded repetition. `branchOnOutcome(...)` distinguishes only broad Task outcomes and returns
+    the chosen branch outcome. `parallelDeadline(...)` correctly owns the lifetime inside one
+    adaptive attempt, not repetition between attempts. A faithful clock-aware current-API expression
+    therefore requires eight repeated slot/check pairs, a clock-caching robot service, or nested
+    zero-timeout waits used as boolean branches. None is the obvious meaning of “create another
+    fresh Task only after this successful attempt and only if time remains.”
+  - **Relevant production and example callers:** Phoenix's selector and targeting use
+    `Tasks.buildAtStart(...)` for one deferred graph; `PhoenixPedroAutoRoutineFactory` uses eager and
+    live-built typed Route Tasks; its private pre-park and root coordinators own exact route/scoring,
+    cutoff, cleanup, degradation, and park policy but do not repeat attempts. Basic Pedro uses one
+    eager route plus `branchOnOutcome(...)`. `ReferenceAutoRoutines` uses nested start-time route
+    checks without repetition. Reference lift/launcher Tasks and `ReferenceTeleOpControls` construct
+    fresh event-triggered macros. `FtcPositionControlPanelsTester` constructs one fresh Task for each
+    driver-authorized retry. `OutputTaskRunner` creates fresh output pulses to maintain a requested
+    queue backlog. Those event, manual, and output-queue lifecycles remain distinct from automatic,
+    bounded, success-gated sequential repetition. No `fw.tools` Task/route caller adds another
+    automatic repetition shape.
+  - **Public construction-path audit:** ordinary generic Task construction remains on the `Tasks`
+    facade. Its sequence, parallel, deadline, timeout, and build-at-start implementations are
+    package-private. Existing public concrete leaf types either have package-private constructors or
+    expose a distinct low-level callback lifetime (`RunForSecondsTask`). `RouteTasks` deliberately
+    exposes four typed `RouteTask<R>` paths: eager versus built-at-start geometry crossed with finite
+    versus follower/parent-owned Task timeout. Their exact `RouteStatus` return surface is distinct
+    from generic Task composition, and no public route constructor, `of`, Config, or builder
+    duplicates it. `TaskBindings`, `TaskRunner`, and `OutputTaskRunner` own event acceptance, queue
+    execution, and output backlog respectively; none supplies bounded outcome-aware iteration. No
+    current public layer is redundant, and AUTO-01 will add no sibling outside `Tasks`.
+  - **Staged-parameter and API-shape audit:** the repeat decision has four direct answers and no
+    mutually exclusive construction branches, so a staged builder would add ceremony without
+    preventing another invalid combination. The selected facade shape is
+    `Task repeatOnSuccess(String debugName, int maxIterations, Supplier<? extends Task> taskFactory,
+    BooleanSource continueAfterSuccess)`. These reuse the established debug label, Java fresh-Task
+    factory, and shared-clock Source concepts; `maxIterations` is the mandatory positive safety
+    bound. Robot configuration may store the count, while a caller may store, compose, or inline the
+    semantic `BooleanSource`. No `TaskFactory`, `RepeatConfig`, `RepeatPolicy`, public implementation
+    class, constructor, static `of`, timeout overload, RouteTasks sibling, or typed result is added.
+  - **Ordinary selected call site (seven robot concepts):** the robot supplies one repeat label, hard
+    attempt count, fresh attempt factory, exact-status/time continuation rule, one live-start park
+    identity, explicit park eligibility, and its retained domain status. The core owns only fresh
+    iteration lifecycle:
+
+    ```java
+    Task attempts = Tasks.repeatOnSuccess(
+            "adaptiveCollection.attempts",
+            maxAttempts,
+            this::buildFreshAttemptTask,
+            clock -> clock.nowSec() <= lastAttemptStartSec
+                    && lastAttemptPermitsAnother());
+
+    Task routine = Tasks.sequence(
+            attempts,
+            Tasks.buildAtStart("adaptiveCollection.parkPolicy", () ->
+                    parkPermitted(attempts.getOutcome(), lastAttemptStatus())
+                            ? livePoseParkTask
+                            : Tasks.noop()));
+    program.rootTask(routine);
+    ```
+
+    `buildFreshAttemptTask()` creates and retains one new `AdaptiveCollectionAttempt`, returns its
+    stable Task, and increments the robot-owned count. The immutable last-attempt status distinguishes
+    the three allowed collection exits plus a completed return from follower timeout/stall,
+    interruption, replacement, Task timeout, cancellation, failure, and unknown terminal state.
+    The count distinguishes count exhaustion from a false time condition. Direct root cancellation
+    stops the active graph before the park policy is reached. This is approximately 30–40 lines of
+    complete outer caller/helper code and seven robot concepts, excluding the already-maintained
+    one-attempt implementation.
+  - **Alternative comparison:** a faithful fixed eight-slot unroll is approximately 90–130 lines
+    and eleven concepts, repeats exact-status gates, and still needs a non-obvious way to read the
+    managed clock at each boundary. Recursive `buildAtStart(...)` is approximately 55–75 lines and
+    thirteen concepts because it adds recursion, a base case, deferred capture, and a zero-timeout
+    wait/branch trick; current sequences may also drain immediate children in one cycle. A private
+    robot coordinator is correct but approximately 180–260 lines and sixteen lifecycle concepts:
+    phases, one-start-per-cycle claims, fresh identity, single use, reentry, terminal validation,
+    cancellation, cleanup suppression, diagnostics, and one continuation handoff. Documentation
+    alone leaves that ceremony or the obscure compositions to every adopting robot. The selected one
+    method keeps the caller at roughly 30–40 lines and implements those stable mechanics once. A
+    no-change result is therefore no longer the smallest faithful answer now that the exact
+    between-attempt clock rule and the maintained one-attempt caller are both available.
+  - **PHX-04 disposition:** its 1,012 private lines are not a reason to broaden this primitive.
+    Route-result interpretation, a six-action Phoenix safety transition, exact-cutoff precedence,
+    scoring, retained degradation, and park eligibility remain robot-specific. Existing
+    `Tasks.withTimeout(...)`, `RouteTask`, and `CleanupActions` already own the reusable pieces of
+    that routine. Merging its two coordinators or adopting `CleanupActions` could reduce local code,
+    but that is unrelated cleanup and is excluded from AUTO-01. The new repeat method will not be
+    forced into Phoenix merely to manufacture another caller.
+  - **Generic lifecycle and outcome contract:** construction, debug inspection, and pre-start
+    cancellation never sample either callback. The first iteration is created at parent start; each
+    later iteration is created only after the prior child reports `SUCCESS`, the count remains below
+    the positive hard maximum, and `continueAfterSuccess` returns true with the same `LoopClock` at
+    the between-iteration boundary. `TIMEOUT`, `CANCELLED`, or `UNKNOWN` is retained as the parent
+    outcome and neither samples continuation nor invokes another factory. A complete child that
+    returns `null` or `NOT_DONE` fails closed. Limit or false-condition stopping reports `SUCCESS`.
+    The parent retains bounded identity history and rejects a factory that returns the same Task
+    twice, even if a custom child fails to enforce single use itself.
+  - **Cycle, failure, cancellation, and diagnostics contract:** the parent claims the cycle before
+    every factory invocation and starts at most one iteration per `clock.cycle()`, including parent
+    start followed by an immediate same-cycle update, terminal-at-start or zero-duration children,
+    and reentrant callbacks. A child that succeeds and permits another iteration schedules that
+    start for a later cycle rather than draining the factory in a loop. Repeated completed-cycle
+    updates are inert, reentry fails closed, and a retained lifecycle failure is rethrown without
+    replay. Active parent cancellation terminalizes first, cancels only the current child once, and
+    invokes neither continuation nor another factory; pre-start, terminal, and repeated cancellation
+    are no-ops. Factory, continuation, or child lifecycle failures terminalize before best-effort
+    current-child cleanup and preserve suppressed cleanup failures. `debugDump(...)` reports the
+    label, max, iterations started/completed, phase, current identity/outcome, retained last outcome,
+    parent outcome, and stop reason (`LIMIT`, `CONDITION_FALSE`, `CHILD_OUTCOME`, `CANCELLED`, or
+    `FAILED`) without sampling live policy.
+  - **Bounded implementation scope:** add the one `Tasks` facade method and one package-private
+    implementation; update Task/Tasks Javadocs and the Tasks guide; extend the optional Timestamped
+    Adaptive Collection guide with the complete bounded caller and its robot-owned status/park table;
+    and add a compiling hardware-free adaptive routine scenario around the maintained EXAMPLE-10
+    attempt. Do not add a second scheduler, expose a concrete repeat Task, change TaskOutcome,
+    change Sequence/branch/timeout semantics, add route progress/API, alter Phoenix production Auto,
+    or start EXAMPLE-03/AUDIT-01.
+  - **Verification plan:** focused generic tests cover blank/null/non-positive validation; no
+    pre-start sampling; fresh and duplicate identity; factory null/throw; first start plus same-cycle
+    update; repeated update; reentry; terminal-at-start/noop and zero-duration children; success with
+    true, false, and count-limit decisions; every terminal child outcome; malformed terminal
+    outcomes; active/pre-start/terminal cancellation; child cleanup failure and suppression; outer
+    `Tasks.withTimeout(...)`; retained failures; and stable debug keys. The hardware-free adaptive
+    scenario proves fresh attempt/milestone identity, the exact allowed status table, count and
+    between-attempt time bounds, no next attempt after abnormal status, exactly one live-start park,
+    and no park after direct cancellation or lifecycle failure. Update the public-construction and
+    single-use reflection tests, then run focused Task/adaptive suites, the complete TeamCode unit
+    suite and FTC compile, XML counts, `git diff --check`, trailing-whitespace and blocking-loop
+    scans, and independent lifecycle/API/Framework-Principles reviews. Robot hardware cannot prove
+    more about this generic lifecycle; actual path timing, sensor quality, and park success remain
+    adopting-robot validation.
+  - **Approval gate:** no implementation code has changed. Gate 2 requires explicit approval of the
+    one-method `Tasks.repeatOnSuccess(...)` contract, the bounded hardware-free adaptive caller, and
+    the stated robot-owned policy boundary.
+- **Revised Gate 1 decision after Auto-timing sanity check (2026-08-30):** this decision supersedes
+  the tentative API name, parameter order, first-iteration rule, and incomplete park composition in
+  the Gate 1 record above. The user correctly identified that a condition sampled only between long
+  attempts cannot reserve time for parking: it prevents another attempt but cannot interrupt the
+  attempt already running. AUTO-01 therefore keeps two explicit robot-owned policies rather than
+  presenting repetition as a complete match deadline:
+  - `Tasks.repeatWhileSuccessful(String debugName, int maxIterations,
+    BooleanSource mayStartIteration, Supplier<? extends Task> taskFactory)` owns only bounded fresh
+    child lifecycle. It evaluates admission before every proposed iteration, including the first;
+    false admission can therefore complete successfully with zero factory calls. Only a child
+    `SUCCESS` permits another admission check. A count limit or false admission ends in `SUCCESS`;
+    `TIMEOUT`, `CANCELLED`, and `UNKNOWN` are retained exactly and stop repetition.
+  - The ordinary caller's soft gate combines the latest safe new-attempt time with the exact retained
+    status of the prior robot-owned attempt. This avoids knowingly starting work too late but does
+    not claim to interrupt an active child.
+  - Existing `Tasks.withTimeout(...)` remains the hard takeover owner. It wraps **all** pre-park work,
+    including preload and repetition; the live-start park Task is the following child outside that
+    timeout: `Tasks.sequence(Tasks.withTimeout(preParkWork, parkTakeoverElapsedSec), park)`. At the
+    reserved cutoff, the timeout invokes its direct child's cooperative cancellation and requires
+    that child to be terminal before sequence starts park. Every nested Task remains responsible for
+    its active-cancellation terminal contract; a propagated lifecycle/cleanup failure suppresses
+    park. If pre-park work settles early, park starts immediately. Direct cancellation of the outer
+    sequence also suppresses park. Park may continue beyond the old cutoff and is never cancelled
+    or restarted by it.
+  - The software contract is that park **starts** on the first managed lifecycle call at or after the
+    reserved cutoff, after the direct cancellation path returns and the timed child reports
+    terminal. A terminal composite cannot prove that a nonconforming nested custom Task silently
+    remained active. The contract cannot promise physical completion by 30 seconds; route duration,
+    clearance, mechanism response, and final parking success remain adopting-robot validation. The
+    caller retains the timeout, repeat, latest exact attempt status, and typed park status because
+    the aggregate sequence outcome is intentionally coarser than that domain history.
+  - `RouteTasks.followBuiltAtStart(...)` already owns one-time live-pose park construction; another
+    `Tasks.buildAtStart(...)` wrapper would be redundant. No arbitrary race, retry, finally,
+    timeout-then, scheduler, route sibling, TaskOutcome change, or Phoenix-specific Auto API is
+    added. Current callers do not justify those additional concepts.
+- **Revised lifecycle contract (2026-08-30):** the repeat implementation is package-private and the
+  facade returns plain `Task`. It validates a nonblank name, positive maximum, and nonnull admission
+  and factory. It is single-use; rejects update-before-start; makes pre-start cancellation inert;
+  evaluates admission once per proposed iteration; invokes and starts at most one fresh child per
+  `clock.cycle()`; retains bounded identity history and rejects null, self, or repeated identities;
+  propagates abnormal child outcomes exactly; fails closed on malformed child outcomes, callback or
+  child-lifecycle failure, and reentry; terminalizes before best-effort cleanup; retains the first
+  failure with cleanup failure suppressed; and never replays failed callbacks. Active cancellation
+  cancels only the current started child once. Stable debug output records name, maximum, phase,
+  iterations started/completed, admission evaluations, current/last child outcome, parent outcome,
+  and stop reason without sampling live policy. Focused tests must cover these rules plus an outer
+  timeout, while the hardware-free adaptive scenario must exercise soft rejection, takeover during
+  preload and every attempt phase, early park, a park crossing the old cutoff, abnormal settled
+  pre-park outcomes, direct cancellation, cleanup failure, exact status retention, and exactly one
+  live-pose park build.
+- **Gate 2 implementation approval (2026-08-30):** after the revised plan made the two timing gates
+  and park guarantee explicit, the user directed **“Implement the plan.”** AUTO-01 is therefore
+  **In progress**. This authorizes only the revised one-method Task implementation, focused tests,
+  bounded hardware-free EXAMPLE-10 scenario, synchronized framework/example documentation, review,
+  and verification on `codex/auto-01-bounded-fresh-attempts`. It does not authorize staging,
+  commit, push, pull request, merge, Phoenix production-Auto cleanup, EXAMPLE-03, AUDIT-01, another
+  Task combinator, or any robot-hardware claim.
+- **Gate 2 implementation result (2026-08-30):** protected core now exposes only
+  `Tasks.repeatWhileSuccessful(String, int, BooleanSource, Supplier<? extends Task>)`, returning
+  plain `Task`; its sole implementation and constructor remain package-private. The wrapper checks
+  admission before the first and every later proposed child, starts at most one fresh identity per
+  shared clock cycle, continues only after exact `SUCCESS`, retains every other valid terminal
+  outcome, and reports limit/condition stopping as `SUCCESS`. It owns single-use, duplicate/null/
+  self rejection, strict later-cycle handoff, active-only cancellation, direct-child terminal
+  verification, callback reentry fail-stop, retained first failure with suppressed cleanup, and
+  cached diagnostics. A valid large maximum does not allocate storage proportional to the limit.
+- **Composition and example result:** no timeout, sequence, branch, deadline, Route Task, TaskOutcome,
+  Phoenix production Auto, or public example owner changed. The compiling hardware-free
+  `AdaptiveCollectionBoundedAutoScenarioTest` builds the real
+  `sequence(withTimeout(sequence(preload, attempts), takeover), liveStartPark)` graph around fresh
+  maintained `AdaptiveCollectionAttempt` owners. The Framework Principles, Task/Tasks/package
+  Javadocs, Tasks guide, and Timestamped Adaptive Collection guide now distinguish soft admission
+  from hard takeover, keep park outside the old timeout, retain exact attempt/timeout/park facts,
+  and state the direct-child terminal and nested-cancellation-contract boundary without claiming
+  physical parking success.
+- **Focused verification:** the new generic suite passed **19 tests** covering validation, deferred
+  callbacks, zero iterations, condition/limit stopping, every exact child outcome, immediate and
+  zero-duration children, strict per-cycle handoff, fresh identity, malformed children, direct and
+  timeout cancellation, lifecycle/callback failure and suppression, reentry, retained no-replay
+  failure, and every stable stop reason. The new hardware-free Auto suite passed **9 tests** covering
+  preload budget, first/later soft denial, hard count, takeover during preload/collection/return,
+  active intake cleanup before one live-pose park build, early park across the former cutoff,
+  abnormal exact status, abnormal broad `TIMEOUT`, direct outer cancellation, and propagated
+  cleanup failure.
+- **Independent reviews:** separate lifecycle, public-API/Framework-Principles, and test/document
+  truthfulness reviews are clean after fixes. Review added non-eager large-bound storage, completed
+  public fail-closed Javadocs and the compiling-scenario link, proved a natural abnormal Task outcome
+  still parks once, proved the intake was active before cancellation restored idle, and narrowed
+  cancellation wording so a terminal composite does not claim to detect a silently nonconforming
+  nested custom Task. The repeated public-construction-path audit found one distinct `Tasks` facade
+  method, one package-private implementation, and no redundant constructor, builder, Config,
+  overload, `of`, RouteTasks sibling, or Phoenix policy API.
+- **Complete software verification:** Android Studio JBR 21 passed
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` with **2,109 tests in 229 suites,
+  0 failures, 0 errors, and 0 skipped**. `:TeamCode:phoenixJavadocs` passed, and the complete suite
+  includes `DocumentationLinksTest`. `git diff --check`, the explicit tracked-plus-untracked
+  trailing-whitespace scan, the new-Java blocking-loop scan, and the exact ten-file scope audit were
+  clean. Gradle emitted only the repository's existing Java-8 source/target deprecation warning.
+- **Hardware boundary after implementation:** software proves the cooperative Task lifecycle and
+  the direct timed-child terminal boundary. It does not prove that an invalid nested custom Task
+  cleaned hidden state; actual path duration, cutoff reserve, drivetrain/mechanism response, route
+  clearance, sensor quality, physical parking completion before match end, and match benefit remain
+  adopting-robot validation.
+- **Verification/publication boundary:** AUTO-01 is **Verifying**. The complete ten-file diff remains
+  unstaged on `codex/auto-01-bounded-fresh-attempts` for Android Studio inspection. Gate 2 does not
+  authorize staging, commit, push, pull request, merge, EXAMPLE-03, AUDIT-01, or another item.
+  Publication requires the destination-specific combined authorization after review.
+- **Gate 3 review and publication authorization (2026-08-30):** the user supplied the exact
+  combined authorization: **“AUTO-01 looks good. Authorize committing the reviewed AUTO-01 diff on
+  codex/auto-01-bounded-fresh-attempts, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This records Android Studio approval of the complete reviewed ten-file diff and
+  authorizes only its commit, push, pull request, and merge into the named destination. AUTO-01 is
+  **Done**. It does not start EXAMPLE-03, AUDIT-01, or another item, and it does not convert the
+  software evidence into a robot-hardware claim.
 - **Problem to confirm:** PHX-04 keeps the supported public installation entry point short, but its
   two private Phoenix bounded-pre-park/coordinator Tasks contain 1,012 source lines. Because all code
   under `edu.ftcphoenix.robots.phoenix` is robot code, a new season or robot may otherwise copy a

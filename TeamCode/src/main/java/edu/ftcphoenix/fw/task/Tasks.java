@@ -502,6 +502,65 @@ public final class Tasks {
     // ---------------------------------------------------------------------
 
     /**
+     * Repeat fresh child Tasks while each prior child succeeds and another iteration is admitted.
+     *
+     * <p>The admission source is evaluated before every proposed iteration, including the first.
+     * A {@code false} first decision therefore completes successfully without invoking the
+     * factory. After a child reports {@link TaskOutcome#SUCCESS}, the next decision occurs on a
+     * later {@link LoopClock#cycle()}; the composition never drains multiple fresh children in one
+     * lifecycle call. Reaching {@code maxIterations} or receiving a false admission completes with
+     * {@code SUCCESS}.</p>
+     *
+     * <p>A child {@link TaskOutcome#TIMEOUT}, {@link TaskOutcome#CANCELLED}, or
+     * {@link TaskOutcome#UNKNOWN} ends the repetition and is retained exactly. The factory must
+     * return a distinct, fresh, non-null Task for each admitted iteration. The returned wrapper is
+     * single-use, cancels only its current active child, and starts at most one child per shared
+     * loop cycle.</p>
+     *
+     * <p>Lifecycle contract violations fail closed. A null, self, or previously returned child;
+     * a terminal child reporting {@code null} or {@link TaskOutcome#NOT_DONE}; reentry; or an
+     * admission, factory, or child lifecycle exception makes the wrapper terminal before it
+     * best-effort cancels the current start-attempted child. It retains the first failure, adds a
+     * later cleanup failure as suppressed, and rethrows the retained failure on later updates
+     * without sampling policy or invoking the factory again.</p>
+     *
+     * <p>This method owns a soft between-iteration admission rule, not an active-work deadline. To
+     * reserve time for a required continuation such as parking, place all pre-continuation work
+     * inside {@link #withTimeout(Task, double)} and sequence the continuation outside that timeout:
+     * </p>
+     *
+     * <pre>{@code
+     * Task prePark = Tasks.sequence(preload, attempts);
+     * Task auto = Tasks.sequence(
+     *         Tasks.withTimeout(prePark, parkTakeoverElapsedSec),
+     *         park);
+     * }</pre>
+     *
+     * <p>The timeout can cooperatively cancel active pre-park work at its boundary; the admission
+     * source alone cannot. Direct cancellation of the outer sequence still suppresses later
+     * children.</p>
+     *
+     * @param debugName stable nonblank diagnostic name
+     * @param maxIterations positive hard bound on child identities started by this composition
+     * @param mayStartIteration clock-aware admission rule sampled once before each proposed child
+     * @param taskFactory factory returning one fresh child Task for each admitted iteration
+     * @return a fresh single-use bounded repetition Task
+     * @throws IllegalArgumentException if {@code debugName} is blank or
+     *                                  {@code maxIterations <= 0}
+     * @throws NullPointerException if {@code mayStartIteration} or {@code taskFactory} is null
+     */
+    public static Task repeatWhileSuccessful(String debugName,
+                                             int maxIterations,
+                                             BooleanSource mayStartIteration,
+                                             Supplier<? extends Task> taskFactory) {
+        return new RepeatWhileSuccessfulTask(
+                debugName,
+                maxIterations,
+                mayStartIteration,
+                taskFactory);
+    }
+
+    /**
      * Create a {@link Task} that imposes a hard elapsed-time budget on one child Task.
      *
      * <p>The budget begins at the returned Task's own {@link Task#start(LoopClock)} boundary. A
