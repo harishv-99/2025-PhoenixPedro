@@ -1,6 +1,6 @@
 # Modern starter robot
 
-**Classification:** Copyable starter
+**Learning mode:** Architecture reference
 
 **Audience:** Students who have read
 [`Sushi in one picture`](<../getting-started/Framework Overview.md>)
@@ -11,6 +11,10 @@ direct mecanum drive, one intake mechanism, one mode-neutral intake capability, 
 and one declaration-only composition root. FTC lifecycle ceremony is supplied by
 `FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
 remain in the focused owners mapped below.
+
+**Buildable promise:** the critical excerpts on this page explain the ownership decisions; the
+collapsed complete files below contain the package declarations, imports, enclosing types, and
+configuration needed to recreate the maintained Starter without opening a Java source link.
 
 For the short execution trace, begin with
 [`Sushi in one picture`](<../getting-started/Framework Overview.md>), then
@@ -296,6 +300,169 @@ commands—not physical motion or that the review happened.
 The Starter mechanism scenario uses the ordinary production constructor and private Plant while a
 test-only `HardwareMap` records the motor command. Its result is software evidence, not a substitute
 for the supervised bring-up above.
+
+## Files you will create
+
+Create the seven files in the owner map at the top of this page. The two complete hosts and the
+shared capability below establish the public shape; the complete mechanism, profile, controls, and
+composition-root files follow the same package layout in the maintained working slice on this page.
+
+## Complete working slice
+
+<details>
+<summary>Complete working slice: Starter TeleOp host</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java -->
+```java
+package edu.ftcsushi.robots.examples.starter.opmode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+
+import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
+import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.robots.examples.starter.robot.StarterProfile;
+import edu.ftcsushi.robots.examples.starter.robot.StarterRobot;
+
+/** Thin declarative FTC host for the modern starter TeleOp reference. */
+@TeleOp(name = "FW Starter: TeleOp", group = "FW Examples")
+@Disabled
+public final class StarterTeleOp extends FtcRobotOpMode {
+
+    /** FTC construction path using the checked-in starter profile. */
+    public StarterTeleOp() {
+        // FTC constructs OpModes through their public no-argument constructor.
+    }
+
+    @Override
+    protected void configure(RobotProgram program) {
+        StarterProfile profile = StarterProfile.current();
+        new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Complete working slice: Starter Auto host</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
+```java
+package edu.ftcsushi.robots.examples.starter.opmode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+
+import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
+import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
+import edu.ftcsushi.robots.examples.starter.robot.StarterProfile;
+import edu.ftcsushi.robots.examples.starter.robot.StarterRobot;
+
+/** Tiny declarative Auto that uses the same intake capability as the starter TeleOp. */
+@Autonomous(name = "FW Starter: Auto", group = "FW Examples")
+@Disabled
+public final class StarterAuto extends FtcRobotOpMode {
+
+    private static final double COLLECT_DURATION_SEC = 0.75;
+
+    /** FTC construction path using the checked-in starter profile. */
+    public StarterAuto() {
+        // FTC constructs OpModes through their public no-argument constructor.
+    }
+
+    @Override
+    protected void configure(RobotProgram program) {
+        StarterProfile profile = StarterProfile.current();
+        StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
+        program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Complete working slice: shared intake capability</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java -->
+```java
+package edu.ftcsushi.robots.examples.starter.capability.intake;
+
+import edu.ftcsushi.fw.task.Task;
+
+/** Mode-neutral intake capability shared by the starter TeleOp and Auto. */
+public interface StarterIntake {
+
+    /** Semantic intake requests; callers do not need to know or distinguish motor power values. */
+    enum Mode {
+        STOPPED,
+        COLLECT,
+        EJECT
+    }
+
+    /**
+     * Small immutable status snapshot for telemetry and higher-level decisions.
+     * The mode is the held semantic request; it is not reconstructed from motor power. The applied
+     * target is the Plant's cached final target after guards, not hardware readback.
+     */
+    final class Status {
+        private final Mode mode;
+        private final double appliedTargetPower;
+
+        public Status(Mode mode, double appliedTargetPower) {
+            this.mode = mode;
+            this.appliedTargetPower = appliedTargetPower;
+        }
+
+        /** Returns the held semantic request, independent of its configured numeric realization. */
+        public Mode mode() {
+            return mode;
+        }
+
+        /** Returns the Plant's cached applied target, not measured motor motion. */
+        public double appliedTargetPower() {
+            return appliedTargetPower;
+        }
+
+        @Override
+        public String toString() {
+            return "Status{mode=" + mode
+                    + ", appliedTargetPower=" + appliedTargetPower + '}';
+        }
+    }
+
+    /** Replaces the held semantic request; the mechanism maps it to configured motor power. */
+    void setMode(Mode mode);
+
+    /**
+     * Creates a fresh single-use Task that requests collect for the requested duration, then
+     * requests stopped. Active cancellation also restores the stopped semantic request.
+     *
+     * @param durationSec finite duration greater than zero, in seconds
+     * @throws IllegalArgumentException if {@code durationSec} is non-finite or not greater than zero
+     */
+    Task collectForSeconds(double durationSec);
+
+    /** Returns the held semantic request and the Plant's cached applied target. */
+    Status status();
+}
+```
+
+</details>
+
+## Verify the slice
+
+Run the exact checkpoint from the repository root:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
+  :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.*
+```
+
+Expected checkpoint: compilation succeeds and every Starter-focused test is green. The files stay
+`@Disabled`; software success does not authorize motion.
 
 ## Related reading
 

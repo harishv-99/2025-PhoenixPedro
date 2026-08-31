@@ -117,6 +117,37 @@ public final class ReferenceLauncherMechanismTest {
     }
 
     @Test
+    public void tuningFactoryCreatesFreshExclusivePlantFromCanonicalRecipe() {
+        ReferenceLauncherMechanism.Config config = testConfig();
+        FtcTestHardware firstHardware = new FtcTestHardware();
+        MotorProbe firstLeft = firstHardware.addMotor(config.leftFlywheelName);
+        MotorProbe firstRight = firstHardware.addMotor(config.rightFlywheelName);
+        edu.ftcsushi.fw.actuation.Plant first =
+                ReferenceLauncherMechanism.createFlywheelPlantForTuning(
+                        firstHardware,
+                        config);
+
+        FtcTestHardware secondHardware = new FtcTestHardware();
+        secondHardware.addMotor(config.leftFlywheelName);
+        secondHardware.addMotor(config.rightFlywheelName);
+        edu.ftcsushi.fw.actuation.Plant second =
+                ReferenceLauncherMechanism.createFlywheelPlantForTuning(
+                        secondHardware,
+                        config);
+
+        assertNotSame(first, second);
+        first.commandTarget().set(1000.0);
+        first.update(new ManualLoopClock().clock());
+        assertEquals(1000.0, firstLeft.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(1000.0, firstRight.commandedVelocityTicksPerSec(), EPSILON);
+
+        first.stop();
+        assertEquals(0.0, firstLeft.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, firstRight.commandedVelocityTicksPerSec(), EPSILON);
+        second.stop();
+    }
+
+    @Test
     public void readinessRequiresPositiveTargetAndBothFiniteIndependentMeasurements() {
         Rig rig = new Rig();
         rig.mechanism.setTargetVelocityTicksPerSec(1000.0);

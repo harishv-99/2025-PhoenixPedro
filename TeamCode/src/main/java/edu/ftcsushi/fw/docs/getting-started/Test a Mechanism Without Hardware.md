@@ -1,5 +1,12 @@
 # Test a mechanism without hardware
 
+**Learning mode:** Buildable implementation
+
+<!-- buildable-files: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
+
+The complete focused test and its verification
+command are included on this page.
+
 ## Goal
 
 Continue the Starter build by exercising its real intake mechanism and Plant on a development
@@ -11,6 +18,13 @@ observing the actuator command.
 **Prerequisite:** Complete [Your first Sushi robot code](<First Sushi Robot Code.md>). Keep the
 copied OpModes disabled and both motion permissions false; this lesson uses no Robot Controller or
 physical device.
+
+## Files you will create
+
+- `TeamCode/src/test/java/edu/ftcsushi/robots/myrobot/robot/StarterMechanismLessonTest.java`
+
+The test uses the production `StarterIntakeMechanism` and the framework test helpers already in the
+project. It does not require a second mechanism implementation.
 
 ## What stays real
 
@@ -57,43 +71,73 @@ Run only that copied test:
 
 It should end with `BUILD SUCCESSFUL`.
 
+## Complete working slice
+
+<details>
+<summary>Complete working slice: StarterMechanismLessonTest.java</summary>
+
+Copy this file, then let Android Studio change its package and Starter imports from
+`examples.starter` to `myrobot`. The block is the complete maintained file before that mechanical
+package refactor.
+
+<!-- source-file: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
+```java
+package edu.ftcsushi.robots.examples.starter.robot;
+
+import org.junit.Test;
+
+import edu.ftcsushi.fw.testing.ManualLoopClock;
+import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
+import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
+import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntakeMechanism;
+
+import static org.junit.Assert.assertEquals;
+
+/** First hardware-free lesson using the production intake mechanism and its real Plant. */
+public final class StarterMechanismLessonTest {
+
+    @Test
+    public void semanticRequestIsAppliedByTheNextOutputHeartbeat() {
+        StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+        config.collectPower = 0.37;
+        config.ejectPower = -0.22;
+
+        FtcTestHardware hardware = new FtcTestHardware();
+        FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
+        StarterIntakeMechanism intake = new StarterIntakeMechanism(hardware, config);
+        ManualLoopClock time = new ManualLoopClock();
+
+        intake.setMode(StarterIntake.Mode.COLLECT);
+        assertEquals(StarterIntake.Mode.COLLECT, intake.status().mode());
+        assertEquals(0.0, intake.status().appliedTargetPower(), 0.0);
+        assertEquals(0, motor.powerWrites());
+
+        intake.update(time.clock());
+        assertEquals(config.collectPower, intake.status().appliedTargetPower(), 0.0);
+        assertEquals(config.collectPower, motor.power(), 0.0);
+
+        intake.setMode(StarterIntake.Mode.EJECT);
+        intake.update(time.nextCycle(0.02));
+        assertEquals(config.ejectPower, motor.power(), 0.0);
+
+        intake.setMode(StarterIntake.Mode.STOPPED);
+        assertEquals(config.ejectPower, intake.status().appliedTargetPower(), 0.0);
+        intake.update(time.nextCycle(0.02));
+        assertEquals(0.0, intake.status().appliedTargetPower(), 0.0);
+        assertEquals(0.0, motor.power(), 0.0);
+    }
+}
+```
+
+</details>
+
 ## 2. Follow request, heartbeat, and output
 
 ### Critical code
 
-The central scenario has this shape:
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-// ...
-StarterIntakeMechanism.Config config =
-        StarterIntakeMechanism.Config.defaults();
-config.collectPower = 0.37;
-config.ejectPower = -0.22;
-FtcTestHardware hardware = new FtcTestHardware();
-FtcTestHardware.MotorProbe motor =
-        hardware.addMotor(config.motorName);
-StarterIntakeMechanism intake =
-        new StarterIntakeMechanism(hardware, config);
-ManualLoopClock time = new ManualLoopClock();
-
-intake.setMode(StarterIntake.Mode.COLLECT);
-assertEquals(0, motor.powerWrites());
-
-intake.update(time.clock());
-assertEquals(config.collectPower, motor.power(), 0.0);
-
-intake.setMode(StarterIntake.Mode.EJECT);
-intake.update(time.nextCycle(0.02));
-assertEquals(config.ejectPower, motor.power(), 0.0);
-
-intake.setMode(StarterIntake.Mode.STOPPED);
-intake.update(time.nextCycle(0.02));
-assertEquals(0.0, motor.power(), 0.0);
-// ...
-```
+The complete test above is the central scenario: construct the real mechanism with
+`FtcTestHardware`, stage a semantic mode, prove there was no early write, advance the one clock,
+and assert the recorded motor output.
 
 **What to notice**
 
@@ -151,6 +195,12 @@ motor command, and a command is realized only on the mechanism heartbeat.
 
 No motor physics are modeled. The result does not establish wiring, direction, encoder polarity,
 current draw, load response, safe power, physical motion, or STOP behavior on a robot.
+
+## Verify the slice
+
+Run the focused command again after the deliberate red/green assertion exercise. Acceptance is
+`BUILD SUCCESSFUL`, with the production mechanism unchanged and the copied test importing only the
+copied `myrobot` capability and mechanism.
 
 ### Next gate
 

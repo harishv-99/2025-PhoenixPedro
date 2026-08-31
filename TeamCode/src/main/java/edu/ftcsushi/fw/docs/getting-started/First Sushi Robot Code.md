@@ -1,5 +1,10 @@
 # Your first Sushi robot code
 
+**Learning mode:** Architecture reference
+
+The files, edit, test, and verification command
+needed for this lesson are included below.
+
 ## Goal
 
 Copy the compiled Starter into a team-owned package, change COLLECT from the A button to Y, and
@@ -12,6 +17,20 @@ software-test checkpoints green.
 
 **Safety boundary:** This lesson is software-only. It needs no Robot Controller or matching robot.
 Keep both copied OpModes `@Disabled`, and keep `allowIntakeMotion` and `allowDriveMotion` false.
+
+## Files you will create
+
+Copy the seven production files in `edu.ftcsushi.robots.examples.starter` into
+`edu.ftcsushi.robots.myrobot`, plus this focused test:
+
+- `capability/intake/StarterIntake.java` and `StarterIntakeMechanism.java`;
+- `robot/StarterProfile.java`, `StarterRobot.java`, and `StarterTeleOpControls.java`;
+- `opmode/StarterTeleOp.java` and `StarterAuto.java`; and
+- test file `robot/StarterFirstLessonTest.java` under `TeamCode/src/test/java`.
+
+The two files you edit in this lesson are reproduced completely below. The other five production
+files are copied unchanged; [Modern starter robot](<../examples/Modern Starter Robot.md>) keeps the
+complete maintained graph together for later subsystem work.
 
 ## 1. Copy the Starter into your package
 
@@ -65,17 +84,9 @@ copied package or test; do not edit the canonical example.
 Open only the copied `robot/StarterTeleOpControls.java`. In `bind(...)`, change `driver.a()` to
 `driver.y()` for COLLECT. The final registration is:
 
-After your lesson edit, this is an abbreviated shape.
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-requiredCallbacks.onRise(
-        driver.y(),
-        () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
-// ...the other bindings stay unchanged...
-```
+Change only the first binding's input from `driver.a()` to `driver.y()`; leave the B and X
+bindings unchanged. The complete checked-in file below shows the original A/B/X baseline, so you
+can restore the lesson before continuing.
 
 **What to notice**
 
@@ -93,6 +104,201 @@ Now open only the copied `StarterFirstLessonTest.java`. Change the COLLECT pulse
 `driver.a = true` / `driver.a = false` to `driver.y = true` / `driver.y = false`, and update its two
 A comments to Y. Leave the registration-count, B, X, rising-edge, and zero-Task assertions
 unchanged. Run the same test again; it should be green.
+
+## Complete working slice
+
+<details>
+<summary>Complete working edit slice: StarterTeleOpControls.java</summary>
+
+This is the complete maintained file before the lesson's A-to-Y edit. After copying it into
+`myrobot`, change only the first `driver.a()` call to `driver.y()`.
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java -->
+```java
+package edu.ftcsushi.robots.examples.starter.robot;
+
+import java.util.Objects;
+
+import edu.ftcsushi.fw.drive.DriveSource;
+import edu.ftcsushi.fw.drive.source.GamepadDriveSource;
+import edu.ftcsushi.fw.ftc.input.GamepadDevice;
+import edu.ftcsushi.fw.input.binding.CallbackBindings;
+import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
+
+/** Owns every gamepad meaning used by the starter TeleOp. */
+final class StarterTeleOpControls {
+
+    private static final double SLOW_TRANSLATE_SCALE = 0.35;
+    private static final double SLOW_OMEGA_SCALE = 0.20;
+
+    private final GamepadDevice driver;
+    private final DriveSource driveSource;
+    private boolean bindAttempted;
+
+    StarterTeleOpControls(GamepadDevice driver) {
+        this.driver = Objects.requireNonNull(driver, "driver");
+
+        driveSource = new GamepadDriveSource(
+                this.driver.leftX(),
+                this.driver.leftY(),
+                this.driver.rightX(),
+                GamepadDriveSource.Config.defaults()
+        ).scaledWhen(this.driver.rightBumper(), SLOW_TRANSLATE_SCALE, SLOW_OMEGA_SCALE);
+    }
+
+    /**
+     * Declare this controls owner's callback mappings exactly once.
+     *
+     * @param callbackBindings managed callback surface; validated before the bind is claimed
+     * @param intake semantic intake capability; validated before the bind is claimed
+     * @throws NullPointerException if either argument is {@code null}; this does not consume the
+     *                              bind opportunity
+     * @throws IllegalStateException if a bind was already attempted, including one whose callback
+     *                               registration failed partway through
+     */
+    void bind(CallbackBindings callbackBindings, StarterIntake intake) {
+        CallbackBindings requiredCallbacks = Objects.requireNonNull(
+                callbackBindings,
+                "callbackBindings"
+        );
+        StarterIntake requiredIntake = Objects.requireNonNull(intake, "intake");
+        claimBind();
+
+        requiredCallbacks.onRise(
+                driver.a(),
+                () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
+        requiredCallbacks.onRise(
+                driver.b(),
+                () -> requiredIntake.setMode(StarterIntake.Mode.EJECT));
+        requiredCallbacks.onRise(
+                driver.x(),
+                () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
+    }
+
+    private void claimBind() {
+        if (bindAttempted) {
+            throw new IllegalStateException(
+                    "StarterTeleOpControls.bind(...) may be called only once; "
+                            + "create a fresh controls owner for another callback graph"
+            );
+        }
+        bindAttempted = true;
+    }
+
+    DriveSource driveSource() {
+        return driveSource;
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Complete working edit slice: StarterFirstLessonTest.java</summary>
+
+This is the complete maintained test before the lesson edit. After copying it, change the two
+`driver.a` assignments to `driver.y` and update the two nearby A comments to Y.
+
+<!-- source-file: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterFirstLessonTest.java -->
+```java
+package edu.ftcsushi.robots.examples.starter.robot;
+
+import com.qualcomm.robotcore.hardware.Gamepad;
+
+import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import edu.ftcsushi.fw.ftc.input.GamepadDevice;
+import edu.ftcsushi.fw.input.binding.Bindings;
+import edu.ftcsushi.fw.task.Task;
+import edu.ftcsushi.fw.task.Tasks;
+import edu.ftcsushi.fw.testing.ManualLoopClock;
+import edu.ftcsushi.fw.testing.RecordingCallbackBindings;
+import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
+
+import static org.junit.Assert.assertEquals;
+
+/** Hardware-free proof of the Starter's first operator meanings. */
+public final class StarterFirstLessonTest {
+
+    @Test
+    public void buttonsRequestSemanticModesOnRisingEdgesWithoutCreatingTasks() {
+        Gamepad driver = new Gamepad();
+        RecordingIntake intake = new RecordingIntake();
+        RecordingCallbackBindings callbacks = new RecordingCallbackBindings();
+        StarterTeleOpControls controls =
+                new StarterTeleOpControls(new GamepadDevice(driver));
+        controls.bind(callbacks, intake);
+        assertEquals(3, callbacks.successfulRegistrations());
+
+        Bindings bindings = callbacks.root();
+        ManualLoopClock time = new ManualLoopClock();
+        bindings.update(time.clock());
+
+        driver.a = true;
+        bindings.update(time.nextCycle(0.02));
+        assertEquals(Arrays.asList(StarterIntake.Mode.COLLECT), intake.modeRequests);
+
+        bindings.update(time.nextCycle(0.02)); // Holding A is not another rising edge.
+        driver.a = false;
+        bindings.update(time.nextCycle(0.02)); // Releasing A is not a rising edge.
+        assertEquals(Arrays.asList(StarterIntake.Mode.COLLECT), intake.modeRequests);
+
+        pulseB(driver, bindings, time);
+        pulseX(driver, bindings, time);
+        assertEquals(
+                Arrays.asList(
+                        StarterIntake.Mode.COLLECT,
+                        StarterIntake.Mode.EJECT,
+                        StarterIntake.Mode.STOPPED),
+                intake.modeRequests);
+        assertEquals(0, intake.taskRequests);
+    }
+
+    private static void pulseB(Gamepad driver, Bindings bindings, ManualLoopClock time) {
+        driver.b = true;
+        bindings.update(time.nextCycle(0.02));
+        driver.b = false;
+        bindings.update(time.nextCycle(0.02));
+    }
+
+    private static void pulseX(Gamepad driver, Bindings bindings, ManualLoopClock time) {
+        driver.x = true;
+        bindings.update(time.nextCycle(0.02));
+        driver.x = false;
+        bindings.update(time.nextCycle(0.02));
+    }
+
+    private static final class RecordingIntake implements StarterIntake {
+        private final List<Mode> modeRequests = new ArrayList<Mode>();
+        private int taskRequests;
+
+        @Override
+        public void setMode(Mode mode) {
+            modeRequests.add(mode);
+        }
+
+        @Override
+        public Task collectForSeconds(double durationSec) {
+            taskRequests++;
+            return Tasks.noop();
+        }
+
+        @Override
+        public Status status() {
+            Mode mode = modeRequests.isEmpty()
+                    ? Mode.STOPPED
+                    : modeRequests.get(modeRequests.size() - 1);
+            return new Status(mode, 0.0);
+        }
+    }
+}
+```
+
+</details>
 
 The test records the semantic request `COLLECT`. It never constructs a Plant, looks up FTC hardware,
 or claims that a motor moved.
@@ -172,7 +378,7 @@ sleeping or blocking, while the same mechanism remains the final output owner.
 - `Plant.commandTarget()` — the mechanism's persistent request within one realization graph.
 - `program.rootTask(...)` — one fresh managed Auto root.
 
-## Checkpoint and next route
+## Verify the slice
 
 You are finished when the copied package compiles, its focused test passes with Y → COLLECT, and the
 OpModes and permissions remain disabled. The complete source map is in

@@ -214,7 +214,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 110 | BRAND-01 | Sushi framework identity and namespace migration | Done | The reviewed Sushi namespace/API/tooling/documentation migration, software evidence, and destination-specific publication authorization are complete. |
 | 111 | BRAND-02 | Isolate the production application from Sushi teaching and shared code | Done | The reviewed one-way application bubble, independent teaching, framework-only documentation site, application-owned tooling, boundary regressions, software evidence, and destination-specific publication authorization are complete. |
 | 112 | DOC-07 | Self-contained student learning pages | Done | Put source-truthful critical code, explicit observations, and key APIs beside every substantive student learning concept without turning routers into tutorials or changing robot behavior. |
-| 113 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 113 | DOC-08 | Buildable student learning modules | Done | Raise actionable lessons from architecture-readable fragments to source-backed, blank-file-buildable vertical slices while keeping routers, operational runbooks, and advanced references truthful and compact. |
+| 114 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -25009,6 +25010,91 @@ implementation.
   framework and documentation-artifact jobs and merged into `master` as `0ba5392`. The published
   merge contains the verified DOC-07 documentation and enforcement diff. No subsequent framework
   item was started.
+
+### DOC-08 - Buildable student learning modules
+
+- **Gate 1 decision and implementation authorization (2026-08-31):** after the DOC-07 audit, the
+  user selected the higher **build working slice from blank files** bar for every implementation
+  lesson, selected all implementation-oriented Getting Started, Examples, and
+  Testing/Calibration destinations, selected verified explanation-only inline comments, selected
+  collapsed complete files on the same rendered page, approved the decision-complete plan, and
+  directed implementation. DOC-08 is **In progress** on
+  `codex/doc-08-buildable-learning-modules` from `origin/master@dc8a06f`.
+- **Confirmed gap:** DOC-07 made concepts and important API families visible, but 34 of 60 Java
+  fences remained abbreviated teaching shapes. Students could safely copy and modify Starter, yet
+  most lessons still omitted one or more of package/import context, public capability types,
+  configuration, owner construction, lifecycle registration, fresh Task factories, test fixtures,
+  or verification commands. Two remaining false calls were identified:
+  `Plants.fromOutputs(output)` and `moveToHeight(...)` instead of the maintained staged
+  `Plants.fromOutputs()` grammar and `moveTo(Height)` capability.
+- **Chosen documentation contract:** every page is explicitly a buildable implementation,
+  operational runbook, architecture reference, or router. A buildable page supplies short critical
+  code, observations, API roles, files to create, a collapsed complete working slice, and an exact
+  green command. Complete and annotated blocks remain backed by maintained independent examples;
+  standalone `// docs:` lines may explain the excerpt but are removed before source matching.
+  Teaching-shape pseudocode is forbidden on buildable pages. Advanced adaptive collection remains
+  an architecture reference with verified component excerpts and explicit prerequisites rather
+  than pretending to be a blank-file robot tutorial.
+- **Ownership and API boundary:** protected Sushi APIs, lifecycle, and Phoenix production code do
+  not change. Existing Starter, field-relative, basic Pedro, and Reference graphs remain the
+  compiling authorities. If calibration/tuning lacks an application-independent complete caller,
+  add the smallest maintained Reference example/helper that reuses one canonical owner-local Plant
+  recipe; do not copy from or depend on Phoenix. Any such helper is example-only and must retain
+  fresh ownership, false-by-default motion permission, one heartbeat, and terminal cleanup.
+- **Alternatives rejected:** merely adding more fragments does not meet blank-file authorship;
+  fully visible whole files defeat progressive disclosure; documentation-only invented classes
+  create an uncompiled second architecture; copying production Phoenix violates the application
+  boundary; expanding adaptive collection into a complete robot course obscures its intentionally
+  advanced prerequisites. Collapsed source-backed files provide the smallest truthful compromise.
+- **Bounded implementation:** correct the two false calls; add learning-mode labels; make Starter,
+  hardware-free testing, field-relative drive, basic Pedro, subsystem experiments, and applicable
+  calibration/tuning authoring slices buildable; synchronize topic pages and the build-season
+  anchor to those slices; mark operational and advanced pages honestly. Add only independent
+  example code and tests required to supply missing source truth. Do not alter a framework public
+  construction layer, vendor integration contract, or production robot.
+- **Verification plan:** extend `DocumentationLinksTest` to inventory classifications, enforce the
+  buildable-page sections, verify complete-file blocks, strip only standalone `// docs:` annotation
+  lines before exact matching, and reject teaching shapes on buildable pages. Run focused docs and
+  example tests, full TeamCode unit tests/compile, strict Sushi Javadocs, `git diff --check`,
+  whitespace scans, and the pinned Zensical build. Inspect collapsed blocks and code readability at
+  desktop and narrow widths. No software result is physical direction, safety, tuning, localization,
+  or route evidence.
+- **Gate 2 implementation result (2026-08-31):** implementation is complete and **Verifying** on
+  `codex/doc-08-buildable-learning-modules`. All student-learning pages in Getting Started,
+  Examples, and Testing/Calibration now declare one learning mode. Critical excerpts identify the
+  maintained source they teach; collapsed complete files use exact source matching, while
+  standalone `// docs:` annotations are permitted only on annotated blocks and are stripped before
+  matching. The false `Plants.fromOutputs(output)` and `moveToHeight(...)` calls are gone.
+- **High-bar correction from adversarial review:** the first draft labeled multi-owner examples
+  buildable after embedding only selected files. API, documentation-contract, and blank-file
+  student reviews all rejected that claim. Those pages are now explicitly **Architecture
+  reference**; only `Test a Mechanism Without Hardware` retains **Buildable implementation** because
+  its declared file is reproduced completely. A new `buildable-files` manifest must exactly equal
+  the complete source-file blocks, and every complete file must be inside collapsed `details`.
+  This deliberately favors an honest learning contract over inflating the number of tutorials.
+- **Example/API result:** the independent Reference example now supplies a disabled, exact-one-client
+  Panels tuning host and a public example-only factory that creates a fresh flywheel Plant from the
+  same private canonical recipe as the production mechanism. The factory defensively copies and
+  validates configuration before hardware lookup; its caller owns heartbeat and stop. A proposed
+  Reference calibration wrapper was removed after review because it merely duplicated canonical
+  `StandardTesters` entries without adding robot-specific configuration, status, or order.
+- **Verification evidence (2026-08-31):** Android Studio JBR 21 ran
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`
+  successfully: **2,142 tests, 0 failures, 0 errors, 0 skipped**, successful TeamCode compilation,
+  and successful Sushi Javadocs. `git diff --check` passed (Git emitted only expected LF-to-CRLF
+  checkout notices). Targeted searches found neither false API call. The local machine has only the
+  Windows Store Python launcher stub, so the pinned `python -m zensical build --clean --strict`
+  and rendered desktop/narrow inspection could not be performed locally; the required docs CI
+  remains the publication check. No software verification is physical direction, safety, tuning,
+  localization, stopping-distance, or route evidence.
+- **Review/publication gate:** diff remains unstaged and uncommitted pending the required Android
+  Studio review and exact combined DOC-08 commit/push/PR/merge authorization. Publication target is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; no publication action is authorized yet.
+- **Manual review and publication authorization (2026-08-31):** **Done.** The user reviewed DOC-08
+  in Android Studio and authorized committing the reviewed diff on
+  `codex/doc-08-buildable-learning-modules`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. This authorization covers DOC-08 only and does not start AUDIT-01 or another item.
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 

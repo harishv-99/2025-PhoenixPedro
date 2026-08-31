@@ -1,5 +1,9 @@
 # Role paths
 
+**Learning mode:** Router
+
+This page chooses a focused reference or buildable module.
+
 **Question:** Which Sushi material should I read for the robot work in front of me?
 
 Use this router after the shared [Sushi overview](<../Framework Overview.md>). These are focused

@@ -137,17 +137,7 @@ public final class ReferenceLauncherMechanism
         Plant builtTransfer = null;
         Plant builtRelease = null;
         try {
-            builtFlywheel = FtcActuators.plant(map)
-                    .motor(c.leftFlywheelName, c.leftFlywheelDirection)
-                    .andMotor(c.rightFlywheelName, c.rightFlywheelDirection)
-                    .velocity()
-                    .deviceManaged()
-                    .bounded(IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC,
-                            c.maximumVelocityTicksPerSec)
-                    .nativeUnits()
-                    .velocityTolerance(c.velocityToleranceTicksPerSec)
-                    .targetFromNewCommand(IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC)
-                    .build();
+            builtFlywheel = createFlywheelPlant(map, c);
             builtTransfer = FtcActuators.plant(map)
                     .crServo(c.transferName, c.transferDirection)
                     .power()
@@ -187,6 +177,34 @@ public final class ReferenceLauncherMechanism
         releaseRetractedPosition = c.releaseRetractedPosition;
         releaseExtendedPosition = c.releaseExtendedPosition;
         releaseDurationSec = c.releaseDurationSec;
+    }
+
+    /**
+     * Creates a fresh flywheel Plant for one exclusive Panels tuning workflow.
+     *
+     * <p>This advanced assembly seam uses the same canonical private recipe as the production
+     * mechanism. The returned Plant has not been updated; the caller becomes its only heartbeat
+     * and must stop it. The supplied configuration is defensively copied and validated before
+     * hardware lookup.</p>
+     */
+    public static Plant createFlywheelPlantForTuning(HardwareMap hardwareMap, Config config) {
+        HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
+        return createFlywheelPlant(map, copyAndValidate(config));
+    }
+
+    /** Builds the one canonical grouped flywheel realization used by match and tuning owners. */
+    private static Plant createFlywheelPlant(HardwareMap map, Config c) {
+        return FtcActuators.plant(map)
+                .motor(c.leftFlywheelName, c.leftFlywheelDirection)
+                .andMotor(c.rightFlywheelName, c.rightFlywheelDirection)
+                .velocity()
+                .deviceManaged()
+                .bounded(IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC,
+                        c.maximumVelocityTicksPerSec)
+                .nativeUnits()
+                .velocityTolerance(c.velocityToleranceTicksPerSec)
+                .targetFromNewCommand(IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC)
+                .build();
     }
 
     /** {@inheritDoc} */

@@ -1,5 +1,7 @@
 # Subsystem experiments
 
+**Learning mode:** Architecture reference
+
 An experiment is a robot-specific use of existing capabilities and tester infrastructure, not a
 new framework abstraction. Its purpose is to answer one decision before ordinary robot code relies
 on the answer. Software tests establish software behavior; a bounded experiment collects the
@@ -92,35 +94,9 @@ or reject. Do not persist trial results on the Robot Controller.
 
 ### Critical code
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-@Override
-protected void onInit() {
-    validateCriteria();
-    if (!reviewedForMotion) return;
-    launcher = new ReferenceLauncherMechanism(ctx.hw, launcherConfig);
-}
-
-private void beginTrial() {
-    trialNumber++;
-    startedAtSec = clock.nowSec();
-    launcher.setTargetVelocityTicksPerSec(targetVelocityTicksPerSec);
-    // ...RUNNING is exclusive; A cannot start an overlapping trial...
-}
-
-private void finishTrial(TrialState result, ReferenceLauncher.Status status, double elapsedSec) {
-    // ...copy elapsed time and both wheel measurements into retained terminal fields...
-    trialState = result;
-    launcher.abortLaunches(); // freeze evidence before changing the persistent request
-}
-
-@Override
-protected void onStop() {
-    if (launcher != null) launcher.stop();
-}
-```
+The maintained experiment validates and snapshots the locked criteria in `onInit()`, constructs the
+mechanism only when motion was reviewed, admits A only while idle, freezes terminal evidence before
+requesting reusable idle, and terminally stops the owned mechanism from `onStop()`.
 
 **What to notice**
 
@@ -215,6 +191,99 @@ generic experiment framework:
    `createTester()`.
 8. Record external observations outside the Robot Controller and promote configuration only after
    the reviewed decision accepts it.
+
+## Files you will create
+
+Create a criteria card, one `BaseTeleOpTester` experiment, and one robot-owned tester registry. The
+complete criteria and registry below show the lock and fresh-supplier boundaries. The experiment
+class owns the trial state machine and hardware lifecycle described above.
+
+## Complete working slice
+
+<details>
+<summary>Complete working slice: locked criteria card</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpCriteria.java -->
+```java
+package edu.ftcsushi.robots.examples.reference.tester;
+
+/** Team-authored physical gate for the checked-in flywheel spin-up experiment. */
+final class ReferenceFlywheelSpinUpCriteria {
+    boolean reviewedForMotion;
+    double targetVelocityTicksPerSec;
+
+    /**
+     * Cooperative elapsed-time boundary checked once per active tester loop.
+     *
+     * <p>The experiment requests and applies zero on the first loop observed at or after this
+     * boundary; this is not a hard real-time cutoff. The reviewed lab card and STOP plan must allow
+     * for the worst-case active-loop delay.</p>
+     */
+    double maximumPoweredRunSec;
+
+    private ReferenceFlywheelSpinUpCriteria() {
+    }
+
+    /** Returns the checked-in locked card with software-valid placeholders, not safety facts. */
+    static ReferenceFlywheelSpinUpCriteria current() {
+        ReferenceFlywheelSpinUpCriteria criteria = new ReferenceFlywheelSpinUpCriteria();
+        criteria.reviewedForMotion = false;
+        criteria.targetVelocityTicksPerSec = 3000.0;
+        criteria.maximumPoweredRunSec = 3.0;
+        return criteria;
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Complete working slice: fresh tester registration</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceRobotTesters.java -->
+```java
+package edu.ftcsushi.robots.examples.reference.tester;
+
+import edu.ftcsushi.fw.tools.tester.StandardTesters;
+import edu.ftcsushi.fw.tools.tester.TesterSuite;
+import edu.ftcsushi.robots.examples.reference.robot.ReferenceProfile;
+
+/** Builds the reference robot's experiment menu beside the canonical framework tools. */
+public final class ReferenceRobotTesters {
+    private ReferenceRobotTesters() {
+    }
+
+    /** Returns a fresh tester tree; motion experiments are locked in checked-in configuration. */
+    public static TesterSuite create() {
+        ReferenceProfile profile = ReferenceProfile.current();
+        ReferenceFlywheelSpinUpCriteria criteria = ReferenceFlywheelSpinUpCriteria.current();
+        TesterSuite suite = new TesterSuite()
+                .setTitle("Reference experiments")
+                .setHelp("Review the lab card before unlocking motion");
+        suite.add("Flywheel spin-up",
+                "Independent per-wheel velocity evidence",
+                criteria.reviewedForMotion ? "READY" : "LOCKED",
+                () -> new ReferenceFlywheelSpinUpExperiment(
+                        profile.launcher, criteria));
+        StandardTesters.register(suite);
+        return suite;
+    }
+}
+```
+
+</details>
+
+## Verify the slice
+
+Run:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
+  :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.reference.tester.*
+```
+
+Expected checkpoint: the experiment compiles, lifecycle tests pass, and the checked-in menu reports
+`LOCKED`. Hardware success still requires the reviewed lab card and supervised trials.
 
 ## Criterion shapes by subsystem
 

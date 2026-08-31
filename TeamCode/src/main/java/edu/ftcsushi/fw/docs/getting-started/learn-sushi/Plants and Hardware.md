@@ -1,5 +1,10 @@
 # Plants and hardware
 
+**Learning mode:** Architecture reference
+
+This page traces the realization path. Use the
+hardware-free mechanism module for a complete compiling test of the maintained mechanism.
+
 **Question:** How does a semantic request become one final hardware command, and what can robot
 code truthfully report?
 

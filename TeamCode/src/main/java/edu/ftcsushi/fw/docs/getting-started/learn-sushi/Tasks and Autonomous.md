@@ -1,5 +1,10 @@
 # Tasks and autonomous
 
+**Learning mode:** Architecture reference
+
+These excerpts teach Task lifecycle and composition;
+the Starter and Pedro buildable modules supply complete executable slices.
+
 **Question:** How can behavior continue across loop cycles without blocking the robot?
 
 **Reading time:** about 8 minutes

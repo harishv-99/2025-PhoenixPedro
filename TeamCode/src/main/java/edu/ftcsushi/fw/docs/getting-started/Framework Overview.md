@@ -1,5 +1,7 @@
 # Sushi in one picture
 
+**Learning mode:** Architecture reference
+
 Sushi lets students describe a robot once while the framework owns the FTC lifecycle and runs
 everything in a predictable order. This 15–20 minute, read-only tour uses the small Starter robot.
 It requires no matching hardware, build, or example edit.

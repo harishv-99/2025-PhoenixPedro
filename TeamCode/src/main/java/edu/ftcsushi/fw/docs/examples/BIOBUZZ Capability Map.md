@@ -1,5 +1,7 @@
 # BIOBUZZ capability map
 
+**Learning mode:** Architecture reference
+
 This helper is intentionally provisional. It maps plausible robot needs to stable framework
 lessons; it does not assert unreleased field geometry, scoring rules, strategy, inventory, or a
 physical mechanism design.

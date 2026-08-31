@@ -1,5 +1,9 @@
 # Choose a Sushi topic
 
+**Learning mode:** Router
+
+Use this page to choose a buildable module or focused reference.
+
 This page is the topic lookup used by
 [Build a robot step by step](<Build a Robot Step by Step.md>). Start with
 [Sushi in one picture](<Framework Overview.md>). After you can trace the Starter A

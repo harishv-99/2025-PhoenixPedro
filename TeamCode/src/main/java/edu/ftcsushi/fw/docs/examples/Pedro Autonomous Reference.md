@@ -1,5 +1,7 @@
 # Pedro autonomous reference
 
+**Learning mode:** Architecture reference
+
 **Audience:** students and mentors adapting Sushi's managed runtime to a robot that uses Pedro
 Pathing.
 
@@ -34,15 +36,18 @@ lifecycle, capability realization, and physical configuration stay with their ac
 `BasicPedroAutoExample.configure(...)` selects one fresh local profile and invokes the sole
 ordinary composition-root construction path:
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java -->
 ```java
-robot = new BasicPedroAutoRobot(
-        program,
-        hardwareMap,
-        BasicPedroProfile.current());
-// ...the robot declares the service, output, root Task, and presenters...
+robot = testRobotFactory == null
+        ? new BasicPedroAutoRobot(
+                program,
+                hardwareMap,
+                BasicPedroProfile.current()
+        )
+        : Objects.requireNonNull(
+                testRobotFactory.apply(program),
+                "testRobotFactory.apply(program)"
+        );
 ```
 
 **What to notice**
@@ -135,18 +140,13 @@ cause and restart the OpMode rather than retrying construction in place.
 
 ### Critical code
 
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java -->
 ```java
-RouteTask<PathChain> route = RouteTasks.follow(
-        "basicPedro.practiceRoute", follower, paths.practiceRoute(), 4.0);
-
-Task routine = Tasks.branchOnOutcome(
-        route,
-        intake.collectTask(0.50),
-        intake.idleTask());
-// ...retain both route.getRouteStatus() and routine.getOutcome() for presentation...
+return Tasks.branchOnOutcome(
+        followPracticeRoute,
+        requiredMechanism.collectTask(COLLECT_DURATION_SEC),
+        requiredMechanism.idleTask()
+);
 ```
 
 **What to notice**
@@ -214,6 +214,152 @@ the optional [Timestamped adaptive collection](<Timestamped Adaptive Collection.
 keeps the basic six-role reference unchanged while demonstrating typed unavailable fallback,
 semantic native callbacks, inventory-gated early exit, and separate exact statuses for collection
 and return.
+
+## Files you will create
+
+Create the six files in the role table. The complete host and strategy files below show both public
+ends of the graph: `configure(program)` declares the robot, and `build(...)` creates fresh route
+behavior from the capability. The profile, root, path owner, and mechanism supply the exact owners
+described in the table; do not collapse those responsibilities into the host.
+
+## Complete working slice
+
+<details>
+<summary>Complete working slice: FTC Auto host</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java -->
+```java
+package edu.ftcsushi.robots.examples.pedro.opmode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+
+import java.util.Objects;
+import java.util.function.Function;
+
+import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
+import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroAutoRobot;
+import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroProfile;
+
+/**
+ * Disabled, compiling FTC host for the independent basic Pedro Auto reference.
+ *
+ * <p>The adjacent {@link BasicPedroProfile} keeps the example's local software baseline and
+ * false-by-default motion permission visible without borrowing an adopting robot's hardware
+ * configuration or Pedro constants. This generic example demonstrates the complete underlying
+ * {@link FtcRobotOpMode}/{@link RobotProgram} grammar without constructing another robot.</p>
+ */
+@Autonomous(name = "FW Pedro Auto: Basic Reference", group = "Framework Examples")
+@Disabled
+public final class BasicPedroAutoExample extends FtcRobotOpMode {
+
+    private final Function<RobotProgram, BasicPedroAutoRobot> testRobotFactory;
+    private BasicPedroAutoRobot robot;
+
+    /** Creates the disabled Driver Station entry using the independent local example profile. */
+    public BasicPedroAutoExample() {
+        testRobotFactory = null;
+    }
+
+    /** Test-only construction seam; it is deliberately not a public extension API. */
+    BasicPedroAutoExample(
+            Function<RobotProgram, BasicPedroAutoRobot> testRobotFactory
+    ) {
+        this.testRobotFactory = Objects.requireNonNull(testRobotFactory, "testRobotFactory");
+    }
+
+    /** Construct robot-specific owners and declare their managed roles during FTC INIT. */
+    @Override
+    protected void configure(RobotProgram program) {
+        robot = testRobotFactory == null
+                ? new BasicPedroAutoRobot(
+                        program,
+                        hardwareMap,
+                        BasicPedroProfile.current()
+                )
+                : Objects.requireNonNull(
+                        testRobotFactory.apply(program),
+                        "testRobotFactory.apply(program)"
+                );
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Complete working slice: route outcome policy</summary>
+
+<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java -->
+```java
+package edu.ftcsushi.robots.examples.pedro.autonomous;
+
+import com.pedropathing.paths.PathChain;
+
+import java.util.Objects;
+
+import edu.ftcsushi.fw.drive.route.RouteFollower;
+import edu.ftcsushi.fw.drive.route.RouteTasks;
+import edu.ftcsushi.fw.task.Task;
+import edu.ftcsushi.fw.task.Tasks;
+import edu.ftcsushi.robots.examples.pedro.capability.intake.BasicPedroAutoMechanism;
+
+/** Composes the basic route, success action, and timeout fallback with ordinary Task factories. */
+public final class BasicPedroAutoRoutine {
+
+    private static final double ROUTE_TIMEOUT_SEC = 4.0;
+    private static final double COLLECT_DURATION_SEC = 0.50;
+
+    private BasicPedroAutoRoutine() {
+        // Robot-owned Task factory only.
+    }
+
+    /**
+     * Builds one fresh routine.
+     *
+     * <p>Confirmed route completion starts collection. A follower or Task timeout restores the
+     * mechanism's idle request. Cancellation-like route endings abort without either branch and
+     * deliberately leave any unrelated prior request unchanged. The basic host enters at idle;
+     * another caller must establish the entry state its policy requires.</p>
+     */
+    public static Task build(RouteFollower<PathChain> routes,
+                             PathChain practiceRoute,
+                             BasicPedroAutoMechanism mechanism) {
+        Task followPracticeRoute = RouteTasks.follow(
+                "BasicPracticeRoute",
+                Objects.requireNonNull(routes, "routes"),
+                Objects.requireNonNull(practiceRoute, "practiceRoute"),
+                ROUTE_TIMEOUT_SEC
+        );
+
+        BasicPedroAutoMechanism requiredMechanism = Objects.requireNonNull(
+                mechanism,
+                "mechanism"
+        );
+        return Tasks.branchOnOutcome(
+                followPracticeRoute,
+                requiredMechanism.collectTask(COLLECT_DURATION_SEC),
+                requiredMechanism.idleTask()
+        );
+    }
+}
+```
+
+</details>
+
+## Verify the slice
+
+Run:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
+  :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.pedro.autonomous.* `
+  --tests edu.ftcsushi.robots.examples.pedro.robot.BasicPedroAutoRobotTest
+```
+
+Expected checkpoint: the example compiles and route-policy/root tests pass. It remains `@Disabled`;
+software verification does not validate localization, path clearance, or drivetrain motion.
 
 ## Expected result
 

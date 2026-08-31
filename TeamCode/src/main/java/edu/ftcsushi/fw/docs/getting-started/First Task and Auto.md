@@ -1,5 +1,10 @@
 # Your first Task and Auto
 
+**Learning mode:** Router
+
+This compatibility URL directs you to the current Task reference or
+physical runbook.
+
 This URL is retained for existing bookmarks. The earlier supervised timed-intake Auto lab is no
 longer the primary Sushi learning route. Choose the destination that matches what you are doing.
 

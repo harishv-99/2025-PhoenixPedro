@@ -1,5 +1,10 @@
 # Robot roles
 
+**Learning mode:** Architecture reference
+
+The excerpts explain ownership; use the Starter
+buildable module for all files needed to author the graph.
+
 **Question:** Where does each part of robot code belong?
 
 Sushi assigns each decision and resource one owner. You can learn that structure by reading the
