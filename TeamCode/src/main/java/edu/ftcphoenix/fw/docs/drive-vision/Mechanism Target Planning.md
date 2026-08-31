@@ -676,34 +676,76 @@ measurement. Robot code does not call a selection reset or lifecycle hook to mak
 
 ## Spatial-derived requests
 
-Spatial queries can still feed a mechanism target. The spatial solve chooses geometry; robot-specific
-kinematics map that geometry into Plant units; `PlantTargets.plan(request)` resolves the Plant target.
+Spatial queries can feed a mechanism target, but the conversion remains robot policy. The spatial
+solve chooses geometry; robot-specific kinematics map that geometry into one absolute Plant-unit
+request; `PlantTargets.plan(request)` resolves the final reachable Plant target.
+
+The optional
+[`ReferenceCoordinatedShotService`](<../../../robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
+uses the translation channel because turret, flywheel, and hood must derive from one vector. These
+are the calculation's relevant statements, with remaining validation, model interpolation, and
+additional unavailable returns omitted:
 
 ```java
-Source<PlantTargetRequest> turretFacingRequest = Source.of(clock -> {
-    SpatialQueryResult facing = turretFacingQuery.get(clock);
-    if (!facing.hasSolution()) {
-        return PlantTargetRequest.none(facing.reason());
-    }
+SpatialTranslationSelection selection =
+        SpatialQuerySelectors.firstValidTranslation(targetQuery.get(clock), spatialGate);
+if (selection == null) {
+    return unavailable(Reason.SPATIAL_UNAVAILABLE, LoopTimestamp.unavailable());
+}
+LoopTimestamp timestamp = selection.timestamp();
+double observedForward = selection.solution.robotForwardInches();
+double observedLeft = selection.solution.robotLeftInches();
 
-    double targetDeg = Math.toDegrees(facing.solution().facingErrorRad());
-    return PlantTargetRequest.observedEquivalentPosition(
-            facing.sourceId(),
-            targetDeg,
-            facing.quality(),
-            facing.timestamp()
-    );
-});
+MotionAssessment motion = assessMotion(predictor.getLatestMotionDelta(), timestamp, clock);
+double effectiveForward = observedForward;
+double effectiveLeft = observedLeft;
+double quality = selection.quality();
+if (motion.usable) {
+    effectiveForward -= motion.forwardInchesPerSec * illustrativeFlightTimeSec;
+    effectiveLeft -= motion.leftInchesPerSec * illustrativeFlightTimeSec;
+    quality = Math.min(quality, motion.quality);
+}
 
-PlantTargetResolver turretTarget = PlantTargets.plan(turretFacingRequest)
+double turretAngleRad = Math.atan2(effectiveLeft, effectiveForward);
+PlantTargetRequest turretRequest = PlantTargetRequest.observedEquivalentPosition(
+        TURRET_REQUEST_ID, turretAngleRad, quality, timestamp);
+```
+
+`turretAngleRad` is absolute in the example's declared turret coordinate: zero faces robot
+`+X`, and positive angles turn toward robot `+Y` left. It is not a delayed facing error added to a
+current turret measurement. The complete service retains the accepted translation's exact
+observation timestamp, permits `p - v * t` compensation only from matching timestamped motion, and
+publishes one immutable turret/flywheel/hood solution. Its defaults are illustrative software data,
+not calibrated projectile physics.
+
+The separate
+[`ReferenceTurretMechanism`](<../../../robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
+privately projects that cached request and owns the entire planner/Plant realization:
+
+```java
+Source<PlantTargetRequest> requestSource = Source.of(
+        clock -> service.solution().turretRequest);
+
+PlantTargetResolver finalTarget = PlantTargets.plan(requestSource)
         .nearestToMeasurement()
         .rejectUnreachable()
-        .accept().maxObservationAgeSec(0.20).minQuality(0.45).doneAccept()
-        .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
+        .accept()
+        .maxObservationAgeSec(service.plannerObservationMaxAgeSec())
+        .minQuality(service.plannerMinimumObservationQuality())
+        .doneAccept()
+        .whenUnavailable()
+        .holdMeasuredTargetOnEntry(c.initialHoldAngleRad);
 ```
 
 The `observedEquivalentPosition(...)` name makes the freshness contract visible at the call site,
-while the source-owned snapshot keeps student code to one quality value and one timestamp.
+while the service-owned snapshot keeps every mechanism consumer on one quality value and one
+timestamp. The no-reset Source projection owns no state and cannot reset or resample localization.
+The mechanism binds `finalTarget` to one full-turn-periodic PositionPlant with finite cable bounds;
+it does not write the motor through a second imperative path. See the
+[hardware-free Reference scenario](<../examples/Hardware-free Reference Scenarios.md>) for the
+managed composition, software evidence, and physical limits of this illustrative example. It is
+unwired from the ordinary Reference robot, and its defaults establish no shot accuracy, mechanism
+safety, cable limits, or trustworthy encoder zero.
 
 The Plant reports physical arrival with `atTarget()` and literal physical
 `atTarget(value)`. `atTarget(value)` never applies modulo arithmetic. Target planning reports

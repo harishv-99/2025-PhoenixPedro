@@ -147,6 +147,94 @@ An adopting team must review the three configured inputs, observe raw and condit
 the robot, deliberately move objects through every position, and record physical outcomes. Keep
 the service robot-owned when the team's capacity, ordering, and policy differ from this example.
 
+## Optional coordinated shot: one timestamped solution, one bounded turret
+
+[`ReferenceCoordinatedShotService.java`](<../../../robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
+and
+[`ReferenceTurretMechanism.java`](<../../../robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
+form an optional, example-only pair. They are not framework shooter types and the ordinary
+Reference robot does not wire either owner. A custom managed OpMode can register its localization
+owner first, then the calculation service, then the hardware output:
+
+```java
+ReferenceCoordinatedShotService shot = program.service(
+        new ReferenceCoordinatedShotService(
+                localization,
+                ReferenceCoordinatedShotService.Config.defaults()));
+
+ReferenceTurretMechanism turret = program.output(
+        new ReferenceTurretMechanism(
+                hardwareMap,
+                ReferenceTurretMechanism.Config.defaults(),
+                shot));
+```
+
+`localization` is the custom robot's already-owned `MotionPredictor`; the shot service borrows it
+and never updates, resets, or stops it. The managed service phase publishes before the output phase,
+so `shot.solution()` gives the turret, flywheel consumer, hood consumer, and presenter the same
+clockless immutable snapshot for that cycle. Reading it does not resample localization. The turret
+mechanism alone owns its motor, final resolver, periodic PositionPlant update, and stop.
+
+The service asks one translation-only `SpatialQuery` for a stationary field point. One accepted
+translation supplies the robot-forward/robot-left vector, quality, and observation timestamp used
+by all three outputs. A finite, fresh `MotionDelta` may contribute only when its end timestamp is
+exactly that observation timestamp. The illustrative moving calculation rotates the measured
+displacement into current robot axes and applies `effectiveTarget = observedTarget - velocity *
+flightTime`. Turret intent is `atan2(effectiveLeft, effectiveForward)`; the flywheel and hood tables
+use the distance from that same effective vector.
+
+The published mode makes degradation explicit:
+
+- `MOVING_COMPENSATED` means spatial and co-temporal motion evidence passed their software gates;
+- `STATIONARY_FALLBACK` means spatial geometry remained usable but same-clock motion was missing,
+  stale, reset-invalidated, timestamp-mismatched, or otherwise unusable;
+- `UNAVAILABLE` means the owner is not started/stopped or geometry/model output is unusable, so
+  there is no turret request and the published flywheel/hood values are configured finite fallback
+  intents for adopting consumers; and
+- a timestamp from a different `LoopClock` is a wiring error that throws instead of silently
+  degrading either mode.
+
+The turret converts the cached request through
+`PlantTargets.plan(...) -> nearest-to-measurement -> reject-unreachable -> observation acceptance ->
+hold-measured-on-entry` and one bounded full-turn-periodic PositionPlant. An equivalent angle outside
+the configured cable range is not silently clamped into a different meaning. Planner selection and
+fallback are requested-target facts; neither one claims physical arrival.
+
+The focused
+[`ReferenceCoordinatedShotServiceTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcphoenix/robots/examples/reference/capability/targeting/ReferenceCoordinatedShotServiceTest.java>)
+and
+[`ReferenceTurretMechanismTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcphoenix/robots/examples/reference/capability/targeting/ReferenceTurretMechanismTest.java>)
+contracts plus the
+[`ReferenceCoordinatedShotSoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcphoenix/robots/examples/reference/capability/targeting/ReferenceCoordinatedShotSoftwareScenarioTest.java>)
+story supply authored timestamped poses and motion, then record the ordinary FTC-boundary turret
+command. They also read flywheel and hood intents from that exact published solution rather than
+recalculating them. The cases cover moving compensation, stationary fallback, unavailable geometry,
+stale/reset/mismatched evidence, same-cycle snapshot coherence, reachable and unreachable periodic
+alternatives, and service/output start/stop ownership.
+
+### Coordinated-shot scenario proves
+
+For the authored software observations, one service calculation publishes a coherent immutable
+tuple, preserves its observation timestamp, names degraded modes truthfully, and supplies the live
+observed request consumed by one bounded periodic Plant owner. It also proves that repeated reads in
+one cycle do not independently resample localization and that stopping the example owners cannot
+restart or reset the borrowed localization owner.
+
+### Coordinated-shot scenario does not prove
+
+The fixed flight time, interpolation tables, field point, ranges, fallback intents, and all default
+numbers are uncalibrated software data. The scenario does not model projectile drop, spin, sensor
+latency, articulated or off-center shooter velocity, motor response, cable routing, or collisions.
+It does not establish shot accuracy, readiness, mechanism safety, a trustworthy encoder zero, full-
+turn equivalence, physical bounds, or that any fallback is safe on a real robot.
+
+### Coordinated-shot next gate
+
+An adopting team must replace and validate the field/model data, establish the turret's reference
+and cable limits, supervise actuator bring-up, and measure mechanism and shot outcomes on its own
+robot. If the encoder zero is not physically trustworthy at START, use a reviewed reference or
+homing design instead of copying the example's `alreadyReferenced()` assumption.
+
 ## Adapt the pattern to one team subsystem
 
 1. Start from the subsystem's data-only production configuration.

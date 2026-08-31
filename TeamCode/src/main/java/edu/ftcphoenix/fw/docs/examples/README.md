@@ -13,7 +13,7 @@ cleanup ceremony.
 | Start here | Teaches |
 |---|---|
 | [Modern Starter Robot](<Modern Starter Robot.md>) | The canonical copyable TeleOp-and-Auto source map; open one owner at a time through the first-code exercise. |
-| [Hardware-free Reference Scenarios](<Hardware-free Reference Scenarios.md>) | Optional lift, launcher, and sensor-derived inventory cases that inject device observations through unchanged production/example owners. |
+| [Hardware-free Reference Scenarios](<Hardware-free Reference Scenarios.md>) | Optional lift, launcher, sensor-derived inventory, and coordinated-shot/turret cases that inject observations through unchanged production/example owners. |
 | [Reference case-study topics](<../getting-started/Beginner's Guide.md>) | Short routes into its lift, launcher, shared capabilities, Tasks, status, and experiment; study the relevant slice rather than copying it wholesale. |
 | [Framework Components Through Examples](<Framework Components Through Examples.md>) | A problem-driven lookup for the canonical example or guide behind each concept. |
 | [Field-relative Drive](<Field-relative Drive.md>) | Optional station-defined driver “up”; it is an example composition, not part of Phoenix drive. |

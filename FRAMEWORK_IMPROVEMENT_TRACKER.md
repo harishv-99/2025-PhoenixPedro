@@ -67,7 +67,7 @@ select a production design or claim completion.
   own hard takeover and continuation, while attempt eligibility, cutoff values, and parking remain
   robot policy. Deterministic tests may prove that lifecycle boundary, but path timing, mechanism
   response, physical parking success, and match benefit remain adopting-robot validation.
-- `EXAMPLE-03` is **Proposed** again only under a narrower software-reference contract. It may prove
+- `EXAMPLE-03` is **Done** under a narrower software-reference contract. It proves
   coherent timestamped coordination and bounded realization, but not projectile timing, shot
   accuracy, tuning, or physical mechanism response.
 - While this policy is active, select the highest-priority item whose current behavior, design
@@ -172,7 +172,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 72 | INPUT-02 | Binding update failure retention | Done | Retain exact same-cycle binding failures without replay, reject reentry, preserve explicit next-cycle and clear ownership, and keep robot code unchanged. |
 | 73 | BOUNDARY-01 | FTC boundary enforcement | Done | Relocated the FTC gamepad adapters without changing robot expressions and enforced the protected reusable core with one focused production-source rule. |
 | 74 | CI-01 | Framework verification in CI | Done | Split the existing hosted pipeline into truthful framework and documentation checks, run them for every pull request targeting master, and require both before merging. |
-| 75 | EXAMPLE-03 | Coherent timestamped mechanism-target coordination reference | Proposed | Reclassify this as a software architecture reference; physical shot and mechanism claims remain adopting-robot experiments. |
+| 75 | EXAMPLE-03 | Coherent timestamped mechanism-target coordination reference | Done | Optional unwired Reference service/output case study with one cached solution, bounded turret realization, and no framework API or physical shot claim. |
 | 76 | SAFE-04 | Fail-stop PowerOutput software contract | Done | Make command-cache and grouped failure behavior truthful at the software seam without claiming atomic or physical stop. |
 | 77 | CONFIG-01 | Drive-guidance task configuration snapshot | Done | Validate and snapshot the existing five-answer task config without changing ordinary caller syntax or adding a parallel construction layer. |
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
@@ -10525,6 +10525,222 @@ implementation.
   Gate 1 may retain
   Deferred or record a verified no-change decision as Done if the complete example adds more student
   concepts than the missing integration proof removes.
+- **Gate 1 start (2026-08-30):** after AUTO-01 reached Done, the user directed **“next task.”** The
+  isolated branch `codex/example-03-timestamped-mechanism-coordination` starts directly from merged
+  `origin/master@825935f3a835d7bb3366862d4c1012462d56b1fc`; EXAMPLE-03 is **Researching**. This
+  authorizes only current source/caller and public-construction-path research, alternative and
+  student-simplicity comparison, tracker recording, and deterministic baseline checks. It does not
+  authorize example/framework implementation, staging, publication, physical claims, AUDIT-01, or
+  another tracker item.
+- **Gate 1 decision record (2026-08-30):** **Ready; explicit example ownership and lifecycle
+  approval is required before implementation.** The missing artifact is a maintained compiling
+  integration lesson, not a missing protected-core abstraction. Existing `SpatialQuery`,
+  `LoopTimestamp`, `MotionPredictor`, `Source.memoized()`, `PlantTargetRequest`,
+  `PlantTargets.plan(...)`, and bounded periodic `PositionPlant` contracts already compose the
+  required behavior. No framework API, Phoenix production behavior, or ordinary Reference robot
+  surface should change.
+  - **Verified motivating caller and present gap:** the pinned FTC_Decode
+    [`SOTMUtil`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/SOTMUtil.java#L22-L60)
+    returns one turret/flywheel/hood calculation, and its pinned
+    [`MainTeleop`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/teleop/MainTeleop.java#L280-L305)
+    applies those three values together before the robot update. Repository search still finds no
+    maintained production/example caller of `PlantTargets.plan(...)` or an observed
+    `PlantTargetRequest`; executable coverage is component-test-only. The historical Cuttlefish
+    links are no longer publicly retrievable and therefore remain context, not evidence for this
+    example's physical model or correctness.
+  - **Public-construction-path audit:** `PlantTargetRequest` is intentionally factory-only: its
+    twelve leaf factories represent exact, Plant-period-equivalent, or explicit-period values,
+    crossed with absolute or relative semantics and timeless or observed evidence. The live planner
+    has one entry, `PlantTargets.plan(Source<PlantTargetRequest>)`, followed by distinct preference,
+    unreachable, observation-acceptance, and unavailable-policy questions. An ordinary FTC periodic
+    position owner starts at `FtcActuators.plant(hardwareMap)`, chooses motor position control,
+    declares `periodic(2.0 * Math.PI)` and finite cable bounds, maps radians to native units,
+    uses `alreadyReferenced()` only from an adopter-validated encoder-zero assumption, and binds one
+    final resolver. None of those layers is a redundant coordinator that should be replaced for
+    this item.
+  - **Selected owner 1 -- coherent calculation:** add optional example-only
+    `ReferenceCoordinatedShotService` under the Reference targeting capability package. It is a
+    `RobotProgram.Service` constructed from one borrowed backend-neutral `MotionPredictor` plus one
+    defensively captured data-only `Config`. It privately builds one robot-center,
+    translation-only `SpatialQuery` to one configured field point and one
+    `Source.of(this::calculate).memoized()` calculation. It never updates, stops, or resets the
+    borrowed predictor. `start(clock)` resets only its query/calculation state and publishes the
+    first snapshot; each service update atomically replaces the prior snapshot only after a complete
+    successful calculation; `stop()` publishes the conservative unavailable snapshot and clears
+    only owned caches. Stop is pre-start safe and idempotent, terminal-latches the example owner, and
+    prevents any later direct update from re-sampling the borrowed predictor.
+  - **One immutable result contract:** the service exposes one clockless, side-effect-free
+    `solution()` only. The immutable `Solution` contains externally meaningful final facts: a typed
+    mode (`MOVING_COMPENSATED`, `STATIONARY_FALLBACK`, or `UNAVAILABLE`), a bounded diagnostic
+    reason, one observation timestamp, the final effective robot-forward/robot-left vector and
+    quality, one observed periodic-equivalent turret request, and flywheel/hood intents. Raw pose,
+    raw motion, evaluation time, and intermediate vectors remain private implementation diagnostics
+    because no independent caller needs them. The service retains its memoized source privately, so
+    callers cannot reset owner state. A failed calculation publishes no partial tuple; direct same-
+    cycle retry remains the existing `Source.memoized()` contract, while a managed service exception
+    still fail-stops `RobotProgram` rather than promising automatic runtime recovery.
+  - **Timestamp, calculation, and fallback contract:** the spatial selection is the sole target-
+    geometry selection authority. All three intents use its one translation vector and observation
+    timestamp; the service does not independently select a facing lane. Motion compensation is
+    allowed only for a usable, finite, quality-qualified `MotionDelta` whose positive interval is
+    within the configured limit, whose end is fresh, and whose end timestamp is exactly co-temporal
+    with the spatial selection. The previous-to-current planar displacement is rotated into current
+    robot axes and divided by its interval. With current-frame robot velocity `v`, observed target
+    vector `p`, and the configured illustrative flight time `t`, the final vector is exactly
+    `p - v * t`; turret intent is `atan2(finalLeft, finalForward)` and flywheel/hood table distance is
+    `hypot(finalForward, finalLeft)`. A moving solution/request uses
+    `min(spatialQuality, motionQuality)`; a stationary fallback uses spatial quality; unavailable
+    produces no request. Missing, stale, reset-invalidated, mismatched, or invalid same-clock motion
+    produces the named stationary fallback; timestamps from different `LoopClock` instances remain
+    a wiring error and throw. Missing/stale/non-finite spatial geometry, a model distance outside its
+    explicitly declared domain, or a non-finite/out-of-software-domain table result produces
+    `UNAVAILABLE`, the configured finite flywheel/hood fallback intents, and
+    `PlantTargetRequest.none(...)`.
+  - **Illustrative model boundary:** the Reference `Config` owns the fixed field point, spatial and
+    motion gates, fixed flight time, explicit interpolation domain, immutable flywheel/hood tables,
+    finite flywheel-velocity and logical hood-position domains, and finite fallback intents inside
+    those software domains. Defaults are compiling software numbers labeled uncalibrated and are not
+    physical safety facts. The model assumes a stationary field target and a shooter at robot
+    center; articulated/off-center velocity, projectile drop, spin, filtering, sensor latency
+    compensation, empirical tuning, and physical readiness are excluded. The example reports intent
+    and planner resolution, never `ready`, hit probability, or shot correctness.
+  - **Selected owner 2 -- bounded realization:** add optional example-only
+    `ReferenceTurretMechanism`, a `RobotProgram.Output` constructed from `HardwareMap`, its copied
+    data-only `Config`, and the coordinated-shot service. It privately constructs and exclusively
+    owns a no-reset Source projection of `service.solution().turretRequest` and the live
+    `PlantTargets.plan(...) -> nearest-to-measurement -> reject-unreachable -> age/quality acceptance
+    -> hold-measured-on-entry -> bounded periodic PositionPlant` graph. Its `Config` supplies one
+    finite initial hold target inside the Plant range for the case where entry measurement is
+    unavailable; that value is a software fallback, not a physical safety claim. Geometry age/
+    quality in the service determines whether all three model intents may exist. The mechanism
+    reuses those exact validated values through a package-private sibling seam for final planner
+    observation acceptance; there is no second public freshness/quality configuration that can
+    silently disagree. The mechanism updates its Plant once in the managed output phase, exposes
+    only the last truthful `PlantTargetResolution` for observation, and stops the Plant. It does not
+    retain a peer target, write the motor imperatively, or treat planner selection/fallback as
+    physical arrival. Its encoder-zero assumption and full-turn equivalence within finite cable
+    bounds remain explicit physical facts adopters must validate.
+  - **Managed composition and bounded lesson:** the documented hardware-free scenario registers the
+    localization owner first, then the coordinated-shot service, then the turret output. At START
+    the service publishes before `RobotProgram` performs its first output realization; each active
+    cycle preserves service-before-output order; cleanup stops the output before clearing upstream
+    service state. The scenario uses `FtcTestHardware` through the ordinary mechanism constructor,
+    records flywheel and hood intents from the exact published `Solution`, and never introduces a
+    second OpMode, Pedro route, generic route callback, capability facade, presenter hierarchy, or
+    three complete mechanisms. The ordinary `ReferenceRobot`, `ReferenceProfile`,
+    `ReferenceCapabilities`, TeleOp, and Auto remain unchanged and do not require this optional
+    hardware. Because the service exposes no Source, sampling after stop can return only its cached
+    unavailable `Solution`; it cannot re-enter calculation or borrowed localization.
+  - **Alternatives and student cost:** documentation-only is the smallest edit but leaves the
+    central composition uncompiled and untested. A test-only `Plants.fromOutputs()` scenario proves
+    mechanics through an advanced seam rather than teaching ordinary FTC ownership. Extending the
+    existing Reference launcher mixes a paired-flywheel/task lesson with new localization, model,
+    periodic-turret, and hardware assumptions. Modifying Phoenix turns an architecture example into
+    season production policy. A standalone robot/OpMode, generic coordinator/`ShotSolution` API, or
+    moving-shot physics layer introduces substantially more owners and unsupported claims. The
+    selected two-owner, unwired Reference case study adds exactly the calculation owner and final
+    realization owner that have independent lifecycle value; the public surface has one constructor
+    per owner, two nested data configs, one immutable solution vocabulary, and no builder/facade/
+    compatibility layer.
+  - **Documentation scope:** extend `Hardware-free Reference Scenarios.md` with the composition and
+    evidence boundary; add only catalog links in the examples README and
+    `Framework Components Through Examples.md`; remove the obsolete standalone spatial-derived
+    request snippet in `Mechanism Target Planning.md` and replace it with a compiling excerpt/link to
+    this example's translation selection, explicit observation timestamp, robot-owned absolute
+    kinematics, and observed equivalent-position request; and replace the direct
+    `turretMotor.setPower(...)` quick path in `Spatial Queries.md` with the bounded Plant-owned
+    realization excerpt/link. Do not add a top-level navigation category.
+  - **Deterministic proof plan:** focused tests cover exact same-object/same-cycle publication,
+    atomic failure and direct retry, `+X` forward/`+Y` left/CCW-positive signs, moving compensation,
+    every stationary-fallback class and recovery, unavailable/fail-closed cases, reset and borrowed-
+    owner boundaries, planner freshness/quality, nearest reachable periodic equivalent,
+    unreachable-family hold behavior, truthful fallback-versus-intent resolution, managed start/
+    update/stop order, and recorded hardware-free output. The Gate 1 baseline passed 77 tests across
+    `LoopTimestampTest`, `SourceTransactionalTest`, `MotionDeltaTest`, `SpatialTimestampTest`,
+    `SpatialQueryResetOwnershipTest`, `PlantTargetsPeriodicPlannerTest`,
+    `PlantTargetsPlannerFreshnessTest`, and `MappedPlantToleranceTest`; the only messages were the
+    repository's existing Java 8-on-JDK-21 deprecation warnings.
+  - **Framework Principles check:** **Pass.** The design is non-blocking and uses the managed one
+    `LoopClock`; preserves same-cycle source/query semantics and atomic snapshots; keeps field/model
+    policy in robot example code; keeps localization ownership borrowed and explicit; gives the
+    final Plant graph, update order, and stop to one output owner; uses the FTC SDK only at the FTC
+    example edge; keeps the Plant source-driven, finite, periodic, bounded, referenced, and total;
+    and makes documentation/tests part of the example contract. A protected-core abstraction would
+    have one example caller and would duplicate existing timestamp, Source, request, and planner
+    guarantees, so it fails the layer-value test.
+  - **Gate 2 boundary:** implementation requires explicit approval of this two-owner optional
+    Reference design. Approval authorizes only the two example main classes, their focused tests,
+    the bounded documentation repairs/links above, tracker updates, and proportional software
+    verification on `codex/example-03-timestamped-mechanism-coordination`. It does not authorize a
+    framework API, Phoenix/Pedro/ordinary-Reference behavior, new OpMode, physical tuning or claims,
+    Android Studio launch, staging, commit, push, pull request, merge, AUDIT-01, or another item.
+- **Gate 2 approval and start (2026-08-30):** the user approved **“EXAMPLE-03 optional
+  ReferenceCoordinatedShotService and ReferenceTurretMechanism design, with one translation-only
+  timestamped solution, explicit stationary/unavailable fallback, bounded periodic turret planning,
+  a hardware-free Reference scenario, targeted guide repairs, and no new framework API.”** After a
+  fresh fetch, branch `codex/example-03-timestamped-mechanism-coordination` and `origin/master` both
+  resolve to `825935f3a835d7bb3366862d4c1012462d56b1fc`; EXAMPLE-03 is **In progress**. Gate 2 is
+  limited to the approved two example owners, focused tests/scenario, synchronized targeted guides,
+  tracker evidence, and software verification. Physical claims, ordinary Reference/Phoenix/Pedro
+  behavior, framework APIs, staging, publication, AUDIT-01, and another item remain excluded.
+- **Gate 2 implementation and verification (2026-08-30):** **Verifying; Android Studio review is
+  required before publication authorization.** The approved optional example is implemented on
+  `codex/example-03-timestamped-mechanism-coordination`, still based on
+  `825935f3a835d7bb3366862d4c1012462d56b1fc`. Nothing is staged, committed, pushed, or published.
+  - **Implemented owners:** `ReferenceCoordinatedShotService` borrows one `MotionPredictor`, owns
+    one translation-only query and memoized calculation, and atomically publishes one immutable
+    moving/stationary/unavailable turret/flywheel/hood solution. `ReferenceTurretMechanism` owns the
+    no-reset cached-request projection, nearest reachable full-turn-equivalent selection, finite
+    cable bounds, measured-entry hold, FTC motor, PositionPlant update, resolution observation, and
+    terminal stop. The ordinary Reference robot and every protected framework API remain unchanged.
+  - **Adversarial corrections:** review found that a moving result accepted with
+    `motionMinQuality < spatialMinQuality` could be rejected by the sibling turret gate. The shared
+    package-private planner threshold now uses the lower validated input threshold, with a focused
+    regression proving the coordinated request remains accepted. Review also found that the first
+    scenario manually invoked lifecycle methods; it now uses an actual `FtcRobotOpMode`/
+    `RobotProgram` host with localization declared before the shot service and the turret declared
+    as its output, and observes managed START, LOOP, exact-start realization, downstream-first
+    cleanup, and idempotent STOP. Guide wording now distinguishes same-clock degraded motion from a
+    different-`LoopClock` wiring error and includes lifecycle `UNAVAILABLE` states.
+  - **Public-construction-path audit:** compiled-class inspection shows exactly one public owner
+    constructor for each example. The service additionally exposes only `solution()` and its
+    required Service lifecycle; the mechanism exposes only `targetResolution()` and its required
+    Output lifecycle. Each nested Config has only `defaults()` as its public construction path; the
+    immutable Solution has no public constructor. The synchronization accessors remain package-
+    private, no Source/reset surface escapes, and no builder, facade, compatibility path, framework
+    type, OpMode, or ordinary robot surface was added.
+  - **Synchronized lesson:** the hardware-free scenario and two drive/vision guides now use the
+    compiling translation/timestamp/request/planner ownership path; the example catalogs link it.
+    They explicitly call every default illustrative and unwired, separate planner intent from
+    physical arrival, and disclaim shot accuracy, readiness, encoder zero, cable bounds, collision
+    safety, and mechanism response.
+  - **Deterministic evidence:** the focused targeting contracts plus `DocumentationLinksTest`
+    passed **29/29** tests. Full `:TeamCode:testDebugUnitTest` passed **2,129/2,129** tests across
+    **232** suites with zero failures, errors, or skips; `:TeamCode:compileDebugJavaWithJavac`
+    passed. Diff/whitespace, stale-snippet, blocking-loop, direct-motor-write, changed-file, and
+    public-surface checks are clean. Output contains only the repository's existing Java 8-on-JDK
+    21 source/target deprecation warnings.
+  - **Framework Principles re-check:** **Pass.** Work stays non-blocking on the managed one-clock
+    lifecycle, preserves same-cycle cached evidence, keeps field/model policy in optional robot
+    example code, leaves localization borrowed, gives final actuation/update/stop to one bounded
+    source-driven Plant owner, keeps FTC types at the robot/FTC edge, and changes no protected-core
+    production API. Software tests cannot validate projectile physics, calibration, physical
+    readiness, homing/reference truth, cable routing, collision limits, or real hardware response.
+  - **Android Studio review handoff:** inspect the service's current-axis signs, exact co-temporal
+    timestamp rule, fallback reasons, atomic cached publication, and borrowed-predictor lifecycle;
+    inspect the turret's full-turn equivalence, finite bounds, unavailable hold, encoder-zero
+    assumption, final Plant ownership, and stop; then inspect all three targeting tests and the
+    hardware-free scenario claims. Real-robot tuning and safety validation are a later adopter gate,
+    not completion evidence for this software-reference item.
+- **Gate 3 review and publication authorization (2026-08-30):** the user supplied the exact
+  combined authorization: **“EXAMPLE-03 looks good. Authorize committing the reviewed EXAMPLE-03
+  diff on codex/example-03-timestamped-mechanism-coordination, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This records Android Studio approval of the complete reviewed eleven-file diff and
+  authorizes only its commit, push, pull request, and merge into the named destination. EXAMPLE-03
+  is **Done**. It does not start AUDIT-01 or another item, add a framework API, wire the optional
+  example into the ordinary Reference robot, or convert software evidence into a physical shot,
+  calibration, cable-bound, encoder-reference, mechanism-response, or safety claim.
 
 ### BOUNDARY-01 - FTC boundary enforcement
 
