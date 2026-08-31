@@ -1,0 +1,721 @@
+package edu.ftcsushi.fw.ftc;
+
+import com.qualcomm.robotcore.hardware.AnalogInput;
+import com.qualcomm.robotcore.hardware.ColorSensor;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DigitalChannel;
+import com.qualcomm.robotcore.hardware.DistanceSensor;
+import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
+import com.qualcomm.robotcore.hardware.NormalizedRGBA;
+import com.qualcomm.robotcore.hardware.TouchSensor;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
+
+import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+
+import edu.ftcsushi.fw.core.color.NormalizedRgba;
+import edu.ftcsushi.fw.core.color.Rgba;
+import edu.ftcsushi.fw.core.debug.DebugSink;
+import edu.ftcsushi.fw.core.hal.Direction;
+import edu.ftcsushi.fw.core.source.BooleanSource;
+import edu.ftcsushi.fw.core.source.ScalarSource;
+import edu.ftcsushi.fw.core.source.Source;
+import edu.ftcsushi.fw.core.time.LoopClock;
+
+/**
+ * FTC-boundary adapters from FTC SDK devices to Sushi sources.
+ *
+ * <p>This class mirrors {@link FtcHardware}, but for <b>sensor inputs</b> instead of actuator
+ * outputs. Returned sources publish one successful memoized observation per
+ * {@link LoopClock#cycle()}, even when multiple consumers read them during the same loop. A sensor
+ * read that throws does not publish a default or prior value for the new cycle and remains eligible
+ * for a same-cycle retry; after one success, every consumer receives that exact observation.</p>
+ *
+ * <h2>Typical usage</h2>
+ *
+ * <pre>{@code
+ * ScalarSource armTicks = FtcSensors.motorPositionTicks(hardwareMap, "arm");
+ * ScalarSource intakeCurrentAmps = FtcSensors.motorCurrentAmps(hardwareMap, "intake");
+ * BooleanSource limit = FtcSensors.digitalLow(hardwareMap, "armLimit");
+ * Source<NormalizedRgba> markColor = FtcSensors.normalizedRgba(hardwareMap, "markSensor");
+ * }</pre>
+ */
+public final class FtcSensors {
+
+    private FtcSensors() {
+        // utility class
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Battery / supply voltage
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized scalar source that reads the robot battery voltage from the FTC hardware map.
+     *
+     * <p>The FTC SDK may expose more than one {@link VoltageSensor} when a robot has multiple hubs.
+     * Sushi returns the lowest positive finite reading because that is the most conservative estimate
+     * of the supply voltage available to actuators. Readings that are {@code NaN}, infinite, zero, or
+     * negative are ignored. If no usable reading exists, the source returns {@link Double#NaN} so the
+     * consumer can choose an explicit fallback policy.</p>
+     *
+     * @param hw FTC hardware map whose voltage sensors should be sampled
+     * @return memoized scalar source producing battery voltage in volts
+     */
+    public static ScalarSource batteryVoltage(HardwareMap hw) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        return batteryVoltage(hw.voltageSensor);
+    }
+
+    /**
+     * Create a memoized scalar source that reads the lowest positive finite voltage from a set of FTC
+     * voltage sensors.
+     *
+     * <p>This overload is useful for tests, simulators, or advanced hardware wrappers that want to pass
+     * a specific sensor collection instead of a full {@link HardwareMap}.</p>
+     *
+     * @param voltageSensors voltage sensors to sample
+     * @return memoized scalar source producing supply voltage in volts, or {@link Double#NaN} if none
+     * are usable
+     */
+    public static ScalarSource batteryVoltage(Iterable<? extends VoltageSensor> voltageSensors) {
+        if (voltageSensors == null) {
+            throw new IllegalArgumentException("voltageSensors is required");
+        }
+
+        return new ScalarSource() {
+            private double lastVoltage = Double.NaN;
+            private int lastSensorCount;
+            private int lastUsableSensorCount;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                double best = Double.POSITIVE_INFINITY;
+                int sensorCount = 0;
+                int usableCount = 0;
+
+                for (VoltageSensor sensor : voltageSensors) {
+                    if (sensor == null) {
+                        continue;
+                    }
+                    sensorCount++;
+                    double voltage = sensor.getVoltage();
+                    if (Double.isFinite(voltage) && voltage > 0.0) {
+                        usableCount++;
+                        best = Math.min(best, voltage);
+                    }
+                }
+
+                lastSensorCount = sensorCount;
+                lastUsableSensorCount = usableCount;
+                lastVoltage = usableCount > 0 ? best : Double.NaN;
+                return lastVoltage;
+            }
+
+            @Override
+            public void reset() {
+                lastVoltage = Double.NaN;
+                lastSensorCount = 0;
+                lastUsableSensorCount = 0;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "batteryVoltage" : prefix;
+                dbg.addData(p + ".class", "FtcBatteryVoltageSource")
+                        .addData(p + ".lastVoltage", lastVoltage)
+                        .addData(p + ".lastSensorCount", lastSensorCount)
+                        .addData(p + ".lastUsableSensorCount", lastUsableSensorCount);
+            }
+        }.memoized();
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Distance sensors
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized scalar source that reads distance in the requested FTC unit.
+     *
+     * @param sensor FTC distance sensor to sample
+     * @param unit FTC distance unit to request from the SDK
+     * @return memoized scalar source producing distance readings in {@code unit}
+     */
+    public static ScalarSource distance(DistanceSensor sensor, DistanceUnit unit) {
+        if (sensor == null) {
+            throw new IllegalArgumentException("sensor is required");
+        }
+        if (unit == null) {
+            throw new IllegalArgumentException("unit is required");
+        }
+        return ScalarSource.of(() -> sensor.getDistance(unit)).memoized();
+    }
+
+    /**
+     * Create a memoized scalar source that reads distance in centimeters.
+     *
+     * @param sensor FTC distance sensor to sample
+     * @return memoized scalar source producing distance readings in centimeters
+     */
+    public static ScalarSource distanceCm(DistanceSensor sensor) {
+        return distance(sensor, DistanceUnit.CM);
+    }
+
+    /**
+     * Create a memoized scalar source that reads distance in inches.
+     *
+     * @param sensor FTC distance sensor to sample
+     * @return memoized scalar source producing distance readings in inches
+     */
+    public static ScalarSource distanceIn(DistanceSensor sensor) {
+        return distance(sensor, DistanceUnit.INCH);
+    }
+
+    /**
+     * Create a memoized scalar source that reads distance in centimeters from a named FTC device.
+     *
+     * @param hw FTC hardware map used to look up the sensor
+     * @param name configured hardware name of the {@link DistanceSensor}
+     * @return memoized scalar source producing centimeter readings from the named sensor
+     */
+    public static ScalarSource distanceCm(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return distanceCm(hw.get(DistanceSensor.class, name));
+    }
+
+    /**
+     * Create a memoized scalar source that reads distance in inches from a named FTC device.
+     *
+     * @param hw FTC hardware map used to look up the sensor
+     * @param name configured hardware name of the {@link DistanceSensor}
+     * @return memoized scalar source producing inch readings from the named sensor
+     */
+    public static ScalarSource distanceIn(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return distanceIn(hw.get(DistanceSensor.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Color sensors
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized source of raw RGBA channels from an FTC {@link ColorSensor}.
+     *
+     * <p>The returned value uses Sushi {@link Rgba} so robot code does not depend on FTC SDK color
+     * container types. Channel values are sensor-native integers and may not be limited to
+     * {@code 0..255}.</p>
+     *
+     * @param sensor FTC color sensor to sample
+     * @return memoized source of raw RGBA readings
+     */
+    public static Source<Rgba> rgba(ColorSensor sensor) {
+        if (sensor == null) {
+            throw new IllegalArgumentException("sensor is required");
+        }
+        return new Source<Rgba>() {
+            @Override
+            public Rgba get(LoopClock clock) {
+                return new Rgba(sensor.red(), sensor.green(), sensor.blue(), sensor.alpha());
+            }
+        }.memoized();
+    }
+
+    /**
+     * Create a memoized source of raw RGBA channels from a named FTC {@link ColorSensor}.
+     *
+     * @param hw FTC hardware map used to look up the sensor
+     * @param name configured hardware name of the color sensor
+     * @return memoized source of raw RGBA readings from the named sensor
+     */
+    public static Source<Rgba> rgba(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return rgba(hw.get(ColorSensor.class, name));
+    }
+
+    /**
+     * Create a memoized source of normalized RGBA channels from an FTC
+     * {@link NormalizedColorSensor}.
+     *
+     * <p>This is often the best starting point for color classification because the FTC SDK normalizes
+     * the channels into a stable range (typically {@code 0..1}) and exposes sensor gain control.
+     * The alpha channel is commonly useful as an overall brightness or confidence signal.</p>
+     *
+     * @param sensor FTC normalized color sensor to sample
+     * @return memoized source of normalized RGBA readings
+     */
+    public static Source<NormalizedRgba> normalizedRgba(NormalizedColorSensor sensor) {
+        if (sensor == null) {
+            throw new IllegalArgumentException("sensor is required");
+        }
+        return new Source<NormalizedRgba>() {
+            @Override
+            public NormalizedRgba get(LoopClock clock) {
+                NormalizedRGBA c = sensor.getNormalizedColors();
+                return new NormalizedRgba(c.red, c.green, c.blue, c.alpha);
+            }
+        }.memoized();
+    }
+
+    /**
+     * Create a memoized source of normalized RGBA channels from a named FTC
+     * {@link NormalizedColorSensor}.
+     *
+     * @param hw FTC hardware map used to look up the sensor
+     * @param name configured hardware name of the normalized color sensor
+     * @return memoized source of normalized RGBA readings from the named sensor
+     */
+    public static Source<NormalizedRgba> normalizedRgba(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return normalizedRgba(hw.get(NormalizedColorSensor.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Touch sensors
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized boolean source that is true while the touch sensor is pressed.
+     *
+     * @param sensor FTC touch sensor to sample
+     * @return memoized boolean source that mirrors {@link TouchSensor#isPressed()}
+     */
+    public static BooleanSource touchPressed(TouchSensor sensor) {
+        if (sensor == null) {
+            throw new IllegalArgumentException("sensor is required");
+        }
+        return BooleanSource.of(sensor::isPressed).memoized();
+    }
+
+    /**
+     * Create a memoized boolean source that is true while a named FTC touch sensor is pressed.
+     *
+     * @param hw FTC hardware map used to look up the sensor
+     * @param name configured hardware name of the touch sensor
+     * @return memoized boolean source that mirrors the named sensor's pressed state
+     */
+    public static BooleanSource touchPressed(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return touchPressed(hw.get(TouchSensor.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Digital inputs
+    // ------------------------------------------------------------------------------------------------
+
+    private static DigitalChannel requireDigitalInput(DigitalChannel ch) {
+        if (ch == null) {
+            throw new IllegalArgumentException("digital channel is required");
+        }
+        ch.setMode(DigitalChannel.Mode.INPUT);
+        return ch;
+    }
+
+    /**
+     * Create a memoized boolean source that reports whether a digital input pin is HIGH.
+     *
+     * <p>FTC {@link DigitalChannel#getState()} returns {@code true} when the pin is HIGH. Some
+     * sensors are wired active-low, so prefer {@link #digitalLow(DigitalChannel)} when LOW means
+     * "active".</p>
+     *
+     * @param channel FTC digital channel configured for input use
+     * @return memoized boolean source that is true when the input pin is HIGH
+     */
+    public static BooleanSource digitalHigh(DigitalChannel channel) {
+        DigitalChannel ch = requireDigitalInput(channel);
+        return BooleanSource.of(ch::getState).memoized();
+    }
+
+    /**
+     * Create a memoized boolean source that reports whether a digital input pin is LOW.
+     *
+     * @param channel FTC digital channel configured for input use
+     * @return memoized boolean source that is true when the input pin is LOW
+     */
+    public static BooleanSource digitalLow(DigitalChannel channel) {
+        DigitalChannel ch = requireDigitalInput(channel);
+        return BooleanSource.of(() -> !ch.getState()).memoized();
+    }
+
+    /**
+     * Create a memoized boolean source that reports whether a named digital input is HIGH.
+     *
+     * @param hw FTC hardware map used to look up the digital channel
+     * @param name configured hardware name of the digital channel
+     * @return memoized boolean source that is true when the named input pin is HIGH
+     */
+    public static BooleanSource digitalHigh(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return digitalHigh(hw.get(DigitalChannel.class, name));
+    }
+
+    /**
+     * Create a memoized boolean source that reports whether a named digital input is LOW.
+     *
+     * @param hw FTC hardware map used to look up the digital channel
+     * @param name configured hardware name of the digital channel
+     * @return memoized boolean source that is true when the named input pin is LOW
+     */
+    public static BooleanSource digitalLow(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return digitalLow(hw.get(DigitalChannel.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Analog inputs
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized scalar source that reads analog voltage.
+     *
+     * @param input FTC analog input to sample
+     * @return memoized scalar source producing voltage in volts
+     */
+    public static ScalarSource analogVoltage(AnalogInput input) {
+        if (input == null) {
+            throw new IllegalArgumentException("input is required");
+        }
+        return ScalarSource.of(input::getVoltage).memoized();
+    }
+
+    /**
+     * Create a memoized scalar source that reads analog voltage from a named FTC device.
+     *
+     * @param hw FTC hardware map used to look up the analog input
+     * @param name configured hardware name of the analog input
+     * @return memoized scalar source producing voltage in volts
+     */
+    public static ScalarSource analogVoltage(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return analogVoltage(hw.get(AnalogInput.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Encoder / motor measurements
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized scalar source that reads FTC motor current in amps.
+     *
+     * <p>The source requests {@link CurrentUnit#AMPS} from
+     * {@link DcMotorEx#getCurrent(CurrentUnit)}. It publishes one normally returned SDK observation
+     * per {@link LoopClock#cycle()} between resets, so every same-cycle consumer of this source sees
+     * the same value. An escaping {@link RuntimeException} is not cached and remains eligible for a
+     * later nonrecursive same-cycle retry. {@link ScalarSource#reset()} clears only the software memo
+     * and permits a new read, even in the same cycle; it does not reset or configure the motor.</p>
+     *
+     * <p>Returned values are forwarded without validation or substitution. In particular, a
+     * normally returned zero may be a real observation or an indistinguishable fallback from the
+     * pinned FTC SDK's Lynx controller implementation, so zero alone is not proof that current
+     * sensing is available. This adapter does not configure current alerts or choose thresholds,
+     * filtering, or response policy. Construct this source once per owning mechanism and share it
+     * among consumers.</p>
+     *
+     * @param motor FTC extended motor whose current should be sampled
+     * @return memoized scalar source producing current in amps
+     * @throws IllegalArgumentException if {@code motor} is {@code null}
+     */
+    public static ScalarSource motorCurrentAmps(DcMotorEx motor) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        return ScalarSource.of(() -> motor.getCurrent(CurrentUnit.AMPS)).memoized();
+    }
+
+    /**
+     * Create a memoized scalar source that reads current in amps from a named FTC motor.
+     *
+     * <p>The adapter performs the {@link DcMotorEx} lookup eagerly during construction and does not
+     * invoke {@link DcMotorEx#getCurrent(CurrentUnit)} until a consumer reads the returned source;
+     * any device initialization caused by lookup remains {@link HardwareMap} behavior. Sampling,
+     * failure, reset, and policy semantics are identical to
+     * {@link #motorCurrentAmps(DcMotorEx)}.</p>
+     *
+     * <p>The adapter validates {@code hw} before {@code name}, passes the exact name to
+     * {@link HardwareMap#get(Class, String)} without trimming, and propagates lookup, missing-device,
+     * and wrong-type failures unchanged.</p>
+     *
+     * @param hw FTC hardware map used to look up the extended motor
+     * @param name configured hardware name of the extended motor
+     * @return memoized scalar source producing current in amps from the named motor
+     * @throws IllegalArgumentException if {@code hw} or {@code name} is {@code null}, or if the
+     * hardware-map lookup rejects the name or device type
+     */
+    public static ScalarSource motorCurrentAmps(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return motorCurrentAmps(hw.get(DcMotorEx.class, name));
+    }
+
+    /**
+     * Create a memoized scalar source that reads an FTC motor or encoder position in native ticks.
+     *
+     * <p>This is the most direct raw readback helper for internal or external encoders exposed through
+     * the FTC motor API. The returned value is always in encoder ticks.</p>
+     *
+     * @param motor FTC motor or encoder-backed device to sample
+     * @return memoized scalar source producing encoder position in ticks
+     */
+    public static ScalarSource motorPositionTicks(DcMotor motor) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        return ScalarSource.of(motor::getCurrentPosition).memoized();
+    }
+
+    /**
+     * Create a memoized scalar source that reads position in native ticks and optionally flips the
+     * sign to match a caller-chosen logical direction.
+     *
+     * @param motor     FTC motor or encoder-backed device to sample
+     * @param direction logical direction to apply to the reported ticks
+     * @return memoized scalar source producing encoder position in ticks, optionally sign-flipped
+     */
+    public static ScalarSource motorPositionTicks(DcMotor motor, Direction direction) {
+        if (direction == null) {
+            throw new IllegalArgumentException("direction is required");
+        }
+        ScalarSource base = motorPositionTicks(motor);
+        return direction == Direction.REVERSE ? base.scaled(-1.0) : base;
+    }
+
+    /**
+     * Create a memoized scalar source that reads position in native ticks from a named FTC motor or
+     * external encoder device.
+     *
+     * @param hw   FTC hardware map used to look up the motor or encoder-backed device
+     * @param name configured hardware name of the motor or encoder-backed device
+     * @return memoized scalar source producing encoder position in ticks
+     */
+    public static ScalarSource motorPositionTicks(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return motorPositionTicks(hw.get(DcMotor.class, name));
+    }
+
+    /**
+     * Create a memoized scalar source that reads position in native ticks from a named FTC motor or
+     * external encoder device and optionally flips the sign to match a caller-chosen logical
+     * direction.
+     *
+     * @param hw        FTC hardware map used to look up the motor or encoder-backed device
+     * @param name      configured hardware name of the motor or encoder-backed device
+     * @param direction logical direction to apply to the reported ticks
+     * @return memoized scalar source producing encoder position in ticks, optionally sign-flipped
+     */
+    public static ScalarSource motorPositionTicks(HardwareMap hw, String name, Direction direction) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return motorPositionTicks(hw.get(DcMotor.class, name), direction);
+    }
+
+    /**
+     * Create an FTC-boundary position source that stays continuous across observed signed 32-bit
+     * encoder-counter rollover.
+     *
+     * <p>This package-private source supports position-derived external-encoder velocity in
+     * {@link FtcActuators}. Each accepted sample adds the signed 32-bit modular delta to a wider
+     * counter, so a transition between {@link Integer#MAX_VALUE} and {@link Integer#MIN_VALUE} does
+     * not appear as a multi-billion-tick jump. Like every sampled modular counter, it assumes the
+     * physical count changes by fewer than 2<sup>31</sup> ticks between accepted loop samples. It
+     * does not infer or compensate for an out-of-band hardware counter reset.</p>
+     *
+     * <p>Repeated reads in one {@link LoopClock#cycle()} return the same value without reading the
+     * device again. {@link ScalarSource#reset()} discards the software continuity history; it does
+     * not change the FTC device's counter.</p>
+     */
+    static ScalarSource continuousMotorPositionTicks(DcMotor motor, Direction direction) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        if (direction == null) {
+            throw new IllegalArgumentException("direction is required");
+        }
+        final long directionSign = direction == Direction.REVERSE ? -1L : 1L;
+        return new ScalarSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean initialized;
+            private int previousRawTicks;
+            private long continuousTicks;
+            private double last;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                long cycle = clock.cycle();
+                if (cycle == lastCycle) {
+                    return last;
+                }
+
+                int rawTicks = motor.getCurrentPosition();
+                if (!initialized) {
+                    initialized = true;
+                    continuousTicks = rawTicks;
+                } else {
+                    // Java int overflow gives the desired signed modular-32 delta at rollover.
+                    int deltaTicks = rawTicks - previousRawTicks;
+                    continuousTicks += deltaTicks;
+                }
+                previousRawTicks = rawTicks;
+                last = directionSign * (double) continuousTicks;
+                lastCycle = cycle;
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                lastCycle = Long.MIN_VALUE;
+                initialized = false;
+                previousRawTicks = 0;
+                continuousTicks = 0L;
+                last = 0.0;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "continuousEncoderTicks" : prefix;
+                dbg.addData(p + ".class", "ContinuousFtcEncoderPosition")
+                        .addData(p + ".initialized", initialized)
+                        .addData(p + ".rawTicks", previousRawTicks)
+                        .addData(p + ".continuousTicks", continuousTicks)
+                        .addData(p + ".logicalTicks", last)
+                        .addData(p + ".direction", direction);
+            }
+        };
+    }
+
+    /** Resolve a named FTC encoder device for {@link #continuousMotorPositionTicks(DcMotor, Direction)}. */
+    static ScalarSource continuousMotorPositionTicks(HardwareMap hw, String name, Direction direction) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return continuousMotorPositionTicks(hw.get(DcMotor.class, name), direction);
+    }
+
+    /**
+     * Create a memoized scalar source that reads FTC motor velocity in native ticks per second.
+     *
+     * @param motor FTC motor or encoder-backed device that exposes velocity through {@link DcMotorEx}
+     * @return memoized scalar source producing velocity in ticks per second
+     */
+    public static ScalarSource motorVelocityTicksPerSec(DcMotorEx motor) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        return ScalarSource.of(motor::getVelocity).memoized();
+    }
+
+    /**
+     * Create a memoized scalar source that reads velocity in native ticks per second and optionally
+     * flips the sign to match a caller-chosen logical direction.
+     *
+     * @param motor     FTC motor or encoder-backed device that exposes velocity through {@link DcMotorEx}
+     * @param direction logical direction to apply to the reported velocity
+     * @return memoized scalar source producing velocity in ticks per second, optionally sign-flipped
+     */
+    public static ScalarSource motorVelocityTicksPerSec(DcMotorEx motor, Direction direction) {
+        if (direction == null) {
+            throw new IllegalArgumentException("direction is required");
+        }
+        ScalarSource base = motorVelocityTicksPerSec(motor);
+        return direction == Direction.REVERSE ? base.scaled(-1.0) : base;
+    }
+
+    /**
+     * Create a memoized scalar source that reads velocity in native ticks per second from a named FTC
+     * motor or encoder-backed device.
+     *
+     * @param hw   FTC hardware map used to look up the motor or encoder-backed device
+     * @param name configured hardware name of the motor or encoder-backed device
+     * @return memoized scalar source producing velocity in ticks per second
+     */
+    public static ScalarSource motorVelocityTicksPerSec(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return motorVelocityTicksPerSec(hw.get(DcMotorEx.class, name));
+    }
+
+    /**
+     * Create a memoized scalar source that reads velocity in native ticks per second from a named FTC
+     * motor or encoder-backed device and optionally flips the sign to match a caller-chosen logical
+     * direction.
+     *
+     * @param hw        FTC hardware map used to look up the motor or encoder-backed device
+     * @param name      configured hardware name of the motor or encoder-backed device
+     * @param direction logical direction to apply to the reported velocity
+     * @return memoized scalar source producing velocity in ticks per second, optionally sign-flipped
+     */
+    public static ScalarSource motorVelocityTicksPerSec(HardwareMap hw, String name, Direction direction) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return motorVelocityTicksPerSec(hw.get(DcMotorEx.class, name), direction);
+    }
+}

@@ -1,0 +1,406 @@
+package edu.ftcsushi.fw.integrations.pedro;
+
+import com.pedropathing.geometry.PedroCoordinates;
+import com.pedropathing.geometry.Pose;
+import com.pedropathing.localization.Localizer;
+import com.pedropathing.math.Vector;
+
+import java.util.Objects;
+
+import edu.ftcsushi.fw.core.geometry.Pose2d;
+import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
+import edu.ftcsushi.fw.ftc.localization.PinpointKinematicSnapshot;
+import edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor;
+
+/**
+ * Passive Pedro Localizer view over Sushi's one Pinpoint hardware owner.
+ *
+ * <p>This type deliberately has no hardware update operation. The Sushi localization lane polls
+ * its predictor first; immediately before the owned Pedro heartbeat, the adapter supplies the same
+ * {@link LoopClock}. Pedro then consumes only the predictor's immutable same-cycle snapshot.</p>
+ */
+final class PedroPathingPassiveLocalizer implements Localizer {
+
+    /** Narrow read/rebase seam that makes a second hardware poll impossible in this class. */
+    interface PredictorAccess {
+        Sample currentSnapshot();
+
+        void setPose(Pose2d sushiFieldToRobotPose);
+
+        default String lastDeviceStatusSummary() {
+            return "unavailable";
+        }
+    }
+
+    /** Internal immutable copy of the predictor values required by Pedro. */
+    static final class Sample {
+        final Pose2d sushiFieldToRobotPose;
+        final boolean hasPose;
+        final boolean hasVelocity;
+        final long cycle;
+        final LoopTimestamp timestamp;
+        final double sushiFieldVelocityXInchesPerSec;
+        final double sushiFieldVelocityYInchesPerSec;
+        final double angularVelocityRadPerSec;
+        final double totalHeadingRad;
+
+        Sample(Pose2d sushiFieldToRobotPose,
+               boolean hasPose,
+               boolean hasVelocity,
+               long cycle,
+               LoopTimestamp timestamp,
+               double sushiFieldVelocityXInchesPerSec,
+               double sushiFieldVelocityYInchesPerSec,
+               double angularVelocityRadPerSec,
+               double totalHeadingRad) {
+            this.sushiFieldToRobotPose = sushiFieldToRobotPose;
+            this.hasPose = hasPose;
+            this.hasVelocity = hasVelocity;
+            this.cycle = cycle;
+            this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
+            this.sushiFieldVelocityXInchesPerSec = sushiFieldVelocityXInchesPerSec;
+            this.sushiFieldVelocityYInchesPerSec = sushiFieldVelocityYInchesPerSec;
+            this.angularVelocityRadPerSec = angularVelocityRadPerSec;
+            this.totalHeadingRad = totalHeadingRad;
+        }
+
+        static Sample unavailable() {
+            return new Sample(
+                    Pose2d.zero(),
+                    false,
+                    false,
+                    PinpointKinematicSnapshot.NO_CYCLE,
+                    LoopTimestamp.unavailable(),
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+            );
+        }
+
+        static Sample from(PinpointKinematicSnapshot snapshot) {
+            PinpointKinematicSnapshot value = Objects.requireNonNull(
+                    snapshot,
+                    "PinpointOdometryPredictor returned a null kinematic snapshot"
+            );
+            return new Sample(
+                    value.fieldToRobotPose,
+                    value.hasPose,
+                    value.hasVelocity,
+                    value.cycle,
+                    value.timestamp,
+                    value.fieldVelocityXInchesPerSec,
+                    value.fieldVelocityYInchesPerSec,
+                    value.angularVelocityRadPerSec,
+                    value.totalHeadingRad
+            );
+        }
+    }
+
+    private static final double POSE_SYNC_TOLERANCE = 1e-9;
+
+    private final PredictorAccess predictorAccess;
+    private final PedroFieldTransform fieldTransform;
+
+    private Sample currentSample = Sample.unavailable();
+    private LoopClock preparedClock;
+    private int resetImuCallCount;
+    private boolean constructionComplete;
+    private boolean startPoseAssigned;
+    private boolean heartbeatCompleted;
+
+    PedroPathingPassiveLocalizer(PinpointOdometryPredictor motionPredictor,
+                                 PedroFieldTransform fieldTransform) {
+        this(new PredictorSnapshotAccess(motionPredictor), fieldTransform);
+    }
+
+    PedroPathingPassiveLocalizer(PredictorAccess predictorAccess,
+                                 PedroFieldTransform fieldTransform) {
+        this.predictorAccess = Objects.requireNonNull(predictorAccess, "predictorAccess");
+        this.fieldTransform = Objects.requireNonNull(fieldTransform, "fieldTransform");
+    }
+
+    /** Mark the pinned Follower/PoseTracker construction reset as fully consumed. */
+    void completeFollowerConstruction() {
+        if (constructionComplete) {
+            throw new IllegalStateException("Pedro Follower construction was already completed");
+        }
+        if (resetImuCallCount != 1) {
+            throw new IllegalStateException(
+                    "Pedro 2.1.2 Follower construction must call Localizer.resetIMU() exactly once; "
+                            + "observed " + resetImuCallCount
+            );
+        }
+        constructionComplete = true;
+    }
+
+    /** Validate a starting-pose request before Pedro mutates its PoseTracker state. */
+    void requireStartingPoseAllowed(Pose pedroStartPose) {
+        fieldTransform.pedroToSushiFieldPose(pedroStartPose);
+        if (!constructionComplete) {
+            throw new IllegalStateException(
+                    "Set the Pedro starting pose only after the production Follower is constructed"
+            );
+        }
+        if (heartbeatCompleted) {
+            throw new IllegalStateException(
+                    "Pedro starting pose must be set before the first heartbeat; apply later pose "
+                            + "corrections through the Sushi localization owner"
+            );
+        }
+    }
+
+    /** Bind the shared Sushi cycle that the next pinned Follower update must consume. */
+    void prepareForHeartbeat(LoopClock clock) {
+        if (!constructionComplete) {
+            throw new IllegalStateException("Pedro Follower construction is not complete");
+        }
+        if (!startPoseAssigned) {
+            throw new IllegalStateException(
+                    "Set PedroPathingRuntime.setStartingPose(pedroStartPose) before the first "
+                            + "Pedro heartbeat"
+            );
+        }
+        preparedClock = Objects.requireNonNull(
+                clock,
+                "Pedro passive localization requires the shared LoopClock"
+        );
+    }
+
+    @Override
+    public Pose getPose() {
+        if (!currentSample.hasPose || currentSample.sushiFieldToRobotPose == null) {
+            return nanPedroPose();
+        }
+        return fieldTransform.sushiFieldToPedroPose(currentSample.sushiFieldToRobotPose);
+    }
+
+    @Override
+    public Pose getVelocity() {
+        if (!currentSample.hasVelocity) {
+            return nanPedroPose();
+        }
+        return fieldTransform.sushiFieldVelocityToPedro(
+                currentSample.sushiFieldVelocityXInchesPerSec,
+                currentSample.sushiFieldVelocityYInchesPerSec,
+                currentSample.angularVelocityRadPerSec
+        );
+    }
+
+    @Override
+    public Vector getVelocityVector() {
+        return getVelocity().getAsVector();
+    }
+
+    /**
+     * Establishes one coherent start through the Sushi predictor.
+     *
+     * <p>{@link PinpointOdometryPredictor#setPose(Pose2d)} preserves the physical velocity and
+     * accumulated heading in its cached sample, so this coordinate rebase cannot look like motion.</p>
+     */
+    @Override
+    public void setStartPose(Pose pedroStartPose) {
+        requireStartingPoseAllowed(pedroStartPose);
+        Pose2d requestedSushiPose = fieldTransform.pedroToSushiFieldPose(pedroStartPose);
+        predictorAccess.setPose(requestedSushiPose);
+
+        Sample rebased = requirePoseSample(
+                predictorAccess.currentSnapshot(),
+                "Pinpoint predictor did not publish the requested starting pose"
+        );
+        Pose2d published = rebased.sushiFieldToRobotPose;
+        if (Math.abs(published.xInches - requestedSushiPose.xInches) > POSE_SYNC_TOLERANCE
+                || Math.abs(published.yInches - requestedSushiPose.yInches) > POSE_SYNC_TOLERANCE
+                || Math.abs(Pose2d.wrapToPi(
+                        published.headingRad - requestedSushiPose.headingRad
+                )) > POSE_SYNC_TOLERANCE) {
+            throw new IllegalStateException(
+                    "Pinpoint predictor starting pose does not match the requested Pedro pose; "
+                            + "requested Sushi pose " + requestedSushiPose
+                            + ", published " + published
+            );
+        }
+
+        currentSample = rebased;
+        startPoseAssigned = true;
+    }
+
+    /**
+     * Rejects raw Pedro pose mutation because it bypasses Sushi correction history and timing.
+     */
+    @Override
+    public void setPose(Pose ignored) {
+        throw new IllegalStateException(
+                "Raw Pedro pose resets are unsupported in the shared Sushi runtime; apply the "
+                        + "correction through the Sushi localization owner"
+        );
+    }
+
+    /** Consume one already-polled, exact-cycle Pinpoint sample; never poll hardware here. */
+    @Override
+    public void update() {
+        LoopClock expectedClock = preparedClock;
+        preparedClock = null;
+        if (expectedClock == null) {
+            throw new IllegalStateException(
+                    "Pedro passive Localizer.update() must run through the owned "
+                            + "PedroPathingDriveAdapter heartbeat"
+            );
+        }
+
+        Sample next = Objects.requireNonNull(
+                predictorAccess.currentSnapshot(),
+                "Pinpoint predictor returned a null kinematic snapshot"
+        );
+        if (next.cycle == PinpointKinematicSnapshot.NO_CYCLE
+                || next.cycle != expectedClock.cycle()) {
+            throw new IllegalStateException(
+                    "Pedro requires a current Pinpoint snapshot for Sushi cycle "
+                            + expectedClock.cycle() + ", but found cycle " + next.cycle
+                            + ". Update Sushi localization with the shared LoopClock before the "
+                            + "Pedro drive heartbeat; Pinpoint lastDeviceStatus="
+                            + predictorAccess.lastDeviceStatusSummary()
+            );
+        }
+        if (!next.hasPose) {
+            throw new IllegalStateException(
+                    "Pinpoint pose is unavailable for Sushi cycle " + expectedClock.cycle()
+                            + "; Pedro drive output was stopped; Pinpoint lastDeviceStatus="
+                            + predictorAccess.lastDeviceStatusSummary()
+            );
+        }
+        if (!next.hasVelocity) {
+            throw new IllegalStateException(
+                    "Pinpoint physical velocity is unavailable for Sushi cycle "
+                            + expectedClock.cycle()
+                            + "; wait for a valid post-reset sample before driving Pedro; "
+                            + "Pinpoint lastDeviceStatus="
+                            + predictorAccess.lastDeviceStatusSummary()
+            );
+        }
+        requireFiniteSample(next, expectedClock);
+
+        currentSample = next;
+        heartbeatCompleted = true;
+    }
+
+    @Override
+    public double getTotalHeading() {
+        return currentSample.totalHeadingRad;
+    }
+
+    /** Tuning uses the separately named native-localizer tool runtime. */
+    @Override
+    public double getForwardMultiplier() {
+        return Double.NaN;
+    }
+
+    /** Tuning uses the separately named native-localizer tool runtime. */
+    @Override
+    public double getLateralMultiplier() {
+        return Double.NaN;
+    }
+
+    /** Tuning uses the separately named native-localizer tool runtime. */
+    @Override
+    public double getTurningMultiplier() {
+        return Double.NaN;
+    }
+
+    /**
+     * Suppresses only the one duplicate reset hard-coded by pinned Pedro 2.1.2 construction.
+     */
+    @Override
+    public void resetIMU() {
+        if (!constructionComplete && resetImuCallCount == 0) {
+            resetImuCallCount = 1;
+            return;
+        }
+        throw new IllegalStateException(
+                "Raw Pedro resetIMU() is unsupported after the controlled Sushi Pinpoint INIT "
+                        + "reset; use the Sushi localization owner for a coordinated reset"
+        );
+    }
+
+    /** Sushi's Pinpoint owner is the IMU boundary; Pedro must not reset against a second view. */
+    @Override
+    public double getIMUHeading() {
+        return Double.NaN;
+    }
+
+    @Override
+    public boolean isNAN() {
+        Pose pose = getPose();
+        return !Double.isFinite(pose.getX())
+                || !Double.isFinite(pose.getY())
+                || !Double.isFinite(pose.getHeading());
+    }
+
+    private static Sample requirePoseSample(Sample sample, String message) {
+        if (sample == null || !sample.hasPose || sample.sushiFieldToRobotPose == null) {
+            throw new IllegalStateException(message);
+        }
+        requireFinitePose(sample.sushiFieldToRobotPose, "Pinpoint pose");
+        requireFinite(sample.totalHeadingRad, "Pinpoint totalHeadingRad");
+        return sample;
+    }
+
+    private static void requireFiniteSample(Sample sample, LoopClock clock) {
+        requirePoseSample(sample, "Pinpoint pose is unavailable");
+        if (!Double.isFinite(sample.timestamp.ageSec(clock))) {
+            throw new IllegalStateException(
+                    "Pinpoint sample timestamp is not valid in the current LoopClock reset epoch");
+        }
+        requireFinite(sample.sushiFieldVelocityXInchesPerSec,
+                "Pinpoint fieldVelocityXInchesPerSec");
+        requireFinite(sample.sushiFieldVelocityYInchesPerSec,
+                "Pinpoint fieldVelocityYInchesPerSec");
+        requireFinite(sample.angularVelocityRadPerSec, "Pinpoint angularVelocityRadPerSec");
+    }
+
+    private static void requireFinitePose(Pose2d pose, String name) {
+        requireFinite(pose.xInches, name + ".xInches");
+        requireFinite(pose.yInches, name + ".yInches");
+        requireFinite(pose.headingRad, name + ".headingRad");
+    }
+
+    private static void requireFinite(double value, String name) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalStateException(name + " must be finite, got " + value);
+        }
+    }
+
+    private static Pose nanPedroPose() {
+        return new Pose(
+                Double.NaN,
+                Double.NaN,
+                Double.NaN,
+                PedroCoordinates.INSTANCE
+        );
+    }
+
+    /** Production read/rebase view; it exposes no Pinpoint polling method. */
+    private static final class PredictorSnapshotAccess implements PredictorAccess {
+        private final PinpointOdometryPredictor predictor;
+
+        private PredictorSnapshotAccess(PinpointOdometryPredictor predictor) {
+            this.predictor = Objects.requireNonNull(predictor, "motionPredictor");
+        }
+
+        @Override
+        public Sample currentSnapshot() {
+            return Sample.from(predictor.getKinematicSnapshot());
+        }
+
+        @Override
+        public void setPose(Pose2d sushiFieldToRobotPose) {
+            predictor.setPose(sushiFieldToRobotPose);
+        }
+
+        @Override
+        public String lastDeviceStatusSummary() {
+            return predictor.lastDeviceStatus().name();
+        }
+    }
+}

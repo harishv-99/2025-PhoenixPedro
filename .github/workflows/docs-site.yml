@@ -1,4 +1,4 @@
-name: Phoenix verification and documentation
+name: Sushi verification and documentation
 
 on:
   push:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   framework:
-    name: Verify Phoenix framework
+    name: Verify Sushi framework
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -91,7 +91,7 @@ jobs:
         run: python -m zensical build --clean --strict
 
       - name: Build framework API documentation
-        run: ./gradlew --console=plain :TeamCode:phoenixJavadocs
+        run: ./gradlew --console=plain :TeamCode:sushiJavadocs
 
       - name: Verify generated artifact
         shell: bash
@@ -115,9 +115,9 @@ jobs:
             fi
           done
 
-          grep --fixed-strings --ignore-case --quiet 'Phoenix' "$site/index.html"
+          grep --fixed-strings --ignore-case --quiet 'Sushi' "$site/index.html"
           grep --fixed-strings --quiet 'api/' "$site/index.html"
-          grep --fixed-strings --quiet 'Phoenix' "$site/search.json"
+          grep --fixed-strings --quiet 'Sushi' "$site/search.json"
           grep --fixed-strings --quiet 'FtcRobotOpMode' "$site/api/type-search-index.js"
 
           if find "$site" -type l -print -quit | grep --quiet .; then

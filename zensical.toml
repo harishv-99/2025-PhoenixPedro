@@ -1,34 +1,34 @@
 [project]
-site_name = "Phoenix Framework"
+site_name = "Sushi Framework"
 site_url = "https://harishv-99.github.io/2025-PhoenixPedro/"
-site_description = "Beginner-first guides and API reference for the Phoenix FTC robot framework."
-site_author = "Phoenix FTC"
-docs_dir = "TeamCode/src/main/java/edu/ftcphoenix"
+site_description = "Beginner-first guides and API reference for the Sushi FTC robot framework."
+site_author = "Sushi FTC"
+docs_dir = "TeamCode/src/main/java/edu/ftcsushi"
 site_dir = "build/docs-site"
 
 nav = [
   { "Home" = "README.md" },
   { "Start here" = [
-    { "Phoenix in one picture" = "fw/docs/getting-started/Framework Overview.md" },
+    { "Sushi in one picture" = "fw/docs/getting-started/Framework Overview.md" },
     { "Set up and verify the project" = "fw/docs/getting-started/Build and Run.md" },
-    { "Write your first Phoenix robot code" = "fw/docs/getting-started/First Phoenix Robot Code.md" },
+    { "Write your first Sushi robot code" = "fw/docs/getting-started/First Sushi Robot Code.md" },
     { "Test a mechanism without hardware" = "fw/docs/getting-started/Test a Mechanism Without Hardware.md" },
-    { "Choose a Phoenix topic" = "fw/docs/getting-started/Beginner's Guide.md" },
+    { "Choose a Sushi topic" = "fw/docs/getting-started/Beginner's Guide.md" },
     { "Documentation home" = "fw/docs/README.md" },
     { "Getting started" = "fw/docs/getting-started/README.md" },
   ] },
-  { "Learn Phoenix topics" = [
-    { "Robot roles" = "fw/docs/getting-started/learn-phoenix/Robot Roles.md" },
-    { "Controls and intent" = "fw/docs/getting-started/learn-phoenix/Controls and Intent.md" },
-    { "Plants and hardware" = "fw/docs/getting-started/learn-phoenix/Plants and Hardware.md" },
-    { "Tasks and autonomous" = "fw/docs/getting-started/learn-phoenix/Tasks and Autonomous.md" },
-    { "Evidence and experiments" = "fw/docs/getting-started/learn-phoenix/Evidence and Experiments.md" },
-    { "From requirement to robot" = "fw/docs/getting-started/learn-phoenix/From Requirement to Robot.md" },
-    { "Role paths" = "fw/docs/getting-started/learn-phoenix/Role Paths.md" },
+  { "Learn Sushi topics" = [
+    { "Robot roles" = "fw/docs/getting-started/learn-sushi/Robot Roles.md" },
+    { "Controls and intent" = "fw/docs/getting-started/learn-sushi/Controls and Intent.md" },
+    { "Plants and hardware" = "fw/docs/getting-started/learn-sushi/Plants and Hardware.md" },
+    { "Tasks and autonomous" = "fw/docs/getting-started/learn-sushi/Tasks and Autonomous.md" },
+    { "Evidence and experiments" = "fw/docs/getting-started/learn-sushi/Evidence and Experiments.md" },
+    { "From requirement to robot" = "fw/docs/getting-started/learn-sushi/From Requirement to Robot.md" },
+    { "Role paths" = "fw/docs/getting-started/learn-sushi/Role Paths.md" },
   ] },
   { "Reference and troubleshooting" = [
     { "Reference home" = "fw/docs/reference/README.md" },
-    { "Phoenix Cheat Sheet" = "fw/docs/reference/Phoenix Cheat Sheet.md" },
+    { "Sushi Cheat Sheet" = "fw/docs/reference/Sushi Cheat Sheet.md" },
     { "Glossary" = "fw/docs/reference/Glossary.md" },
     { "Troubleshooting home" = "fw/docs/troubleshooting/README.md" },
     { "Common Problems" = "fw/docs/troubleshooting/Common Problems.md" },

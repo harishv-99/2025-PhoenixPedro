@@ -1,0 +1,1136 @@
+package edu.ftcsushi.fw.core.source;
+
+import java.util.Objects;
+import java.util.function.DoublePredicate;
+import java.util.function.DoubleSupplier;
+
+import edu.ftcsushi.fw.core.control.HysteresisBoolean;
+import edu.ftcsushi.fw.core.control.SlewRateLimiter;
+import edu.ftcsushi.fw.core.debug.DebugSink;
+import edu.ftcsushi.fw.core.math.MathUtil;
+import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
+
+/**
+ * A {@link Source} that produces a {@code double} each loop.
+ *
+ * <p>Use {@code ScalarSource} for clock-aware scalar values such as gamepad sticks and triggers,
+ * sensor readings, and generated targets.</p>
+ *
+ * <p>All sampling is done through {@link #getAsDouble(LoopClock)} so sources can be stateful
+ * (filters) and still respect Sushi's "one loop, one heartbeat" design.</p>
+ */
+public interface ScalarSource extends Source<Double> {
+
+    /**
+     * Sample the current value.
+     *
+     * <p>Implementations may ignore {@code clock} (stateless sources) or use it for
+     * dt-based filters / idempotence-by-cycle.</p>
+     */
+    double getAsDouble(LoopClock clock);
+
+    @Override
+    default Double get(LoopClock clock) {
+        return getAsDouble(clock);
+    }
+
+
+    /**
+     * Memoize this scalar for the current {@link LoopClock#cycle()}.
+     *
+     * <p>The returned source publishes one successful upstream observation per cycle and returns
+     * that exact value for additional reads in the same cycle. A failed observation is not cached,
+     * so a later nonrecursive read in that cycle may retry. Prefer using this for raw hardware reads
+     * (distance sensors, encoders) or any derived value consumed by multiple subsystems.</p>
+     */
+    default ScalarSource memoized() {
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("memoized scalar source");
+            private long lastCycle = Long.MIN_VALUE;
+            private double last = 0.0;
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    double next = self.getAsDouble(clock);
+                    last = next;
+                    lastCycle = cyc;
+                    return last;
+                } finally {
+                    guard.endSample();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                guard.beginReset();
+                try {
+                    self.reset();
+                    last = 0.0;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "memo" : prefix;
+                dbg.addData(p + ".class", "MemoizedScalar");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Hold / stability helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Hold the last valid value for up to {@code maxHoldSec} seconds.
+     *
+     * <p>This is a scalar specialization of {@link Source#holdLastValid(java.util.function.Predicate, double, Object)}
+     * that avoids boxing and provides a common "sensor validity" tool for automation.</p>
+     *
+     * <p>The retained value carries a clock-owned timestamp, so the max hold is enforced even if
+     * this source is not sampled every loop and a deliberate clock reset cannot rejuvenate it.</p>
+     *
+     * <p>{@code isValid} is a side-effect-free value decision. If sampling or predicate evaluation
+     * throws, no held state is published and a later nonrecursive read in the same cycle may
+     * retry.</p>
+     *
+     * @param isValid    predicate that defines which samples are valid
+     * @param maxHoldSec finite maximum age of the held value in seconds; must be {@code >= 0}
+     * @param fallback   value returned when no valid value is available (or the hold has expired)
+     */
+    default ScalarSource holdLastValid(DoublePredicate isValid, double maxHoldSec, double fallback) {
+        Objects.requireNonNull(isValid, "isValid");
+        if (!Double.isFinite(maxHoldSec) || maxHoldSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "maxHoldSec must be finite and >= 0, got " + maxHoldSec);
+        }
+
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("held scalar source");
+            private long lastCycle = Long.MIN_VALUE;
+            private double lastOut = fallback;
+
+            private double lastValid = fallback;
+            private boolean hasValid = false;
+            private LoopTimestamp lastValidTimestamp = LoopTimestamp.unavailable();
+            /** Derived diagnostic age at the most recent sample. */
+            private double lastValidAgeSec = Double.POSITIVE_INFINITY;
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return lastOut;
+                    }
+
+                    double cur = self.getAsDouble(clock);
+                    boolean valid = isValid.test(cur);
+
+                    boolean nextHasValid = hasValid;
+                    double nextLastValid = lastValid;
+                    LoopTimestamp nextLastValidTimestamp = lastValidTimestamp;
+                    double nextLastValidAgeSec;
+                    double nextOut;
+
+                    if (valid) {
+                        nextHasValid = true;
+                        nextLastValid = cur;
+                        nextLastValidTimestamp = clock.nowTimestamp();
+                        nextLastValidAgeSec = 0.0;
+                        nextOut = cur;
+                    } else {
+                        nextLastValidAgeSec = hasValid
+                                ? lastValidTimestamp.ageSec(clock)
+                                : Double.POSITIVE_INFINITY;
+                        nextOut = Double.isFinite(nextLastValidAgeSec)
+                                && nextLastValidAgeSec <= maxHoldSec
+                                ? lastValid
+                                : fallback;
+                    }
+
+                    hasValid = nextHasValid;
+                    lastValid = nextLastValid;
+                    lastValidTimestamp = nextLastValidTimestamp;
+                    lastValidAgeSec = nextLastValidAgeSec;
+                    lastOut = nextOut;
+                    lastCycle = cyc;
+                    return lastOut;
+                } finally {
+                    guard.endSample();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                guard.beginReset();
+                try {
+                    self.reset();
+                    lastOut = fallback;
+                    hasValid = false;
+                    lastValid = fallback;
+                    lastValidTimestamp = LoopTimestamp.unavailable();
+                    lastValidAgeSec = Double.POSITIVE_INFINITY;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "holdLastValid" : prefix;
+                dbg.addData(p + ".class", "HoldLastValidScalar")
+                        .addData(p + ".maxHoldSec", maxHoldSec)
+                        .addData(p + ".hasValid", hasValid)
+                        .addData(p + ".lastValidAgeSec", lastValidAgeSec)
+                        .addData(p + ".fallback", fallback);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Hold the last finite value for up to {@code maxHoldSec} seconds.
+     *
+     * <p>This is a convenient way to deal with sources that may occasionally return NaN/Inf
+     * (for example, a vision measurement that sometimes fails to solve).</p>
+     */
+    default ScalarSource holdLastFinite(double maxHoldSec, double fallback) {
+        return holdLastValid(Double::isFinite, maxHoldSec, fallback);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Common scalar transforms
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Clamp this source into [{@code min}, {@code max}].
+     */
+    default ScalarSource clamped(double min, double max) {
+        ScalarSource self = this;
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return MathUtil.clamp(self.getAsDouble(clock), min, max);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "clamp" : prefix;
+                dbg.addData(p + ".class", "ClampedScalar")
+                        .addData(p + ".min", min)
+                        .addData(p + ".max", max);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Scale this source by a constant factor.
+     */
+    default ScalarSource scaled(double factor) {
+        ScalarSource self = this;
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return self.getAsDouble(clock) * factor;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "scale" : prefix;
+                dbg.addData(p + ".class", "ScaledScalar")
+                        .addData(p + ".factor", factor);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Invert the sign of this source.
+     */
+    default ScalarSource inverted() {
+        return scaled(-1.0);
+    }
+
+    /**
+     * Apply a symmetric deadband around 0. Values within [-deadband, +deadband] become 0.
+     */
+    default ScalarSource deadband(double deadband) {
+        ScalarSource self = this;
+        double db = Math.abs(deadband);
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return MathUtil.deadband(self.getAsDouble(clock), db);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "deadband" : prefix;
+                dbg.addData(p + ".class", "DeadbandScalar")
+                        .addData(p + ".deadband", db);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Apply a deadband centered at 0 and renormalize the remaining range back to [{@code min}, {@code max}].
+     *
+     * <p>This is useful when you want to remove small stick drift but still reach full scale at the extremes.</p>
+     */
+    default ScalarSource deadbandNormalized(double deadband, double min, double max) {
+        ScalarSource self = this;
+        final double db = Math.abs(deadband);
+
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                double v = MathUtil.clamp(self.getAsDouble(clock), min, max);
+
+                if (Math.abs(v) <= db) {
+                    return 0.0;
+                }
+
+                // Positive side: [db..max] -> [0..max]
+                if (v > 0.0) {
+                    if (max <= db) {
+                        return MathUtil.clamp(v, min, max);
+                    }
+                    double t = (v - db) / (max - db);
+                    double out = t * max;
+                    return MathUtil.clamp(out, min, max);
+                }
+
+                // Negative side: [min..-db] -> [min..0]
+                if (min >= -db) {
+                    return MathUtil.clamp(v, min, max);
+                }
+                double t = (v + db) / (min + db); // denominator negative
+                double out = t * min;
+                return MathUtil.clamp(out, min, max);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "deadbandNorm" : prefix;
+                dbg.addData(p + ".class", "DeadbandNormalizedScalar")
+                        .addData(p + ".deadband", db)
+                        .addData(p + ".min", min)
+                        .addData(p + ".max", max);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Drive-style shaping: deadband -> normalize -> pow(expo) -> rescale.
+     *
+     * <p>This is the standard Sushi drive-stick shaping order.</p>
+     */
+    default ScalarSource shaped(double deadband, double expo, double min, double max) {
+        ScalarSource self = this;
+        final double db = Math.abs(deadband);
+        final double e = Math.max(1.0, expo);
+
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                double v = MathUtil.clamp(self.getAsDouble(clock), min, max);
+
+                if (Math.abs(v) <= db) {
+                    return 0.0;
+                }
+
+                // Positive side shaping.
+                if (v > 0.0) {
+                    double sideMax = max;
+                    if (sideMax <= db) {
+                        return MathUtil.clamp(v, min, max);
+                    }
+                    double norm = (v - db) / (sideMax - db); // db -> 0, max -> 1
+                    norm = MathUtil.clamp(norm, 0.0, 1.0);
+                    double shaped = Math.pow(norm, e) * sideMax;
+                    return MathUtil.clamp(shaped, min, max);
+                }
+
+                // Negative side shaping.
+                double sideMag = -min; // magnitude of negative full-scale
+                if (sideMag <= db) {
+                    return MathUtil.clamp(v, min, max);
+                }
+                double norm = ((-v) - db) / (sideMag - db); // |v| in (db..sideMag] -> (0..1]
+                norm = MathUtil.clamp(norm, 0.0, 1.0);
+                double shapedMag = Math.pow(norm, e) * sideMag;
+                double shaped = -shapedMag;
+                return MathUtil.clamp(shaped, min, max);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "shape" : prefix;
+                dbg.addData(p + ".class", "ShapedScalar")
+                        .addData(p + ".deadband", db)
+                        .addData(p + ".expo", e)
+                        .addData(p + ".min", min)
+                        .addData(p + ".max", max);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Derive this source's rate of change per second.
+     *
+     * <p>The returned source treats this source as an unwrapped linear position signal. It uses
+     * elapsed time between clock-owned accepted-sample timestamps rather than the clock's most
+     * recent {@link LoopClock#dtSec()} interval, so the result remains correct when the source is
+     * not sampled every loop. The first finite sample establishes a baseline and returns
+     * {@code 0.0}; a deliberate clock reset invalidates the old baseline.</p>
+     *
+     * <p>Sampling is idempotent by {@link LoopClock#cycle()}. A new-cycle sample at the same time
+     * retains the previous finite rate without consuming the position change; that change remains
+     * part of the next positive-time calculation. If time regresses, the current finite sample
+     * starts a fresh baseline and returns {@code 0.0}.</p>
+     *
+     * <p>A non-finite position, time, or calculated rate returns {@link Double#NaN} for that cycle
+     * without replacing the last accepted baseline. This helper does not unwrap fixed-width
+     * counters, apply encoder counts-per-revolution conversion, or filter the result. Perform those
+     * concerns in their appropriate source or hardware-boundary layers.</p>
+     *
+     * <p>A sampling or timestamp failure publishes neither a result nor a new baseline. A later
+     * nonrecursive read in the same cycle may retry from the last successfully published state.</p>
+     */
+    default ScalarSource ratePerSecond() {
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("rate-per-second scalar source");
+            private long lastCycle = Long.MIN_VALUE;
+            private double lastOutput = 0.0;
+
+            private boolean hasBaseline = false;
+            private double lastAcceptedValue = Double.NaN;
+            private LoopTimestamp lastAcceptedTimestamp = LoopTimestamp.unavailable();
+            private double lastFiniteRatePerSec = 0.0;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cycle = clock.cycle();
+                    if (cycle == lastCycle) {
+                        return lastOutput;
+                    }
+
+                    double value = self.getAsDouble(clock);
+                    double nowSec = clock.nowSec();
+
+                    boolean nextHasBaseline = hasBaseline;
+                    double nextLastAcceptedValue = lastAcceptedValue;
+                    LoopTimestamp nextLastAcceptedTimestamp = lastAcceptedTimestamp;
+                    double nextLastFiniteRatePerSec = lastFiniteRatePerSec;
+                    double nextOutput;
+
+                    if (!Double.isFinite(value) || !Double.isFinite(nowSec)) {
+                        nextOutput = Double.NaN;
+                    } else {
+                        LoopTimestamp sampleTimestamp = clock.nowTimestamp();
+                        double elapsedSec = hasBaseline
+                                ? sampleTimestamp.secondsSince(lastAcceptedTimestamp)
+                                : Double.NaN;
+                        if (!hasBaseline || !Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
+                            nextHasBaseline = true;
+                            nextLastAcceptedValue = value;
+                            nextLastAcceptedTimestamp = sampleTimestamp;
+                            nextLastFiniteRatePerSec = 0.0;
+                            nextOutput = 0.0;
+                        } else if (elapsedSec == 0.0) {
+                            nextOutput = lastFiniteRatePerSec;
+                        } else {
+                            double ratePerSec = (value - lastAcceptedValue) / elapsedSec;
+                            if (!Double.isFinite(ratePerSec)) {
+                                nextOutput = Double.NaN;
+                            } else {
+                                nextLastAcceptedValue = value;
+                                nextLastAcceptedTimestamp = sampleTimestamp;
+                                nextLastFiniteRatePerSec = ratePerSec;
+                                nextOutput = ratePerSec;
+                            }
+                        }
+                    }
+
+                    hasBaseline = nextHasBaseline;
+                    lastAcceptedValue = nextLastAcceptedValue;
+                    lastAcceptedTimestamp = nextLastAcceptedTimestamp;
+                    lastFiniteRatePerSec = nextLastFiniteRatePerSec;
+                    lastOutput = nextOutput;
+                    lastCycle = cycle;
+                    return lastOutput;
+                } finally {
+                    guard.endSample();
+                }
+            }
+
+            @Override
+            public void reset() {
+                guard.beginReset();
+                try {
+                    self.reset();
+                    lastOutput = 0.0;
+                    hasBaseline = false;
+                    lastAcceptedValue = Double.NaN;
+                    lastAcceptedTimestamp = LoopTimestamp.unavailable();
+                    lastFiniteRatePerSec = 0.0;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "ratePerSecond" : prefix;
+                dbg.addData(p + ".class", "RatePerSecondScalar")
+                        .addData(p + ".hasBaseline", hasBaseline)
+                        .addData(p + ".lastAcceptedValue", lastAcceptedValue)
+                        .addData(p + ".lastAcceptedTimestampAvailable",
+                                lastAcceptedTimestamp.isAvailable())
+                        .addData(p + ".lastFiniteRatePerSec", lastFiniteRatePerSec)
+                        .addData(p + ".lastOutput", lastOutput);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+
+    // ---------------------------------------------------------------------------------------------
+    // Conversions & boolean helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Convert to a boolean that is true when this value is strictly greater than {@code threshold}.
+     */
+    default BooleanSource above(double threshold) {
+        ScalarSource self = this;
+        return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                return self.getAsDouble(clock) > threshold;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "above" : prefix;
+                dbg.addData(p + ".class", "AboveBoolean")
+                        .addData(p + ".threshold", threshold);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Convert to a boolean that is true when this value is strictly less than {@code threshold}.
+     */
+    default BooleanSource below(double threshold) {
+        ScalarSource self = this;
+        return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                return self.getAsDouble(clock) < threshold;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "below" : prefix;
+                dbg.addData(p + ".class", "BelowBoolean")
+                        .addData(p + ".threshold", threshold);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Create a hysteresis boolean that turns ON when {@code value <= enterThreshold} and
+     * turns OFF when {@code value >= exitThreshold}.
+     *
+     * <p>This is the common pattern for "idle" / "near zero" detection. A failed upstream
+     * observation does not advance or cache the latch.</p>
+     */
+    default BooleanSource hysteresisBelow(double enterThreshold, double exitThreshold) {
+        ScalarSource self = this;
+        HysteresisBoolean latch = HysteresisBoolean.onWhenBelowOffWhenAbove(enterThreshold, exitThreshold);
+        return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("below-threshold hysteresis source");
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean last = false;
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    double value = self.getAsDouble(clock);
+                    boolean next = latch.update(value);
+                    last = next;
+                    lastCycle = cyc;
+                    return last;
+                } finally {
+                    guard.endSample();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                guard.beginReset();
+                try {
+                    self.reset();
+                    latch.reset(false);
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "hystBelow" : prefix;
+                dbg.addData(p + ".class", "HysteresisBelowBoolean");
+                latch.debugDump(dbg, p + ".latch");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Create a hysteresis boolean that turns ON when {@code value >= enterThreshold} and
+     * turns OFF when {@code value <= exitThreshold}.
+     *
+     * <p>This is the common pattern for "valid when high" detection. A failed upstream
+     * observation does not advance or cache the latch.</p>
+     */
+    default BooleanSource hysteresisAbove(double enterThreshold, double exitThreshold) {
+        ScalarSource self = this;
+        HysteresisBoolean latch = HysteresisBoolean.onWhenAboveOffWhenBelow(enterThreshold, exitThreshold);
+        return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("above-threshold hysteresis source");
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean last = false;
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    double value = self.getAsDouble(clock);
+                    boolean next = latch.update(value);
+                    last = next;
+                    lastCycle = cyc;
+                    return last;
+                } finally {
+                    guard.endSample();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                guard.beginReset();
+                try {
+                    self.reset();
+                    latch.reset(false);
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "hystAbove" : prefix;
+                dbg.addData(p + ".class", "HysteresisAboveBoolean");
+                latch.debugDump(dbg, p + ".latch");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+
+    /**
+     * Rate-limit this source as behavior-level source shaping.
+     *
+     * <p>This is different from a plant target guard. Use source rate limiting when the behavior
+     * request itself should be smoothed (for example driver throttle shaping). Use
+     * {@code targetGuards().maxTargetRate(...)} when the plant must enforce a hardware protection
+     * rule regardless of the behavior source.</p>
+     */
+    default ScalarSource rateLimited(double maxDeltaPerSec) {
+        return rateLimited(maxDeltaPerSec, maxDeltaPerSec);
+    }
+
+    /**
+     * Rate-limit this source with separate positive and negative rates.
+     */
+    default ScalarSource rateLimited(double maxUpPerSec, double maxDownPerSec) {
+        ScalarSource self = this.memoized();
+        SlewRateLimiter limiter = new SlewRateLimiter(maxUpPerSec, maxDownPerSec);
+        return new ScalarSource() {
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return limiter.calculate(self.getAsDouble(clock), clock);
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                limiter.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "rateLimitedScalar" : prefix;
+                dbg.addData(p + ".class", "RateLimitedScalar");
+                limiter.debugDump(dbg, p + ".limiter");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Return this source while {@code allowed} is high; otherwise return {@code fallback}.
+     *
+     * <p>This is a behavior-level guard for scalar target-value construction. Plant-level hardware
+     * protection should use plant target guards instead.</p>
+     */
+    default ScalarSource fallbackUnless(BooleanSource allowed, double fallback) {
+        return fallbackUnless(allowed, ScalarSource.constant(fallback));
+    }
+
+    /**
+     * Return this source while {@code allowed} is high; otherwise return {@code fallback}.
+     */
+    default ScalarSource fallbackUnless(BooleanSource allowed, ScalarSource fallback) {
+        Objects.requireNonNull(allowed, "allowed");
+        Objects.requireNonNull(fallback, "fallback");
+        ScalarSource self = this;
+        return new ScalarSource() {
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return allowed.getAsBoolean(clock) ? self.getAsDouble(clock) : fallback.getAsDouble(clock);
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                allowed.reset();
+                fallback.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "fallbackUnless" : prefix;
+                dbg.addData(p + ".class", "FallbackUnlessScalar");
+                allowed.debugDump(dbg, p + ".allowed");
+                self.debugDump(dbg, p + ".src");
+                fallback.debugDump(dbg, p + ".fallback");
+            }
+        };
+    }
+
+    /**
+     * Hold the last output while {@code allowed} is low.
+     *
+     * <p>The first sampled value before any allowed sample is {@code initialValue}. This is a
+     * behavior-level source transform; plant hardware interlocks should use target guards. A
+     * failed gate or value observation leaves the previously published state intact and may be
+     * retried in the same cycle.</p>
+     */
+    default ScalarSource holdLastUnless(BooleanSource allowed, double initialValue) {
+        Objects.requireNonNull(allowed, "allowed");
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("hold-unless scalar source");
+            private double last = initialValue;
+            private boolean hasAllowedSample = false;
+            private long lastCycle = Long.MIN_VALUE;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                guard.beginSample();
+                try {
+                    long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+                    if (clock != null && cycle == lastCycle) {
+                        return last;
+                    }
+
+                    boolean allowedNow = allowed.getAsBoolean(clock);
+                    double nextLast = last;
+                    boolean nextHasAllowedSample = hasAllowedSample;
+                    if (allowedNow) {
+                        nextLast = self.getAsDouble(clock);
+                        nextHasAllowedSample = true;
+                    } else if (!hasAllowedSample) {
+                        nextLast = initialValue;
+                    }
+
+                    last = nextLast;
+                    hasAllowedSample = nextHasAllowedSample;
+                    if (clock != null) {
+                        lastCycle = cycle;
+                    }
+                    return last;
+                } finally {
+                    guard.endSample();
+                }
+            }
+
+            @Override
+            public void reset() {
+                guard.beginReset();
+                try {
+                    self.reset();
+                    allowed.reset();
+                    last = initialValue;
+                    hasAllowedSample = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "holdLastUnless" : prefix;
+                dbg.addData(p + ".class", "HoldLastUnlessScalar")
+                        .addData(p + ".last", last)
+                        .addData(p + ".hasAllowedSample", hasAllowedSample);
+                allowed.debugDump(dbg, p + ".allowed");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Factories
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Create a scalar source from a raw supplier.
+     *
+     * <p>The supplier is sampled each time {@link #getAsDouble(LoopClock)} is called.
+     * The {@code clock} parameter is ignored.</p>
+     */
+    static ScalarSource of(DoubleSupplier raw) {
+        Objects.requireNonNull(raw, "raw");
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return raw.getAsDouble();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "raw" : prefix;
+                dbg.addData(p + ".class", "RawScalar");
+            }
+        };
+    }
+
+    /**
+     * Create a constant scalar source.
+     */
+    static ScalarSource constant(double value) {
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return value;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "const" : prefix;
+                dbg.addData(p + ".class", "ConstantScalar")
+                        .addData(p + ".value", value);
+            }
+        };
+    }
+
+    /**
+     * 2D magnitude: {@code hypot(x, y)}.
+     *
+     * <p>Null sources are treated as 0.</p>
+     */
+    static ScalarSource magnitude(ScalarSource x, ScalarSource y) {
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                double xv = (x != null) ? x.getAsDouble(clock) : 0.0;
+                double yv = (y != null) ? y.getAsDouble(clock) : 0.0;
+                return Math.hypot(xv, yv);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                if (x != null) x.reset();
+                if (y != null) y.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "mag" : prefix;
+                dbg.addData(p + ".class", "MagnitudeScalar");
+                if (x != null) x.debugDump(dbg, p + ".x");
+                if (y != null) y.debugDump(dbg, p + ".y");
+            }
+        };
+    }
+
+    /**
+     * Squared 2D magnitude: {@code x^2 + y^2}.
+     *
+     * <p>Null sources are treated as 0.</p>
+     */
+    static ScalarSource magnitudeSquared(ScalarSource x, ScalarSource y) {
+        return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                double xv = (x != null) ? x.getAsDouble(clock) : 0.0;
+                double yv = (y != null) ? y.getAsDouble(clock) : 0.0;
+                return xv * xv + yv * yv;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                if (x != null) x.reset();
+                if (y != null) y.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "mag2" : prefix;
+                dbg.addData(p + ".class", "MagnitudeSquaredScalar");
+                if (x != null) x.debugDump(dbg, p + ".x");
+                if (y != null) y.debugDump(dbg, p + ".y");
+            }
+        };
+    }
+}

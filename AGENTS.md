@@ -5,11 +5,11 @@ but they must not weaken the framework principles below.
 
 ## Primary design authority
 
-Before changing framework or modern Phoenix robot code, read:
+Before changing Sushi framework or modern Phoenix robot code, read:
 
-1. `TeamCode/src/main/java/edu/ftcphoenix/fw/Framework Principles.md`
-2. The relevant guide under `TeamCode/src/main/java/edu/ftcphoenix/fw/docs/`
-3. For Phoenix changes, `TeamCode/src/main/java/edu/ftcphoenix/robots/phoenix/Phoenix Architecture.md`
+1. `TeamCode/src/main/java/edu/ftcsushi/fw/Framework Principles.md`
+2. The relevant guide under `TeamCode/src/main/java/edu/ftcsushi/fw/docs/`
+3. For Phoenix changes, `TeamCode/src/main/java/edu/ftcsushi/robots/phoenix/Phoenix Architecture.md`
 
 Treat **Framework Principles.md as a design requirement, not optional background reading**. After
 the user's explicit instructions, it is the repository's primary authority for architecture, API
@@ -23,12 +23,13 @@ the framework API.
 
 ## Repository map
 
-- `edu.ftcphoenix.fw`: reusable Phoenix framework code; packages outside the explicit FTC,
+- `edu.ftcsushi.fw`: reusable Sushi framework code; packages outside the explicit FTC,
   integration, and tool edges below are the protected core.
-- `edu.ftcphoenix.fw.ftc`: the FTC SDK boundary and stable FTC resource owners.
-- `edu.ftcphoenix.fw.integrations`: narrow third-party integration edges, such as Pedro Pathing.
-- `edu.ftcphoenix.fw.tools`: examples, testers, and calibration support.
-- `edu.ftcphoenix.robots.phoenix`: the modern framework-based Phoenix robot and reference design.
+- `edu.ftcsushi.fw.ftc`: the FTC SDK boundary and stable FTC resource owners.
+- `edu.ftcsushi.fw.integrations`: narrow third-party integration edges, such as Pedro Pathing.
+- `edu.ftcsushi.fw.tools`: examples, testers, and calibration support.
+- `edu.ftcsushi.robots.phoenix`: the modern Sushi-framework-based Phoenix robot and reference
+  design.
 - `org.firstinspires.ftc.teamcode.robots` and FTC controller samples: legacy or sample code. Do not
   use these as architectural templates for new framework-based work.
 
@@ -63,7 +64,7 @@ the framework API.
   - presenters only format snapshots for humans;
   - the composition root wires objects and makes loop order explicit.
 - Keep FTC SDK and vendor details at explicit boundaries. Core framework logic should depend on
-  Phoenix abstractions, not directly on `com.qualcomm.*` or third-party route-library types.
+  Sushi abstractions, not directly on `com.qualcomm.*` or third-party route-library types.
   Dependencies point from `fw.ftc`, `fw.integrations`, `fw.tools`, and robot application code into
   the protected core, never from protected core back to those edges.
 - Keep Plants source-driven. Each Plant has one final `PlantTargetResolver`; compose behavior with

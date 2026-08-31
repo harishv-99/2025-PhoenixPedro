@@ -1,9 +1,9 @@
 ---
 name: execute-framework-improvements
-description: Execute Phoenix framework improvement items end-to-end from FRAMEWORK_IMPROVEMENT_TRACKER.md with mandatory decision gates, Framework Principles checks, one-item scope, user approvals, Android Studio review, verification, and GitHub publication. Use when asked to start, continue, review, approve, implement, merge, or move to the next tracked Phoenix framework improvement.
+description: Execute Sushi framework improvement items end-to-end from FRAMEWORK_IMPROVEMENT_TRACKER.md with mandatory decision gates, Framework Principles checks, one-item scope, user approvals, Android Studio review, verification, and GitHub publication. Use when asked to start, continue, review, approve, implement, merge, or move to the next tracked Sushi framework improvement.
 ---
 
-# Execute Phoenix Framework Improvements
+# Execute Sushi Framework Improvements
 
 Follow one tracker item through analysis, implementation, human review, and publication. Store the
 repeatable procedure in this skill; recover item-specific state from the tracker, Git, tests, and
@@ -13,7 +13,7 @@ GitHub rather than relying on chat memory.
 
 1. Locate the repository root and read completely:
    - `AGENTS.md`
-   - `TeamCode/src/main/java/edu/ftcphoenix/fw/Framework Principles.md`
+   - `TeamCode/src/main/java/edu/ftcsushi/fw/Framework Principles.md`
    - `FRAMEWORK_IMPROVEMENT_TRACKER.md`
    - the relevant framework guides and Javadocs
    - `Phoenix Architecture.md` when Phoenix robot code is in scope

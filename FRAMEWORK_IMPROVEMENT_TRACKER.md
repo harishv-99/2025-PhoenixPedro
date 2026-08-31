@@ -1,10 +1,14 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
-This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
+This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
 item must pass the decision gate below before implementation begins.
+
+Sushi was named Phoenix before `BRAND-01`. Historical item titles, exact approvals, publication
+coordinates, and descriptions of the then-current framework retain that former name; current policy
+and pending work use Sushi. The specific robot in `edu.ftcsushi.robots.phoenix` remains Phoenix.
 
 ## Design authority and goal
 
@@ -12,7 +16,7 @@ Every change must follow, in order:
 
 1. The user's instructions for the specific change.
 2. [`AGENTS.md`](AGENTS.md).
-3. [`Framework Principles.md`](TeamCode/src/main/java/edu/ftcphoenix/fw/Framework%20Principles.md).
+3. [`Framework Principles.md`](TeamCode/src/main/java/edu/ftcsushi/fw/Framework%20Principles.md).
 4. The relevant framework guide, Javadocs, examples, and current callers.
 
 The goal is not merely to make framework internals more abstract. The goal is to make normal robot
@@ -53,7 +57,7 @@ select a production design or claim completion.
   thresholds remain adopting-robot validation; their decision gates may not claim those facts from
   fakes.
 - `PERF-01` is **Done** only as an advanced opt-in manual-cache lifecycle owner.
-  Ordinary Phoenix programs leave the SDK-selected caching mode untouched (`OFF` after the FTC SDK
+  Ordinary Sushi programs leave the SDK-selected caching mode untouched (`OFF` after the FTC SDK
   11.1 OpMode reset), and neither implementation nor completion may claim a performance benefit
   without adopting-robot measurements.
 - A later decision gate may propose a narrower conservative software contract that makes physical
@@ -207,7 +211,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 107 | EXAMPLE-09 | Sensor-derived inventory status case study | Done | The reviewed simplified optional service, hardware-free evidence, synchronized teaching, and destination-specific publication authorization are complete. |
 | 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Done | The reviewed bounded example-only implementation, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 109 | LOCALIZATION-01 | Optional bounded timestamped pose history | Done | The reviewed shared history/continuity implementation, EXAMPLE-10 migration, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
-| 110 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current Phoenix support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 110 | BRAND-01 | Sushi framework identity and namespace migration | Done | The reviewed Sushi namespace/API/tooling/documentation migration, software evidence, and destination-specific publication authorization are complete. |
+| 111 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-28)
 
@@ -221,16 +226,17 @@ approving any public API:
 5. `EXAMPLE-10` timestamped adaptive collection case study.
 6. `LOCALIZATION-01` optional bounded timestamped pose-history decision gate.
 7. `AUTO-01` bounded fresh-attempt composition decision gate, after the examples expose the complete
-   per-attempt Phoenix caller surface.
+   per-attempt framework caller surface.
 8. `EXAMPLE-03` narrowed coherent timestamped mechanism-target coordination reference.
-9. `AUDIT-01` closure re-audit, last.
+9. `BRAND-01` Sushi framework identity migration requested on 2026-08-30.
+10. `AUDIT-01` closure re-audit, last.
 
 Run one item per branch through the normal decision and approval gates. An approved, recorded, and
 verified no-change result is a valid **Done** disposition when a candidate abstraction does not
 reduce complete robot code; an item whose truthful contract still needs unavailable evidence remains
-**Deferred** with a reactivation trigger. `AUDIT-01` waits for the eight named earlier items to reach
-one of those terminal dispositions; it does not wait indefinitely for unavailable hardware
-measurements.
+**Deferred** with a reactivation trigger. `AUDIT-01` waits for the eight capability items named
+earlier and the independently requested `BRAND-01` identity migration to reach a terminal
+disposition; it does not wait indefinitely for unavailable hardware measurements.
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -24546,6 +24552,177 @@ implementation.
   It does not start AUTO-01 or another item, and it does not turn software evidence into a hardware
   claim.
 
+### BRAND-01 - Rename the reusable framework identity from Phoenix to Sushi
+
+- **User request and Gate 1 boundary (2026-08-30):** the user requested: **“Rename the entire
+  framework to be called \"Sushi\" instead of Phoenix. The robot under
+  edu.ftcphoenix.robots.phoenix can continue to be called Phoenix because that is a specific robot
+  whose name is Phoenix. The framework will be called Sushi though. Fix all the documentation to
+  refer to the new name as well.”** At the first design stop the user clarified: **“the ftcphoenix
+  can be renamed to ftcsushi. But the \"phoenix\" package under \"robots\" can stay as Phoenix because
+  that is a robot.”** The resulting package is `edu.ftcsushi.robots.phoenix`: `ftcphoenix` is the
+  migrated root namespace and the final `phoenix` component remains the robot's name. This is a
+  user-directed exception to the previous queue order.
+  Research is isolated on `codex/brand-01-sushi-framework`, based on
+  `8536064f6883aa11409639a67564bfb2676091b7`. This Gate 1 record authorizes no implementation,
+  commit, push, pull request, repository rename, or repository-settings mutation.
+- **Confirmed current behavior:** the reusable framework is visibly named Phoenix in root and
+  package READMEs, `Framework Principles.md`, the narrative guide set, source Javadocs, runtime
+  diagnostics, tester UI, generated Javadocs, documentation-site metadata/navigation, CI display
+  names, the improvement skill metadata, and maintainer commands. The non-generated repository has
+  2,233 exact standalone `Phoenix` matches across 247 files: 1,036 are in this durable historical
+  tracker, 664 are in the framework main tree, and 404 are in the production Phoenix robot tree.
+  Framework Java alone has 289 standalone matches across 101 files. Case-insensitive matching is
+  much larger because the Java namespace is `edu.ftcphoenix`. The namespace migration moves 672
+  maintained main/test files (603 Java files plus 69 Markdown/package files), changes 603 package
+  declarations, and updates at least 3,737 dotted/path namespace references across 632 files. A
+  blind Phoenix-to-Sushi replacement still cannot distinguish framework/root namespace, nested
+  robot identity, repository coordinate, or quoted history.
+- **Confirmed branded public surfaces:** no reusable framework class or Java filename is named
+  `Phoenix`; the 68 Phoenix-named Java files are the specific modern/legacy Phoenix robots and their
+  tests. The reusable API does, however, expose ten branded `FtcFrames` conversion methods and
+  three branded `PedroFieldTransform` methods. Those methods and their parameter/local/helper names
+  describe the framework coordinate contract, not the Phoenix robot, so leaving them unchanged
+  would make code completion contradict the Sushi documentation. The build also exposes the
+  `:TeamCode:phoenixJavadocs` task, and standard-control provenance currently renders
+  `PHOENIX_STANDARD`.
+- **Current callers and common path:** the ten `FtcFrames` methods are confined to their definition,
+  the webcam/Limelight FTC adapters, and focused tests. The three Pedro transform methods and their
+  internal inverse/value names are confined to their definition, the passive localizer, the
+  adaptive Pedro example, and focused tests. The renamed guide files/directories are referenced by
+  Zensical navigation, root/package/framework READMEs, framework guides, and
+  `DocumentationLinksTest`. The Javadoc task is called by the workflow and maintainer guide. All
+  in-repository callers can therefore migrate atomically; ordinary student mechanism, controls,
+  Task, Plant, and robot-program call shapes do not change.
+- **Identity classification:**
+  - **Rename to Sushi:** every present-state reusable-framework claim in prose, Javadocs, comments,
+    diagnostics, error/UI text, skill metadata, site metadata/navigation, and CI/build display;
+    branded framework coordinate identifiers; generated-API task/title/provenance names; and
+    current tracker policy/audit prose that describes the framework now.
+  - **Retain Phoenix as robot identity:** `edu.ftcsushi.robots.phoenix`, `PhoenixRobot`,
+    `PhoenixProfile`, `PhoenixCapabilities`, Phoenix Auto/TeleOp/scoring/targeting/Pedro/tester
+    families, `Phoenix Architecture.md`, `Phoenix Calibration Guide.md`, their tests, runtime labels
+    for that robot, and the legacy `Phoenix3` robot. Framework and robot documents that contain both
+    meanings require contextual edits rather than file-wide replacement.
+  - **Rename the Java root namespace:** move the complete maintained `edu.ftcphoenix` main/test tree
+    to `edu.ftcsushi`, including reusable framework, examples, and the production robot. Thus
+    `edu.ftcphoenix.fw` becomes `edu.ftcsushi.fw`, examples become
+    `edu.ftcsushi.robots.examples`, and the specific robot becomes
+    `edu.ftcsushi.robots.phoenix`. Update package declarations, imports, fully qualified names,
+    source paths, documentation links, Zensical `docs_dir`, skill/AGENTS paths, architecture tests,
+    reflection/path literals, and every in-repository caller atomically.
+  - **Retain stable repository/history coordinates:** retain the repository/local-folder/GitHub
+    Pages coordinate `2025-PhoenixPedro`, GitHub URLs, historical branch/commit/PR coordinates, and
+    exact quoted approvals. This tracker remains a durable record: present-state policy, live source
+    links, and pending work adopt Sushi/`edu.ftcsushi`, while historical item titles, exact quotes,
+    and descriptions of the then-named framework or namespace remain unchanged and receive a short
+    former-name explanation.
+- **Alternatives and simplicity comparison:**
+
+  | Alternative | Student/API result | Ownership and migration cost | Decision |
+  | --- | --- | --- | --- |
+  | No change or documentation-only | Code completion, diagnostics, and tooling would still teach Phoenix | Small diff but two contradictory current names | Rejected |
+  | Global Phoenix-to-Sushi replacement | Appears exhaustive but renames the robot and corrupts coordinates/history | Unreviewable and mechanically unsafe | Rejected |
+  | Rename branding and branded APIs while retaining `edu.ftcphoenix` | Human-facing vocabulary says Sushi but every import retains the former root | Smaller migration, but the user explicitly rejected this boundary | Rejected |
+  | Move the complete root to `edu.ftcsushi` while retaining nested `robots.phoenix` | Imports, code completion, docs, and tooling all tell one Sushi-framework/Phoenix-robot story | Large deliberate source break across 672 files, but mechanically coherent and explicitly authorized in design | **Chosen** |
+  | Move framework only and leave robot/examples under `edu.ftcphoenix` | Framework imports say Sushi | Splits one maintained project across two roots and leaves examples ambiguous | Rejected |
+  | Keep deprecated Phoenix aliases/pages/tasks | Old clients compile or old URLs survive | Creates two public vocabularies indefinitely and weakens the rename | Rejected |
+
+- **Chosen design:** perform one source-breaking but behavior-preserving semantic rename. Rename the
+  complete `edu.ftcphoenix` main/test directory roots and Java namespace to `edu.ftcsushi`, without
+  retaining forwarding packages or aliases. Keep the nested `robots.phoenix` directory/package and
+  every specific Phoenix robot class name. Rename the ten `FtcFrames` methods to `Sushi`
+  equivalents and the three Pedro methods to
+  `sushiFieldToPedroPose`, `pedroToSushiFieldPose`, and `sushiFieldVelocityToPedro`; rename their
+  framework-owned locals/helpers/tests consistently and provide no aliases. Rename
+  `phoenixJavadocs` to `sushiJavadocs`, `PHOENIX_STANDARD` to `SUSHI_STANDARD`, and all generic
+  framework strings. Rename `First Phoenix Robot Code.md` to `First Sushi Robot Code.md`,
+  `learn-phoenix/` to `learn-sushi/`, and `Phoenix Cheat Sheet.md` to `Sushi Cheat Sheet.md`, then
+  repair every source, anchor, navigation, and test reference. Add a concise canonical explanation
+  that **Sushi is the framework and Phoenix is the specific production robot under
+  `edu.ftcsushi.robots.phoenix`**. Preserve the Phoenix robot's simple class/package component names
+  and repository coordinates exactly; its fully qualified names necessarily change with the root.
+- **Framework Principles check:** the change creates one current vocabulary across code completion,
+  runtime evidence, Javadocs, guides, examples, and generated docs. Removing rather than retaining
+  old branded aliases preserves one obvious path. The rename changes no owner, heartbeat, Task,
+  Plant, drive, localization, route, FTC boundary, or physical contract. Contextual classification
+  preserves truthful robot and historical identity instead of manufacturing a false all-Sushi
+  history. The user explicitly selected the breaking root-package migration; moving the complete
+  maintained tree once is simpler and more truthful than compatibility packages or a split-root
+  repository.
+- **Verification plan:** extend focused documentation coverage to pin the Sushi site/navigation,
+  renamed authored paths, canonical identity explanation, and permitted Phoenix robot/repository
+  exceptions. Migrate and run the focused `FtcFrames`, Pedro transform/passive-localizer, vision,
+  adaptive-example, tuning-provenance, and documentation-link tests. Run the complete
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` contract,
+  then `python -m zensical build --clean --strict`, generated-artifact Sushi checks, `git diff
+  --check`, and targeted case-insensitive residue classification excluding generated files. Add
+  package-boundary checks proving maintained source roots, package declarations, imports, docs
+  configuration, and live links use `edu.ftcsushi`, with explicit exceptions only for immutable
+  historical text. Review the complete diff independently before Android Studio handoff. No
+  software check will claim robot
+  hardware behavior because this item changes identity only. Renaming the visible GitHub check may
+  require a matching branch-protection context update; do not weaken protection or mutate repository
+  settings silently if publication later exposes that external dependency.
+- **Gate 2 approval required:** implementation may begin only after explicit approval of this exact
+  boundary: Sushi replaces the framework brand, the complete Java root becomes `edu.ftcsushi`, and
+  branded framework APIs/tooling/docs migrate without aliases; repository coordinates and exact
+  history remain, while the robot stays Phoenix as `edu.ftcsushi.robots.phoenix`.
+- **Gate 2 implementation approval (2026-08-31):** the user supplied the exact requested approval:
+  **“Approve BRAND-01 full Sushi framework and namespace migration, including edu.ftcphoenix to
+  edu.ftcsushi, branded APIs, tooling, and documentation without compatibility aliases, while
+  retaining the Phoenix robot as edu.ftcsushi.robots.phoenix.”** Implementation is therefore
+  authorized on `codex/brand-01-sushi-framework` only. Publication remains separately gated.
+- **Implemented result (2026-08-31):** the complete maintained main/test namespace moved to
+  `edu.ftcsushi`; the framework, examples, and every in-repository caller now compile from that one
+  root while the production robot remains `edu.ftcsushi.robots.phoenix` with its `Phoenix*` types.
+  The ten branded `FtcFrames` methods and three Pedro field-transform methods now use Sushi names
+  with no forwarding aliases. Runtime evidence, tester labels, standard-control provenance,
+  Javadocs, guides, authored page paths, Zensical navigation, Gradle task, CI display/check text,
+  repository instructions, and improvement-skill metadata use the Sushi framework identity. The
+  stable `2025-PhoenixPedro` repository/Pages coordinates, exact history, and Phoenix robot identity
+  remain intentionally unchanged.
+- **Automated verification (2026-08-31):** after resolving review findings,
+  `./gradlew.bat --console=plain :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` completed successfully. The generated
+  JUnit XML contains 233 suites and 2,132 tests with zero failures, errors, or skips; only the
+  repository's existing Java 8 source/target deprecation warnings remain. Focused documentation,
+  `FtcFrames`, Pedro transform/passive-localizer, vision-boundary, tuning-provenance, adaptive-path,
+  Phoenix-readiness, and project-constants tests also passed. Strict Javadocs generated
+  `Sushi Framework API` under `edu/ftcsushi/fw`; the former generated package/title surface is
+  absent. The current 604 Java files all have package declarations matching their `edu/ftcsushi`
+  paths; the old main/test roots are absent; mapped file-set comparison found only the three
+  approved Markdown path renames and the intentional new `FtcFramesTest`. Current-surface scans
+  found zero old namespace, generic `Phoenix framework`, old authored-path, Javadoc-task, or branded
+  API aliases outside deliberate negative assertions. `git diff --check`, the changed/untracked
+  trailing-whitespace scan, and conflict-marker scan are clean.
+- **Adversarial review (2026-08-31):** an independent Java/API review found one stale nonexistent
+  FTC-boundary package in `FtcFrames` Javadoc; it now names `edu.ftcsushi.fw.ftc`. An independent
+  docs/tooling review found that the identity regression covered only selected files; it now scans
+  every authored main source/document plus the current root, build, CI, and skill surfaces for the
+  former generic brand and namespace. A separate Framework Principles review found no behavior,
+  ownership, lifecycle, heartbeat, realization, public-alias, robot-identity, or test-validity
+  drift. The focused checks and complete contract passed after those resolutions.
+- **Environment and physical boundary:** a local strict Zensical narrative-site build could not run
+  because this workstation exposes only the Microsoft Store Python alias and has no Python
+  interpreter. `DocumentationLinksTest` still validates maintained Markdown links, anchors,
+  navigation targets, and brand surfaces locally, and the unchanged GitHub workflow retains
+  `python -m zensical build --clean --strict` as the hosted publication gate. Robot-hardware
+  validation is not useful for this identity-only, behavior-preserving migration and is not claimed.
+- **Gate 3 review stop (2026-08-31):** inspect the unstaged diff in Android Studio, especially the
+  `edu.ftcsushi` package tree, retained `edu.ftcsushi.robots.phoenix` robot tree, renamed
+  `FtcFrames`/Pedro public methods, generated-doc/build/CI names, authored guide paths, and brand
+  regressions. The resolved publication coordinates are branch
+  `codex/brand-01-sushi-framework`, push destination
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. No staging, commit,
+  push, pull request, merge, or repository/settings rename is authorized before the exact combined
+  review-and-publication approval.
+- **Gate 3 manual review and publication authorization (2026-08-31):** the user supplied the exact
+  combined approval for the reviewed BRAND-01 diff on `codex/brand-01-sushi-framework`, its push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, a pull request, and merge into `master`.
+  This records Android Studio review and authorizes only those publication coordinates; it does not
+  authorize a repository rename or the next tracker item.
+
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 
 - **Tracker-only intake status (2026-08-22):** **Proposed and deliberately last.** No re-audit has
@@ -24556,7 +24733,7 @@ implementation.
   The user's 2026-08-28 LOCALIZATION-01 intake approval explicitly amends this otherwise frozen
   prerequisite list. A Gate 1 split does not silently enlarge AUDIT-01. It does not wait for
   unavailable hardware runs belonging to PERF-03 or other deliberately hardware-gated items.
-- **Pinned scope and provenance:** pin current Phoenix when this audit starts, then compare it against
+- **Pinned scope and provenance:** pin current Sushi when this audit starts, then compare it against
   the exact Cubelib, FTC_Decode, Decode/v3, and IntoTheDeep23641 commits recorded by the 2026-08-22
   intake. Preserve the caveat that Cubelib itself is the small utility/FSM library, the later DECODE
   repositories contain the audited public season behaviors, and IntoTheDeep23641 does not expose the
@@ -24570,13 +24747,13 @@ implementation.
   diagnostics and software-bench evidence; reusable library distribution; and Cubelib's
   weighted-setpoint/controller variation. Classify every frozen row as **implemented**, **already
   supported**, **robot-specific**,
-  **deliberately rejected**, or **evidence-gated**, with an exact Phoenix call path, example,
+  **deliberately rejected**, or **evidence-gated**, with an exact Sushi call path, example,
   rejection rationale, or reactivation trigger. Zero unclassified rows is required. Distribution
   and weighted-controller variation currently warrant classification, not automatic implementation:
-  neither has the required Phoenix adopter/performance evidence for another task.
+  neither has the required Sushi adopter/performance evidence for another task.
 - **Simplicity and truth audit:** compare complete robot-code concepts, owners, configuration,
   lifecycle, telemetry, tests, and rough source lines—not a short outer facade call. Confirm that
-  supported Phoenix expressions retain one heartbeat, fresh single-use Tasks, one route execution
+  supported Sushi expressions retain one heartbeat, fresh single-use Tasks, one route execution
   identity, one final writer, stable timestamps, and explicit outcomes. Confirm that no generic FSM,
   shooter/projectile model, arbitrary vision map, inventory core type, raw route-progress DSL,
   second scheduler, or unjustified hardware optimization was introduced.
@@ -24599,18 +24776,19 @@ These are not implementation tasks without new evidence:
 - A mandatory split into many Plant capability interfaces.
 - A large framework module reorganization before focused tests exist.
 - Setup/code-generation wizards before the compiling starter has been used and evaluated.
-- A generic route host or season strategy layer based only on Phoenix's current needs.
+- A generic route host or season strategy layer based only on the production Phoenix robot's
+  current needs.
 - A monolithic autonomous path/action DSL, generic route-progress callback language, or wrapper over
-  every Pedro feature. Keep Pedro geometry/constraints/callbacks at the path boundary and use Phoenix
+  every Pedro feature. Keep Pedro geometry/constraints/callbacks at the path boundary and use Sushi
   Tasks/capabilities for robot meaning.
-- An Ivy/Phoenix command bridge or two schedulers in one OpMode; Phoenix Tasks remain the one robot
+- An Ivy/Sushi command bridge or two schedulers in one OpMode; Sushi Tasks remain the one robot
   behavior vocabulary unless a concrete integration cannot be expressed safely through a leaf
   adapter.
 - Background coroutine/thread execution for FTC hardware behavior; cooperative Tasks remain owned by
   the OpMode heartbeat.
 - Generic Task resource requirements, priorities, suspension, or arbitration based only on command-
   framework parity. Explicit composition and one visible drive owner remain simpler until a real
-  Phoenix caller requires dynamic conflict resolution.
+  Sushi caller requires dynamic conflict resolution.
 - Framework projectile physics, shooter/magazine sorting policy, or arbitrary generic vision-result
   maps. Robot services and typed snapshots already provide the correct ownership boundary.
 - A framework-wide electrical power allocator or automatic motor-current response. SENSOR-01 may

@@ -1,6 +1,6 @@
 # Documentation renderer lock for Python 3.12.
 # Every Zensical runtime dependency is pinned; upgrade instructions live in
-# TeamCode/src/main/java/edu/ftcphoenix/fw/docs/maintainers/Maintainer Notes.md.
+# TeamCode/src/main/java/edu/ftcsushi/fw/docs/maintainers/Maintainer Notes.md.
 click==8.3.3
 colorama==0.4.6; sys_platform == "win32"
 deepmerge==2.0

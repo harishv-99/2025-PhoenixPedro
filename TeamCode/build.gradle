@@ -31,18 +31,18 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
 }
 
-def phoenixAndroidComponents = androidComponents
-phoenixAndroidComponents.onVariants(
-        phoenixAndroidComponents.selector().withName('debug')) { variant ->
-    tasks.register('phoenixJavadocs', Javadoc) {
+def sushiAndroidComponents = androidComponents
+sushiAndroidComponents.onVariants(
+        sushiAndroidComponents.selector().withName('debug')) { variant ->
+    tasks.register('sushiJavadocs', Javadoc) {
         group = 'documentation'
-        description = 'Generates strict API documentation for the Phoenix framework.'
+        description = 'Generates strict API documentation for the Sushi framework.'
 
         source(variant.sources.java.all)
-        include('edu/ftcphoenix/fw/**/*.java')
+        include('edu/ftcsushi/fw/**/*.java')
         classpath = files(
                 variant.compileClasspath,
-                phoenixAndroidComponents.sdkComponents.bootClasspath)
+                sushiAndroidComponents.sdkComponents.bootClasspath)
         destinationDir = rootProject.layout.buildDirectory.dir('docs-site/api').get().asFile
         failOnError = true
 
@@ -50,8 +50,8 @@ phoenixAndroidComponents.onVariants(
         options.encoding = 'UTF-8'
         options.charSet = 'UTF-8'
         options.docEncoding = 'UTF-8'
-        options.windowTitle = 'Phoenix Framework API'
-        options.docTitle = 'Phoenix Framework API'
+        options.windowTitle = 'Sushi Framework API'
+        options.docTitle = 'Sushi Framework API'
         options.noTimestamp = true
         options.addBooleanOption('Xdoclint:all,-missing', true)
         options.addBooleanOption('Werror', true)

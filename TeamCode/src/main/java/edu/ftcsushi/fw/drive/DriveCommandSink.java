@@ -1,0 +1,73 @@
+package edu.ftcsushi.fw.drive;
+
+import edu.ftcsushi.fw.core.time.LoopClock;
+
+/**
+ * Minimal sink for normalized {@link DriveSignal} commands.
+ *
+ * <p>This is the smallest Sushi-owned seam that autonomous helpers and route adapters should
+ * depend on when they only need to command drive signals. The default drivetrain implementation is
+ * {@link MecanumDrivebase}, but teams integrating Road Runner, Pedro Pathing, or custom followers
+ * can expose their own sink without pulling the rest of their route stack into the framework.</p>
+ *
+ * <p>Simple sinks apply commands immediately. Stateful external adapters may instead stage a
+ * command for their next owned heartbeat. Such an adapter must document that timing, have one
+ * stable composition-root owner call {@link #update(LoopClock)} every loop, and make that hook
+ * cycle-idempotent when guidance or drive Tasks can also call it.</p>
+ *
+ * <p>Typical direct-sink usage:</p>
+ * <pre>{@code
+ * DriveCommandSink sink = drivebase; // MecanumDrivebase implements it
+ * Task nudge = DriveTasks.driveExclusivelyForSeconds(
+ *         sink,
+ *         new DriveSignal(0.2, 0.0, 0.0),
+ *         0.15);
+ *
+ * // A validated production runtime can supply a cycle-owned external sink:
+ * DriveCommandSink autoDrive = pedroRuntime.driveAdapter();
+ * autoDrive.update(clock); // composition-root heartbeat, every Auto loop
+ * }</pre>
+ */
+public interface DriveCommandSink {
+
+    /**
+     * Optional lifecycle hook for per-loop timing, realization, or housekeeping.
+     *
+     * <p>The default implementation is a no-op so simple sinks do not need to care about it.
+     * Guidance Tasks and exclusive timed-drive Tasks call this before emitting a new drive
+     * command. This Task-facing call reflects behavior-command ownership; it does not replace an
+     * external adapter's lifecycle owner. A sink that requires updates even while another Task is
+     * active must also have one stable composition-root owner call this every loop and must
+     * deduplicate repeated calls by {@link LoopClock#cycle()}.</p>
+     *
+     * @param clock shared loop clock for the current cycle
+     */
+    default void update(LoopClock clock) {
+        // default no-op
+    }
+
+    /**
+     * Submit a normalized robot-centric drive command.
+     *
+     * <p>Direct sinks normally apply it immediately. A documented heartbeat-driven adapter may
+     * retain it for the next owned {@link #update(LoopClock)} call.</p>
+     *
+     * @param signal normalized robot-centric command to apply
+     */
+    void drive(DriveSignal signal);
+
+    /**
+     * Stop drive output immediately.
+     *
+     * <p>An implementation must immediately make its best-effort stop call at the owned realization
+     * boundary. A composite sink should attempt every independently owned child even when an
+     * earlier child throws a {@link RuntimeException}, retain the first such exception as primary,
+     * and suppress later distinct {@code RuntimeException}s. An {@link Error} remains uncaught.
+     * Merely staging a zero command for a future heartbeat does not satisfy this contract.</p>
+     *
+     * <p>A normal return means only that the sink's immediate stop calls returned normally. It does
+     * not prove atomic realization, SDK or device acceptance, physical zero output, or that motion
+     * has stopped.</p>
+     */
+    void stop();
+}
