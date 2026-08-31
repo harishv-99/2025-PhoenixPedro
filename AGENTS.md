@@ -5,11 +5,12 @@ but they must not weaken the framework principles below.
 
 ## Primary design authority
 
-Before changing Sushi framework or modern Phoenix robot code, read:
+Before changing Sushi framework or maintained robot application code, read:
 
 1. `TeamCode/src/main/java/edu/ftcsushi/fw/Framework Principles.md`
 2. The relevant guide under `TeamCode/src/main/java/edu/ftcsushi/fw/docs/`
-3. For Phoenix changes, `TeamCode/src/main/java/edu/ftcsushi/robots/phoenix/Phoenix Architecture.md`
+3. The closest application-local `AGENTS.md` and architecture documentation when application code
+   is in scope.
 
 Treat **Framework Principles.md as a design requirement, not optional background reading**. After
 the user's explicit instructions, it is the repository's primary authority for architecture, API
@@ -28,8 +29,9 @@ the framework API.
 - `edu.ftcsushi.fw.ftc`: the FTC SDK boundary and stable FTC resource owners.
 - `edu.ftcsushi.fw.integrations`: narrow third-party integration edges, such as Pedro Pathing.
 - `edu.ftcsushi.fw.tools`: examples, testers, and calibration support.
-- `edu.ftcsushi.robots.phoenix`: the modern Sushi-framework-based Phoenix robot and reference
-  design.
+- `edu.ftcsushi.robots.examples`: maintained, independent examples of Sushi application patterns.
+- Other packages under `edu.ftcsushi.robots`: application edges whose local architecture and policy
+  belong in their own nested instructions and documentation.
 - `org.firstinspires.ftc.teamcode.robots` and FTC controller samples: legacy or sample code. Do not
   use these as architectural templates for new framework-based work.
 
@@ -113,23 +115,14 @@ the framework API.
 - Prefer one clear API over parallel legacy paths. Breaking changes are acceptable when they make
   the framework more coherent; update all in-repository callers and documentation together.
 
-## Phoenix-specific expectations
+## Application boundaries
 
-- Keep `PhoenixRobot` a composition root and lifecycle/loop owner, not a control script.
-- Keep `PhoenixProfile` data-only and defensively copy configuration for long-lived owners.
-- Keep drivetrain, AprilTag vision, localization, and field-layout ownership distinct. Phoenix may
-  select a concrete vision backend, while consumers depend on the backend-neutral lane interface.
-- TeleOp must map gamepads in `PhoenixTeleOpControls` and call robot-owned capability families rather
-  than reaching into `PhoenixScoring`, `PhoenixTargeting`, or raw Plants.
-- Auto and TeleOp are parallel clients of the same `PhoenixCapabilities` vocabulary. Keep alliance,
-  route selection, Pedro paths, and routine composition outside `PhoenixRobot`.
-- Keep scoring's intent, execution policy, and hardware realization separated. Preserve the single
-  owner for feed queues, target overlays, flywheel readiness, and scoring Plant update order.
-- Keep targeting and drive-assist decisions in their robot-owned services; do not move season-specific
-  scoring or aim policy into reusable framework lanes.
-- Keep ordinary OpModes thin: choose configuration/specification and declare the robot's roles only
-  through `configure(RobotProgram)`. `FtcRobotOpMode` owns the final FTC lifecycle callbacks,
-  managed loop phases, and cleanup. An explicitly custom host is the advanced exception.
+- Keep application identity, policy, hardware facts, and application-only tooling inside that
+  application's main/test package bubble.
+- Shared framework code, tooling, documentation, and examples must not depend on or teach from a
+  production application. Examples own complete, independent teaching graphs.
+- Application dependencies point into Sushi and its explicit integration edges, never back from
+  shared code into an application.
 
 ## Change workflow
 

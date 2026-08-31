@@ -165,7 +165,7 @@ public final class FrameworkBoundaryTest {
                 "// import android.util.Size;",
                 "/*",
                 " * Class.forName(\"com.pedropathing.follower.Follower\");",
-                " * edu.ftcsushi.robots.phoenix.PhoenixRobot",
+                " * edu.ftcsushi.robots.competition.CompetitionRobot",
                 " */",
                 "final class Fixture {}"
         );

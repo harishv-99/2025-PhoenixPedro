@@ -149,13 +149,14 @@ A single expression performs step 4:
 ```java
 PedroPathingRuntime pedroRuntime = PedroPathingRuntime.create(
         hardwareMap,
-        Constants.phoenixAutoRuntimeConfig(
+        PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(
                 profile.localization.predictor,
                 profile.drive.wiring,
                 profile.drive.enableZeroPowerBrake));
 ```
 
-`Constants.phoenixAutoRuntimeConfig(predictor, wiring, enableZeroPowerBrake)` is a pure,
+`PhoenixPedroConfiguration.phoenixAutoRuntimeConfig(predictor, wiring,
+enableZeroPowerBrake)` is a pure,
 narrow application-edge mapper, not a resource factory. It raw-copies exactly those three inputs,
 then combines them with fresh checked-in Phoenix Pedro tuning and the fixed field transform. It
 does not accept or retain `PhoenixProfile`, validate unrelated vision, scoring, targeting, Auto, or
@@ -280,8 +281,8 @@ does not merely stage zero for a future follower update.
 
 The public `PedroPathingDriveAdapter(completedFollower)` constructor remains an advanced seam for a
 custom/portable host that has already constructed a completed Follower and will route its lifecycle
-through the adapter; it creates no Phoenix Pinpoint or drivetrain hardware. Pedro's generated
-tuning OpModes and `PedroTest` use a different package-local
+through the adapter; it creates no Phoenix Pinpoint or drivetrain hardware. Phoenix's application-
+owned Pedro tuning OpModes and `PedroTest` use a different package-local
 native-Follower factory whose exclusive OpMode owns Pedro's native `PinpointLocalizer` and raw
 heartbeat. Neither seam is an alternate Phoenix production graph.
 

@@ -234,11 +234,11 @@ The same selector/gate concepts should be used by Drive Guidance and mechanism t
 ## Bounded query consumer: coordinated turret
 
 The optional
-[`ReferenceCoordinatedShotService`](<../../../robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
+[`ReferenceCoordinatedShotService`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
 is a complete robot-owned translation-query consumer. It selects one gated translation, preserves
 that solution's observation timestamp, and maps robot-forward/robot-left geometry into one observed
 periodic-equivalent turret request plus flywheel and hood intent. The separate
-[`ReferenceTurretMechanism`](<../../../robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
+[`ReferenceTurretMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
 owns the live planner, cable bounds, unavailable hold, PositionPlant, hardware update, and stop.
 
 ```java

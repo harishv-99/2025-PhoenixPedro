@@ -95,7 +95,7 @@ voltage sag, load recovery, vibration, launch result, or safe wheel speed.
 
 ## Optional inventory service: three observations, one snapshot
 
-[`ReferenceInventoryStatusService.java`](<../../../robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
+[`ReferenceInventoryStatusService.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
 is an optional robot-owned example, not a framework inventory type and not part of the ordinary
 Reference robot. A custom OpMode can declare it before consumers:
 
@@ -149,9 +149,9 @@ the service robot-owned when the team's capacity, ordering, and policy differ fr
 
 ## Optional coordinated shot: one timestamped solution, one bounded turret
 
-[`ReferenceCoordinatedShotService.java`](<../../../robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
+[`ReferenceCoordinatedShotService.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
 and
-[`ReferenceTurretMechanism.java`](<../../../robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
+[`ReferenceTurretMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
 form an optional, example-only pair. They are not framework shooter types and the ordinary
 Reference robot does not wire either owner. A custom managed OpMode can register its localization
 owner first, then the calculation service, then the hardware output:

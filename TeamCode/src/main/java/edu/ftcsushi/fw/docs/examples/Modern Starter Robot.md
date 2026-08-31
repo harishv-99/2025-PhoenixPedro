@@ -4,7 +4,7 @@
 
 **Audience:** Students who have read
 [`Sushi in one picture`](<../getting-started/Framework Overview.md>)
-**Source entry:** [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>)
+**Source entry:** [`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>)
 
 Use this example as the smallest compiling Sushi structure shared by TeleOp and Auto. It has one
 direct mecanum drive, one intake mechanism, one mode-neutral intake capability, one controls owner,
@@ -29,13 +29,13 @@ owner, and return to this map only when the next boundary matters.
 
 | Question in front of you | Open this source | Boundary it owns |
 |---|---|---|
-| What should a button or drive stick mean? | [`StarterTeleOpControls.java`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>) | Driver meanings and the final manual `DriveSource` |
-| Which robot words should TeleOp and Auto share? | [`StarterIntake.java`](<../../../robots/examples/starter/capability/intake/StarterIntake.java>) | Mode-neutral intake intent, fresh Tasks, and status |
-| How does an intake mode become one final motor command? | [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) | Private Plant construction, realization, update, and stop |
-| Where do names, directions, powers, limits, and permissions belong? | [`StarterProfile.java`](<../../../robots/examples/starter/robot/StarterProfile.java>) | Fresh data-only intake/drive configuration and separate motion permissions |
-| Who constructs and declares the active robot graph? | [`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>) | Robot-level checks, construction, declaration order, and presentation |
-| What is the smallest ordinary FTC TeleOp host? | [`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>) | Disabled profile selection and TeleOp declaration |
-| How does Auto compose timed behavior from the same capability? | [`StarterAuto.java`](<../../../robots/examples/starter/opmode/StarterAuto.java>) | Disabled Auto strategy and one fresh root Task |
+| What should a button or drive stick mean? | [`StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>) | Driver meanings and the final manual `DriveSource` |
+| Which robot words should TeleOp and Auto share? | [`StarterIntake.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>) | Mode-neutral intake intent, fresh Tasks, and status |
+| How does an intake mode become one final motor command? | [`StarterIntakeMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) | Private Plant construction, realization, update, and stop |
+| Where do names, directions, powers, limits, and permissions belong? | [`StarterProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>) | Fresh data-only intake/drive configuration and separate motion permissions |
+| Who constructs and declares the active robot graph? | [`StarterRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java>) | Robot-level checks, construction, declaration order, and presentation |
+| What is the smallest ordinary FTC TeleOp host? | [`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>) | Disabled profile selection and TeleOp declaration |
+| How does Auto compose timed behavior from the same capability? | [`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>) | Disabled Auto strategy and one fresh root Task |
 
 The split is intentional. `FtcRobotOpMode` is not a season robot superclass and knows no intake,
 scoring, route, or strategy vocabulary. It owns only the reusable FTC callback/lifecycle contract.

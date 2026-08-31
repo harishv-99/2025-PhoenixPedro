@@ -681,7 +681,7 @@ solve chooses geometry; robot-specific kinematics map that geometry into one abs
 request; `PlantTargets.plan(request)` resolves the final reachable Plant target.
 
 The optional
-[`ReferenceCoordinatedShotService`](<../../../robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
+[`ReferenceCoordinatedShotService`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.java>)
 uses the translation channel because turret, flywheel, and hood must derive from one vector. These
 are the calculation's relevant statements, with remaining validation, model interpolation, and
 additional unavailable returns omitted:
@@ -719,7 +719,7 @@ publishes one immutable turret/flywheel/hood solution. Its defaults are illustra
 not calibrated projectile physics.
 
 The separate
-[`ReferenceTurretMechanism`](<../../../robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
+[`ReferenceTurretMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceTurretMechanism.java>)
 privately projects that cached request and owns the entire planner/Plant realization:
 
 ```java

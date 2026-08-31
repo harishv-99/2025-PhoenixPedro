@@ -157,7 +157,7 @@ It should own:
 
 Example:
 
-- `PhoenixTeleOpControls`
+- `ReferenceTeleOpControls`
 
 A controls owner answers:
 
@@ -181,8 +181,8 @@ It should usually **not** own:
 
 Examples:
 
-- `PhoenixCapabilities.scoring()`
-- `PhoenixCapabilities.targeting()`
+- `ReferenceCapabilities.lift()`
+- `ReferenceCapabilities.launcher()`
 
 A capability family answers:
 
@@ -240,8 +240,8 @@ It usually does not own a mechanism's target resolvers or Plant update order, an
 
 Examples:
 
-- `PhoenixTargeting`
-- `PhoenixDriveAssistService`
+- `ReferenceCoordinatedShotService`
+- `ReferenceInventoryStatusService`
 - a shot planner
 - a target selector
 - a pose-based evaluator
@@ -261,7 +261,7 @@ once after all required presenters and selected optional diagnostics have contri
 
 Example:
 
-- `PhoenixTelemetryPresenter`
+- `MyTelemetryPresenter`
 
 A presenter answers:
 
@@ -286,7 +286,7 @@ It should not quietly absorb policy that belongs elsewhere.
 
 Example:
 
-- `PhoenixRobot`
+- `ReferenceRobot`
 
 A composition root answers:
 
@@ -314,7 +314,7 @@ default requirement and can accidentally validate or retain dormant mode/backend
 
 Example:
 
-- `PhoenixProfile`
+- `ReferenceProfile`
 
 A profile answers:
 
@@ -395,9 +395,9 @@ Good:
 - `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
 - `MecanumDrivebase`
 - `ShooterSupervisor`
-- `PhoenixTeleOpControls`
-- `PhoenixTargeting`
-- `PhoenixTelemetryPresenter`
+- `ReferenceTeleOpControls`
+- `ReferenceCoordinatedShotService`
+- `MyTelemetryPresenter`
 
 Bad:
 
@@ -1350,11 +1350,10 @@ creates one fresh profile, performs any cross-owner preflight it owns, construct
 Auto-active runtime roles; it does not receive dormant Gamepads. The root retains neither the
 aggregate profile nor mode-only inputs after routing their active slices to the actual owners.
 
-Production Phoenix follows this exact shape. Its package-private ordinary-mode program performs
-the drive-versus-scoring motor collision preflight before hardware effects, then calls the sole
-`PhoenixRobot(HardwareMap)` constructor and one mode declaration. Advanced direct callers with an
-opaque drive sink must establish their own exclusive hardware ownership rather than relying on a
-misleading nominal-name check inside the root.
+An ordinary mode program can perform any cross-owner motor collision preflight before hardware
+effects, then call the sole `MyRobot(HardwareMap)` constructor and one mode declaration. Advanced
+direct callers with an opaque drive sink must establish their own exclusive hardware ownership
+rather than relying on a misleading nominal-name check inside the root.
 
 A portable tool or deliberately custom host may still own and commit a frame that never enters a
 managed program. Ordinary robot selectors compose behind the program's one data-only `Prestart`.
@@ -1488,29 +1487,26 @@ Instead, presenters should consume snapshots already computed by the rest of the
 
 ---
 
-## Mapping the roles onto Phoenix
+## Mapping the roles onto maintained examples
 
-Phoenix is the reference robot for this split:
+The examples demonstrate the roles independently instead of presenting one season robot as the
+framework template:
 
-- primitive: `GamepadDriveSource`
-- primitive: `MecanumDrivebase`
-- primitive: `AprilTagSensor`
-- lane: `AprilTagVisionLane` with a concrete backend such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`
-- lane: `FtcOdometryAprilTagLocalizationLane`
-- field facts: `PhoenixProfile.fixedAprilTagLayout`
-- capability family: `PhoenixCapabilities.scoring()` / `PhoenixCapabilities.targeting()`
-- controls owner: `PhoenixTeleOpControls`
-- scoring mechanism and execution-policy owner: `.scoring.PhoenixScoring`, with request, policy,
-  and realization sections inside one owner rather than separate layer objects
-- targeting service: `.scoring.PhoenixTargeting`
-- public scoring/targeting snapshots: `PhoenixCapabilities.ScoringStatus` and
-  `PhoenixCapabilities.TargetingStatus`
-- drive-assist policy service: `PhoenixDriveAssistService`
-- presenter: `PhoenixTelemetryPresenter`
-- composition root: `PhoenixRobot`
-- profile: `PhoenixProfile`
+- Starter controls owner: `StarterTeleOpControls`
+- Starter capability and mechanism owner: `StarterIntake` / `StarterIntakeMechanism`
+- Starter composition root and profile: `StarterRobot` / `StarterProfile`
+- Reference capability family: `ReferenceCapabilities.lift()` /
+  `ReferenceCapabilities.launcher()`
+- Reference controls owner: `ReferenceTeleOpControls`
+- Reference composition root and profile: `ReferenceRobot` / `ReferenceProfile`
+- focused sensing service: `ReferenceInventoryStatusService`
+- focused coordination service: `ReferenceCoordinatedShotService`
+- framework vision lanes: `AprilTagVisionLane` with a concrete FTC backend, independently of robot
+  field facts and strategy
 
-Use that pattern for other robots: copy the structure, not the season-specific behavior.
+Use the Starter for the copyable minimum, the Reference robot for a larger capability split, and
+focused examples only for the concern they name. Do not combine their profiles or make one example
+own another example's lifecycle.
 
 ---
 

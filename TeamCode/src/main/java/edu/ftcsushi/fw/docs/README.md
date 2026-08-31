@@ -4,9 +4,6 @@ Sushi helps an FTC team build non-blocking TeleOp and Auto programs from a small
 sources describe values, bindings turn controls into intent, Tasks coordinate behavior over time,
 Plants realize mechanism targets, and one managed program owns the loop.
 
-Sushi is the framework; Phoenix is the specific production robot under
-`edu.ftcsushi.robots.phoenix`.
-
 ## New to Sushi
 
 1. Read [Sushi in one picture](<getting-started/Framework Overview.md>) to see code composition,
@@ -40,7 +37,6 @@ Physical device work starts separately at [Testing and calibration](<testing-cal
 | Bring up or calibrate hardware | [Testing and calibration](<testing-calibration/README.md>) |
 | Add drive guidance or localization | [Drive and vision](<drive-vision/README.md>) |
 | Build a Pedro autonomous | [First Pedro Auto](<getting-started/First Pedro Auto.md>) |
-| Understand the production Phoenix robot | [Phoenix production reference](<../../robots/phoenix/README.md>) |
 | Maintain or extend the framework | [Maintainers](<maintainers/README.md>) |
 
 ## Browse by purpose
@@ -65,14 +61,12 @@ Physical device work starts separately at [Testing and calibration](<testing-cal
 
 - [Framework Principles](<../Framework Principles.md>) — architecture and API design authority
 - [Maintainer notes](<maintainers/Maintainer Notes.md>) — tests and extension notes
-- [Phoenix Architecture](<../../robots/phoenix/Phoenix Architecture.md>) — production robot ownership
 
 ## Example labels
 
 - **Copyable starter** — the smallest ordinary managed robot shape.
 - **Teaching reference** — a larger coherent robot to study in layers, not copy wholesale.
 - **Focused example** — one optional composition or integration.
-- **Production reference** — a real robot with season-specific hardware and strategy.
 
 The checked-in guides, compiling examples, Javadocs, and tests are the current documentation
 authority.

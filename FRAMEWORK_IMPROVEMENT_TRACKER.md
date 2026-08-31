@@ -8,7 +8,7 @@ item must pass the decision gate below before implementation begins.
 
 Sushi was named Phoenix before `BRAND-01`. Historical item titles, exact approvals, publication
 coordinates, and descriptions of the then-current framework retain that former name; current policy
-and pending work use Sushi. The specific robot in `edu.ftcsushi.robots.phoenix` remains Phoenix.
+and pending work use Sushi.
 
 ## Design authority and goal
 
@@ -154,7 +154,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 50 | API-04 | Binding execution order | Done | Approved global declaration-ordered traversal with context snapshots first, no phase/priority API, and fail-fast structural mutation during dispatch. |
 | 51 | API-05 | One beginner drive entry point | Done | Factory-only FTC drive construction, normalized command vocabulary, caller/docs migration, verification, and Android Studio review are complete. |
 | 52 | COMMON-02 | Telemetry commit ownership | Done | Phoenix frame ownership and framework documentation/Javadocs were reviewed and approved on 2026-07-27. |
-| 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
+| 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful adopting-robot thresholds, hazardous-motion confirmation, and physical safe-state evidence require an assembled robot. |
 | 54 | EXAMPLE-01 | Compiling modern starter robot | Done | User approved the verified starter package; Gate 3 publication is authorized. |
 | 55 | TARGET-04 | Command-preserving equivalent-position resolution | Done | The focused transform, truthful command-backed Task completion, synchronized documentation, software verification, and Android Studio review are complete. |
 | 56 | API-06 | One Plant command and Task-writing path | Done | The unified target-root API, Plant-derived command ownership, synchronized callers/docs, verification, and Android Studio review are complete. |
@@ -212,9 +212,10 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 108 | EXAMPLE-10 | Timestamped adaptive collection case study | Done | The reviewed bounded example-only implementation, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 109 | LOCALIZATION-01 | Optional bounded timestamped pose history | Done | The reviewed shared history/continuity implementation, EXAMPLE-10 migration, synchronized teaching, software evidence, and destination-specific publication authorization are complete. |
 | 110 | BRAND-01 | Sushi framework identity and namespace migration | Done | The reviewed Sushi namespace/API/tooling/documentation migration, software evidence, and destination-specific publication authorization are complete. |
-| 111 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 111 | BRAND-02 | Isolate the production application from Sushi teaching and shared code | Done | The reviewed one-way application bubble, independent teaching, framework-only documentation site, application-owned tooling, boundary regressions, software evidence, and destination-specific publication authorization are complete. |
+| 112 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
-### Current Cuberobot/DECODE program order (amended 2026-08-28)
+### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
 The user's tracker-intake approvals establish this order without starting any decision gate or
 approving any public API:
@@ -229,13 +230,14 @@ approving any public API:
    per-attempt framework caller surface.
 8. `EXAMPLE-03` narrowed coherent timestamped mechanism-target coordination reference.
 9. `BRAND-01` Sushi framework identity migration requested on 2026-08-30.
-10. `AUDIT-01` closure re-audit, last.
+10. `BRAND-02` production-application isolation requested on 2026-08-31.
+11. `AUDIT-01` closure re-audit, last.
 
 Run one item per branch through the normal decision and approval gates. An approved, recorded, and
 verified no-change result is a valid **Done** disposition when a candidate abstraction does not
 reduce complete robot code; an item whose truthful contract still needs unavailable evidence remains
 **Deferred** with a reactivation trigger. `AUDIT-01` waits for the eight capability items named
-earlier and the independently requested `BRAND-01` identity migration to reach a terminal
+earlier and the independently requested `BRAND-01` and `BRAND-02` work to reach a terminal
 disposition; it does not wait indefinitely for unavailable hardware measurements.
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
@@ -302,8 +304,9 @@ authorized committing it on `codex/recover-tracker-example-drive-runtime-intake`
 implementation and starts none of those items.
 
 On 2026-08-15, the simple-example review exposed configuration boilerplate as a prerequisite rather
-than an example lesson: `StarterProfile` is 231 lines for drive and intake, `PhoenixProfile` is
-1,033 lines across unrelated owners, and the Pedro reference reaches through Phoenix configuration.
+than an example lesson: `StarterProfile` is 231 lines for drive and intake, one production profile
+is 1,033 lines across unrelated owners, and the Pedro reference reaches through production
+configuration.
 The user selected a full maintained-code configuration program before EXAMPLE-04, while rejecting a
 generic Config base, reflection copier, universal validation DSL, or units-system migration. The
 ordered intake is CONFIG-02, SPATIAL-01, MATH-01, CONFIG-03 through CONFIG-09, then EXAMPLE-04. At
@@ -347,10 +350,10 @@ The tracker was re-reviewed against the public Worlds-season source for
 not just against framework style preferences. The team's
 [official 2025 results page](https://ftc-events.firstinspires.org/2025/team/6165) confirms that this
 is competition-proven code worth treating as a capability benchmark. The goal is not to copy its
-architecture or season vocabulary. The goal is for Phoenix to express the same useful robot
+architecture or season vocabulary. The goal is for Sushi adopters to express the same useful robot
 behaviors with fewer lifecycle hazards and a smaller student-facing programming surface.
 
-| Cuttlefish capability/evidence | Phoenix assessment | Tracker consequence |
+| Cuttlefish capability/evidence | Sushi/adopter assessment | Tracker consequence |
 |---|---|---|
 | One configured Pedro `Follower` is built with mecanum and Pinpoint configuration, then advanced by the outer OpMode loop independently of route scheduling ([Constants](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/Constants.java), [EnhancedOpMode](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/EnhancedOpMode.java)). | This validates Phoenix's intended single-owner direction, but the checked-in Phoenix Pedro runtime does not yet satisfy it. | Keep PEDRO-01 and PEDRO-02 ahead of DRIVE-01. |
 | Routes can be constructed when execution begins from the live follower pose and current vision selection ([PathActionBuilder](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/pathaction/PathActionBuilder.java), [Far Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)). | Phoenix's eager `RouteTask` cannot naturally express live start geometry without rebuilding the surrounding routine. | Add ROUTE-01. |
@@ -362,11 +365,11 @@ behaviors with fewer lifecycle hazards and a smaller student-facing programming 
 | Custom vision processors, manual bulk-cache clearing, output write caching, phase profiling, Dashboard tuning, and a staged whole-robot check are all used in normal development ([ClusterDetectionProcessor](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/vision/ClusterDetectionProcessor.java), [WriteCache](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/hardware/WriteCache.java), [LoopProfiler](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/LoopProfiler.java), [SystemCheck](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/test/SystemCheck.java)). | Phoenix has useful device testers and stable profile snapshots, but lacks reusable ownership for custom VisionPortal lifecycles, measured loop diagnostics, a safe live-to-checked-in tuning path, and a staged robot check. | Add VISION-01, PERF-01, PERF-02, PERF-03, TUNE-01, and CHECK-01 as separate decision gates. |
 | Moving-target turret lead and magazine sorting combine pose/velocity/sensor facts with bounded hardware realization ([Context](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/Context.java), [Turret](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Turret.java)). | Existing Phoenix spatial queries, timestamped sources, robot-owned services/supervisors, capabilities, and bounded Plants can express these behaviors cleanly. The missing piece is a compact compiling proof. | Originally added EXAMPLE-03; it is now deferred under the 2026-08-14 combined audit. Do not add projectile physics, game-piece sorting, or scoring vocabulary to the framework. |
 
-Cuttlefish's asynchronous action helper runs robot behavior on background coroutines. Phoenix should
+Cuttlefish's asynchronous action helper runs robot behavior on background coroutines. Sushi should
 not copy that execution model: cooperative Tasks on the OpMode heartbeat preserve FTC hardware
 thread ownership and make cancellation and loop order visible. Its standalone `DecodeSim` also
 duplicates a simplified robot rather than executing the production ownership graph, so simulator
-work remains deferred until a fake hardware boundary can exercise real Phoenix composition.
+work remains deferred until a fake hardware boundary can exercise a real adopting-robot composition.
 
 ### Additional public Worlds-source review
 
@@ -2049,7 +2052,7 @@ implementation.
 ### FIELD-01 - Explicit alliance field transforms
 
 - **Problem to confirm:** real autonomous routes can contain field-symmetric poses, but a
-  mirrored route is only a nominal geometric baseline. Phoenix must eventually make shared geometry
+  mirrored route is only a nominal geometric baseline. An adopting robot must make shared geometry
   easy without implying that Red and Blue must use identical tuned endpoints, control points,
   constraints, or route topology.
 - **External evidence:** Cuttlefish's
@@ -2057,13 +2060,13 @@ implementation.
   derives a nominal alliance variant, but its competition Auto also uses alliance-specific
   endpoints, an extra Blue control point, different heading interpolation timing, and different
   mechanism offsets. This demonstrates the student-facing benefit and the required escape hatch:
-  share only the geometry that is truly symmetric. Phoenix should still avoid Cuttlefish's global
-  color state and use Phoenix's documented frame.
+  share only the geometry that is truly symmetric. Sushi adopters should still avoid Cuttlefish's
+  global color state and use Sushi's documented frame.
 - **Alternatives to compare:** continue explicit red/blue path definitions; use Pedro's color helper
   directly; store alliance in global mutable context; add robot-local coordinate helper methods; or
-  add a small immutable Phoenix-coordinate field transform driven by explicit field facts.
-- **Reopen hypothesis:** after real Phoenix routes exist, first use an optional robot-local
-  Phoenix-coordinate symmetry helper for the poses/control points that are actually shared. Keep
+  add a small immutable Sushi-coordinate field transform driven by explicit field facts.
+- **Reopen hypothesis:** after real adopting-robot routes exist, first use an optional robot-local
+  Sushi-coordinate symmetry helper for the poses/control points that are actually shared. Keep
   ordinary named alliance-specific points or complete route builders for tested differences, then
   convert to Pedro at the integration boundary. Promote only repeated, stable transform math into
   the framework; do not add season route names, alliance strategy, or a generic route-tuning DSL.
@@ -3583,7 +3586,7 @@ implementation.
 
 - **Problem to confirm:** some competitive robots mechanically reuse drivetrain motors and encoders
   through a PTO for a lift or endgame mechanism. `FtcMecanumDriveLane` deliberately hides its four
-  motor writers/readbacks, so a Phoenix robot currently must either bypass the lane, create a second
+  motor writers/readbacks, so an adopting robot currently must either bypass the lane, create a second
   competing owner, or make a mechanism pretend to be a `DriveSource`. None preserves one obvious
   final actuator owner.
 - **External evidence:** Cuttlefish's
@@ -5413,7 +5416,7 @@ implementation.
 - **External evidence:** Cuttlefish wraps motor output with
   [`WriteCache`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/hardware/WriteCache.java).
   That proves the optimization is useful enough to evaluate, not that its threshold and latching
-  assumptions satisfy every Phoenix actuator contract.
+  assumptions satisfy every Sushi actuator contract.
 - **Alternatives to compare:** no change; exact deduplication inside individual FTC adapters;
   tolerance-based motor/servo wrappers; cache at Plant output; or rely on SDK/controller behavior.
   Benchmark each affected hardware type and trace stop, rail/clamp, mode/configuration, watchdog,
@@ -9685,20 +9688,22 @@ implementation.
 
 ### CHECK-01 - Staged whole-robot system check
 
-- **Problem to confirm:** Phoenix has strong individual device testers and PHX-02 can report static
-  readiness, but there is no one pre-match procedure that safely exercises the assembled robot in
+- **Problem to confirm:** an adopting application can have strong individual device testers and a
+  readiness service can report static readiness, but there is no one pre-match procedure that safely
+  exercises the assembled robot in
   stages, records pass/warn/fail evidence, asks for human confirmation where measurement is
   impossible, and guarantees cleanup after cancellation or failure.
 - **External evidence:** Cuttlefish's non-blocking
   [`SystemCheck`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/test/SystemCheck.java)
   advances through sensor, vision, odometry, drivetrain, turret, shooter, intake, magazine, and
   manual-confirmation stages, then consolidates results and cleans up outputs.
-- **Alternatives to compare:** keep separate tester OpModes; write one Phoenix-only check directly;
+- **Alternatives to compare:** keep separate tester OpModes; write one application-only check directly;
   compose existing Tasks in a robot check specification; add a small staged check/result runner; or
   reflect over hardware/subsystems automatically. Separate passive readiness from motion-producing
   checks and define explicit operator confirmation before each hazardous stage.
-- **Leading hypothesis:** Phoenix owns the check list, expected ranges, capability actions, and safe
-  state because those are robot facts. Reuse existing tester lifecycle and Task cancellation. Extract
+- **Leading hypothesis:** the adopting application owns the check list, expected ranges, capability
+  actions, and safe state because those are robot facts. Reuse existing tester lifecycle and Task
+  cancellation. Extract
   only a small stage/result/report/presenter abstraction if it removes repeated sequencing and
   cleanup without hiding which hardware will move; do not add reflection, hardware auto-discovery,
   or a generic `BaseRobot`.
@@ -13244,7 +13249,7 @@ implementation.
 ### SOURCE-03 - Composable scalar measurement conditioning
 
 - **Problem to confirm:** finite differencing can amplify encoder quantization and loop jitter, while
-  analog, distance, current, and other scalar measurements may contain spikes or noise. Phoenix has
+  analog, distance, current, and other scalar measurements may contain spikes or noise. Sushi has
   generic mapping, clamping, hold-last, rate-limiting, and boolean stability helpers, but no clearly
   documented generic numeric smoothing or outlier-rejection path. Putting a filter inside a Through
   Bore adapter or derived-velocity helper would couple reusable signal conditioning to one device
@@ -13255,7 +13260,7 @@ implementation.
   low-pass accumulator stages in its
   [`Shooter`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Shooter.java).
   That supplies a second real caller, but its per-loop alpha values are not a documented
-  elapsed-time/time-constant contract and do not prove which filter Phoenix should use. Collect real
+  elapsed-time/time-constant contract and do not prove which filter Sushi should use. Collect real
   flywheel traces before selecting an algorithm.
 - **Composition gap to audit:** the simple regulated-Plant
   `.externalEncoder(name, direction)` path deliberately hides rollover-aware position acquisition,
@@ -24723,16 +24728,191 @@ implementation.
   This records Android Studio review and authorizes only those publication coordinates; it does not
   authorize a repository rename or the next tracker item.
 
+### BRAND-02 - Isolate the production application from Sushi teaching and shared code
+
+- **User direction and Gate 1 boundary (2026-08-31):** after `BRAND-01` merged, the user first
+  removed the need for framework documentation to explain the production robot, then clarified the
+  architectural rule: **“Yes, keep the Phoenix robot implementation in a bubble. Nothing outside
+  it should reference it. All examples should showcase the approaches separately.”** Research is
+  isolated on `codex/brand-02-decouple-framework-docs` from
+  `origin/master@ba934c7de0619922334237402cdb5ce65efacd43`. This record is the only Gate 1 edit;
+  no Java/package move, documentation rewrite, framework API, staging, publication, or `AUDIT-01`
+  work is yet authorized.
+- **Confirmed documentation and policy coupling:** after masking the immutable repository slug
+  `2025-PhoenixPedro`, the audit found **113 semantic matching lines across 21 current generic
+  documentation/configuration/Javadoc surfaces**: the root and namespace READMEs, `zensical.toml`,
+  sixteen framework Markdown files, and two Pedro integration Javadocs. The framework guides use
+  production classes as examples for controls, capabilities, composition, handoff, Pedro wiring,
+  tuning, calibration, troubleshooting, and lifecycle. The site explicitly navigates four
+  production-robot pages and its current `docs_dir` spans all of `edu/ftcsushi`, so deleting only
+  the navigation group would not create a structural site boundary. Shared `AGENTS.md` and the
+  framework-improvement skill also carry application-specific policy outside the application tree.
+- **Confirmed source dependencies and callers:** only two maintained Java paths outside the
+  application package have real dependencies on application types:
+  - `BasicPedroAutoExample` imports `PhoenixMatchHandoff` and clears it during INIT. Its test owns
+    the matching application imports, setup/cleanup, and one dedicated handoff test. No other
+    generic example performs that invalidation, so this is both an example leak and an incomplete
+    process-wide safeguard.
+  - Project Pedro `Constants` imports `PhoenixProfile`, creates the current profile for native
+    tuning tools, exposes `phoenixAutoRuntimeConfig(...)`, and retains physical drivetrain,
+    Pinpoint, follower, and path-constraint facts. Its package-private factory is used by the
+    adjacent generated `Tuning` host and `PedroTest`; `PhoenixAutoProgram` is the only application
+    caller of the public managed-runtime mapper. `ConstantsTest` pins that complete graph.
+  The standalone legacy `Phoenix3` OpMode has no callers but is itself an implementation outside
+  the requested literal bubble. Framework Pedro Javadocs and the current documentation tests add
+  textual coupling but no further compiled dependency.
+- **Student-facing common path:** framework learning should stop at the maintained independent
+  Starter, Reference, field-relative, and Basic Pedro examples. Each example owns its own profile,
+  capabilities, lifecycle, evidence, and explicit fallback without importing a production
+  application. An adopting application may depend on Sushi and on narrow vendor/tool edges; Sushi,
+  shared tooling, and examples may not depend back on that application.
+- **Behavioral consequence made explicit:** removing the Basic Pedro clear means the unusual
+  sequence “production Auto, manually enabled Basic Pedro diagnostic, production TeleOp within the
+  handoff freshness window” no longer has Basic Pedro discard the application snapshot. That is the
+  selected ownership correction: the generic example does not own application state, and the old
+  one-off clear never protected sequences containing any other unrelated OpMode. Application Auto,
+  TeleOp, and diagnostic hosts retain their own existing handoff lifecycle. A guarantee across
+  every arbitrary intervening FTC OpMode would be a separate lifecycle problem, not a hidden reason
+  for a generic example dependency.
+- **Alternatives and simplicity comparison:**
+
+  | Alternative | Student concepts / call sites | Ownership and failure quality | Disposition |
+  |---|---|---|---|
+  | Keep the status quo | Examples look short only because they silently know one production application. | Reverse dependencies and mixed documentation remain; a generic example can mutate unrelated state. | Rejected. |
+  | Delete only the explanatory sentence and production navigation | Minimal diff. | Leaves dozens of named teaching references, public Javadocs, both Java dependency leaks, and potentially generated robot pages/search results. | Rejected as cosmetic. |
+  | Keep the broad site root and rely on an exclusion setting | Avoids repairing out-of-root example-source links. | The pinned Zensical path does not support `exclude_docs`; navigation omission alone is not an enforceable publication boundary. | Rejected. |
+  | Rename project Pedro `Constants` generically and copy application hardware facts into it | Keeps generated tool FQCNs. | Hides rather than removes the application implementation and creates two physical-fact owners that can drift. | Rejected. |
+  | Add a framework registry, global handoff invalidator, or injected application callback to every example | Could preserve the one unusual handoff sequence. | Adds a concept/API for application state, makes examples less independent, and assigns application policy to Sushi. | Rejected. |
+  | One-way application bubble with independent examples and framework-only documentation | Ordinary examples lose a special clear; their normal lifecycle/API stays unchanged. Source moves are mechanical and application-local. | Dependency direction, policy, physical facts, docs, and failure ownership become explicit. | **Selected.** |
+- **Chosen implementation boundary:**
+  1. Treat `TeamCode/src/main/java/edu/ftcsushi/robots/phoenix/**` and its matching test subtree as
+     the application bubble. Move project Pedro `Constants`, `Tuning`, and `PedroTest` together into
+     an application-owned Pedro package, rename `Constants` to the descriptive
+     `PhoenixPedroConfiguration`, move/rename its test, and update the inward
+     `PhoenixAutoProgram` call. Preserve the native-tool construction transaction, checked-in
+     physical facts, annotations, Driver Station behavior, and tests; add no forwarding package or
+     compatibility alias. Move the uncalled legacy `Phoenix3` OpMode into an application-owned
+     `legacy` package rather than retaining a second implementation outside the bubble.
+  2. Remove the application handoff import/call and application-oriented Javadoc from
+     `BasicPedroAutoExample`; remove only its handoff-specific test fixtures/test. Preserve the two
+     managed lifecycle/fail-stop tests and all Basic Pedro runtime behavior otherwise.
+  3. Remove production comparisons, links, labels, and class names from root/namespace/framework
+     documentation and framework Pedro Javadocs. Preserve reusable contracts and rewrite concrete
+     teaching with Starter, Reference, Basic Pedro, or neutral robot-owned types. In particular,
+     retain a generic `FtcAutoToTeleOpHandoff<T>` / `RobotProgram.stopHandoff(...)` guide rather
+     than copying application prose into framework docs.
+  4. Narrow Zensical `docs_dir` to `TeamCode/src/main/java/edu/ftcsushi/fw`, make the framework docs
+     home/navigation relative to that root, remove the production navigation group, and convert
+     only links that intentionally point to maintained example/test source outside `fw` into stable
+     repository source links. The repository slug remains an address, not an application reference.
+  5. Keep shared policy generic: move the application architecture prerequisite and specific rules
+     from root `AGENTS.md` into nested main/test application `AGENTS.md` files, and make the global
+     improvement skill refer to applicable application-local instructions rather than this robot.
+  6. Add no framework API, global application registry, new handoff owner, compatibility alias, or
+     production strategy to an example. Do not change application capability, route, localization,
+     scoring, hardware, or handoff semantics.
+- **Explicit exceptions and non-goals:** exact `2025-PhoenixPedro` repository/folder/GitHub/Pages
+  coordinates remain until the repository itself is separately renamed. Immutable tracker history,
+  exact user approvals, old branch/PR/commit coordinates, and deliberate former-framework negative
+  assertions remain historical evidence, not live application dependencies. Application main/test
+  code, nested instructions, and package-local documentation remain free to describe the
+  application. Unrelated copied SDK samples are out of scope; the uncalled `Phoenix3` file moves
+  only because it is an implementation named by the user's literal bubble rule.
+- **Verification plan:** add a dedicated boundary regression inside the application test subtree
+  that scans maintained production/test Java and rejects application package imports, qualified
+  names, or implementation identifiers outside the allowed main/test bubble while permitting
+  explicit historical negative fixtures. Add an examples assertion that no maintained example
+  imports a production application. Reverse `DocumentationLinksTest`'s current positive
+  production wording/navigation assertions, update its docs root and nav expectations, and scan
+  root/namespace/framework Markdown, framework Javadocs, site config, and shared instructions for
+  semantic application references after masking the exact repository coordinate. Retain local
+  Markdown link/anchor/fence checks. Run the moved Pedro configuration/tool tests, Basic Pedro host
+  tests, framework boundary/branding tests, `:TeamCode:testDebugUnitTest`,
+  `:TeamCode:compileDebugJavaWithJavac`, `:TeamCode:sushiJavadocs`, `git diff --check`, source/path
+  residue scans, and strict `python -m zensical build --clean --strict` in the hosted documentation
+  gate if this workstation still lacks Python. Android Studio review remains Gate 3; software
+  checks do not claim hardware tuning, physical motion, or match handoff accuracy.
+- **Decision gate (2026-08-31):** **Ready; explicit approval is required for the package/FQCN
+  relocations, Basic Pedro behavior correction, documentation-site boundary, and shared-policy
+  relocation.** Approval phrase: **“Approve BRAND-02 one-way production-application bubble,
+  independent examples, framework-only documentation site, application-owned Pedro tools and
+  legacy implementation, nested application instructions, explicit repository/history exceptions,
+  and no new framework API.”**
+- **Gate 2 implementation approval (2026-08-31):** the user supplied that exact approval. The
+  subsequent boundary clarification selected **semantic isolation**: live dependencies, current
+  guidance, examples, shared configuration, and shared policy may not reference the application;
+  exact `2025-PhoenixPedro` addresses and faithful dated tracker records remain inert coordinates
+  and audit evidence rather than application dependencies. Implementation is authorized only on
+  `codex/brand-02-decouple-framework-docs`; staging and publication remain separately gated.
+- **Gate 2 source and ownership result (2026-08-31):** **Verifying.** Project Pedro `Constants`,
+  `Tuning`, and `PedroTest` now live inside the application as `PhoenixPedroConfiguration` and its
+  adjacent native tools; the configuration test moved with them, and `PhoenixAutoProgram` is the
+  sole inward production caller. The native configuration transaction, package-private generated-
+  tool seam, OpMode annotations, physical facts, and Driver Station behavior remain intact. Legacy
+  `Phoenix3` now lives under the application's `legacy` package. The Basic Pedro example no longer
+  imports or clears application handoff state, and only that coupling-specific fixture/test was
+  removed; its managed lifecycle, failure-stop behavior, and ordinary runtime remain unchanged.
+- **Gate 2 teaching, site, and policy result:** shared Markdown/Javadocs now teach reusable contracts
+  with independent Starter, Reference, field-relative, and Basic Pedro examples. The generic
+  Auto-to-TeleOp guide uses `FtcAutoToTeleOpHandoff<T>` and requires the handoff owner to clear stale
+  process state before fallible construction, then register the stop handoff. The Pedro guide assigns
+  start-pose, localization, and follower-heartbeat ownership to the integration service while
+  `RobotProgram` owns root Task start/update and output realization. Zensical is rooted at
+  `edu/ftcsushi/fw`, has framework-only navigation, and uses exact repository URLs for the 85
+  intentional example/test source links outside that root. Shared instructions and the improvement
+  skill are application-neutral; application rules now live in nested main/test `AGENTS.md` files.
+- **Gate 2 enforcement result:** `PhoenixApplicationBoundaryTest` rejects application identifiers,
+  imports, qualified/static/wildcard references, comment-separated names, and application paths
+  outside the matching main/test bubble while preserving only the named repository/history/negative-
+  fixture exceptions. It also verifies path/package agreement and independent example namespaces.
+  `DocumentationLinksTest` now enforces one active framework-only `docs_dir`, contained navigation,
+  recursive shared-surface semantic isolation, current-versus-historical tracker treatment, and the
+  existing link/anchor/fence contracts. Shared `ModernFtcHostBoundaryTest` verifies framework and
+  examples; application-local `PhoenixFtcHostBoundaryTest` owns the exact 23 custom raw/vendor host
+  exemptions and rationales. Recursive public/protected member discovery is constrained to each
+  caller's package roots, including a cross-scope inheritance regression. No production verifier or
+  framework API was added.
+- **Adversarial review:** independent source, documentation, site/policy, and host-boundary reviews
+  challenged moved-source fidelity, handoff ordering, Pedro lifecycle wording, path/package and
+  fully-qualified-name bypasses, recursive shared-surface coverage, active site-root parsing,
+  current tracker guidance, custom-host ownership, and inherited nested-type scope. Each concrete
+  finding was repaired and covered; final re-reviews report no remaining source dependency,
+  documentation/policy leak, scope-evasion, exemption, nested-type, or production-API issue.
+- **Software verification (2026-08-31):** the focused documentation/application/host boundary suite
+  passes. The full command `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac
+  :TeamCode:sushiJavadocs` is successful with **235 XML suites, 2,137 tests, 0 failures, 0 errors,
+  and 0 skipped**; only the existing Java 8 source/target warning under JDK 21 remains. `git diff
+  --check` is clean apart from Git's line-ending notices, and the boundary tests cover old package
+  residue, semantic isolation, documentation topology, and application host ownership. This
+  workstation has no runnable Python/Zensical command, so `python -m zensical build --clean
+  --strict` remains assigned to the hosted documentation gate. No robot-hardware run is relevant to
+  this ownership/documentation change, and no physical behavior, calibration, or match-handoff
+  guarantee is claimed.
+- **Gate 3 review boundary:** the complete diff remains unstaged on
+  `codex/brand-02-decouple-framework-docs`, based on
+  `origin/master@ba934c7de0619922334237402cdb5ce65efacd43`, for Android Studio inspection. Gate 2
+  authorizes no staging, commit, push, pull request, merge, `AUDIT-01`, or another item. Publication
+  requires the destination-specific combined authorization after review.
+- **Gate 3 review and publication authorization (2026-08-31):** the user supplied the exact
+  combined authorization: **“BRAND-02 looks good. Authorize committing the reviewed BRAND-02 diff
+  on codex/brand-02-decouple-framework-docs, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This records Android Studio approval of the complete reviewed diff and authorizes only
+  its commit, push, pull request, and merge into the named destination. BRAND-02 is **Done**. It does
+  not start `AUDIT-01` or another item, rename the repository, add a framework API, or convert the
+  software evidence into a robot-hardware claim.
+
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 
 - **Tracker-only intake status (2026-08-22):** **Proposed and deliberately last.** No re-audit has
   started. This item is a closure gate, not a container for implementing another capability.
 - **Start condition:** SAFE-04, SENSOR-01, PERF-01, EXAMPLE-09, EXAMPLE-10, LOCALIZATION-01, AUTO-01,
   and EXAMPLE-03 have each reached **Done** (including an approved, recorded, and verified no-change
-  decision) or **Deferred** with a concrete reactivation trigger.
-  The user's 2026-08-28 LOCALIZATION-01 intake approval explicitly amends this otherwise frozen
-  prerequisite list. A Gate 1 split does not silently enlarge AUDIT-01. It does not wait for
-  unavailable hardware runs belonging to PERF-03 or other deliberately hardware-gated items.
+  decision) or **Deferred** with a concrete reactivation trigger. `BRAND-01` and `BRAND-02` must
+  also reach a terminal disposition before this deliberately last audit starts. The user's
+  2026-08-28 LOCALIZATION-01 and 2026-08-31 BRAND-02 directions explicitly amend this otherwise
+  frozen prerequisite list. A Gate 1 split does not silently enlarge AUDIT-01. It does not wait
+  for unavailable hardware runs belonging to PERF-03 or other deliberately hardware-gated items.
 - **Pinned scope and provenance:** pin current Sushi when this audit starts, then compare it against
   the exact Cubelib, FTC_Decode, Decode/v3, and IntoTheDeep23641 commits recorded by the 2026-08-22
   intake. Preserve the caveat that Cubelib itself is the small utility/FSM library, the later DECODE
@@ -24776,7 +24956,7 @@ These are not implementation tasks without new evidence:
 - A mandatory split into many Plant capability interfaces.
 - A large framework module reorganization before focused tests exist.
 - Setup/code-generation wizards before the compiling starter has been used and evaluated.
-- A generic route host or season strategy layer based only on the production Phoenix robot's
+- A generic route host or season strategy layer based only on one production application's
   current needs.
 - A monolithic autonomous path/action DSL, generic route-progress callback language, or wrapper over
   every Pedro feature. Keep Pedro geometry/constraints/callbacks at the path boundary and use Sushi
@@ -24800,7 +24980,7 @@ These are not implementation tasks without new evidence:
   second robot cannot express its timestamped mount/measurement through the existing time-aware
   camera-mount and localization boundaries.
 - A standalone simulator that duplicates a simplified robot. Reconsider simulation when a fake FTC
-  hardware boundary can execute the production Phoenix composition, lifecycle, and Task graph.
+  hardware boundary can execute a production application's composition, lifecycle, and Task graph.
 
 ## Recommended Codex workflow
 
@@ -24816,7 +24996,7 @@ diff, verification result, and rollback boundary small.
 4. Review the Android Studio audit point. Only after the implementation is approved, mark the item
    **Done**, publish and merge it, then start the next item. Reorder the queue when evidence from a
    completed item changes later assumptions.
-5. Use a separate task/branch for Phoenix-only fixes even when they were discovered during framework
+5. Use a separate task/branch for application-only fixes even when they were discovered during framework
    work.
 
 Suggested prompt for each new Codex task:

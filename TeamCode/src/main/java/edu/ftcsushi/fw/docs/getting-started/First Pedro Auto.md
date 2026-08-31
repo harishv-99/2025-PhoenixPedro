@@ -18,24 +18,23 @@ No physical Pedro setup is required for this walkthrough. Before any later robot
 test, complete Pedro's official [`tuning`](https://pedropathing.com/docs/pathing/tuning) and
 [`localization`](https://pedropathing.com/docs/pathing/tuning/localization) workflows, understand
 Pedro's official [`coordinate system`](https://pedropathing.com/docs/pathing/reference/coordinates),
-and complete the adopting robot's calibration guide. For this repository's Phoenix robot, that is
-the [`Phoenix Calibration Guide`](<../../../robots/phoenix/Phoenix Calibration Guide.md>).
+and complete the adopting robot's calibration guide.
 
 **Files for this lesson:**
 
-- [`BasicPedroProfile.java`](<../../../robots/examples/pedro/robot/BasicPedroProfile.java>) — fresh local
+- [`BasicPedroProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroProfile.java>) — fresh local
   Pedro and intake configuration plus the false-by-default motion permission;
-- [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) — physical
+- [`BasicPedroAutoPaths.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) — physical
   start and fixed route;
-- [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>) —
+- [`BasicPedroAutoRoutine.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>) —
   route Task and outcome policy;
-- [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/robot/BasicPedroAutoRobot.java>) — managed
+- [`BasicPedroAutoRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroAutoRobot.java>) — managed
   service, output, and root declarations;
-- [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>) —
+- [`BasicPedroAutoMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>) —
   the reference action capability;
-- [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/opmode/BasicPedroAutoExample.java>) —
-  disabled FTC host that clears stale match handoff and selects the local profile; the composition
-  root owns status and presenter registration.
+- [`BasicPedroAutoExample.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java>) —
+  disabled FTC host that selects the local profile; the composition root owns status and presenter
+  registration.
 
 ## Safety
 
@@ -190,11 +189,6 @@ motor output, Follower construction, or Pedro-global mutation. It is registered 
 program before path or intake construction, so a later intake failure receives best-effort managed
 drive cleanup. The intake owner separately snapshots and validates `profile.intake` before its own
 lookup.
-
-The host still calls `PhoenixMatchHandoff.clear()` first so this diagnostic Auto cannot leave a
-recent Phoenix match snapshot for a later TeleOp. That explicit handoff invalidation is the only
-Phoenix-specific exception; Basic Pedro configuration imports neither `PhoenixProfile` nor project
-`pedroPathing.Constants`.
 
 For another robot, keep the path/routine/declaration pattern and edit the local profile's Pinpoint,
 Follower, Mecanum, path-constraint, field-transform, and intake facts. Keep

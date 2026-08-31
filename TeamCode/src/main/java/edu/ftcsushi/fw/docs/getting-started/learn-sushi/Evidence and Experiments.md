@@ -134,9 +134,9 @@ team rejects the configuration. Neither observation should be converted silently
 
 ## Go deeper when needed
 
-- Electrical conditioning: [`ReferenceLiftMechanism.java`](<../../../../robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
-- Cached launcher evidence: [`ReferenceLauncherMechanism.java`](<../../../../robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
-- Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService.java`](<../../../../robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
+- Electrical conditioning: [`ReferenceLiftMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
+- Cached launcher evidence: [`ReferenceLauncherMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+- Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
 - Hardware-free feedback cases: [Hardware-free Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>)
 - Safe experiment card and workflow: [Subsystem Experiments](<../../examples/Subsystem Experiments.md>)
 - Evidence vocabulary: [Glossary](<../../reference/Glossary.md#evidence>)

@@ -3,9 +3,6 @@
 Sushi helps FTC teams build non-blocking TeleOp and Auto programs while one managed runtime owns
 FTC lifecycle, loop order, and cleanup.
 
-Sushi is the framework; Phoenix is the specific production robot under
-`edu.ftcsushi.robots.phoenix`.
-
 The FTC SDK remains the OpMode and device-access foundation; [Sushi adds value](<fw/docs/getting-started/Framework Overview.md#why-use-sushi>)
 when behavior must be coordinated, reused by TeleOp and Auto, and checked in software as a robot grows.
 

@@ -10,18 +10,14 @@ import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
 import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroAutoRobot;
 import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroProfile;
-import edu.ftcsushi.robots.phoenix.PhoenixMatchHandoff;
 
 /**
  * Disabled, compiling FTC host for the independent basic Pedro Auto reference.
  *
  * <p>The adjacent {@link BasicPedroProfile} keeps the example's local software baseline and
- * false-by-default motion permission visible without borrowing Phoenix hardware configuration or
- * project Pedro constants. Production and diagnostic Phoenix-season entries instead extend
- * {@code PhoenixAutoOpMode}; this generic example uses the same underlying
- * {@link FtcRobotOpMode}/{@link RobotProgram} grammar without constructing the season robot. The
- * Phoenix match-handoff clear remains one deliberate diagnostic safety dependency, not a hardware
- * configuration source.</p>
+ * false-by-default motion permission visible without borrowing an adopting robot's hardware
+ * configuration or Pedro constants. This generic example demonstrates the complete underlying
+ * {@link FtcRobotOpMode}/{@link RobotProgram} grammar without constructing another robot.</p>
  */
 @Autonomous(name = "FW Pedro Auto: Basic Reference", group = "Framework Examples")
 @Disabled
@@ -45,9 +41,6 @@ public final class BasicPedroAutoExample extends FtcRobotOpMode {
     /** Construct robot-specific owners and declare their managed roles during FTC INIT. */
     @Override
     protected void configure(RobotProgram program) {
-        // This disabled diagnostic host must not preserve a match Auto snapshot for a later TeleOp.
-        PhoenixMatchHandoff.clear();
-
         robot = testRobotFactory == null
                 ? new BasicPedroAutoRobot(
                         program,

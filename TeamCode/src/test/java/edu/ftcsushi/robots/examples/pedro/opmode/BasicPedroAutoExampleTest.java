@@ -4,11 +4,8 @@ import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroAutoRobot;
 import edu.ftcsushi.robots.examples.pedro.robot.BasicPedroAutoRobotTest;
 
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.lang.reflect.Proxy;
@@ -16,14 +13,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import edu.ftcsushi.fw.core.geometry.Pose3d;
-import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.drive.route.RouteStatus;
 import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
-import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.task.TaskOutcome;
-import edu.ftcsushi.robots.phoenix.PhoenixAlliance;
-import edu.ftcsushi.robots.phoenix.PhoenixMatchHandoff;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -33,16 +25,6 @@ import static org.junit.Assert.fail;
 
 /** Verifies that the disabled host declares the example through the managed FTC lifecycle. */
 public final class BasicPedroAutoExampleTest {
-
-    @Before
-    public void clearHandoffBeforeTest() {
-        PhoenixMatchHandoff.clear();
-    }
-
-    @After
-    public void clearHandoffAfterTest() {
-        PhoenixMatchHandoff.clear();
-    }
 
     @Test
     public void disabledOpModeUsesManagedInitStartLoopAndStop() {
@@ -115,37 +97,6 @@ public final class BasicPedroAutoExampleTest {
         mode.stop();
     }
 
-    @Test
-    public void configureClearsPendingPhoenixMatchHandoffSoAnotherAutoCanPublish() {
-        PoseEstimate snapshot = new PoseEstimate(
-                new Pose3d(1.0, 2.0, 0.0, 0.3, 0.0, 0.0),
-                true,
-                1.0,
-                LoopTimestamp.unavailable()
-        );
-        PhoenixMatchHandoff.publishFromAuto(
-                new EmptyOpMode(),
-                snapshot,
-                PhoenixAlliance.RED
-        );
-        BasicPedroAutoExample mode = new BasicPedroAutoExample(
-                program -> BasicPedroAutoRobotTest.newRecordingRobot(
-                        program,
-                        new ArrayList<String>()
-                )
-        );
-        mode.telemetry = inertTelemetry();
-
-        mode.init();
-
-        PhoenixMatchHandoff.publishFromAuto(
-                new EmptyOpMode(),
-                snapshot,
-                PhoenixAlliance.BLUE
-        );
-        mode.stop();
-    }
-
     private static Telemetry throwingOnUpdateAttemptTelemetry(
             RuntimeException failure,
             AtomicInteger updateAttempts,
@@ -185,14 +136,6 @@ public final class BasicPedroAutoExampleTest {
         );
     }
 
-    private static Telemetry inertTelemetry() {
-        return (Telemetry) Proxy.newProxyInstance(
-                Telemetry.class.getClassLoader(),
-                new Class<?>[]{Telemetry.class},
-                (proxy, method, args) -> defaultValue(method.getReturnType())
-        );
-    }
-
     private static Object defaultValue(Class<?> returnType) {
         if (returnType == boolean.class) {
             return true;
@@ -219,15 +162,5 @@ public final class BasicPedroAutoExampleTest {
             return '\0';
         }
         return null;
-    }
-
-    private static final class EmptyOpMode extends OpMode {
-        @Override
-        public void init() {
-        }
-
-        @Override
-        public void loop() {
-        }
     }
 }

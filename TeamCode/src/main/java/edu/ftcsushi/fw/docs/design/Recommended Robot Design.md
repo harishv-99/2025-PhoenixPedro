@@ -315,12 +315,11 @@ A robot container is the place where it should be obvious what exists on the rob
 place where each mechanism's Plant graph or detailed behavior should live.
 
 For a mode-asymmetric robot, keep the root constructor resource-only and put mode inputs at the
-declaration boundary. Phoenix uses the sole `PhoenixRobot(HardwareMap)` constructor, then passes one
-fresh `PhoenixProfile.current()` value plus both Gamepads to `declareTeleOp(...)`, or the profile plus
-Auto-only runtime roles to `declareAuto(...)`. Each ordinary program performs its centralized
-drive-versus-scoring motor collision preflight before hardware effects. Neither mode retains or
-broadly copies the aggregate, and Auto has no unused Gamepad dependency. A custom caller supplying
-an opaque drive sink must enforce its own exclusive hardware ownership.
+declaration boundary. Construct the root with `HardwareMap`, then pass one fresh profile plus only
+the selected mode's inputs to `declareTeleOp(...)` or `declareAuto(...)`. Perform any centralized
+cross-owner hardware collision preflight before effects. Neither mode should retain or broadly copy
+the aggregate profile, and Auto should not receive unused Gamepads. A custom caller supplying an
+opaque drive sink must enforce its own exclusive hardware ownership.
 
 ### Coordinated cleanup is automatic for declared program owners
 
@@ -1268,8 +1267,7 @@ The profile's explicit Mecanum `maxPower = 0.25` is initial software data, not a
 Pedro 2.1.2 restores the Follower's separate `globalMaxPower` to `1.0` when `followPath(...)`
 starts. Only the false permission blocks route motion in the checked-in construction; `@Disabled`
 separately hides its FTC entry. Every runtime, intake, route, placement, and STOP fact still requires
-physical review before enabling. The host's first `PhoenixMatchHandoff.clear()` is a deliberate
-handoff-safety exception, not a `PhoenixProfile` or project `Constants` configuration dependency.
+physical review before enabling.
 
 The registered service owns localization first and the recurring adapter heartbeat second. It owns
 `pedro.motionPredictor().update(clock)` followed by `pedro.driveAdapter().update(clock)` on every

@@ -25,7 +25,7 @@ Sushi runs it later.
 ## The student entry point
 
 An ordinary Sushi OpMode overrides one method. This is the complete method from
-[`StarterTeleOp.java`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>):
+[`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>):
 
 ```java
 @Override
@@ -133,10 +133,10 @@ Three distinctions keep that trace truthful:
 
 | If the team wants to change… | The usual owner |
 |---|---|
-| A motor name, direction, permission, limit, or `collectPower` value | [`StarterProfile`](<../../../robots/examples/starter/robot/StarterProfile.java>) and its data-only configuration |
-| What A, B, X, a trigger, or a stick means | [`StarterTeleOpControls`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>) |
-| The shared robot word `COLLECT` and its status | [`StarterIntake`](<../../../robots/examples/starter/capability/intake/StarterIntake.java>) |
-| How a mode becomes a bounded Plant target and hardware update | [`StarterIntakeMechanism`](<../../../robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) |
+| A motor name, direction, permission, limit, or `collectPower` value | [`StarterProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>) and its data-only configuration |
+| What A, B, X, a trigger, or a stick means | [`StarterTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>) |
+| The shared robot word `COLLECT` and its status | [`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>) |
+| How a mode becomes a bounded Plant target and hardware update | [`StarterIntakeMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) |
 
 The composition root connects those owners. It should not become a control script. Mechanisms keep
 their Plants private so controls, Tasks, and Auto all use the same visible intent-to-hardware path.
@@ -144,10 +144,10 @@ their Plants private so controls, Tasks, and Auto all use the same visible inten
 ## Optional source check
 
 Without changing a file, find `intake.motorName` and `intake.collectPower` in
-[`StarterProfile.java`](<../../../robots/examples/starter/robot/StarterProfile.java>), the A binding
-in [`StarterTeleOpControls.java`](<../../../robots/examples/starter/robot/StarterTeleOpControls.java>),
+[`StarterProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>), the A binding
+in [`StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>),
 and the intake construction in
-[`StarterRobot.java`](<../../../robots/examples/starter/robot/StarterRobot.java>). The profile owns
+[`StarterRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java>). The profile owns
 the two configuration values, controls own the button meaning, and the composition root constructs
 and declares the mechanism that privately owns the hardware path.
 

@@ -364,4 +364,3 @@ current typed grammar and one Plant-derived tuning path.
 - [`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md>)
 - [`FTC UI Helpers`](<../ftc-boundary/FTC UI Helpers.md>)
 - [`Recommended Robot Design`](<../design/Recommended Robot Design.md>)
-- [`Phoenix calibration guide`](<../../../robots/phoenix/Phoenix Calibration Guide.md>)

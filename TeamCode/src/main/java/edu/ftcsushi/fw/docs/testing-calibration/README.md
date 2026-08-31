@@ -46,9 +46,6 @@ the input owner; it then relies on Panels aging unattended virtual controls back
 that as transport behavior to validate on the robot, never as an emergency-stop guarantee. A
 stalled OpMode loop cannot apply a new neutral command.
 
-This repository's production Phoenix robot has its own ordered
-[`Phoenix calibration guide`](<../../../robots/phoenix/Phoenix Calibration Guide.md>).
-
 ## When hardware is available, choose one question
 
 Hardware work is not required by either software lesson. When a supervised robot is available,
@@ -82,12 +79,11 @@ session, segments, metrics, history, restoration, and cleanup. This is not a gen
 editor: the Plant remains the sole actuation path and robot code declares the finite physical
 experiment envelope.
 
-The production Phoenix robot provides the concrete **Phoenix: Tuning (Panels)** entry. It opens the
-flywheel workflow directly with no tester menu. Powered tuning requires exactly one Panels client
-rather than the general tester entry's at-least-one rule. Panels **Update All** publishes only a
-draft; A captures and applies one complete candidate on the OpMode loop. Read the
-[`control tuning runbook`](<Control Tuning Workflow.md>)
-before enabling it.
+A robot may provide a dedicated powered-tuning entry that opens one framework workflow directly
+instead of routing through a tester menu. Such an entry may tighten connection ownership to exactly
+one Panels client. Panels **Update All** still publishes only a draft; the OpMode must capture and
+apply one complete candidate on its loop. Read the
+[`control tuning runbook`](<Control Tuning Workflow.md>) before authoring or enabling that entry.
 
 ## Mentor and tester-author reference
 

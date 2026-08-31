@@ -501,9 +501,9 @@ FtcOdometryAprilTagLocalizationLane localization =
 ```
 
 `locCfg.predictor` applies only to the ordinary `HardwareMap` constructor. The injected path takes
-only `locCfg.estimation`, so it cannot retain or report an ignored Pinpoint answer. Phoenix Pedro
-Auto uses this path so Pinpoint is configured, reset, polled, and corrected by one owner while
-Pedro consumes a passive converted view.
+only `locCfg.estimation`, so it cannot retain or report an ignored Pinpoint answer. A Pedro Auto
+composition can use this path so Pinpoint is configured, reset, polled, and corrected by one owner
+while Pedro consumes a passive converted view.
 
 Pinpoint construction always requests one non-blocking reset. A poll whose cached device status is
 not `READY` publishes unavailable measured pose, velocity, and motion; the first later `READY`

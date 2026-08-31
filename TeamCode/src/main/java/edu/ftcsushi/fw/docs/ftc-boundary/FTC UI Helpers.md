@@ -36,11 +36,10 @@ run. Browser STOP is not a physical emergency stop, so powered tests still requi
 to robot power. These UI helpers remain console-independent; tester code does not create a second
 Panels-specific menu or control grammar.
 
-The production robot's separate **Phoenix: Tuning (Panels)** OpMode reuses this fixed-owner
-lifecycle, mirrored telemetry, and virtual-gamepad grammar. It opens one framework-created
-flywheel tuner directly; there is no intermediate menu. Powered tuning tightens the connection
-policy to exactly one Panels client because another unattended client would make input ownership
-ambiguous; zero or multiple clients fail the run closed.
+A dedicated powered-tuning OpMode can reuse this fixed-owner lifecycle, mirrored telemetry, and
+virtual-gamepad grammar while opening one framework-created tuner directly. It may tighten the
+connection policy to exactly one Panels client because another unattended client would make input
+ownership ambiguous; zero or multiple clients then fail that run closed.
 
 Panels Configurables and Graph are presentation/transport facilities, not a second controller.
 **Update All** edits only the active synchronized draft map. `FtcPanelsTuners.velocityControl(...)`
@@ -158,9 +157,9 @@ Use it in a tester or another explicit-action flow before applying a calibration
 operation. An ordinary managed `RobotProgram.Prestart` remains data-only and never defers hardware
 graph construction behind this screen.
 
-Keep it for flows that genuinely need a distinct confirm/cancel action. Phoenix Auto does not: its
-read-only summary remains editable through a separate action, and FTC START is its sole freeze
-boundary.
+Keep it for flows that genuinely need a distinct confirm/cancel action. An Auto selector with a
+read-only summary can instead remain editable through a separate action and use FTC START as its
+sole freeze boundary.
 
 ## `SummaryScreen`
 
@@ -171,7 +170,7 @@ selected value. Unlike `ConfirmationScreen`, pressing `A` does not imply an appl
 Example:
 
 ```java
-SummaryScreen review = SummaryScreen.builder("Phoenix Auto Selection")
+SummaryScreen review = SummaryScreen.builder("Autonomous Selection")
         .status("READY", "FTC START will freeze this setup.")
         .row("Alliance", spec.alliance)
         .row("Start", spec.startPosition)
@@ -185,11 +184,11 @@ SummaryScreen review = SummaryScreen.builder("Phoenix Auto Selection")
 navigator.setRoot(review);
 ```
 
-Phoenix uses this shape after the strategy choice. Hardware is already owned, the summary performs
-no confirmation, and `X` returns to the selector. The one `RobotProgram.Prestart.freezeForStart()`
-boundary freezes the visible data and decides whether behavior may start. A locked post-action page
-remains another valid use; consume back/home when the caller must prevent visible state from
-drifting away from already-applied state.
+An Auto selector can use this shape after the strategy choice. Hardware is already owned, the
+summary performs no confirmation, and `X` returns to the selector. The one
+`RobotProgram.Prestart.freezeForStart()` boundary freezes the visible data and decides whether
+behavior may start. A locked post-action page remains another valid use; consume back/home when the
+caller must prevent visible state from drifting away from already-applied state.
 
 ## `UiControls`
 

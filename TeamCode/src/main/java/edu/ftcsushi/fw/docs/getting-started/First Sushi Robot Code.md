@@ -19,7 +19,7 @@ Choose one lowercase package name for the robot. The steps below use `myrobot`; 
 team's name everywhere.
 
 In Android Studio's Project view, find
-[`edu.ftcsushi.robots.examples.starter`](<../../../robots/examples/starter/opmode/StarterTeleOp.java>).
+[`edu.ftcsushi.robots.examples.starter`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>).
 Select the `starter` package and choose **Refactor > Copy** (`F5`). Set **New name** to `myrobot`
 and the destination directory to `TeamCode/src/main/java/edu/ftcsushi/robots`. The result must be
 `edu.ftcsushi.robots.myrobot`. Let Android Studio update package declarations and imports. Leave
@@ -98,7 +98,7 @@ protected void configure(RobotProgram program) {
 composition root to declare the robot; it is not a loop or control script.
 
 **What did the controls request?** Open
-[`StarterIntake.java`](<../../../robots/examples/starter/capability/intake/StarterIntake.java>).
+[`StarterIntake.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>).
 TeleOp and Auto share these robot words:
 
 ```java

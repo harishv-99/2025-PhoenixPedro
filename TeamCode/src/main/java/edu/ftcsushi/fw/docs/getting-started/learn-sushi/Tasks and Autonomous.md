@@ -18,7 +18,7 @@ StarterIntake intake = new StarterRobot(hardwareMap)
 program.rootTask(intake.collectForSeconds(0.75));
 ```
 
-[`StarterAuto.java`](<../../../../robots/examples/starter/opmode/StarterAuto.java>) owns that routine
+[`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>) owns that routine
 choice. `StarterRobot` only declares the intake output and presenter. At START, the fresh root Task
 requests `Mode.COLLECT` through the same `setMode(...)` method used by TeleOp. The mechanism maps
 that named request to configured power, and managed output updates realize it through the private
@@ -88,7 +88,7 @@ continue to launch only from its successful outcome.
 
 ## Go deeper when needed
 
-- Complete Starter source: [`StarterAuto.java`](<../../../../robots/examples/starter/opmode/StarterAuto.java>)
-- Scaling example: [`ReferenceAutoRoutines.java`](<../../../../robots/examples/reference/autonomous/ReferenceAutoRoutines.java>)
+- Complete Starter source: [`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>)
+- Scaling example: [`ReferenceAutoRoutines.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/autonomous/ReferenceAutoRoutines.java>)
 - Task factories, composition, timing, and cancellation: [Tasks and Macros](<../../design/Tasks & Macros Quickstart.md>)
 - [Choose another Sushi topic](<../Beginner's Guide.md>)
