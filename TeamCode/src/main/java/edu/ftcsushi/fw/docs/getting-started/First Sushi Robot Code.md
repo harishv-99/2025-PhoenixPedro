@@ -102,11 +102,11 @@ public final class FirstDriveTeleOp extends FtcRobotOpMode {
 
 **Key APIs**
 
-- `FtcRobotOpMode` — managed FTC host.
-- `GamepadDevice` — stable gamepad Sources.
-- `GamepadDriveSource` — three axes to drive intent.
-- `FtcDrives.MecanumConfig` / `FtcDrives.mecanum(...)` — sink configuration/factory.
-- `RobotProgram.drive(...)` — one drive path.
+- [`FtcRobotOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcRobotOpMode.html>) — managed FTC host.
+- [`GamepadDevice`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/input/GamepadDevice.html>) — stable gamepad Sources.
+- [`GamepadDriveSource`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/drive/source/GamepadDriveSource.html>) — three axes to drive intent.
+- [`FtcDrives.MecanumConfig`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcDrives.MecanumConfig.html>) / [`FtcDrives.mecanum(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcDrives.html#mecanum(com.qualcomm.robotcore.hardware.HardwareMap,edu.ftcsushi.fw.ftc.FtcDrives.MecanumConfig)>) — sink configuration/factory.
+- [`RobotProgram.drive(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#drive(edu.ftcsushi.fw.drive.DriveSource,T)>) — one drive path.
 
 ## 2. Replace assumptions with your wiring facts
 

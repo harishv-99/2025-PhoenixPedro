@@ -63,8 +63,8 @@ interface StarterIntake {
 
 **Key APIs**
 
-- `StarterIntake` — the example's mode-neutral capability boundary.
-- `Task` — fresh cooperative work that may span loop cycles.
+- [`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>) — the example's mode-neutral capability boundary.
+- [`Task`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Task.html>) — fresh cooperative work that may span loop cycles.
 
 **If it fails:** remove hardware, control, and vendor terms from the interface.
 
@@ -119,10 +119,10 @@ The linked test shows the small fake: `setMode(...)` records requests,
 
 **Key APIs**
 
-- `RecordingCallbackBindings` — captures callback registration without FTC runtime.
-- `Bindings` — updates the registered graph once per supplied cycle.
-- `ManualLoopClock` — supplies explicit cycle and time identity.
-- `GamepadDevice` — uses the same Sources as robot controls.
+- [`RecordingCallbackBindings`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/RecordingCallbackBindings.java>) — captures callback registration without FTC runtime.
+- [`Bindings`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/input/binding/Bindings.html>) — updates the registered graph once per supplied cycle.
+- [`ManualLoopClock`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/ManualLoopClock.java>) — supplies explicit cycle and time identity.
+- [`GamepadDevice`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/input/GamepadDevice.html>) — uses the same Sources as robot controls.
 
 **If it fails:** fix the client mapping or expectation; never add motor values to the fake.
 
@@ -133,8 +133,9 @@ The linked test shows the small fake: `setMode(...)` records requests,
 
 **Outcome:** the production mechanism passes a software device test, isolated bring-up, and TeleOp.
 
-Implement the capability with a private Plant. Before physical work, use `FtcTestHardware` to prove
-request-to-output timing. Then use **HW: Actuator Bring-up** on one device at low power before
+Implement the capability with a private Plant. Before physical work, use
+[`FtcTestHardware`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/ftc/FtcTestHardware.java>)
+to prove request-to-output timing. Then use **HW: Actuator Bring-up** on one device at low power before
 registering the mechanism with `program.output(...)` and binding the already-tested controls.
 
 Transfer the proven First Drive facts into `StarterProfile.drive`: copy all four names/directions
@@ -182,10 +183,10 @@ managed stop hook commands zero.
 
 **Key APIs**
 
-- `FtcTestHardware` — records production mechanism output without a robot.
-- `program.output(...)` — registers one mechanism heartbeat and cleanup owner.
-- `program.callbackBindings()` — hosts synchronous semantic controls.
-- `FtcActuators` — constructs the ordinary FTC Plant inside the mechanism.
+- [`FtcTestHardware`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/ftc/FtcTestHardware.java>) — records production mechanism output without a robot.
+- [`RobotProgram.output(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#output(T)>) — registers one mechanism heartbeat and cleanup owner.
+- [`RobotProgram.callbackBindings()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#callbackBindings()>) — hosts synchronous semantic controls.
+- [`FtcActuators`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcActuators.html>) — constructs the ordinary FTC Plant inside the mechanism.
 
 **If it fails:** press STOP and return to the earliest wrong name, direction, range, or clearance.
 
@@ -203,7 +204,9 @@ human observations, abort control, powered-time boundary, and acceptance thresho
 `TaskOutcome.SUCCESS` can be evidence; it is not automatically the experiment decision.
 
 **Change these files:** add one criteria card, one `BaseTeleOpTester` experiment, and one fresh
-tester registration modeled on the Reference flywheel experiment.
+tester registration modeled on the
+[`ReferenceFlywheelSpinUpExperiment.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
+example.
 
 ### Critical code
 
@@ -229,9 +232,9 @@ if (status.ready) {
 
 **Key APIs**
 
-- `BaseTeleOpTester` — supplies the non-blocking tester lifecycle and clock.
-- `ReferenceLauncher.Status` — supplies computed per-wheel evidence.
-- `TrialState` — retains experiment-specific terminal results.
+- [`BaseTeleOpTester`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/BaseTeleOpTester.html>) — supplies the non-blocking tester lifecycle and clock.
+- [`ReferenceLauncher.Status`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.java>) — supplies computed per-wheel evidence.
+- [`ReferenceFlywheelSpinUpExperiment.TrialState`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>) — retains the example's experiment-specific terminal results.
 
 **If it fails:** abort, retain the row, revise, and start a new numbered trial.
 
@@ -274,9 +277,9 @@ program.presenter((clock, telemetry) -> present(telemetry, lift, launcher));
 
 **Key APIs**
 
-- `RobotProgram.drive(...)` — declares one drive intent-to-output path.
-- `RobotProgram.presenter(...)` — formats status without owning behavior.
-- `RobotProgram.taskBindings()` — creates fresh Tasks from operator edges.
+- [`RobotProgram.drive(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#drive(edu.ftcsushi.fw.drive.DriveSource,T)>) — declares one drive intent-to-output path.
+- [`RobotProgram.presenter(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#presenter(edu.ftcsushi.fw.ftc.RobotProgram.Presenter)>) — formats status without owning behavior.
+- [`RobotProgram.taskBindings()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#taskBindings()>) — creates fresh Tasks from operator edges.
 
 **If it fails:** disable the newest slice and find the duplicate owner, control, config, or cleanup.
 
@@ -295,8 +298,9 @@ persistent limit. `mecanumConstants.maxPower` is not a substitute. DOC-09 theref
 authorize a physical path test or teach a raw-Follower escape hatch; that gate awaits a focused,
 separately approved Pedro integration improvement.
 
-**Change these files:** add a path owner, routine factory, and software outcome tests. Keep the
-generic host disabled.
+**Change these files:** add a path owner, routine factory, and software outcome tests modeled on
+[`BasicPedroAutoRoutine.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>).
+Keep the generic host disabled.
 
 ### Critical code
 
@@ -333,10 +337,10 @@ different retained facts; vendor idle alone never becomes success.
 
 **Key APIs**
 
-- `RouteTasks.follow(...)` — wraps one route execution in one Task.
-- `RouteStatus` — retains the exact integration ending.
-- `TaskOutcome` — classifies success, timeout, or fail-closed cancellation.
-- `Tasks.branchOnOutcome(...)` — runs success/timeout policy; cancellation-like endings abort.
+- [`RouteTasks.follow(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/drive/route/RouteTasks.html#follow(java.lang.String,edu.ftcsushi.fw.drive.route.RouteFollower,R,double)>) — wraps one route execution in one Task.
+- [`RouteStatus`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/drive/route/RouteStatus.html>) — retains the exact integration ending.
+- [`TaskOutcome`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/TaskOutcome.html>) — classifies success, timeout, or fail-closed cancellation.
+- [`Tasks.branchOnOutcome(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html#branchOnOutcome(edu.ftcsushi.fw.task.Task,edu.ftcsushi.fw.task.Task,edu.ftcsushi.fw.task.Task)>) — runs success/timeout policy; cancellation-like endings abort.
 
 **If it fails:** retain exact status; never run a position-dependent success action after an
 unproven ending.
@@ -355,8 +359,9 @@ Compose fresh Tasks. Test normal success, route failure, sensor loss, timeout, c
 fallback in software. The generic Pedro host remains disabled. Do not run a complete physical Auto
 until step 6 can truthfully pass for every path.
 
-**Change these files:** update the Auto composition root and thin disabled robot-owned host; do not
-copy or enable the generic host as match code.
+**Change these files:** update the Auto composition root and thin disabled robot-owned host, using
+[`BasicPedroAutoRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroAutoRobot.java>)
+as the complete owner reference; do not copy or enable the generic host as match code.
 
 ### Critical code
 
@@ -383,8 +388,8 @@ fallback starts only under its authored policy.
 
 **Key APIs**
 
-- `RobotProgram.rootTask(...)` — declares one managed autonomous root.
-- `Tasks` — composes fresh non-blocking sequence, parallel, timeout, and policy work.
+- [`RobotProgram.rootTask(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#rootTask(edu.ftcsushi.fw.task.Task)>) — declares one managed autonomous root.
+- [`Tasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — composes fresh non-blocking sequence, parallel, timeout, and policy work.
 
 **If it fails:** stop, retain evidence, and return only the affected owner to its earlier gate.
 

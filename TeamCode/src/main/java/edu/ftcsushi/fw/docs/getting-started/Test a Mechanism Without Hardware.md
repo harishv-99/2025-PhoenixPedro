@@ -27,8 +27,10 @@ no Robot Controller or physical device.
 
 - `TeamCode/src/test/java/edu/ftcsushi/robots/myrobot/robot/StarterMechanismLessonTest.java`
 
-The test uses the production `StarterIntakeMechanism` and the framework test helpers already in the
-project. It does not require a second mechanism implementation.
+The test uses the production
+[`StarterIntakeMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>)
+and the framework test helpers already in the project. It does not require a second mechanism
+implementation.
 
 ## What stays real
 
@@ -36,9 +38,10 @@ The test constructs the same production `StarterIntakeMechanism` with the same o
 `HardwareMap + Config` constructor used on a robot. The mechanism still privately builds its Plant
 through `FtcActuators`, owns the request-to-output path, and updates from a real `LoopClock`.
 
-Only the object supplied as `HardwareMap` changes. `FtcTestHardware` is a test-only registry whose
-motor probe records commands. It is not another mechanism constructor or a Plant injected from the
-test.
+Only the object supplied as `HardwareMap` changes.
+[`FtcTestHardware`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/ftc/FtcTestHardware.java>)
+is a test-only registry whose motor probe records commands. It is not another mechanism constructor
+or a Plant injected from the test.
 
 ```mermaid
 flowchart LR
@@ -157,9 +160,9 @@ and assert the recorded motor output.
 
 **Key APIs**
 
-- `FtcTestHardware` and `MotorProbe` — test-only FTC registry and command recorder.
-- `ManualLoopClock` — explicit shared cycle/time control for a deterministic scenario.
-- `StarterIntakeMechanism.update(...)` — the production output heartbeat under test.
+- [`FtcTestHardware`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/ftc/FtcTestHardware.java>) / [`MotorProbe`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/ftc/FtcTestHardware.java>) — test-only FTC registry and command recorder.
+- [`ManualLoopClock`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/testing/ManualLoopClock.java>) — explicit shared cycle/time control for a deterministic scenario.
+- [`StarterIntakeMechanism.update(...)`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) — the production output heartbeat under test.
 
 `setMode(...)` changes semantic intent and stages a Plant request. It does not write the motor.
 `update(...)` is the one output heartbeat that realizes the final command. The probe records that

@@ -93,6 +93,9 @@ jobs:
       - name: Build framework API documentation
         run: ./gradlew --console=plain :TeamCode:sushiJavadocs
 
+      - name: Verify authored API links
+        run: python .github/verify_generated_api_links.py
+
       - name: Verify generated artifact
         shell: bash
         run: |
