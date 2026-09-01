@@ -1,53 +1,42 @@
 # Build a robot step by step
 
-**Learning mode:** Operational runbook
+**Learning mode:** Guided course
 
-This page coordinates build-season checkpoints and routes
-each coding checkpoint to a buildable module; it is not a standalone source listing.
+Use this page as the build-season anchor: change one small slice, run one observable checkpoint,
+and follow the linked complete lesson only when you need it. Subsystems may be at different stages;
+integrate each accepted slice instead of waiting for every mechanism.
 
-Use this page as the team's build-season home. It does not require every subsystem to finish before
-the next one starts. Instead, move each subsystem through a small evidence-based slice, integrate it
-as soon as it is accepted, and return here for the next checkpoint.
-
-If this is your first Sushi change, first complete
-[Your first Sushi robot code](<First Sushi Robot Code.md>) and
-[Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>). The **Starter** is the
-copyable foundation. The larger **Reference** robot is a pattern library; study only the slice that
-matches the current problem.
+If this is your first physical Sushi program, complete
+[Get your first robot driving](<First Sushi Robot Code.md>) first. Keep that proven drive available
+while this course introduces mechanisms and the complete ownership graph.
 
 ```mermaid
 flowchart LR
-    accTitle: Build-season robot workflow
-    accDescr: A shared robot skeleton is created first. Each subsystem independently moves from requirements through software evidence, physical bring-up, experiments, and continuous integration. Qualified drive and localization then support route tests and complete TeleOp and Auto rehearsals.
-    A[Behavior and criteria] --> B[Robot skeleton]
-    B --> C[Subsystem software slice]
-    C --> D[Isolated bring-up]
-    D --> E[Bounded experiment]
-    E --> F[Continuous integration]
-    F --> C
-    F --> G[Routes and Auto policy]
-    G --> H[Complete rehearsals]
+    accTitle: Seven robot-building checkpoints
+    accDescr: Define subsystem behavior, test clients without hardware, connect hardware and TeleOp, run bounded experiments, integrate the robot, test individual Pedro paths, and rehearse complete autonomous behavior.
+    A[1 Interfaces] --> B[2 Client tests]
+    B --> C[3 Hardware and TeleOp]
+    C --> D[4 Experiments]
+    D --> E[5 Robot integration]
+    E --> F[6 Auto paths]
+    F --> G[7 End-to-end Auto]
 ```
 
-**Text version:**
+**Text version:** define behavior, test clients without hardware, implement and bring up the
+mechanism, run a bounded experiment, integrate the robot, qualify individual Auto paths, then
+rehearse complete Auto.
 
-Define behavior and success criteria, establish one compiling robot skeleton, then move each
-subsystem independently through software tests, isolated hardware bring-up, a bounded experiment,
-and integration. Repeat that slice while TeleOp grows. After drive and localization are qualified,
-test routes and finish with complete TeleOp and Auto rehearsals.
+## 1. Name the robot's subsystems and interfaces
 
-## 1. Define behavior and success criteria
+**Outcome:** TeleOp and Auto share robot words without depending on motors, buttons, or paths.
 
-**Goal:** Agree on what the robot must do before choosing framework classes or mechanism details.
+Before implementation, list semantic requests, fresh Tasks that must wait, truthful status facts,
+and one measurable success criterion. Keep human-only observations outside `Status`.
 
-**Produce:** Short mode-neutral requirements shared by TeleOp and Auto, plus measurable physical
-criteria. For example: “select LOW and HIGH, wait for arrival in Auto, and home without blocking.”
-Record the starting condition, acceptable result, repetitions, and facts an operator must observe.
-
-**Prove:** The team can distinguish a requested behavior from the measurement or observation that
-will establish success.
-
-**Does not prove:** That the proposed mechanism, limits, timing, or hardware will meet the criteria.
+**Change these files:** create
+`TeamCode/src/main/java/edu/ftcsushi/robots/myrobot/capability/intake/StarterIntake.java`, using the
+maintained [`StarterIntake.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>)
+as the complete model. Change its package and robot vocabulary; do not create hardware yet.
 
 ### Critical code
 
@@ -55,200 +44,120 @@ Abbreviated shape (omissions shown):
 
 <!-- teaching-shape -->
 ```java
-interface Lift {
-    void setHeight(Height height); // shared TeleOp/Auto meaning
-    Task moveTo(Height height);    // fresh work when Auto must wait
-    Status status();               // evidence, not a hardware command
-    // ...
+interface StarterIntake {
+    // ...define the robot-specific Mode and immutable Status values...
+    void setMode(Mode mode);                    // Persistent intent.
+    Task collectForSeconds(double durationSec); // Fresh single-use Auto work.
+    Status status();                            // Evidence, never a command.
 }
 ```
 
-**What to notice**
+**Run this:** have a controls student and an Auto student describe their code using only this API.
 
-- The interface names robot behavior, not motors, encoders, or buttons.
-- A persistent request and work that waits for evidence are different operations.
-- Status reports facts; it does not own policy.
-
-**Key APIs**
-
-- `Task` — cooperative, single-use work that may span loop cycles.
-- Capability methods — the mode-neutral vocabulary shared by TeleOp and Auto.
-
-**Do next:** Use [From requirement to robot](<learn-sushi/From Requirement to Robot.md>) to place
-each meaning with one owner, and [Evidence and experiments](<learn-sushi/Evidence and Experiments.md>)
-to choose the required evidence.
-
-## 2. Establish the compiling robot skeleton
-
-**Goal:** Give every subsystem a stable integration destination before detailed work spreads across
-the team.
-
-**Produce:** One team-owned package with a profile, composition root, minimal capability families,
-and thin disabled TeleOp and Auto hosts. Add only the capabilities the requirements currently need;
-do not freeze speculative detailed interfaces for the entire robot.
-
-**Prove:** The package compiles, software tests are green, motion permissions remain false, and each
-hardware resource will have one owner. TeleOp and Auto use the same mode-neutral capability words.
-
-**Does not prove:** Hardware names, directions, safe powers, calibration, clearance, or readiness for
-motion.
-
-### Critical code
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-@Override
-protected void configure(RobotProgram program) {
-    TeamProfile profile = TeamProfile.current();
-    new TeamRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
-    // ...
-}
-```
+**Expect this:** neither needs a motor name, numeric power, gamepad button, or route type.
 
 **What to notice**
 
-- The OpMode selects a profile and mode, then delegates composition once.
-- `RobotProgram` owns the managed lifecycle; the OpMode does not write its own loop.
+- Persistent intent and a Task that waits are different promises.
+- Status exists only for facts required by a criterion, test, driver, or strategy.
 
 **Key APIs**
 
-- `FtcRobotOpMode` — ordinary managed FTC host.
-- `RobotProgram` — declarations, one heartbeat, loop phases, telemetry, and cleanup.
+- `StarterIntake` — the example's mode-neutral capability boundary.
+- `Task` — fresh cooperative work that may span loop cycles.
 
-**Do next:** Copy and adapt the [Modern starter robot](<../examples/Modern Starter Robot.md>). Use
-[Robot roles](<learn-sushi/Robot Roles.md>) when ownership is unclear and
-[Choose a Sushi topic](<Beginner's Guide.md>) only for the deeper question in front of you.
+**If it fails:** remove hardware, control, and vendor terms from the interface.
 
-## 3. Build one subsystem software slice
+**Advance when:** both clients can use the vocabulary and the criterion names its required evidence.
+Use [From requirement to robot](<learn-sushi/From Requirement to Robot.md>) if ownership is unclear.
 
-**Goal:** Prove one subsystem's meanings and request-to-output behavior before matching hardware is
-required.
+## 2. Test the interface without hardware
 
-**Produce:** The smallest useful capability interface, its production mechanism and configuration,
-semantic tests for controls/Tasks/policy, and a software device scenario that constructs the
-production mechanism with test hardware.
+**Outcome:** red/green tests prove client meanings before a production mechanism exists.
 
-**Prove:** Inputs request the intended capability meaning; repeatable macros return fresh Tasks;
-invalid configuration fails early; output heartbeats produce the expected recorded command; and
-injected observations drive status and Task outcomes correctly. Supply feedback independently—never
-copy a command into its own simulated measurement.
+Use a test-local recording fake that implements every capability method but models no physics.
+Drive controls or Auto policy with recording bindings and a `ManualLoopClock`.
 
-**Does not prove:** Motion, direction, encoder scale, sensor placement, controller tuning, safe
-bounds under load, or game-piece performance.
+**Change these files:** copy
+[`StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>)
+to `TeamCode/src/main/java/edu/ftcsushi/robots/myrobot/robot/StarterTeleOpControls.java`; update its
+package and capability import. Add a team-owned test modeled on the complete
+[`StarterFirstLessonTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterFirstLessonTest.java>).
 
 ### Critical code
 
-<!-- annotated-source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterFirstLessonTest.java -->
 ```java
-StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
-config.collectPower = 0.37;
-config.ejectPower = -0.22;
+Gamepad driver = new Gamepad();
+RecordingIntake intake = new RecordingIntake();
+RecordingCallbackBindings callbacks = new RecordingCallbackBindings();
+StarterTeleOpControls controls =
+        new StarterTeleOpControls(new GamepadDevice(driver));
+controls.bind(callbacks, intake);
+assertEquals(3, callbacks.successfulRegistrations());
 
-FtcTestHardware hardware = new FtcTestHardware();
-FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
-StarterIntakeMechanism intake = new StarterIntakeMechanism(hardware, config);
+Bindings bindings = callbacks.root();
 ManualLoopClock time = new ManualLoopClock();
+bindings.update(time.clock());
 
-intake.setMode(StarterIntake.Mode.COLLECT);
-assertEquals(StarterIntake.Mode.COLLECT, intake.status().mode());
-assertEquals(0.0, intake.status().appliedTargetPower(), 0.0);
-// docs: A semantic request is staged; the motor has not been written yet.
+driver.a = true;
+bindings.update(time.nextCycle(0.02));
+assertEquals(Arrays.asList(StarterIntake.Mode.COLLECT), intake.modeRequests);
+```
+
+The linked test shows the small fake: `setMode(...)` records requests,
+`collectForSeconds(...)` returns `Tasks.noop()`, and `status()` reports the last request.
+
+**Run this:** make the expected semantic mode wrong, run the focused test, then restore it.
+
+**Expect this:** red names the wrong mode; green contains no hardware name, direction, or power.
+
+**What to notice**
+
+- The client depends only on step 1's capability.
+- Software proves the mapping, not the future mechanism or physical behavior.
+
+**Key APIs**
+
+- `RecordingCallbackBindings` — captures callback registration without FTC runtime.
+- `Bindings` — updates the registered graph once per supplied cycle.
+- `ManualLoopClock` — supplies explicit cycle and time identity.
+- `GamepadDevice` — uses the same Sources as robot controls.
+
+**If it fails:** fix the client mapping or expectation; never add motor values to the fake.
+
+**Advance when:** every current client meaning has a red/green semantic test. Use
+[Modern starter robot](<../examples/Modern Starter Robot.md>) for the complete owner map.
+
+## 3. Connect hardware and write TeleOp
+
+**Outcome:** the production mechanism passes a software device test, isolated bring-up, and TeleOp.
+
+Implement the capability with a private Plant. Before physical work, use `FtcTestHardware` to prove
+request-to-output timing. Then use **HW: Actuator Bring-up** on one device at low power before
+registering the mechanism with `program.output(...)` and binding the already-tested controls.
+
+Transfer the proven First Drive facts into `StarterProfile.drive`: copy all four names/directions
+and BRAKE/FLOAT; map its translation limit to `maxAxial` and `maxLateral`, and turn limit to
+`maxOmega`. Keep both `allow...Motion` flags false while editing. Enable drive only after that
+transfer and the First Drive gates; enable the mechanism only after its software and bring-up gates.
+Once Starter TeleOp passes, disable the temporary First Drive entry.
+
+**Change these files:** add the mechanism, profile values, software device test, composition-root
+declarations, and a team-owned copy of
+[`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>).
+Do not change step 2's control meanings.
+
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
+```java
 assertEquals(0, motor.powerWrites());
 
 intake.update(time.clock());
 assertEquals(config.collectPower, intake.status().appliedTargetPower(), 0.0);
 assertEquals(config.collectPower, motor.power(), 0.0);
 ```
-
-**What to notice**
-
-- The production mechanism and its update path stay real; only the device boundary is replaced.
-- A request has no output effect until the shared-clock heartbeat runs.
-- Feedback must be supplied independently rather than copied from the command.
-
-**Key APIs**
-
-- `FtcTestHardware` — test-only `HardwareMap` whose probes record final device commands.
-- `ManualLoopClock` — explicit control of the one cycle/time identity used by the mechanism.
-
-**Do next:** Begin with [Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>).
-Use [Hardware-free Reference scenarios](<../examples/Hardware-free Reference Scenarios.md>) for
-feedback, independent measurements, or coordinated-policy patterns.
-
-## 4. Bring up hardware in isolation
-
-**Goal:** Answer one physical device question at a time with conservative commands and an immediate
-STOP plan.
-
-**Produce:** Reviewed hardware names and wiring, observed direction/sign/polarity, safe initial
-command envelope, STOP evidence, and any required reference or calibration facts.
-
-**Prove:** Only the physical fact named by the runbook—for example, that one named actuator moves in
-the intended direction and stops when commanded.
-
-**Does not prove:** That the complete subsystem meets its performance target or that the production
-robot is ready for ordinary driving.
-
-**What to notice**
-
-- This stage is an evidence procedure, not a new production command path.
-- A diagnostic owns its fresh hardware graph exclusively and must provide an immediate abort/STOP.
-
-**Key APIs**
-
-- Tester OpModes — isolated, supervised device workflows.
-- `Plant.stop()` — terminal cleanup for that Plant lifetime, not an active-match idle command.
-
-**Do next:** Use the [testing and calibration question selector](<../testing-calibration/README.md#when-hardware-is-available-choose-one-question>).
-Use dedicated tester or diagnostic OpModes for isolated bring-up. Do not use the production TeleOp
-as a raw device tester; unrelated controls and owners make failures harder to isolate.
-
-## 5. Run a bounded subsystem experiment
-
-**Goal:** Decide whether the assembled subsystem satisfies the criteria written in step 1.
-
-**Produce:** A reviewed lab card, locked experiment criteria, explicit start and abort controls,
-bounded trials, computed telemetry, operator-recorded observations, and an accept/revise/reject
-decision tied to retained evidence.
-
-**Prove:** Only the complete decision supported by the authored criteria and observations. A
-controller reporting `TARGET_REACHED` is one computed fact, not an automatic overall pass.
-
-**Does not prove:** Performance outside the tested configuration, load, environment, or command
-envelope.
-
-**What to notice**
-
-- Lock criteria before trials so software does not silently redefine success.
-- Keep computed evidence and operator-observed physical evidence distinct.
-
-**Key APIs**
-
-- `TaskOutcome` — retained software outcome such as success, timeout, or cancellation.
-- Mechanism `Status` snapshots — already-computed facts for telemetry and experiment decisions.
-
-**Do next:** Follow [Subsystem experiments](<../examples/Subsystem Experiments.md>). Promote only an
-accepted configuration into the production profile; revise and repeat otherwise.
-
-## 6. Integrate continuously and grow TeleOp
-
-**Goal:** Keep a working robot as accepted subsystems arrive instead of postponing integration until
-every mechanism is finished.
-
-**Produce:** Each accepted mechanism registered once in the composition root, semantic controls,
-concise cached status, integration tests, and a production TeleOp that grows one capability at a
-time. Keep unfinished or unreviewed motion disabled.
-
-**Prove:** Ownership is collision-free; controls request capabilities rather than hardware; the
-managed loop order is intact; simultaneous operator actions behave as intended; and STOP cleans up
-every active owner.
-
-**Does not prove:** Match reliability merely because each subsystem worked alone. Exercise realistic
-combinations and repeat after material mechanical or configuration changes.
-
-### Critical code
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
@@ -259,41 +168,151 @@ StarterTeleOpControls controls = new StarterTeleOpControls(
 controls.bind(program.callbackBindings(), intake);
 ```
 
+**Run this:** after both permissions and the unloaded STOP plan are reviewed, remove `@Disabled`
+from the team-owned `StarterTeleOp`, rebuild/install, INIT with controls neutral, then START, command
+each mode, and press STOP.
+
+**Expect this:** request precedes output; buttons request semantic modes; this direct-power intake's
+managed stop hook commands zero.
+
 **What to notice**
 
-- Controls request capability meanings; the mechanism remains the final hardware owner.
-- Declaration order makes the managed update path visible in one composition root.
+- The mechanism owns its Plant, output heartbeat, and stop; controls never write hardware.
+- Compilation does not prove direction, braking, clearance, or response.
 
 **Key APIs**
 
-- `program.callbackBindings()` — synchronous semantic control requests.
-- `program.taskBindings()` — rising-edge suppliers that create fresh Tasks.
-- `program.output(...)` — one managed output heartbeat and cleanup declaration.
+- `FtcTestHardware` — records production mechanism output without a robot.
+- `program.output(...)` — registers one mechanism heartbeat and cleanup owner.
+- `program.callbackBindings()` — hosts synchronous semantic controls.
+- `FtcActuators` — constructs the ordinary FTC Plant inside the mechanism.
 
-**Do next:** Use [Controls and intent](<learn-sushi/Controls and Intent.md>) and
-[Robot capabilities and mode clients](<../design/Robot Capabilities & Mode Clients.md>). Return to
-step 3 for the next subsystem slice.
+**If it fails:** press STOP and return to the earliest wrong name, direction, range, or clearance.
 
-## 7. Qualify routes and autonomous policy separately
+**Advance when:** software and isolated physical results agree. Use
+[Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>),
+[Actuator bring-up](<../testing-calibration/Actuator Bring-up.md>), and
+[Modern starter robot](<../examples/Modern Starter Robot.md>) for the complete files.
 
-**Goal:** Keep software sequencing evidence separate from physical drivetrain, localization, and
-route evidence.
+## 4. Run a bounded subsystem experiment
 
-**Produce:** Hardware-free tests for Task composition, timeout/cancellation outcomes, and fallback
-policy; qualified drivetrain and localization; drawn route geometry with units and robot footprint;
-and bounded physical tests of one route at a time.
+**Outcome:** locked criteria accept, revise, or reject the current subsystem configuration.
 
-**Prove:** Software tests establish which action follows each retained route outcome. Physical route
-tests establish only the tested placement, geometry, constraints, localization setup, clearance,
-and stopping behavior.
+Before trials, record starting condition, command envelope, repetition count, computed evidence,
+human observations, abort control, powered-time boundary, and acceptance threshold. A
+`TaskOutcome.SUCCESS` can be evidence; it is not automatically the experiment decision.
 
-**Does not prove:** That vendor idle means endpoint success or that individually successful routes
-form a reliable full Auto.
+**Change these files:** add one criteria card, one `BaseTeleOpTester` experiment, and one fresh
+tester registration modeled on the Reference flywheel experiment.
+
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java -->
+```java
+ReferenceLauncher.Status status = launcher.status();
+double elapsedSec = runningElapsedSec();
+if (status.ready) {
+    finishTrial(TrialState.TARGET_REACHED, status, elapsedSec);
+} else if (elapsedSec >= maximumPoweredRunSec) {
+    finishTrial(TrialState.TIME_LIMIT_REACHED, status, elapsedSec);
+}
+```
+
+**Run this:** execute the locked number of bounded trials with the same configuration and load.
+
+**Expect this:** every row retains a terminal state, computed facts, and separate observations.
+
+**What to notice**
+
+- Criteria never change after a result is visible.
+- Evidence applies only to the tested mechanism, load, environment, and revision.
+
+**Key APIs**
+
+- `BaseTeleOpTester` — supplies the non-blocking tester lifecycle and clock.
+- `ReferenceLauncher.Status` — supplies computed per-wheel evidence.
+- `TrialState` — retains experiment-specific terminal results.
+
+**If it fails:** abort, retain the row, revise, and start a new numbered trial.
+
+**Advance when:** the locked criteria accept the configuration. Use
+[Subsystem experiments](<../examples/Subsystem Experiments.md>) for the lab card and full files.
+
+## 5. Integrate the whole robot
+
+**Outcome:** accepted subsystems have one owner each and production TeleOp remains functional.
+
+Add one mechanism at a time. Bind controls, present concise status, run integration tests, then
+exercise it beside existing mechanisms. Keep unfinished motion disabled.
+
+**Change these files:** update the profile, controls, composition root, presenter, and TeleOp tests;
+never add a second final writer for an existing capability.
+
+### Critical code
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.java -->
+```java
+ReferenceLiftMechanism lift = program.output(
+        new ReferenceLiftMechanism(hardwareMap, p.lift));
+ReferenceLauncherMechanism launcher = program.output(
+        new ReferenceLauncherMechanism(hardwareMap, p.launcher));
+ReferenceTeleOpControls controls = new ReferenceTeleOpControls(
+        new GamepadDevice(requiredGamepad));
+controls.bind(program.callbackBindings(), program.taskBindings(), lift, launcher);
+program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, p.drive));
+program.presenter((clock, telemetry) -> present(telemetry, lift, launcher));
+```
+
+**Run this:** rehearse common simultaneous actions, control release, and STOP from each active state.
+
+**Expect this:** intent and status remain deterministic; managed cleanup stops all final outputs.
+
+**What to notice**
+
+- The composition root wires owners; it is not a control script.
+- A changed subsystem invalidates its affected integration evidence.
+
+**Key APIs**
+
+- `RobotProgram.drive(...)` — declares one drive intent-to-output path.
+- `RobotProgram.presenter(...)` — formats status without owning behavior.
+- `RobotProgram.taskBindings()` — creates fresh Tasks from operator edges.
+
+**If it fails:** disable the newest slice and find the duplicate owner, control, config, or cleanup.
+
+**Advance when:** simultaneous actions and STOP pass repeatedly with one owner per output. Re-open
+[Modern starter robot](<../examples/Modern Starter Robot.md>) for the small complete graph.
+
+## 6. Test individual Auto paths
+
+**Outcome:** route policy is green in software; physical Pedro motion remains deliberately blocked
+until Sushi exposes a reviewed route-time power limit.
+
+Test success, timeout, cancellation, replacement, follower failure, and fallback without hardware.
+The generic Pedro lesson stays disabled and authorizes no motion. Pedro 2.1.2 resets the Follower's
+`globalMaxPower` when following starts, while ordinary Sushi route callers cannot currently set that
+persistent limit. `mecanumConstants.maxPower` is not a substitute. DOC-09 therefore does not
+authorize a physical path test or teach a raw-Follower escape hatch; that gate awaits a focused,
+separately approved Pedro integration improvement.
+
+**Change these files:** add a path owner, routine factory, and software outcome tests. Keep the
+generic host disabled.
 
 ### Critical code
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java -->
 ```java
+Task followPracticeRoute = RouteTasks.follow(
+        "BasicPracticeRoute",
+        Objects.requireNonNull(routes, "routes"),
+        Objects.requireNonNull(practiceRoute, "practiceRoute"),
+        ROUTE_TIMEOUT_SEC
+);
+
+BasicPedroAutoMechanism requiredMechanism = Objects.requireNonNull(
+        mechanism,
+        "mechanism"
+);
 return Tasks.branchOnOutcome(
         followPracticeRoute,
         requiredMechanism.collectTask(COLLECT_DURATION_SEC),
@@ -301,90 +320,86 @@ return Tasks.branchOnOutcome(
 );
 ```
 
+**Run this:** run the software policy suite. Do not enable either the generic host or an adapted host
+for physical route motion under the current integration API.
+
+**Expect this:** endpoint completion, timeout/stall, interruption, replacement, and failure remain
+different retained facts; vendor idle alone never becomes success.
+
 **What to notice**
 
-- Route completion is retained evidence; robot-owned policy chooses the next action.
-- Fixed geometry is built eagerly, while live-fact geometry resolves once at Task start.
-- Timeout, cancellation, and follower failure are not endpoint success.
+- Pedro owns path following; Sushi Tasks own robot behavior and outcome policy.
+- Fixed routes build eagerly; live-fact routes resolve once when their Task starts.
 
 **Key APIs**
 
-- Route Task helpers — one Task boundary around one route execution.
-- `TaskOutcome` and route result types — facts that Auto policy must interpret explicitly.
+- `RouteTasks.follow(...)` — wraps one route execution in one Task.
+- `RouteStatus` — retains the exact integration ending.
+- `TaskOutcome` — classifies success, timeout, or fail-closed cancellation.
+- `Tasks.branchOnOutcome(...)` — runs success/timeout policy; cancellation-like endings abort.
 
-**Do next:** Learn the shared behavior vocabulary in
-[Tasks and autonomous](<learn-sushi/Tasks and Autonomous.md>). For Pedro, use
-[Your first Pedro Auto](<First Pedro Auto.md>) in software, then complete its required drivetrain,
-localization, tuning, placement, and STOP validation before physical route motion.
+**If it fails:** retain exact status; never run a position-dependent success action after an
+unproven ending.
 
-## 8. Rehearse the complete robot
+**Advance when:** every software outcome is green. Physical acceptance remains blocked until a
+reviewed integration improvement exposes the route-time limit; then reopen this checkpoint with
+[Your first Pedro Auto](<First Pedro Auto.md>) and the exact
+[Pedro integration contract](<../../integrations/pedro/README.md>).
 
-**Goal:** Validate the integrated match behavior and the boundaries that individual tests cannot
-cover.
+## 7. Test end-to-end Auto
 
-**Produce:** Full TeleOp rehearsals under realistic operator load; end-to-end Auto runs from verified
-placement to retained terminal outcome; and recorded STOP, timeout, sensor-loss, jam, route-failure,
-and fallback results.
+**Outcome:** the complete root is proven in software; physical end-to-end rehearsal waits for every
+individual path's physical gate, including the blocked Pedro power-control prerequisite from step 6.
 
-**Prove:** The tested robot revision and configuration satisfy the team's complete acceptance
-checklist under the rehearsed conditions.
+Compose fresh Tasks. Test normal success, route failure, sensor loss, timeout, cancellation, and
+fallback in software. The generic Pedro host remains disabled. Do not run a complete physical Auto
+until step 6 can truthfully pass for every path.
 
-**Does not prove:** That later mechanical, wiring, configuration, route, or policy changes are safe.
-Material changes return the affected slice to its earliest invalidated checkpoint.
+**Change these files:** update the Auto composition root and thin disabled robot-owned host; do not
+copy or enable the generic host as match code.
 
 ### Critical code
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroAutoRobot.java -->
 ```java
-StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
-program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
+Task declaredRoot = BasicPedroAutoRoutine.build(
+        runtime.driveAdapter(),
+        paths.practiceRoute(),
+        mechanism
+);
+requiredProgram.rootTask(declaredRoot);
 ```
+
+**Run this:** run every software outcome case. Record the physical rehearsal as blocked by step 6;
+do not convert a successful simulation into motion permission.
+
+**Expect this:** each run retains truthful route/root outcomes; STOP cancels work and stops outputs;
+fallback starts only under its authored policy.
 
 **What to notice**
 
-- Rehearse the same managed root and cleanup path that will run in the match.
-- A complete run retains its terminal outcome; a later code/configuration change invalidates only
-  the evidence it affects.
+- End-to-end rehearsal is the final gate, not the first time components meet.
+- Any material change returns the affected slice to its earliest invalidated checkpoint.
 
 **Key APIs**
 
-- `program.rootTask(...)` — the single managed Auto root.
-- `Task.cancel()` and declared output cleanup — cooperative active-work and hardware shutdown.
+- `RobotProgram.rootTask(...)` — declares one managed autonomous root.
+- `Tasks` — composes fresh non-blocking sequence, parallel, timeout, and policy work.
 
-**Do next:** Keep [Common Problems](<../troubleshooting/Common Problems.md>) and the
-[Sushi Cheat Sheet](<../reference/Sushi Cheat Sheet.md>) available during iteration. Record any new
-failure as a focused software regression, physical experiment, or both at the boundary that can
-truthfully reproduce it.
+**If it fails:** stop, retain evidence, and return only the affected owner to its earlier gate.
 
-## Copyable progress checklist
+**Advance when:** the software root covers success and authored failures with match-code owners and
+cleanup. Reopen the physical gate only after step 6 gains the missing reviewed integration control.
 
-Use one subsystem row set per capability family. Parallel work is welcome; evidence gates still
-belong to each subsystem.
+## Progress checklist
 
 ```markdown
-## Subsystem: ____________________
-
-- [ ] Mode-neutral TeleOp and Auto behaviors are written.
-- [ ] Physical success criteria and operator observations are written.
-- [ ] Capability, configuration, and production mechanism compile.
-- [ ] Semantic tests pass.
-- [ ] Production-mechanism software scenario passes.
-- [ ] Isolated hardware names, direction/sign/polarity, and STOP are reviewed.
-- [ ] Bounded experiment is accepted with an evidence location.
-- [ ] Accepted configuration is promoted into the production profile.
-- [ ] Composition, controls, status, and integration tests are green.
-- [ ] Production TeleOp exercises this capability with other active owners.
-
-## Whole robot
-
-- [ ] Every active subsystem has an accepted evidence record.
-- [ ] TeleOp rehearsals cover realistic simultaneous actions and STOP.
-- [ ] Drivetrain and localization are qualified before physical route tests.
-- [ ] Auto policy tests cover success, timeout, cancellation, and fallback.
-- [ ] Individual routes are accepted before end-to-end Auto.
-- [ ] End-to-end Auto starts from verified placement and retains its result.
-- [ ] The checklist matches the current robot and configuration revision.
+- [ ] Interface and success criterion agreed.
+- [ ] Hardware-free client and mechanism tests pass.
+- [ ] Isolated hardware facts and STOP observed.
+- [ ] Bounded experiment accepted current configuration.
+- [ ] Integrated TeleOp simultaneous-action and STOP checks pass.
+- [ ] Each Auto route has software evidence; physical Pedro evidence is visibly blocked until the
+      route-time power-control prerequisite exists.
+- [ ] End-to-end software outcomes pass; physical rehearsal starts only after every path gate passes.
 ```
-
-The checklist records progress; it does not grant motion permission or replace the linked safety
-runbooks and experiment evidence.

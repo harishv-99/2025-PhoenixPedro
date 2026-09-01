@@ -4,17 +4,12 @@
 
 Use this page to choose a buildable module or focused reference.
 
-This page is the topic lookup used by
-[Build a robot step by step](<Build a Robot Step by Step.md>). Start with
-[Sushi in one picture](<Framework Overview.md>). After you can trace the Starter A
-button from gamepad intent to the mechanism-owned hardware command, choose only the topic that
-answers your current question. These are independent deep dives, not required course chapters.
-
-To practice before choosing a deep dive, complete
-[Your first Sushi robot code](<First Sushi Robot Code.md>). It makes one tested control change
-in a copied team package. Then [test its mechanism without hardware](<Test a Mechanism Without Hardware.md>)
-to exercise the real mechanism and Plant with recorded software-device outputs. Neither exercise
-requires matching hardware.
+First [get your first robot driving](<First Sushi Robot Code.md>) with one complete TeleOp. Then use
+the seven checkpoints in [Build a robot step by step](<Build a Robot Step by Step.md>) as the
+primary course. This page is its topic lookup: choose only the deep dive that answers the current
+question. Use [Sushi in one picture](<Framework Overview.md>) when you need the continuous Starter
+execution trace; it is not a prerequisite. The course's first software mechanism checkpoint links to
+[Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>).
 
 | When you need to understand… | Read |
 |---|---|
@@ -24,16 +19,11 @@ requires matching hardware.
 | How behavior waits, coordinates, times out, or runs in Auto without blocking | [Tasks and autonomous](<learn-sushi/Tasks and Autonomous.md>) |
 | What software can report and what a physical experiment must establish | [Evidence and experiments](<learn-sushi/Evidence and Experiments.md>) |
 | How to place a new team requirement in the architecture | [From requirement to robot](<learn-sushi/From Requirement to Robot.md>) |
+| How vision observations, robot pose, and drive guidance stay separate | [Drive and vision](<../drive-vision/README.md>) |
 
 The small **Starter** robot shows the complete ordinary shape. The larger **Reference** robot is a
 case study for a referenced lift, velocity launcher, macros, status, and experiments. They use the
 same architecture; Reference is not a second starter and should not be copied wholesale.
-
-## Choose by team role
-
-[Role paths](<learn-sushi/Role Paths.md>) routes controls, mechanisms, Auto, vision, and testing
-work to the relevant examples and detailed guides. Read a deeper reference only when the robot has
-that need.
 
 ## Keep the evidence boundary visible
 

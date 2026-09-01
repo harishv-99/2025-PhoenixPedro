@@ -9,14 +9,12 @@ site_dir = "build/docs-site"
 nav = [
   { "Home" = "docs/README.md" },
   { "Start here" = [
-    { "Sushi in one picture" = "docs/getting-started/Framework Overview.md" },
     { "Set up and verify the project" = "docs/getting-started/Build and Run.md" },
-    { "Write your first Sushi robot code" = "docs/getting-started/First Sushi Robot Code.md" },
-    { "Test a mechanism without hardware" = "docs/getting-started/Test a Mechanism Without Hardware.md" },
+    { "Get your first robot driving" = "docs/getting-started/First Sushi Robot Code.md" },
     { "Build a robot step by step" = "docs/getting-started/Build a Robot Step by Step.md" },
+    { "Test a mechanism without hardware" = "docs/getting-started/Test a Mechanism Without Hardware.md" },
+    { "Sushi in one picture" = "docs/getting-started/Framework Overview.md" },
     { "Choose a Sushi topic" = "docs/getting-started/Beginner's Guide.md" },
-    { "Documentation home" = "docs/README.md" },
-    { "Getting started" = "docs/getting-started/README.md" },
   ] },
   { "Learn Sushi topics" = [
     { "Robot roles" = "docs/getting-started/learn-sushi/Robot Roles.md" },
@@ -25,7 +23,6 @@ nav = [
     { "Tasks and autonomous" = "docs/getting-started/learn-sushi/Tasks and Autonomous.md" },
     { "Evidence and experiments" = "docs/getting-started/learn-sushi/Evidence and Experiments.md" },
     { "From requirement to robot" = "docs/getting-started/learn-sushi/From Requirement to Robot.md" },
-    { "Role paths" = "docs/getting-started/learn-sushi/Role Paths.md" },
   ] },
   { "Reference and troubleshooting" = [
     { "Reference home" = "docs/reference/README.md" },
@@ -39,11 +36,9 @@ nav = [
     { "Examples home" = "docs/examples/README.md" },
     { "Modern starter robot" = "docs/examples/Modern Starter Robot.md" },
     { "Hardware-free reference scenarios" = "docs/examples/Hardware-free Reference Scenarios.md" },
-    { "Framework components" = "docs/examples/Framework Components Through Examples.md" },
     { "Field-relative drive" = "docs/examples/Field-relative Drive.md" },
-    { "Pedro autonomous reference" = "docs/examples/Pedro Autonomous Reference.md" },
+    { "Your first Pedro Auto" = "docs/getting-started/First Pedro Auto.md" },
     { "Subsystem experiments" = "docs/examples/Subsystem Experiments.md" },
-    { "BIOBUZZ capability map" = "docs/examples/BIOBUZZ Capability Map.md" },
   ] },
   { "Core concepts" = [
     { "Core concepts home" = "docs/core-concepts/README.md" },
@@ -86,7 +81,6 @@ nav = [
     { "Maintainers home" = "docs/maintainers/README.md" },
     { "Framework Principles" = "Framework Principles.md" },
     { "Maintainer Notes" = "docs/maintainers/Maintainer Notes.md" },
-    { "Framework package doorway" = "README.md" },
   ] },
 ]
 

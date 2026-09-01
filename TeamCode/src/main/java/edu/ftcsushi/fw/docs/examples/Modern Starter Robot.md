@@ -2,8 +2,11 @@
 
 **Learning mode:** Architecture reference
 
-**Audience:** Students who have read
-[`Sushi in one picture`](<../getting-started/Framework Overview.md>)
+**Audience:** Students moving from
+[`Get your first robot driving`](<../getting-started/First Sushi Robot Code.md>) into the
+[`Build a robot step by step`](<../getting-started/Build a Robot Step by Step.md>) course. Use
+[`Sushi in one picture`](<../getting-started/Framework Overview.md>) only when you need lifecycle
+context.
 **Source entry:** [`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>)
 
 Use this example as the smallest compiling Sushi structure shared by TeleOp and Auto. It has one
@@ -16,11 +19,10 @@ remain in the focused owners mapped below.
 collapsed complete files below contain the package declarations, imports, enclosing types, and
 configuration needed to recreate the maintained Starter without opening a Java source link.
 
-For the short execution trace, begin with
-[`Sushi in one picture`](<../getting-started/Framework Overview.md>), then
-[`set up and verify the project`](<../getting-started/Build and Run.md>). Use
-[`Your first Sushi robot code`](<../getting-started/First Sushi Robot Code.md>) to copy the
-Starter, make one control change, and prove it without hardware. Use
+Begin with [`Get your first robot driving`](<../getting-started/First Sushi Robot Code.md>) for the
+one-file physical milestone. Copy this Starter into a team-owned package when
+[`Build a robot step by step`](<../getting-started/Build a Robot Step by Step.md>) introduces the
+first subsystem. Use
 [`Test a mechanism without hardware`](<../getting-started/Test a Mechanism Without Hardware.md>) to
 exercise the same production mechanism and Plant with a test-only hardware registry. Use
 [`Choose a Sushi topic`](<../getting-started/Beginner's Guide.md>) when one ownership boundary

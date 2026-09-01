@@ -166,8 +166,8 @@ that separate work.
 
 ## Continue with robot code
 
-With the software baseline green, use [Your first Sushi robot code](<First Sushi Robot Code.md>)
-to copy the compiled Starter into a team package, change one control meaning, and prove that change
-with no robot hardware. Keep the example disabled and its motion permissions false.
+With the software baseline green, [get your first robot driving](<First Sushi Robot Code.md>) with
+one complete TeleOp, then follow [Build a robot step by step](<Build a Robot Step by Step.md>) from
+the first subsystem interface through end-to-end Auto.
 
 **Framework tour:** [`Sushi in one picture`](<Framework Overview.md>)

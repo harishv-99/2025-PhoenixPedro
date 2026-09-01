@@ -129,6 +129,9 @@ Config validation proves that the captured software graph is complete, finite, i
 coherent, and representable by the pinned Pedro implementation. It does not prove that motor names
 identify the intended ports, directions match the chassis, Pinpoint pods are correctly placed or
 ready, follower tuning is stable, the field transform matches physical placement, constraints leave
-safe stopping distance, a route is clear, or STOP produces the expected physical result. Verify
-those facts on the adopting robot with conservative limits, clear space, and an operator ready to
-stop it.
+safe stopping distance, a route is clear, or STOP produces the expected physical result. Pedro
+2.1.2 also resets the Follower's persistent `globalMaxPower` when following starts, and the ordinary
+managed Sushi route API does not currently expose that control. Physical route qualification is
+therefore blocked pending a focused, separately approved integration improvement; do not bypass the
+managed boundary to obtain a raw Follower. After that control exists, verify the physical facts on
+the adopting robot with conservative limits, clear space, and an operator ready to stop it.

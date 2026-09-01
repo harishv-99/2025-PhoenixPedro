@@ -420,7 +420,7 @@ If an answer is unclear, simplify ownership or naming before introducing another
 | Drive guidance and coordinate contracts | [`Drive Guidance`](<docs/drive-vision/Drive Guidance.md>) |
 | Spatial observations | [`Spatial Queries`](<docs/drive-vision/Spatial Queries.md>) |
 | Pedro route lifecycle | [`Pedro integration`](<integrations/pedro/README.md>) |
-| Production route example | [`Pedro Autonomous Reference`](<docs/examples/Pedro Autonomous Reference.md>) |
+| Production route example | [`Your first Pedro Auto`](<docs/getting-started/First Pedro Auto.md>) |
 | Actuator facts and safe endpoints | [`Actuator Bring-up`](<docs/testing-calibration/Actuator Bring-up.md>) |
 | Tuning and calibration evidence | [`Control Tuning Workflow`](<docs/testing-calibration/Control Tuning Workflow.md>) |
 | Documentation and maintainer practices | [`Maintainer Notes`](<docs/maintainers/Maintainer Notes.md>) |

@@ -7,7 +7,7 @@ blank-file tutorial: use the verified excerpts to understand the boundaries, the
 maintained example and its tests as a unit.
 
 **Audience:** teams that already have a managed Pedro robot and need one vision-selected collection
-attempt. Start with the [Pedro autonomous reference](<Pedro Autonomous Reference.md>) if route
+attempt. Start with [Your first Pedro Auto](<../getting-started/First Pedro Auto.md>) if route
 lifecycle and exact route outcomes are new.
 
 This optional case study teaches how to turn one delayed Limelight detector frame into one bounded,
@@ -424,7 +424,7 @@ behavior in this one-attempt owner.
 
 ## Related reading
 
-- [Pedro autonomous reference](<Pedro Autonomous Reference.md>)
+- [Your first Pedro Auto](<../getting-started/First Pedro Auto.md>)
 - [Spatial queries and timestamp-aware frames](<../drive-vision/Spatial Queries.md>)
 - [Pedro integration contract](<../../integrations/pedro/README.md>)
 - [Tasks and Macros](<../design/Tasks & Macros Quickstart.md>)

@@ -14,11 +14,14 @@ import edu.ftcsushi.fw.drive.MecanumDrivebase;
 /**
  * FTC-boundary factory for common drivebases.
  *
- * <p>{@link #mecanum(HardwareMap)} is the beginner entry point. A robot with custom wiring or
- * tuning uses the same factory with one complete {@link MecanumConfig}. Both paths return the
- * actual framework-generic {@link MecanumDrivebase}; there is no second FTC runtime wrapper.</p>
+ * <p>{@link #mecanum(HardwareMap)} is the shortest beginner entry when the complete standard
+ * defaults have already been reviewed for the robot. A robot that must make wiring, BRAKE/FLOAT,
+ * or tuning explicit uses the same factory with one complete {@link MecanumConfig}. Both paths
+ * return the actual framework-generic {@link MecanumDrivebase}; there is no second FTC runtime
+ * wrapper.</p>
  *
  * <pre>{@code
+ * // Short form: use only when the standard names, directions, BRAKE, and scales are intended.
  * MecanumDrivebase drive = FtcDrives.mecanum(hardwareMap);
  * }</pre>
  *
