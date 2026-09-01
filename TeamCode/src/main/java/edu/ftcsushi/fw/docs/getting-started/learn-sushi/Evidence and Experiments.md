@@ -42,7 +42,7 @@ step remains valuable, but it cannot make a physical claim from software alone.
 In a software device scenario, commanded power, velocity, or position must never be copied
 automatically into encoder or velocity feedback. The test supplies each observation independently;
 otherwise a broken feedback loop can pass by reading back its own command. The checked-in
-[Starter mechanism lesson](<../Test a Mechanism Without Hardware.md>) and optional
+[Basic Mechanisms software checkpoint](<../Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>) and optional
 [Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>) show the boundary.
 
 The probes are passive, but a typed Java scenario can still be reactive. Request an action, run its

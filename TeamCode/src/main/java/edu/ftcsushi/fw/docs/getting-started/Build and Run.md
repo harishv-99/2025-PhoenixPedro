@@ -22,12 +22,10 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>) — the smallest
-  managed TeleOp entry;
-- [`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>) — its parallel
-  managed Auto entry.
+- [Basic Mechanisms Robot](<Basic Mechanisms Robot.md>) — the cumulative, source-backed TeleOp and
+  Auto course you will use after this software baseline passes.
 
-**Safety:** Keep the starter OpModes `@Disabled` during this lesson. A software build requires no
+**Safety:** Keep the course OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.
 
 ## 1. Get and open the complete project
@@ -75,23 +73,24 @@ result and the first actual error if the build fails.
 .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest
 ```
 
-These tests exercise the managed runtime, starter ownership, Tasks, Plants, and Pedro reference with
+These tests exercise the managed runtime, example ownership, Tasks, Plants, and Pedro reference with
 software fakes. They do not move hardware.
 
 ## 4. Find the learning sources
 
 ### Critical code
 
-Open the two starter entry files. Both contain `@Disabled`, so they compile but do not appear on the
-Driver Station yet:
+Open the complete course entry files linked from
+[Basic Mechanisms Robot](<Basic Mechanisms Robot.md#complete-source-and-owner-map>). They contain
+`@Disabled`, so they compile but do not appear on the Driver Station yet:
 
 Abbreviated shape (omissions shown):
 
 <!-- teaching-shape -->
 ```java
-@TeleOp(name = "FW Starter: TeleOp", group = "FW Examples")
+@TeleOp(name = "My Robot: TeleOp")
 @Disabled
-public final class StarterTeleOp extends FtcRobotOpMode {
+public final class MyRobotTeleOp extends FtcRobotOpMode {
     // ...
 }
 ```
@@ -109,21 +108,21 @@ public final class StarterTeleOp extends FtcRobotOpMode {
 Do not remove `@Disabled` merely to follow the source-based walkthrough. A later physical run must
 first review every hardware name, direction,
 mechanism power, drive scale, and drive brake choice required by that mode. The checked-in profile
-is software-valid so it compiles, but `allowIntakeMotion` and `allowDriveMotion` are both false.
-Those defaults are examples, not proof that the configuration or motion is correct for your robot.
+is software-valid so it compiles, but its motion permissions remain false. Those defaults are
+examples, not proof that the configuration or motion is correct for your robot.
 
 When the team later works with hardware, the ready-made tester suite is separate from the disabled
-starter. It has exactly two entries:
+course examples. It has exactly two entries:
 **FW: Testers (Driver Station)** for physical-gamepad input and **FW: Testers (Panels)** for
 Panels virtual-gamepad input. They run the same testers and controls and show the same telemetry on
 both consoles; choose one input owner for the whole run. Read the
 [`testing console guide`](<../testing-calibration/README.md>) before any supervised hardware work.
 
-## 5. Deploy without enabling the starter
+## 5. Deploy without enabling the course examples
 
 If a Robot Controller is available, use the team's normal Android Studio deployment process to
 install the project. Confirm that the Driver Station connects and lists the team's already-enabled
-OpModes. The starter remains absent because it is disabled.
+OpModes. The course examples remain absent because they are disabled.
 
 This separates project/deployment problems from hardware-configuration problems.
 
@@ -138,7 +137,7 @@ Sushi begins after those FTC controller and deployment steps are working.
 - Gradle sync finishes.
 - `:TeamCode:compileDebugJavaWithJavac` reports `BUILD SUCCESSFUL`.
 - `:TeamCode:testDebugUnitTest` reports `BUILD SUCCESSFUL`.
-- Android Studio can navigate to `FtcRobotOpMode`, `RobotProgram`, and the starter examples.
+- Android Studio can navigate to `FtcRobotOpMode`, `RobotProgram`, and the Basic Mechanisms sources.
 - No example OpMode has been enabled and no hardware has moved.
 
 ## Common problems
@@ -166,8 +165,8 @@ that separate work.
 
 ## Continue with robot code
 
-With the software baseline green, [get your first robot driving](<First Sushi Robot Code.md>) with
-one complete TeleOp, then follow [Build a robot step by step](<Build a Robot Step by Step.md>) from
-the first subsystem interface through end-to-end Auto.
+With the software baseline green, follow
+[Build the Basic Mechanisms robot](<Basic Mechanisms Robot.md>) from first drive through a
+referenced lift, claw, integrated TeleOp, and Auto.
 
 **Framework tour:** [`Sushi in one picture`](<Framework Overview.md>)

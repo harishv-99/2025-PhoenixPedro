@@ -13,7 +13,7 @@ Read this when you want to answer questions like:
 
 Useful companions:
 
-- [`Modern Starter Robot.md`](<../examples/Modern Starter Robot.md>)
+- [`Basic Mechanisms Robot.md`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>)
 - [`Framework Lanes & Robot Controls.md`](<Framework Lanes & Robot Controls.md>)
 - [`Recommended Robot Design.md`](<Recommended Robot Design.md>)
 - [`Supervisors & Pipelines.md`](<Supervisors & Pipelines.md>)
@@ -405,8 +405,8 @@ Auto:
   MyAutoPlan / MyAutoRoutine -> MyCapabilities -> robot internals
 ```
 
-The compiling [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>) shows the deliberately
-smaller one-family case. `StarterIntake` is itself the shared capability used by
+The maintained [`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>)
+shows the deliberately smaller one-family case. It is itself the shared capability used by
 `StarterTeleOpControls` and `StarterAuto`; there is no one-member forwarding aggregate. Add an
 aggregate only when a second cohesive capability family makes that grouping useful.
 

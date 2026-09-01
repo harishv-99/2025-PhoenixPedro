@@ -4,12 +4,11 @@
 
 Use this page to choose a buildable module or focused reference.
 
-First [get your first robot driving](<First Sushi Robot Code.md>) with one complete TeleOp. Then use
-the seven checkpoints in [Build a robot step by step](<Build a Robot Step by Step.md>) as the
-primary course. This page is its topic lookup: choose only the deep dive that answers the current
-question. Use [Sushi in one picture](<Framework Overview.md>) when you need the continuous Starter
-execution trace; it is not a prerequisite. The course's first software mechanism checkpoint links to
-[Test a mechanism without hardware](<Test a Mechanism Without Hardware.md>).
+Use [Build the Basic Mechanisms robot](<Basic Mechanisms Robot.md>) as the primary implementation
+course. This page is its topic lookup: choose only the deep dive that answers the current question.
+Use [Sushi in one picture](<Framework Overview.md>) when you need the continuous managed execution
+trace; it is not a prerequisite. The course includes the complete
+[hardware-free mechanism checkpoint](<Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>).
 
 | When you need to understand… | Read |
 |---|---|
@@ -21,9 +20,9 @@ execution trace; it is not a prerequisite. The course's first software mechanism
 | How to place a new team requirement in the architecture | [From requirement to robot](<learn-sushi/From Requirement to Robot.md>) |
 | How vision observations, robot pose, and drive guidance stay separate | [Drive and vision](<../drive-vision/README.md>) |
 
-The small **Starter** robot shows the complete ordinary shape. The larger **Reference** robot is a
-case study for a referenced lift, velocity launcher, macros, status, and experiments. They use the
-same architecture; Reference is not a second starter and should not be copied wholesale.
+The **Basic Mechanisms** robot shows the complete ordinary shape. The larger **Reference** robot is
+a case study for additional feedback, velocity control, macros, status, and experiments. They use
+the same architecture; Reference is not a second starter and should not be copied wholesale.
 
 ## Keep the evidence boundary visible
 

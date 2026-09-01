@@ -13,18 +13,16 @@ Follow one source-based beginner path:
 
 1. Use [`Build and run Sushi`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>)
    for project setup and software verification.
-2. [`Get your first robot driving`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Sushi Robot Code.md>)
-   with one complete, compiled TeleOp.
-3. Use [`Build a robot step by step`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build a Robot Step by Step.md>)
-   as the primary course from subsystem interfaces through end-to-end Auto.
-4. Open [`Sushi in one picture`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
+2. Follow [`Build the Basic Mechanisms robot`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Basic Mechanisms Robot.md>)
+   from first drive through a referenced lift, claw, TeleOp, and Auto.
+3. Open [`Sushi in one picture`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
    or [`choose a Sushi topic`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Beginner's Guide.md>)
    only when a checkpoint needs a deeper answer. Use the canonical
    [`Sushi documentation hub`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>)
    later as a searchable reference.
 
-The compiling [`modern starter robot`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/examples/Modern Starter Robot.md>)
-is the ordinary managed TeleOp-and-Auto example. Framework changes follow the
+The compiling [`Basic Mechanisms robot`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Basic Mechanisms Robot.md>)
+is the ordinary managed TeleOp-and-Auto course. Framework changes follow the
 [`Framework Principles`](<TeamCode/src/main/java/edu/ftcsushi/fw/Framework Principles.md>).
 
 ### Later reference shortcuts

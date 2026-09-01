@@ -11,7 +11,7 @@ Tasks are used for:
 * **Autonomous routines** built out of reusable pieces.
 
 We assume you already have an ordinary robot owner wired like the
-[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>):
+[`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>):
 
 * An `FtcRobotOpMode` receiving one framework-created `RobotProgram`.
 * Gamepad meanings declared through `program.callbackBindings()` or `program.taskBindings()`.

@@ -7,10 +7,10 @@ Plants realize mechanism targets, and one managed program owns the loop.
 ## New to Sushi
 
 1. [Set up and verify the project](<getting-started/Build and Run.md>).
-2. [Get your first robot driving](<getting-started/First Sushi Robot Code.md>) with one complete,
-   compiled TeleOp and a supervised first-motion checklist.
-3. Use [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) as the primary
-   course from subsystem interfaces and software tests through integrated TeleOp and Auto.
+2. [Build the Basic Mechanisms robot](<getting-started/Basic Mechanisms Robot.md>) from first drive
+   through a referenced lift, claw, semantic tests, integrated TeleOp, and Auto.
+3. Read [Sushi in one picture](<getting-started/Framework Overview.md>) when you need the managed
+   execution model.
 4. [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) when the current checkpoint needs a
    deeper answer. The topic pages are lookups, not a required course sequence.
 
@@ -20,10 +20,10 @@ Detailed hardware procedures live under [Testing and calibration](<testing-calib
 
 | Goal | Start here |
 |---|---|
-| Get a standard mecanum robot under joystick control | [Get your first robot driving](<getting-started/First Sushi Robot Code.md>) |
+| Get a standard mecanum robot under joystick control | [Build the Basic Mechanisms robot](<getting-started/Basic Mechanisms Robot.md>) |
 | Understand how the framework executes | [Sushi in one picture](<getting-started/Framework Overview.md>) |
-| Exercise a real mechanism and Plant without hardware | [Test a mechanism without hardware](<getting-started/Test a Mechanism Without Hardware.md>) |
-| Move from requirements through robot evidence one checkpoint at a time | [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) |
+| Exercise a real mechanism and Plant without hardware | [Run the Basic Mechanisms software checkpoint](<getting-started/Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>) |
+| Move from requirements through robot evidence one checkpoint at a time | [Build the Basic Mechanisms robot](<getting-started/Basic Mechanisms Robot.md>) |
 | Learn one framework area in depth | [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) |
 | Decide where new robot code belongs | [From requirement to robot](<getting-started/learn-sushi/From Requirement to Robot.md>) |
 | Remember the ordinary API shape | [Sushi Cheat Sheet](<reference/Sushi Cheat Sheet.md>) |
@@ -42,7 +42,7 @@ Detailed hardware procedures live under [Testing and calibration](<testing-calib
 
 ### Learn and program a team robot
 
-- [Examples](<examples/README.md>) — copyable Starter, Reference case study, and focused integrations
+- [Examples](<examples/README.md>) — the Basic Mechanisms course, Reference case study, and focused integrations
 - [Reference](<reference/README.md>) — short lookups and exact current vocabulary
 - [Troubleshooting](<troubleshooting/README.md>) — symptom-led recovery
 

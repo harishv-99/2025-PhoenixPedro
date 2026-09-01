@@ -27,7 +27,7 @@ semantic methods such as `collect()` or `aimAt(...)`.
 The short resolver and `FtcActuators` fragments in this guide are therefore construction-time
 excerpts from that owner unless a section explicitly labels a lower-level custom-adapter or test
 seam. Resolver graphs are built once, not rebuilt in `update(...)`. The complete beginner reference
-is [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>).
+is the [`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>).
 
 ```text
 controller / service / autonomous policy

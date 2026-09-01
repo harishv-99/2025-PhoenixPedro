@@ -82,7 +82,8 @@ Most examples in this document use real Sushi types. A few route-library snippet
 intentionally conceptual, because the exact adapter API depends on the library you choose to wrap.
 
 For ordinary FTC mechanisms, the examples follow the same construction boundary as the
-[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>): the composition root checks the
+[`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>):
+the composition root checks the
 robot-level permissions and cross-owner relationships it owns, then passes the selected active
 Config to `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism defensively captures and
 validates that data-only configuration before its own hardware effects, constructs and privately
