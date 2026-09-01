@@ -6,12 +6,12 @@ FTC lifecycle, loop order, and cleanup.
 The FTC SDK remains the OpMode and device-access foundation; [Sushi adds value](<fw/docs/getting-started/Framework Overview.md#why-use-sushi>)
 when behavior must be coordinated, reused by TeleOp and Auto, and checked in software as a robot grows.
 
-New to Sushi? Start with [`Sushi in one picture`](<fw/docs/getting-started/Framework Overview.md>),
-[`set up and verify the project`](<fw/docs/getting-started/Build and Run.md>), and complete
-[`your first Sushi robot code`](<fw/docs/getting-started/First Sushi Robot Code.md>). Next,
-[`test its mechanism without hardware`](<fw/docs/getting-started/Test a Mechanism Without Hardware.md>).
-Then use [`Build a robot step by step`](<fw/docs/getting-started/Build a Robot Step by Step.md>) as
-the team's season anchor, and [`choose a topic`](<fw/docs/getting-started/Beginner's Guide.md>) only
+New to Sushi? [`Set up and verify the project`](<fw/docs/getting-started/Build and Run.md>), then
+[`get your first robot driving`](<fw/docs/getting-started/First Sushi Robot Code.md>) with one
+complete TeleOp. Use [`Build a robot step by step`](<fw/docs/getting-started/Build a Robot Step by Step.md>)
+as the primary course from subsystem interfaces through end-to-end Auto. Read
+[`Sushi in one picture`](<fw/docs/getting-started/Framework Overview.md>) or
+[`choose a topic`](<fw/docs/getting-started/Beginner's Guide.md>) only
 when the current checkpoint needs a deeper answer.
 
 The [`Sushi documentation home`](<fw/docs/README.md>) is the canonical map for every guide,

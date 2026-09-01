@@ -10,8 +10,9 @@ import edu.ftcsushi.robots.examples.pedro.capability.intake.BasicPedroAutoMechan
  *
  * <p>{@link #current()} returns a fresh, complete software baseline, not reviewed drivetrain
  * wiring, Pinpoint placement, follower tuning, route clearance, intake safety, or physical STOP.
- * Review every active fact on the adopting robot before setting {@link #allowRobotMotion} to
- * {@code true}; clear that permission again whenever an active fact changes.</p>
+ * Ordinary managed Sushi route callers cannot currently set Pedro's persistent Follower power
+ * limit. Keep {@link #allowRobotMotion} false for physical use until a focused integration
+ * improvement supplies that control and every active fact has been reviewed.</p>
  */
 public final class BasicPedroProfile {
 
@@ -21,7 +22,7 @@ public final class BasicPedroProfile {
     /** Wiring and collection configuration for the example intake owner. */
     public BasicPedroAutoMechanism.Config intake;
 
-    /** Explicit permission for the reviewed complete example graph to move the robot. */
+    /** Software gate that must remain false for physical use under the current route API. */
     public boolean allowRobotMotion;
 
     private BasicPedroProfile() {
@@ -34,9 +35,9 @@ public final class BasicPedroProfile {
      * <p>The runtime starts from its owner-provided defaults, then authors only this example's
      * motor identities, directions, initial drivetrain setting, and brake choice. Pedro restores
      * its separate route-following power when a path starts, so {@code maxPower=0.25} is an initial
-     * drivetrain value rather than a durable route-speed limit. Replace and physically review the
-     * complete Pinpoint, follower, mecanum, constraint, transform, route, and intake facts before
-     * permitting motion.</p>
+     * drivetrain value rather than a durable route-speed limit. The ordinary managed route API
+     * does not expose that persistent limit, so physical motion remains blocked pending a focused
+     * integration improvement and complete physical review.</p>
      *
      * @return independent mutable runtime and intake configuration graphs with motion disabled
      */

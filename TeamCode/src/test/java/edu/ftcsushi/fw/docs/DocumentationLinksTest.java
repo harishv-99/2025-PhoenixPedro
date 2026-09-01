@@ -138,10 +138,8 @@ public final class DocumentationLinksTest {
         String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
         List<String> pages = Arrays.asList(
                 "examples/Field-relative Drive.md",
-                "examples/Framework Components Through Examples.md",
                 "examples/Hardware-free Reference Scenarios.md",
                 "examples/Modern Starter Robot.md",
-                "examples/Pedro Autonomous Reference.md",
                 "examples/Subsystem Experiments.md",
                 "examples/Timestamped Adaptive Collection.md",
                 "getting-started/Build a Robot Step by Step.md",
@@ -189,7 +187,7 @@ public final class DocumentationLinksTest {
         collectMarkdownFiles(docsRoot.resolve("testing-calibration"), pages);
         Pattern modePattern = Pattern.compile(
                 "(?m)^\\*\\*Learning mode:\\*\\* (Buildable implementation|"
-                        + "Operational runbook|Architecture reference|Router)\\s*$");
+                        + "Guided course|Operational runbook|Architecture reference|Router)\\s*$");
         List<String> failures = new ArrayList<String>();
         for (Path page : pages) {
             String markdown = readUtf8(page);
@@ -207,20 +205,34 @@ public final class DocumentationLinksTest {
             if (!"Buildable implementation".equals(mode)) {
                 continue;
             }
+            boolean visibleFirstRun = page.getFileName().toString()
+                    .equals("First Sushi Robot Code.md");
             requireText(repositoryRoot, page, markdown,
                     "### Critical code", "Critical code", failures);
             requireText(repositoryRoot, page, markdown,
                     "**What to notice**", "What to notice", failures);
             requireText(repositoryRoot, page, markdown,
                     "**Key APIs", "Key APIs", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "## Files you will create", "Files you will create", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "## Complete working slice", "Complete working slice", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "## Verify the slice", "Verify the slice", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "<details>", "collapsed complete files", failures);
+            if (visibleFirstRun) {
+                requireText(repositoryRoot, page, markdown,
+                        "## 1. Copy the complete program", "one-file copy step", failures);
+                requireText(repositoryRoot, page, markdown,
+                        "## 3. Compile while motion remains disabled",
+                        "disabled compile gate", failures);
+                if (markdown.contains("<details>")) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + ": first-run complete file must stay visible");
+                }
+            } else {
+                requireText(repositoryRoot, page, markdown,
+                        "## Files you will create", "Files you will create", failures);
+                requireText(repositoryRoot, page, markdown,
+                        "## Complete working slice", "Complete working slice", failures);
+                requireText(repositoryRoot, page, markdown,
+                        "## Verify the slice", "Verify the slice", failures);
+                requireText(repositoryRoot, page, markdown,
+                        "<details>", "collapsed complete files", failures);
+            }
             Matcher manifest = Pattern.compile("<!-- buildable-files: ([^>]+) -->")
                     .matcher(markdown);
             if (!manifest.find()) {
@@ -237,7 +249,7 @@ public final class DocumentationLinksTest {
                     completeFiles.add(complete.group(1).trim());
                     int openDetails = markdown.lastIndexOf("<details>", complete.start());
                     int closeDetails = markdown.lastIndexOf("</details>", complete.start());
-                    if (openDetails < 0 || closeDetails > openDetails) {
+                    if (!visibleFirstRun && (openDetails < 0 || closeDetails > openDetails)) {
                         failures.add(repositoryRelativePath(repositoryRoot, page)
                                 + ": complete source file is not inside collapsed details: "
                                 + complete.group(1).trim());
@@ -409,7 +421,8 @@ public final class DocumentationLinksTest {
     }
 
     @Test
-    public void learningNavigationAndCompatibilityPagesKeepOneCurrentPath() throws IOException {
+    public void learningNavigationKeepsOneCurrentCourseWithoutCompatibilityStubs()
+            throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
         String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
@@ -421,23 +434,19 @@ public final class DocumentationLinksTest {
                 "Start here",
                 startGroup.group(1),
                 Arrays.asList(
-                        "Sushi in one picture",
                         "Set up and verify the project",
-                        "Write your first Sushi robot code",
-                        "Test a mechanism without hardware",
+                        "Get your first robot driving",
                         "Build a robot step by step",
-                        "Choose a Sushi topic",
-                        "Documentation home",
-                        "Getting started"),
+                        "Test a mechanism without hardware",
+                        "Sushi in one picture",
+                        "Choose a Sushi topic"),
                 Arrays.asList(
-                        "docs/getting-started/Framework Overview.md",
                         "docs/getting-started/Build and Run.md",
                         "docs/getting-started/First Sushi Robot Code.md",
-                        "docs/getting-started/Test a Mechanism Without Hardware.md",
                         "docs/getting-started/Build a Robot Step by Step.md",
-                        "docs/getting-started/Beginner's Guide.md",
-                        "docs/README.md",
-                        "docs/getting-started/README.md"));
+                        "docs/getting-started/Test a Mechanism Without Hardware.md",
+                        "docs/getting-started/Framework Overview.md",
+                        "docs/getting-started/Beginner's Guide.md"));
 
         Matcher learningGroup = Pattern.compile(
                 "\\{\\s*\"Learn Sushi topics\"\\s*=\\s*\\[([^]]+)]\\s*},",
@@ -453,16 +462,14 @@ public final class DocumentationLinksTest {
                         "Plants and hardware",
                         "Tasks and autonomous",
                         "Evidence and experiments",
-                        "From requirement to robot",
-                        "Role paths"),
+                        "From requirement to robot"),
                 Arrays.asList(
                         "docs/getting-started/learn-sushi/Robot Roles.md",
                         "docs/getting-started/learn-sushi/Controls and Intent.md",
                         "docs/getting-started/learn-sushi/Plants and Hardware.md",
                         "docs/getting-started/learn-sushi/Tasks and Autonomous.md",
                         "docs/getting-started/learn-sushi/Evidence and Experiments.md",
-                        "docs/getting-started/learn-sushi/From Requirement to Robot.md",
-                        "docs/getting-started/learn-sushi/Role Paths.md"));
+                        "docs/getting-started/learn-sushi/From Requirement to Robot.md"));
 
         Matcher examplesGroup = Pattern.compile(
                 "\\{\\s*\"Examples\"\\s*=\\s*\\[([^]]+)]\\s*},",
@@ -475,41 +482,34 @@ public final class DocumentationLinksTest {
                         "Examples home",
                         "Modern starter robot",
                         "Hardware-free reference scenarios",
-                        "Framework components",
                         "Field-relative drive",
-                        "Pedro autonomous reference",
-                        "Subsystem experiments",
-                        "BIOBUZZ capability map"),
+                        "Your first Pedro Auto",
+                        "Subsystem experiments"),
                 Arrays.asList(
                         "docs/examples/README.md",
                         "docs/examples/Modern Starter Robot.md",
                         "docs/examples/Hardware-free Reference Scenarios.md",
-                        "docs/examples/Framework Components Through Examples.md",
                         "docs/examples/Field-relative Drive.md",
-                        "docs/examples/Pedro Autonomous Reference.md",
-                        "docs/examples/Subsystem Experiments.md",
-                        "docs/examples/BIOBUZZ Capability Map.md"));
-        assertTrue("Primary navigation still exposes the old build-along labels",
-                !config.contains("Your first mechanism")
-                        && !config.contains("Your first TeleOp")
-                        && !config.contains("Your first Task and Auto"));
+                        "docs/getting-started/First Pedro Auto.md",
+                        "docs/examples/Subsystem Experiments.md"));
 
-        assertCompatibilityPage(repositoryRoot,
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Mechanism.md",
-                "learn-sushi/Plants and Hardware.md",
-                "../testing-calibration/Actuator Bring-up.md");
-        assertCompatibilityPage(repositoryRoot,
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First TeleOp.md",
-                "learn-sushi/Controls and Intent.md",
-                "../testing-calibration/Robot Calibration Tutorials.md");
-        assertCompatibilityPage(repositoryRoot,
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Task and Auto.md",
-                "learn-sushi/Tasks and Autonomous.md",
-                "../testing-calibration/Robot Calibration Tutorials.md");
+        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
+        for (String removed : Arrays.asList(
+                "getting-started/First Mechanism.md",
+                "getting-started/First TeleOp.md",
+                "getting-started/First Task and Auto.md",
+                "getting-started/README.md",
+                "getting-started/learn-sushi/Role Paths.md",
+                "examples/Framework Components Through Examples.md",
+                "examples/BIOBUZZ Capability Map.md",
+                "examples/Pedro Autonomous Reference.md")) {
+            assertTrue("Redundant documentation page still exists: " + removed,
+                    !Files.exists(repositoryRoot.resolve(docs + removed)));
+        }
     }
 
     @Test
-    public void buildSeasonAnchorKeepsTheEvidenceBasedStudentWorkflow() throws IOException {
+    public void studentCourseKeepsSevenRunnableRobotCheckpoints() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
         Path anchorPath = repositoryRoot.resolve(
@@ -518,63 +518,190 @@ public final class DocumentationLinksTest {
         assertTrue("Build-season anchor is missing", Files.isRegularFile(anchorPath));
 
         String anchor = readUtf8(anchorPath);
+        assertTrue("Build-season course exceeds 1,800 prose words",
+                proseWordCount(anchorPath) <= 1800);
+        assertTrue("Build-season course exceeds eight Java excerpts",
+                javaFenceCount(anchorPath) <= 8);
+        assertTrue("Build-season course exceeds 410 source lines",
+                Files.readAllLines(anchorPath, StandardCharsets.UTF_8).size() <= 410);
         String[] requiredStageHeadings = {
-            "## 1. Define behavior and success criteria",
-            "## 2. Establish the compiling robot skeleton",
-            "## 3. Build one subsystem software slice",
-            "## 4. Bring up hardware in isolation",
-            "## 5. Run a bounded subsystem experiment",
-            "## 6. Integrate continuously and grow TeleOp",
-            "## 7. Qualify routes and autonomous policy separately",
-            "## 8. Rehearse the complete robot"
+            "## 1. Name the robot's subsystems and interfaces",
+            "## 2. Test the interface without hardware",
+            "## 3. Connect hardware and write TeleOp",
+            "## 4. Run a bounded subsystem experiment",
+            "## 5. Integrate the whole robot",
+            "## 6. Test individual Auto paths",
+            "## 7. Test end-to-end Auto"
+        };
+        String[] requiredEvidenceLabels = {
+            "**Outcome:**", "**Change these files:**", "### Critical code", "**Run this:**",
+            "**Expect this:**", "**What to notice**", "**Key APIs**", "**If it fails:**",
+            "**Advance when:**"
+        };
+        String[][] requiredStageDestinations = {
+            {"learn-sushi/From Requirement to Robot.md"},
+            {"../examples/Modern Starter Robot.md",
+                    "robots/examples/starter/robot/StarterTeleOpControls.java"},
+            {"Test a Mechanism Without Hardware.md",
+                    "../testing-calibration/Actuator Bring-up.md",
+                    "../examples/Modern Starter Robot.md",
+                    "robots/examples/starter/opmode/StarterTeleOp.java"},
+            {"../examples/Subsystem Experiments.md"},
+            {"../examples/Modern Starter Robot.md"},
+            {"First Pedro Auto.md", "../../integrations/pedro/README.md"},
+            {}
+        };
+        String[] requiredStageSourceMarkers = {
+            "<!-- teaching-shape -->",
+            "<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/"
+                    + "starter/robot/StarterFirstLessonTest.java -->",
+            "<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/"
+                    + "starter/robot/StarterMechanismLessonTest.java -->",
+            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
+                    + "reference/tester/ReferenceFlywheelSpinUpExperiment.java -->",
+            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
+                    + "reference/robot/ReferenceRobot.java -->",
+            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
+                    + "pedro/autonomous/BasicPedroAutoRoutine.java -->",
+            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
+                    + "pedro/robot/BasicPedroAutoRobot.java -->"
         };
         int priorStage = -1;
-        for (String stage : requiredStageHeadings) {
-            int stageIndex = anchor.indexOf(stage);
-            assertTrue("Build-season anchor is missing stage: " + stage, stageIndex >= 0);
-            assertTrue("Build-season stages are out of order: " + stage,
-                    stageIndex > priorStage);
-            priorStage = stageIndex;
+        for (int stageIndex = 0; stageIndex < requiredStageHeadings.length; stageIndex++) {
+            String stageHeading = requiredStageHeadings[stageIndex];
+            int sectionStart = anchor.indexOf(stageHeading);
+            assertTrue("Build-season anchor is missing stage: " + stageHeading,
+                    sectionStart >= 0);
+            assertTrue("Build-season stages are out of order: " + stageHeading,
+                    sectionStart > priorStage);
+            priorStage = sectionStart;
+            int sectionEnd = stageIndex + 1 < requiredStageHeadings.length
+                    ? anchor.indexOf(requiredStageHeadings[stageIndex + 1], sectionStart)
+                    : anchor.indexOf("## Progress checklist", sectionStart);
+            assertTrue("Build-season stage has no closing boundary: " + stageHeading,
+                    sectionEnd > sectionStart);
+            String section = anchor.substring(sectionStart, sectionEnd);
+
+            for (String label : requiredEvidenceLabels) {
+                int occurrences = matcherCount(Pattern.compile(Pattern.quote(label))
+                        .matcher(section));
+                assertTrue(stageHeading + " must contain exactly one " + label
+                                + "; found " + occurrences,
+                        occurrences == 1);
+            }
+            assertTrue(stageHeading + " is missing its maintained source marker",
+                    section.contains(requiredStageSourceMarkers[stageIndex]));
+            for (String destination : requiredStageDestinations[stageIndex]) {
+                assertTrue(stageHeading + " is missing destination: " + destination,
+                        section.contains(destination));
+            }
+
+            int apiStart = section.indexOf("**Key APIs**");
+            int apiEnd = section.indexOf("**If it fails:**", apiStart);
+            assertTrue(stageHeading + " has an invalid Key APIs boundary",
+                    apiStart >= 0 && apiEnd > apiStart);
+            String apiBlock = section.substring(apiStart, apiEnd);
+            Matcher apiBullets = Pattern.compile("(?m)^- (.+)$").matcher(apiBlock);
+            int apiCount = 0;
+            while (apiBullets.find()) {
+                apiCount++;
+                assertTrue(stageHeading + " has a Key APIs bullet without a concrete API: "
+                                + apiBullets.group(),
+                        apiBullets.group(1).startsWith("`"));
+            }
+            assertTrue(stageHeading + " must name one to five key APIs; found " + apiCount,
+                    apiCount >= 1 && apiCount <= 5);
         }
 
-        String[] requiredEvidenceLabels = {
-            "**Goal:**", "**Produce:**", "**Prove:**", "**Does not prove:**", "**Do next:**"
-        };
-        for (String label : requiredEvidenceLabels) {
-            int occurrences = anchor.split(Pattern.quote(label), -1).length - 1;
-            assertTrue("Every build-season stage must contain evidence label " + label
-                            + "; found " + occurrences,
-                    occurrences == requiredStageHeadings.length);
-        }
+        int interfaceStageStart = anchor.indexOf(requiredStageHeadings[0]);
+        int interfaceStageEnd = anchor.indexOf(requiredStageHeadings[1], interfaceStageStart);
+        String interfaceStage = anchor.substring(interfaceStageStart, interfaceStageEnd);
+        assertTrue("Stage 1's displayed teaching shape must use the three real capability methods",
+                interfaceStage.contains("void setMode(Mode mode);")
+                        && interfaceStage.contains(
+                                "Task collectForSeconds(double durationSec);")
+                        && interfaceStage.contains("Status status();"));
+        String starterInterface = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/"
+                        + "intake/StarterIntake.java"));
+        assertTrue("The course's only teaching shape must use real Starter capability APIs",
+                starterInterface.contains("void setMode(Mode mode);")
+                        && starterInterface.contains(
+                                "Task collectForSeconds(double durationSec);")
+                        && starterInterface.contains("Status status();"));
 
-        String[] requiredDestinations = {
-            "learn-sushi/From Requirement to Robot.md",
-            "../examples/Modern Starter Robot.md",
-            "Test a Mechanism Without Hardware.md",
-            "../testing-calibration/README.md",
-            "../examples/Subsystem Experiments.md",
-            "../design/Robot Capabilities & Mode Clients.md",
-            "First Pedro Auto.md",
-            "../troubleshooting/Common Problems.md"
-        };
-        for (String destination : requiredDestinations) {
-            assertTrue("Build-season anchor is missing destination: " + destination,
-                    anchor.contains(destination));
-        }
-
-        assertTrue("Build-season anchor must distinguish tester OpModes from production TeleOp",
-                anchor.contains("dedicated tester or diagnostic OpModes")
-                        && anchor.contains("production TeleOp")
-                        && anchor.contains("raw device tester"));
-        assertTrue("Build-season anchor must keep integration continuous",
-                anchor.contains("Return to")
-                        && anchor.contains("step 3 for the next subsystem slice"));
+        assertTrue("Course must start with the one-file physical milestone",
+                anchor.contains("Get your first robot driving"));
+        assertTrue("Course must distinguish software evidence from physical evidence",
+                anchor.contains("Software proves the mapping, not the future mechanism or "
+                                + "physical behavior")
+                        && anchor.contains("Compilation does not prove direction, braking, "
+                                + "clearance, or response"));
+        assertTrue("Course must not authorize physical Pedro motion without route-time control",
+                anchor.contains("ordinary Sushi route callers cannot currently set that")
+                        && Pattern.compile("does not\\s+authorize a physical path test")
+                                .matcher(anchor).find()
+                        && anchor.contains("Do not enable either the generic host or an adapted host")
+                        && anchor.contains("physical end-to-end rehearsal waits"));
+        assertTrue("Starter TeleOp exposure must remain an explicit final physical gate",
+                anchor.contains("remove `@Disabled`")
+                        && anchor.contains("INIT with controls neutral"));
         assertTrue("Build-season anchor must include an accessible Mermaid title",
-                anchor.contains("accTitle: Build-season robot workflow"));
+                anchor.contains("accTitle: Seven robot-building checkpoints"));
         assertTrue("Build-season anchor must include an accessible Mermaid description",
                 anchor.contains("accDescr:"));
         assertTrue("Build-season anchor must include a diagram text fallback",
                 anchor.contains("**Text version:**"));
+    }
+
+    @Test
+    public void survivingPedroLessonKeepsTheCompleteTruthfulTeachingSurface()
+            throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        Path lessonPath = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
+                        + "First Pedro Auto.md");
+        assertTrue("Surviving Pedro lesson is missing", Files.isRegularFile(lessonPath));
+        String lesson = readUtf8(lessonPath);
+
+        String sourcePrefix = "<!-- source-excerpt: TeamCode/src/main/java/"
+                + "edu/ftcsushi/robots/examples/pedro/";
+        assertTrue("Pedro lesson must retain source-backed fixed path geometry",
+                lesson.contains(sourcePrefix
+                        + "autonomous/BasicPedroAutoPaths.java -->"));
+        assertTrue("Pedro lesson must retain source-backed route policy",
+                lesson.contains(sourcePrefix
+                        + "autonomous/BasicPedroAutoRoutine.java -->")
+                        && lesson.contains("RouteTasks.follow(")
+                        && lesson.contains("Tasks.branchOnOutcome("));
+        assertTrue("Pedro lesson must retain its source-backed disabled host",
+                lesson.contains(sourcePrefix + "opmode/BasicPedroAutoExample.java -->")
+                        && lesson.contains("@Disabled")
+                        && lesson.contains("allowRobotMotion"));
+        assertTrue("Pedro lesson must distinguish exact route status from Task outcome",
+                lesson.contains("RouteStatus")
+                        && lesson.contains("TaskOutcome")
+                        && lesson.contains("FOLLOWER_TIMEOUT_OR_STALL")
+                        && lesson.contains("UNKNOWN_TERMINAL"));
+        assertTrue("Pedro lesson must retain the exact integration contract link",
+                lesson.contains("../../integrations/pedro/README.md"));
+        assertTrue("Pedro lesson must keep physical motion blocked without route-time control",
+                lesson.contains("Ordinary Sushi route callers cannot currently set")
+                        && lesson.contains("does not authorize a later physical test")
+                        && lesson.contains("Do not set it true for physical motion"));
+
+        String profile = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/"
+                        + "BasicPedroProfile.java"));
+        String robot = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/"
+                        + "BasicPedroAutoRobot.java"));
+        assertTrue("Pedro example source must not present review alone as motion permission",
+                profile.contains("Keep {@link #allowRobotMotion} false for physical use")
+                        && profile.contains("physical motion remains blocked")
+                        && robot.contains("Keep it false for physical")
+                        && robot.contains("persistent Follower power limit"));
     }
 
     @Test
@@ -681,22 +808,101 @@ public final class DocumentationLinksTest {
         assertTrue("First-contact overview exceeds 30 displayed Java lines",
                 displayedJavaLineCount(overview) <= 30);
         assertTrue("First robot-code lesson is missing", Files.isRegularFile(firstRobotCode));
-        assertTrue("First robot-code lesson exceeds 1,200 prose words",
-                proseWordCount(firstRobotCode) <= 1200);
-        // Two collapsed, complete files make the lesson reproducible; four short excerpts orient
-        // the student to the surrounding owners without adding to the initially displayed code.
-        assertTrue("First robot-code lesson exceeds six Java excerpts",
-                javaFenceCount(firstRobotCode) <= 6);
-        assertTrue("First robot-code lesson exceeds 35 displayed Java lines",
-                displayedJavaLineCount(firstRobotCode) <= 35);
+        assertTrue("First robot-code lesson exceeds 1,000 prose words",
+                proseWordCount(firstRobotCode) <= 1000);
+        assertTrue("First-drive lesson must show its complete program exactly once",
+                javaFenceCount(firstRobotCode) == 1);
+        assertTrue("First-drive lesson exceeds 55 displayed Java lines",
+                displayedJavaLineCount(firstRobotCode) <= 55);
         String firstRobotCodeText = readUtf8(firstRobotCode);
-        assertTrue("First robot-code lesson must link its compiled control check on GitHub",
-                firstRobotCodeText.contains(
-                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
-                                + "edu/ftcsushi/robots/examples/starter/robot/"
-                                + "StarterFirstLessonTest.java"));
-        assertTrue("First robot-code lesson must link the canonical Starter source",
-                firstRobotCodeText.contains("robots/examples/starter"));
+        String firstDrivePath = "TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/"
+                + "FirstDriveTeleOp.java";
+        Path firstDrive = repositoryRoot.resolve(firstDrivePath);
+        assertTrue("Maintained first-drive example is missing", Files.isRegularFile(firstDrive));
+        assertTrue("First-drive lesson must reproduce the maintained example",
+                firstRobotCodeText.contains("<!-- source-file: " + firstDrivePath + " -->"));
+        String firstDriveSource = readUtf8(firstDrive);
+        assertTrue("First-drive example must stay disabled by default",
+                Pattern.compile("(?m)^@Disabled[ \\t]*$")
+                        .matcher(firstDriveSource).find());
+        assertTrue("First-drive example must declare a real TeleOp",
+                Pattern.compile("(?m)^@TeleOp\\([^\\r\\n]+\\)[ \\t]*$")
+                        .matcher(firstDriveSource).find());
+        assertTrue("First-drive example must remain one final managed OpMode",
+                Pattern.compile("public\\s+final\\s+class\\s+FirstDriveTeleOp\\s+"
+                                + "extends\\s+FtcRobotOpMode")
+                        .matcher(firstDriveSource).find()
+                        && !Pattern.compile("\\bvoid\\s+loop\\s*\\(")
+                        .matcher(firstDriveSource).find());
+        assertTrue("First-drive controls must own the three selected gamepad meanings",
+                firstDriveSource.contains(
+                        "new FirstDriveControls(new GamepadDevice(gamepad1))")
+                        && firstDriveSource.contains("new GamepadDriveSource(")
+                        && firstDriveSource.contains("driver.leftX()")
+                        && firstDriveSource.contains("driver.leftY()")
+                        && firstDriveSource.contains("driver.rightX()")
+                        && firstDriveSource.contains("GamepadDriveSource.Config.defaults()")
+                        && firstDriveSource.contains(".scaled(FIRST_RUN_TRANSLATION_SCALE, "
+                                + "FIRST_RUN_TURN_SCALE)"));
+        assertTrue("First-drive composition must expose reviewed wiring and one configured sink",
+                firstDriveSource.contains("FtcDrives.MecanumConfig.defaults()")
+                        && firstDriveSource.contains("drive.wiring.frontLeftName")
+                        && firstDriveSource.contains("drive.wiring.frontRightName")
+                        && firstDriveSource.contains("drive.wiring.backLeftName")
+                        && firstDriveSource.contains("drive.wiring.backRightName")
+                        && firstDriveSource.contains("drive.wiring.frontLeftDirection")
+                        && firstDriveSource.contains("drive.wiring.frontRightDirection")
+                        && firstDriveSource.contains("drive.wiring.backLeftDirection")
+                        && firstDriveSource.contains("drive.wiring.backRightDirection")
+                        && firstDriveSource.contains("drive.enableZeroPowerBrake = true")
+                        && firstDriveSource.contains("program.drive(controls.driveSource(), "
+                                + "FtcDrives.mecanum(hardwareMap, drive))")
+                        && matcherCount(Pattern.compile("program\\.drive\\s*\\(")
+                                .matcher(firstDriveSource)) == 1);
+        assertTrue("First-drive example must not introduce another managed role or raw lookup",
+                !firstDriveSource.contains("program.output(")
+                        && !firstDriveSource.contains("program.service(")
+                        && !firstDriveSource.contains("program.rootTask(")
+                        && !firstDriveSource.contains("hardwareMap.get("));
+        int firstDriveJavaFiles = 0;
+        try (DirectoryStream<Path> children = Files.newDirectoryStream(firstDrive.getParent())) {
+            for (Path child : children) {
+                if (Files.isRegularFile(child)
+                        && child.getFileName().toString().endsWith(".java")) {
+                    firstDriveJavaFiles++;
+                }
+            }
+        }
+        assertTrue("First-drive milestone must remain exactly one Java file; found "
+                        + firstDriveJavaFiles,
+                firstDriveJavaFiles == 1);
+        long nonblankFirstDriveLines = Files.readAllLines(firstDrive, StandardCharsets.UTF_8)
+                .stream().filter(line -> !line.trim().isEmpty()).count();
+        assertTrue("First-drive example exceeds 45 nonblank Java lines: "
+                        + nonblankFirstDriveLines,
+                nonblankFirstDriveLines <= 45);
+        assertTrue("First-drive lesson must keep the physical evidence boundary visible",
+                firstRobotCodeText.contains("compilation cannot prove wiring")
+                        && firstRobotCodeText.contains("HW: Actuator Bring-up")
+                        && firstRobotCodeText.contains("Verify wheel patterns on the stand")
+                        && firstRobotCodeText.contains("Make the first controlled floor drive")
+                        && firstRobotCodeText.contains("STOP"));
+        int copyStep = firstRobotCodeText.indexOf("## 1. Copy the complete program");
+        int wiringStep = firstRobotCodeText.indexOf(
+                "## 2. Replace assumptions with your wiring facts");
+        int disabledCompileStep = firstRobotCodeText.indexOf(
+                "## 3. Compile while motion remains disabled");
+        int standStep = firstRobotCodeText.indexOf("## 4. Verify wheel patterns on the stand");
+        int floorStep = firstRobotCodeText.indexOf(
+                "## 5. Make the first controlled floor drive");
+        int growStep = firstRobotCodeText.indexOf("## 6. Grow beyond one file");
+        assertTrue("First-drive physical gates are missing or out of order",
+                copyStep >= 0
+                        && copyStep < wiringStep
+                        && wiringStep < disabledCompileStep
+                        && disabledCompileStep < standStep
+                        && standStep < floorStep
+                        && floorStep < growStep);
         assertTrue("Hardware-free mechanism lesson is missing",
                 Files.isRegularFile(mechanismLesson));
         assertTrue("Hardware-free mechanism lesson exceeds 1,000 prose words",
@@ -743,8 +949,6 @@ public final class DocumentationLinksTest {
         // Learning-mode orientation makes each topic's intended use explicit without adding code.
         assertTrue("Six Sushi topic pages exceed 4,800 prose words: " + topicWords,
                 topicWords <= 4800);
-        assertTrue("Role Paths exceeds 500 prose words",
-                proseWordCount(topics.resolve("Role Paths.md")) <= 500);
     }
 
     @Test
@@ -839,17 +1043,6 @@ public final class DocumentationLinksTest {
                 contents.contains("### Does not prove"));
         assertTrue(pageName + " must state the next evidence gate",
                 contents.contains("### Next gate"));
-    }
-
-    private static void assertCompatibilityPage(Path repositoryRoot,
-                                                String relativePath,
-                                                String conceptTarget,
-                                                String hardwareTarget) throws IOException {
-        String contents = readUtf8(repositoryRoot.resolve(relativePath));
-        assertTrue(relativePath + " must link to " + conceptTarget,
-                contents.contains(conceptTarget));
-        assertTrue(relativePath + " must link to " + hardwareTarget,
-                contents.contains(hardwareTarget));
     }
 
     private static void assertNavigationEntries(String groupName,

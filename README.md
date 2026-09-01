@@ -9,20 +9,17 @@ when behavior must be coordinated, reused by TeleOp and Auto, and checked in sof
 
 ## Start here
 
-There is one source-based beginner entry:
+Follow one source-based beginner path:
 
-1. Read [`Sushi in one picture`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
-   to trace what is composed once and what the managed program executes later.
-2. Use [`Build and run Sushi`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>)
+1. Use [`Build and run Sushi`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>)
    for project setup and software verification.
-3. Complete [`Your first Sushi robot code`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Sushi Robot Code.md>)
-   to copy the Starter and prove one code change without robot hardware.
-4. [`Test its mechanism without hardware`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Test a Mechanism Without Hardware.md>)
-   through the same production mechanism and Plant used on the robot.
-5. Use [`Build a robot step by step`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build a Robot Step by Step.md>)
-   as the team's season workflow and return to it after each checkpoint.
-6. [`Choose a Sushi topic`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Beginner's Guide.md>)
-   relevant to your work, or use the canonical
+2. [`Get your first robot driving`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Sushi Robot Code.md>)
+   with one complete, compiled TeleOp.
+3. Use [`Build a robot step by step`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build a Robot Step by Step.md>)
+   as the primary course from subsystem interfaces through end-to-end Auto.
+4. Open [`Sushi in one picture`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
+   or [`choose a Sushi topic`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Beginner's Guide.md>)
+   only when a checkpoint needs a deeper answer. Use the canonical
    [`Sushi documentation hub`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>)
    later as a searchable reference.
 

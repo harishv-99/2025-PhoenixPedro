@@ -32,8 +32,8 @@ the software checkpoint compiles and tests this graph without authorizing motion
 
 - [`BasicPedroProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroProfile.java>) — fresh local
   Pedro and intake configuration plus the false-by-default motion permission;
-- [`BasicPedroAutoPaths.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) — physical
-  start and fixed route;
+- [`BasicPedroAutoPaths.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoPaths.java>) — declared
+  start pose and fixed route geometry;
 - [`BasicPedroAutoRoutine.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/autonomous/BasicPedroAutoRoutine.java>) —
   route Task and outcome policy;
 - [`BasicPedroAutoRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/BasicPedroAutoRobot.java>) — managed
@@ -58,8 +58,9 @@ the software checkpoint compiles and tests this graph without authorizing motion
 - A runtime Config passing software validation does not prove motor direction, Pinpoint placement
   or readiness, follower tuning, field alignment, route clearance, stopping distance, or physical
   STOP.
-- A later physical test needs its own reviewed start, heading, route, reduced first-test limits,
-  odometry, stopping distance, clear space, and operator on STOP.
+- Ordinary Sushi route callers cannot currently set the persistent Follower power limit. This lesson
+  therefore does not authorize a later physical test; that gate awaits a focused, separately
+  approved integration improvement. Do not reach around the integration to expose a raw Follower.
 - Never enable the host on another robot merely because the project compiles.
 
 ## 1. Start with the geometry
@@ -165,16 +166,17 @@ return Tasks.branchOnOutcome(
 - Confirmed success, recoverable timeout, and cancellation-like failure lead to different actions.
 - Robot-owned Auto policy interprets retained evidence; the integration does not choose strategy.
 
-**Key APIs:** `Tasks.branchOnOutcome(...)` selects success and timeout continuations while failing
-closed for cancellation-like or failed endings.
+**Key APIs:** `RouteStatus` retains the integration's exact ending; `TaskOutcome` classifies the
+Task boundary; `Tasks.branchOnOutcome(...)` selects success and timeout continuations while failing
+closed for cancellation-like endings.
 
 For this routine:
 
-| Route result | Routine decision |
-|---|---|
-| Confirmed completion | Run one fresh 0.50-second collection Task. |
-| Follower or Task timeout | Start the explicit idle fallback. |
-| Cancellation-like or failed ending | Abort without starting either branch. |
+| Retained route status | Route Task outcome | Routine decision |
+|---|---|---|
+| `COMPLETED` | `SUCCESS` | Run one fresh 0.50-second collection Task. |
+| `FOLLOWER_TIMEOUT_OR_STALL` or `TASK_TIMEOUT` | `TIMEOUT` | Start the explicit idle fallback. |
+| `INTERRUPTED`, `REPLACED`, `CANCELLED`, `FAILED`, or `UNKNOWN_TERMINAL` | `CANCELLED` | Abort without starting either branch. |
 
 “The follower is no longer busy” is not enough evidence for the success action. The route Task
 retains a truthful status; the robot routine chooses what that status means. A successful timeout
@@ -196,6 +198,8 @@ The lesson does not require a separate clock, runner, manual follower update, or
 managed program updates the service before the route Task and stops the output and drive owner
 during cleanup. This single-purpose Auto root also selects its one routine; a multi-client robot
 keeps reusable capabilities in its root and Auto strategy in an Auto-owned routine instead.
+The [Pedro integration contract](<../../integrations/pedro/README.md>) is the exact reference for
+heartbeat deduplication, route execution identity, startup, status, cancellation, and cleanup.
 
 ## 5. Review the local profile and use the one root boundary
 
@@ -232,8 +236,8 @@ mechanism once.
 <summary>Complete working slice: BasicPedroAutoExample.java</summary>
 
 The complete disabled FTC host shows the package, imports, annotations, ordinary construction, and
-test-only seam. The other five complete owners are presented in the linked
-[Pedro autonomous reference](<../examples/Pedro Autonomous Reference.md>).
+test-only seam. The five collaborating owners are linked in [Files you will create](#files-you-will-create);
+their checked-in Java files are the complete source truth.
 
 <!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/opmode/BasicPedroAutoExample.java -->
 ```java
@@ -304,11 +308,11 @@ own active Config. Later edits to the short-lived profile cannot retune either r
 The checked-in values are software-valid examples. They include the framework Pinpoint baseline,
 fresh Pedro follower/constraint/field-transform data, named Mecanum motors, the Pedro baseline
 left-REVERSE/right-FORWARD directions, initial `maxPower = 0.25`, brake mode enabled, and one
-`"intakeMotor"` at `Direction.FORWARD` with collection power `0.20`. Replace and physically review
-every active fact for the adopting robot. Pedro's route-time `globalMaxPower` reset means the
-initial `0.25` value does not limit `followPath(...)`; review and tune Pedro's actual route behavior
-before any motion test. The `useBrakeModeInTeleOp = true` baseline likewise does not define Auto
-route braking.
+`"intakeMotor"` at `Direction.FORWARD` with collection power `0.20`. Pedro's route-time
+`globalMaxPower` reset means the initial `0.25` value does not limit `followPath(...)`, and the
+ordinary Sushi route API does not expose that persistent limit. Keep physical execution blocked
+until a focused integration improvement provides it. The `useBrakeModeInTeleOp = true` baseline
+likewise does not define Auto route braking.
 
 The root first requires the false-by-default permission and rejects an intake name that resolves to
 one of the four drive motor names. It then crosses the sole
@@ -321,7 +325,8 @@ lookup.
 
 For another robot, keep the path/routine/declaration pattern and edit the local profile's Pinpoint,
 Follower, Mecanum, path-constraint, field-transform, and intake facts. Keep
-`allowRobotMotion = false` until the complete active graph has been reviewed for a supervised test.
+`allowRobotMotion = false`. Reviewing the graph is necessary but cannot clear the missing
+route-time-power-control prerequisite.
 Do not create another runtime factory, import season hardware values, or create a second mechanism
 owner merely to fit the reference.
 
@@ -337,17 +342,17 @@ Keep the example disabled while adapting configuration and geometry:
 Confirm that the host, path, routine, and capability compile together. In source, trace how the
 presenter would report the expected physical start during a later enabled integration test.
 
-## 7. Stop at the software checkpoint
+## 6. Stop at the software checkpoint
 
 Leave `BasicPedroAutoExample` marked `@Disabled`. Trace the route from its declared Pedro pose to its
 endpoint, identify the result policy, and confirm the host, path, routine, capability, and tests all
 compile. No Driver Station entry or robot motion is expected for this lesson.
 
-A team may later create a robot-owned, supervised integration test after completing the official
-Pedro tuning/localization work and that robot's local calibration checklist. That separate test
-must define reviewed reduced first-test limits, the localizer's physical reference point, start
-placement, clear stopping area, and immediate STOP plan before enabling any route host. Do not turn
-this generic reference into a motion test merely by removing `@Disabled`.
+A future robot-owned, supervised integration test requires both a reviewed Sushi route-time power
+control and the official Pedro tuning/localization work. It must then define reduced first-test
+limits, the localizer's physical reference point, start placement, clear stopping area, and an
+immediate STOP plan. Do not turn this generic reference into a motion test merely by removing
+`@Disabled`.
 
 ## Expected checkpoint
 
@@ -358,33 +363,34 @@ this generic reference into a motion test merely by removing `@Disabled`.
 - The project compiles with one managed `FtcRobotOpMode` path.
 - Robot code does not manually update or break the raw follower.
 - The generic example remains disabled and no physical run is required.
-- You can name the additional tuning, localization, coordinate, constraint, placement, and STOP
-  evidence a later robot-owned integration test must supply.
+- You can name the missing Sushi route-time control plus the tuning, localization, coordinate,
+  constraint, placement, and STOP evidence a later robot-owned integration test must supply.
 
 ## Common problems
 
 **The OpMode is missing.**
 
-That is the expected source-only result: the example is checked in with `@Disabled`. A later
-robot-owned integration test, not this walkthrough, owns any decision to expose a Driver Station
-entry after its complete readiness review.
+That is the expected source-only result: the example is checked in with `@Disabled`. Do not expose a
+physical Driver Station entry until the missing integration control exists and the robot's complete
+readiness review passes.
 
 **INIT says `BasicPedroProfile.allowRobotMotion` must be true.**
 
 That is the expected checked-in result. Leave the permission false for this software walkthrough.
-A later robot-owned test may set it true only after replacing and reviewing the complete active
-runtime and intake configuration, route placement and clearance, and physical STOP plan.
+Do not set it true for physical motion under the current integration API: ordinary Sushi route
+callers still lack the persistent Follower power limit required by this lesson's first-test gate.
 
 **A later integration test starts in the wrong place in software.**
 
 Confirm the declared Pedro start and exact-start pose application use the same coordinates and
 heading. A software pose assignment does not correct physical placement.
 
-**A later integration test's physical motion does not match the drawn route.**
+**Why is physical route testing still blocked?**
 
-Press STOP. Recheck motor directions, odometry directions and offsets, coordinate convention,
-Follower constraints and route-time `globalMaxPower`, and physical placement before changing
-route-policy code. The profile's initial Mecanum `maxPower = 0.25` is not a `followPath(...)` cap.
+The profile's initial Mecanum `maxPower = 0.25` is not a `followPath(...)` cap, and ordinary Sushi
+route callers cannot set Pedro's persistent Follower limit. Keep the host disabled. A focused
+integration change must supply that control before motor directions, odometry, placement,
+clearance, stopping distance, and STOP can be qualified in physical path tests.
 
 Passing runtime Config validation is not evidence that those physical facts are correct. It proves
 only that the captured software values are complete, finite, mutually coherent, and representable
@@ -406,7 +412,7 @@ routine, with a clear reason and a physically validated replacement action.
 No. A safe Pedro program also needs the verified runtime, starting pose, stable managed service,
 mechanism owner, root declaration, telemetry, and cleanup represented by the linked files.
 
-**Full lifecycle reference:** [`Pedro autonomous reference`](<../examples/Pedro Autonomous Reference.md>)
+**Exact lifecycle reference:** [Pedro integration](<../../integrations/pedro/README.md>)
 
 **Return to:** [`Build a robot step by step`](<Build a Robot Step by Step.md>) or the
 [`Sushi documentation hub`](<../README.md>)

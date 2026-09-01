@@ -15,9 +15,13 @@ observing the actuator command.
 
 **Time:** 30–40 minutes
 
-**Prerequisite:** Complete [Your first Sushi robot code](<First Sushi Robot Code.md>). Keep the
-copied OpModes disabled and both motion permissions false; this lesson uses no Robot Controller or
-physical device.
+**Prerequisite:** Complete [Get your first robot driving](<First Sushi Robot Code.md>) and steps 1–2
+of [Build a robot step by step](<Build a Robot Step by Step.md>). You can run the maintained Starter
+scenario immediately. When adapting it for your robot in step 3, first create your capability's
+mechanism and data-only configuration using the owner pattern in
+[Modern starter robot](<../examples/Modern Starter Robot.md>); you do not need to copy the entire
+Starter package. Keep every physical OpMode disabled and motion permission false. This lesson uses
+no Robot Controller or physical device.
 
 ## Files you will create
 
@@ -52,15 +56,21 @@ On a robot, the FTC `HardwareMap` supplies a motor. In this software scenario, t
 `HardwareMap` supplies a recording motor probe. Both flow through the same production mechanism and
 its private Plant to one final motor command.
 
-## 1. Copy and run the checked-in scenario
+## 1. Run, then adapt, the checked-in scenario
 
-Copy
+First run the maintained scenario without copying anything:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterMechanismLessonTest
+```
+
+After your production mechanism exists, copy
 [`StarterMechanismLessonTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java>)
-into the `edu.ftcsushi.robots.myrobot.robot` test package created in the first lesson. Let Android
-Studio update its package and Starter imports to your copied robot.
+into the `edu.ftcsushi.robots.myrobot.robot` test package beside your mechanism. Let Android Studio
+update its package and imports to your capability and mechanism.
 
 Before running, search that copied test for `edu.ftcsushi.robots.examples.starter` and require
-zero matches. Its Starter imports must point to `edu.ftcsushi.robots.myrobot`; otherwise a green
+zero matches. Its imports must point to `edu.ftcsushi.robots.myrobot`; otherwise a green
 test could still be exercising the repository's canonical Starter instead of your copied code.
 
 Run only that copied test:

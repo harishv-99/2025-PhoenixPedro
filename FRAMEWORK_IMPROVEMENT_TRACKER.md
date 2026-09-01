@@ -216,6 +216,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 112 | DOC-07 | Self-contained student learning pages | Done | Put source-truthful critical code, explicit observations, and key APIs beside every substantive student learning concept without turning routers into tutorials or changing robot behavior. |
 | 113 | DOC-08 | Buildable student learning modules | Done | Raise actionable lessons from architecture-readable fragments to source-backed, blank-file-buildable vertical slices while keeping routers, operational runbooks, and advanced references truthful and compact. |
 | 114 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 115 | DOC-09 | Student-first robot course and first motion | Done | Lead with one compiled one-file drive milestone, then use the evidence-based build workflow as the progressive season course while retaining dense ownership material as reference. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -25095,6 +25096,139 @@ implementation.
   `codex/doc-08-buildable-learning-modules`, pushing that branch to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
   `master`. This authorization covers DOC-08 only and does not start AUDIT-01 or another item.
+
+### DOC-09 - Student-first robot course and first motion
+
+- **Gate 1 start and approved decision (2026-08-31):** **In progress** on
+  `codex/doc-09-student-first-robot-course`, based exactly on merged
+  `origin/master@032f36b379189e6de041914cf5e7559bbc28cbb3`. The user approved replacing the
+  beginner path with a progressive course whose first physical milestone is a one-file mecanum
+  TeleOp, while retaining the complete ownership architecture for subsequent lessons. This item
+  changes maintained teaching sources, navigation, one disabled compiling example, and focused
+  documentation regressions only. It adds no public framework API or robot runtime behavior.
+- **Confirmed behavior and callers:** the first coding lesson currently asks a student to copy seven
+  production files plus a test and budgets 45–60 minutes before any hardware result. The only
+  buildable lesson is the hardware-free mechanism test. `Build a Robot Step by Step.md` already
+  carries the correct requirements, fake-test, bring-up, experiment, integration, route, and
+  rehearsal checkpoints, but is labeled and written as a dense operational runbook rather than the
+  primary course. The site home, getting-started router, topic router, and `zensical.toml` all route
+  through those pages. The maintained Starter remains the ordinary complete architecture; the
+  Pedro autonomous example remains the supported route implementation.
+- **Construction/API audit:** the current ordinary drive slice already needs only four conceptual
+  answers: the FTC gamepad, the three chosen axes, the drive shaping defaults, and the mecanum
+  hardware/configuration. `new GamepadDevice(gamepad1)`, `new GamepadDriveSource(...)`,
+  `FtcDrives.mecanum(hardwareMap)`, and `program.drive(source, sink)` form one coherent existing
+  construction path. `Gamepads.create(...)` adds value only when both driver slots are retained;
+  custom `GamepadDriveSource.Config` and `FtcDrives.MecanumConfig` add explicit tuning/wiring value.
+  No new facade, overload, raw Plant registration, lifecycle host, static hardware owner, or hidden
+  policy is justified for the first-motion milestone.
+- **Alternatives and simplicity comparison:** keeping the current path preserves accurate content
+  but makes architecture copy-work precede visible success. Merely shortening prose leaves the same
+  cognitive sequence. Adding convenience APIs would create another public spelling without
+  removing a real ownership decision. A one-file example using current APIs gives the earliest
+  supervised motion result with one drive source and one final sink; the later course can then
+  extract capabilities, mechanisms, controls, tests, and composition one owner at a time. Dense
+  lifecycle and API detail remains available as reference rather than competing with the course.
+- **Chosen bounded design:** add one complete disabled `FirstDriveTeleOp` maintained example and a
+  buildable First Robot Live lesson. Make the evidence-based build workflow the primary course,
+  with one outcome, one bounded edit, complete cumulative code where a file is authored, explicit
+  run/expected-result guidance, no more than five key APIs, and a next checkpoint per actionable
+  lesson. The Starter owns subsystem/interface through integrated TeleOp teaching; the existing
+  Pedro reference owns route and end-to-end Auto teaching. Update the site home, getting-started and
+  topic routers, navigation order, and documentation tests to expose that one path.
+- **Rejected designs:** do not collapse the production Starter into one file, register raw Plants,
+  introduce a second beginner runtime, copy the NextFTC singleton/scheduler architecture, duplicate
+  Pedro inside Starter, or delete truthful advanced reference material. Do not claim the default
+  wiring/directions are physically safe; the first-motion lesson requires actuator bring-up,
+  elevated wheels, immediate STOP access, and exact observed-result language.
+- **Verification plan:** compile the maintained example, run focused documentation and example
+  tests, enforce source-block equality and course/navigation shape, run the full TeamCode unit suite
+  and Java compilation, build the Zensical site strictly when the pinned environment is available,
+  inspect rendered desktop/narrow pages, run `git diff --check`, and report that software cannot
+  prove wiring, direction, braking, traction, clearance, or STOP performance.
+- **User-directed documentation reduction amendment (2026-08-31):** the user explicitly expanded
+  DOC-09 to remove documentation that adds no value. Preserve unique API contracts, safety runbooks,
+  examples, and advanced references, but delete eight pages with no distinct current teaching
+  contract: the three bookmark-only First Mechanism/TeleOp/Task stubs; the duplicate
+  `getting-started/README.md` and `Role Paths.md` routers; the third framework-component lookup; the
+  speculative BIOBUZZ map; and the duplicate Pedro autonomous reference. `docs/README.md`, the
+  course, `Beginner's Guide.md`, and `examples/README.md` now own their respective routes. `Your
+  first Pedro Auto` retains the student sequence, critical snippets, exact route-status/outcome
+  table, and source links; the Pedro integration README and Javadocs retain the exact heartbeat,
+  execution-identity, cancellation, and cleanup contracts. This amendment removes duplicate prose,
+  not truthful advanced material.
+- **Gate 2 implementation and progressive-disclosure result (2026-08-31):** **Verifying** with an
+  unstaged 35-tracked-path diff plus one new Java file. The tracked scope is 27 modified paths and
+  eight intentional documentation deletions; the only new file is the disabled
+  `FirstDriveTeleOp`. The canonical novice path is now setup -> one-file First Drive -> seven-stage
+  robot course, with overview/topic pages available on demand. The one-file example uses the
+  existing managed host, a controls owner, explicit reviewed Mecanum Config, conservative
+  per-component scaling, one `program.drive(...)` declaration, and no student loop, raw hardware
+  lookup, extra managed role, or new framework API. It is exactly 45 nonblank Java lines. Its
+  complete source appears once in the lesson, which is an intentional visible-first-run exception
+  to DOC-08's ordinary collapsed-complete-file rule.
+- **API-05 consistency:** this lesson does not reverse or fork the completed one-drive-factory
+  decision. `FtcDrives.mecanum(hardwareMap)` remains the shortest path when the complete standard
+  configuration has already been reviewed; First Drive uses the configured overload in the same
+  factory family because its physical gate must expose names, directions, BRAKE/FLOAT, and initial
+  scales. The factory, managed-host, and drive-signal Javadocs now state that same boundary.
+- **Course shape and density:** each of the seven stages has exactly one outcome, bounded file edit,
+  critical code section, run/expect/notice guidance, one-to-five concrete APIs, failure action, and
+  advance gate. Stage 1 is the sole explicitly labeled teaching shape and its three displayed
+  methods are regression-checked against the maintained capability; all other Java blocks are
+  source-backed. Stage 2 links the complete controls owner and test directly. Stage 3 gives the
+  exact FirstDrive-to-Starter fact/scale migration and the final `@Disabled` exposure gate. Current
+  budgets are 1,773 prose words, 405 source lines, and eight Java excerpts for the course, and 960
+  prose words, one Java block, and 45 nonblank example lines for First Drive. Tests cap those values
+  at 1,800/410/eight and 1,000/one/45 respectively, validate stage-local links and API bullets, and
+  lock physical gate order.
+- **Pedro physical-gate correction:** source review of pinned Pedro 2.1.2 confirmed that
+  `Follower.setMaxPower(...)` controls the persistent route-time `globalMaxPower`, while ordinary
+  managed Sushi route callers cannot currently set it and `mecanumConstants.maxPower` is reset when
+  following starts. DOC-09 therefore keeps stages 6 and 7 software-only, rejects a raw-Follower
+  escape hatch, and blocks physical Pedro path/end-to-end qualification pending a focused,
+  separately approved integration item. The course, retained Pedro lesson, integration contract,
+  design reference, Basic profile Javadocs, and permission diagnostic now agree. This supersedes the
+  older CONFIG-08 adoption wording at lines 21660-21667 and 21730-21737 for physical use without
+  rewriting that historical decision record; DOC-09 adds no Pedro API or runtime behavior.
+- **Independent review and static evidence:** three adversarial passes found and closed controls-
+  ownership, configuration visibility, BRAKE/FLOAT evidence, FirstDrive-to-Starter migration,
+  stage-one/source-provenance, API-list loophole, stage-order, course-density, direct-client-source,
+  Starter-host exposure, stale navigation, and Pedro physical-permission issues. The surviving tree
+  has no live reference to any of the eight deleted paths. Source provenance, navigation order,
+  deletion absence, code budgets, and the Pedro block are covered by `DocumentationLinksTest`;
+  `git diff --check` and the deleted-path/static routing scans are clean.
+- **Automated verification (2026-08-31):** with Android Studio JBR 21, the final exact tree passed
+  `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, and
+  `:TeamCode:sushiJavadocs`: **235 suites / 2,143 tests / 0 failures / 0 errors / 0 skipped**. The
+  focused `DocumentationLinksTest` accounts for **16/16** passing tests. Output contained only the
+  repository's existing Java 8 source/target deprecation warnings under JBR 21.
+- **Local documentation-render limit:** no `zensical` executable or repository documentation virtual
+  environment is present, so a local strict site build and desktop/narrow rendered-page inspection
+  cannot be claimed. The checked-in strict GitHub Pages build remains the publication check after
+  authorized publication. Link, fence, provenance, navigation, and content-shape integrity are
+  nevertheless exercised in the Java documentation suite.
+- **Workspace preservation:** `ReferenceRobotTesters.java` remains a pre-existing user-owned
+  stat/line-ending-only worktree artifact with an unchanged blob and no content diff. It is outside
+  DOC-09 and must remain unstaged. No generated, vendored, SDK sample, legacy, application, filter,
+  vision, or unrelated framework behavior is in scope.
+- **Android Studio and publication stop:** inspect the one-file First Drive source and exact rendered
+  lesson; setup -> First Drive -> course navigation; all seven stage-local snippets, links, APIs,
+  run/expect/fail/advance gates; eight deleted-page removals; retained Pedro consolidation and
+  software-only physical block; Javadocs/permission diagnostic; and focused regression changes.
+  Branch/base/merge-base remain `codex/doc-09-student-first-robot-course` and
+  `origin/master@032f36b379189e6de041914cf5e7559bbc28cbb3`; origin's push URL is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, targeting `master`. The complete diff remains
+  unstaged and uncommitted. After Android Studio review, the exact reply is: **“DOC-09 looks good.
+  Authorize committing the reviewed DOC-09 diff on codex/doc-09-student-first-robot-course, pushing
+  that branch to https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and
+  merging it into master.”** No commit, push, pull request, merge, or next-item work is authorized.
+- **Manual review and publication authorization (2026-08-31):** **Done.** The user sent the exact
+  combined reply above after reviewing DOC-09. This authorizes staging and committing only the
+  reviewed DOC-09 diff, pushing `codex/doc-09-student-first-robot-course` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. It does not authorize staging the pre-existing `ReferenceRobotTesters.java` worktree
+  artifact, starting the deferred Pedro route-time control item, or beginning another tracker item.
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 

@@ -61,6 +61,7 @@ import edu.ftcsushi.fw.core.math.MathUtil;
  *                 driver.rightX(),
  *                 GamepadDriveSource.Config.defaults()
  *         );
+ *         // This sign-convention example assumes the standard drive config was reviewed.
  *         program.drive(driveSource, FtcDrives.mecanum(hardwareMap));
  *     }
  * }

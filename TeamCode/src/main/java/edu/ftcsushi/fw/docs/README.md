@@ -6,28 +6,24 @@ Plants realize mechanism targets, and one managed program owns the loop.
 
 ## New to Sushi
 
-1. Read [Sushi in one picture](<getting-started/Framework Overview.md>) to see code composition,
-   managed execution, and one complete button-to-hardware-command trace.
-2. [Set up and verify the project](<getting-started/Build and Run.md>), then complete
-   [your first Sushi robot code](<getting-started/First Sushi Robot Code.md>) to make one
-   hardware-free, tested change in a copied team package.
-3. [Test its mechanism without hardware](<getting-started/Test a Mechanism Without Hardware.md>)
-   to follow semantic intent through the real mechanism and Plant to a recorded actuator command.
-4. Use [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) as the team's
-   season anchor, returning to it after each software, hardware, integration, and Auto checkpoint.
-5. [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) when the current checkpoint needs a
+1. [Set up and verify the project](<getting-started/Build and Run.md>).
+2. [Get your first robot driving](<getting-started/First Sushi Robot Code.md>) with one complete,
+   compiled TeleOp and a supervised first-motion checklist.
+3. Use [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) as the primary
+   course from subsystem interfaces and software tests through integrated TeleOp and Auto.
+4. [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) when the current checkpoint needs a
    deeper answer. The topic pages are lookups, not a required course sequence.
 
-Physical device work starts separately at [Testing and calibration](<testing-calibration/README.md>).
+Detailed hardware procedures live under [Testing and calibration](<testing-calibration/README.md>).
 
 ## Find an answer
 
 | Goal | Start here |
 |---|---|
+| Get a standard mecanum robot under joystick control | [Get your first robot driving](<getting-started/First Sushi Robot Code.md>) |
 | Understand how the framework executes | [Sushi in one picture](<getting-started/Framework Overview.md>) |
-| Write and test the first team code without hardware | [Your first Sushi robot code](<getting-started/First Sushi Robot Code.md>) |
 | Exercise a real mechanism and Plant without hardware | [Test a mechanism without hardware](<getting-started/Test a Mechanism Without Hardware.md>) |
-| Move from requirements to a match-ready robot one checkpoint at a time | [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) |
+| Move from requirements through robot evidence one checkpoint at a time | [Build a robot step by step](<getting-started/Build a Robot Step by Step.md>) |
 | Learn one framework area in depth | [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) |
 | Decide where new robot code belongs | [From requirement to robot](<getting-started/learn-sushi/From Requirement to Robot.md>) |
 | Remember the ordinary API shape | [Sushi Cheat Sheet](<reference/Sushi Cheat Sheet.md>) |
@@ -46,7 +42,6 @@ Physical device work starts separately at [Testing and calibration](<testing-cal
 
 ### Learn and program a team robot
 
-- [Getting started](<getting-started/README.md>) — visual first contact, setup, controls and mechanism exercises, and topic router
 - [Examples](<examples/README.md>) — copyable Starter, Reference case study, and focused integrations
 - [Reference](<reference/README.md>) — short lookups and exact current vocabulary
 - [Troubleshooting](<troubleshooting/README.md>) — symptom-led recovery

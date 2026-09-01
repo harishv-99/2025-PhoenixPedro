@@ -201,10 +201,10 @@ public final class BasicPedroAutoRobot {
     private static void requireMotionAllowed(boolean allowed) {
         if (!allowed) {
             throw new IllegalStateException(
-                    "BasicPedroProfile.allowRobotMotion must be true before Basic Pedro Auto may "
-                            + "construct motion-capable hardware owners. Review the complete active "
-                            + "physical configuration before permitting motion, then verify small "
-                            + "supervised motion and physical STOP."
+                    "BasicPedroProfile.allowRobotMotion is false. Keep it false for physical "
+                            + "motion: ordinary managed Sushi routes cannot currently set Pedro's "
+                            + "persistent Follower power limit. A focused integration improvement "
+                            + "and complete physical review are required before enabling this host."
             );
         }
     }

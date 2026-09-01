@@ -116,9 +116,8 @@ reads status; the mechanism keeps the multi-device realization private. Study
 [`ReferenceLauncher.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.java>)
 only when that additional coordination helps your robot.
 
-The [BIOBUZZ capability map](<../../examples/BIOBUZZ Capability Map.md>) routes possible season
-needs to existing examples. It is provisional: it does not establish game rules, hardware design,
-physical success criteria, or a missing framework API.
+The [examples index](<../../examples/README.md>) routes concrete robot needs to maintained examples
+without claiming game rules, hardware design, or physical success criteria.
 
 ## Check your understanding
 
@@ -133,6 +132,6 @@ mode-neutral behavior.
 
 - Capability/client ownership: [Robot Capabilities and Mode Clients](<../../design/Robot Capabilities & Mode Clients.md>)
 - Complete Reference composition: [`ReferenceRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.java>)
-- Topic-specific routes: [Role paths](<Role Paths.md>)
+- Topic-specific routes: [Choose a Sushi topic](<../Beginner's Guide.md>)
 - [Choose another Sushi topic](<../Beginner's Guide.md>)
 - [Return to the build-season workflow](<../Build a Robot Step by Step.md>)
