@@ -35,6 +35,25 @@ import static org.junit.Assert.fail;
 /** Verifies deterministic repository-local Markdown navigation without network access. */
 public final class DocumentationLinksTest {
 
+    private static final String PUBLISHED_API_ROOT =
+            "https://harishv-99.github.io/2025-PhoenixPedro/api/";
+    private static final String MAINTAINED_SOURCE_ROOT =
+            "https://github.com/harishv-99/2025-PhoenixPedro/blob/master/";
+    private static final Pattern LINKED_KEY_API = Pattern.compile(
+            "\\[`([^`]+)`\\]\\(<(https://[^>]+)>\\)");
+    private static final Set<String> SOURCE_ONLY_KEY_APIS = new HashSet<String>(Arrays.asList(
+            "StarterIntake",
+            "RecordingCallbackBindings",
+            "ManualLoopClock",
+            "FtcTestHardware",
+            "ReferenceLauncher.Status",
+            "ReferenceFlywheelSpinUpExperiment.TrialState",
+            "StarterProfile.current()",
+            "controls.bind(...)",
+            "MotorProbe",
+            "StarterIntakeMechanism.update(...)",
+            "StarterIntake.Status"));
+
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -173,6 +192,117 @@ public final class DocumentationLinksTest {
             }
         }
         assertTrue("Student learning block failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void primaryStudentLessonsLinkEveryNamedKeyApi() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
+        Map<String, Integer> expectedSections = new LinkedHashMap<String, Integer>();
+        expectedSections.put("getting-started/First Sushi Robot Code.md", 1);
+        expectedSections.put("getting-started/Build a Robot Step by Step.md", 7);
+        expectedSections.put("getting-started/Test a Mechanism Without Hardware.md", 1);
+        expectedSections.put("examples/Modern Starter Robot.md", 3);
+
+        List<String> failures = new ArrayList<String>();
+        Set<String> maintainedJavaSources = collectMaintainedJavaSourcePaths(repositoryRoot);
+        for (Map.Entry<String, Integer> entry : expectedSections.entrySet()) {
+            String page = entry.getKey();
+            List<String> lines = Files.readAllLines(
+                    repositoryRoot.resolve(docs + page), StandardCharsets.UTF_8);
+            int sectionCount = 0;
+            boolean readingApis = false;
+            boolean sectionHasBullet = false;
+            StringBuilder currentBullet = null;
+            int currentBulletLine = -1;
+            for (int index = 0; index < lines.size(); index++) {
+                String line = lines.get(index);
+                if (line.trim().equals("**Key APIs**")) {
+                    if (currentBullet != null) {
+                        validateLinkedKeyApiBullet(
+                                page,
+                                currentBulletLine,
+                                currentBullet.toString(),
+                                maintainedJavaSources,
+                                failures);
+                        currentBullet = null;
+                    }
+                    if (readingApis && !sectionHasBullet) {
+                        failures.add(page + ":" + (index + 1)
+                                + ": prior Key APIs section has no bullets");
+                    }
+                    sectionCount++;
+                    readingApis = true;
+                    sectionHasBullet = false;
+                    continue;
+                }
+                if (!readingApis) {
+                    continue;
+                }
+                if (line.trim().isEmpty()) {
+                    if (currentBullet != null) {
+                        validateLinkedKeyApiBullet(
+                                page,
+                                currentBulletLine,
+                                currentBullet.toString(),
+                                maintainedJavaSources,
+                                failures);
+                        currentBullet = null;
+                        readingApis = false;
+                    }
+                    continue;
+                }
+                if (line.startsWith("- ")) {
+                    if (currentBullet != null) {
+                        validateLinkedKeyApiBullet(
+                                page,
+                                currentBulletLine,
+                                currentBullet.toString(),
+                                maintainedJavaSources,
+                                failures);
+                    }
+                    sectionHasBullet = true;
+                    currentBullet = new StringBuilder(line);
+                    currentBulletLine = index + 1;
+                } else if (line.startsWith("* ") || line.startsWith("+ ")) {
+                    if (currentBullet != null) {
+                        validateLinkedKeyApiBullet(
+                                page,
+                                currentBulletLine,
+                                currentBullet.toString(),
+                                maintainedJavaSources,
+                                failures);
+                        currentBullet = null;
+                    }
+                    failures.add(page + ":" + (index + 1)
+                            + ": Key APIs must use '-' bullets so every symbol is validated");
+                } else if (currentBullet != null) {
+                    currentBullet.append(' ').append(line.trim());
+                } else {
+                    failures.add(page + ":" + (index + 1)
+                            + ": Key APIs section has no bullets");
+                    readingApis = false;
+                }
+            }
+            if (currentBullet != null) {
+                validateLinkedKeyApiBullet(
+                        page,
+                        currentBulletLine,
+                        currentBullet.toString(),
+                        maintainedJavaSources,
+                        failures);
+            }
+            if (readingApis && !sectionHasBullet) {
+                failures.add(page + ": final Key APIs section has no bullets");
+            }
+            if (sectionCount != entry.getValue()) {
+                failures.add(page + ": expected " + entry.getValue()
+                        + " Key APIs sections but found " + sectionCount);
+            }
+        }
+
+        assertTrue("Primary student Key API link failures: " + failures, failures.isEmpty());
     }
 
     @Test
@@ -607,7 +737,8 @@ public final class DocumentationLinksTest {
                 apiCount++;
                 assertTrue(stageHeading + " has a Key APIs bullet without a concrete API: "
                                 + apiBullets.group(),
-                        apiBullets.group(1).startsWith("`"));
+                        apiBullets.group(1).startsWith("[`")
+                                && apiBullets.group(1).contains("](<https://"));
             }
             assertTrue(stageHeading + " must name one to five key APIs; found " + apiCount,
                     apiCount >= 1 && apiCount <= 5);
@@ -1081,6 +1212,24 @@ public final class DocumentationLinksTest {
         });
     }
 
+    private static Set<String> collectMaintainedJavaSourcePaths(final Path repositoryRoot)
+            throws IOException {
+        final Set<String> sources = new HashSet<String>();
+        Path sourceRoot = repositoryRoot.resolve("TeamCode/src");
+        Files.walkFileTree(sourceRoot, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                if (attributes.isRegularFile()
+                        && attributes.size() > 0
+                        && file.getFileName().toString().endsWith(".java")) {
+                    sources.add(repositoryRelativePath(repositoryRoot, file));
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return sources;
+    }
+
     private static int matcherCount(Matcher matcher) {
         int count = 0;
         while (matcher.find()) {
@@ -1374,6 +1523,66 @@ public final class DocumentationLinksTest {
         }
         String text = prose.toString().trim();
         return text.isEmpty() ? 0 : text.split("\\s+").length;
+    }
+
+    private static void validateLinkedKeyApiBullet(
+            String page,
+            int lineNumber,
+            String bullet,
+            Set<String> maintainedJavaSources,
+            List<String> failures) {
+        int descriptionStart = bullet.indexOf(" \u2014 ");
+        if (descriptionStart < 3) {
+            failures.add(page + ":" + lineNumber
+                    + ": Key API bullet needs a linked symbol followed by an em-dash description");
+            return;
+        }
+        String description = bullet.substring(descriptionStart + 3).trim();
+        if (description.isEmpty()) {
+            failures.add(page + ":" + lineNumber
+                    + ": Key API bullet needs a nonempty plain-language description");
+        }
+        if (description.indexOf('`') >= 0) {
+            failures.add(page + ":" + lineNumber
+                    + ": put every code-formatted Key API in the linked symbol label");
+        }
+
+        String symbols = bullet.substring(2, descriptionStart);
+        Matcher links = LINKED_KEY_API.matcher(symbols);
+        int linkedSymbols = 0;
+        while (links.find()) {
+            linkedSymbols++;
+            String symbol = links.group(1);
+            String target = links.group(2);
+            if (!target.startsWith(PUBLISHED_API_ROOT)
+                    && !target.startsWith(MAINTAINED_SOURCE_ROOT)) {
+                failures.add(page + ":" + lineNumber
+                        + ": Key API target is not generated API or maintained source: " + target);
+            } else if (SOURCE_ONLY_KEY_APIS.contains(symbol)
+                    && !target.startsWith(MAINTAINED_SOURCE_ROOT)) {
+                failures.add(page + ":" + lineNumber + ": lesson-owned or test-only symbol "
+                        + symbol + " must link to maintained source");
+            } else if (!SOURCE_ONLY_KEY_APIS.contains(symbol)
+                    && !target.startsWith(PUBLISHED_API_ROOT)) {
+                failures.add(page + ":" + lineNumber + ": public Sushi symbol " + symbol
+                        + " must link to generated API documentation");
+            }
+            if (target.startsWith(MAINTAINED_SOURCE_ROOT)) {
+                String sourcePath = target.substring(MAINTAINED_SOURCE_ROOT.length());
+                if (!sourcePath.endsWith(".java")
+                        || !maintainedJavaSources.contains(sourcePath)) {
+                    failures.add(page + ":" + lineNumber
+                            + ": maintained source target is missing, empty, or wrong-case: "
+                            + target);
+                }
+            }
+        }
+        String unlinked = LINKED_KEY_API.matcher(symbols).replaceAll("")
+                .replace("/", "").trim();
+        if (linkedSymbols == 0 || !unlinked.isEmpty()) {
+            failures.add(page + ":" + lineNumber
+                    + ": every Key API symbol must be linked; unresolved label: " + symbols);
+        }
     }
 
     private static int javaFenceCount(Path path) throws IOException {

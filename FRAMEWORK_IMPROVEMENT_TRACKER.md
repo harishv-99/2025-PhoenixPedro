@@ -49,9 +49,14 @@ As of 2026-07-19, no representative robot hardware is available. Do not substitu
 tests, SDK source inspection, or configuration metadata for a physical measurement required to
 select a production design or claim completion.
 
-- `SOURCE-03`, `PERF-03`, and `CHECK-01` remain **Deferred** under their current completion
-  contracts because selecting their production behavior still requires recorded signal,
-  controller/watchdog, assembled-robot, or representative-hardware evidence.
+- `PERF-03` and `CHECK-01` remain **Deferred** under their current completion contracts because
+  selecting their production behavior still requires controller/watchdog, assembled-robot, or
+  representative-hardware evidence.
+- `SOURCE-03` is **Proposed** again after the user explicitly prioritized a general measurement-
+  filter library. Its decision gate may research the smallest reusable contract, but it may not
+  select or claim a production filtering algorithm, window/time semantics, or acceptable latency
+  without representative timestamped traces or a separately approved narrower software-only
+  contract. Returning it to **Deferred** remains a valid decision-gate result.
 - `SAFE-04` and `SENSOR-01` are **Proposed** again under explicitly narrower software-seam
   completion contracts. Physical actuator response, motor-current accuracy, polling cost, and useful
   thresholds remain adopting-robot validation; their decision gates may not claim those facts from
@@ -131,7 +136,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 27 | COMMON-01 | Cleanup action aggregation | Done | The stateless cleanup-action primitive and five bounded migrations are implemented, verified, and approved; the generic INIT runtime remains deferred. |
 | 28 | TESTER-01 | Tester child lifecycle fail-stop | Done | Approved fail-stop policies are implemented, verified, and approved without changing valid public call sites. |
 | 29 | AUTO-01 | Compact bounded Auto continuation and fresh-attempt repetition | Done | The bounded fresh-Task repetition primitive, soft-admission/hard-takeover composition, and hardware-free adaptive scenario were reviewed, verified, and approved on 2026-08-30. |
-| 30 | SOURCE-03 | Composable scalar measurement conditioning | Deferred | Wait for recorded signal traces before choosing a public filtering algorithm or latency contract. |
+| 30 | SOURCE-03 | General scalar measurement filters | Proposed | Reopen the existing generic conditioning item; compare explicit smoothing/outlier contracts using representative timestamped traces before selecting an algorithm or latency tradeoff. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
 | 33 | VISION-01 | Shared webcam and Limelight vision ownership | Done | Parallel webcam/Limelight ownership, readiness, lifecycle recovery, migrations, documentation, and tests were approved on 2026-07-20. |
@@ -215,8 +220,11 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 111 | BRAND-02 | Isolate the production application from Sushi teaching and shared code | Done | The reviewed one-way application bubble, independent teaching, framework-only documentation site, application-owned tooling, boundary regressions, software evidence, and destination-specific publication authorization are complete. |
 | 112 | DOC-07 | Self-contained student learning pages | Done | Put source-truthful critical code, explicit observations, and key APIs beside every substantive student learning concept without turning routers into tutorials or changing robot behavior. |
 | 113 | DOC-08 | Buildable student learning modules | Done | Raise actionable lessons from architecture-readable fragments to source-backed, blank-file-buildable vertical slices while keeping routers, operational runbooks, and advanced references truthful and compact. |
-| 114 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
-| 115 | DOC-09 | Student-first robot course and first motion | Done | Lead with one compiled one-file drive milestone, then use the evidence-based build workflow as the progressive season course while retaining dense ownership material as reference. |
+| 114 | DOC-09 | Student-first robot course and first motion | Done | Lead with one compiled one-file drive milestone, then use the evidence-based build workflow as the progressive season course while retaining dense ownership material as reference. |
+| 115 | DOC-10 | Linked API reference in student lessons | Done | The reviewed linked APIs, maintained-source fallbacks, generated-artifact validation, comparison-backlog intake, verification, and destination-specific publication authorization are complete. |
+| 116 | VISION-03 | Reusable color-blob pipeline | Proposed | Evaluate one timestamp-truthful FTC-boundary color-blob producer without exposing mutable SDK/OpenCV results or moving season-specific color meaning into core. |
+| 117 | SPATIAL-02 | Camera observations to field positions | Proposed | Generalize only reusable time-aligned ray/plane geometry proven by the Limelight example and a second independent maintained consumer; keep detection, selection, and route policy outside core. |
+| 118 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -241,7 +249,28 @@ verified no-change result is a valid **Done** disposition when a candidate abstr
 reduce complete robot code; an item whose truthful contract still needs unavailable evidence remains
 **Deferred** with a reactivation trigger. `AUDIT-01` waits for the eight capability items named
 earlier and the independently requested `BRAND-01` and `BRAND-02` work to reach a terminal
-disposition; it does not wait indefinitely for unavailable hardware measurements.
+disposition. The comparison follow-up below later adds SOURCE-03, VISION-03, and SPATIAL-02 to that
+terminal-disposition condition; it does not require unavailable hardware measurements when an item
+has a truthful evidence-backed deferral.
+
+### Current NextFTC/FTCLib comparison follow-up (added 2026-08-31)
+
+The user's comparison follow-up establishes this tracker-only order without starting a decision
+gate or approving an API:
+
+1. Reopen `SOURCE-03` for a general measurement-filter library decision gate. Preserve the recorded-
+   trace requirement before selecting a production algorithm or latency contract.
+2. Evaluate `VISION-03` as the first maintained reusable color-blob observation pipeline.
+3. Evaluate `SPATIAL-02` after `VISION-03` supplies a concrete image-space producer, but require a
+   second independent maintained projection consumer/use case beyond EXAMPLE-10 before extracting a
+   backend-neutral seam.
+4. Keep `AUDIT-01` last after each item above is **Done** or **Deferred** with a concrete
+   reactivation trigger.
+
+Do not add Sushi drivetrain kinematics or Road Runner integration from this comparison. Sushi
+continues to rely on Pedro Pathing unless a later concrete robot requirement demonstrates a
+capability that Pedro does not provide. No additional comparison candidate is queued by this
+intake; a later request must name and scope another item before its decision gate begins.
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -264,9 +293,10 @@ evidence into a base OpMode or hide loop order.
 At the 2026-07-17 review, AUTO-01 and SOURCE-03 remained high-value but explicitly evidence-gated.
 AUTO-01 still needed a second materially different bounded routine, while SOURCE-03 had a second
 real flywheel caller in Cuttlefish but no representative traces from which to choose filter delay.
-The 2026-08-22 Cuberobot/DECODE intake below reopens AUTO-01 for a software decision gate; SOURCE-03
-remains Deferred because the new repository supplies no scalar trace or algorithm-selection
-evidence.
+The 2026-08-22 Cuberobot/DECODE intake below reopened AUTO-01 for a software decision gate, while
+SOURCE-03 remained Deferred because that repository supplied no scalar trace or algorithm-selection
+evidence. The 2026-08-31 NextFTC/FTCLib follow-up later reopened SOURCE-03 at the user's direction;
+the missing traces still constrain what its decision gate may approve.
 
 On 2026-07-28, the mechanism-target API review promoted TARGET-04, API-06, and TARGET-05 directly
 after EXAMPLE-01. The order deliberately proves equivalent-position behavior and truthful Task
@@ -538,9 +568,10 @@ succeeds.
 | Production [`Intake`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/subsystems/Intake.java#L31-L82) and the separately present [`CachedMotor`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/CachedMotor.java#L9-L44) suppress similar writes. | Source-level adoption does not establish watchdog, reconnect, mode/configuration invalidation, controller reset, or worthwhile savings. The generic helper's cache-before-success defect instead reinforces truthful output failure handling. | Keep PERF-03 Deferred; reopen SAFE-04's separate software fail-stop contract. |
 | [`SOTMUtil`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/SOTMUtil.java#L22-L60) computes one coordinated turret/flywheel/hood tuple which [`MainTeleop`](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/teleop/MainTeleop.java#L280-L305) applies together. | Coherent timestamped dataflow and once-per-cycle realization are software-testable; projectile timing, calibration, and shot accuracy are not. | Reopen EXAMPLE-03 only as a software coordination reference, with robot-owned model and solution vocabulary. |
 
-The same audit keeps FIELD-01, DRIVE-02, SOURCE-03, CHECK-01, and PERF-03 Deferred: this source adds
-no real Phoenix route set, PTO topology, scalar traces, staged whole-robot check, or controller-safe
-write-suppression evidence that closes their recorded gates. It adds no `ROUTE-04`: a fresh
+At that audit, FIELD-01, DRIVE-02, SOURCE-03, CHECK-01, and PERF-03 remained Deferred because the
+source added no real Phoenix route set, PTO topology, scalar traces, staged whole-robot check, or
+controller-safe write-suppression evidence that closed their recorded gates. It added no
+`ROUTE-04`: a fresh
 attempt-local semantic latch published by native Pedro callbacks plus existing Task composition is
 the supported first implementation. Packaging/distribution is outside this robot-capability review.
 
@@ -13249,7 +13280,7 @@ implementation.
     motion. Representative robot observation remains adoption validation when hardware becomes
     available, not a blocker for this conservative boundary contract.
 
-### SOURCE-03 - Composable scalar measurement conditioning
+### SOURCE-03 - General scalar measurement filters
 
 - **Problem to confirm:** finite differencing can amplify encoder quantization and loop jitter, while
   analog, distance, current, and other scalar measurements may contain spikes or noise. Sushi has
@@ -13294,6 +13325,14 @@ implementation.
   unavailable.** Synthetic data can test a chosen filter but cannot select the public algorithm,
   time/window semantics, or acceptable latency. Resume with raw timestamped traces or an approved
   narrower no-API/documentation result; do not hide an unvalidated default in the encoder boundary.
+- **Tracker-only comparison intake (2026-08-31):** **Proposed.** The user explicitly confirmed that
+  a general measurement-filter library is worth pursuing. This reopens the existing SOURCE-03 item
+  for a future decision gate; it does not select exponential/low-pass, moving-mean, moving-median,
+  outlier-rejection, or regression behavior, does not approve a public API, and authorizes no
+  implementation. Preserve the trace requirement above and compare noise/outlier rejection against
+  phase delay under irregular loop periods. If the evidence cannot justify one small explicit,
+  resettable, cycle-idempotent `ScalarSource` decorator, the item returns to **Deferred** rather than
+  gaining an implicit encoder filter or an opaque many-mode filtering layer.
 
 ### SAFE-03 - Regulated Plant actuator-command truth
 
@@ -25230,6 +25269,209 @@ implementation.
   `master`. It does not authorize staging the pre-existing `ReferenceRobotTesters.java` worktree
   artifact, starting the deferred Pedro route-time control item, or beginning another tracker item.
 
+### DOC-10 - Linked API reference in student lessons
+
+- **Gate 1 start and approved decision (2026-08-31):** **In progress** on
+  `codex/doc-10-linked-api-reference`, based exactly on merged
+  `origin/master@c6d51b94fad144311c46a11fabd0cf1a55a4d848`. After reviewing the DOC-09
+  pages, the user asked whether Key API objects and useful prose could link to class or method
+  documentation, agreed that selective links make sense, and directed: **“Let us proceed with the
+  change to add links.”** This is approval for the bounded documentation design below. It changes
+  maintained learning pages and documentation verification only; it adds no public framework API,
+  robot runtime behavior, example behavior, or Javadoc publication shape.
+- **Confirmed behavior and scope:** the generated API reference is published below the narrative
+  site at `https://harishv-99.github.io/2025-PhoenixPedro/api/`, and the site navigation exposes its
+  root, but the authored lessons contain no deep links to class or member contracts. The four
+  highest-value actionable pages are `First Sushi Robot Code.md`, `Build a Robot Step by Step.md`,
+  `Test a Mechanism Without Hardware.md`, and `Modern Starter Robot.md`. Their Key APIs lists mix
+  public Sushi types/members, whose generated Javadocs are authoritative, with maintained
+  lesson/example/test types that are intentionally outside the framework Javadoc set and whose
+  checked-in source is authoritative.
+- **Link and build audit:** generated Javadoc class paths are stable package-qualified HTML files;
+  exact Javadoc 17 member fragments encode complete signatures and are more fragile under overload
+  or generic-signature changes. Authored source-relative links cannot truthfully reach the generated
+  sibling `api/` tree during the strict narrative build, and repository-root links are deliberately
+  rejected by the existing Markdown checks. Absolute published HTTPS links are therefore the one
+  viable authored convention today. The existing narrative link test treats external URLs as
+  opaque, so it cannot detect a mistyped class path or member fragment. A post-Javadoc artifact
+  check is required to make deep links trustworthy.
+- **Alternatives and simplicity comparison:** leaving Key APIs as code-formatted names preserves a
+  compact page but makes a student search for every contract. Linking every repeated API mention
+  creates visual noise and distracts from the action. Class-only links are durable but cannot lead
+  directly to the overload or lifecycle contract a lesson is teaching. Member links everywhere are
+  precise but unnecessarily brittle. Expanding generated Javadocs to application examples or test
+  fixtures would blur the framework/application boundary. The smallest coherent design links each
+  Key APIs entry once, uses exact members only where that precision teaches a relevant contract,
+  and adds at most selective first-meaningful-use prose links.
+- **Chosen bounded design:** in the four pages above, link every Key APIs symbol. A public Sushi
+  type points to its generated class/interface Javadoc; a method or field points to its exact member
+  only when overload choice or the member contract matters, otherwise its owning class is the more
+  stable target. A maintained example or test-only teaching type that is absent from framework
+  Javadocs points to its exact GitHub source file instead. Add a prose link only at a student's first
+  meaningful encounter when the contract helps complete the current step; do not link every repeat
+  and do not place links inside code fences. Keep the plain-language explanation beside every link,
+  so the lesson remains sufficient without leaving the page.
+- **Rejected designs:** do not generate framework API documentation for robot examples or test
+  fixtures, add a second documentation generator, link to source instead of Javadocs for public
+  framework contracts, decorate every inline code token, change code snippets solely to create link
+  targets, or rely on network availability during the build.
+- **Verification plan:** extend focused documentation regressions to require linked Key APIs on all
+  four pages while preserving their source-backed snippet and density contracts. Add one
+  repository-owned post-generation validator that scans authored API links, maps them into the
+  locally generated site artifact, and proves both target files and decoded member fragments exist.
+  Run the focused documentation suite, full TeamCode unit suite, Java compilation, Javadocs, the
+  artifact validator, strict narrative build when its pinned environment is available, and
+  `git diff --check`. Inspect the rendered pages in Android Studio before any staging or
+  publication. No robot-hardware claim or hardware run is needed for link-only documentation.
+- **Gate 2 boundary:** implementation may touch only the four named lessons, focused documentation
+  regression(s), the strict documentation workflow, one narrowly owned link-validation helper if
+  needed, and this tracker record. The diff remains unstaged and uncommitted until automated
+  verification and the mandatory Android Studio review stop. No commit, push, pull request, merge,
+  `AUDIT-01`, framework API, runtime behavior, or unrelated documentation cleanup is authorized.
+- **Gate 2 implementation result (2026-08-31):** **Verifying** with seven modified tracked paths
+  and one new repository-owned validation script. All 43 Key APIs bullets now link all 45 named
+  symbols. Public Sushi types point to generated class/interface Javadocs; the 17 places where an
+  overload or member contract matters point to the canonical Javadoc member-detail fragment.
+  Maintained example types and test-only helpers intentionally absent from framework Javadocs point
+  to their complete source files. The course also disambiguates `RobotProgram.output(...)`,
+  `RobotProgram.callbackBindings()`, and the example-local flywheel `TrialState`, adds the missing
+  configured Mecanum factory to the Starter composition API list, and links only the few first-use
+  prose/source references that provide a distinct next action. No code fence or Java source changed.
+- **Regression and artifact contract:** `DocumentationLinksTest` now requires every named Key API
+  in the four primary lessons to be linked, preserves wrapped-list coverage, rejects alternate
+  bullet markers or empty explanations, distinguishes public generated API from lesson/test source,
+  and maps every maintained source target to an exact-case nonempty Java file. The documentation
+  workflow runs `.github/verify_generated_api_links.py` after strict narrative generation and
+  Javadocs but before artifact upload. That checker derives site paths from `zensical.toml`, uses
+  exact case-sensitive artifact inventories, accepts only `edu/ftcsushi/fw/**/*.html` class pages
+  and canonical `section.detail` member IDs, strictly decodes UTF-8/percent escapes, rejects queries
+  and traversal, and also verifies every maintained GitHub source URL against checked-in Java.
+- **Automated verification (2026-08-31):** Android Studio JBR 21 passed
+  `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, and
+  `:TeamCode:sushiJavadocs`: **235 suites / 2,144 tests / 0 failures / 0 errors / 0 skipped**. The
+  focused `DocumentationLinksTest` passed **17/17**. A separate exact-case check against the freshly
+  generated artifact resolved **35 API links**, including **17 canonical member-detail links**, and
+  **94 maintained source links**. `git diff --check`, the 410-line course budget, and validator-file
+  whitespace/newline checks are clean. Build output contains only the repository's existing Java 8
+  source/target deprecation warnings under JBR 21.
+- **Local render/tool limit:** this Windows host has no real Python executable or Zensical
+  environment, so the checked-in Python validator and strict narrative render cannot be claimed as
+  locally executed. Their logic received independent read-only review, and an equivalent
+  PowerShell audit passed against the freshly generated local Javadocs. The publication workflow's
+  pinned Python 3.12 environment runs strict Zensical generation and the validator unconditionally
+  before upload; that remains the hosted rendering check.
+- **Independent review:** three read-only passes confirmed every Key API target, the necessary
+  source fallback for test/example-only types, selective prose-link density, canonical generic
+  member anchors under both Javadoc 17 and 21, and the workflow ordering. The final audit's
+  wrapped-list, source-target, exact-case artifact, canonical-member, strict-decoding, and nonempty-
+  explanation concerns are closed in the current diff.
+- **Tracker-only comparison amendment (2026-08-31):** at the user's direction, this same unstaged
+  tracker diff now reopens the existing `SOURCE-03` measurement-filter item and adds `VISION-03`
+  plus `SPATIAL-02` below. The intake records the previously agreed NextFTC/FTCLib comparison
+  dispositions, including continued reliance on Pedro rather than Sushi drivetrain kinematics or
+  Road Runner integration. These are **Proposed** future items only: no decision gate, API design,
+  implementation, example migration, or verification claim for them has started. This later
+  direction amends DOC-10's earlier restriction on starting another item only enough to record the
+  requested backlog in the tracker. After this tracker amendment, the focused
+  `DocumentationLinksTest` still passes **17/17**, and `git diff --check` remains clean apart from
+  the existing Windows line-ending notices.
+- **Android Studio and publication stop:** inspect the linked Key APIs and selective prose links in
+  all four pages; verify that framework links open generated API pages while example/test links open
+  maintained source; inspect the new generated-link workflow check, focused regressions, and the
+  tracker-only SOURCE-03/VISION-03/SPATIAL-02 comparison intake below. Branch, base, and merge base
+  remain `codex/doc-10-linked-api-reference` and
+  `origin/master@c6d51b94fad144311c46a11fabd0cf1a55a4d848`; origin's push URL is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, targeting `master`. The complete diff is
+  unstaged and uncommitted. After Android Studio review, the exact combined reply is: **“DOC-10
+  looks good. Authorize committing the reviewed DOC-10 diff on
+  codex/doc-10-linked-api-reference, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** No commit, push, pull request, merge, or next-item work is authorized.
+- **Manual review and Gate 3 authorization (2026-08-31):** **Done.** The user sent the exact
+  combined reply above after reviewing the DOC-10 documentation, validation, and tracker-amendment
+  diff. This authorizes staging and committing only the reviewed eight-path DOC-10 diff on
+  `codex/doc-10-linked-api-reference`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. It does not authorize starting SOURCE-03, VISION-03, SPATIAL-02, AUDIT-01, or any other
+  tracker item.
+
+### VISION-03 - Reusable color-blob pipeline
+
+- **Tracker-only intake status (2026-08-31):** **Proposed.** The user asked that the previously
+  accepted vision-pipeline gap be recorded explicitly, including the ability to identify color
+  blobs before locating them on the field. No decision gate has started, no API or algorithm is
+  approved, and this intake authorizes no implementation.
+- **Confirmed present boundary:** completed VISION-01 owns one webcam/VisionPortal resource and can
+  attach a fixed set of robot-supplied `VisionProcessor`s; its contract deliberately leaves custom
+  algorithms and their immutable typed snapshots to robot code. VISION-02 stabilizes AprilTag frame
+  timestamps. Protected core already has `TargetObservation2d`, `ObservationSource2d`, and
+  `ObservationSources` for one selected robot-relative target with quality and an epoch-safe capture
+  timestamp, including generic object observations. Sushi does not have a maintained color-blob
+  processor, immutable multi-blob image-space frame value, color/shape configuration contract, or
+  compiling color-blob lesson. A team can attach its own processor, but must still design pixel-
+  coordinate, capture-time, lifecycle-generation, copying, and unavailable-result semantics itself.
+- **Decision gate to run later:** trace the pinned FTC SDK's maintained color-blob facilities,
+  VisionPortal frame timestamps, the existing custom-processor lifecycle, Limelight detector
+  results, and at least two plausible robot uses. Compare a documented robot-owned processor, a
+  narrow adapter around an SDK processor, a small Sushi processor, and a generic vision-result
+  abstraction. Measure the complete student-facing configuration and consumption path, not only a
+  short construction call. Audit every current caller and contract of `TargetObservation2d`,
+  `ObservationSource2d`, and `ObservationSources`; explicitly decide whether the new lane reuses
+  them after robot-owned selection/projection, extends them, or needs a distinct frame-level value.
+  Do not create a parallel semantic-observation grammar accidentally. Decide whether blob geometry
+  should use full-image pixels, normalized image coordinates, or another explicit frame, and how
+  capture time, post-enable generation, confidence/area/shape evidence, non-finite values, and
+  bounded snapshot size remain truthful.
+- **Leading hypothesis, not a decision:** prefer one FTC-boundary producer that composes with the
+  existing webcam owner and atomically publishes immutable, capture-timestamped blob observations.
+  Keep SDK/OpenCV objects and mutable processor lists at the FTC edge. Keep alliance/game-piece
+  color meanings, which blob to choose, field legality, and collection strategy in robot code. Do
+  not add an arbitrary generic detection map, a framework season vocabulary, or a second camera
+  lifecycle owner.
+- **Completion and evidence boundary:** focused tests must cover configuration validation, exact
+  coordinate convention, capture timestamps, frame replacement, same-cycle reads, enable/disable
+  generations, stale/no-result behavior, bounded copying, close/failure behavior, and lack of
+  mutable vendor leakage. Synchronized Javadocs and one compiling hardware-disabled lesson must
+  show the complete configuration/read path. Software can establish these contracts; real camera
+  work must still validate exposure, illumination, thresholds, physical color separation,
+  calibration, latency, and detection quality.
+
+### SPATIAL-02 - Camera observations to field positions
+
+- **Tracker-only intake status (2026-08-31):** **Proposed after VISION-03.** The user explicitly
+  called out locating a detected color blob on the field. No decision gate has started, no public
+  geometry type is approved, and this intake authorizes no implementation or example migration.
+- **Confirmed present boundary:** EXAMPLE-10 already copies Limelight detector angles, translates
+  exposure time into the shared clock, looks up the robot pose at capture time through completed
+  LOCALIZATION-01, intersects a camera ray with the floor, and produces a field point before robot-
+  owned band selection. That projection is intentionally package-private example code. SPATIAL-01
+  owns finite authored field geometry, while the existing AprilTag solve path handles known tags;
+  neither owns arbitrary image/blob projection. Sushi therefore proves the workflow once but offers
+  no reusable pixel-or-angle observation to robot/field point seam.
+- **Evidence gate to revisit:** EXAMPLE-10 previously kept this math robot-owned because only one
+  stable cross-robot caller existed. VISION-03 can supply a second concrete producer, but that alone
+  does not prove a reusable consumer or use case. A future Gate 1 must identify a second independent
+  maintained projection consumer beyond EXAMPLE-10, audit whether projected results should reuse
+  `TargetObservation2d`/`ObservationSource2d`, and compare leaving both projections robot-owned,
+  extracting only ray/plane math, adding a calibrated camera model plus time-aligned transforms, or
+  introducing a broader vision-geometry layer. If the caller, coordinate, and calibration contracts
+  are not genuinely shared, record a no-change/**Deferred** result instead of manufacturing a
+  generic API.
+- **Leading hypothesis, not a decision:** if two callers prove the seam, keep it in protected core
+  as pure finite geometry with explicit pixel/angle frame, camera calibration, mount transform,
+  capture timestamp, and robot-pose provenance. Return either an immutable robot/field point with
+  quality/provenance or a typed unavailable reason for missing history, invalid calibration,
+  parallel/behind-camera rays, or non-finite input. Detection ownership remains VISION-03 or another
+  boundary; blob ranking, collection regions, alliance transforms, route construction, and game
+  strategy remain robot-owned.
+- **Completion and evidence boundary:** deterministic tests must cover image center/corners,
+  calibrated pixel-to-ray conversion, mount translation/rotation, floor and other explicit planes,
+  capture-time pose lookup, yaw wrapping, no-intersection/horizon cases, unavailable history,
+  frame/unit mistakes, and unchanged EXAMPLE-10 decisions after any migration. Documentation must
+  teach the full blob-observation to field-point path and its calibration prerequisites without
+  claiming physical accuracy. Real hardware remains required for intrinsics, distortion,
+  camera-mount survey, clock/latency validation, floor assumptions, and field-position error.
+
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 
 - **Tracker-only intake status (2026-08-22):** **Proposed and deliberately last.** No re-audit has
@@ -25237,10 +25479,13 @@ implementation.
 - **Start condition:** SAFE-04, SENSOR-01, PERF-01, EXAMPLE-09, EXAMPLE-10, LOCALIZATION-01, AUTO-01,
   and EXAMPLE-03 have each reached **Done** (including an approved, recorded, and verified no-change
   decision) or **Deferred** with a concrete reactivation trigger. `BRAND-01` and `BRAND-02` must
-  also reach a terminal disposition before this deliberately last audit starts. The user's
-  2026-08-28 LOCALIZATION-01 and 2026-08-31 BRAND-02 directions explicitly amend this otherwise
-  frozen prerequisite list. A Gate 1 split does not silently enlarge AUDIT-01. It does not wait
-  for unavailable hardware runs belonging to PERF-03 or other deliberately hardware-gated items.
+  also reach a terminal disposition before this deliberately last audit starts. The 2026-08-31
+  comparison follow-up additionally requires `SOURCE-03`, `VISION-03`, and `SPATIAL-02` to be
+  **Done** or **Deferred** with concrete reactivation triggers. The user's 2026-08-28
+  LOCALIZATION-01, 2026-08-31 BRAND-02, and 2026-08-31 comparison directions explicitly amend this
+  otherwise frozen prerequisite list. A Gate 1 split does not silently enlarge AUDIT-01. It does
+  not wait for unavailable hardware runs belonging to PERF-03 or other deliberately hardware-gated
+  items; SOURCE-03 may satisfy this condition by returning to its evidence-backed deferral.
 - **Pinned scope and provenance:** pin current Sushi when this audit starts, then compare it against
   the exact Cubelib, FTC_Decode, Decode/v3, and IntoTheDeep23641 commits recorded by the 2026-08-22
   intake. Preserve the caveat that Cubelib itself is the small utility/FSM library, the later DECODE

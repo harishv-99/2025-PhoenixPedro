@@ -12,8 +12,10 @@ context.
 Use this example as the smallest compiling Sushi structure shared by TeleOp and Auto. It has one
 direct mecanum drive, one intake mechanism, one mode-neutral intake capability, one controls owner,
 and one declaration-only composition root. FTC lifecycle ceremony is supplied by
-`FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
-remain in the focused owners mapped below.
+[`FtcRobotOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcRobotOpMode.html>)
+and its framework-created
+[`RobotProgram`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html>);
+robot meanings and hardware ownership remain in the focused owners mapped below.
 
 **Buildable promise:** the critical excerpts on this page explain the ownership decisions; the
 collapsed complete files below contain the package declarations, imports, enclosing types, and
@@ -108,10 +110,10 @@ protected void configure(RobotProgram program) {
 
 **Key APIs**
 
-- `FtcRobotOpMode`: ordinary managed FTC host.
-- `RobotProgram`: declaration surface for lifecycle owners and behavior.
-- `StarterProfile.current()`: fresh data-only robot configuration.
-- `RobotProgram.rootTask(...)`: declares one managed Auto root.
+- [`FtcRobotOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcRobotOpMode.html>) — ordinary managed FTC host.
+- [`RobotProgram`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html>) — declaration surface for lifecycle owners and behavior.
+- [`StarterProfile.current()`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>) — fresh data-only robot configuration.
+- [`RobotProgram.rootTask(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#rootTask(edu.ftcsushi.fw.task.Task)>) — declares one managed Auto root.
 
 Neither file stores a clock, runner, lifecycle flags, robot field, profile field, or STOP method.
 The declaration consumes the fresh profile synchronously; each constructed owner retains only its
@@ -138,8 +140,10 @@ program.drive(
 program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
 ```
 
-The import identifies `GamepadDevice` as the FTC input edge. It converts the SDK gamepad into
-Sushi sources through the starter's ordinary direct construction.
+The import identifies
+[`GamepadDevice`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/input/GamepadDevice.html>)
+as the FTC input edge. It converts the SDK gamepad into Sushi sources through the starter's ordinary
+direct construction.
 
 Registration retains the same object immediately. A malformed drive slice can therefore be found
 after the intake is registered and controls/bindings exist. If that later construction or
@@ -168,10 +172,11 @@ return intake;
 
 **Key APIs**
 
-- `RobotProgram.output(...)`: registers mechanism lifecycle immediately.
-- `controls.bind(...)`: maps stable operator meanings to capability calls once.
-- `RobotProgram.drive(...)`: connects one `DriveSource` to one final sink.
-- `RobotProgram.presenter(...)`: observes snapshots without owning behavior.
+- [`RobotProgram.output(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#output(T)>) — registers mechanism lifecycle immediately.
+- [`controls.bind(...)`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>) — maps stable operator meanings to capability calls once.
+- [`RobotProgram.drive(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#drive(edu.ftcsushi.fw.drive.DriveSource,T)>) — connects one drive source to one final sink.
+- [`FtcDrives.mecanum(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcDrives.html#mecanum(com.qualcomm.robotcore.hardware.HardwareMap,edu.ftcsushi.fw.ftc.FtcDrives.MecanumConfig)>) — constructs that configured final drive sink.
+- [`RobotProgram.presenter(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#presenter(edu.ftcsushi.fw.ftc.RobotProgram.Presenter)>) — observes snapshots without owning behavior.
 
 `StarterAuto` then chooses and declares
 `intake.collectForSeconds(COLLECT_DURATION_SEC)`. Strategy therefore stays with the Auto client
@@ -247,10 +252,10 @@ requiredCallbacks.onRise(
 
 **Key APIs**
 
-- `Plant.commandTarget()`: stable source-graph command seam owned by the mechanism.
-- `RobotProgram.Output`: managed update/stop role for final realization.
-- `CallbackBindings.onRise(...)`: synchronous semantic edge binding.
-- `StarterIntake.Status`: immutable requested/applied evidence for presenters and tests.
+- [`Plant.commandTarget()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/Plant.html#commandTarget()>) — stable source-graph command seam owned by the mechanism.
+- [`RobotProgram.Output`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.Output.html>) — managed update/stop role for final realization.
+- [`CallbackBindings.onRise(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/input/binding/CallbackBindings.html#onRise(edu.ftcsushi.fw.core.source.BooleanSource,java.lang.Runnable)>) — synchronous semantic edge binding.
+- [`StarterIntake.Status`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>) — immutable requested/applied evidence for presenters and tests.
 
 ## Managed lifecycle and order
 
