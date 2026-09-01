@@ -414,5 +414,5 @@ mechanism owner, root declaration, telemetry, and cleanup represented by the lin
 
 **Exact lifecycle reference:** [Pedro integration](<../../integrations/pedro/README.md>)
 
-**Return to:** [`Build a robot step by step`](<Build a Robot Step by Step.md>) or the
+**Return to:** [`Build the Basic Mechanisms robot`](<Basic Mechanisms Robot.md>) or the
 [`Sushi documentation hub`](<../README.md>)

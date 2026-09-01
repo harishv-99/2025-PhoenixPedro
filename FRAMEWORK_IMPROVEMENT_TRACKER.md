@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -225,6 +225,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 116 | VISION-03 | Reusable color-blob pipeline | Proposed | Evaluate one timestamp-truthful FTC-boundary color-blob producer without exposing mutable SDK/OpenCV results or moving season-specific color meaning into core. |
 | 117 | SPATIAL-02 | Camera observations to field positions | Proposed | Generalize only reusable time-aligned ray/plane geometry proven by the Limelight example and a second independent maintained consumer; keep detection, selection, and route policy outside core. |
 | 118 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 119 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -25394,6 +25395,241 @@ implementation.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
   `master`. It does not authorize starting SOURCE-03, VISION-03, SPATIAL-02, AUDIT-01, or any other
   tracker item.
+
+### SIMPLICITY-01 - Java basic-robot benchmark suite
+
+- **Gate 1 start (2026-08-31):** **Researching** on
+  `codex/simplicity-01-java-basic-robot-benchmarks`, based exactly on merged
+  `origin/master@d9aaec69746fb277b184e83b9886e68d19d9d53e`. The user directed a Java-only
+  comparison of several basic Sushi and NextFTC robots, followed by one synthesized framework
+  recommendation, and explicitly directed this work to stop after sharing the analysis rather than
+  proceeding to `SOURCE-03`.
+- **Frozen scope:** compare five independent fixtures: drivetrain-only TeleOp; drivetrain plus a
+  referenced `STOWED`/`LOW`/`HIGH` lift; drivetrain plus an `OPEN`/`CLOSED` claw; the exact
+  lift-and-claw command-group Auto taught by the official NextFTC guide (which has no drivetrain);
+  and one complete drivetrain/lift/claw robot with TeleOp plus a small fixed-time-drive Auto. Use
+  Java only. FTCLib, Kotlin, Pedro route construction, drivetrain kinematics, Road Runner, and
+  implementation of any selected change are outside this item.
+- **Fairness rule:** report a tutorial view of the code each framework currently teaches and a
+  separate equal-contract view. The equal-contract comparison freezes the same robot facts and
+  requires explicit configuration, lifecycle/STOP behavior, Task or command cancellation,
+  observable status, failure handling, and adopter-owned tests. Mark each responsibility
+  framework-owned, adopter-owned, omitted/unproven, or not applicable before comparing size; an
+  omission cannot make a complete solution win by being shorter.
+- **Measurements:** for each view record robot decisions, public framework concepts, manual
+  correctness obligations, repeated answers, edit spread, and nonblank/non-comment production and
+  test Java lines separately. Line count is a secondary diagnostic, not a weighted score. Also
+  trace the student path from its canonical guide through complete inline code, Key APIs, compile
+  checkpoint, and observable milestone.
+- **Decision constraint:** a candidate must remove the same manual obligation in at least two
+  focused fixtures, reduce the combined fixture, and preserve the Framework Principles' explicit
+  ownership, one final writer, cooperative Task, single-use/cancellation, and managed lifecycle
+  contracts. Select at most one coherent public seam, or record that the evidence justifies no
+  framework change. Findings with a different owner remain separately gated future work.
+- **Gate boundary:** this branch may change only this SIMPLICITY-01 decision record. No framework
+  implementation, maintained example, student guide, `SOURCE-03`, commit, push, pull request, or
+  merge is authorized by this Gate 1 analysis.
+- **Pinned comparison evidence (2026-09-01):** **Ready.** NextFTC was frozen at
+  [`Examples@2df7711`](<https://github.com/NextFTC/Examples/tree/2df7711a8f16cac808cccbf04b371dfb1faf14a2>),
+  [`NextFTC-Docs@204de1a`](<https://github.com/NextFTC/NextFTC-Docs/tree/204de1a5f8e0d7b76959c3e5c70b803335c2e398>),
+  and [`NextFTC@d1b2a1a`](<https://github.com/NextFTC/NextFTC/tree/d1b2a1a07773c6743ed52834ee5c9eabadeea96d>).
+  The exact Java closure is `Lift.java`, `Claw.java`, `TeleOpProgram.java`, and
+  `AutonomousProgram.java`; the unused `Robot.java` is excluded. Sushi is frozen at this branch's
+  base. Counts below exclude blank and comment-only physical lines but include package/import lines
+  when a complete source-file count is named. Derived counts state their deletion rule rather than
+  pretending to be an upstream file.
+- **NextFTC tutorial-size evidence:** the final Java lesson blocks contain 16 lines for Lift, seven
+  for Claw, 37 for the combined TeleOp, and 27 for the manipulator-only Auto: **87 unique tutorial
+  lines**. Their checked-in compilation units contain 22, 12, 49, and 38 lines respectively:
+  **121 complete-source lines**. A focused drivetrain-only source is **35 derived lines**: start
+  from the 49-line TeleOp, remove three Lift/Claw/Subsystem imports, one subsystem registration,
+  and ten manipulator-binding lines, while applying the documented left-Y negation in place. The
+  tempting 15-line holonomic fragment is not a complete OpMode. The pinned holonomic Java lesson
+  also says nonexistent `breakMode()` and omits an IMU semicolon; the checked-in TeleOp omits the
+  lesson's Y negation. Those errata are disclosed rather than silently mixed into a shorter count.
+- **Sushi current-source evidence:** `FirstDriveTeleOp.java` is an exact, complete **45-line**
+  drivetrain fixture. There is no independent maintained drive-plus-lift, drive-plus-claw,
+  lift/claw Auto, or frozen complete-robot fixture. The reusable Reference lift capability and
+  mechanism are **227 source lines** before a profile, controls, root, host, or presenter; this is
+  stronger than the NextFTC Lift contract and is not presented as an equal LOC comparison. The
+  nearest complete small graph is the different drive-plus-intake Starter at **399 source lines**
+  across its seven production files. The Reference robot substitutes a multi-Plant launcher for a
+  claw. Exact LOC for the four absent Sushi fixtures is therefore **not measurable from maintained
+  teaching code**; synthesizing hypothetical numbers would conceal the documentation gap this
+  benchmark is intended to expose.
+  `Modern Starter Robot.md` compounds that gap: although it promises a complete seven-file working
+  slice, its complete `source-file` blocks contain only `StarterTeleOp`, `StarterAuto`, and
+  `StarterIntake`; the mechanism, profile, controls, and root appear only as excerpts or source
+  links. A student with repository access can find them, but a Markdown-only reader cannot recreate
+  the promised Starter verbatim.
+- **Five-fixture result:**
+
+  | Fixture | Short tutorial verdict | Equal-contract verdict | Current student path |
+  | --- | --- | --- | --- |
+  | Drive-only TeleOp | NextFTC's derived source is 35 lines; Sushi is 45. | NextFTC omits an explicit drive zero on command/OpMode stop and fail-stop exception cleanup. Sushi owns configured four-motor resolution, scaled source-driven output, and terminal sink stop, so the ten-line difference is not an equal-contract win. | Sushi has the stronger path: one complete inline file, linked APIs, compile gate, stand test, STOP check, and first-floor milestone. |
+  | Drive plus lift | NextFTC's 22-line Lift is much quicker to copy; Sushi has no focused module. | NextFTC omits reference establishment, bounds/limits, timeout/stall outcome, cancellation target policy, explicit stop, status/telemetry, validation, and tests. Sushi's Reference pieces cover those concerns but make students assemble an overlarge cross-page graph. | NextFTC is easier for first rough motion; neither guide supplies the frozen complete safe fixture. |
+  | Drive plus claw | NextFTC's 12-line Claw is the clearest current first implementation; Sushi has only a Plant recipe and a launcher-owned servo analogue. | NextFTC omits validated config, explicit initial semantic state, requested/applied status, and a complete registered/bound program. Sushi has the primitives but no claw-shaped lesson. | NextFTC is easier today; Sushi is not student-complete for this case. |
+  | Official guide Auto | NextFTC supplies a 38-line OpMode / 72-line dependency-complete lift-and-claw demo. Sushi's `Tasks.sequence`, `parallelAll`, and `waitForSeconds` express the same behavior with comparable vocabulary. | The official Auto never drives and has no whole-routine deadline, truthful failure/fallback policy, safe lift cancellation/stop, or mechanism readiness. It is a command-group lesson, not field-capable Auto. | NextFTC has the better continuous lesson; Sushi explains the APIs but has no exact copyable vertical slice. |
+  | Complete drive/lift/claw robot | NextFTC's four official files total 121 lines, but its Auto contains no drive. Sushi has no matching maintained fixture. | Neither current teaching closure satisfies the frozen complete contract. NextFTC also omits fail-stop cleanup, drive/lift zero, cache-mode restoration, validated snapshots, homing/limits/timeouts, status/presentation, and tests. Sushi supplies those framework seams separately, not one buildable module. | **No honest LOC winner.** Both need a new complete fixture before this comparison can be rerun. |
+
+- **Coverage-first equal-contract audit:** NextFTC framework code does own the normal scheduler loop,
+  subsystem dispatch, command conflicts, normal-path cancel-all, bindings, group composition, and
+  bulk-cache clearing. Its pinned `NextFTCOpMode` cleanup is not in `finally`; the drive command and
+  `RunToState` inherit no-op stop hooks; lift control runs during INIT through
+  `SubsystemComponent.preWaitForStart()`; and `BulkReadComponent` does not restore the prior cache
+  mode. Sushi's managed host owns caught-`RuntimeException` cleanup, exact output order, final drive
+  stop, fresh single-use Tasks, and active-only cancellation. Sushi adopter code still owns the
+  actual robot meanings, configuration, reference recipe, status, continuation policy, and tests.
+  Marking the NextFTC omissions `O` disqualifies its shorter combined closure from the complete
+  comparison; marking Sushi's missing lessons `O` prevents framework capability from being
+  mistaken for student usability.
+- **Concepts, obligations, repetition, and edit spread:** the drive vocabularies are comparable:
+  Sushi teaches `FtcRobotOpMode`, `RobotProgram.drive`, `GamepadDevice`, `GamepadDriveSource`, and
+  `FtcDrives`; NextFTC teaches `NextFTCOpMode`, `MotorEx`, `MecanumDriverControlled`, `Gamepads`,
+  command scheduling, and its BulkRead/Bindings components. Auto is also near parity:
+  `Task`/`Tasks.sequence`/`parallelAll`/`waitForSeconds`/`rootTask` versus
+  `Command`/`SequentialGroup`/`ParallelGroup`/`Delay`/`schedule`. Sushi's added lift vocabulary is
+  attached to real obligations—Plant ownership, reference, feedback, cancellation choice, and
+  status—not an outer-loop component missing from the framework. NextFTC keeps the tutorial graph
+  to four files; Sushi's only complete Starter graph spreads a different mechanism across seven
+  files, while the requested lift/claw closure does not exist. This edit-spread and navigation gap,
+  not Task syntax, is the main student cost.
+- **Tests counted separately:** the pinned official NextFTC guide closure has **zero adopter-owned
+  tests**. Sushi's two focused Reference lift tests contain **276 nonblank/non-comment test lines**;
+  the five Starter tests contain **1,269**. These tests provide meaningful configuration,
+  lifecycle, cancellation, and output evidence but are proof volume, not production-robot LOC, and
+  must not be used to claim that Sushi is shorter.
+- **Built-in behavior-component decision:** **do not add one.** `RobotProgram` already is the
+  ordinary managed lifecycle/behavior host, `program.output(mechanism)` is one visible ownership
+  declaration, and `Tasks`, `ScalarTasks`, and `DriveTasks` already supply cooperative behavior.
+  Drive would gain a duplicate registration noun. Lift still must name heights, coordinates,
+  homing, feedback completion, cancel policy, and status. Claw still must name open/closed meaning,
+  reviewed positions, initial/terminal policy, and evidence. Auto still must choose sequence,
+  concurrency, outcomes, and fallback. The only superficially repeated code is Plant
+  `update/stop` delegation; extracting it would expose a raw Plant at the root or hide the
+  mechanism's feedback/status update and multi-Plant order to save two methods. That fails the one
+  owner, one heartbeat, one realization path, truthful status, and one clear API principles.
+- **Rejected runtime alternatives:** no NextFTC-style `Subsystem`/`BehaviorComponent` registry,
+  generic enum-to-scalar mechanism, raw-Plant output adapter, success-only Auto sequence, generic
+  configuration/status facade, drive/gamepad robot facade, or source generator is justified by
+  these synthetic fixtures. Each either duplicates a completed Sushi seam, hides robot decisions,
+  improves only one focused fixture plus its reuse in the combined fixture, or adds more public
+  vocabulary than recurring manual obligation removed.
+- **Selected improvement and higher-bar acceptance:** keep the public framework unchanged. If the
+  user later authorizes Gate 2 for SIMPLICITY-01, add **one maintained Java Basic Mechanisms
+  vertical slice**, not another architecture reference: build drive, a referenced three-height
+  lift, a two-state claw, the exact guide command-group Auto, and the frozen combined timed-drive
+  robot cumulatively. Every step must include complete inline files, only the APIs needed at that
+  step, semantic/status tests, a compile command, one observable software checkpoint, and a clear
+  physical STOP/success gate. The same code must back the snippets. The final closure must then be
+  remeasured against 121 only after both sides satisfy the equal contract. Remove or route around
+  redundant prose rather than adding another dense page. This is a documentation/example change,
+  not evidence for a runtime behavior component.
+- **Reopen rule:** reconsider a public mechanism helper only after two independent maintained
+  robots—not two synthetic fixtures or the combined reuse—repeat the same complete semantic
+  mapping, configuration, status, Task/cancellation, and lifecycle graph, and a side-by-side diff
+  removes at least one public concept or recurring manual correctness obligation rather than only
+  physical lines. Reconsider source scaffolding only after two real workshop/team adoptions repeat
+  the same setup error. Give any different gap its own Proposed item rather than accumulating
+  conveniences here.
+- **Software verification (2026-09-01):** Android Studio JBR 21 passed
+  `:TeamCode:compileDebugJavaWithJavac` and the focused Starter, Reference-lift, and
+  `RobotProgramTest` unit selection: **7 suites / 38 tests / 0 failures / 0 errors / 0 skipped**.
+  The tracker-aware `DocumentationLinksTest` separately passed **17/17**.
+  The pinned NextFTC Examples compile reached Gradle dependency selection with this machine's
+  Android SDK but could not run because that repository requires a locally installed Java 8
+  toolchain; no NextFTC compile success or source failure is claimed. Exact source/docs/library
+  pins were inspected directly. No robot hardware was exercised, and no configuration, direction,
+  braking, clearance, homing, or physical success claim follows from this analysis.
+- **Gate 1 stop:** the analysis, no-public-API decision, and bounded documentation/example
+  recommendation are ready for user review. The diff remains tracker-only, unstaged, and
+  uncommitted. Do not implement the vertical slice, start `SOURCE-03`, stage, commit, push, open a
+  pull request, or merge without a new explicit instruction.
+- **Gate 2 authorization (2026-09-01):** **In progress.** After reviewing the conclusion, the user
+  directed: **“Proceed with the cleanup of documentation, as suggested. Make sure to remove the old
+  startup documentation which do not add value anymore.”** This authorizes the bounded Basic
+  Mechanisms example/course, synchronized documentation tests and navigation, removal or concise
+  compatibility routing of superseded startup pages, and this tracker record. It does not authorize
+  a framework API change, production-application dependency, `SOURCE-03`, staging, publication, or
+  unrelated documentation cleanup.
+- **Gate 2 example result (2026-09-01):** **Verifying.** The independent
+  `edu.ftcsushi.robots.examples.basicmechanisms` teaching bubble now contains **21 production
+  files** and five test files. Its maintained fixtures are drive-only TeleOp (the unchanged
+  `FirstDriveTeleOp`), drive plus referenced lift, drive plus claw, mechanism-only Auto, bounded
+  drive-only Auto, and the complete drive/lift/claw TeleOp plus timed-drive Auto. Drive, lift, and
+  claw Profiles and Controls are separate capability slices, so focused fixtures do not acquire a
+  source dependency on an unused mechanism; the complete clients compose those same slices. No
+  protected-core or public framework API changed, and no built-in behavior component was added.
+- **Gate 2 ownership and lifecycle result:** the lift and claw expose mode-neutral semantic intent
+  and cached evidence while privately owning their final Plant graphs. Lift requests invalidate
+  stale arrival evidence, unreferenced motion fails closed, homing/move Tasks remain fresh and
+  non-blocking, and claw applied-command status stays unknown until a successful heartbeat. Auto
+  lift/claw pairs use a lift-authoritative `parallelDeadline`; exact-success gates retain SUCCESS,
+  TIMEOUT, CANCELLED, and UNKNOWN instead of releasing later work after an abnormal prerequisite.
+  Each Auto retains and presents its root outcome. The Auto-only drivetrain has one Task command
+  owner plus a no-op-update, idempotent stop-only lifecycle owner, so STOP-before-START and a
+  pre-drive prerequisite failure still attempt the sink's final software-zero write without adding
+  a competing writer.
+- **Gate 2 documentation and cleanup result:**
+  [`Basic Mechanisms Robot.md`](TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Basic%20Mechanisms%20Robot.md)
+  is the one canonical cumulative course. It keeps a compact first-drive warm-up and exactly seven
+  build-season gates; every gate has an exact Gradle command, observable software checkpoint,
+  separate physical STOP/success gate, source-backed critical code, linked Key APIs, failure action,
+  and advancement condition. It presents **3,175 prose words** and **114 visible Java lines**, while
+  **27 complete files** (First Drive, 21 Basic Mechanisms production files, and five tests) remain
+  collapsed beside the gate that first needs them. The warm-up preserves the former wheel-pattern,
+  stand diagnosis, compile, bounded floor-drive, critical-code, and API teaching. Navigation and
+  inbound links now route to this course. The obsolete `First Sushi Robot Code.md`,
+  `Build a Robot Step by Step.md`, `Test a Mechanism Without Hardware.md`, and
+  `Modern Starter Robot.md` were deleted without compatibility stubs; distinct setup, router,
+  architecture, Pedro, hardware-free Reference, experiment, calibration, and topic pages remain.
+- **Gate 2 regression result:** `DocumentationLinksTest` now verifies the exact seven gates, eight
+  course Key-API sections including First Drive, stage-local commands/evidence, 27-file manifest,
+  complete-source provenance, no removed startup paths, navigation, density limits, STOP evidence,
+  and the still-live **18-page** DOC-07/DOC-08 inline-learning inventory. Cleanup therefore did not
+  weaken the higher documentation bar for surviving student pages.
+- **Gate 2 measurement result:** under the frozen nonblank/non-comment physical-line rule, the full
+  new Basic Mechanisms package is **991 production lines** and its five suites are **1,339 test
+  lines**. The final combined TeleOp-plus-Auto production dependency closure is **800 lines**. The
+  pinned NextFTC lesson remains 121 production lines with no adopter-owned tests, but it still omits
+  the equal-contract reference, bounds, timeout/cancellation, status, lifecycle/fail-stop, and test
+  responsibilities recorded above. Sushi is therefore not shorter by raw source count; this item
+  improves availability, source-closure independence, staged discoverability, and evidence rather
+  than claiming a LOC win. The student reads only 114 visible Java lines on the main path and can
+  expand the exact file needed for the current gate.
+- **Gate 2 deterministic evidence (2026-09-01):** Android Studio JBR 21 passed the five focused
+  Basic Mechanisms suites at **36 tests / 0 failures / 0 errors / 0 skipped**. The final complete
+  `:TeamCode:testDebugUnitTest` run passed **240 suites / 2,181 tests / 0 failures / 0 errors /
+  0 skipped**, and `:TeamCode:compileDebugJavaWithJavac` passed. The strengthened
+  `DocumentationLinksTest` passed **18/18**. The pinned renderer passed
+  `zensical build --clean --strict`; `:TeamCode:sushiJavadocs` passed; and generated-artifact
+  verification resolved **18 API links** plus **90 maintained-source links** across 19 Markdown
+  pages. Only the established Java-8-on-JDK-21/deprecated-controller warnings remain.
+- **Gate 2 adversarial audit:** independent code/lifecycle, student-course, and documentation-
+  regression reviews found and corrected status initialization and stale-arrival reporting, Auto
+  outcome collapse, source-closure coupling, STOP-before-START drive cleanup, First Drive teaching
+  gaps, weakened surviving-page regression coverage, terminal-telemetry wording, adoption-package
+  clarity, and tracker evidence wording/counts. The final re-review reports no remaining scoped
+  blocker.
+- **Gate 2 evidence boundary:** no robot hardware was exercised. The example names, directions,
+  BRAKE choice, scales, switch polarity, lift conversion/range/heights/power/timeouts, claw
+  endpoints/initial CLOSED motion, clearance, physical zero, stopping distance, and mechanism or
+  Auto success remain adopting-robot facts. All checked-in motion permissions are false and every
+  teaching OpMode remains `@Disabled`; software STOP evidence proves only that Sushi attempts the
+  final zero write, not that the physical robot stopped. Natural-terminal root telemetry is not
+  misrepresented as a post-operator-STOP telemetry frame.
+- **Gate 2 Android Studio review stop:** inspect the exact unstaged and uncommitted diff on
+  `codex/simplicity-01-java-basic-robot-benchmarks`. Review the seven-gate course in rendered and
+  source form, focused Profile/Controls closures, Plant and Task cancellation semantics, Auto sink
+  ownership, root telemetry, removed-page navigation, and the physical evidence gates. This stop
+  authorizes no staging, commit, push, pull request, merge, `SOURCE-03`, or next tracker item.
+- **Manual review and Gate 3 authorization (2026-09-01):** **Done.** The user sent the exact
+  combined reply above after reviewing the SIMPLICITY-01 examples, tests, documentation cleanup,
+  navigation, regressions, and tracker evidence. This authorizes staging and committing only the
+  reviewed SIMPLICITY-01 diff on `codex/simplicity-01-java-basic-robot-benchmarks`, pushing that
+  branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
+  merging it into `master`. It does not authorize starting `SOURCE-03`, VISION-03, SPATIAL-02,
+  AUDIT-01, or any other tracker item.
 
 ### VISION-03 - Reusable color-blob pipeline
 

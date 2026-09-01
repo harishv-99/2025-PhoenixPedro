@@ -21,7 +21,7 @@ semantic test
 ```
 
 Before powered work, use
-[Test a mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>) or
+[the Basic Mechanisms software checkpoint](<../getting-started/Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>) or
 an optional [Reference software scenario](<Hardware-free Reference Scenarios.md>) to establish that
 the production mechanism interprets injected inputs and sends expected outputs. A software
 scenario supplies readings explicitly; it does not mirror commands into feedback or model physics.
@@ -307,6 +307,6 @@ the [`Control tuning workflow`](<../testing-calibration/Control Tuning Workflow.
 controller experiments. The [Evidence and experiments](<../getting-started/learn-sushi/Evidence and Experiments.md>)
 chapter explains the full evidence ladder and how to read status without overclaiming it.
 
-[Return to the build-season workflow](<../getting-started/Build a Robot Step by Step.md>)
+[Return to the Basic Mechanisms course](<../getting-started/Basic Mechanisms Robot.md>)
 
 [Back to the examples index](<README.md>)

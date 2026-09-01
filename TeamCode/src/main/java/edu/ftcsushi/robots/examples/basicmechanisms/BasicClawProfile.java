@@ -1,0 +1,43 @@
+package edu.ftcsushi.robots.examples.basicmechanisms;
+
+import java.util.Objects;
+
+/** Data-only claw answers and the explicit motion permission used by each claw lesson. */
+public final class BasicClawProfile {
+
+    /**
+     * Complete standard-servo wiring, direction, initial semantic request, and CLOSED/OPEN native
+     * Servo positions in {@code [0, 1]}. These command positions are not feedback measurements.
+     */
+    public BasicClawMechanism.Config claw;
+
+    /**
+     * Whether supervised Servo motion is permitted after direction, endpoints, clearance, and
+     * initial CLOSED motion have been reviewed. {@link #current()} always returns {@code false}.
+     */
+    public boolean allowClawMotion;
+
+    private BasicClawProfile() {
+        // Start from current() so every required claw answer is populated together.
+    }
+
+    /** Returns a fresh complete software baseline, not reviewed physical robot facts. */
+    public static BasicClawProfile current() {
+        BasicClawProfile profile = new BasicClawProfile();
+        profile.claw = BasicClawMechanism.Config.defaults();
+        profile.allowClawMotion = false;
+        return profile;
+    }
+
+    /** Rejects unchecked claw motion before a host performs any hardware lookup. */
+    static void requireMotionAllowed(BasicClawProfile profile, String mode) {
+        BasicClawProfile p = Objects.requireNonNull(profile, "clawProfile");
+        if (!p.allowClawMotion) {
+            throw new IllegalStateException(
+                    "BasicClawProfile.allowClawMotion must be true before " + mode
+                            + " may construct a motion-capable claw. Review the Servo name, "
+                            + "direction, endpoints, initial CLOSED motion, and physical STOP "
+                            + "behavior first.");
+        }
+    }
+}

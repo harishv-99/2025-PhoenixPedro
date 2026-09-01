@@ -157,6 +157,6 @@ their Plants private so controls, Tasks, and Auto all use the same visible inten
 ## Choose one next route
 
 1. Verify the software project with [Build and run Sushi](<Build and Run.md>).
-2. Reach a visible milestone in [Get your first robot driving](<First Sushi Robot Code.md>).
-3. Continue through [Build a robot step by step](<Build a Robot Step by Step.md>).
-4. Open [Choose a Sushi topic](<Beginner's Guide.md>) only for the deeper question in front of you.
+2. Follow [Build the Basic Mechanisms robot](<Basic Mechanisms Robot.md>) through the next visible
+   implementation checkpoint.
+3. Open [Choose a Sushi topic](<Beginner's Guide.md>) only for the deeper question in front of you.

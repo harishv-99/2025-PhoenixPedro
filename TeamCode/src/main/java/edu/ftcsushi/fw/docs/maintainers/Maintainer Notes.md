@@ -146,8 +146,11 @@ Use this authoring contract:
   steps, observable result, common problems, and one next step.
 - End a software scenario or experiment lesson with the exact evidence headings **Proves**,
   **Does not prove**, and **Next gate**. Do not make students infer where software evidence ends.
-- Link to compiling source for complete programs. Keep excerpts short enough to teach one idea
-  without creating a copied program that can drift.
+- Buildable lessons and the primary course must include their complete, source-backed files in
+  collapsed sections so a student can work from the page alone. Keep the critical excerpt for each
+  checkpoint visible, short, inline-commented where explanation helps, and linked to the generated
+  API or exact maintained example source. Reference and runbook pages should use only the short
+  excerpts needed for their distinct purpose.
 - Describe the supported present state directly. Keep migration narratives, completed work logs,
   and speculative backlogs out of user documentation.
 - Keep Markdown as the sole authored source for narrative guides and generated guide-site

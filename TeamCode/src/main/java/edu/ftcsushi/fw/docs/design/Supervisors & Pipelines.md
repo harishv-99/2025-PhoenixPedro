@@ -93,8 +93,9 @@ Students should start with as few concepts as possible while keeping the ordinar
 Even a robot with one mechanism gives that mechanism one owner; the OpMode remains a thin
 `configure(RobotProgram)` entry and `RobotProgram` owns the loop. Trace that smallest shape in
 [`Robot roles`](<../getting-started/learn-sushi/Robot Roles.md>) and
-[`Plants and hardware`](<../getting-started/learn-sushi/Plants and Hardware.md>), or inspect the
-compiling [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>).
+[`Plants and hardware`](<../getting-started/learn-sushi/Plants and Hardware.md>), then apply it one
+gate at a time in the compiling
+[`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>).
 
 ### Smallest ordinary subsystem
 

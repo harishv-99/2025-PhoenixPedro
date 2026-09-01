@@ -5,8 +5,9 @@
 Calibrate one physical fact at a time. Keep the robot clear of people, begin with conservative
 commands, know how to stop the OpMode, and do not treat a successful build as proof of safe motion.
 
-If hardware is unavailable, stay in software: [Test a mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>)
-uses the real Starter mechanism and Plant with a recording test device. The optional
+If hardware is unavailable, stay in software: the
+[Basic Mechanisms software checkpoint](<../getting-started/Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>)
+uses a real course mechanism and Plant with a recording test device. The optional
 [Reference scenarios](<../examples/Hardware-free Reference Scenarios.md>) add explicit switch,
 encoder, and independent flywheel-velocity inputs. These scenarios can establish software behavior
 before a robot exists, but they do not model physics or authorize motion.
@@ -64,9 +65,9 @@ Stop after collecting the evidence needed for that question. A later question be
 reviewed test; one successful result does not validate unrelated hardware or behavior.
 
 After accepting the result, return to the relevant checkpoint in
-[Build a robot step by step](<../getting-started/Build a Robot Step by Step.md>) to run the bounded
-subsystem experiment or integrate the accepted configuration. Do not turn a diagnostic OpMode into
-the production TeleOp.
+[Build the Basic Mechanisms robot](<../getting-started/Basic Mechanisms Robot.md>) to integrate the
+accepted configuration, or use [Subsystem Experiments](<../examples/Subsystem Experiments.md>) for
+a bounded physical trial. Do not turn a diagnostic OpMode into the production TeleOp.
 
 ## Student runbooks
 

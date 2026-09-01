@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -52,7 +53,35 @@ public final class DocumentationLinksTest {
             "controls.bind(...)",
             "MotorProbe",
             "StarterIntakeMechanism.update(...)",
-            "StarterIntake.Status"));
+            "StarterIntake.Status",
+            "FirstDriveTeleOp",
+            "BasicLift",
+            "BasicClaw",
+            "BasicLiftMechanism",
+            "BasicClawMechanism",
+            "BasicDriveProfile",
+            "BasicLiftProfile",
+            "BasicClawProfile",
+            "BasicDriveControls",
+            "BasicLiftControls",
+            "BasicClawControls",
+            "BasicLiftControls.bind(...)",
+            "BasicClawControls.bind(...)",
+            "BasicAutoRoutines.guide(...)",
+            "BasicRobotAutoRoutines.complete(...)",
+            "BasicLiftTeleOp",
+            "BasicClawTeleOp",
+            "BasicMechanismsAuto",
+            "BasicDriveAuto",
+            "BasicDriveStopOwner",
+            "BasicRobotTeleOp",
+            "BasicRobotAuto",
+            "BasicLiftMechanismTest",
+            "BasicClawMechanismTest",
+            "BasicTeleOpControlsTest",
+            "BasicAutoRoutinesTest",
+            "BasicRobotScenarioTest",
+            "ServoProbe"));
 
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -151,6 +180,30 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void primaryStudentCourseKeepsInlineLearningBlocks() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
+        List<String> pages = Arrays.asList(
+                "getting-started/Basic Mechanisms Robot.md");
+
+        List<String> failures = new ArrayList<String>();
+        for (String page : pages) {
+            String markdown = readUtf8(repositoryRoot.resolve(docs + page));
+            if (!markdown.contains("### Critical code")) {
+                failures.add(page + ": missing Critical code");
+            }
+            if (!markdown.contains("**What to notice**")) {
+                failures.add(page + ": missing What to notice");
+            }
+            if (!markdown.contains("**Key APIs")) {
+                failures.add(page + ": missing Key APIs");
+            }
+        }
+        assertTrue("Student learning block failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
     public void substantiveStudentLearningPagesKeepInlineLearningBlocks() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
@@ -158,15 +211,12 @@ public final class DocumentationLinksTest {
         List<String> pages = Arrays.asList(
                 "examples/Field-relative Drive.md",
                 "examples/Hardware-free Reference Scenarios.md",
-                "examples/Modern Starter Robot.md",
                 "examples/Subsystem Experiments.md",
                 "examples/Timestamped Adaptive Collection.md",
-                "getting-started/Build a Robot Step by Step.md",
+                "getting-started/Basic Mechanisms Robot.md",
                 "getting-started/Build and Run.md",
                 "getting-started/First Pedro Auto.md",
-                "getting-started/First Sushi Robot Code.md",
                 "getting-started/Framework Overview.md",
-                "getting-started/Test a Mechanism Without Hardware.md",
                 "getting-started/learn-sushi/Controls and Intent.md",
                 "getting-started/learn-sushi/Evidence and Experiments.md",
                 "getting-started/learn-sushi/From Requirement to Robot.md",
@@ -200,10 +250,7 @@ public final class DocumentationLinksTest {
                 Paths.get(System.getProperty("user.dir")));
         String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
         Map<String, Integer> expectedSections = new LinkedHashMap<String, Integer>();
-        expectedSections.put("getting-started/First Sushi Robot Code.md", 1);
-        expectedSections.put("getting-started/Build a Robot Step by Step.md", 7);
-        expectedSections.put("getting-started/Test a Mechanism Without Hardware.md", 1);
-        expectedSections.put("examples/Modern Starter Robot.md", 3);
+        expectedSections.put("getting-started/Basic Mechanisms Robot.md", 8);
 
         List<String> failures = new ArrayList<String>();
         Set<String> maintainedJavaSources = collectMaintainedJavaSourcePaths(repositoryRoot);
@@ -335,34 +382,20 @@ public final class DocumentationLinksTest {
             if (!"Buildable implementation".equals(mode)) {
                 continue;
             }
-            boolean visibleFirstRun = page.getFileName().toString()
-                    .equals("First Sushi Robot Code.md");
             requireText(repositoryRoot, page, markdown,
                     "### Critical code", "Critical code", failures);
             requireText(repositoryRoot, page, markdown,
                     "**What to notice**", "What to notice", failures);
             requireText(repositoryRoot, page, markdown,
                     "**Key APIs", "Key APIs", failures);
-            if (visibleFirstRun) {
-                requireText(repositoryRoot, page, markdown,
-                        "## 1. Copy the complete program", "one-file copy step", failures);
-                requireText(repositoryRoot, page, markdown,
-                        "## 3. Compile while motion remains disabled",
-                        "disabled compile gate", failures);
-                if (markdown.contains("<details>")) {
-                    failures.add(repositoryRelativePath(repositoryRoot, page)
-                            + ": first-run complete file must stay visible");
-                }
-            } else {
-                requireText(repositoryRoot, page, markdown,
-                        "## Files you will create", "Files you will create", failures);
-                requireText(repositoryRoot, page, markdown,
-                        "## Complete working slice", "Complete working slice", failures);
-                requireText(repositoryRoot, page, markdown,
-                        "## Verify the slice", "Verify the slice", failures);
-                requireText(repositoryRoot, page, markdown,
-                        "<details>", "collapsed complete files", failures);
-            }
+            requireText(repositoryRoot, page, markdown,
+                    "## Files you will create", "Files you will create", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "## Complete working slice", "Complete working slice", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "## Verify the slice", "Verify the slice", failures);
+            requireText(repositoryRoot, page, markdown,
+                    "<details>", "collapsed complete files", failures);
             Matcher manifest = Pattern.compile("<!-- buildable-files: ([^>]+) -->")
                     .matcher(markdown);
             if (!manifest.find()) {
@@ -379,7 +412,7 @@ public final class DocumentationLinksTest {
                     completeFiles.add(complete.group(1).trim());
                     int openDetails = markdown.lastIndexOf("<details>", complete.start());
                     int closeDetails = markdown.lastIndexOf("</details>", complete.start());
-                    if (!visibleFirstRun && (openDetails < 0 || closeDetails > openDetails)) {
+                    if (openDetails < 0 || closeDetails > openDetails) {
                         failures.add(repositoryRelativePath(repositoryRoot, page)
                                 + ": complete source file is not inside collapsed details: "
                                 + complete.group(1).trim());
@@ -457,10 +490,10 @@ public final class DocumentationLinksTest {
                 build.contains("tasks.register('sushiJavadocs', Javadoc)")
                         && build.contains("Sushi Framework API")
                         && !build.contains("phoenixJavadocs"));
-        assertTrue("Renamed beginner and reference pages must exist",
+        assertTrue("Current beginner and reference pages must exist",
                 Files.isRegularFile(repositoryRoot.resolve(
                         "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                + "First Sushi Robot Code.md"))
+                                + "Basic Mechanisms Robot.md"))
                         && Files.isDirectory(repositoryRoot.resolve(
                                 "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
                                         + "learn-sushi"))
@@ -475,8 +508,20 @@ public final class DocumentationLinksTest {
                                 "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
                                         + "learn-phoenix"))
                         && !Files.exists(repositoryRoot.resolve(
-                                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/reference/"
-                                        + "Phoenix Cheat Sheet.md")));
+                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/reference/"
+                                        + "Phoenix Cheat Sheet.md"))
+                        && !Files.exists(repositoryRoot.resolve(
+                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
+                                + "First Sushi Robot Code.md"))
+                        && !Files.exists(repositoryRoot.resolve(
+                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
+                                + "Build a Robot Step by Step.md"))
+                        && !Files.exists(repositoryRoot.resolve(
+                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
+                                + "Test a Mechanism Without Hardware.md"))
+                        && !Files.exists(repositoryRoot.resolve(
+                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/examples/"
+                                + "Modern Starter Robot.md")));
         assertTrue("Former Java namespace roots must not remain",
                 !Files.exists(repositoryRoot.resolve(
                         "TeamCode/src/main/java/edu/ftcphoenix"))
@@ -565,16 +610,12 @@ public final class DocumentationLinksTest {
                 startGroup.group(1),
                 Arrays.asList(
                         "Set up and verify the project",
-                        "Get your first robot driving",
-                        "Build a robot step by step",
-                        "Test a mechanism without hardware",
+                        "Build the Basic Mechanisms robot",
                         "Sushi in one picture",
                         "Choose a Sushi topic"),
                 Arrays.asList(
                         "docs/getting-started/Build and Run.md",
-                        "docs/getting-started/First Sushi Robot Code.md",
-                        "docs/getting-started/Build a Robot Step by Step.md",
-                        "docs/getting-started/Test a Mechanism Without Hardware.md",
+                        "docs/getting-started/Basic Mechanisms Robot.md",
                         "docs/getting-started/Framework Overview.md",
                         "docs/getting-started/Beginner's Guide.md"));
 
@@ -610,14 +651,12 @@ public final class DocumentationLinksTest {
                 examplesGroup.group(1),
                 Arrays.asList(
                         "Examples home",
-                        "Modern starter robot",
                         "Hardware-free reference scenarios",
                         "Field-relative drive",
                         "Your first Pedro Auto",
                         "Subsystem experiments"),
                 Arrays.asList(
                         "docs/examples/README.md",
-                        "docs/examples/Modern Starter Robot.md",
                         "docs/examples/Hardware-free Reference Scenarios.md",
                         "docs/examples/Field-relative Drive.md",
                         "docs/getting-started/First Pedro Auto.md",
@@ -629,8 +668,12 @@ public final class DocumentationLinksTest {
                 "getting-started/First TeleOp.md",
                 "getting-started/First Task and Auto.md",
                 "getting-started/README.md",
+                "getting-started/First Sushi Robot Code.md",
+                "getting-started/Build a Robot Step by Step.md",
+                "getting-started/Test a Mechanism Without Hardware.md",
                 "getting-started/learn-sushi/Role Paths.md",
                 "examples/Framework Components Through Examples.md",
+                "examples/Modern Starter Robot.md",
                 "examples/BIOBUZZ Capability Map.md",
                 "examples/Pedro Autonomous Reference.md")) {
             assertTrue("Redundant documentation page still exists: " + removed,
@@ -639,62 +682,69 @@ public final class DocumentationLinksTest {
     }
 
     @Test
-    public void studentCourseKeepsSevenRunnableRobotCheckpoints() throws IOException {
+    public void basicMechanismsCourseKeepsSevenRunnableRobotCheckpoints() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
         Path anchorPath = repositoryRoot.resolve(
                 "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                        + "Build a Robot Step by Step.md");
-        assertTrue("Build-season anchor is missing", Files.isRegularFile(anchorPath));
+                        + "Basic Mechanisms Robot.md");
+        assertTrue("Basic Mechanisms course is missing", Files.isRegularFile(anchorPath));
 
         String anchor = readUtf8(anchorPath);
-        assertTrue("Build-season course exceeds 1,800 prose words",
-                proseWordCount(anchorPath) <= 1800);
-        assertTrue("Build-season course exceeds eight Java excerpts",
-                javaFenceCount(anchorPath) <= 8);
-        assertTrue("Build-season course exceeds 410 source lines",
-                Files.readAllLines(anchorPath, StandardCharsets.UTF_8).size() <= 410);
+        assertTrue("Basic Mechanisms course must declare Guided course mode",
+                anchor.contains("**Learning mode:** Guided course"));
+        assertTrue("Basic Mechanisms course exceeds 3,200 prose words",
+                proseWordCount(anchorPath) <= 3200);
+        assertTrue("Basic Mechanisms course exceeds 120 visible Java lines",
+                displayedJavaLineCount(anchorPath) <= 120);
+        assertTrue("Basic Mechanisms course must keep complete files collapsed",
+                anchor.contains("## Complete working slice") && anchor.contains("<details>"));
+
+        int firstStageStart = anchor.indexOf(
+                "## 1. Define lift and claw capability interfaces");
+        String warmUp = anchor.substring(0, firstStageStart);
+        assertTrue("First-drive warm-up lost its disabled compile checkpoint",
+                warmUp.contains(":TeamCode:compileDebugJavaWithJavac")
+                        && warmUp.contains("Keep `@Disabled`")
+                        && warmUp.contains("BUILD SUCCESSFUL"));
+        assertTrue("First-drive warm-up lost its raised-wheel diagnosis table",
+                warmUp.contains("| Left stick forward | forward | forward | forward | forward |")
+                        && warmUp.contains("| Left stick right | forward | reverse | reverse | forward |")
+                        && warmUp.contains("| Right stick right | forward | reverse | forward | reverse |")
+                        && warmUp.contains("| Sticks released | stop | stop | stop | stop |")
+                        && warmUp.contains("If one corner is wrong")
+                        && warmUp.contains("wheel placement and configuration mapping"));
+        assertTrue("First-drive warm-up lost its bounded floor acceptance",
+                warmUp.contains("brief forward move")
+                        && warmUp.contains("right strafe")
+                        && warmUp.contains("clockwise turn")
+                        && warmUp.contains("observed stopping distance")
+                        && warmUp.contains("staff STOP"));
+        assertTrue("First-drive warm-up lost its critical code and linked API teaching",
+                warmUp.contains("### Critical code")
+                        && warmUp.contains("new GamepadDevice(gamepad1)")
+                        && warmUp.contains("new GamepadDriveSource(")
+                        && warmUp.contains("FtcDrives.MecanumConfig.defaults()")
+                        && warmUp.contains("program.drive(controls.driveSource(),")
+                        && warmUp.contains("**What to notice**")
+                        && warmUp.contains("[`FtcRobotOpMode`](<")
+                        && warmUp.contains("[`GamepadDevice`](<")
+                        && warmUp.contains("[`GamepadDriveSource`](<")
+                        && warmUp.contains("[`FtcDrives`](<")
+                        && warmUp.contains("[`RobotProgram.drive(...)`](<"));
         String[] requiredStageHeadings = {
-            "## 1. Name the robot's subsystems and interfaces",
-            "## 2. Test the interface without hardware",
-            "## 3. Connect hardware and write TeleOp",
+            "## 1. Define lift and claw capability interfaces",
+            "## 2. Test the interfaces without hardware",
+            "## 3. Connect hardware and run focused TeleOp",
             "## 4. Run a bounded subsystem experiment",
-            "## 5. Integrate the whole robot",
-            "## 6. Test individual Auto paths",
+            "## 5. Integrate the complete TeleOp",
+            "## 6. Test individual Auto behaviors",
             "## 7. Test end-to-end Auto"
         };
         String[] requiredEvidenceLabels = {
-            "**Outcome:**", "**Change these files:**", "### Critical code", "**Run this:**",
-            "**Expect this:**", "**What to notice**", "**Key APIs**", "**If it fails:**",
-            "**Advance when:**"
-        };
-        String[][] requiredStageDestinations = {
-            {"learn-sushi/From Requirement to Robot.md"},
-            {"../examples/Modern Starter Robot.md",
-                    "robots/examples/starter/robot/StarterTeleOpControls.java"},
-            {"Test a Mechanism Without Hardware.md",
-                    "../testing-calibration/Actuator Bring-up.md",
-                    "../examples/Modern Starter Robot.md",
-                    "robots/examples/starter/opmode/StarterTeleOp.java"},
-            {"../examples/Subsystem Experiments.md"},
-            {"../examples/Modern Starter Robot.md"},
-            {"First Pedro Auto.md", "../../integrations/pedro/README.md"},
-            {}
-        };
-        String[] requiredStageSourceMarkers = {
-            "<!-- teaching-shape -->",
-            "<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/"
-                    + "starter/robot/StarterFirstLessonTest.java -->",
-            "<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/"
-                    + "starter/robot/StarterMechanismLessonTest.java -->",
-            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
-                    + "reference/tester/ReferenceFlywheelSpinUpExperiment.java -->",
-            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
-                    + "reference/robot/ReferenceRobot.java -->",
-            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
-                    + "pedro/autonomous/BasicPedroAutoRoutine.java -->",
-            "<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
-                    + "pedro/robot/BasicPedroAutoRobot.java -->"
+            "**Outcome:**", "**Files:**", "### Critical code", "**Run:**",
+            "**Expect:**", "**Software checkpoint:**", "**Physical gate:**",
+            "**What to notice**", "**Key APIs**", "**If it fails:**", "**Advance when:**"
         };
         int priorStage = -1;
         for (int stageIndex = 0; stageIndex < requiredStageHeadings.length; stageIndex++) {
@@ -707,7 +757,7 @@ public final class DocumentationLinksTest {
             priorStage = sectionStart;
             int sectionEnd = stageIndex + 1 < requiredStageHeadings.length
                     ? anchor.indexOf(requiredStageHeadings[stageIndex + 1], sectionStart)
-                    : anchor.indexOf("## Progress checklist", sectionStart);
+                    : anchor.indexOf("## Complete working slice", sectionStart);
             assertTrue("Build-season stage has no closing boundary: " + stageHeading,
                     sectionEnd > sectionStart);
             String section = anchor.substring(sectionStart, sectionEnd);
@@ -719,12 +769,26 @@ public final class DocumentationLinksTest {
                                 + "; found " + occurrences,
                         occurrences == 1);
             }
-            assertTrue(stageHeading + " is missing its maintained source marker",
-                    section.contains(requiredStageSourceMarkers[stageIndex]));
-            for (String destination : requiredStageDestinations[stageIndex]) {
-                assertTrue(stageHeading + " is missing destination: " + destination,
-                        section.contains(destination));
-            }
+            int runStart = section.indexOf("**Run:**");
+            int expectStart = section.indexOf("**Expect:**", runStart);
+            String runBlock = section.substring(runStart, expectStart);
+            assertTrue(stageHeading + " needs an exact focused Gradle command in Run",
+                    Pattern.compile("(?m)^```powershell\\r?$[\\s\\S]*?"
+                                    + "^\\.\\\\gradlew\\.bat --console=plain :TeamCode:"
+                                    + "[^\\r\\n]+[\\s\\S]*?^```\\r?$")
+                            .matcher(runBlock).find());
+            int softwareStart = section.indexOf("**Software checkpoint:**", expectStart);
+            int physicalStart = section.indexOf("**Physical gate:**", softwareStart);
+            int noticeStart = section.indexOf("**What to notice**", physicalStart);
+            assertTrue(stageHeading + " must separate observable software and physical evidence",
+                    expectStart >= 0
+                            && softwareStart > expectStart
+                            && physicalStart > softwareStart
+                            && noticeStart > physicalStart
+                            && section.substring(physicalStart, noticeStart).contains("STOP"));
+            assertTrue(stageHeading + " is missing a maintained source excerpt",
+                    Pattern.compile("<!-- (?:annotated-)?source-excerpt: [^>]+ -->")
+                            .matcher(section).find());
 
             int apiStart = section.indexOf("**Key APIs**");
             int apiEnd = section.indexOf("**If it fails:**", apiStart);
@@ -740,49 +804,236 @@ public final class DocumentationLinksTest {
                         apiBullets.group(1).startsWith("[`")
                                 && apiBullets.group(1).contains("](<https://"));
             }
-            assertTrue(stageHeading + " must name one to five key APIs; found " + apiCount,
-                    apiCount >= 1 && apiCount <= 5);
+            assertTrue(stageHeading + " must name one to six key APIs; found " + apiCount,
+                    apiCount >= 1 && apiCount <= 6);
         }
 
         int interfaceStageStart = anchor.indexOf(requiredStageHeadings[0]);
         int interfaceStageEnd = anchor.indexOf(requiredStageHeadings[1], interfaceStageStart);
         String interfaceStage = anchor.substring(interfaceStageStart, interfaceStageEnd);
-        assertTrue("Stage 1's displayed teaching shape must use the three real capability methods",
-                interfaceStage.contains("void setMode(Mode mode);")
-                        && interfaceStage.contains(
-                                "Task collectForSeconds(double durationSec);")
+        assertTrue("Stage 1 must show the real semantic capability methods",
+                interfaceStage.contains("void setHeight(Height height);")
+                        && interfaceStage.contains("Task moveTo(Height height);")
+                        && interfaceStage.contains("Task home();")
+                        && interfaceStage.contains("void setState(State state);")
                         && interfaceStage.contains("Status status();"));
-        String starterInterface = readUtf8(repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/"
-                        + "intake/StarterIntake.java"));
-        assertTrue("The course's only teaching shape must use real Starter capability APIs",
-                starterInterface.contains("void setMode(Mode mode);")
-                        && starterInterface.contains(
-                                "Task collectForSeconds(double durationSec);")
-                        && starterInterface.contains("Status status();"));
+        assertTrue("Stage 1 must implement the mechanism/profile/control foundation before tests",
+                interfaceStage.contains("### Implement the foundation before testing")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicLiftMechanism.java -->")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicClawMechanism.java -->")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicDriveProfile.java -->")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicLiftProfile.java -->")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicClawProfile.java -->")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicDriveControls.java -->")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicLiftControls.java -->")
+                        && interfaceStage.contains(
+                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
+                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                        + "BasicClawControls.java -->"));
+        assertTrue("Stage 1 must teach the actual Plant, sensor, move, and homing APIs",
+                interfaceStage.contains("[`FtcSensors.digitalLow(...)`](<")
+                        && interfaceStage.contains("[`FtcActuators.plant(...)`](<")
+                        && interfaceStage.contains("[`PositionCalibrationTasks.search(...)`](<")
+                        && interfaceStage.contains("[`ScalarTasks.set(...)`](<")
+                        && interfaceStage.contains(".needsReference(")
+                        && interfaceStage.contains(".untilReachedBy(lift)")
+                        && interfaceStage.contains(".failAfterSec(homingTimeoutSec)"));
 
-        assertTrue("Course must start with the one-file physical milestone",
-                anchor.contains("Get your first robot driving"));
+        int testStageStart = anchor.indexOf(requiredStageHeadings[1]);
+        int testStageEnd = anchor.indexOf(requiredStageHeadings[2], testStageStart);
+        String testStage = anchor.substring(testStageStart, testStageEnd);
+        assertTrue("Stage 2 must be runnable one focused file at a time",
+                testStage.contains("BasicLiftMechanismTest.java")
+                        && testStage.contains("BasicClawMechanismTest.java")
+                        && testStage.contains("BasicTeleOpControlsTest.java")
+                        && matcherCount(Pattern.compile(
+                                Pattern.quote(":TeamCode:testDebugUnitTest --tests "))
+                                .matcher(testStage)) == 3
+                        && testStage.contains("Deliberately make one expectation wrong")
+                        && testStage.contains("FtcTestHardware")
+                        && testStage.contains("ManualLoopClock"));
+        assertTrue("Stage 2 must preserve repository invariants without teaching unsafe edits",
+                testStage.contains("Repository-example invariants")
+                        && testStage.contains("all permissions false")
+                        && testStage.contains("Do not weaken those assertions")
+                        && testStage.contains("team-owned hosts/profiles")
+                        && testStage.contains("BasicRobotScenarioTest"));
+
+        int hardwareStageStart = anchor.indexOf(requiredStageHeadings[2]);
+        int hardwareStageEnd = anchor.indexOf(requiredStageHeadings[3], hardwareStageStart);
+        String hardwareStage = anchor.substring(hardwareStageStart, hardwareStageEnd);
+        assertTrue("Stage 3 must split lift and claw evidence",
+                hardwareStage.contains("- Lift host:")
+                        && hardwareStage.contains("- Claw host:")
+                        && hardwareStage.contains("initial `CLOSED` target")
+                        && hardwareStage.contains("first active heartbeat")
+                        && hardwareStage.contains("before A/B is pressed"));
+
+        int behaviorStageStart = anchor.indexOf(requiredStageHeadings[5]);
+        int behaviorStageEnd = anchor.indexOf(requiredStageHeadings[6], behaviorStageStart);
+        String behaviorStage = anchor.substring(behaviorStageStart, behaviorStageEnd);
+        assertTrue("Stage 6 must keep a real independent bounded-drive fixture",
+                behaviorStage.contains("BasicDriveAuto.java")
+                        && behaviorStage.contains("BasicDriveStopOwner.java")
+                        && behaviorStage.contains("DriveTasks.driveExclusivelyForSeconds(")
+                        && behaviorStage.contains("Tasks.parallelDeadline(")
+                        && behaviorStage.contains("program.output(driveStopOwner)")
+                        && behaviorStage.contains("keep lift/claw absent")
+                        && behaviorStage.contains("0.20 source request")
+                        && behaviorStage.contains("0.25 profile scale")
+                        && behaviorStage.contains("straight wheel command 0.05")
+                        && behaviorStage.contains("does not prove physical zero")
+                        && behaviorStage.contains("auto.complete")
+                        && behaviorStage.contains("auto.outcome"));
+
+        int completeStageStart = anchor.indexOf(requiredStageHeadings[6]);
+        int completeStageEnd = anchor.indexOf("## Complete working slice", completeStageStart);
+        String completeStage = anchor.substring(completeStageStart, completeStageEnd);
+        assertTrue("Stage 7 must teach the retained root and its terminal telemetry",
+                completeStage.contains("BasicRobotAutoRoutines.complete(")
+                        && completeStage.contains("program.output(driveStopOwner)")
+                        && completeStage.contains("auto.complete")
+                        && completeStage.contains("auto.outcome")
+                        && completeStage.contains("complete alone does not distinguish"));
+
+        assertTrue("Course must start with the maintained one-file drive milestone",
+                anchor.contains("## Before the season: get first drive moving")
+                        && anchor.contains("FirstDriveTeleOp.java"));
         assertTrue("Course must distinguish software evidence from physical evidence",
-                anchor.contains("Software proves the mapping, not the future mechanism or "
-                                + "physical behavior")
-                        && anchor.contains("Compilation does not prove direction, braking, "
-                                + "clearance, or response"));
-        assertTrue("Course must not authorize physical Pedro motion without route-time control",
-                anchor.contains("ordinary Sushi route callers cannot currently set that")
-                        && Pattern.compile("does not\\s+authorize a physical path test")
-                                .matcher(anchor).find()
-                        && anchor.contains("Do not enable either the generic host or an adapted host")
-                        && anchor.contains("physical end-to-end rehearsal waits"));
-        assertTrue("Starter TeleOp exposure must remain an explicit final physical gate",
+                Pattern.compile("(?is)software.{0,240}not.{0,120}physical")
+                        .matcher(anchor).find()
+                        && anchor.contains("FtcTestHardware")
+                        && anchor.contains("STOP"));
+        assertTrue("Physical TeleOp exposure must remain an explicit gate",
                 anchor.contains("remove `@Disabled`")
                         && anchor.contains("INIT with controls neutral"));
-        assertTrue("Build-season anchor must include an accessible Mermaid title",
-                anchor.contains("accTitle: Seven robot-building checkpoints"));
-        assertTrue("Build-season anchor must include an accessible Mermaid description",
-                anchor.contains("accDescr:"));
-        assertTrue("Build-season anchor must include a diagram text fallback",
-                anchor.contains("**Text version:**"));
+        assertTrue("Subsystem experiments must remain a separate physical evidence gate",
+                anchor.contains("../examples/Subsystem Experiments.md"));
+        assertTrue("The basic timed drive must point students to Pedro for real paths",
+                anchor.contains("First Pedro Auto.md") && anchor.contains("Pedro"));
+
+        List<String> expectedCompleteFiles = Arrays.asList(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/"
+                        + "FirstDriveTeleOp.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicAutoRoutines.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicAutoSuccessGate.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicClawControls.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicClawMechanism.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicClawProfile.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicClawTeleOp.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicDriveAuto.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicDriveControls.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicDriveProfile.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicDriveStopOwner.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicHardwareOwnership.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicLiftControls.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicLiftMechanism.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicLiftProfile.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicLiftTeleOp.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicMechanismsAuto.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicRobotAuto.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicRobotAutoRoutines.java",
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicRobotTeleOp.java",
+                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicLiftMechanismTest.java",
+                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicClawMechanismTest.java",
+                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicTeleOpControlsTest.java",
+                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicAutoRoutinesTest.java",
+                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
+                        + "BasicRobotScenarioTest.java");
+        Matcher manifest = Pattern.compile("<!-- buildable-files: ([^>]+) -->").matcher(anchor);
+        assertTrue("Basic Mechanisms course lacks its complete-file manifest", manifest.find());
+        List<String> declaredFiles = Arrays.asList(
+                manifest.group(1).trim().split("\\s*\\|\\s*"));
+        assertEquals("Basic Mechanisms manifest changed without updating its course contract",
+                expectedCompleteFiles, declaredFiles);
+        for (String expectedFile : expectedCompleteFiles) {
+            String marker = "<!-- source-file: " + expectedFile + " -->";
+            assertTrue("Course is missing complete source: " + expectedFile,
+                    matcherCount(Pattern.compile(Pattern.quote(marker)).matcher(anchor)) == 1);
+            int markerAt = anchor.indexOf(marker);
+            int openDetails = anchor.lastIndexOf("<details>", markerAt);
+            int priorCloseDetails = anchor.lastIndexOf("</details>", markerAt);
+            int closeDetails = anchor.indexOf("</details>", markerAt);
+            assertTrue("Complete source must stay collapsed: " + expectedFile,
+                    openDetails >= 0 && priorCloseDetails < openDetails && closeDetails > markerAt);
+            String disclosure = anchor.substring(openDetails, closeDetails);
+            assertTrue("Each source disclosure must contain exactly one complete file: "
+                            + expectedFile,
+                    matcherCount(Pattern.compile("<!-- source-file: ").matcher(disclosure)) == 1);
+        }
+
+        int warmUpEnd = anchor.indexOf(requiredStageHeadings[0]);
+        assertTrue("FirstDriveTeleOp must stay beside the warm-up",
+                anchor.substring(0, warmUpEnd).contains(
+                        "<!-- source-file: " + expectedCompleteFiles.get(0) + " -->"));
+        int[][] expectedFileIndexesByStage = {
+            {3, 4, 5, 6, 9, 10, 12, 13, 14, 15, 16},
+            {22, 23, 24},
+            {7, 17},
+            {},
+            {21},
+            {1, 2, 8, 11, 18, 25},
+            {19, 20, 26}
+        };
+        for (int stageIndex = 0; stageIndex < requiredStageHeadings.length; stageIndex++) {
+            int sectionStart = anchor.indexOf(requiredStageHeadings[stageIndex]);
+            int sectionEnd = stageIndex + 1 < requiredStageHeadings.length
+                    ? anchor.indexOf(requiredStageHeadings[stageIndex + 1], sectionStart)
+                    : anchor.indexOf("## Complete working slice", sectionStart);
+            String section = anchor.substring(sectionStart, sectionEnd);
+            for (int fileIndex : expectedFileIndexesByStage[stageIndex]) {
+                String expectedFile = expectedCompleteFiles.get(fileIndex);
+                assertTrue(requiredStageHeadings[stageIndex]
+                                + " is missing its stage-local complete file: " + expectedFile,
+                        section.contains("<!-- source-file: " + expectedFile + " -->"));
+            }
+        }
     }
 
     @Test
@@ -927,8 +1178,7 @@ public final class DocumentationLinksTest {
         Path learningRoot = repositoryRoot.resolve(
                 "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started");
         Path overview = learningRoot.resolve("Framework Overview.md");
-        Path firstRobotCode = learningRoot.resolve("First Sushi Robot Code.md");
-        Path mechanismLesson = learningRoot.resolve("Test a Mechanism Without Hardware.md");
+        Path basicCourse = learningRoot.resolve("Basic Mechanisms Robot.md");
         Path hub = learningRoot.resolve("Beginner's Guide.md");
         Path topics = learningRoot.resolve("learn-sushi");
 
@@ -938,20 +1188,16 @@ public final class DocumentationLinksTest {
                 javaFenceCount(overview) <= 3);
         assertTrue("First-contact overview exceeds 30 displayed Java lines",
                 displayedJavaLineCount(overview) <= 30);
-        assertTrue("First robot-code lesson is missing", Files.isRegularFile(firstRobotCode));
-        assertTrue("First robot-code lesson exceeds 1,000 prose words",
-                proseWordCount(firstRobotCode) <= 1000);
-        assertTrue("First-drive lesson must show its complete program exactly once",
-                javaFenceCount(firstRobotCode) == 1);
-        assertTrue("First-drive lesson exceeds 55 displayed Java lines",
-                displayedJavaLineCount(firstRobotCode) <= 55);
-        String firstRobotCodeText = readUtf8(firstRobotCode);
+        assertTrue("Basic Mechanisms course is missing", Files.isRegularFile(basicCourse));
+        assertTrue("Basic Mechanisms course exceeds 3,200 prose words",
+                proseWordCount(basicCourse) <= 3200);
+        String basicCourseText = readUtf8(basicCourse);
         String firstDrivePath = "TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/"
                 + "FirstDriveTeleOp.java";
         Path firstDrive = repositoryRoot.resolve(firstDrivePath);
         assertTrue("Maintained first-drive example is missing", Files.isRegularFile(firstDrive));
-        assertTrue("First-drive lesson must reproduce the maintained example",
-                firstRobotCodeText.contains("<!-- source-file: " + firstDrivePath + " -->"));
+        assertTrue("Basic Mechanisms course must reproduce the maintained first-drive example",
+                basicCourseText.contains("<!-- source-file: " + firstDrivePath + " -->"));
         String firstDriveSource = readUtf8(firstDrive);
         assertTrue("First-drive example must stay disabled by default",
                 Pattern.compile("(?m)^@Disabled[ \\t]*$")
@@ -1012,43 +1258,19 @@ public final class DocumentationLinksTest {
         assertTrue("First-drive example exceeds 45 nonblank Java lines: "
                         + nonblankFirstDriveLines,
                 nonblankFirstDriveLines <= 45);
-        assertTrue("First-drive lesson must keep the physical evidence boundary visible",
-                firstRobotCodeText.contains("compilation cannot prove wiring")
-                        && firstRobotCodeText.contains("HW: Actuator Bring-up")
-                        && firstRobotCodeText.contains("Verify wheel patterns on the stand")
-                        && firstRobotCodeText.contains("Make the first controlled floor drive")
-                        && firstRobotCodeText.contains("STOP"));
-        int copyStep = firstRobotCodeText.indexOf("## 1. Copy the complete program");
-        int wiringStep = firstRobotCodeText.indexOf(
-                "## 2. Replace assumptions with your wiring facts");
-        int disabledCompileStep = firstRobotCodeText.indexOf(
-                "## 3. Compile while motion remains disabled");
-        int standStep = firstRobotCodeText.indexOf("## 4. Verify wheel patterns on the stand");
-        int floorStep = firstRobotCodeText.indexOf(
-                "## 5. Make the first controlled floor drive");
-        int growStep = firstRobotCodeText.indexOf("## 6. Grow beyond one file");
-        assertTrue("First-drive physical gates are missing or out of order",
-                copyStep >= 0
-                        && copyStep < wiringStep
-                        && wiringStep < disabledCompileStep
-                        && disabledCompileStep < standStep
-                        && standStep < floorStep
-                        && floorStep < growStep);
-        assertTrue("Hardware-free mechanism lesson is missing",
-                Files.isRegularFile(mechanismLesson));
-        assertTrue("Hardware-free mechanism lesson exceeds 1,000 prose words",
-                proseWordCount(mechanismLesson) <= 1000);
-        assertTrue("Hardware-free mechanism lesson exceeds three Java excerpts",
-                javaFenceCount(mechanismLesson) <= 3);
-        assertTrue("Hardware-free mechanism lesson exceeds 35 displayed Java lines",
-                displayedJavaLineCount(mechanismLesson) <= 35);
-        String mechanismLessonText = readUtf8(mechanismLesson);
-        assertTrue("Hardware-free mechanism lesson must link its compiled scenario on GitHub",
-                mechanismLessonText.contains(
+        assertTrue("Course must keep the first-drive physical evidence boundary visible",
+                basicCourseText.contains("HW: Actuator Bring-up")
+                        && basicCourseText.contains("@Disabled")
+                        && basicCourseText.contains("raised")
+                        && basicCourseText.contains("floor")
+                        && basicCourseText.contains("STOP"));
+        assertTrue("Course must include its compiled hardware-free lift scenario",
+                basicCourseText.contains(
                         "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
-                                + "edu/ftcsushi/robots/examples/starter/robot/"
-                                + "StarterMechanismLessonTest.java"));
-        assertEvidenceBoundary("Hardware-free mechanism lesson", mechanismLessonText);
+                                + "edu/ftcsushi/robots/examples/basicmechanisms/"
+                                + "BasicLiftMechanismTest.java")
+                        && basicCourseText.contains("FtcTestHardware")
+                        && basicCourseText.contains("ManualLoopClock"));
 
         Path referenceScenarios = repositoryRoot.resolve(
                 "TeamCode/src/main/java/edu/ftcsushi/fw/docs/examples/"

@@ -451,10 +451,10 @@ Then it is **profile/config**.
 
 This section is intentionally concrete. The goal is that you can design a new robot without opening an old robot first.
 
-For the smallest compiling proof of these roles, read
-[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>). Its seven files deliberately stop
-at one profile, one intake capability and Plant owner, one controls owner, one composition root,
-and thin TeleOp/Auto clients. The larger examples below remain a menu of roles to add only when the
+For a cumulative compiling proof of these roles, read
+the [`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>).
+Its cumulative slices keep profiles, capability and Plant owners, controls, composition, and thin
+TeleOp/Auto clients visible. The larger examples below remain a menu of roles to add only when the
 robot actually needs them.
 
 Not every robot needs every role shown below. For example, a simple TeleOp-only robot may have no vision lane, no localization lane, and no targeting service. The point of the taxonomy is not to force every robot into the same shape. The point is to give each concern a principled home when that concern exists.
@@ -1512,7 +1512,7 @@ own another example's lifecycle.
 
 ## Read next
 
-- [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>)
+- [`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>)
 - [`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mode Clients.md>)
 - [`Recommended Robot Design`](<Recommended Robot Design.md>)
 - [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>)

@@ -7,7 +7,8 @@
 **Purpose:** Show how the same test-only hardware registry scales to sensors, encoders, and paired
 velocity motors without changing production robot construction.
 
-Complete [Test a mechanism without hardware](<../getting-started/Test a Mechanism Without Hardware.md>)
+Complete the
+[Basic Mechanisms software checkpoint](<../getting-started/Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>)
 first. These are optional Reference case studies, not a second beginner path and not code to copy
 wholesale.
 
@@ -481,6 +482,6 @@ Use supervised [actuator bring-up](<../testing-calibration/Actuator Bring-up.md>
 device, then create a team-owned [subsystem experiment](<Subsystem Experiments.md>) with explicit
 success criteria for the facts that only the robot can establish.
 
-[Return to the build-season workflow](<../getting-started/Build a Robot Step by Step.md>)
+[Return to the Basic Mechanisms course](<../getting-started/Basic Mechanisms Robot.md>)
 
 [Back to the examples index](<README.md>)
