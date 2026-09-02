@@ -59,7 +59,7 @@ The Task and binding APIs see ordinary Sushi sources, and robot code uses the di
 This is a complete FTC lifecycle shape: the framework starts and advances its private runner after
 bindings, then updates declared outputs and commits presenters. STOP and runtime failure actively
 cancel the runner before outputs stop. The managed
-[`ReferenceLauncherMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+[`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
 shows a fresh outcome-aware macro without exposing custom-host ceremony.
 
 In ordinary TeleOp, Tasks do decision work, update sources, request Plant targets, or manage a
@@ -413,7 +413,7 @@ code, that constructor receives `HardwareMap` and its active data-only config, c
 the complete snapshot before its own hardware lookup, and uses the copied hardware name and
 direction. The composition root owns cross-owner policy and constructs the mechanism, not this raw
 Plant. See the compiling
-[`BasicPedroAutoMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.java>)
+[`BasicPedroAutoMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.html>)
 for a complete numeric-target owner. This pattern is intentionally separate from the Starter
 intake's named `Mode` vocabulary.
 

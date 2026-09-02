@@ -146,10 +146,10 @@ Three distinctions keep that trace truthful:
 
 | If the team wants to change… | The usual owner |
 |---|---|
-| A motor name, direction, permission, limit, or `collectPower` value | [`StarterProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>) and its data-only configuration |
+| A motor name, direction, permission, limit, or `collectPower` value | [`StarterProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.html>) and its data-only configuration |
 | What A, B, X, a trigger, or a stick means | [`StarterTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>) |
-| The shared robot word `COLLECT` and its status | [`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>) |
-| How a mode becomes a bounded Plant target and hardware update | [`StarterIntakeMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>) |
+| The shared robot word `COLLECT` and its status | [`StarterIntake`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.html>) |
+| How a mode becomes a bounded Plant target and hardware update | [`StarterIntakeMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.html>) |
 
 The composition root connects those owners. It should not become a control script. Mechanisms keep
 their Plants private so controls, Tasks, and Auto all use the same visible intent-to-hardware path.

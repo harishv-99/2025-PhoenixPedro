@@ -1358,8 +1358,8 @@ if any device moves during review, press STOP and investigate before continuing.
 
 **Key APIs**
 
-- [`BasicLift`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.java>) / [`BasicClaw`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java>) — shared mode-neutral robot vocabulary.
-- [`BasicDriveProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveProfile.java>) / [`BasicLiftProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftProfile.java>) / [`BasicClawProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawProfile.java>) — one resource's facts and permission per file.
+- [`BasicLift`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.html>) / [`BasicClaw`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.html>) — shared mode-neutral robot vocabulary.
+- [`BasicDriveProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveProfile.html>) / [`BasicLiftProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftProfile.html>) / [`BasicClawProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawProfile.html>) — one resource's facts and permission per file.
 - [`BasicDriveControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveControls.java>) / [`BasicLiftControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftControls.java>) / [`BasicClawControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawControls.java>) — one operator-meaning owner per capability.
 - [`FtcSensors.digitalLow(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcSensors.html>) / [`FtcActuators.plant(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcActuators.html>) — explicit FTC input and staged Plant construction boundaries.
 - [`PositionCalibrationTasks.search(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/PositionCalibrationTasks.html>) / [`Tasks.sequenceOnCompletion(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — non-blocking reference search plus explicit natural-outcome repair.
@@ -2365,8 +2365,8 @@ clearance, and STOP before enabling the other host.
 
 **Key APIs**
 
-- [`BasicLiftMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java>) / [`BasicClawMechanism`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.java>) — final mechanism ownership and status.
-- [`BasicLiftTeleOp`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftTeleOp.java>) / [`BasicClawTeleOp`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawTeleOp.java>) — focused drive-plus-mechanism hosts.
+- [`BasicLiftMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.html>) / [`BasicClawMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.html>) — final mechanism ownership and status.
+- [`BasicLiftTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftTeleOp.html>) / [`BasicClawTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawTeleOp.html>) — focused drive-plus-mechanism hosts.
 - [`RobotProgram.output(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#output(T)>) — managed output registration.
 - [`FtcActuators`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcActuators.html>) — FTC Plant construction boundary.
 
@@ -2423,7 +2423,7 @@ range, reference, and repeatability criterion; STOP on unexpected motion.
 
 **Key APIs**
 
-- [`BasicLift`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.java>) / [`BasicClaw`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java>) — cached evidence owned by each capability.
+- [`BasicLift`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.html>) / [`BasicClaw`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.html>) — cached evidence owned by each capability.
 - [`RobotProgram.presenter(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#presenter(edu.ftcsushi.fw.ftc.RobotProgram.Presenter)>) — snapshot formatting after outputs update.
 
 **If it fails:** Set the relevant permission false, revise one fact, rerun software checks, and
@@ -2549,7 +2549,7 @@ movement, truthful telemetry, and STOP all repeat without a motor-owner collisio
 
 **Key APIs**
 
-- [`BasicRobotTeleOp`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotTeleOp.java>) — complete managed TeleOp root.
+- [`BasicRobotTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotTeleOp.html>) — complete managed TeleOp root.
 - [`BasicLiftControls.bind(...)`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftControls.java>) / [`BasicClawControls.bind(...)`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawControls.java>) — separate semantic control groups.
 - [`RobotProgram.drive(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#drive(edu.ftcsushi.fw.drive.DriveSource,T)>) — one source-to-sink drive path.
 - [`FtcDrives.mecanum(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcDrives.html#mecanum(com.qualcomm.robotcore.hardware.HardwareMap,edu.ftcsushi.fw.ftc.FtcDrives.MecanumConfig)>) — configured drivetrain boundary.
@@ -3371,8 +3371,8 @@ the sink's software STOP boundary; it does not prove physical zero.
 
 **Key APIs**
 
-- [`BasicAutoRoutines.guide(...)`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutines.java>) — mechanism-only command-group factory.
-- [`BasicMechanismsAuto`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicMechanismsAuto.java>) / [`BasicDriveAuto`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveAuto.java>) / [`BasicDriveStopOwner`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveStopOwner.java>) — separate fixtures and STOP lifecycle owner.
+- [`BasicAutoRoutines.guide(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutines.html>) — mechanism-only command-group factory.
+- [`BasicMechanismsAuto`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicMechanismsAuto.html>) / [`BasicDriveAuto`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveAuto.html>) / [`BasicDriveStopOwner`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveStopOwner.java>) — separate fixtures and STOP lifecycle owner.
 - [`Tasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — exact-success sequence, parallel deadline, waits, and explicit start-time construction.
 - [`TaskOutcome`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/TaskOutcome.html>) — exact SUCCESS, TIMEOUT, CANCELLED, and UNKNOWN terminal outcomes.
 
@@ -3990,8 +3990,8 @@ check, require prompt physical stopping; do not expect a new post-STOP telemetry
 
 **Key APIs**
 
-- [`BasicRobotAuto`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAuto.java>) — complete disabled basic Auto host.
-- [`BasicRobotAutoRoutines.complete(...)`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAutoRoutines.java>) — fresh full-robot factory.
+- [`BasicRobotAuto`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAuto.html>) — complete disabled basic Auto host.
+- [`BasicRobotAutoRoutines.complete(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAutoRoutines.html>) — fresh full-robot factory.
 - [`DriveTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/drive/DriveTasks.html>) — exclusive timed drive with final stop.
 - [`RobotProgram.rootTask(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html#rootTask(edu.ftcsushi.fw.task.Task)>) — one managed Auto root.
 

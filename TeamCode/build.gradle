@@ -40,6 +40,7 @@ sushiAndroidComponents.onVariants(
 
         source(variant.sources.java.all)
         include('edu/ftcsushi/fw/**/*.java')
+        include('edu/ftcsushi/robots/examples/**/*.java')
         classpath = files(
                 variant.compileClasspath,
                 sushiAndroidComponents.sdkComponents.bootClasspath)

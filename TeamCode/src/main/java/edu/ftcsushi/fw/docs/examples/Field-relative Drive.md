@@ -4,7 +4,7 @@
 
 **Source entry:** [`FieldRelativeDriveExample.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.java>)
 
-Study this after the robot-relative [`StarterTeleOp`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>).
+Study this after the robot-relative [`StarterTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.html>).
 The example keeps the ordinary managed lifecycle: the OpMode only configures a `RobotProgram`, the
 heading estimator is an upstream service, and the final drivetrain still consumes a robot-centric
 `DriveSignal`.

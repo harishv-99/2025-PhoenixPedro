@@ -405,7 +405,7 @@ Auto:
   MyAutoPlan / MyAutoRoutine -> MyCapabilities -> robot internals
 ```
 
-The maintained [`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>)
+The maintained [`StarterIntake`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.html>)
 shows the deliberately smaller one-family case. It is itself the shared capability used by
 `StarterTeleOpControls` and `StarterAuto`; there is no one-member forwarding aggregate. Add an
 aggregate only when a second cohesive capability family makes that grouping useful.
