@@ -78,13 +78,18 @@ def verify(repository_root: Path) -> list[str]:
         r"\]\(<(" + re.escape(published_api_root) + r"[^>\s]+)>\)"
     )
     source_link_pattern = re.compile(
-        r"\]\(<(" + re.escape(MAINTAINED_SOURCE_ROOT) + r"[^>\s]+)>\)"
+        r"\[`([^`]+)`\]\(<("
+        + re.escape(MAINTAINED_SOURCE_ROOT)
+        + r"[^>\s]+)>\)"
     )
     javadoc_cache: dict[Path, _JavadocInspector] = {}
     api_inventory = {
         relative: path
         for relative, path in _file_inventory(generated_api_root, "*.html").items()
-        if relative.startswith("edu/ftcsushi/fw/")
+        if (
+            relative.startswith("edu/ftcsushi/fw/")
+            or relative.startswith("edu/ftcsushi/robots/examples/")
+        )
         and _inspect_javadoc(path, javadoc_cache).is_type_page
     }
     source_root = repository_root / "TeamCode" / "src"
@@ -142,8 +147,8 @@ def verify(repository_root: Path) -> list[str]:
             generated_target = api_inventory.get(relative_target)
             if generated_target is None:
                 failures.append(
-                    f"{location}: generated framework class target is missing, empty, "
-                    f"wrong-case, or outside edu/ftcsushi/fw: {url}"
+                    f"{location}: generated API class target is missing, empty, "
+                    f"wrong-case, or outside a published package: {url}"
                 )
                 continue
 
@@ -159,7 +164,8 @@ def verify(repository_root: Path) -> list[str]:
         for match in source_matches:
             source_link_count += 1
             linked_pages.add(markdown_path)
-            url = match.group(1)
+            label = match.group(1)
+            url = match.group(2)
             parts = urlsplit(url)
             location = (
                 f"{markdown_path.relative_to(repository_root)}:"
@@ -175,6 +181,20 @@ def verify(repository_root: Path) -> list[str]:
             except (UnicodeDecodeError, ValueError) as error:
                 failures.append(f"{location}: invalid source URL encoding ({error}): {url}")
                 continue
+            if source_path.startswith(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
+            ) and not label.endswith(".java"):
+                relative_api_path = (
+                    source_path.removeprefix("TeamCode/src/main/java/")
+                    .removesuffix(".java")
+                    + ".html"
+                )
+                if relative_api_path in api_inventory:
+                    failures.append(
+                        f"{location}: public maintained example class names must link to "
+                        f"generated API documentation; reserve source links for explicit "
+                        f".java files and package-private types: {url}"
+                    )
             if source_path not in source_inventory:
                 failures.append(
                     f"{location}: maintained Java source is missing, empty, or wrong-case: {url}"

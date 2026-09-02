@@ -52,7 +52,7 @@ A pressed -> BooleanSource true -> rising edge -> setMode(COLLECT)
 ```
 
 The binding owns what A means. The
-[`StarterIntake`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java>)
+[`StarterIntake`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.html>)
 capability names what the robot should do. Its mechanism owns how hardware realizes that request.
 Holding A for twenty cycles produces one rising edge; COLLECT persists because `setMode` replaced
 the held request.

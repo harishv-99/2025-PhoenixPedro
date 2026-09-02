@@ -85,7 +85,7 @@ robot's intended realization order.
 
 ## 3. The canonical managed program
 
-The compiling [`StarterTeleOp`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>) shows the
+The compiling [`StarterTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.html>) shows the
 ordinary complete host. It overrides one configuration method, not five FTC lifecycle methods:
 
 ```java
