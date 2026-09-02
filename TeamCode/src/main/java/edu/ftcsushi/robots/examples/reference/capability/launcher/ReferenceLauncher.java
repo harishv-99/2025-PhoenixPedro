@@ -1,70 +1,153 @@
 package edu.ftcsushi.robots.examples.reference.capability.launcher;
 
+import java.util.Objects;
+
+import edu.ftcsushi.fw.actuation.PlantSnapshot;
+import edu.ftcsushi.fw.actuation.PlantTargetResolution;
 import edu.ftcsushi.fw.task.Task;
 
 /** Season-neutral velocity-wheel, transfer, and release capability shared by TeleOp and Auto. */
 public interface ReferenceLauncher {
     /**
-     * Immutable per-wheel operational evidence.
+     * Immutable grouped-flywheel and per-wheel operational evidence.
      *
-     * <p>{@link #leftAtTarget} and {@link #rightAtTarget} are pure finite, inclusive-tolerance
-     * facts, including at a zero target. {@link #ready} adds the positive-target gate and is true
-     * only when both per-wheel facts are true. Controller readiness is not proof that an object
-     * launched or scored.</p>
+     * <p>{@link #leftAtTarget()} and {@link #rightAtTarget()} are pure finite,
+     * inclusive-tolerance facts, including at a zero request. {@link #ready()} additionally
+     * requires a positive request value which the active Plant intent selected and the Plant
+     * applied without fallback, planner clamp, or hardware-target modification. It deliberately
+     * does not use the grouped aggregate arrival sample in place of the later independent wheel
+     * samples. Controller readiness is not proof that an object launched or scored.</p>
      */
     final class Status {
-        public final double targetVelocityTicksPerSec;
-        public final double leftMeasuredVelocityTicksPerSec;
-        public final double rightMeasuredVelocityTicksPerSec;
-        public final boolean leftAtTarget;
-        public final boolean rightAtTarget;
-        public final boolean ready;
-        public final boolean objectPresent;
-        public final boolean transferPulseActive;
+        private final PlantSnapshot flywheelSnapshot;
+        private final double leftMeasuredVelocityTicksPerSec;
+        private final double rightMeasuredVelocityTicksPerSec;
+        private final double velocityToleranceTicksPerSec;
+        private final boolean objectPresent;
+        private final boolean transferPulseActive;
 
         /**
-         * Records one caller-observed snapshot and derives aggregate positive-target readiness.
+         * Composes one grouped Plant capture with application-owned per-wheel and sensor evidence.
          *
-         * @param targetVelocityTicksPerSec requested native encoder ticks per second
+         * @param flywheelSnapshot grouped flywheel Plant capture from the same owner publication
          * @param leftMeasuredVelocityTicksPerSec measured left native encoder ticks per second
          * @param rightMeasuredVelocityTicksPerSec measured right native encoder ticks per second
-         * @param leftAtTarget whether finite left evidence meets the owner's copied tolerance
-         * @param rightAtTarget whether finite right evidence meets the owner's copied tolerance
+         * @param velocityToleranceTicksPerSec finite inclusive per-wheel tolerance, at least zero
          * @param objectPresent conditioned semantic object-sensor state
          * @param transferPulseActive whether the temporary transfer override is active
-         * @throws IllegalArgumentException if an at-target assertion lacks a finite target or the
-         *                                  corresponding finite wheel measurement
+         * @throws NullPointerException if {@code flywheelSnapshot} is null
+         * @throws IllegalArgumentException if the snapshot lacks a finite command target, or if
+         *                                  {@code velocityToleranceTicksPerSec} is non-finite or
+         *                                  negative
          */
-        public Status(double targetVelocityTicksPerSec,
+        public Status(PlantSnapshot flywheelSnapshot,
                       double leftMeasuredVelocityTicksPerSec,
                       double rightMeasuredVelocityTicksPerSec,
-                      boolean leftAtTarget,
-                      boolean rightAtTarget,
+                      double velocityToleranceTicksPerSec,
                       boolean objectPresent,
                       boolean transferPulseActive) {
-            boolean finiteTarget = Double.isFinite(targetVelocityTicksPerSec);
-            boolean leftEvidenceCanBeAtTarget = finiteTarget
-                    && Double.isFinite(leftMeasuredVelocityTicksPerSec);
-            boolean rightEvidenceCanBeAtTarget = finiteTarget
-                    && Double.isFinite(rightMeasuredVelocityTicksPerSec);
-            if (leftAtTarget && !leftEvidenceCanBeAtTarget) {
+            this.flywheelSnapshot = Objects.requireNonNull(
+                    flywheelSnapshot,
+                    "flywheelSnapshot");
+            if (!flywheelSnapshot.hasCommandTarget()
+                    || !Double.isFinite(flywheelSnapshot.commandTarget())) {
                 throw new IllegalArgumentException(
-                        "leftAtTarget requires finite target and left measurement evidence");
+                        "flywheelSnapshot must carry a finite command target");
             }
-            if (rightAtTarget && !rightEvidenceCanBeAtTarget) {
+            if (!Double.isFinite(velocityToleranceTicksPerSec)
+                    || velocityToleranceTicksPerSec < 0.0) {
                 throw new IllegalArgumentException(
-                        "rightAtTarget requires finite target and right measurement evidence");
+                        "velocityToleranceTicksPerSec must be finite and >= 0, got "
+                                + velocityToleranceTicksPerSec);
             }
-            this.targetVelocityTicksPerSec = targetVelocityTicksPerSec;
             this.leftMeasuredVelocityTicksPerSec = leftMeasuredVelocityTicksPerSec;
             this.rightMeasuredVelocityTicksPerSec = rightMeasuredVelocityTicksPerSec;
-            this.leftAtTarget = leftAtTarget;
-            this.rightAtTarget = rightAtTarget;
-            this.ready = targetVelocityTicksPerSec > 0.0
-                    && leftAtTarget
-                    && rightAtTarget;
+            this.velocityToleranceTicksPerSec = velocityToleranceTicksPerSec;
             this.objectPresent = objectPresent;
             this.transferPulseActive = transferPulseActive;
+        }
+
+        /** Returns the captured persistent flywheel request in native encoder ticks per second. */
+        public double requestedVelocityTicksPerSec() {
+            return flywheelSnapshot.commandTarget();
+        }
+
+        /** Returns the captured final applied velocity in native encoder ticks per second. */
+        public double appliedVelocityTicksPerSec() {
+            return flywheelSnapshot.appliedTarget();
+        }
+
+        /** Returns the captured left measurement in native encoder ticks per second. */
+        public double leftMeasuredVelocityTicksPerSec() {
+            return leftMeasuredVelocityTicksPerSec;
+        }
+
+        /** Returns the captured right measurement in native encoder ticks per second. */
+        public double rightMeasuredVelocityTicksPerSec() {
+            return rightMeasuredVelocityTicksPerSec;
+        }
+
+        /** Returns whether finite left-wheel evidence meets the inclusive configured tolerance. */
+        public boolean leftAtTarget() {
+            return withinTolerance(leftMeasuredVelocityTicksPerSec);
+        }
+
+        /** Returns whether finite right-wheel evidence meets the inclusive configured tolerance. */
+        public boolean rightAtTarget() {
+            return withinTolerance(rightMeasuredVelocityTicksPerSec);
+        }
+
+        /**
+         * Returns whether one positive requested value and both independent wheels prove readiness.
+         *
+         * <p>This is value-level physical readiness, not completion evidence for one command
+         * identity. A same-valued active resolver branch is physically equivalent here. The method
+         * intentionally does not use {@link PlantSnapshot#atCommandTarget()}, because that query
+         * also bundles the grouped Plant's earlier aggregate-arrival sample.</p>
+         */
+        public boolean ready() {
+            double requestedVelocity = requestedVelocityTicksPerSec();
+            PlantTargetResolution targetResolution = flywheelSnapshot.targetResolution();
+            return requestedVelocity > 0.0
+                    && leftAtTarget()
+                    && rightAtTarget()
+                    && flywheelSnapshot.hasCommandTarget()
+                    && Double.isFinite(requestedVelocity)
+                    && targetResolution.hasTarget()
+                    && targetResolution.satisfiesIntent()
+                    && !targetResolution.usedFallback()
+                    && !targetResolution.clampedByPlanner()
+                    && flywheelSnapshot.targetStatus().accepted()
+                    && Double.compare(
+                            requestedVelocity,
+                            flywheelSnapshot.requestedTarget()) == 0
+                    && Double.compare(
+                            requestedVelocity,
+                            flywheelSnapshot.appliedTarget()) == 0;
+        }
+
+        /** Returns the captured conditioned semantic object-sensor state. */
+        public boolean objectPresent() {
+            return objectPresent;
+        }
+
+        /** Returns whether the captured temporary transfer override was active. */
+        public boolean transferPulseActive() {
+            return transferPulseActive;
+        }
+
+        /** Returns the immutable grouped flywheel capture for advanced diagnostics. */
+        public PlantSnapshot flywheelSnapshot() {
+            return flywheelSnapshot;
+        }
+
+        /** Return whether one finite wheel measurement meets this capture's request and tolerance. */
+        private boolean withinTolerance(double measuredVelocityTicksPerSec) {
+            double requestedVelocityTicksPerSec = requestedVelocityTicksPerSec();
+            return Double.isFinite(measuredVelocityTicksPerSec)
+                    && Double.isFinite(requestedVelocityTicksPerSec)
+                    && Math.abs(measuredVelocityTicksPerSec - requestedVelocityTicksPerSec)
+                    <= velocityToleranceTicksPerSec;
         }
     }
 
@@ -99,6 +182,9 @@ public interface ReferenceLauncher {
      */
     Task launchOne();
 
-    /** Returns the latest cached per-wheel controller and object-sensor evidence. */
+    /**
+     * Returns the latest complete cached publication of grouped Plant facts and launcher-specific
+     * per-wheel, object-sensor, transfer, and readiness evidence.
+     */
     Status status();
 }

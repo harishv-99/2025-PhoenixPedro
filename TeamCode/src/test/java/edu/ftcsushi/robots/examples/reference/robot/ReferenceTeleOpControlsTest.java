@@ -189,14 +189,8 @@ public final class ReferenceTeleOpControlsTest {
 
         @Override
         public Status status() {
-            return new Status(
-                    0.0,
-                    Double.NaN,
-                    Double.NaN,
-                    false,
-                    false,
-                    false,
-                    false);
+            throw new AssertionError(
+                    "RecordingLauncher status is not used by this controls test");
         }
     }
 }

@@ -1401,6 +1401,14 @@ command, while a fresh move/spin-up Task waits on feedback. Power and velocity P
 subtype. For a grouped shooter, generic `PlantSnapshot.atTarget()` remains the grouped Plant's
 aggregate contract. Per-wheel balance and readiness remain explicit capability-status facts.
 
+A capability that combines those facts may retain one immutable publication instead of rebuilding
+it on read.
+[`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>)
+owns one grouped Plant snapshot plus captured per-wheel,
+sensor, transient, and readiness evidence, and publishes the complete value only after a successful
+mechanism update. Its flat requested/applied velocity and readiness methods keep ordinary robot
+code in launcher vocabulary; `flywheelSnapshot()` is reserved for advanced diagnostics.
+
 ---
 
 ## 12. Position tolerances and FTC motor tuning
@@ -1701,10 +1709,16 @@ aggregate measurement and arrival contract; it does not manufacture per-member e
 Requiring readiness to prove each wheel independently does not, by itself, create another command
 degree of freedom. When every wheel still follows one shared group-unit target through fixed child
 scales, keep the grouped Plant. Compose its `PlantSnapshot` with separately sampled per-wheel
-measurements and per-wheel readiness facts in the capability-owned status. The
+measurements and per-wheel readiness facts in one capability-owned Status, published all-or-nothing
+after a successful update. The
 [`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
-demonstrates that per-wheel readiness policy around one grouped flywheel command. The generic
-snapshot remains truthful about only the group's aggregate arrival contract.
+demonstrates that policy around one grouped flywheel command. Active readiness keeps the later
+per-wheel sampling timing and requires a positive captured command value, both finite per-wheel
+tolerance facts, and an active Plant intent that requested and applied that same value without
+fallback or modification. It does not replace those per-wheel facts with the group's earlier
+aggregate arrival sample. A successful
+terminal stop publishes a post-stop Status with readiness false and transfer inactive; older Status
+values remain immutable historical captures.
 
 If robot testing instead proves that the wheels need independently commanded targets—for example,
 a live additive or nonlinear trajectory trim—then the mechanism has two commanded degrees of

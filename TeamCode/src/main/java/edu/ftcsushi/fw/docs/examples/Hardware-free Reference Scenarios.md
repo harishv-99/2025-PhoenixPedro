@@ -114,24 +114,27 @@ assertEquals(targetTicksPerSec,
 assertEquals(targetTicksPerSec,
         scenario.right.commandedVelocityTicksPerSec(), EPSILON);
 assertEquals(0.0,
-        scenario.launcher.status().leftMeasuredVelocityTicksPerSec, EPSILON);
+        scenario.launcher.status().leftMeasuredVelocityTicksPerSec(), EPSILON);
 assertEquals(0.0,
-        scenario.launcher.status().rightMeasuredVelocityTicksPerSec, EPSILON);
+        scenario.launcher.status().rightMeasuredVelocityTicksPerSec(), EPSILON);
 assertFalse("a recorded command is not measured feedback",
-        scenario.launcher.status().ready);
+        scenario.launcher.status().ready());
 ```
 
 **What to notice**
 
 - One request reaches both wheel outputs, but each wheel measurement is injected independently.
 - Readiness requires both measurements; commanded velocity is never treated as measured velocity.
+- Status is one all-or-nothing publication after a successful mechanism update; reading it neither
+  polls hardware nor advances a Task.
 - A fresh `launchOne()` Task owns the spin-up/feed phases and cleanup for one attempt.
 - The scenario can expose software gating mistakes, but cannot predict physical spin-up or launch success.
 
 **Key APIs**
 
 - `ReferenceLauncher.launchOne()`: returns one fresh outcome-aware launch Task.
-- `ReferenceLauncher.Status`: separates requested velocity, per-wheel evidence, and aggregate readiness.
+- [`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>): presents requested/applied velocity and custom wheel, sensor,
+  transient, and readiness evidence through flat capability methods.
 - `FtcTestHardware.MotorProbe`: records commands and accepts independently authored measurements.
 - `TaskOutcome`: retains software success, timeout, or cancellation for the exact attempt.
 
@@ -145,6 +148,14 @@ injected independently. The successful case first asserts that the configured ve
 both probes. It then injects asymmetric measurements and proves readiness remains false until each
 finite wheel measurement is inside its configured tolerance. The velocity command therefore does
 not manufacture matching measurements or claim that either wheel spun.
+
+Each successful output heartbeat publishes one immutable Status containing the grouped flywheel
+Plant snapshot plus the independently sampled wheel, conditioned-object, and transfer facts.
+Active readiness keeps the per-wheel sampling timing: it requires a positive captured command
+value, both finite wheel tolerance facts, and an active Plant intent that requested and applied
+that same value without fallback or modification. It does not substitute the grouped Plant's
+earlier aggregate arrival sample, and a failed update leaves the previous complete publication
+intact.
 
 The successful full-flow case starts a fresh `launchOne()` Task, observes both flywheel commands,
 then injects ready measurements. Later clock advances expose the release and transfer commands in

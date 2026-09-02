@@ -229,6 +229,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 120 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
 | 121 | CAL-04 | Mechanism-owned semantic request consistency | Done | The reviewed command-preserving search API, mechanism-owned lift request snapshots, semantic move/home composition, maintained caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 122 | STATUS-01 | Composable scalar actuator snapshots | Done | The reviewed generic snapshot machinery, thin capability-shaped status views, named position/velocity guidance, maintained migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 123 | STATUS-02 | Reference launcher snapshot composition cleanup | Done | The reviewed launcher snapshot composition, transactional publication, fresh experiment evidence, caller/test migrations, synchronized teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -26204,6 +26205,165 @@ implementation.
   merging only into `master`. The user's separate direction to add and begin a ReferenceLauncher
   snapshot-composition cleanup applies only after this merge and does not expand the reviewed
   STATUS-01 publication diff.
+- **Publication result (2026-09-02):** the exact reviewed diff was committed as
+  `9046e609986b52696c968c66eb7371b6229642ec`, pushed to the authorized branch, and merged by
+  [pull request #131](https://github.com/harishv-99/2025-PhoenixPedro/pull/131) into `master` as
+  `9bde4832da147b95d5a24b3012e424d365604a5f`. GitHub's **Verify Sushi framework** and
+  **Verify documentation artifact** checks both passed. A fetched `origin/master` contains the
+  reviewed commit as its second parent and has the same tree as that commit.
+
+### STATUS-02 - Reference launcher snapshot composition cleanup
+
+- **Gate 1 start (2026-09-02):** **Researching.** STATUS-02 is the sole active item on
+  `codex/status-02-reference-launcher-snapshot-cleanup`, based exactly on merged
+  `origin/master@9bde4832da147b95d5a24b3012e424d365604a5f` after STATUS-01 pull request #131.
+  The user explicitly requested that this application cleanup and related cleanup be recorded and
+  started. Research is tracing the grouped flywheel Plant, cached publication timing, per-wheel and
+  aggregate evidence, launch readiness, every maintained caller/test, and synchronized teaching
+  before choosing a design. This start does not authorize implementation, staging, commit, push,
+  pull request, merge, VISION-03, or another tracker item.
+- **Initial scope boundary:** the motivating gap is not a missing generic framework feature.
+  `PlantSnapshot` already owns the grouped Plant's common command, resolved/applied target,
+  aggregate feedback, status, error, and arrival facts. “Related cleanup” is provisionally limited
+  to duplication in `ReferenceLauncher`'s status construction and the callers, tests, Javadocs, and
+  maintained lessons directly coupled to that contract. Per-wheel balance, object sensing,
+  temporary-transfer state, positive-target readiness, and launch policy remain application-owned;
+  Phoenix production code and unrelated framework/application cleanup remain out of scope unless
+  research proves a shared obligation and a separate decision is approved.
+- **Confirmed duplication and retained custom evidence:** the current eight-primitive
+  `ReferenceLauncher.Status` republishes the flywheel command already owned by `PlantSnapshot`,
+  publicly permits that common fact to be fabricated independently, and makes the mechanism read
+  the command separately during every update. Left/right measurements and their tolerance facts
+  are not generic duplicates: the grouped Plant deliberately reports only an inverse-mapped
+  aggregate mean, so opposite wheel errors can cancel there. Conditioned object presence,
+  transfer-pulse activity, positive-target readiness, and the spin-up experiment's terminal result
+  are also application policy. They remain explicit rather than being moved into core.
+- **Publication-timing decision:** retain one all-or-nothing capability publication at the end of
+  a successful `ReferenceLauncherMechanism.update(clock)`. The launch Task consumes the prior
+  successful output publication in Task-before-output order, and the bounded spin-up experiment
+  checks that publication before its deadline, then checks the newly published evidence after the
+  output heartbeat. Rebuilding Status on read would combine a newer live command or stop state with
+  older per-wheel/object evidence after a command change or partial update failure. It would also
+  move `OutputTaskRunner.hasActiveTask()` failure behavior into presenters. The retained combined
+  Status is the one capability publication required by those extra sources, not a parallel mirror
+  of generic Plant fields.
+- **Selected application API:** keep the one grouped flywheel Plant because both wheels still have
+  one scalar command degree of freedom. `ReferenceLauncher.Status` will hold one immutable
+  `PlantSnapshot` plus captured left/right measurements, tolerance-derived per-wheel facts,
+  conditioned object presence, and captured transfer activity. Its public construction accepts a
+  real Plant snapshot and the custom evidence/tolerance; the primitive target and caller-supplied
+  at-target booleans disappear. Flat domain methods expose requested and applied flywheel velocity,
+  left/right measurements and tolerance facts, readiness, object presence, and transfer activity;
+  `flywheelSnapshot()` is the advanced diagnostic escape hatch. Ordinary robot code never needs
+  nested generic navigation.
+- **Readiness and terminal decision:** preserve the existing active-loop per-wheel readiness timing
+  instead of replacing it with the grouped aggregate arrival sample, which is taken earlier than
+  the independent per-wheel samples and could delay a tight experiment boundary by one cycle.
+  Readiness requires a positive captured command value, both finite per-wheel tolerance facts, and
+  an active Plant intent that requested and applied that same value without fallback, planner
+  clamp, or hardware-target modification. A successful
+  terminal `stop()` publishes a new combined Status with the post-stop flywheel snapshot, retained
+  last wheel/object observations, transfer inactive, and readiness false; a failed cleanup remains
+  a propagated lifecycle failure and must not fabricate a successful terminal publication. Older
+  Status values remain immutable historical captures.
+- **Related cleanup boundary:** replace the spin-up experiment's six separately synchronized
+  terminal primitive fields with one immutable terminal-result value retaining the launcher Status,
+  the authored trial target needed before the first output publication, and elapsed time. Migrate
+  every maintained field read to the flat methods, make Auto/TeleOp test fakes fail if their unused
+  `status()` path is accidentally called instead of fabricating evidence, and synchronize the
+  launcher Javadocs, Reference presenter, exact hardware-free source excerpt, experiment/evidence
+  lessons, Plant guide, and tests. Telemetry keys and all command, launch Task, tuning, and
+  capability-return APIs remain unchanged.
+- **Alternatives rejected:** no `VelocityPlantSnapshot`, generic shooter/group-member status,
+  member-evidence FTC seam, named-speed enum, or second flywheel Plant is added. Those shapes either
+  rename existing scalar facts, cannot be truthful for custom regulated groups, leak FTC member
+  topology into protected core, obstruct arbitrary experiment targets, or create two command
+  writers for one physical degree of freedom. Returning `PlantSnapshot` alone loses required
+  per-wheel/sensor/policy evidence; keeping the public primitive target constructor preserves the
+  incoherent path; capture-on-read and aggregate-gated readiness introduce lifecycle/timing changes
+  not required by this cleanup.
+- **Required deterministic evidence:** focused tests must prove the snapshot-backed flat API,
+  requested/applied distinction, no public primitive status fields or target constructor,
+  immutable older captures, no hardware/source polling or Task progression from `status()`, one
+  complete publication per successful heartbeat, unchanged pre-heartbeat/deadline behavior,
+  independent-wheel rejection despite an apparently ready aggregate, finite/zero handling,
+  transfer lifecycle, successful-stop terminal publication, failed-cleanup behavior, and retained
+  experiment results. Then run the launcher, Reference robot/Auto/TeleOp, experiment, hardware-free
+  scenario, documentation-link/source-integrity suites, full TeamCode unit suite, Java compile,
+  Sushi Javadocs, and strict documentation build where available. Software cannot prove physical
+  wheel balance, direction, encoder units, spin-up timing, STOP response, feeding, or scoring.
+- **Gate 1 decision and approval stop (2026-09-02):** **Ready.** The selected design is an
+  application-only composition and evidence-retention cleanup with no framework API. No production
+  Java or teaching file has been changed, and the tracker diff remains unstaged. Implementation may
+  begin only after the user explicitly approves this STATUS-02 design; that approval would not
+  authorize staging, commit, push, pull request, merge, VISION-03, or another tracker item.
+- **Gate 2 authorization and start (2026-09-02):** **In progress.** The user instructed **“start
+  STATUS-02 task”** after receiving the completed design-gate summary and implementation approval
+  prompt. That direction approves the bounded application-only design above. The branch remains
+  `codex/status-02-reference-launcher-snapshot-cleanup`, fetched `origin/master` is unchanged at
+  `9bde4832da147b95d5a24b3012e424d365604a5f`, and branch HEAD and merge base match it exactly.
+  Implementation, synchronized maintained callers/teaching, and verification are authorized; no
+  staging, commit, push, pull request, merge, VISION-03, or another tracker item is authorized.
+- **Gate 2 implementation result (2026-09-02):** **Verifying.** `ReferenceLauncher.Status` now
+  composes one real immutable `PlantSnapshot` with launcher-owned left/right measurements,
+  tolerance, conditioned object presence, and transfer activity. Its public primitive fields and
+  primitive target/at-target constructor are gone. Flat capability methods expose the persistent
+  requested velocity, applied velocity, independent wheel facts, readiness, object presence, and
+  transfer activity; `flywheelSnapshot()` remains the advanced diagnostic seam. `status()` is a
+  side-effect-free cached read. A successful mechanism heartbeat assigns one new Status only after
+  all three Plant updates and every evidence capture succeed; a failed capture retains the prior
+  complete publication.
+- **Readiness and stop result:** readiness remains a value-level physical capability fact rather
+  than command-identity completion. It requires a positive finite command value, an active
+  non-fallback/non-clamped resolution selecting that same requested value, unchanged accepted
+  application, and both later independent wheel samples in tolerance. It deliberately does not use
+  `PlantSnapshot.atCommandTarget()`, which also bundles the grouped Plant's earlier aggregate
+  arrival sample. A successful `stop()` publishes a post-stop snapshot with applied velocity zero,
+  readiness false, retained last wheel/object observations, and transfer inactive only after all
+  cleanup succeeds; cleanup failure propagates and leaves the prior Status publication intact.
+- **Experiment and caller result:** the spin-up experiment now retains one immutable terminal
+  result containing Status, authored trial target, and elapsed time instead of six independently
+  synchronized primitives. Displayed at-target facts require both a post-trial-start publication
+  and a request matching the authored target, so same-cycle A+B cannot relabel idle evidence. Each
+  trial records its starting Status identity and ignores it for readiness, preventing an immediate
+  same-target restart from consuming the prior trial's ready publication. Deadline-first behavior,
+  telemetry keys, one-output-heartbeat success timing, and retained terminal evidence remain
+  unchanged. The Reference presenter uses the flat methods; unused Auto/TeleOp fake status paths
+  now fail if called instead of fabricating common Plant evidence.
+- **Deterministic verification (2026-09-02):** Android Studio JBR 21 completed the forced exact-tree
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run
+  successfully: **243 suites / 2,233 tests / 0 failures / 0 errors / 0 skipped**. The maintained
+  STATUS-02 surface contributes **69 passing tests** across launcher mechanism/scenario, experiment,
+  Reference robot/Auto/TeleOp, and `DocumentationLinksTest`; the latter is **20/20** and verifies
+  exact source excerpts, API links, local links, fences, and progressive-disclosure budgets. Only
+  the repository's existing Java 8-on-JDK-21 and FTC deprecation warnings remain.
+- **Adversarial audit result:** independent lifecycle/API, experiment-timing, and student/docs
+  reviews found and drove corrections for fallback/intent overclaiming, the missing proof that
+  later per-wheel readiness must not wait for earlier aggregate arrival, authored-target display of
+  older at-target facts, and same-valued prior-trial publication reuse. Focused regression tests now
+  prove each case, and the final read-only re-reviews report no remaining concrete finding. No core
+  framework Java, Phoenix code, velocity snapshot subtype, grouped-member API, or second flywheel
+  Plant was added.
+- **Local documentation and hardware boundary:** strict `sushiJavadocs` and the maintained
+  documentation integrity suite pass. This workstation still exposes only the nonfunctional
+  Windows Store `python.exe` alias and has no `py`, `uv`, `zensical`, or repository docs virtual
+  environment, so local strict Zensical rendering is unavailable; its generated artifact remains a
+  hosted publication check. Software cannot establish physical wheel direction/balance, encoder
+  units, spin-up under load, voltage response, stop behavior, feeding, or scoring on robot hardware.
+- **Android Studio review stop (2026-09-02):** review the 16-path unstaged STATUS-02 diff, especially
+  the flat Status API, value-level readiness versus aggregate/command-identity evidence,
+  transactional update/stop publication, trial freshness and deadline ordering, presenter/fake
+  migration, source-backed scenarios, and synchronized lessons. The index is empty; nothing has
+  been committed, pushed, opened as a pull request, or merged. If the diff is approved, use exactly:
+  **“STATUS-02 looks good. Authorize committing the reviewed STATUS-02 diff on
+  `codex/status-02-reference-launcher-snapshot-cleanup`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`.”**
+- **Manual review and Gate 3 authorization (2026-09-02):** **Done.** The user completed the Android
+  Studio review and sent the exact combined authorization above. STATUS-02 is approved for
+  committing the reviewed 16-path diff on `codex/status-02-reference-launcher-snapshot-cleanup`,
+  pushing that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull
+  request, and merging only into `master`; VISION-03 and all later items remain unstarted.
 
 ### VISION-03 - Reusable color-blob pipeline
 
