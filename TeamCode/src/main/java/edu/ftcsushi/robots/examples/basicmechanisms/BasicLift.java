@@ -59,8 +59,9 @@ public interface BasicLift {
     /**
      * Builds a fresh feedback-aware move to one semantic height.
      *
-     * <p>Success means command-correlated feedback reached the selected height. Timeout and active
-     * cancellation leave the persistent request in place, so callers must choose any recovery.</p>
+     * <p>Success requires the selected semantic request still to be current and its cached feedback
+     * to report arrival. Timeout and active cancellation do not overwrite the latest persistent
+     * request, which may have been superseded while this Task was active.</p>
      *
      * @param height non-null destination
      * @return fresh single-use move Task
@@ -70,8 +71,9 @@ public interface BasicLift {
     /**
      * Builds a fresh non-blocking search for the bottom reference switch.
      *
-     * <p>A successful search establishes zero and holds {@link Height#STOWED}. A timeout retains
-     * its truthful outcome; active cancellation never starts the sequence's final repair step.</p>
+     * <p>A successful search establishes zero, then selects {@link Height#STOWED} before the
+     * mechanism's downstream output phase. Timeout and active cancellation retain their truthful
+     * outcomes and preserve the latest coherent semantic and numeric height request.</p>
      *
      * @return fresh single-use homing Task
      */

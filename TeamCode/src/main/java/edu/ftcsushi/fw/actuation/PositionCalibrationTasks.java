@@ -4,7 +4,6 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.source.BooleanSource;
-import edu.ftcsushi.fw.core.source.ScalarTarget;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
@@ -20,19 +19,17 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  * {@code [-1.0, +1.0]} range. That structural check does not choose a mechanically safe magnitude
  * or direction for a particular mechanism; the robot owner must validate those physical facts.</p>
  *
- * <p>The reference and optional post-success hold are finite plant-unit answers. A reference is a
- * coordinate anchor and need not lie inside the Plant's legal target range. A finite hold remains
- * a normal graph-owned command: the final resolver, range, overlays, and guards may transform or
- * clamp it. These structural checks do not prove that either value matches a safe physical pose.</p>
+ * <p>The reference is a finite plant-unit coordinate anchor and need not lie inside the Plant's
+ * legal target range. That structural check does not prove that the value matches a safe physical
+ * pose.</p>
  *
- * <h2>Typical lift homing</h2>
+ * <h2>Typical bottom-reference search</h2>
  *
  * <pre>{@code
- * Task homeLift = PositionCalibrationTasks.search(lift)
+ * Task findBottomReference = PositionCalibrationTasks.search(lift)
  *     .withPower(-0.20)
  *     .until(bottomSwitch)
  *     .establishReferenceAt(0.0)
- *     .holdAfterReference(0.0)
  *     .failAfterSec(3.0)
  *     .build();
  * }</pre>
@@ -44,15 +41,17 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  *     .withPower(0.12)
  *     .until(paintedMarkSeen)
  *     .establishReferenceAt(0.0)
- *     .resumeTargeting()
  *     .failAfterSec(5.0)
  *     .build();
  * }</pre>
  *
- * <p>The task owns the temporary search lifecycle, cue, reference, timeout, and success handoff.
- * It never calls {@link Plant#update(LoopClock)}. The mechanism or subsystem remains the sole Plant
- * heartbeat owner and must update the Plant once in the normal downstream Plant phase after its
- * {@code TaskRunner} advances this task.</p>
+ * <p>The task owns the temporary search lifecycle, cue, reference, timeout, output-stop request,
+ * and release. It never reads or writes the Plant's persistent command or final target resolver,
+ * and it never calls {@link Plant#update(LoopClock)}. Success, timeout, and active cancellation all
+ * preserve the persistent request. The mechanism or subsystem remains the sole Plant heartbeat
+ * owner and must update the Plant once in the normal downstream Plant phase after its
+ * {@code TaskRunner} advances this task. Any success-only semantic request, such as selecting a
+ * named stowed height, belongs in a following Task that calls the mechanism's normal setter.</p>
  *
  * <p>For periodic plants, {@code establishReferenceAt(x)} establishes reference {@code x} modulo
  * the plant period and preserves the nearest equivalent unwrapped position when the plant is already
@@ -113,53 +112,7 @@ public final class PositionCalibrationTasks {
          * @param plantPosition finite reference coordinate in plant units
          * @throws IllegalArgumentException if {@code plantPosition} is non-finite
          */
-        SearchAfterStep establishReferenceAt(double plantPosition);
-    }
-
-    /**
-     * Fourth search-task question: what should happen after a reference is successfully established?
-     *
-     * <p>The task always releases temporary search ownership and attempts an immediate output stop
-     * on success, timeout, and active cancellation. A normal return means that stop request
-     * completed; if an adapter stop throws, the terminal task propagates that failure and a later
-     * owner update must not refresh search power. This step chooses whether success preserves the
-     * Plant's persistent target graph or changes its graph-owned command before the normal
-     * downstream Plant update.</p>
-     */
-    public interface SearchAfterStep {
-        /**
-         * Resume normal target resolution after a successful reference without changing its
-         * persistent command or final target resolver.
-         *
-         * <p>This releases temporary search ownership and requests an immediate raw-output stop; it
-         * does not leave a continuously updated Plant disabled or stopped. After a normal handoff,
-         * the mechanism owner's downstream Plant phase immediately evaluates the unchanged final
-         * target graph. If the stop request throws, that failure propagates and any later owner
-         * update returns to the normal graph rather than refreshing search power. Timeout and
-         * active-cancellation paths make the same preserve-command handoff.</p>
-         */
-        SearchTimeoutStep resumeTargeting();
-
-        /**
-         * Change the Plant's graph-owned command to {@code plantTarget} after a successful reference.
-         *
-         * <p>The target is expressed in plant units and is written before the temporary search is
-         * released. The normal downstream Plant phase still resolves the complete target graph, so
-         * an enabled advanced overlay may select another final target. Timeout and active
-         * cancellation preserve the existing command and do not retain this target. If cancellation
-         * re-enters from the target's own write callback, the task restores the command value it
-         * observed before that write. A throwing hold write also gets one best-effort restoration
-         * before its original failure propagates.</p>
-         *
-         * <p>The value must be finite and is rejected at this builder step before any hold flag or
-         * target is stored. It is not pre-checked against the Plant range: like every finite
-         * graph-owned command, the downstream resolver, bounds, and guards own its final physical
-         * realization.</p>
-         *
-         * @param plantTarget finite post-success command in plant units
-         * @throws IllegalArgumentException if {@code plantTarget} is non-finite
-         */
-        SearchTimeoutStep holdAfterReference(double plantTarget);
+        SearchTimeoutStep establishReferenceAt(double plantPosition);
     }
 
     /**
@@ -198,13 +151,11 @@ public final class PositionCalibrationTasks {
     }
 
     private static final class Builder implements SearchPowerStep, SearchUntilStep, SearchReferenceStep,
-            SearchAfterStep, SearchTimeoutStep, SearchBuildStep {
+            SearchTimeoutStep, SearchBuildStep {
         private final PositionPlant plant;
         private double power;
         private BooleanSource condition;
         private double reference;
-        private boolean holdAfter;
-        private double holdTarget;
         private double timeoutSec = Double.POSITIVE_INFINITY;
 
         private Builder(PositionPlant plant) {
@@ -230,28 +181,11 @@ public final class PositionCalibrationTasks {
         }
 
         @Override
-        public SearchAfterStep establishReferenceAt(double plantPosition) {
+        public SearchTimeoutStep establishReferenceAt(double plantPosition) {
             this.reference = PositionCalibrationValueValidation.requireFinitePlantValue(
                     plantPosition,
                     "PositionCalibrationTasks.establishReferenceAt(...)",
                     "plantPosition");
-            return this;
-        }
-
-        @Override
-        public SearchTimeoutStep resumeTargeting() {
-            this.holdAfter = false;
-            return this;
-        }
-
-        @Override
-        public SearchTimeoutStep holdAfterReference(double plantTarget) {
-            double validatedTarget = PositionCalibrationValueValidation.requireFinitePlantValue(
-                    plantTarget,
-                    "PositionCalibrationTasks.holdAfterReference(...)",
-                    "plantTarget");
-            this.holdAfter = true;
-            this.holdTarget = validatedTarget;
             return this;
         }
 
@@ -271,13 +205,7 @@ public final class PositionCalibrationTasks {
 
         @Override
         public Task build() {
-            if (holdAfter && !plant.hasCommandTarget()) {
-                throw new IllegalStateException("holdAfterReference(...) requires a PositionPlant "
-                        + "with a command target. Use targetFromNewCommand(...) for an ordinary exact "
-                        + "command, or bind a named ScalarTarget through "
-                        + "targetFromResolver(PlantTargets.exact(target)).");
-            }
-            return new SearchTask(plant, power, condition, reference, holdAfter, holdTarget, timeoutSec);
+            return new SearchTask(plant, power, condition, reference, timeoutSec);
         }
     }
 
@@ -286,8 +214,6 @@ public final class PositionCalibrationTasks {
         private final double power;
         private final BooleanSource condition;
         private final double reference;
-        private final boolean holdAfter;
-        private final double holdTarget;
         private final double timeoutSec;
         private boolean startAttempted;
         private boolean started;
@@ -300,15 +226,11 @@ public final class PositionCalibrationTasks {
                            double power,
                            BooleanSource condition,
                            double reference,
-                           boolean holdAfter,
-                           double holdTarget,
                            double timeoutSec) {
             this.plant = plant;
             this.power = power;
             this.condition = condition;
             this.reference = reference;
-            this.holdAfter = holdAfter;
-            this.holdTarget = holdTarget;
             this.timeoutSec = timeoutSec;
         }
 
@@ -349,10 +271,6 @@ public final class PositionCalibrationTasks {
             if (referenceFound) {
                 plant.establishReferenceAt(reference, clock);
                 if (complete) return;
-                if (holdAfter) {
-                    writeHoldPreservingCancelledCommand();
-                    if (complete) return;
-                }
                 outcome = TaskOutcome.SUCCESS;
                 complete = true;
                 releaseSearch();
@@ -382,32 +300,6 @@ public final class PositionCalibrationTasks {
             plant.endCalibrationSearch();
         }
 
-        /** Write a success hold without letting reentrant cancellation retain that new command. */
-        private void writeHoldPreservingCancelledCommand() {
-            ScalarTarget command = plant.commandTarget();
-            double priorCommand = command.get();
-            if (complete) return;
-
-            try {
-                command.set(holdTarget);
-            } catch (RuntimeException failure) {
-                restoreCommand(command, priorCommand, failure);
-                throw failure;
-            }
-            if (complete) command.set(priorCommand);
-        }
-
-        /** Best-effort rollback while retaining the failure that interrupted the original write. */
-        private static void restoreCommand(ScalarTarget command,
-                                           double priorCommand,
-                                           RuntimeException primary) {
-            try {
-                command.set(priorCommand);
-            } catch (RuntimeException restoreFailure) {
-                if (restoreFailure != primary) primary.addSuppressed(restoreFailure);
-            }
-        }
-
         @Override
         public boolean isComplete() {
             return complete;
@@ -429,8 +321,6 @@ public final class PositionCalibrationTasks {
             String p = (prefix == null || prefix.isEmpty()) ? "positionCalibrationSearch" : prefix;
             dbg.addData(p + ".power", power)
                     .addData(p + ".reference", reference)
-                    .addData(p + ".holdAfter", holdAfter)
-                    .addData(p + ".holdTarget", holdTarget)
                     .addData(p + ".timeoutSec", timeoutSec)
                     .addData(p + ".started", started)
                     .addData(p + ".searchAcquired", searchAcquired)

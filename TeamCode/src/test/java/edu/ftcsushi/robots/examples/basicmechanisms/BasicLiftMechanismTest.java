@@ -163,6 +163,32 @@ public final class BasicLiftMechanismTest {
     }
 
     @Test
+    public void feedbackMoveCannotSucceedFromSupersededSemanticRequest() {
+        Fixture f = fixture();
+        ManualLoopClock time = new ManualLoopClock();
+        homeSuccessfully(f, time);
+
+        Task move = f.lift.moveTo(BasicLift.Height.LOW);
+        move.start(time.nextCycle(0.02));
+        f.motor.setCurrentPositionTicks(
+                (int) Math.round(f.config.lowHeightIn * f.originalTicksPerIn));
+        f.lift.update(time.clock());
+        assertTrue(f.lift.status().atTarget);
+
+        // A newer semantic request invalidates the old arrival before the move samples it.
+        f.lift.setHeight(BasicLift.Height.HIGH);
+        move.update(time.nextCycle(0.01));
+        assertFalse(move.isComplete());
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+
+        move.update(time.nextCycle(f.config.moveTimeoutSec));
+        assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+    }
+
+    @Test
     public void newRequestAndTerminalStopInvalidatePriorArrivalEvidence() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
@@ -194,35 +220,52 @@ public final class BasicLiftMechanismTest {
     }
 
     @Test
-    public void homingTasksAreFreshAndReportSuccessOrTimeoutTruthfully() {
+    public void homingSuccessSelectsStowedButTimeoutPreservesTheLatestRequest() {
         Fixture success = fixture();
         Task firstHome = success.lift.home();
         Task secondHome = success.lift.home();
         assertNotSame(firstHome, secondHome);
 
         ManualLoopClock successTime = new ManualLoopClock();
+        success.lift.setHeight(BasicLift.Height.HIGH);
         firstHome.start(successTime.clock());
+        assertEquals(BasicLift.Height.HIGH, success.lift.status().requestedHeight);
+        assertEquals(success.config.highHeightIn,
+                success.lift.status().requestedPositionIn, 0.0);
         success.lift.update(successTime.clock());
         assertEquals(success.config.homingPower, success.motor.power(), 0.0);
 
         success.bottomSwitch.setHigh(false);
         update(firstHome, success.lift, successTime, 0.01);
-        update(firstHome, success.lift, successTime, 0.03);
+        int targetWritesBeforeSuccess = success.motor.targetPositionWrites();
+        firstHome.update(successTime.nextCycle(0.03));
 
         assertEquals(TaskOutcome.SUCCESS, firstHome.getOutcome());
-        assertTrue(success.lift.status().referenced);
         assertEquals(BasicLift.Height.STOWED, success.lift.status().requestedHeight);
+        assertEquals(success.config.stowedHeightIn,
+                success.lift.status().requestedPositionIn, 0.0);
+        assertEquals(targetWritesBeforeSuccess, success.motor.targetPositionWrites());
+
+        success.lift.update(successTime.clock());
+        assertTrue(success.lift.status().referenced);
+        assertEquals(
+                (int) Math.round(success.config.stowedHeightIn * success.originalTicksPerIn),
+                success.motor.targetPositionTicks());
 
         Fixture timeout = fixture();
         ManualLoopClock timeoutTime = new ManualLoopClock();
         Task timedOutHome = timeout.lift.home();
         timedOutHome.start(timeoutTime.clock());
+        timeout.lift.setHeight(BasicLift.Height.HIGH);
+        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight);
         timeout.lift.update(timeoutTime.clock());
         update(timedOutHome, timeout.lift, timeoutTime, timeout.config.homingTimeoutSec);
 
         assertEquals(TaskOutcome.TIMEOUT, timedOutHome.getOutcome());
         assertFalse(timeout.lift.status().referenced);
-        assertEquals(BasicLift.Height.STOWED, timeout.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight);
+        assertEquals(timeout.config.highHeightIn,
+                timeout.lift.status().requestedPositionIn, 0.0);
         assertEquals(0.0, timeout.motor.power(), 0.0);
     }
 
@@ -230,9 +273,11 @@ public final class BasicLiftMechanismTest {
     public void activeHomingCancellationZerosPowerAndDoesNotEstablishAReference() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
+        f.lift.setHeight(BasicLift.Height.HIGH);
         Task home = f.lift.home();
 
         home.start(time.clock());
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
         f.lift.update(time.clock());
         assertEquals(f.config.homingPower, f.motor.power(), 0.0);
 
@@ -242,7 +287,8 @@ public final class BasicLiftMechanismTest {
 
         assertEquals(TaskOutcome.CANCELLED, home.getOutcome());
         assertEquals(0.0, f.motor.power(), 0.0);
-        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
         assertFalse(f.lift.status().referenced);
         assertFalse(f.lift.status().atTarget);
     }

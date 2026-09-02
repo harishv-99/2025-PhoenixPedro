@@ -11,23 +11,30 @@ import edu.ftcsushi.fw.task.TaskOutcome;
 /**
  * Task builders for changing one {@link ScalarTarget}.
  *
- * <p>Robot methods use {@link ScalarTarget#set(double)} for an immediate persistent request.
- * Tasks use this one staged entry point when that same request should be made when a Task starts,
- * retained for a duration, or observed through a feedback-capable {@link Plant}. Builder calls are
- * side-effect free: the target is not written until the built Task starts.</p>
+ * <p>Use this factory when the scalar value is the complete capability request, such as normalized
+ * roller power, flywheel RPM, an explicitly numeric position, or a servo position. Robot methods
+ * use {@link ScalarTarget#set(double)} for an immediate persistent scalar request; Tasks use this
+ * staged entry point when that same request should be made at Task start, retained for a duration,
+ * or observed through a feedback-capable {@link Plant}. Builder calls are side-effect free: the
+ * target is not written until the built Task starts.</p>
+ *
+ * <p>If a mechanism exposes richer named intent such as {@code Height}, {@code Mode}, or a semantic
+ * pose, its owner must map and publish that semantic/numeric request through one authoritative
+ * setter. Compose a Task from that setter and the owner's status; do not use a raw numeric
+ * {@code ScalarTasks} write to bypass the semantic owner.</p>
  *
  * <h2>Examples</h2>
  * <pre>{@code
- * Task setOnce = ScalarTasks.set(arm.commandTarget(), HIGH).build();
+ * Task setOnce = ScalarTasks.set(release.commandTarget(), RELEASED_POSITION).build();
  *
- * Task pulse = ScalarTasks.set(intake.commandTarget(), COLLECT)
+ * Task pulse = ScalarTasks.set(roller.commandTarget(), COLLECT_POWER)
  *         .forSeconds(0.75)
- *         .then(STOPPED)
+ *         .then(STOPPED_POWER)
  *         .build();
  *
- * Task move = ScalarTasks.set(arm.commandTarget(), HIGH)
- *         .untilReachedBy(arm)
- *         .cancelTo(STOWED)
+ * Task move = ScalarTasks.set(flywheel.commandTarget(), SHOT_RPM)
+ *         .untilReachedBy(flywheel)
+ *         .cancelTo(STOPPED_RPM)
  *         .stableFor(0.10)
  *         .timeout(1.5)
  *         .build();

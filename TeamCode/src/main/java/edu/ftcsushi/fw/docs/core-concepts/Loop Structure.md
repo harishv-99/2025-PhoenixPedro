@@ -513,9 +513,10 @@ search on success, timeout, or active cancellation. If the search remains active
 phase submits its staged power exactly once. If the cue is already true, the Task releases the
 search before that phase, so no search-power command is submitted. The cue is sampled before the
 timeout check, so it also wins when both become true at the same boundary. A successful
-`holdAfterReference(value)` writes the graph-owned command before the same downstream Plant update;
-`resumeTargeting()`, timeout, and cancellation preserve the existing command. In every case the
-Plant phase still evaluates the appropriate owner-held state once.
+search, timeout, and cancellation all preserve the existing persistent command. If exact success
+should select a named semantic request, the enclosing mechanism Task calls its normal setter as the
+next exact-success sequence step; that immediate continuation starts before the same downstream
+Plant update. In every case the Plant phase evaluates the appropriate owner-held state once.
 
 ---
 

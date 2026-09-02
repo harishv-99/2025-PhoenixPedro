@@ -86,16 +86,17 @@ Task, and asserts the recorded homing power before injecting LOW. It then advanc
 injects encoder ticks to check the published position status. Recorded power and target ticks remain
 outputs; neither one automatically moves the encoder or presses the switch.
 
-The timeout case leaves the switch HIGH. After first proving that the homing command was issued, it
-advances to the configured deadline and checks `TIMEOUT`, no reference, and release of the temporary
-search command. That is Task and command-ownership cleanup in software; it is not evidence that a
-physical lift stopped safely.
+The timeout case first selects `Height.HIGH`, then leaves the switch HIGH. After proving that homing
+does not replace that semantic/numeric request and that the temporary search command was issued, it
+advances to the configured deadline and checks `TIMEOUT`, no reference, release of search output,
+and preservation of HIGH. That is Task and command-ownership cleanup in software; it is not
+evidence that a physical lift stopped safely.
 
 This is useful for proving software questions such as:
 
 - Does LOW, not HIGH, satisfy this chosen bottom-switch polarity?
 - Does the homing Task retain success only after conditioned switch evidence?
-- Does a never-pressed switch produce `TIMEOUT` and release the search request?
+- Does a never-pressed switch produce `TIMEOUT`, release search, and preserve the latest request?
 - Does the position request scale inches into the expected target ticks?
 
 It cannot prove that the switch is actually wired active-low, the lift reaches bottom safely, or
@@ -389,6 +390,7 @@ public final class ReferenceLiftSoftwareScenarioTest {
         Scenario scenario = new Scenario();
         scenario.motor.setCurrentPositionTicks(0);
         scenario.bottomSwitch.setHigh(true); // The active-low switch remains unpressed.
+        scenario.lift.setHeight(ReferenceLift.Height.HIGH);
 
         scenario.currentTask = scenario.lift.home();
         scenario.currentTask.start(scenario.time.clock());
@@ -402,9 +404,9 @@ public final class ReferenceLiftSoftwareScenarioTest {
         assertTrue(scenario.bottomSwitch.high());
         assertEquals(TaskOutcome.TIMEOUT, scenario.currentTask.getOutcome());
         assertFalse(scenario.lift.status().referenced);
-        assertEquals(ReferenceLift.Height.STOWED,
+        assertEquals(ReferenceLift.Height.HIGH,
                 scenario.lift.status().requestedHeight);
-        assertEquals(scenario.config.stowedHeightIn,
+        assertEquals(scenario.config.highHeightIn,
                 scenario.lift.status().requestedPositionIn, 0.0);
         assertEquals(0.0, scenario.motor.power(), 0.0);
     }
@@ -432,6 +434,7 @@ public final class ReferenceLiftSoftwareScenarioTest {
         }
     }
 }
+
 ```
 
 </details>

@@ -64,6 +64,7 @@ public final class ReferenceLiftSoftwareScenarioTest {
         Scenario scenario = new Scenario();
         scenario.motor.setCurrentPositionTicks(0);
         scenario.bottomSwitch.setHigh(true); // The active-low switch remains unpressed.
+        scenario.lift.setHeight(ReferenceLift.Height.HIGH);
 
         scenario.currentTask = scenario.lift.home();
         scenario.currentTask.start(scenario.time.clock());
@@ -77,9 +78,9 @@ public final class ReferenceLiftSoftwareScenarioTest {
         assertTrue(scenario.bottomSwitch.high());
         assertEquals(TaskOutcome.TIMEOUT, scenario.currentTask.getOutcome());
         assertFalse(scenario.lift.status().referenced);
-        assertEquals(ReferenceLift.Height.STOWED,
+        assertEquals(ReferenceLift.Height.HIGH,
                 scenario.lift.status().requestedHeight);
-        assertEquals(scenario.config.stowedHeightIn,
+        assertEquals(scenario.config.highHeightIn,
                 scenario.lift.status().requestedPositionIn, 0.0);
         assertEquals(0.0, scenario.motor.power(), 0.0);
     }

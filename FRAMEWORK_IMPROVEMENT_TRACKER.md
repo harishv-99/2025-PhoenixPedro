@@ -227,6 +227,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 118 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 | 119 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
 | 120 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
+| 121 | CAL-04 | Mechanism-owned semantic request consistency | Done | The reviewed command-preserving search API, mechanism-owned lift request snapshots, semantic move/home composition, maintained caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -25841,6 +25842,146 @@ implementation.
   Studio review and sent the exact combined authorization above. TASK-05 is approved for committing
   on `codex/task-05-outcome-aware-composition`, pushing to the recorded origin, opening a pull
   request, and merging only into `master`; VISION-03 and all later items remain unstarted.
+
+### CAL-04 - Mechanism-owned semantic request consistency
+
+- **Gate 1 start and decision (2026-09-02):** **Approved for implementation.** CAL-04 is the sole
+  active item on `codex/cal-04-semantic-request-ownership`, based exactly on merged
+  `origin/master@628725a7e45cf8861cd1b29af0dc752a4cbdc131`. The decision follows the user's review of
+  `BasicLiftMechanism.home()`, the calibration-search handoff API, semantic-versus-numeric request
+  consistency, and whether `ScalarTasks` remains necessary. No adjacent scheduler, target type,
+  Plant grammar, timed-write behavior, staging, publication, or later tracker work is authorized.
+- **Confirmed calibration problem:** `PositionCalibrationTasks` currently asks every caller to
+  choose `resumeTargeting()` or `holdAfterReference(value)`. The hold branch writes a raw numeric
+  command on success, carries rollback and reentrant-cancellation machinery, and cannot update a
+  mechanism's paired semantic request such as `Height.STOWED`. Consequently a search can make the
+  Plant's numeric command disagree with capability status, while a surrounding sequence must
+  duplicate policy before and after the search to repair that disagreement.
+- **Independent use-case audit:** plausible bottom-limit lifts and elevators, hard-stop arms and
+  slides, rotary index marks, color or beam-break indexing, multi-turn turrets, and operator-assisted
+  reference searches all share only temporary open-loop search, cue detection, coordinate
+  establishment, timeout, and release. Their post-reference intent differs: a lift may select
+  STOWED, an indexer may resume its latest slot, a turret may retain a logical angle whose newly
+  established reference changes its physical realization, and a supervisor may branch on the exact
+  search outcome. Search-level begin/end Task hooks or a raw success hold cannot express those
+  semantic policies coherently and would create another behavior-composition surface.
+- **Selected calibration API:** make search unconditionally command-preserving. The staged public
+  grammar becomes `search(plant).withPower(power).until(cue).establishReferenceAt(reference)`
+  followed directly by `failAfterSec(...)` or `neverTimeout()`, then `build()`. Remove the public
+  `SearchAfterStep`, `resumeTargeting()`, and `holdAfterReference(...)` without aliases. Success,
+  timeout, active cancellation, cue/reference failure cleanup, and release failure never read or
+  write the persistent command or final resolver. The Task continues to own only temporary search
+  acquisition, cue sampling, reference establishment, timeout, raw-output stop request, and
+  release; the owner's downstream Plant update resumes the unchanged target graph.
+- **Selected homing policy:** a lift's `home()` first runs the command-preserving search. Exact
+  success then starts `Tasks.runOnce(() -> setHeight(Height.STOWED))` through ordinary
+  `Tasks.sequence(...)`; the continuation starts in the same lifecycle callback before the normal
+  downstream Plant phase. There is no initial STOWED write: entering search already suspends normal
+  target realization, and searching does not invalidate or replace the prior persistent request.
+  Timeout, active cancellation, cue/reference failure, and release failure skip the success
+  continuation and retain the prior—or any during-search superseding—coherent semantic/numeric
+  request. Callers can inspect the exact Task outcome or lifecycle exception and choose another
+  policy explicitly.
+- **Selected semantic-request ownership:** when a public capability names intent with an enum or
+  value such as `Height`, `Mode`, or a semantic pose, one authoritative mechanism setter validates
+  and maps the semantic answer, writes the numeric command, and only after that write succeeds
+  publishes the semantic request with stale arrival evidence invalidated. Direct controls, Task
+  starts, homing continuations, and other behavior must route through that setter. When status must
+  retain or publish both forms—as both maintained lifts do—the mechanism owns one immutable request
+  snapshot pairing the semantic value with its forward-mapped numeric Plant command. Status must
+  never reverse-infer the semantic value from a double or let an independent raw numeric Task bypass
+  the semantic owner.
+- **Selected semantic move composition:** Basic and Reference lift `moveTo(height)` use
+  `Tasks.sequence(Tasks.runOnce(() -> setHeight(height)), Tasks.waitUntil(..., moveTimeoutSec))`.
+  The wait succeeds only while the owner snapshot still names the selected semantic request and the
+  latest output heartbeat reports arrival for it. A superseding semantic request therefore prevents
+  false success; timeout and active cancellation deliberately leave the persistent request selected.
+  This uses existing Task factories and needs no custom state machine or new observe-only helper.
+- **`ScalarTasks` conclusion:** retain the current public API unchanged. It remains the correct
+  compact factory when the scalar is the complete request—normalized power, RPM, inches/radians
+  exposed directly as the capability meaning, or a servo position—and its feedback branch provides
+  irreducible exact target/Plant identity, command-provenance, live-command, resolved equivalent
+  physical target, overlay/fallback/clamp, stable-time, timeout, cancellation, and final-target
+  semantics. A generic `waitUntil(plant::atTarget)` cannot reproduce that evidence. Named semantic
+  mechanisms must instead route through their owner setter; maintained numeric intake and launcher
+  callers remain valid. Timed `ScalarTasks` per-cycle reassertion is a separate question and is not
+  changed by CAL-04.
+- **Rejected alternatives:** keep the current hold/resume question and document the risk; add search
+  begin/end `Task`, `Runnable`, or scalar/semantic callbacks; make search set STOWED at entry; repair
+  every natural ending with `sequenceOnCompletion(...)`; add generic `Target<T>`, `ScalarRequest`,
+  paired-target, or capability-command framework types; infer an enum from numeric equality; expose
+  a second semantic-state mutator; split or remove `ScalarTasks`; or add a new Task state machine.
+  Each either assigns robot policy to calibration, permits the same split-brain request, duplicates
+  existing Task composition, or adds a public concept without two independent framework callers.
+- **Maintained scope:** migrate `BasicLiftMechanism` and `ReferenceLiftMechanism`, their capability
+  Javadocs and hardware-free tests, every maintained calibration caller, current Javadocs/guides,
+  source-backed lesson excerpt, Phoenix calibration guide, documentation link/provenance checks,
+  and the focused public-API/lifecycle tests. Historical CAL-03/API-06 records remain historical and
+  are not rewritten merely because they quote the then-current API.
+- **Verification plan:** prove direct search success, timeout, cancellation, acquisition/cue/
+  reference/release failures, reentrancy, single use, current-sample periodic reference behavior,
+  and command preservation. Prove same-callback success continuation before Plant output and its
+  suppression on timeout, cancellation, and release failure. Across the two maintained lifts, cover
+  prior and during-search requests across success/timeout/cancel, move success, timeout/cancel
+  request retention, superseding-request false-success prevention, synchronous paired status, and
+  command-before-publication setter ordering. Add reflection/API checks that the old stage/methods
+  are absent and the new return type is exact. Then run focused suites, full TeamCode unit tests and
+  compilation, Javadocs/site/link checks, stale-current-reference scans, and `git diff --check`.
+- **Framework Principles check:** the design remains nonblocking, keeps one caller-owned
+  `LoopClock`, preserves same-cycle Task-before-Plant realization, keeps Tasks single-use and
+  cancellation active-only, retains the Plant's one final resolver and mechanism heartbeat, moves
+  robot meaning into the mechanism owner, fails writes before publishing inconsistent status, and
+  removes rather than adds public vocabulary. Calibration stays mechanism-agnostic; semantic policy
+  stays application/example-local; protected core retains no FTC or vendor dependency.
+- **Evidence boundary:** software can prove request/status atomicity, Task outcome/order, command
+  preservation, search release attempts, reference arithmetic, and documentation/source
+  synchronization. It cannot prove a real switch's polarity, safe search direction/power, physical
+  zero, mechanical clearance, encoder mapping, holding behavior, or FTC STOP; those remain adopting-
+  robot calibration and motion evidence.
+- **Gate 2 implementation authorization (2026-09-02):** **Implemented; Verifying.** After reviewing the
+  alternatives and explicitly selecting mechanism-owned semantic request consistency, the user
+  instructed **“Implement the plan.”** That authorizes only the CAL-04 implementation, caller/test/
+  documentation migrations, and verification recorded above. It does not authorize staging,
+  commit, push, pull request, merge, VISION-03, or any other tracker item. CAL-04 will stop with the
+  exact unstaged and uncommitted diff for Android Studio review.
+- **Implemented CAL-04 slice (2026-09-02):** `PositionCalibrationTasks` now proceeds directly from
+  `establishReferenceAt(...)` to the timeout-policy stage and never reads or writes a Plant command;
+  the obsolete post-search stage and hold/resume methods are removed. Basic and Reference lifts now
+  own immutable `Height`/position request snapshots, route direct and Task behavior through one
+  command-before-publication setter, wait on coherent semantic arrival status, and sequence STOWED
+  only after exact home-search success. `ScalarTasks` behavior remains unchanged and its contract is
+  documented for scalar-complete requests. Maintained Javadocs, guides, source-backed lessons,
+  Phoenix calibration documentation, callers, and tests are synchronized.
+- **Software verification evidence (2026-09-02):** the full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passed **2,203 tests across
+  241 suites with zero failures, errors, or skips**; focused results include 24 calibration-search,
+  14 reference-validation, 13 actuation single-use, 11 Basic lift, 9 Reference lift, 2 Reference lift
+  scenario, 20 documentation-integrity, and 3 Phoenix application-boundary tests. The focused and
+  full runs cover command preservation without any command target, lifecycle failures and
+  reentrancy, exact public grammar, prior and during-search requests, same-callback success,
+  timeout/cancellation retention, semantic supersession, and terminal status invalidation. Static
+  review confirms that both ordinary exact lift setters write their prevalidated finite in-range
+  numeric command before publishing request/status; an artificial throwing-target constructor was
+  deliberately not added solely for a test seam. `:TeamCode:sushiJavadocs` and `git diff --check`
+  pass; stale removed APIs occur only in intentional reflection/stale-reference tests and historical
+  tracker records. The established JDK 21 warning about Java 8 source/target deprecation remains the
+  only compile warning.
+- **Unavailable local renderer check (2026-09-02):** the pinned
+  `zensical build --clean --strict` and `.github/verify_generated_api_links.py` commands could not run
+  because this workstation has no Python 3.12 runtime or Zensical executable; `python` resolves only
+  to the disabled Microsoft Store alias. The Java documentation-integrity suite and generated
+  Javadocs passed, but the unavailable renderer commands are not claimed as evidence.
+- **Independent review and evidence boundary (2026-09-02):** separate read-only core, lift, final
+  code/test, and documentation reviews found no blocking defect after tightening no-command-target
+  coverage, request-timing coverage, Reference lift stop/Javadocs, global ownership wording, and
+  tracker lifecycle precision. No robot hardware was available, so switch polarity, homing power and
+  direction, physical reference accuracy, clearance, load holding, and FTC STOP behavior remain
+  unverified. All 28 files remain unstaged and uncommitted for the required Android Studio review.
+- **Manual review and Gate 3 authorization (2026-09-02):** **Done.** The user completed the Android
+  Studio review and sent the exact combined authorization. CAL-04 is approved for committing the
+  reviewed 28-file diff on `codex/cal-04-semantic-request-ownership`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging only
+  into `master`; VISION-03 and all later items remain unstarted.
 
 ### VISION-03 - Reusable color-blob pipeline
 

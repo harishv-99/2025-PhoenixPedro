@@ -551,10 +551,12 @@ public final class Wrist {
 
     public static final class Status {
         private final Pose desiredPose;
+        private final double requestedTarget;
         private final double appliedTarget;
 
-        public Status(Pose desiredPose, double appliedTarget) {
+        public Status(Pose desiredPose, double requestedTarget, double appliedTarget) {
             this.desiredPose = desiredPose;
+            this.requestedTarget = requestedTarget;
             this.appliedTarget = appliedTarget;
         }
 
@@ -562,8 +564,22 @@ public final class Wrist {
             return desiredPose;
         }
 
+        public double requestedTarget() {
+            return requestedTarget;
+        }
+
         public double appliedTarget() {
             return appliedTarget;
+        }
+    }
+
+    private static final class Request {
+        private final Pose pose;
+        private final double target;
+
+        private Request(Pose pose, double target) {
+            this.pose = pose;
+            this.target = target;
         }
     }
 
@@ -571,7 +587,7 @@ public final class Wrist {
     private final double stowTarget;
     private final double intakeTarget;
     private final double scoreTarget;
-    private Pose desiredPose = Pose.STOW;
+    private Request request;
 
     public Wrist(HardwareMap hardwareMap, WristConfig config) {
         WristConfig snapshot = Objects.requireNonNull(config, "config").copy();
@@ -587,18 +603,22 @@ public final class Wrist {
                     .nativeUnits()
                 .targetFromNewCommand(stowTarget)
                 .build();
+        request = new Request(Pose.STOW, stowTarget);
     }
 
     public void setPose(Pose pose) {
-        desiredPose = Objects.requireNonNull(pose, "pose");
+        Pose selected = Objects.requireNonNull(pose, "pose");
+        Request next = new Request(selected, targetFor(selected));
+        plant.commandTarget().set(next.target);
+        request = next;
     }
 
     public Status status() {
-        return new Status(desiredPose, plant.getAppliedTarget());
+        Request current = request;
+        return new Status(current.pose, current.target, plant.getAppliedTarget());
     }
 
     public void update(LoopClock clock) {
-        plant.commandTarget().set(targetFor(desiredPose));
         plant.update(clock);
     }
 
@@ -630,7 +650,9 @@ wrist = new Wrist(hardwareMap, profile.wrist);
 The mechanism copies and validates that slice before its own hardware lookup, constructs the Plant,
 keeps it private, and asks the Plant for `getAppliedTarget()` instead of keeping a second field that
 merely guesses what the Plant applied. After each `plant.update(clock)`, that readback reflects the
-bounds and guards the Plant actually applied.
+bounds and guards the Plant actually applied. `setPose(...)` maps first, writes the numeric command,
+then publishes one immutable semantic/numeric request. A failed write therefore cannot expose a pose
+whose matching command was never accepted, and direct calls and Tasks share that same setter.
 
 ### TeleOp interaction
 
@@ -865,7 +887,6 @@ public final class Intake {
     private final double feedPosition;
     private final double feedDurationSec;
 
-    private boolean intakeEnabled = false;
     private boolean lastPiecePresent = false;
 
     public Intake(HardwareMap hardwareMap, IntakeConfig config) {
@@ -898,7 +919,7 @@ public final class Intake {
     }
 
     public void setIntakeEnabled(boolean enabled) {
-        intakeEnabled = enabled;
+        intakePlant.commandTarget().set(enabled ? collectPower : 0.0);
     }
 
     public void requestFeedPulse() {
@@ -923,7 +944,6 @@ public final class Intake {
         lastPiecePresent = piecePresent.getAsBoolean(clock);
         feedQueue.update(clock);
 
-        intakePlant.commandTarget().set(intakeEnabled ? collectPower : 0.0);
         intakePlant.update(clock);
         feederPlant.update(clock);
     }

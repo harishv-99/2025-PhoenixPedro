@@ -313,7 +313,6 @@ public final class ActuationTaskSingleUseTest {
                 .withPower(-0.2)
                 .until(condition)
                 .establishReferenceAt(0.0)
-                .resumeTargeting()
                 .neverTimeout()
                 .build();
     }

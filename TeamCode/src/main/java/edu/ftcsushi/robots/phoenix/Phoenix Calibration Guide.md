@@ -116,11 +116,10 @@ Use these rules when adding Phoenix mechanisms:
 Example homing task:
 
 ```java
-Task homeLift = PositionCalibrationTasks.search(lift)
+Task findBottomReference = PositionCalibrationTasks.search(lift)
         .withPower(-0.20)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
-        .holdAfterReference(0.0)
         .failAfterSec(3.0)
         .build();
 ```
@@ -130,28 +129,26 @@ and rejects `NaN`, infinities, and overshoot immediately rather than clamping th
 mechanism service must still choose and validate the safe magnitude, direction, cue behavior, and
 mechanical setup for its hardware.
 
-The plant-unit reference supplied to `establishReferenceAt(...)` and the separate post-success
-command supplied to `holdAfterReference(...)` must also be finite. Each rejects `NaN` or infinity
-at its builder step without clamping or overwriting an earlier accepted answer. The reference is not
-range-limited; the finite hold remains a normal logical command that the complete resolver, range,
-overlays, and target guards may transform or clamp. Choose a deliberately safe in-range hold when
-the mechanism should predictably hold that exact position.
+The plant-unit reference supplied to `establishReferenceAt(...)` must also be finite. It rejects
+`NaN` or infinity at its builder step without clamping or overwriting an earlier accepted answer.
+The reference is a coordinate anchor and is not range-limited.
 
 Create a fresh search Task for each homing attempt. Search Task objects follow the framework's
 single-use lifecycle and are not restarted after they have begun.
 
 For a Phoenix mechanism, `RobotProgram` advances Tasks before calling the owning
 mechanism's update in both TeleOp and Auto. The search Task owns its cue, reference, timeout, and
-handoff recipe but never calls `lift.update(clock)`; the mechanism remains the sole Plant heartbeat
-owner. If the search is still active, that one downstream update submits its staged power. If the
-Task releases the search first, the same phase evaluates the normal final resolver.
+temporary-output release but never calls `lift.update(clock)` or changes the persistent command;
+the mechanism remains the sole Plant heartbeat owner. If the search is still active, that one
+downstream update submits its staged power. If the Task releases the search first, the same phase
+evaluates the unchanged normal final resolver. Success, timeout, and active cancellation all make
+that command-preserving, nonterminal handoff; none calls terminal `Plant.stop()`.
 
-`holdAfterReference(0.0)` changes the Plant's graph-owned command before that handoff; the complete
-resolver can still mask or transform it. Use `resumeTargeting()` when success should preserve the
-existing persistent command and unchanged resolver. That option does not leave the continuously
-updated Plant disabled. Timeout and active cancellation also request the same internal,
-nonterminal temporary-output stop and release the search without changing the persistent command;
-none of those calibration handoffs calls terminal `Plant.stop()`.
+If Phoenix later gives a mechanism a named semantic request, one setter must map it, write the
+numeric Plant command, and then publish the semantic value. If status retains both request forms,
+it publishes them as one paired snapshot. A homing macro can sequence this search before a
+success-only call to that setter. It should not set a presumed post-reference value before
+searching, and timeout/cancellation should retain the prior or latest coherent request.
 
 The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 

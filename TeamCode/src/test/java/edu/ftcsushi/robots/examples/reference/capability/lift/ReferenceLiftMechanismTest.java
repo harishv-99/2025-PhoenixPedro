@@ -32,6 +32,44 @@ public final class ReferenceLiftMechanismTest {
     }
 
     @Test
+    public void directSemanticRequestPublishesItsPairedPositionSynchronously() {
+        Fixture f = fixture();
+        ReferenceLift.Status before = f.lift.status();
+        int targetWritesBefore = f.motor.targetPositionWrites();
+
+        f.lift.setHeight(ReferenceLift.Height.HIGH);
+
+        ReferenceLift.Status requested = f.lift.status();
+        assertEquals(ReferenceLift.Height.HIGH, requested.requestedHeight);
+        assertEquals(f.config.highHeightIn, requested.requestedPositionIn, 0.0);
+        assertEquals(before.measuredPositionIn, requested.measuredPositionIn, 0.0);
+        assertEquals(before.referenced, requested.referenced);
+        assertFalse(requested.atTarget);
+        assertEquals(targetWritesBefore, f.motor.targetPositionWrites());
+    }
+
+    @Test
+    public void terminalStopInvalidatesArrivalWithoutChangingThePairedRequest() {
+        Fixture f = fixture();
+        ManualLoopClock time = new ManualLoopClock();
+        homeSuccessfully(f, time);
+        f.motor.setCurrentPositionTicks(
+                (int) Math.round(f.config.stowedHeightIn * f.config.ticksPerIn));
+        f.lift.update(time.nextCycle(0.02));
+        ReferenceLift.Status beforeStop = f.lift.status();
+        assertTrue(beforeStop.atTarget);
+
+        f.lift.stop();
+
+        ReferenceLift.Status stopped = f.lift.status();
+        assertEquals(beforeStop.requestedHeight, stopped.requestedHeight);
+        assertEquals(beforeStop.requestedPositionIn, stopped.requestedPositionIn, 0.0);
+        assertEquals(beforeStop.measuredPositionIn, stopped.measuredPositionIn, 0.0);
+        assertEquals(beforeStop.referenced, stopped.referenced);
+        assertFalse(stopped.atTarget);
+    }
+
+    @Test
     public void moveStartsItsSemanticAndNumericRequestTogetherAndWaitsForFeedback() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
@@ -82,7 +120,32 @@ public final class ReferenceLiftMechanismTest {
     }
 
     @Test
-    public void successfulAndTimedOutHomingRepairConcurrentHeightRequestsToStowed() {
+    public void moveCannotSucceedFromFeedbackForASupersededSemanticRequest() {
+        Fixture f = fixture();
+        ManualLoopClock time = new ManualLoopClock();
+        homeSuccessfully(f, time);
+
+        Task move = f.lift.moveTo(ReferenceLift.Height.LOW);
+        move.start(time.nextCycle(0.02));
+        f.motor.setCurrentPositionTicks(
+                (int) Math.round(f.config.lowHeightIn * f.config.ticksPerIn));
+        f.lift.update(time.clock());
+        assertTrue(f.lift.status().atTarget);
+
+        f.lift.setHeight(ReferenceLift.Height.HIGH);
+        move.update(time.nextCycle(0.01));
+        assertFalse(move.isComplete());
+        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+
+        move.update(time.nextCycle(f.config.moveTimeoutSec));
+        assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
+        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+    }
+
+    @Test
+    public void homingSuccessSelectsStowedButTimeoutPreservesConcurrentRequest() {
         Fixture success = fixture();
         ManualLoopClock successTime = new ManualLoopClock();
         Task successfulHome = success.lift.home();
@@ -91,29 +154,37 @@ public final class ReferenceLiftMechanismTest {
         success.lift.setHeight(ReferenceLift.Height.HIGH);
         success.bottomSwitch.setHigh(false);
         update(successfulHome, success.lift, successTime, 0.01);
-        update(successfulHome, success.lift, successTime, 0.03);
+        int targetWritesBeforeSuccess = success.motor.targetPositionWrites();
+        successfulHome.update(successTime.nextCycle(0.03));
 
         assertEquals(TaskOutcome.SUCCESS, successfulHome.getOutcome());
         assertEquals(ReferenceLift.Height.STOWED, success.lift.status().requestedHeight);
         assertEquals(success.config.stowedHeightIn,
                 success.lift.status().requestedPositionIn, 0.0);
+        assertEquals(targetWritesBeforeSuccess, success.motor.targetPositionWrites());
+
+        success.lift.update(successTime.clock());
+        assertTrue(success.lift.status().referenced);
+        assertEquals(
+                (int) Math.round(success.config.stowedHeightIn * success.config.ticksPerIn),
+                success.motor.targetPositionTicks());
 
         Fixture timeout = fixture();
         ManualLoopClock timeoutTime = new ManualLoopClock();
+        timeout.lift.setHeight(ReferenceLift.Height.HIGH);
         Task timedOutHome = timeout.lift.home();
         timedOutHome.start(timeoutTime.clock());
         timeout.lift.update(timeoutTime.clock());
-        timeout.lift.setHeight(ReferenceLift.Height.HIGH);
         update(timedOutHome, timeout.lift, timeoutTime, timeout.config.homingTimeoutSec);
 
         assertEquals(TaskOutcome.TIMEOUT, timedOutHome.getOutcome());
-        assertEquals(ReferenceLift.Height.STOWED, timeout.lift.status().requestedHeight);
-        assertEquals(timeout.config.stowedHeightIn,
+        assertEquals(ReferenceLift.Height.HIGH, timeout.lift.status().requestedHeight);
+        assertEquals(timeout.config.highHeightIn,
                 timeout.lift.status().requestedPositionIn, 0.0);
     }
 
     @Test
-    public void activeHomingCancellationSkipsFinalRepairAndKeepsConcurrentRequestCoherent() {
+    public void activeHomingCancellationKeepsConcurrentRequestCoherent() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
         Task home = f.lift.home();

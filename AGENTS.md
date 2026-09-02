@@ -88,7 +88,11 @@ the framework API.
   graph, or target-only policy role. A read-only/planned realization requires no command. Do not
   pass Plant and target as independent peer dependencies. Feedback-aware `ScalarTasks` still names
   both because the target is written while the explicit Plant selects completion feedback and
-  provenance.
+  provenance. Use that direct path only when the scalar is the complete capability request. When a
+  capability names semantic intent such as `Height`, `Mode`, or a pose, every direct or Task path
+  goes through one mechanism setter that maps and writes the numeric command before publishing the
+  semantic request. If the mechanism retains or publishes both forms, keep them together in one
+  immutable semantic/numeric request snapshot.
 - Prefer framework task factories (`Tasks`, `ScalarTasks`, `DriveTasks`, guidance/route task helpers)
   over hand-written task state machines unless a new state machine is genuinely needed.
 - Keep drive intent and actuation separate: `DriveSource` produces robot-centric `DriveSignal`s;
