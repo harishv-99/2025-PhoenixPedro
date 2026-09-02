@@ -25,11 +25,11 @@ public final class StarterMechanismLessonTest {
 
         intake.setMode(StarterIntake.Mode.COLLECT);
         assertEquals(StarterIntake.Mode.COLLECT, intake.status().mode());
-        assertEquals(0.0, intake.status().appliedTargetPower(), 0.0);
+        assertEquals(0.0, intake.status().appliedPower(), 0.0);
         assertEquals(0, motor.powerWrites());
 
         intake.update(time.clock());
-        assertEquals(config.collectPower, intake.status().appliedTargetPower(), 0.0);
+        assertEquals(config.collectPower, intake.status().appliedPower(), 0.0);
         assertEquals(config.collectPower, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
@@ -37,9 +37,9 @@ public final class StarterMechanismLessonTest {
         assertEquals(config.ejectPower, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.STOPPED);
-        assertEquals(config.ejectPower, intake.status().appliedTargetPower(), 0.0);
+        assertEquals(config.ejectPower, intake.status().appliedPower(), 0.0);
         intake.update(time.nextCycle(0.02));
-        assertEquals(0.0, intake.status().appliedTargetPower(), 0.0);
+        assertEquals(0.0, intake.status().appliedPower(), 0.0);
         assertEquals(0.0, motor.power(), 0.0);
     }
 }

@@ -1026,7 +1026,8 @@ final class MappedPositionPlant implements PositionPlant {
 
     @Override
     public boolean atTarget(double target) {
-        return (regulatedPowerChannel == null || regulatedActuationCompleted)
+        return lifecycle.isActive()
+                && (regulatedPowerChannel == null || regulatedActuationCompleted)
                 && (regulatedPowerChannel == null
                         || regulatedPowerChannel.setpointSettledAt(appliedTarget))
                 && hasFeedback()

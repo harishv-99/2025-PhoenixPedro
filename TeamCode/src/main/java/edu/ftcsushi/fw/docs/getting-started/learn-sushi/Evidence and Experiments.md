@@ -57,26 +57,27 @@ software question.
 
 ### Critical code
 
-The Starter presenter reads one cached snapshot:
+The Starter presenter asks for one new capability-shaped capture of cached facts:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
 StarterIntake.Status status = intake.status();
 telemetry.addData("intake.mode", status.mode());
-telemetry.addData("intake.appliedTargetPower", status.appliedTargetPower());
+telemetry.addData("intake.appliedTargetPower", status.appliedPower());
 ```
 
 **What to notice**
 
-- The presenter formats one already-computed snapshot; it does not sample hardware.
+- The presenter formats one new capture of already-computed cached facts; it does not sample
+  hardware.
 - Requested mode and applied target are shown as different facts.
 
-**Key APIs:** capability `status()` publishes a cached semantic snapshot; `Telemetry.addData(...)`
-formats evidence without owning decisions.
+**Key APIs:** `status()` returns a new capability view over cached facts;
+`Telemetry.addData(...)` formats it without owning decisions. Generic command and Plant snapshots
+stay behind that boundary.
 
-`mode` describes the current semantic command. `appliedTargetPower` is the Plant's cached final
-target after its resolver and guards. It is **not** motor feedback and does not prove that the motor
-moved. The presenter formats existing facts; it does not resample hardware or make policy.
+`mode()` names semantic intent. `appliedPower()` is the resolver's cached final target, not feedback
+or proof of motion.
 
 ## A semantic boolean is not an electrical level
 

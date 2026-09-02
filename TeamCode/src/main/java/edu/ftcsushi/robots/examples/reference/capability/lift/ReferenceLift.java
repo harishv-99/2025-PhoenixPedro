@@ -1,5 +1,10 @@
 package edu.ftcsushi.robots.examples.reference.capability.lift;
 
+import java.util.Objects;
+
+import edu.ftcsushi.fw.actuation.PositionPlantSnapshot;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
+import edu.ftcsushi.fw.actuation.SemanticScalarSnapshot;
 import edu.ftcsushi.fw.task.Task;
 
 /** Season-neutral referenced lift capability. */
@@ -10,39 +15,52 @@ public interface ReferenceLift {
         HIGH
     }
 
-    /** Immutable snapshot of the current request and cached feedback evidence. */
+    /** Domain-named view of one coherent lift request and cached Plant snapshot. */
     final class Status {
-        /** Most recent semantic request, updated synchronously by command methods or Task start. */
-        public final Height requestedHeight;
+        private final SemanticScalarSnapshot<Height, PositionPlantSnapshot> delegate;
 
-        /** Numeric position selected by {@link #requestedHeight}, in mechanism inches. */
-        public final double requestedPositionIn;
+        /** Wraps one coherent semantic request and position snapshot. */
+        public Status(SemanticScalarSnapshot<Height, PositionPlantSnapshot> delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
 
-        /**
-         * Last encoder measurement published by a successful output heartbeat, in mechanism
-         * inches, or {@link Double#NaN} while measurement evidence is unavailable.
-         */
-        public final double measuredPositionIn;
+        /** Returns the selected semantic height. */
+        public Height requestedHeight() {
+            return delegate.request().semantic();
+        }
 
-        /** Whether the last successful output heartbeat had an established position reference. */
-        public final boolean referenced;
+        /** Returns the position paired with the selected semantic height, in mechanism inches. */
+        public double requestedPositionIn() {
+            return delegate.request().commandTarget();
+        }
 
-        /**
-         * Whether the last successful output heartbeat proved arrival for the current request.
-         * A new request and terminal stop both invalidate this evidence immediately.
-         */
-        public final boolean atTarget;
+        /** Returns the Plant's cached final target after bounds and guards, in mechanism inches. */
+        public double appliedPositionIn() {
+            return delegate.plant().appliedTarget();
+        }
 
-        public Status(Height requestedHeight,
-                      double requestedPositionIn,
-                      double measuredPositionIn,
-                      boolean referenced,
-                      boolean atTarget) {
-            this.requestedHeight = requestedHeight;
-            this.requestedPositionIn = requestedPositionIn;
-            this.measuredPositionIn = measuredPositionIn;
-            this.referenced = referenced;
-            this.atTarget = atTarget;
+        /** Returns the cached position measurement in mechanism inches, or {@code NaN}. */
+        public double measuredPositionIn() {
+            return delegate.plant().measurement();
+        }
+
+        /** Returns whether the Plant has established its position reference. */
+        public boolean referenced() {
+            return delegate.plant().isReferenced();
+        }
+
+        /** Returns whether cached feedback proves arrival for this exact request. */
+        public boolean atTarget() {
+            return delegate.currentRequestAtTarget();
+        }
+
+        /** Returns the underlying immutable Plant snapshot for advanced diagnostics. */
+        public PositionPlantSnapshot plantSnapshot() {
+            return delegate.plant();
+        }
+
+        boolean isAtTargetFor(SemanticScalarCommand.Request<Height> request) {
+            return delegate.request() == request && delegate.currentRequestAtTarget();
         }
     }
 
@@ -74,6 +92,6 @@ public interface ReferenceLift {
      */
     Task home();
 
-    /** Returns cached request and feedback evidence without polling hardware. */
+    /** Returns a domain-named view of the current request and cached position evidence. */
     Status status();
 }

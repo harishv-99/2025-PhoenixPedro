@@ -113,6 +113,9 @@ ScalarSource
 ScalarTarget
     A writable number stream. When it is the exact source or overlay base, it is the command target.
 
+SemanticScalarCommand<S>
+    One named capability request atomically paired with its mapped finite scalar target.
+
 PlantTargetResolver
     A Plant-aware graph that uses Plant context to resolve the requested target.
 
@@ -295,13 +298,52 @@ resolution provenance and physical feedback used for completion. A target may fe
 Plant, so the observer cannot be inferred from the target.
 
 This direct `ScalarTasks` path assumes the scalar is the complete capability request. If a public
-capability names `Height`, `Mode`, or another semantic value, its one mechanism setter maps first,
-writes the Plant command, then publishes the semantic request and invalidates prior arrival evidence.
-If the mechanism retains or publishes both representations, it owns one paired snapshot of the
-semantic value and its forward-mapped numeric command. Direct controls and Tasks call that setter;
-they do not write the raw command or reconstruct the semantic value from a double. A Task can
-sequence `runOnce(() -> setHeight(selected))` with a bounded wait on the mechanism's coherent
-status.
+capability names `Height`, `Mode`, or another semantic value, use one
+`SemanticScalarCommand<S>` whose mapper is the mechanism's only semantic-to-numeric answer:
+
+```java
+private final SemanticScalarCommand<Height> heightCommand;
+private final PositionPlant lift;
+
+// In the mechanism constructor, after copying and validating the height values:
+heightCommand = SemanticScalarCommand.create(Height.STOWED, this::heightInFor);
+lift = FtcActuators.plant(hardwareMap)
+        .motor("lift", Direction.FORWARD)
+        .position()
+        .deviceManaged()
+        .nonPeriodic()
+            .bounded(0.0, MAX_HEIGHT_IN)
+            .scaleToNative(TICKS_PER_IN)
+            .alreadyReferenced()
+        .positionTolerance(HEIGHT_TOLERANCE_IN)
+        .outputPowerLimitedTo(MAX_POWER)
+        .targetFromResolver(PlantTargets.exact(heightCommand))
+        .build();
+
+public void setHeight(Height height) {
+    heightCommand.set(height);
+}
+
+private SemanticScalarSnapshot<Height, PositionPlantSnapshot> actuatorSnapshot() {
+    return heightCommand.snapshot(lift.snapshot());
+}
+```
+
+Mapping and finite validation complete before the helper publishes one immutable
+semantic/numeric `Request`; a mapper failure leaves the prior request untouched. Each successful
+set publishes a fresh identity even when the semantic value and scalar repeat. Consequently,
+`currentRequestSelected()` and `currentRequestAtTarget()` cannot reuse cached resolution or arrival
+evidence from an older same-valued request. The helper exposes no `ScalarTarget`, so controls and
+Tasks must call the same semantic setter rather than bypass it with a raw numeric Task.
+
+A semantic move retains the exact `Request` returned when its Task starts and waits for a private
+actuator snapshot whose `request()` is that object and whose `currentRequestAtTarget()` is true.
+The capability's public `status()` projects the same immutable evidence into domain accessors such
+as `requestedHeight()`, `measuredPositionIn()`, and `atTarget()`. This preserves
+single-use Task identity if another caller supersedes the request, including with the same named
+height. `PlantTargets.overlay(command)` and `equivalentPositionsOf(command)` preserve the same
+private provenance; an overlay winner, fallback, hold, unavailable path, or planner clamp cannot
+claim current semantic arrival.
 
 ## Exact targets
 

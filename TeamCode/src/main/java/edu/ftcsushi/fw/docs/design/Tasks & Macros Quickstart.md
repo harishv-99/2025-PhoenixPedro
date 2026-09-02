@@ -452,10 +452,9 @@ target is the Plant's complete exact graph, bind it through
 
 This direct path is for a scalar-complete request: the number itself is the public meaning. If a
 capability instead names intent with `Height`, `Mode`, or another semantic value, its mechanism
-maps that value forward, writes the numeric command, and then publishes the semantic request through
-one setter. If status retains both forms, it publishes them as one paired snapshot. Direct methods
-and Tasks call that setter; they do not use raw `ScalarTasks` to change the number behind the owner's
-status.
+owns one `SemanticScalarCommand` that maps and atomically publishes the named/numeric pair. Direct
+methods and Tasks call its semantic setter and read the composed semantic/Plant snapshot; the helper
+exposes no `ScalarTarget`, so raw `ScalarTasks` cannot change the number behind the owner's status.
 
 #### Calibration-search handoff
 
@@ -525,10 +524,12 @@ The `0.7` seconds begin when this task starts. Even if the preceding loop was un
 new `+1.0` target is still available for the following `plant.update(clock)` call before a positive
 duration may finish.
 
-Do not use a numeric target to reconstruct a named capability state. The Starter intake retains its
-requested `Mode`, maps that mode forward to power in `setMode(...)`, and builds its timed action with
-`RunForSecondsTask` callbacks that call the same setter. This keeps `status().mode()` truthful while
-the one-line robot call remains `intake.collectForSeconds(durationSec)`.
+Do not use a numeric target to reconstruct a named capability state. The Starter intake publishes
+its requested `Mode` and mapped power through one `SemanticScalarCommand`, and builds its timed
+action with `RunForSecondsTask` callbacks that call the same setter. This keeps
+the capability-shaped `status().mode()` and `status().requestedPower()` truthful while the one-line
+robot call remains
+`intake.collectForSeconds(durationSec)`.
 
 To hold and leave the target there:
 
@@ -855,8 +856,10 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 * **Do not bypass a named semantic request.**
 
     * If status names a `Height`, `Mode`, or semantic pose, call the mechanism's one setter from
-      both direct behavior and Tasks, then wait on that owner's coherent status. If status retains
-      both semantic and numeric request forms, publish them as one paired snapshot.
+      both direct behavior and Tasks, then wait on the mechanism's capability-shaped status. The
+      mechanism may retain the exact request returned by its private `SemanticScalarCommand` at
+      Task start so same-valued supersession cannot complete old work; ordinary clients should not
+      have to navigate that backing request identity.
     * Use `ScalarTasks` directly only when the number itself is the complete request.
 
 * **Be intentional about completion and cancellation targets.**

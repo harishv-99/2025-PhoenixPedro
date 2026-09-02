@@ -124,11 +124,31 @@ and do not manufacture a command target that the graph does not own.
 When a capability's public request has named semantic meaning such as `Height`, `Mode`, or a
 semantic pose, one mechanism owner maps that value forward to the numeric Plant command. Every
 direct control and Task path calls that same owner setter; no raw numeric Task may bypass it, and
-status must not reverse-infer the semantic value from a double. Publish the semantic request only
-after its command write succeeds. If the mechanism retains or publishes both representations, keep
-them together in one immutable semantic/numeric request snapshot, and invalidate prior arrival
-evidence synchronously. Use `ScalarTasks` directly only when the scalar is the complete capability
-request rather than one representation of richer named intent.
+status must not reverse-infer the semantic value from a double. Use one
+`SemanticScalarCommand<S>` to validate and publish the named value with its mapped finite scalar,
+and bind that owner through `PlantTargets.exact(...)` or `equivalentPositionsOf(...)`. Its composed
+semantic/Plant snapshot invalidates prior arrival evidence synchronously, including when a new
+request repeats the same name and scalar. The semantic owner deliberately exposes no
+`ScalarTarget`; use `ScalarTasks` directly only when the scalar is the complete capability request
+rather than one representation of richer named intent.
+
+Use `Plant.snapshot()` for the common immutable requested/applied target, resolution/status,
+feedback, measurement, error, and arrival facts; a `PositionPlant` covariantly adds its coordinate,
+range, and reference facts. This is a capture of cached public state, not another update, hardware
+poll, atomic publication, or cross-thread synchronization contract. Numeric power and velocity
+mechanisms use the same scalar snapshot—do not manufacture a `VelocityPlant` merely to rename the
+same evidence. A grouped device-managed Plant's snapshot preserves its inverse-mapped aggregate
+mean; a grouped regulated Plant's snapshot preserves the one scalar feedback source explicitly
+configured for that Plant. Both preserve the Plant's own `atTarget` contract. Per-member balance,
+settling, debounce, game-piece, and readiness policy remain in a capability-owned status that
+composes the generic Plant facts.
+
+When generic snapshot navigation would leak framework vocabulary into ordinary capability clients,
+return a thin capability-owned status view. That view holds one immutable generic snapshot and
+delegates domain-named accessors; it does not maintain a parallel cached status, mirror fields in
+`update()` or `stop()`, or offer primitive construction that can fabricate an incoherent semantic
+and numeric pair. It may expose the underlying Plant snapshot as an explicitly advanced diagnostic
+escape hatch.
 
 ### Boundary ownership
 

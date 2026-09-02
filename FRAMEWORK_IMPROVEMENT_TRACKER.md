@@ -228,6 +228,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 119 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
 | 120 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
 | 121 | CAL-04 | Mechanism-owned semantic request consistency | Done | The reviewed command-preserving search API, mechanism-owned lift request snapshots, semantic move/home composition, maintained caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 122 | STATUS-01 | Composable scalar actuator snapshots | Done | The reviewed generic snapshot machinery, thin capability-shaped status views, named position/velocity guidance, maintained migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -25982,6 +25983,227 @@ implementation.
   reviewed 28-file diff on `codex/cal-04-semantic-request-ownership`, pushing that branch to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging only
   into `master`; VISION-03 and all later items remain unstarted.
+
+### STATUS-01 - Composable scalar actuator snapshots
+
+- **Gate 1 start (2026-09-02):** **Researching.** STATUS-01 is the sole active item on
+  `codex/status-01-composable-actuator-status`, based exactly on
+  `origin/master@975fe8fdef27aa988e007fc0fd5855ed93e9e64a`. The user approved the reviewed plan by
+  instructing **“Implement the plan.”** The decision gate is tracing every Plant construction
+  path, status duplication, semantic request owner, grouped-velocity contract, maintained caller,
+  and documentation surface before Java implementation. This authorization is limited to
+  STATUS-01 implementation, migrations, documentation, and verification; it does not authorize
+  staging, commit, push, pull request, merge, VISION-03, or any later tracker item.
+- **Confirmed recurring obligation:** every Plant already caches the same requested target, applied
+  target, target-resolution/status, feedback/measurement, error, and arrival facts, but consumers
+  must read those facts piecemeal or copy them into local immutable status values. Basic and
+  Reference lifts additionally duplicate the same named request, numeric request, position,
+  reference, and arrival bookkeeping; Starter intake repeats the named-request/applied-target pair;
+  both Control Panels testers define private requested/applied/measurement copies. The duplication
+  is real across independent position, power, and velocity uses, so a local mechanism base class or
+  documentation-only answer would leave the shared obligation in place.
+- **Construction and velocity audit:** the neutral power, commanded/device-managed/regulated
+  position, and device-managed/regulated velocity builders converge on the existing Plant runtime
+  families, and FTC single/group builders wrap those same contracts. Velocity therefore has no
+  distinct public facts that justify a `VelocityPlant` or `VelocitySnapshot`. A device-managed
+  multi-motor velocity Plant inverse-maps and safely averages member measurements; a regulated
+  group deliberately uses its one configured scalar feedback source. Its Plant-level `atTarget`
+  remains the declared aggregate answer. A shooter that requires each wheel, asymmetric
+  tolerances, acceleration settlement, debouncing, or object/feed evidence composes the generic
+  Plant snapshot with mechanism-owned evidence, as `ReferenceLauncher.Status` and Phoenix scoring
+  already do; STATUS-01 does not weaken or replace either custom contract.
+- **Alternatives rejected:** no atomic cached publication is added: it would require parallel
+  publication state in every runtime and wrapper, still could not atomically correlate a live
+  command changed between heartbeats, and would overstate cross-thread guarantees. No generic
+  actuator/status facade, enum mechanism, public snapshot builder, `VelocityPlant`, grouped-member
+  snapshot, controller/native-output snapshot, plan/multiple-alternative semantic helper, or
+  automatic multi-Plant semantic status is added. Named points remain robot capability policy,
+  while unnamed numeric position, velocity, and power callers continue to use `ScalarTarget`,
+  `ScalarTasks`, and the common Plant snapshot. This removes one repeated evidence vocabulary
+  without hiding configuration, final target resolution, Plant update ownership, or stronger
+  robot-specific readiness.
+- **Approved snapshot API:** add immutable `PlantSnapshot` and covariant
+  `PositionPlantSnapshot extends PlantSnapshot`, returned by default `Plant.snapshot()` and
+  `PositionPlant.snapshot()`. Capture reads the current live scalar command value when one exists
+  and the Plant's last-heartbeat requested/applied target, resolution/status,
+  feedback/measurement availability, measurement, errors, and arrival evidence. It derives errors
+  from the one captured measurement and exposes provenance-aware `atCommandTarget`; position adds
+  periodicity/period, legal range, reference state/status, and calibration-search support. A
+  snapshot performs no update or hardware poll, stays unchanged after later writes/heartbeats, and
+  promises neither atomic publication nor safe capture from a reentrant update callback or another
+  thread. Existing scalar getters remain authoritative, so custom Plants inherit the feature.
+- **Approved named-request API:** add `SemanticScalarCommand<S>`, whose immutable `Request<S>` owns
+  one non-null semantic value and its finite mapped numeric target. Mapping and validation complete
+  before one volatile publication; a rejected request leaves the prior pair untouched, and every
+  successful `set` creates a fresh request identity even when value and target repeat. A generic
+  `SemanticScalarSnapshot<S, P extends PlantSnapshot>` composes that current request with the exact
+  captured Plant subtype and reports whether that request identity selected the latest target and
+  whether it is at target. `PlantTargets.exact(command)` and
+  `equivalentPositionsOf(command)` propagate the private request identity through equivalence and
+  overlays. The semantic owner neither implements nor exposes `ScalarTarget`, so
+  `ScalarTasks` cannot become a second numeric writer; unnamed numeric mechanisms retain their
+  existing APIs unchanged. A move Task retains the exact `Request` published at its own start, so a
+  later same-valued request cannot falsely complete the older Task.
+- **Maintained migration boundary:** migrate Basic and Reference lifts to direct semantic position
+  snapshots, preserving home success as a fresh `STOWED` request and every unsuccessful search path
+  as the prior aligned request. Migrate Starter intake to a semantic scalar snapshot. Use the
+  semantic owner internally in Basic Claw but retain its stronger successful-submission status.
+  Replace the two Panels `PlantFacts` copies with Plant snapshots. Keep Reference launcher,
+  Phoenix scoring, planned turret selection, Pedro numeric completion, and any other custom policy
+  status unchanged. Update all affected maintained presenters, interaction fakes, tests, Javadocs,
+  source-backed excerpts, API links, and actuator/Task/design guides together; do not retain
+  parallel compatibility status classes merely to make tests fabricate evidence they never read.
+- **Required deterministic evidence:** focused tests must prove one-read immutable capture,
+  unavailable/NaN handling, command-before-heartbeat behavior, reference/search/stop/failure
+  boundaries, provenance through exact/equivalent/overlay graphs, mapper atomicity, same-valued
+  supersession, Task start/cancel/timeout/home behavior, unchanged grouped-velocity aggregate
+  semantics, Panels final capture, and all migrated caller contracts. Then run the relevant
+  maintained example/panels suites, full TeamCode unit suite, Java compile, Sushi Javadocs,
+  documentation-link/source-integrity tests, and strict docs build. Software evidence cannot prove
+  motor direction, encoder units, switch polarity, velocity balance, physical arrival, stopping,
+  homing accuracy, or shooter readiness on robot hardware.
+- **Gate 1 decision and authorization (2026-09-02):** **In progress.** The selected design is the
+  smallest principle-consistent API that removes evidence copying while keeping one final
+  resolver/Plant writer and capability-owned semantic meaning. The user's **“Implement the
+  plan.”** explicitly authorized this bounded implementation after reviewing the position,
+  velocity, grouped-shooter, and semantic/numeric consistency rationale. No staging or publication
+  authority follows from that instruction.
+- **Gate 2 implementation result (2026-09-02):** **Verifying.** The complete 57-path diff remains
+  unstaged and uncommitted on `codex/status-01-composable-actuator-status`. `PlantSnapshot` now
+  captures the common scalar command, requested/applied resolution, feedback, derived error,
+  arrival, and command-provenance facts; `PositionPlantSnapshot` covariantly adds coordinate range,
+  periodicity, reference, and calibration-search facts. FTC position/velocity wrappers delegate
+  the same capture, while numeric power and velocity Plants deliberately share the base snapshot
+  instead of adding a cosmetic velocity subtype. Capture is read-only and immutable but explicitly
+  neither an update/hardware poll nor an atomic publication or cross-thread guarantee.
+- **Semantic/provenance result:** `SemanticScalarCommand<S>` publishes one validated immutable
+  semantic/numeric `Request<S>` identity per successful submission and leaves the prior pair intact
+  on mapper failure or a non-finite result. Its semantic `PlantTargets` overloads carry private
+  request identity through exact, overlay, and equivalent-position resolution without exposing a
+  second `ScalarTarget`; `SemanticScalarSnapshot` can therefore distinguish the current request
+  from an older same-valued request. Overlay winners cannot leak unrelated command evidence, and
+  `atCommandTarget` follows the same live-value/provenance contract as feedback-aware
+  `ScalarTasks`.
+- **Maintained migration result:** Basic and Reference lifts now return named position snapshots and
+  retain the exact request issued at Task start. Successful home publishes a fresh `STOWED` pair;
+  timeout, cancellation, exception, and stop preserve the prior aligned semantic/numeric request.
+  Starter intake uses the same semantic owner and scalar snapshot; Basic Claw retains its stronger
+  successful-submission status. Both Control Panels testers consume Plant snapshots and preserve
+  exactly one segment-boundary capture attempt even when that attempt fails, preventing later
+  target/hold mutation from contaminating final metrics. Reference launcher, Phoenix/Pedro policy,
+  and other stronger custom statuses remain unchanged.
+- **Deterministic verification (2026-09-02):** Android Studio JBR 21 completed
+  `:TeamCode:testDebugUnitTest :TeamCode:sushiJavadocs` successfully after a transient Windows
+  generated-class lock was released by stopping the two Gradle daemons and rerunning without a
+  persistent daemon. The full result is **243 suites / 2,223 tests / 0 failures / 0 errors / 0
+  skips**. Within it, `PlantSnapshotTest` is 8/8, `SemanticScalarCommandTest` is 9/9,
+  `PlantTerminalLifecycleTest` is 28/28, `FtcControlPanelsTesterTest` is 39/39, and
+  `DocumentationLinksTest` is 20/20. Main/test compilation and strict Sushi Javadocs pass; output
+  contains only the repository's existing Java 8-on-JDK-21 deprecation warnings. `git diff
+  --check` is clean apart from informational LF-to-CRLF working-copy notices, all six untracked
+  files are the intended new API/test files, and the index remains empty.
+- **Adversarial audit result:** independent core/provenance, semantic-owner, maintained-migration,
+  and API/documentation reviews report no remaining blocker. Review-driven corrections aligned
+  snapshot `atCommandTarget` with literal Plant completion, made mapped position/velocity
+  `atTarget(target)` false after terminal stop, stripped overlay-layer evidence before attaching
+  base ownership, preserved one failed Panels boundary attempt, and separated one shared-ratio
+  shooter command with per-wheel readiness from genuinely independent wheel targets. The guides
+  also distinguish a device-managed group's inverse-mapped mean from a regulated group's explicitly
+  configured scalar feedback.
+- **Local documentation-render boundary:** the maintained documentation link/source-excerpt suite
+  and generated Javadocs pass, but this workstation has no usable documentation interpreter or
+  renderer: `build/docs-venv` contains neither `Scripts/python.exe` nor `Scripts/zensical.exe`,
+  `.venv` and `venv` are absent, `py`, `uv`, and `zensical` are unavailable, and `python` resolves
+  only to the Windows Store launcher stub. The pinned
+  `python -m zensical build --clean --strict` therefore could not run locally and remains the hosted
+  documentation publication gate. No renderer was installed and no generated site was claimed.
+- **Hardware evidence boundary:** deterministic software proves capture, identity, resolver,
+  lifecycle, migration, and documentation contracts. It does not prove motor direction, encoder or
+  velocity units, switch polarity, physical stop/arrival, grouped-wheel balance, homing safety, or
+  shooter readiness. Those remain adopting-robot observation and calibration responsibilities.
+- **Android Studio review stop (2026-09-02):** inspect the immutable snapshot surfaces, semantic
+  request identity and resolver propagation, mapped-Plant terminal arrival correction, lift home
+  success/failure/cancellation behavior, Starter/Claw migrations, Panels failed-capture regressions,
+  grouped shooter guidance, and synchronized source-backed lessons. No file has been staged,
+  committed, pushed, opened as a pull request, or merged. If the diff is approved, use exactly:
+  **“STATUS-01 looks good. Authorize committing the reviewed STATUS-01 diff on
+  `codex/status-01-composable-actuator-status`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`.”**
+- **Robot-code simplicity review and reopened Gate 2 (2026-09-02):** the user correctly challenged
+  whether returning `SemanticScalarSnapshot<..., ...>` directly from ordinary capabilities made
+  maintained robot code simpler. The generic implementation removed mutable status publication,
+  but six presenters gained framework imports and nested `request().semantic()` /
+  `plant().measurement()` navigation. The official
+  [NextFTC lift guide](https://nextftc.dev/guide/subsystems/lift) and
+  [Java example](https://github.com/NextFTC/Examples/blob/main/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/guide/java/subsystems/Lift.java)
+  achieve their short named-position call sites by naming subsystem behaviors, not by introducing a
+  named-position value type. Sushi's
+  canonical named API therefore remains the scalable `setHeight(Height)` / fresh
+  `moveTo(Height)` pair; reusable Task fields, one alias per position, enum-embedded calibration,
+  a `NamedPosition` registry, and a parallel semantic Task family remain rejected.
+- **Approved refinement (2026-09-02):** after reviewing the complete proposal, the user selected
+  the enum-plus-`moveTo` form and instructed **“Implement the plan.”** Basic and Reference lift and
+  Starter intake will again expose capability-local immutable `Status` types, but each type will
+  hold exactly one composed generic snapshot and delegate flat domain-named accessors. There will be
+  no `lastStatus`, mirrored update/stop publication, primitive status constructor, or reverse
+  inference from numeric values. The underlying Plant snapshot remains available only as an
+  explicitly advanced diagnostic accessor. Semantic enum mappings will fail closed when a new
+  value lacks a numeric realization. Generic snapshots, semantic request identity, Plant
+  provenance, home/move/cancellation behavior, grouped-velocity semantics, stronger custom robot
+  statuses, and unnamed `ScalarTasks` remain unchanged. This reopens only STATUS-01 Gate 2; it does
+  not authorize staging, publication, VISION-03, or another tracker item.
+- **Refined Gate 2 implementation result (2026-09-02):** **Verifying.** Basic and Reference lift
+  and Starter intake now expose flat, capability-named immutable `Status` views. Each view holds
+  exactly one generic semantic/Plant snapshot, is rebuilt on read, and delegates its facts; none
+  owns `lastStatus`, mirrored lifecycle fields, primitive status construction, numeric-to-semantic
+  inference, or another publication heartbeat. Ordinary callers retain `setHeight(Height)`, fresh
+  `moveTo(Height)`, `setMode(Mode)`, and direct domain terms such as `requestedHeight()`,
+  `measuredPositionIn()`, `mode()`, and `appliedPower()`. `plantSnapshot()` is the deliberate
+  advanced-diagnostics escape hatch. Basic, Reference, Starter, and Claw semantic mappings now
+  fail fast on an unhandled enum value; numeric calibration remains in configuration/mechanism
+  mapping rather than enum constants or per-position Task aliases.
+- **Refined behavior and teaching result:** exact request-identity completion remains intact,
+  including same-valued supersession after the newer request itself reaches target. Successful
+  home alone publishes a fresh `STOWED` request; timeout and cancellation preserve the prior
+  coherent semantic/numeric pair. The maintained lessons now distinguish a new capture on read
+  from the Plant facts cached by its prior heartbeat, teach the named `setHeight` / `moveTo` split,
+  and cover named velocity plus aggregate and per-wheel evidence for grouped shooters. Maintained
+  presenters contain no framework-generic snapshot imports or nested `status().request()` /
+  `status().plant()` navigation.
+- **Refined deterministic verification (2026-09-02):** Android Studio JBR 21 completed
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`
+  successfully with a single-use Gradle daemon: **243 suites / 2,227 tests / 0 failures / 0 errors /
+  0 skips**. The final review corrections also passed the focused Basic lift, Basic claw, and
+  `DocumentationLinksTest` run; the documentation suite remains 20/20 and verifies the synchronized
+  full-source teaching excerpts. Only the repository's existing Java 8-on-JDK-21 and FTC
+  deprecation warnings remain. `git diff --check` is clean apart from informational LF-to-CRLF
+  notices; all six untracked files are the intended snapshot API/tests, all 51 tracked paths are
+  in-scope, and the index is empty.
+- **Refined adversarial audit result:** independent public-API/construction, lifecycle/test-validity,
+  and documentation reviews found no remaining blocker after correcting fail-closed Claw/example
+  mapping, capture-on-read wording, the generic semantic-position Javadoc distinction, and Basic
+  status delegate-shape coverage. The audit confirms no competing scalar writer, velocity facade,
+  named-position registry, cached capability publisher, stale ordinary nested navigation, or core
+  dependency on FTC/tools/robot application packages.
+- **Refined Android Studio review stop (2026-09-02):** review the 57-path unstaged diff, especially
+  snapshot capture semantics, private command provenance through exact/equivalent/overlay graphs,
+  one-delegate capability status views, same-valued move supersession, home terminal outcomes,
+  grouped-velocity guidance, Panels boundary capture, and source-backed lessons. Robot hardware
+  remains required to validate direction, units, switch polarity, physical stop/arrival, homing,
+  grouped-wheel balance, and shooter readiness. No file has been staged, committed, pushed, opened
+  as a pull request, or merged. If the diff is approved, use exactly: **“STATUS-01 looks good.
+  Authorize committing the reviewed STATUS-01 diff on
+  `codex/status-01-composable-actuator-status`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`.”**
+- **Manual review and Gate 3 authorization (2026-09-02):** **Done.** The user completed the Android
+  Studio review and sent the exact combined authorization above. STATUS-01 is approved for
+  committing the reviewed 57-path diff on `codex/status-01-composable-actuator-status`, pushing
+  that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
+  merging only into `master`. The user's separate direction to add and begin a ReferenceLauncher
+  snapshot-composition cleanup applies only after this merge and does not expand the reviewed
+  STATUS-01 publication diff.
 
 ### VISION-03 - Reusable color-blob pipeline
 

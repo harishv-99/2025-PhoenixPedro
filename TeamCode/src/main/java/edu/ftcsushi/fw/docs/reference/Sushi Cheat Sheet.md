@@ -153,6 +153,42 @@ instance: it applies the realization's natural stop and makes later updates iner
 the resolver or command target. Use a zero command for active-match idle; construct a fresh Plant
 for another lifecycle.
 
+## Reuse actuator status
+
+```java
+PlantSnapshot scalarStatus = flywheel.snapshot();
+PositionPlantSnapshot positionStatus = lift.snapshot();
+
+SemanticScalarCommand<Height> height =
+        SemanticScalarCommand.create(Height.STOWED, this::heightInFor);
+SemanticScalarSnapshot<Height, PositionPlantSnapshot> namedStatus =
+        height.snapshot(lift.snapshot());
+```
+
+`PlantSnapshot` covers command/requested/applied targets, resolution/status, feedback,
+measurement/errors, and arrival for power, velocity, and position Plants. Position snapshots add
+range, periodicity, reference, and search capability. Named requests use one semantic/numeric
+command and compose the Plant snapshot; they do not infer an enum from a double or expose a raw
+numeric writer. Per-wheel balance, piece evidence, debounce, and other robot-specific readiness stay
+in a capability-owned status that composes these facts.
+
+For an ordinary named position, keep the public story smaller than its backing snapshot:
+
+```java
+lift.setHeight(BasicLift.Height.LOW);            // persistent request; does not wait
+Task move = lift.moveTo(BasicLift.Height.HIGH);  // fresh single-use feedback Task
+BasicLift.Status status = lift.status();
+telemetry.addData("lift", "%s %.2f/%.2f",
+        status.requestedHeight(),
+        status.measuredPositionIn(),
+        status.requestedPositionIn());
+```
+
+The enum supplies the semantic name; configuration and one mechanism mapper own the numeric
+coordinates. Use the same shape for named velocity requests. A grouped Plant's `atTarget()` is
+aggregate evidence; publish per-wheel readiness separately in capability status when the robot
+needs it.
+
 ## Choose a Plant recipe
 
 Before copying a new actuator into a mechanism, run

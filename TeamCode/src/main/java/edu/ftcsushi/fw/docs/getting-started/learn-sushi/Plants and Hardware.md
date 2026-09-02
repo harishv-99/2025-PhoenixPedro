@@ -10,8 +10,8 @@ code truthfully report?
 
 A **Plant** is the mechanism-owned object that resolves one requested actuator target and performs
 the final hardware write. The mechanism owns the complete path: capability intent, its private
-Plant, managed update, cached status, and terminal stop. This is a source-only lesson; no hardware
-motion is required.
+Plant, managed update, cached Plant facts, capture-on-read status, and terminal stop. This is a
+source-only lesson; no hardware motion is required.
 
 ## Follow the Starter intake
 
@@ -37,17 +37,17 @@ plant = FtcActuators.plant(
         )
         .motor(motorName, direction)
         .power()
-        .targetFromNewCommand(STOPPED_POWER)
+        .targetFromResolver(PlantTargets.exact(modeCommand))
         .build();
 ```
 
 **What to notice**
 
 - The mechanism constructs and privately owns the complete Plant graph.
-- The builder names one motor, one target source, and a safe initial zero request.
+- The builder names one motor and one semantic target source whose initial request is safe zero.
 
 **Key APIs:** `FtcActuators.plant(hardwareMap)` begins ordinary FTC construction;
-`targetFromNewCommand(...)` creates the Plant-owned persistent command source.
+`PlantTargets.exact(...)` binds the mechanism-owned semantic command into the final resolver.
 
 The builder answers which FTC motor is owned, its logical direction, the public target kind, and
 where the final target comes from. A direct-power Plant owns normalized range `[-1, +1]` and begins
@@ -55,24 +55,22 @@ with a zero command. Construction does not command motion; the managed output ph
 `plant.update(clock)`.
 
 `setMode(...)` keeps the named request and maps it forward to the configured power. It does not
-write hardware. Status reports that retained request directly:
+write hardware. Internally, the mechanism composes that retained request with cached Plant facts:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
-return new Status(requestedMode, plant.getAppliedTarget());
+return new Status(modeCommand.snapshot(plant.snapshot()));
 ```
 
 **What to notice:** semantic request and applied numeric target remain separate facts.
 
-**Key APIs:** `Plant.getAppliedTarget()` reports the cached resolved command; it is not motor
-feedback.
+**Key APIs:** `SemanticScalarCommand.snapshot(...)` pairs the named request with one immutable
+snapshot of cached Plant facts without polling hardware. `StarterIntake.status()` projects
+`mode()`, `requestedPower()`, `appliedPower()`, and the advanced `plantSnapshot()` escape hatch.
 
-The mechanism never guesses a mode by reading a power back. Collect and eject powers therefore do
-not need to be unique, though both Starter action powers must still be finite, nonzero, and inside
-`[-1, +1]`. That is a software-identity rule, not a recommendation to configure a real one-motor
-intake with equal powers: the team must still verify that its chosen values produce the intended
-different physical actions. `appliedTargetPower` is the cached final target after resolution and
-guards. It is not motor readback and does not prove physical movement.
+The mechanism never infers a mode from power, so collect and eject values need not be unique. Both
+must still be finite, nonzero, inside `[-1, +1]`, and physically reviewed. `appliedPower()` is the
+cached resolved target, not motor readback or proof of movement.
 
 ## Keep the evidence names honest
 
@@ -85,9 +83,9 @@ guards. It is not motor readback and does not prove physical movement.
 | Ready / `atTarget` | Does cached controller evidence meet tolerance? | both flywheels within tolerance |
 | Physical result | Did the game piece move or score? | operator observation or separate sensor evidence |
 
-Presenters and clients read the mechanism's cached snapshot after its update. They do not resample
-hardware or advance the Plant. A requested or applied target is not a measurement; controller
-readiness is not proof of a successful game action.
+Presenters and clients request a new mechanism snapshot after its update; that snapshot reads the
+Plant's cached facts. They do not resample hardware or advance the Plant. A requested or applied
+target is not a measurement; controller readiness is not proof of a successful game action.
 
 ## Active idle is not terminal stop
 
@@ -115,8 +113,9 @@ tolerance; it cannot prove that a game piece scored.
 
 ## Check your understanding
 
-**`appliedTargetPower()` reports `0.20`. Did the motor turn?** That cannot be concluded. Sushi
-knows the cached applied command, not physical motion.
+**`status().appliedPower()` reports `0.20`. Did the motor turn?** That cannot be concluded. Sushi
+knows the cached applied command, not physical motion. `status().plantSnapshot()` is available when
+an advanced diagnostic needs the full generic Plant capture.
 
 **Collect and eject use the same configured power. Can status still distinguish them?** Yes.
 `status().mode()` reports the retained semantic request, not a mode inferred from that number.

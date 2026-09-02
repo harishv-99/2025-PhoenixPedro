@@ -201,6 +201,20 @@ public interface Plant {
     }
 
     /**
+     * Capture this Plant's cached public facts in one immutable value.
+     *
+     * <p>This method does not update the Plant, sample hardware, or add a publication heartbeat.
+     * The default implementation reads each cached public query once. Call it after the owning
+     * lifecycle operation returns; it does not promise an atomic view when invoked reentrantly
+     * during an update/external callback or concurrently from another thread.</p>
+     *
+     * @return a new immutable capture of the currently reported Plant facts
+     */
+    default PlantSnapshot snapshot() {
+        return new PlantSnapshot(this);
+    }
+
+    /**
      * Permanently stop this Plant instance using its realization's natural stop behavior.
      *
      * <p>The Plant becomes terminal before any output or controller callback is invoked. A later
@@ -225,15 +239,19 @@ public interface Plant {
     default void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;
         String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
-        dbg.addData(p + ".requestedTarget", getRequestedTarget())
-                .addData(p + ".appliedTarget", getAppliedTarget())
-                .addData(p + ".targetResolution", getTargetResolution().toString())
-                .addData(p + ".targetStatus", getTargetStatus().toString())
-                .addData(p + ".hasCommandTarget", hasCommandTarget())
-                .addData(p + ".hasFeedback", hasFeedback())
-                .addData(p + ".atTarget", atTarget())
-                .addData(p + ".measurement", getMeasurement())
-                .addData(p + ".requestedTargetError", getRequestedTargetError())
-                .addData(p + ".appliedTargetError", getAppliedTargetError());
+        PlantSnapshot snapshot = snapshot();
+        dbg.addData(p + ".requestedTarget", snapshot.requestedTarget())
+                .addData(p + ".appliedTarget", snapshot.appliedTarget())
+                .addData(p + ".targetResolution", snapshot.targetResolution().toString())
+                .addData(p + ".targetStatus", snapshot.targetStatus().toString())
+                .addData(p + ".hasCommandTarget", snapshot.hasCommandTarget())
+                .addData(p + ".commandTarget", snapshot.commandTarget())
+                .addData(p + ".hasFeedback", snapshot.hasFeedback())
+                .addData(p + ".hasMeasurement", snapshot.hasMeasurement())
+                .addData(p + ".atTarget", snapshot.atTarget())
+                .addData(p + ".atCommandTarget", snapshot.atCommandTarget())
+                .addData(p + ".measurement", snapshot.measurement())
+                .addData(p + ".requestedTargetError", snapshot.requestedTargetError())
+                .addData(p + ".appliedTargetError", snapshot.appliedTargetError());
     }
 }

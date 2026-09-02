@@ -152,6 +152,6 @@ public final class StarterRobot {
     private static void presentIntake(Telemetry telemetry, StarterIntake intake) {
         StarterIntake.Status status = intake.status();
         telemetry.addData("intake.mode", status.mode());
-        telemetry.addData("intake.appliedTargetPower", status.appliedTargetPower());
+        telemetry.addData("intake.appliedTargetPower", status.appliedPower());
     }
 }

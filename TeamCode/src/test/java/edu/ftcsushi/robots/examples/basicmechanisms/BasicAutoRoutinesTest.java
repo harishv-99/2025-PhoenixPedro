@@ -362,7 +362,7 @@ public final class BasicAutoRoutinesTest {
 
         @Override
         public Status status() {
-            return new Status(Height.STOWED, 0.0, 0.0, true, true);
+            throw new AssertionError("RecordingLift status is not used by these Auto tests");
         }
 
         private ControllableTask moveTask(int index) {

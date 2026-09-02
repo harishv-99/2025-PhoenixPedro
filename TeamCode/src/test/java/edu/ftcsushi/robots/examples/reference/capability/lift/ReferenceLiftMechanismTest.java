@@ -2,6 +2,10 @@ package edu.ftcsushi.robots.examples.reference.capability.lift;
 
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
@@ -17,18 +21,45 @@ import static org.junit.Assert.fail;
 public final class ReferenceLiftMechanismTest {
 
     @Test
+    public void statusIsADelegateOnlyDomainView() {
+        Field[] fields = ReferenceLift.Status.class.getDeclaredFields();
+        assertEquals(1, fields.length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                fields[0].getType());
+        assertTrue(Modifier.isPrivate(fields[0].getModifiers()));
+        assertTrue(Modifier.isFinal(fields[0].getModifiers()));
+
+        Constructor<?>[] constructors = ReferenceLift.Status.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertTrue(Modifier.isPublic(constructors[0].getModifiers()));
+        assertEquals(1, constructors[0].getParameterTypes().length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                constructors[0].getParameterTypes()[0]);
+
+        try {
+            new ReferenceLift.Status(null);
+            fail("Expected a null lift status delegate to fail");
+        } catch (NullPointerException expected) {
+            assertEquals("delegate", expected.getMessage());
+        }
+    }
+
+    @Test
     public void defaultsExposeARealStowedStatusAndFreshFeedbackMoves() {
         Fixture f = fixture();
 
         ReferenceLift.Status initial = f.lift.status();
-        assertEquals(ReferenceLift.Height.STOWED, initial.requestedHeight);
-        assertEquals(f.config.stowedHeightIn, initial.requestedPositionIn, 0.0);
-        assertFalse(initial.referenced);
+        assertEquals(ReferenceLift.Height.STOWED, initial.requestedHeight());
+        assertEquals(f.config.stowedHeightIn, initial.requestedPositionIn(), 0.0);
+        assertFalse(initial.referenced());
+        assertEquals(initial.measuredPositionIn(), initial.plantSnapshot().measurement(), 0.0);
 
         Task first = f.lift.moveTo(ReferenceLift.Height.LOW);
         Task second = f.lift.moveTo(ReferenceLift.Height.LOW);
         assertNotSame(first, second);
-        assertEquals(f.config.stowedHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(f.config.stowedHeightIn, f.lift.status().requestedPositionIn(), 0.0);
     }
 
     @Test
@@ -40,11 +71,16 @@ public final class ReferenceLiftMechanismTest {
         f.lift.setHeight(ReferenceLift.Height.HIGH);
 
         ReferenceLift.Status requested = f.lift.status();
-        assertEquals(ReferenceLift.Height.HIGH, requested.requestedHeight);
-        assertEquals(f.config.highHeightIn, requested.requestedPositionIn, 0.0);
-        assertEquals(before.measuredPositionIn, requested.measuredPositionIn, 0.0);
-        assertEquals(before.referenced, requested.referenced);
-        assertFalse(requested.atTarget);
+        assertEquals(ReferenceLift.Height.HIGH, requested.requestedHeight());
+        assertEquals(f.config.highHeightIn, requested.requestedPositionIn(), 0.0);
+        assertEquals(before.appliedPositionIn(), requested.appliedPositionIn(), 0.0);
+        assertEquals(before.measuredPositionIn(), requested.measuredPositionIn(), 0.0);
+        assertEquals(before.referenced(), requested.referenced());
+        assertFalse(requested.atTarget());
+        assertEquals(
+                requested.appliedPositionIn(),
+                requested.plantSnapshot().appliedTarget(),
+                0.0);
         assertEquals(targetWritesBefore, f.motor.targetPositionWrites());
     }
 
@@ -57,16 +93,16 @@ public final class ReferenceLiftMechanismTest {
                 (int) Math.round(f.config.stowedHeightIn * f.config.ticksPerIn));
         f.lift.update(time.nextCycle(0.02));
         ReferenceLift.Status beforeStop = f.lift.status();
-        assertTrue(beforeStop.atTarget);
+        assertTrue(beforeStop.atTarget());
 
         f.lift.stop();
 
         ReferenceLift.Status stopped = f.lift.status();
-        assertEquals(beforeStop.requestedHeight, stopped.requestedHeight);
-        assertEquals(beforeStop.requestedPositionIn, stopped.requestedPositionIn, 0.0);
-        assertEquals(beforeStop.measuredPositionIn, stopped.measuredPositionIn, 0.0);
-        assertEquals(beforeStop.referenced, stopped.referenced);
-        assertFalse(stopped.atTarget);
+        assertEquals(beforeStop.requestedHeight(), stopped.requestedHeight());
+        assertEquals(beforeStop.requestedPositionIn(), stopped.requestedPositionIn(), 0.0);
+        assertEquals(beforeStop.measuredPositionIn(), stopped.measuredPositionIn(), 0.0);
+        assertEquals(beforeStop.referenced(), stopped.referenced());
+        assertFalse(stopped.atTarget());
     }
 
     @Test
@@ -85,9 +121,9 @@ public final class ReferenceLiftMechanismTest {
 
         assertTrue(move.isComplete());
         assertEquals(TaskOutcome.SUCCESS, move.getOutcome());
-        assertEquals(ReferenceLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertTrue(f.lift.status().atTarget);
+        assertEquals(ReferenceLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertTrue(f.lift.status().atTarget());
     }
 
     @Test
@@ -104,8 +140,8 @@ public final class ReferenceLiftMechanismTest {
         f.lift.update(time.clock());
 
         assertEquals(TaskOutcome.TIMEOUT, timeout.getOutcome());
-        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
 
         Task cancelled = f.lift.moveTo(ReferenceLift.Height.LOW);
         cancelled.start(time.nextCycle(0.02));
@@ -115,8 +151,8 @@ public final class ReferenceLiftMechanismTest {
         f.lift.update(time.nextCycle(0.02));
 
         assertEquals(TaskOutcome.CANCELLED, cancelled.getOutcome());
-        assertEquals(ReferenceLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(ReferenceLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
     }
 
     @Test
@@ -130,18 +166,46 @@ public final class ReferenceLiftMechanismTest {
         f.motor.setCurrentPositionTicks(
                 (int) Math.round(f.config.lowHeightIn * f.config.ticksPerIn));
         f.lift.update(time.clock());
-        assertTrue(f.lift.status().atTarget);
+        assertTrue(f.lift.status().atTarget());
 
         f.lift.setHeight(ReferenceLift.Height.HIGH);
         move.update(time.nextCycle(0.01));
         assertFalse(move.isComplete());
-        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
 
         move.update(time.nextCycle(f.config.moveTimeoutSec));
         assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
-        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+    }
+
+    @Test
+    public void moveCannotSucceedAfterAnEqualValuedRequestSupersedesIt() {
+        Fixture f = fixture();
+        ManualLoopClock time = new ManualLoopClock();
+        homeSuccessfully(f, time);
+
+        Task move = f.lift.moveTo(ReferenceLift.Height.LOW);
+        move.start(time.nextCycle(0.02));
+        f.motor.setCurrentPositionTicks(
+                (int) Math.round(f.config.lowHeightIn * f.config.ticksPerIn));
+        f.lift.update(time.clock());
+        assertTrue(f.lift.status().atTarget());
+
+        f.lift.setHeight(ReferenceLift.Height.LOW);
+        assertFalse(f.lift.status().atTarget());
+        f.lift.update(time.nextCycle(0.01));
+        assertTrue("the newer equal-valued request itself has arrived",
+                f.lift.status().atTarget());
+
+        move.update(time.clock());
+        assertFalse(move.isComplete());
+        move.update(time.nextCycle(f.config.moveTimeoutSec));
+
+        assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
+        assertEquals(ReferenceLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
     }
 
     @Test
@@ -158,13 +222,13 @@ public final class ReferenceLiftMechanismTest {
         successfulHome.update(successTime.nextCycle(0.03));
 
         assertEquals(TaskOutcome.SUCCESS, successfulHome.getOutcome());
-        assertEquals(ReferenceLift.Height.STOWED, success.lift.status().requestedHeight);
+        assertEquals(ReferenceLift.Height.STOWED, success.lift.status().requestedHeight());
         assertEquals(success.config.stowedHeightIn,
-                success.lift.status().requestedPositionIn, 0.0);
+                success.lift.status().requestedPositionIn(), 0.0);
         assertEquals(targetWritesBeforeSuccess, success.motor.targetPositionWrites());
 
         success.lift.update(successTime.clock());
-        assertTrue(success.lift.status().referenced);
+        assertTrue(success.lift.status().referenced());
         assertEquals(
                 (int) Math.round(success.config.stowedHeightIn * success.config.ticksPerIn),
                 success.motor.targetPositionTicks());
@@ -178,9 +242,9 @@ public final class ReferenceLiftMechanismTest {
         update(timedOutHome, timeout.lift, timeoutTime, timeout.config.homingTimeoutSec);
 
         assertEquals(TaskOutcome.TIMEOUT, timedOutHome.getOutcome());
-        assertEquals(ReferenceLift.Height.HIGH, timeout.lift.status().requestedHeight);
+        assertEquals(ReferenceLift.Height.HIGH, timeout.lift.status().requestedHeight());
         assertEquals(timeout.config.highHeightIn,
-                timeout.lift.status().requestedPositionIn, 0.0);
+                timeout.lift.status().requestedPositionIn(), 0.0);
     }
 
     @Test
@@ -196,8 +260,8 @@ public final class ReferenceLiftMechanismTest {
         f.lift.update(time.nextCycle(0.02));
 
         assertEquals(TaskOutcome.CANCELLED, home.getOutcome());
-        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(ReferenceLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
     }
 
     @Test
@@ -223,7 +287,7 @@ public final class ReferenceLiftMechanismTest {
         update(home, f.lift, time, 0.01);
         update(home, f.lift, time, 0.03);
         assertEquals(TaskOutcome.SUCCESS, home.getOutcome());
-        assertTrue(f.lift.status().referenced);
+        assertTrue(f.lift.status().referenced());
     }
 
     private static void update(Task task,

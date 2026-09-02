@@ -333,10 +333,10 @@ separately named `ScalarTarget` when it is useful on its own or while assembling
 equivalent-position, or advanced target graph.
 
 If the capability names a `Height`, `Mode`, or semantic pose, do not write the backing number with
-`ScalarTasks`. The mechanism's one setter maps and writes the numeric command before publishing the
-semantic request; when status retains both forms, it publishes one paired snapshot. A Task calls
-that setter and waits on the owner's coherent status. Output queues likewise remain temporary
-target producers rather than alternate semantic-state writers.
+`ScalarTasks`. The mechanism owns one `SemanticScalarCommand`, whose mapper validates and publishes
+the named request with its finite numeric target. A Task calls that same setter and waits on the
+composed `SemanticScalarSnapshot`; it cannot access a raw numeric writer. Output queues likewise
+remain temporary target producers rather than alternate semantic-state writers.
 
 Use **OutputTaskRunner** when:
 

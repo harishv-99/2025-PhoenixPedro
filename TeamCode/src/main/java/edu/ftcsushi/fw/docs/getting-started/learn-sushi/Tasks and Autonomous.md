@@ -46,9 +46,10 @@ Plant. After 0.75 seconds, the Task requests `Mode.STOPPED`. Active cancellation
 stopped mode, and FTC STOP cancels active work before stopping declared outputs.
 
 This is temporal intent, not a second hardware writer: the Task changes the mechanism's semantic
-request; the mechanism remains the one object that maps it, updates the Plant, and stops the Plant.
-Use `ScalarTasks` directly when the capability request itself is a number, such as flywheel
-velocity. The Starter uses `setMode(...)` because its public request and status are named modes.
+request through `SemanticScalarCommand`; the mechanism remains the one object that maps it, updates
+the Plant, and stops the Plant. Use `ScalarTasks` directly when the capability request itself is a
+number, such as flywheel velocity. The Starter uses `setMode(...)` because its public request and
+composed status are named modes.
 
 ## Every run needs a fresh Task
 

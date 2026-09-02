@@ -173,6 +173,8 @@ public final class PlantTerminalLifecycleTest {
         assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
         assertTrue(plant.getTargetResolution().hasTarget());
         assertFalse(plant.atTarget());
+        assertFalse("terminal lifecycle invalidates literal velocity arrival",
+                plant.atTarget(0.4));
     }
 
     @Test
@@ -205,6 +207,8 @@ public final class PlantTerminalLifecycleTest {
         assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
         assertTrue(plant.getTargetResolution().hasTarget());
         assertFalse(plant.atTarget());
+        assertFalse("terminal lifecycle invalidates literal position arrival",
+                plant.atTarget(4.0));
     }
 
     @Test

@@ -5,6 +5,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
+import edu.ftcsushi.fw.actuation.PlantTargets;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.ftc.FtcActuators;
@@ -56,7 +58,7 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
     private final Plant plant;
     private final double collectPower;
     private final double ejectPower;
-    private Mode requestedMode = Mode.STOPPED;
+    private final SemanticScalarCommand<Mode> modeCommand;
 
     /**
      * Constructs and privately owns the ordinary FTC intake Plant from a defensive Config
@@ -79,22 +81,21 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
         requireDirection(direction);
         requireActionPowers(copiedCollectPower, copiedEjectPower);
 
+        collectPower = copiedCollectPower;
+        ejectPower = copiedEjectPower;
+        modeCommand = SemanticScalarCommand.create(Mode.STOPPED, this::powerFor);
         plant = FtcActuators.plant(
                         Objects.requireNonNull(hardwareMap, "hardwareMap is required")
                 )
                 .motor(motorName, direction)
                 .power()
-                .targetFromNewCommand(STOPPED_POWER)
+                .targetFromResolver(PlantTargets.exact(modeCommand))
                 .build();
-        collectPower = copiedCollectPower;
-        ejectPower = copiedEjectPower;
     }
 
     @Override
     public void setMode(Mode mode) {
-        Mode requested = Objects.requireNonNull(mode, "mode");
-        plant.commandTarget().set(powerFor(requested));
-        requestedMode = requested;
+        modeCommand.set(Objects.requireNonNull(mode, "mode"));
     }
 
     @Override
@@ -112,7 +113,7 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
 
     @Override
     public Status status() {
-        return new Status(requestedMode, plant.getAppliedTarget());
+        return new Status(modeCommand.snapshot(plant.snapshot()));
     }
 
     @Override
@@ -132,8 +133,9 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
             case EJECT:
                 return ejectPower;
             case STOPPED:
-            default:
                 return STOPPED_POWER;
+            default:
+                throw new IllegalStateException("Unhandled StarterIntake.Mode: " + mode);
         }
     }
 

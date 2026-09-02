@@ -5,6 +5,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
+import edu.ftcsushi.fw.actuation.PlantTargets;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.ftc.FtcActuators;
@@ -53,7 +55,7 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
     private final Plant claw;
     private final double closedPosition;
     private final double openPosition;
-    private State requestedState;
+    private final SemanticScalarCommand<State> stateCommand;
     private double lastAppliedPosition = Double.NaN;
     private boolean stopped;
 
@@ -69,27 +71,25 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
 
         closedPosition = c.closedPosition;
         openPosition = c.openPosition;
-        requestedState = c.initialState;
+        stateCommand = SemanticScalarCommand.create(c.initialState, this::positionFor);
         claw = FtcActuators.plant(map)
                 .servo(c.servoName, c.direction)
                 .position()
                 .nonPeriodic()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetFromNewCommand(positionFor(c.initialState))
+                .targetFromResolver(PlantTargets.exact(stateCommand))
                 .build();
     }
 
     @Override
     public void setState(State state) {
-        State requested = Objects.requireNonNull(state, "state");
-        claw.commandTarget().set(positionFor(requested));
-        requestedState = requested;
+        stateCommand.set(Objects.requireNonNull(state, "state"));
     }
 
     @Override
     public Status status() {
-        return new Status(requestedState, lastAppliedPosition);
+        return new Status(stateCommand.request().semantic(), lastAppliedPosition);
     }
 
     /** Applies the held command through the one final Plant path. */
@@ -118,7 +118,14 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
     }
 
     private double positionFor(State state) {
-        return state == State.OPEN ? openPosition : closedPosition;
+        switch (state) {
+            case OPEN:
+                return openPosition;
+            case CLOSED:
+                return closedPosition;
+            default:
+                throw new IllegalStateException("Unhandled BasicClaw.State: " + state);
+        }
     }
 
     private static Config copyAndValidate(Config source) {
