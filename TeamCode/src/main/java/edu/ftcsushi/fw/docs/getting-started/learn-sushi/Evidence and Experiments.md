@@ -114,10 +114,11 @@ switch depressed” for that circuit. Debounce then requires the selected value 
 
 ## Scale to measured readiness
 
-The Reference launcher caches requested velocity, independent left/right measured velocities,
-per-wheel at-target facts, aggregate readiness, conditioned object presence, and whether a temporary
-transfer pulse is active. `ready` is true only for a positive target when both finite measurements
-meet tolerance. It does not prove that an object launched or scored.
+Each successful Reference launcher update publishes one immutable
+[`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>):
+the grouped flywheel snapshot plus per-wheel, sensor, and transfer facts. Flat requested/applied
+methods avoid generic navigation. `ready()` requires one positive value selected and applied
+without fallback plus both wheels in tolerance; it does not prove a launch or score.
 
 `objectPresent` is status-only in the Reference mechanism. `launchOne()` does not use it to permit
 feeding. A team that needs object-gated feeding must add that policy explicitly rather than treating
@@ -134,10 +135,10 @@ sensor placement, capacity, or collection result on a robot.
 ## Print computed evidence; observe visible evidence
 
 The locked Reference flywheel experiment prints what software must calculate: trial number and
-state, target velocity, both measured velocities, and elapsed time. When a trial ends, it freezes
-time and measurements before requesting zero, so later coast-down cannot relabel the result. The
-operator records directly visible or audible facts—direction, vibration, sound, damage, clearance,
-and STOP response.
+state, target velocity, both measured velocities, and elapsed time. When a trial ends, one immutable
+terminal result freezes the launcher Status, authored target, and elapsed time before requesting
+zero, so later coast-down cannot relabel the result. The operator records directly visible or
+audible facts—direction, vibration, sound, damage, clearance, and STOP response.
 
 The trial changes only flywheel velocity; it never requests a transfer or release pulse. The whole
 production mechanism still updates its normal idle outputs, so the release servo may move to its
@@ -163,7 +164,7 @@ team rejects the configuration. Neither observation should be converted silently
 ## Go deeper when needed
 
 - Electrical conditioning: [`ReferenceLiftMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
-- Cached launcher evidence: [`ReferenceLauncherMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+- All-or-nothing launcher publication: [`ReferenceLauncherMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
 - Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
 - Hardware-free feedback cases: [Hardware-free Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>)
 - Safe experiment card and workflow: [Subsystem Experiments](<../../examples/Subsystem Experiments.md>)

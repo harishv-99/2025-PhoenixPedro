@@ -285,8 +285,7 @@ public final class ReferenceAutoRoutinesTest {
 
         @Override
         public Status status() {
-            return new Status(0.0, 0.0, 0.0,
-                    false, false, false, false);
+            throw new AssertionError("RecordingLauncher status is not used by these Auto tests");
         }
     }
 

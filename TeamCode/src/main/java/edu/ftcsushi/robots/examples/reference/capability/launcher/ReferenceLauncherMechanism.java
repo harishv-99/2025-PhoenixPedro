@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
+import edu.ftcsushi.fw.actuation.PlantSnapshot;
 import edu.ftcsushi.fw.actuation.PlantTargetResolver;
 import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.ScalarTasks;
@@ -97,14 +98,7 @@ public final class ReferenceLauncherMechanism
     private final double releaseDurationSec;
 
     private long launchGeneration;
-    private Status lastStatus = new Status(
-            IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC,
-            Double.NaN,
-            Double.NaN,
-            false,
-            false,
-            false,
-            false);
+    private Status lastStatus;
 
     /**
      * Constructs the complete mechanism after validating its copied configuration.
@@ -136,6 +130,7 @@ public final class ReferenceLauncherMechanism
         Plant builtFlywheel = null;
         Plant builtTransfer = null;
         Plant builtRelease = null;
+        Status builtInitialStatus;
         try {
             builtFlywheel = createFlywheelPlant(map, c);
             builtTransfer = FtcActuators.plant(map)
@@ -151,6 +146,13 @@ public final class ReferenceLauncherMechanism
                     .nativeUnits()
                     .targetFromNewCommand(c.releaseRetractedPosition)
                     .build();
+            builtInitialStatus = new Status(
+                    builtFlywheel.snapshot(),
+                    Double.NaN,
+                    Double.NaN,
+                    c.velocityToleranceTicksPerSec,
+                    false,
+                    false);
         } catch (RuntimeException failure) {
             Plant f = builtFlywheel;
             Plant t = builtTransfer;
@@ -177,6 +179,7 @@ public final class ReferenceLauncherMechanism
         releaseRetractedPosition = c.releaseRetractedPosition;
         releaseExtendedPosition = c.releaseExtendedPosition;
         releaseDurationSec = c.releaseDurationSec;
+        lastStatus = builtInitialStatus;
     }
 
     /**
@@ -241,7 +244,8 @@ public final class ReferenceLauncherMechanism
 
     /**
      * Advances the transfer queue and all three owned Plants once in program output order, then
-     * publishes one per-wheel evidence snapshot for this loop cycle.
+     * publishes one complete launcher Status for this loop cycle only after all three Plant
+     * updates and every subsequent evidence capture succeed.
      */
     @Override
     public void update(LoopClock clock) {
@@ -250,39 +254,40 @@ public final class ReferenceLauncherMechanism
         transfer.update(clock);
         release.update(clock);
 
-        double targetVelocityTicksPerSec = flywheel.commandTarget().get();
+        PlantSnapshot flywheelSnapshot = flywheel.snapshot();
         double leftVelocityTicksPerSec =
                 leftMeasuredVelocityTicksPerSec.getAsDouble(clock);
         double rightVelocityTicksPerSec =
                 rightMeasuredVelocityTicksPerSec.getAsDouble(clock);
-        boolean leftAtTarget = withinTolerance(
-                leftVelocityTicksPerSec,
-                targetVelocityTicksPerSec,
-                velocityToleranceTicksPerSec);
-        boolean rightAtTarget = withinTolerance(
-                rightVelocityTicksPerSec,
-                targetVelocityTicksPerSec,
-                velocityToleranceTicksPerSec);
+        boolean capturedObjectPresent = objectPresent.getAsBoolean(clock);
+        boolean transferPulseActive = transferOverrides.hasActiveTask();
 
         lastStatus = new Status(
-                targetVelocityTicksPerSec,
+                flywheelSnapshot,
                 leftVelocityTicksPerSec,
                 rightVelocityTicksPerSec,
-                leftAtTarget,
-                rightAtTarget,
-                objectPresent.getAsBoolean(clock),
-                transferOverrides.activeSource().getAsBoolean(clock));
+                velocityToleranceTicksPerSec,
+                capturedObjectPresent,
+                transferPulseActive);
     }
 
     /** Terminally stops the complete owned actuator graph and invalidates outstanding launches. */
     @Override
     public void stop() {
         launchGeneration++;
+        Status priorStatus = lastStatus;
         CleanupActions.attemptAll(
                 transferOverrides::cancelAndClear,
                 release::stop,
                 transfer::stop,
                 flywheel::stop);
+        lastStatus = new Status(
+                flywheel.snapshot(),
+                priorStatus.leftMeasuredVelocityTicksPerSec(),
+                priorStatus.rightMeasuredVelocityTicksPerSec(),
+                velocityToleranceTicksPerSec,
+                priorStatus.objectPresent(),
+                false);
     }
 
     /** Enqueue the one temporary transfer override used only by a started launch Task. */
@@ -298,9 +303,9 @@ public final class ReferenceLauncherMechanism
     private boolean launchTargetIsReady() {
         Status status = lastStatus;
         return Double.compare(
-                status.targetVelocityTicksPerSec,
+                status.requestedVelocityTicksPerSec(),
                 launchVelocityTicksPerSec) == 0
-                && status.ready;
+                && status.ready();
     }
 
     /** Clear every temporary request without terminally stopping the owned Plants. */
@@ -563,15 +568,6 @@ public final class ReferenceLauncherMechanism
                             + "different FTC hardware devices after trimming; got effective key \""
                             + leftKey + "\".");
         }
-    }
-
-    /** Return whether one finite wheel measurement is inside the inclusive error tolerance. */
-    private static boolean withinTolerance(double measured,
-                                           double target,
-                                           double tolerance) {
-        return Double.isFinite(measured)
-                && Double.isFinite(target)
-                && Math.abs(measured - target) <= tolerance;
     }
 
     private static String requireName(String value, String field) {

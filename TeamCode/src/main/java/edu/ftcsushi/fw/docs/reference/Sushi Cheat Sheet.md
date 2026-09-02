@@ -189,6 +189,21 @@ coordinates. Use the same shape for named velocity requests. A grouped Plant's `
 aggregate evidence; publish per-wheel readiness separately in capability status when the robot
 needs it.
 
+Keep that richer backing flat for ordinary launcher code:
+
+```java
+ReferenceLauncher.Status launcherStatus = launcher.status();
+telemetry.addData("launcher", "%.0f/%.0f ready=%s",
+        launcherStatus.requestedVelocityTicksPerSec(),
+        launcherStatus.appliedVelocityTicksPerSec(),
+        launcherStatus.ready());
+```
+
+[`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>)
+is one immutable publication combining the grouped flywheel snapshot with custom
+per-wheel, sensor, and transient facts. Use `leftAtTarget()` and `rightAtTarget()` when those facts
+matter; reserve `flywheelSnapshot()` for advanced diagnostics.
+
 ## Choose a Plant recipe
 
 Before copying a new actuator into a mechanism, run

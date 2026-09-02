@@ -102,14 +102,16 @@ requesting reusable idle, and terminally stops the owned mechanism from `onStop(
 
 - Criteria are copied and validated before hardware construction; the checked-in motion lock stays false.
 - INIT constructs the selected tester but does not command motion.
-- One bounded trial freezes evidence before requesting reusable idle, so deceleration cannot rewrite its result.
+- One bounded trial freezes a single immutable terminal result before requesting reusable idle, so
+  deceleration cannot rewrite its launcher Status, authored target, elapsed time, or outcome.
 - STOP terminally cleans the owned mechanism even after abort or partial progress.
 
 **Key APIs**
 
 - `BaseTeleOpTester`: supplies the shared non-blocking tester lifecycle and clock.
 - `ReferenceFlywheelSpinUpCriteria`: owns the locked question, command, and powered-time boundary.
-- `ReferenceLauncher.Status`: provides computed per-wheel evidence without declaring the lab-card decision.
+- [`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>): combines one grouped Plant snapshot with captured per-wheel, sensor,
+  transient, and readiness evidence without declaring the lab-card decision.
 - `FtcTeleOpTesterOpMode`: hosts a fresh tester tree without creating another FTC loop.
 
 [`ReferenceFlywheelSpinUpExperiment.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
@@ -126,7 +128,7 @@ The checked-in card remains locked:
 | Motion review | `ReferenceFlywheelSpinUpCriteria.current().reviewedForMotion` | `false` prevents construction of the motion-capable mechanism. |
 | Command | `targetVelocityTicksPerSec` | Team-reviewed target in encoder ticks per second, positive, above the copied tolerance, and no greater than the configured maximum. |
 | Safety cap | `maximumPoweredRunSec` | Cooperative elapsed-time boundary checked each active loop; zero is applied on the first loop observed at or after it, not by a hard real-time cutoff. It is not automatically the acceptable spin-up threshold. |
-| Computed evidence | `ReferenceLauncher.Status` | Target, left/right measured velocity, per-wheel error/at-target evidence, and aggregate readiness. |
+| Computed evidence | terminal result plus `ReferenceLauncher.Status` | Authored target and elapsed time, requested/applied target, left/right measured velocity and at-target facts, and readiness; display errors are derived from the frozen target and measurements. |
 | Minimal display | experiment telemetry | State and control hint always; trial number plus target, left/right evidence, elapsed/spin-up time, and frozen result only when a trial supplies them. |
 | Physical evidence | operator results row | Direction, vibration, sound, damage, clearance, and STOP response. |
 | Decision | reviewed lab card | Accept, revise, or reject from all criteria; `TARGET_REACHED` alone is not `PASS`. |
@@ -142,9 +144,10 @@ reviewed card values
     -> team decision
 ```
 
-Press A to begin one trial and B to abort it. A terminal transition freezes elapsed time and both
-wheel measurements before requesting zero, so deceleration readings cannot change a retained
-`TARGET_REACHED`, `TIME_LIMIT_REACHED`, or `ABORTED` result. A while `RUNNING` is ignored to prevent
+Press A to begin one trial and B to abort it. A terminal transition freezes one immutable result
+containing the launcher Status, authored target, and elapsed time before requesting zero, so
+deceleration readings cannot change a retained `TARGET_REACHED`, `TIME_LIMIT_REACHED`, or `ABORTED`
+result. A while `RUNNING` is ignored to prevent
 overlapping or restarted work. After a terminal result, pressing A again increments the trial
 number and starts a distinct row. Readiness published strictly before the powered-time boundary
 freezes `TARGET_REACHED` in that same loop. If readiness has not already been observed when elapsed
@@ -153,6 +156,14 @@ a measurement first available in that boundary cycle cannot relabel the retained
 the tester is cooperative, it checks this boundary once per active loop and freezes the elapsed
 time actually observed there, which may exceed `maximumPoweredRunSec`. The reviewed lab card and
 STOP plan must allow for the worst-case loop delay.
+
+Each trial ignores the Status present when it began. A same-valued ready publication retained from
+the prior trial cannot finish the new trial before its own output heartbeat publishes evidence.
+
+That boundary behavior relies on the launcher's all-or-nothing publication timing. The experiment
+checks the prior successful Status before the deadline, then checks newly published per-wheel
+evidence after the output heartbeat. It does not replace those later per-wheel facts with the
+grouped Plant's aggregate arrival sample taken earlier in the mechanism update.
 
 ## Two independent motion gates
 

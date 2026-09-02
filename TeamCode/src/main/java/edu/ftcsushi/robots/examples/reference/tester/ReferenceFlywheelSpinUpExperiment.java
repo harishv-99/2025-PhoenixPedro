@@ -23,6 +23,21 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         ABORTED
     }
 
+    /** One immutable terminal capture kept until the next numbered trial begins. */
+    private static final class TerminalResult {
+        private final ReferenceLauncher.Status status;
+        private final double authoredTargetVelocityTicksPerSec;
+        private final double elapsedSec;
+
+        private TerminalResult(ReferenceLauncher.Status status,
+                               double authoredTargetVelocityTicksPerSec,
+                               double elapsedSec) {
+            this.status = Objects.requireNonNull(status, "status");
+            this.authoredTargetVelocityTicksPerSec = authoredTargetVelocityTicksPerSec;
+            this.elapsedSec = elapsedSec;
+        }
+    }
+
     private final ReferenceLauncherMechanism.Config launcherConfig;
     private final boolean reviewedForMotion;
     private final double targetVelocityTicksPerSec;
@@ -33,12 +48,8 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
     private TrialState trialState = TrialState.IDLE;
     private long trialNumber;
     private double startedAtSec = Double.NaN;
-    private double terminalTargetVelocityTicksPerSec = Double.NaN;
-    private double terminalElapsedSec = Double.NaN;
-    private double terminalLeftMeasuredVelocityTicksPerSec = Double.NaN;
-    private double terminalRightMeasuredVelocityTicksPerSec = Double.NaN;
-    private boolean terminalLeftAtTarget;
-    private boolean terminalRightAtTarget;
+    private ReferenceLauncher.Status trialStartStatus;
+    private TerminalResult terminalResult;
 
     /** Defensively snapshots the launcher recipe and the team's experiment card. */
     ReferenceFlywheelSpinUpExperiment(
@@ -100,7 +111,9 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
      * update strictly before the boundary is frozen in that same loop. If no readiness was already
      * observed when an active loop reaches or overshoots the boundary, the time-limit gate freezes
      * that loop's observed elapsed time and requests zero before its Plant command. A new
-     * boundary-cycle measurement cannot relabel that timeout.</p>
+     * boundary-cycle measurement cannot relabel that timeout. Each trial also ignores the Status
+     * identity present when it began, so a repeated target cannot consume the prior trial's ready
+     * publication.</p>
      */
     @Override
     protected void onLoop(double dtSec) {
@@ -108,7 +121,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
             if (trialState == TrialState.RUNNING) {
                 ReferenceLauncher.Status status = launcher.status();
                 double elapsedSec = runningElapsedSec();
-                if (status.ready) {
+                if (status != trialStartStatus && status.ready()) {
                     finishTrial(TrialState.TARGET_REACHED, status, elapsedSec);
                 } else if (elapsedSec >= maximumPoweredRunSec) {
                     finishTrial(TrialState.TIME_LIMIT_REACHED, status, elapsedSec);
@@ -117,7 +130,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
             launcher.update(clock);
             if (trialState == TrialState.RUNNING) {
                 ReferenceLauncher.Status status = launcher.status();
-                if (status.ready) {
+                if (status.ready()) {
                     finishTrial(
                             TrialState.TARGET_REACHED,
                             status,
@@ -148,7 +161,8 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         trialNumber++;
         trialState = TrialState.RUNNING;
         startedAtSec = clock.nowSec();
-        clearTerminalEvidence();
+        trialStartStatus = launcher.status();
+        terminalResult = null;
         launcher.setTargetVelocityTicksPerSec(targetVelocityTicksPerSec);
     }
 
@@ -167,14 +181,10 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
                              double elapsedSec) {
         // The copied trial answer remains truthful even when A and B rise before the first
         // mechanism update has published the newly requested target.
-        terminalTargetVelocityTicksPerSec = targetVelocityTicksPerSec;
-        terminalElapsedSec = elapsedSec;
-        terminalLeftMeasuredVelocityTicksPerSec =
-                status.leftMeasuredVelocityTicksPerSec;
-        terminalRightMeasuredVelocityTicksPerSec =
-                status.rightMeasuredVelocityTicksPerSec;
-        terminalLeftAtTarget = status.leftAtTarget;
-        terminalRightAtTarget = status.rightAtTarget;
+        terminalResult = new TerminalResult(
+                status,
+                targetVelocityTicksPerSec,
+                elapsedSec);
         trialState = terminalState;
         launcher.abortLaunches();
     }
@@ -201,26 +211,31 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
 
         ReferenceLauncher.Status liveStatus = launcher.status();
         boolean terminal = isTerminal(trialState);
+        TerminalResult displayedResult = terminal
+                ? Objects.requireNonNull(terminalResult, "terminalResult")
+                : null;
+        ReferenceLauncher.Status displayedStatus = terminal
+                ? displayedResult.status
+                : liveStatus;
         double displayedTargetVelocityTicksPerSec = terminal
-                ? terminalTargetVelocityTicksPerSec
-                : trialState == TrialState.RUNNING
-                ? liveStatus.targetVelocityTicksPerSec
-                : targetVelocityTicksPerSec;
-        double displayedLeftMeasuredVelocityTicksPerSec = terminal
-                ? terminalLeftMeasuredVelocityTicksPerSec
-                : liveStatus.leftMeasuredVelocityTicksPerSec;
-        double displayedRightMeasuredVelocityTicksPerSec = terminal
-                ? terminalRightMeasuredVelocityTicksPerSec
-                : liveStatus.rightMeasuredVelocityTicksPerSec;
-        boolean displayedLeftAtTarget = terminal
-                ? terminalLeftAtTarget
-                : liveStatus.leftAtTarget;
-        boolean displayedRightAtTarget = terminal
-                ? terminalRightAtTarget
-                : liveStatus.rightAtTarget;
+                ? displayedResult.authoredTargetVelocityTicksPerSec
+                : liveStatus.requestedVelocityTicksPerSec();
+        double displayedLeftMeasuredVelocityTicksPerSec =
+                displayedStatus.leftMeasuredVelocityTicksPerSec();
+        double displayedRightMeasuredVelocityTicksPerSec =
+                displayedStatus.rightMeasuredVelocityTicksPerSec();
+        // Never relabel pre-trial or differently requested evidence as facts about this target.
+        boolean displayedRequestMatchesTarget = displayedStatus != trialStartStatus
+                && Double.compare(
+                        displayedStatus.requestedVelocityTicksPerSec(),
+                        displayedTargetVelocityTicksPerSec) == 0;
+        boolean displayedLeftAtTarget = displayedRequestMatchesTarget
+                && displayedStatus.leftAtTarget();
+        boolean displayedRightAtTarget = displayedRequestMatchesTarget
+                && displayedStatus.rightAtTarget();
         double displayedElapsedSec = terminal
-                ? terminalElapsedSec
-                : trialState == TrialState.RUNNING ? runningElapsedSec() : 0.0;
+                ? displayedResult.elapsedSec
+                : runningElapsedSec();
 
         ctx.telemetry.addData("trialNumber", trialNumber);
         ctx.telemetry.addData(
@@ -244,7 +259,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         ctx.telemetry.addData("rightAtTarget", displayedRightAtTarget);
         ctx.telemetry.addData("elapsedSec", displayedElapsedSec);
         if (trialState == TrialState.TARGET_REACHED) {
-            ctx.telemetry.addData("spinUpSec", terminalElapsedSec);
+            ctx.telemetry.addData("spinUpSec", displayedResult.elapsedSec);
         }
         telemHint("A: begin | B: abort");
         telemUpdate();
@@ -253,16 +268,6 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
     /** Return current nonnegative trial elapsed time from the shared tester clock. */
     private double runningElapsedSec() {
         return Math.max(0.0, clock.nowSec() - startedAtSec);
-    }
-
-    /** Clear retained terminal values only when a new numbered trial begins. */
-    private void clearTerminalEvidence() {
-        terminalTargetVelocityTicksPerSec = Double.NaN;
-        terminalElapsedSec = Double.NaN;
-        terminalLeftMeasuredVelocityTicksPerSec = Double.NaN;
-        terminalRightMeasuredVelocityTicksPerSec = Double.NaN;
-        terminalLeftAtTarget = false;
-        terminalRightAtTarget = false;
     }
 
     /** Return whether one state owns a frozen result snapshot. */

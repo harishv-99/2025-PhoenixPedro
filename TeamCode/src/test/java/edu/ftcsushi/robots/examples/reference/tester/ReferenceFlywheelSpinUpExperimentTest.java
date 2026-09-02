@@ -250,6 +250,10 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         assertEquals(1L, rig.telemetry.value("trialNumber"));
         assertNumber(rig.criteria.targetVelocityTicksPerSec,
                 rig.telemetry.value("targetVelocityTicksPerSec"));
+        assertFalse("idle-request evidence must not be relabeled for the authored trial target",
+                (Boolean) rig.telemetry.value("leftAtTarget"));
+        assertFalse("idle-request evidence must not be relabeled for the authored trial target",
+                (Boolean) rig.telemetry.value("rightAtTarget"));
         assertFalse(rig.telemetry.has("spinUpSec"));
         assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
 
@@ -297,6 +301,36 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         assertNumber(444.0, rig.telemetry.value("rightMeasuredVelocityTicksPerSec"));
         assertNumber(abortedElapsedSec, rig.telemetry.value("elapsedSec"));
         assertMinimalTelemetry(rig.telemetry);
+        rig.tester.stop();
+    }
+
+    @Test
+    public void newTrialCannotConsumePriorSameTargetReadyPublication() {
+        Rig rig = new Rig();
+        rig.startActive();
+
+        rig.gamepad1.a = true;
+        rig.activeCycle(0.02);
+        rig.gamepad1.a = false;
+        rig.left.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.activeCycle(0.02);
+        assertEquals(ReferenceFlywheelSpinUpExperiment.TrialState.TARGET_REACHED,
+                rig.telemetry.value("trialState"));
+
+        rig.left.setMeasuredVelocityTicksPerSec(0.0);
+        rig.right.setMeasuredVelocityTicksPerSec(0.0);
+        rig.gamepad1.a = true;
+        rig.activeCycle(0.02);
+
+        assertEquals("trial 2 must wait for evidence published after its own start",
+                ReferenceFlywheelSpinUpExperiment.TrialState.RUNNING,
+                rig.telemetry.value("trialState"));
+        assertEquals(2L, rig.telemetry.value("trialNumber"));
+        assertFalse((Boolean) rig.telemetry.value("leftAtTarget"));
+        assertFalse((Boolean) rig.telemetry.value("rightAtTarget"));
+        assertEquals(rig.criteria.targetVelocityTicksPerSec,
+                rig.left.commandedVelocityTicksPerSec(), EPSILON);
         rig.tester.stop();
     }
 

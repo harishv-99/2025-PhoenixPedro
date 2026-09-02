@@ -31,11 +31,11 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         assertEquals(targetTicksPerSec,
                 scenario.right.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0,
-                scenario.launcher.status().leftMeasuredVelocityTicksPerSec, EPSILON);
+                scenario.launcher.status().leftMeasuredVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0,
-                scenario.launcher.status().rightMeasuredVelocityTicksPerSec, EPSILON);
+                scenario.launcher.status().rightMeasuredVelocityTicksPerSec(), EPSILON);
         assertFalse("a recorded command is not measured feedback",
-                scenario.launcher.status().ready);
+                scenario.launcher.status().ready());
         assertFeedIdle(scenario);
 
         double outsideTolerance = scenario.config.velocityToleranceTicksPerSec + 25.0;
@@ -45,15 +45,15 @@ public final class ReferenceLauncherSoftwareScenarioTest {
                 targetTicksPerSec - outsideTolerance);
         scenario.advance(CYCLE_SEC);
         assertFalse("opposite errors must not become ready by averaging",
-                scenario.launcher.status().ready);
+                scenario.launcher.status().ready());
         assertFeedIdle(scenario);
 
         scenario.left.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
         scenario.right.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
         scenario.advance(CYCLE_SEC);
-        assertTrue(scenario.launcher.status().leftAtTarget);
-        assertTrue(scenario.launcher.status().rightAtTarget);
-        assertTrue(scenario.launcher.status().ready);
+        assertTrue(scenario.launcher.status().leftAtTarget());
+        assertTrue(scenario.launcher.status().rightAtTarget());
+        assertTrue(scenario.launcher.status().ready());
         assertFeedIdle(scenario);
 
         scenario.advance(CYCLE_SEC);
@@ -68,7 +68,7 @@ public final class ReferenceLauncherSoftwareScenarioTest {
                 scenario.release.position(), EPSILON);
         assertEquals(scenario.config.transferPower,
                 scenario.transfer.power(), EPSILON);
-        assertTrue(scenario.launcher.status().transferPulseActive);
+        assertTrue(scenario.launcher.status().transferPulseActive());
         assertFalse(scenario.launch.isComplete());
 
         scenario.advance(scenario.config.transferDurationSec + CYCLE_SEC);
@@ -95,9 +95,9 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         scenario.left.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
         scenario.right.setMeasuredVelocityTicksPerSec(0.0);
         scenario.advance(CYCLE_SEC);
-        assertTrue(scenario.launcher.status().leftAtTarget);
-        assertFalse(scenario.launcher.status().rightAtTarget);
-        assertFalse(scenario.launcher.status().ready);
+        assertTrue(scenario.launcher.status().leftAtTarget());
+        assertFalse(scenario.launcher.status().rightAtTarget());
+        assertFalse(scenario.launcher.status().ready());
         assertFeedIdle(scenario);
 
         double finalCycleSec = 0.01;
@@ -117,15 +117,15 @@ public final class ReferenceLauncherSoftwareScenarioTest {
 
     private static void assertActiveMatchIdle(Scenario scenario) {
         ReferenceLauncher.Status status = scenario.launcher.status();
-        assertEquals(0.0, status.targetVelocityTicksPerSec, EPSILON);
-        assertFalse(status.ready);
+        assertEquals(0.0, status.requestedVelocityTicksPerSec(), EPSILON);
+        assertFalse(status.ready());
         assertEquals(0.0, scenario.left.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0, scenario.right.commandedVelocityTicksPerSec(), EPSILON);
         assertFeedIdle(scenario);
     }
 
     private static void assertFeedIdle(Scenario scenario) {
-        assertFalse(scenario.launcher.status().transferPulseActive);
+        assertFalse(scenario.launcher.status().transferPulseActive());
         assertEquals(0.0, scenario.transfer.power(), EPSILON);
         assertEquals(scenario.config.releaseRetractedPosition,
                 scenario.release.position(), EPSILON);

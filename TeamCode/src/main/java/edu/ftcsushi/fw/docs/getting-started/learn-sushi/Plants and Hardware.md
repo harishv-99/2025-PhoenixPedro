@@ -10,7 +10,7 @@ code truthfully report?
 
 A **Plant** is the mechanism-owned object that resolves one requested actuator target and performs
 the final hardware write. The mechanism owns the complete path: capability intent, its private
-Plant, managed update, cached Plant facts, capture-on-read status, and terminal stop. This is a
+Plant, managed update, cached Plant facts, capability status, and terminal stop. This is a
 source-only lesson; no hardware motion is required.
 
 ## Follow the Starter intake
@@ -83,9 +83,10 @@ cached resolved target, not motor readback or proof of movement.
 | Ready / `atTarget` | Does cached controller evidence meet tolerance? | both flywheels within tolerance |
 | Physical result | Did the game piece move or score? | operator observation or separate sensor evidence |
 
-Presenters and clients request a new mechanism snapshot after its update; that snapshot reads the
-Plant's cached facts. They do not resample hardware or advance the Plant. A requested or applied
-target is not a measurement; controller readiness is not proof of a successful game action.
+Clients read capability status after update. It uses cached Plant facts without polling hardware;
+multi-source capabilities may publish them together. A requested or applied target is not a
+measurement, and controller readiness
+is not proof of a successful game action.
 
 ## Active idle is not terminal stop
 
@@ -107,9 +108,12 @@ coordinates and final output.
 
 The
 [`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
-cohesively owns several Plants, a temporary transfer overlay, and per-wheel velocity evidence. Its
-one `update(clock)` defines their order. `ready` requires a positive request and both wheels within
-tolerance; it cannot prove that a game piece scored.
+owns its Plants, transfer overlay, and per-wheel evidence. Each successful update publishes one
+[`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>)
+containing the grouped snapshot and custom facts. Flat requested/applied velocity and readiness
+methods avoid generic navigation. Readiness needs a positive value selected and applied without
+fallback, plus both wheels in tolerance; it cannot prove scoring. Stop publishes readiness false
+and transfer inactive; older Status values remain immutable.
 
 ## Check your understanding
 

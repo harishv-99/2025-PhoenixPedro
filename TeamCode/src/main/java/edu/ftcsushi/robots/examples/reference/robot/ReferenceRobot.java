@@ -73,10 +73,10 @@ public final class ReferenceRobot {
                 liftStatus.requestedPositionIn(), liftStatus.referenced());
         telemetry.addData("launcher",
                 "target=%.0f ticks/sec left=%.0f right=%.0f ready=%s object=%s",
-                launcherStatus.targetVelocityTicksPerSec,
-                launcherStatus.leftMeasuredVelocityTicksPerSec,
-                launcherStatus.rightMeasuredVelocityTicksPerSec,
-                launcherStatus.ready, launcherStatus.objectPresent);
+                launcherStatus.requestedVelocityTicksPerSec(),
+                launcherStatus.leftMeasuredVelocityTicksPerSec(),
+                launcherStatus.rightMeasuredVelocityTicksPerSec(),
+                launcherStatus.ready(), launcherStatus.objectPresent());
     }
 
     private static void requireDistinctMotorOwners(ReferenceProfile profile,

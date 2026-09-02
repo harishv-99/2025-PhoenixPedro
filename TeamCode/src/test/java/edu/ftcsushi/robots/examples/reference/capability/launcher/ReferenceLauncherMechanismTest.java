@@ -4,16 +4,24 @@ import org.junit.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+import edu.ftcsushi.fw.actuation.Plant;
+import edu.ftcsushi.fw.actuation.PlantSnapshot;
+import edu.ftcsushi.fw.actuation.PlantTargetResolution;
+import edu.ftcsushi.fw.actuation.PlantTargetStatus;
+import edu.ftcsushi.fw.core.source.ScalarSource;
+import edu.ftcsushi.fw.core.source.ScalarTarget;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.task.OutputTask;
 import edu.ftcsushi.fw.task.OutputTaskRunner;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.task.TaskRunner;
+import edu.ftcsushi.fw.task.Tasks;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 import edu.ftcsushi.fw.testing.ftc.FtcTestHardware.CrServoProbe;
 import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
@@ -22,7 +30,9 @@ import edu.ftcsushi.fw.testing.ftc.FtcTestHardware.ServoProbe;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -46,14 +56,39 @@ public final class ReferenceLauncherMechanismTest {
                         "status")),
                 methodNames);
 
-        assertStatusField("targetVelocityTicksPerSec", double.class);
-        assertStatusField("leftMeasuredVelocityTicksPerSec", double.class);
-        assertStatusField("rightMeasuredVelocityTicksPerSec", double.class);
-        assertStatusField("leftAtTarget", boolean.class);
-        assertStatusField("rightAtTarget", boolean.class);
-        assertStatusField("ready", boolean.class);
-        assertStatusField("objectPresent", boolean.class);
-        assertStatusField("transferPulseActive", boolean.class);
+        Set<String> publicStatusMethodNames = new HashSet<String>();
+        for (Method method : ReferenceLauncher.Status.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers())) {
+                publicStatusMethodNames.add(method.getName());
+            }
+        }
+        assertEquals(
+                new HashSet<String>(Arrays.asList(
+                        "requestedVelocityTicksPerSec",
+                        "appliedVelocityTicksPerSec",
+                        "leftMeasuredVelocityTicksPerSec",
+                        "rightMeasuredVelocityTicksPerSec",
+                        "leftAtTarget",
+                        "rightAtTarget",
+                        "ready",
+                        "objectPresent",
+                        "transferPulseActive",
+                        "flywheelSnapshot")),
+                publicStatusMethodNames);
+        assertEquals("Status exposes no public primitive fields",
+                0, ReferenceLauncher.Status.class.getFields().length);
+        for (Field field : ReferenceLauncher.Status.class.getDeclaredFields()) {
+            assertTrue(Modifier.isPrivate(field.getModifiers()));
+            assertTrue(Modifier.isFinal(field.getModifiers()));
+        }
+        assertEquals(1, ReferenceLauncher.Status.class.getConstructors().length);
+        assertNotNull(ReferenceLauncher.Status.class.getConstructor(
+                PlantSnapshot.class,
+                double.class,
+                double.class,
+                double.class,
+                boolean.class,
+                boolean.class));
 
         assertConfigField("maximumVelocityTicksPerSec");
         assertConfigField("velocityToleranceTicksPerSec");
@@ -64,27 +99,261 @@ public final class ReferenceLauncherMechanismTest {
     }
 
     @Test
-    public void statusDerivesAggregateReadinessAndRejectsNonfiniteAtTargetEvidence() {
-        ReferenceLauncher.Status oneWheelOnly = new ReferenceLauncher.Status(
-                1000.0, 1000.0, 1000.0,
-                true, false, false, false);
-        assertFalse(oneWheelOnly.ready);
+    public void statusComposesPlantFactsAndDerivesFinitePerWheelReadiness() {
+        Rig rig = new Rig();
+        rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
+        PlantSnapshot pending = flywheel(rig.mechanism).snapshot();
+        ReferenceLauncher.Status pendingStatus = new ReferenceLauncher.Status(
+                pending,
+                1000.0,
+                1000.0,
+                rig.config.velocityToleranceTicksPerSec,
+                false,
+                true);
 
-        ReferenceLauncher.Status idle = new ReferenceLauncher.Status(
-                0.0, 0.0, 0.0,
-                true, true, false, false);
-        assertTrue(idle.leftAtTarget);
-        assertTrue(idle.rightAtTarget);
-        assertFalse(idle.ready);
+        assertSame(pending, pendingStatus.flywheelSnapshot());
+        assertEquals(1000.0, pendingStatus.requestedVelocityTicksPerSec(), 0.0);
+        assertEquals(0.0, pendingStatus.appliedVelocityTicksPerSec(), 0.0);
+        assertTrue(pendingStatus.leftAtTarget());
+        assertTrue(pendingStatus.rightAtTarget());
+        assertFalse("pre-heartbeat command is not accepted as requested/applied",
+                pendingStatus.ready());
+        assertFalse(pendingStatus.objectPresent());
+        assertTrue(pendingStatus.transferPulseActive());
 
-        ReferenceLauncher.Status bothWheels = new ReferenceLauncher.Status(
-                1000.0, 1000.0, 1000.0,
-                true, true, false, false);
-        assertTrue(bothWheels.ready);
+        rig.mechanism.setTargetVelocityTicksPerSec(0.0);
+        rig.left.setMeasuredVelocityTicksPerSec(0.0);
+        rig.right.setMeasuredVelocityTicksPerSec(0.0);
+        rig.mechanism.update(rig.time.clock());
+        ReferenceLauncher.Status idle = rig.mechanism.status();
+        assertTrue(idle.leftAtTarget());
+        assertTrue(idle.rightAtTarget());
+        assertFalse(idle.ready());
+
+        rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
+        rig.left.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.right.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.mechanism.update(rig.time.nextCycle(0.02));
+        ReferenceLauncher.Status accepted = rig.mechanism.status();
+        assertTrue(accepted.ready());
+
+        ReferenceLauncher.Status unavailableWheel = new ReferenceLauncher.Status(
+                accepted.flywheelSnapshot(),
+                Double.NaN,
+                1000.0,
+                rig.config.velocityToleranceTicksPerSec,
+                false,
+                false);
+        assertFalse(unavailableWheel.leftAtTarget());
+        assertTrue(unavailableWheel.rightAtTarget());
+        assertFalse(unavailableWheel.ready());
+
+        ReferenceLauncher.Status zeroTolerance = new ReferenceLauncher.Status(
+                accepted.flywheelSnapshot(),
+                1000.0,
+                1000.01,
+                0.0,
+                false,
+                false);
+        assertTrue(zeroTolerance.leftAtTarget());
+        assertFalse(zeroTolerance.rightAtTarget());
+        assertFalse(zeroTolerance.ready());
 
         assertThrows(IllegalArgumentException.class, () -> new ReferenceLauncher.Status(
-                1000.0, Double.NaN, 1000.0,
-                true, true, false, false));
+                accepted.flywheelSnapshot(),
+                1000.0,
+                1000.0,
+                Double.NaN,
+                false,
+                false));
+        assertThrows(IllegalArgumentException.class, () -> new ReferenceLauncher.Status(
+                accepted.flywheelSnapshot(),
+                1000.0,
+                1000.0,
+                -1.0,
+                false,
+                false));
+        assertThrows(IllegalArgumentException.class, () -> new ReferenceLauncher.Status(
+                plant(rig.mechanism, "transfer").snapshot(),
+                0.0,
+                0.0,
+                0.0,
+                false,
+                false));
+
+        ReferenceLauncher.Status fallback = new ReferenceLauncher.Status(
+                new SnapshotOnlyPlant(PlantTargetResolution.fallback(
+                        1000.0,
+                        "same-valued fallback")).snapshot(),
+                1000.0,
+                1000.0,
+                rig.config.velocityToleranceTicksPerSec,
+                false,
+                false);
+        assertFalse("fallback intent is not active launcher readiness", fallback.ready());
+
+        Rig nonfiniteRig = new Rig();
+        Plant nonfiniteFlywheel = flywheel(nonfiniteRig.mechanism);
+        nonfiniteFlywheel.commandTarget().set(Double.NaN);
+        PlantSnapshot nonfiniteCommand = nonfiniteFlywheel.snapshot();
+        assertThrows(IllegalArgumentException.class, () -> new ReferenceLauncher.Status(
+                nonfiniteCommand,
+                0.0,
+                0.0,
+                0.0,
+                false,
+                false));
+    }
+
+    @Test
+    public void statusIsSideEffectFreeAndPublishesOnlyCompleteHeartbeatEvidence()
+            throws Exception {
+        Rig rig = new Rig();
+        ReferenceLauncher.Status initial = rig.mechanism.status();
+        int initialLeftReads = rig.left.velocityReadCalls();
+        int initialRightReads = rig.right.velocityReadCalls();
+        int initialObjectReads = rig.objectSensor.stateReadCalls();
+        OutputTaskRunner transferOverrides = transferOverrides(rig.mechanism);
+        transferOverrides.enqueue(Tasks.outputForSeconds("queuedTransfer", 0.2, 1.0));
+
+        assertSame(initial, rig.mechanism.status());
+        assertSame(initial, rig.mechanism.status());
+        assertEquals(initialLeftReads, rig.left.velocityReadCalls());
+        assertEquals(initialRightReads, rig.right.velocityReadCalls());
+        assertEquals(initialObjectReads, rig.objectSensor.stateReadCalls());
+        assertEquals(1, transferOverrides.queuedCount());
+        assertFalse(transferOverrides.hasActiveTask());
+
+        rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
+        rig.left.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.right.setMeasuredVelocityTicksPerSec(1000.0);
+        assertSame("a command alone does not publish a mixed-age Status",
+                initial, rig.mechanism.status());
+        assertEquals(0.0, initial.requestedVelocityTicksPerSec(), 0.0);
+
+        rig.mechanism.update(rig.time.clock());
+        ReferenceLauncher.Status published = rig.mechanism.status();
+        assertNotSame(initial, published);
+        assertEquals(1000.0, published.requestedVelocityTicksPerSec(), 0.0);
+        assertEquals(1000.0, published.appliedVelocityTicksPerSec(), 0.0);
+        assertTrue(published.ready());
+        assertTrue(published.transferPulseActive());
+
+        int publishedLeftReads = rig.left.velocityReadCalls();
+        int publishedRightReads = rig.right.velocityReadCalls();
+        int publishedObjectReads = rig.objectSensor.stateReadCalls();
+        assertSame(published, rig.mechanism.status());
+        assertEquals(publishedLeftReads, rig.left.velocityReadCalls());
+        assertEquals(publishedRightReads, rig.right.velocityReadCalls());
+        assertEquals(publishedObjectReads, rig.objectSensor.stateReadCalls());
+
+        rig.mechanism.setTargetVelocityTicksPerSec(500.0);
+        assertSame(published, rig.mechanism.status());
+        assertEquals(1000.0, published.requestedVelocityTicksPerSec(), 0.0);
+        rig.left.setMeasuredVelocityTicksPerSec(500.0);
+        rig.right.setMeasuredVelocityTicksPerSec(500.0);
+        rig.mechanism.update(rig.time.nextCycle(0.02));
+        ReferenceLauncher.Status replacement = rig.mechanism.status();
+        assertNotSame(published, replacement);
+        assertEquals(500.0, replacement.requestedVelocityTicksPerSec(), 0.0);
+        assertEquals("older immutable captures do not drift",
+                1000.0, published.requestedVelocityTicksPerSec(), 0.0);
+    }
+
+    @Test
+    public void failedCustomEvidenceReadDoesNotPublishPartialPlantFacts() {
+        Rig rig = new Rig();
+        rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
+        rig.left.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.right.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.mechanism.update(rig.time.clock());
+        ReferenceLauncher.Status prior = rig.mechanism.status();
+        assertTrue(prior.ready());
+
+        rig.mechanism.setTargetVelocityTicksPerSec(500.0);
+        rig.left.setMeasuredVelocityTicksPerSec(500.0);
+        rig.right.setMeasuredVelocityTicksPerSec(500.0);
+        RuntimeException readFailure = new RuntimeException("injected object read failure");
+        rig.objectSensor.setReadFailure(readFailure);
+
+        RuntimeException observed = assertThrows(
+                RuntimeException.class,
+                () -> rig.mechanism.update(rig.time.nextCycle(0.02)));
+
+        assertSame(readFailure, observed);
+        assertSame("failed publication retains the prior complete Status",
+                prior, rig.mechanism.status());
+        assertEquals(1000.0, prior.requestedVelocityTicksPerSec(), 0.0);
+        assertEquals(1000.0, prior.appliedVelocityTicksPerSec(), 0.0);
+
+        rig.objectSensor.setReadFailure(null);
+        rig.mechanism.update(rig.time.nextCycle(0.02));
+        ReferenceLauncher.Status recovered = rig.mechanism.status();
+        assertNotSame(prior, recovered);
+        assertEquals(500.0, recovered.requestedVelocityTicksPerSec(), 0.0);
+        assertEquals(500.0, recovered.appliedVelocityTicksPerSec(), 0.0);
+        assertTrue(recovered.ready());
+    }
+
+    @Test
+    public void successfulStopPublishesTerminalStatusAndPreservesOlderCapture() {
+        Rig rig = new Rig();
+        rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
+        rig.left.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.right.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.mechanism.update(rig.time.clock());
+        ReferenceLauncher.Status active = rig.mechanism.status();
+        assertTrue(active.ready());
+        int leftReads = rig.left.velocityReadCalls();
+        int rightReads = rig.right.velocityReadCalls();
+        int objectReads = rig.objectSensor.stateReadCalls();
+
+        rig.mechanism.stop();
+        ReferenceLauncher.Status stopped = rig.mechanism.status();
+
+        assertNotSame(active, stopped);
+        assertEquals(PlantTargetStatus.Kind.STOPPED,
+                stopped.flywheelSnapshot().targetStatus().kind());
+        assertEquals(1000.0, stopped.requestedVelocityTicksPerSec(), 0.0);
+        assertEquals(0.0, stopped.appliedVelocityTicksPerSec(), 0.0);
+        assertEquals(1000.0, stopped.leftMeasuredVelocityTicksPerSec(), 0.0);
+        assertEquals(1000.0, stopped.rightMeasuredVelocityTicksPerSec(), 0.0);
+        assertTrue(stopped.leftAtTarget());
+        assertTrue(stopped.rightAtTarget());
+        assertFalse(stopped.ready());
+        assertFalse(stopped.transferPulseActive());
+        assertTrue("older captures remain historical", active.ready());
+        assertEquals(PlantTargetStatus.Kind.ACCEPTED,
+                active.flywheelSnapshot().targetStatus().kind());
+        assertEquals(leftReads, rig.left.velocityReadCalls());
+        assertEquals(rightReads, rig.right.velocityReadCalls());
+        assertEquals(objectReads, rig.objectSensor.stateReadCalls());
+    }
+
+    @Test
+    public void failedStopDoesNotFabricateTerminalStatus() throws Exception {
+        Rig rig = new Rig();
+        rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
+        rig.left.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.right.setMeasuredVelocityTicksPerSec(1000.0);
+        rig.mechanism.update(rig.time.clock());
+        ReferenceLauncher.Status prior = rig.mechanism.status();
+        assertTrue(prior.ready());
+
+        OutputTaskRunner transferOverrides = transferOverrides(rig.mechanism);
+        transferOverrides.enqueue(new ThrowingCancelOutputTask());
+        transferOverrides.update(rig.time.nextCycle(0.02));
+
+        IllegalStateException failure = assertThrows(
+                IllegalStateException.class,
+                rig.mechanism::stop);
+
+        assertTrue(failure.getMessage().contains("injected transfer cleanup failure"));
+        assertSame(prior, rig.mechanism.status());
+        assertTrue(prior.ready());
+        assertEquals("cleanup still attempts the grouped Plant stop",
+                PlantTargetStatus.Kind.STOPPED,
+                flywheel(rig.mechanism).snapshot().targetStatus().kind());
     }
 
     @Test
@@ -157,12 +426,14 @@ public final class ReferenceLauncherMechanismTest {
         rig.mechanism.update(rig.time.clock());
         ReferenceLauncher.Status status = rig.mechanism.status();
 
-        assertEquals(1000.0, status.targetVelocityTicksPerSec, 0.0);
-        assertEquals(1075.0, status.leftMeasuredVelocityTicksPerSec, 0.0);
-        assertEquals(925.0, status.rightMeasuredVelocityTicksPerSec, 0.0);
-        assertFalse("opposite errors whose average is the target must not pass", status.leftAtTarget);
-        assertFalse(status.rightAtTarget);
-        assertFalse(status.ready);
+        assertEquals(1000.0, status.requestedVelocityTicksPerSec(), 0.0);
+        assertEquals(1000.0, status.appliedVelocityTicksPerSec(), 0.0);
+        assertEquals(1075.0, status.leftMeasuredVelocityTicksPerSec(), 0.0);
+        assertEquals(925.0, status.rightMeasuredVelocityTicksPerSec(), 0.0);
+        assertFalse("opposite errors whose average is the target must not pass",
+                status.leftAtTarget());
+        assertFalse(status.rightAtTarget());
+        assertFalse(status.ready());
 
         int leftReads = rig.left.velocityReadCalls();
         int rightReads = rig.right.velocityReadCalls();
@@ -176,25 +447,54 @@ public final class ReferenceLauncherMechanismTest {
         rig.right.setMeasuredVelocityTicksPerSec(1050.0);
         rig.mechanism.update(rig.time.nextCycle(0.02));
         status = rig.mechanism.status();
-        assertTrue(status.leftAtTarget);
-        assertTrue(status.rightAtTarget);
-        assertTrue(status.ready);
+        assertTrue(status.leftAtTarget());
+        assertTrue(status.rightAtTarget());
+        assertTrue(status.ready());
 
         rig.right.setMeasuredVelocityTicksPerSec(Double.NaN);
         rig.mechanism.update(rig.time.nextCycle(0.02));
         status = rig.mechanism.status();
-        assertTrue(status.leftAtTarget);
-        assertFalse(status.rightAtTarget);
-        assertFalse(status.ready);
+        assertTrue(status.leftAtTarget());
+        assertFalse(status.rightAtTarget());
+        assertFalse(status.ready());
 
         rig.mechanism.setTargetVelocityTicksPerSec(0.0);
         rig.left.setMeasuredVelocityTicksPerSec(0.0);
         rig.right.setMeasuredVelocityTicksPerSec(0.0);
         rig.mechanism.update(rig.time.nextCycle(0.02));
         status = rig.mechanism.status();
-        assertTrue(status.leftAtTarget);
-        assertTrue(status.rightAtTarget);
-        assertFalse(status.ready);
+        assertTrue(status.leftAtTarget());
+        assertTrue(status.rightAtTarget());
+        assertFalse(status.ready());
+    }
+
+    @Test
+    public void readinessUsesLaterPerWheelEvidenceWithoutAggregateArrivalGate()
+            throws Exception {
+        Rig rig = new Rig();
+        rig.mechanism.setTargetVelocityTicksPerSec(1000.0);
+        rig.left.setMeasuredVelocityTicksPerSec(0.0);
+        rig.right.setMeasuredVelocityTicksPerSec(0.0);
+        replaceScalarSource(
+                rig.mechanism,
+                "leftMeasuredVelocityTicksPerSec",
+                ScalarSource.of(() -> 1000.0));
+        replaceScalarSource(
+                rig.mechanism,
+                "rightMeasuredVelocityTicksPerSec",
+                ScalarSource.of(() -> 1000.0));
+
+        rig.mechanism.update(rig.time.clock());
+        ReferenceLauncher.Status status = rig.mechanism.status();
+
+        assertFalse("the earlier grouped feedback sample is not at the command",
+                status.flywheelSnapshot().atTarget());
+        assertFalse("aggregate arrival must not become the launcher's later readiness gate",
+                status.flywheelSnapshot().atCommandTarget());
+        assertTrue(status.leftAtTarget());
+        assertTrue(status.rightAtTarget());
+        assertTrue("later independent wheel evidence is authoritative for active readiness",
+                status.ready());
     }
 
     @Test
@@ -238,7 +538,7 @@ public final class ReferenceLauncherMechanismTest {
         rig.mechanism.update(rig.time.clock());
         assertEquals(rig.config.releaseRetractedPosition, rig.release.position(), EPSILON);
         assertEquals(rig.config.transferPower, rig.transfer.power(), EPSILON);
-        assertTrue(rig.mechanism.status().transferPulseActive);
+        assertTrue(rig.mechanism.status().transferPulseActive());
 
         launch.update(rig.time.nextCycle(0.21));
         assertTrue(launch.isComplete());
@@ -271,7 +571,7 @@ public final class ReferenceLauncherMechanismTest {
 
         launch.update(rig.time.nextCycle(rig.config.spinUpTimeoutSec * 0.5));
         rig.mechanism.update(rig.time.clock());
-        assertTrue(rig.mechanism.status().ready);
+        assertTrue(rig.mechanism.status().ready());
 
         launch.update(rig.time.nextCycle(rig.config.spinUpTimeoutSec * 0.5));
         rig.mechanism.update(rig.time.clock());
@@ -307,7 +607,7 @@ public final class ReferenceLauncherMechanismTest {
         reachReleasePhase(transferRig, transfer);
         transfer.update(transferRig.time.nextCycle(0.11));
         transferRig.mechanism.update(transferRig.time.clock());
-        assertTrue(transferRig.mechanism.status().transferPulseActive);
+        assertTrue(transferRig.mechanism.status().transferPulseActive());
         transfer.cancel();
         assertEquals(TaskOutcome.CANCELLED, transfer.getOutcome());
         assertSafeAfterNextOutput(transferRig);
@@ -339,7 +639,7 @@ public final class ReferenceLauncherMechanismTest {
         rig.mechanism.update(rig.time.clock());
         assertEquals(TaskOutcome.CANCELLED, queued.getOutcome());
         assertEquals("a stale queued start must have no request side effects",
-                600.0, rig.mechanism.status().targetVelocityTicksPerSec, EPSILON);
+                600.0, rig.mechanism.status().requestedVelocityTicksPerSec(), EPSILON);
         assertEquals(600.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
 
         Task later = rig.mechanism.launchOne();
@@ -416,7 +716,7 @@ public final class ReferenceLauncherMechanismTest {
         rig.right.setMeasuredVelocityTicksPerSec(rig.config.launchVelocityTicksPerSec);
         launch.update(rig.time.nextCycle(0.02));
         rig.mechanism.update(rig.time.clock());
-        assertTrue(rig.mechanism.status().ready);
+        assertTrue(rig.mechanism.status().ready());
 
         launch.update(rig.time.nextCycle(0.02));
         rig.mechanism.update(rig.time.clock());
@@ -425,9 +725,9 @@ public final class ReferenceLauncherMechanismTest {
     private static void assertSafeAfterNextOutput(Rig rig) {
         rig.mechanism.update(rig.time.nextCycle(0.02));
         ReferenceLauncher.Status status = rig.mechanism.status();
-        assertEquals(0.0, status.targetVelocityTicksPerSec, EPSILON);
-        assertFalse(status.transferPulseActive);
-        assertFalse(status.ready);
+        assertEquals(0.0, status.requestedVelocityTicksPerSec(), EPSILON);
+        assertFalse(status.transferPulseActive());
+        assertFalse(status.ready());
         assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0, rig.transfer.power(), EPSILON);
@@ -439,14 +739,32 @@ public final class ReferenceLauncherMechanismTest {
     }
 
     private static double commandTarget(ReferenceLauncherMechanism mechanism) {
+        return flywheel(mechanism).commandTarget().get();
+    }
+
+    private static Plant flywheel(ReferenceLauncherMechanism mechanism) {
+        return plant(mechanism, "flywheel");
+    }
+
+    private static Plant plant(ReferenceLauncherMechanism mechanism, String fieldName) {
         try {
-            Field field = ReferenceLauncherMechanism.class.getDeclaredField("flywheel");
+            Field field = ReferenceLauncherMechanism.class.getDeclaredField(fieldName);
             field.setAccessible(true);
-            return ((edu.ftcsushi.fw.actuation.Plant) field.get(mechanism))
-                    .commandTarget().get();
+            return (Plant) field.get(mechanism);
         } catch (ReflectiveOperationException failure) {
-            throw new AssertionError("Could not inspect the private grouped Plant target", failure);
+            throw new AssertionError(
+                    "Could not inspect private Plant field " + fieldName,
+                    failure);
         }
+    }
+
+    private static void replaceScalarSource(ReferenceLauncherMechanism mechanism,
+                                            String fieldName,
+                                            ScalarSource replacement)
+            throws ReflectiveOperationException {
+        Field field = ReferenceLauncherMechanism.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(mechanism, replacement);
     }
 
     private static OutputTaskRunner transferOverrides(ReferenceLauncherMechanism mechanism)
@@ -454,10 +772,6 @@ public final class ReferenceLauncherMechanismTest {
         Field field = ReferenceLauncherMechanism.class.getDeclaredField("transferOverrides");
         field.setAccessible(true);
         return (OutputTaskRunner) field.get(mechanism);
-    }
-
-    private static void assertStatusField(String name, Class<?> type) throws Exception {
-        assertEquals(type, ReferenceLauncher.Status.class.getDeclaredField(name).getType());
     }
 
     private static void assertConfigField(String name) throws Exception {
@@ -493,11 +807,12 @@ public final class ReferenceLauncherMechanismTest {
         private final MotorProbe right = hardware.addMotor(config.rightFlywheelName);
         private final CrServoProbe transfer = hardware.addCrServo(config.transferName);
         private final ServoProbe release = hardware.addServo(config.releaseServoName);
+        private final FtcTestHardware.DigitalProbe objectSensor =
+                hardware.addDigitalInput(config.objectSensorName);
         private final ManualLoopClock time = new ManualLoopClock();
         private final ReferenceLauncherMechanism mechanism;
 
         private Rig() {
-            hardware.addDigitalInput(config.objectSensorName);
             mechanism = new ReferenceLauncherMechanism(hardware, config);
         }
     }
@@ -540,6 +855,74 @@ public final class ReferenceLauncherMechanismTest {
         @Override
         public double getOutput() {
             return 0.2;
+        }
+    }
+
+    /** Supplies one real PlantSnapshot with caller-selected resolution semantics. */
+    private static final class SnapshotOnlyPlant implements Plant {
+        private final ScalarTarget command = ScalarTarget.create(1000.0);
+        private final PlantTargetResolution resolution;
+
+        private SnapshotOnlyPlant(PlantTargetResolution resolution) {
+            this.resolution = resolution;
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+        }
+
+        @Override
+        public double getRequestedTarget() {
+            return 1000.0;
+        }
+
+        @Override
+        public double getAppliedTarget() {
+            return 1000.0;
+        }
+
+        @Override
+        public PlantTargetResolution getTargetResolution() {
+            return resolution;
+        }
+
+        @Override
+        public PlantTargetStatus getTargetStatus() {
+            return PlantTargetStatus.ACCEPTED;
+        }
+
+        @Override
+        public boolean hasFeedback() {
+            return true;
+        }
+
+        @Override
+        public double getMeasurement() {
+            return 1000.0;
+        }
+
+        @Override
+        public boolean atTarget() {
+            return true;
+        }
+
+        @Override
+        public boolean atTarget(double target) {
+            return Double.compare(target, 1000.0) == 0;
+        }
+
+        @Override
+        public boolean hasCommandTarget() {
+            return true;
+        }
+
+        @Override
+        public ScalarTarget commandTarget() {
+            return command;
+        }
+
+        @Override
+        public void stop() {
         }
     }
 }
