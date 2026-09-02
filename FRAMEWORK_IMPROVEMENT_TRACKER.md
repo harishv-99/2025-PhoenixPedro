@@ -226,6 +226,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 117 | SPATIAL-02 | Camera observations to field positions | Proposed | Generalize only reusable time-aligned ray/plane geometry proven by the Limelight example and a second independent maintained consumer; keep detection, selection, and route policy outside core. |
 | 118 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 | 119 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
+| 120 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -25630,6 +25631,216 @@ implementation.
   branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and
   merging it into `master`. It does not authorize starting `SOURCE-03`, VISION-03, SPATIAL-02,
   AUDIT-01, or any other tracker item.
+
+### TASK-05 - Outcome-aware Task composition
+
+- **Gate 1 start and decision (2026-09-01):** **Ready; explicit public Task-semantics approval is
+  required before implementation.** TASK-05 is the sole active item on
+  `codex/task-05-outcome-aware-composition`, based exactly on merged
+  `origin/master@6b0500b82be6bc335fdd0653d6a931effb0f91e5`. This record responds to the
+  requirements-arbitration and concise-composition review after SIMPLICITY-01. Gate 1 may change
+  only this tracker record. No Java, Javadoc, guide, example, test, staging, publication, or later
+  tracker work is authorized at this stop.
+- **Confirmed problem:** `Tasks.sequence(...)` currently starts the next child after any child
+  reports complete, including `TIMEOUT`, naturally reported `CANCELLED`, and `UNKNOWN`. Its final
+  aggregation then reports `TIMEOUT` if any child timed out and otherwise `SUCCESS`, so a natural
+  `CANCELLED` or `UNKNOWN` child can be hidden as success. `Tasks.parallelAll(...)` has the same
+  timeout-or-success aggregation even though it waits for every child. `branchOnOutcome(...)`
+  currently sends every move result except `TIMEOUT` and `CANCELLED` to the success branch, so
+  `UNKNOWN`, `null`, or `NOT_DONE` is not treated as failed evidence. These defaults make a short,
+  visually obvious Auto graph less safe than its syntax suggests.
+- **Concrete simplicity evidence:** the Basic Mechanisms lesson could not use an ordinary flat
+  sequence for its success-gated Auto. It instead carries the 42-line package-local
+  `BasicAutoSuccessGate`, seven supplier-based gate calls, five stage methods, extra debug names,
+  and a deliberate next-cycle repeat handoff solely to obtain exact-success continuation. This is
+  a repeated manual correctness obligation in two maintained independent Auto lessons, not a
+  request for a general command scheduler. It reopens SIMPLICITY-01's earlier rejection of a
+  success-only Auto sequence with concrete maintained-caller evidence.
+- **Public construction-path audit:** `Tasks` is the sole ordinary public construction surface.
+  `SequenceTask`, `ParallelAllTask`, and `ParallelDeadlineTask` remain package-private;
+  `TaskBindings` owns explicit trigger-to-fresh-Task policy and is not another composition API.
+  TASK-05 adds no public concrete Task class, constructor, `Task` default method, binding overload,
+  fluent builder, command object, subsystem base class, or scheduler. Internal validation and
+  diagnostics must name the public factory that constructed the wrapper.
+- **Selected ordinary sequence contract:** `Tasks.sequence(Task... children)` becomes the safe
+  default. It starts the next child only after the current child is complete with exact
+  `TaskOutcome.SUCCESS`. `TIMEOUT`, naturally reported `CANCELLED`, and `UNKNOWN` stop the graph
+  immediately and become its exact final result. A complete child returning `null` or `NOT_DONE`
+  is an actionable lifecycle failure and never starts later work. Zero children complete with
+  `SUCCESS`.
+- **Selected explicit continuation contract:** add
+  `Tasks.sequenceOnCompletion(Task... children)` for the narrower recovery, takeover, or repair
+  case where every *valid natural* terminal outcome may start the next child. It retains the first
+  non-`SUCCESS` outcome in execution order while later children run; all-success and empty graphs
+  report `SUCCESS`. Direct outer cancellation and lifecycle exceptions are not natural completion,
+  become terminal, and never start later work. This API is not Java `finally`: mandatory physical
+  cleanup still belongs in cancellation-safe Tasks, persistent safe requests, output-owner
+  `stop()`, or the managed lifecycle.
+- **Shared sequence lifecycle:** both factories defensively copy the array, reject null and direct
+  duplicate child identities before side effects, are single-use, and cache each completed child's
+  outcome once. Active parent cancellation terminalizes first, cancels only the current child
+  best-effort, and skips every later child. Reentrant cancellation during completion observation,
+  outcome observation, or next-child start wins and cannot reopen the graph. A fixed child graph
+  preserves current same-cycle advancement through children that finish in `start(...)`; a newly
+  started positive-duration child is not updated again by that same composition callback, and its
+  duration begins at its own `clock.nowSec()` boundary.
+- **Construction-time teaching contract:** the `Task...` children in both sequence factories are
+  constructed eagerly, while the composition controls only when each child is *started*. This is
+  correct for the Basic Auto's fixed, side-effect-free capability Task factories and removes the
+  incidental one-cycle handoff from the workaround. When construction itself depends on live pose,
+  vision, outcome, or another start-time fact, callers continue to use `Tasks.buildAtStart(...)`.
+  Documentation and tests must not describe ordinary sequence as a lazy factory API.
+- **Selected wait-all contract:** `Tasks.parallelAll(Task... children)` remains start-all,
+  wait-for-all, and not fail-fast. Direct outer cancellation remains `CANCELLED` and best-effort
+  cancels every child. Natural completion is `SUCCESS` only when every child reports exact
+  `SUCCESS`; one or more identical non-success outcomes, ignoring successful siblings, retain that
+  exact outcome; mixed non-success kinds report `UNKNOWN`. Each terminal outcome is validated and
+  cached once; a complete child returning `null` or `NOT_DONE` is a lifecycle failure and triggers
+  best-effort active-sibling cleanup. Empty parallel composition succeeds.
+- **Selected branch contract:** keep the established name
+  `Tasks.branchOnOutcome(move, onSuccess, onTimeout)` and make it fail closed. Exact `SUCCESS`
+  starts `onSuccess`; exact `TIMEOUT` starts `onTimeout`; `CANCELLED` and `UNKNOWN` terminate the
+  wrapper with that exact outcome and start neither branch. A `null` or `NOT_DONE` terminal result
+  is a lifecycle failure. The selected branch's validated terminal result remains the wrapper's
+  final result, so a successful timeout branch truthfully handles the move timeout. Direct outer
+  cancellation retains its current no-branch behavior.
+- **Deliberately unchanged Task families:** `parallelDeadline(...)` continues to make its named
+  deadline the sole lifetime and outcome owner and to cancel unfinished companions when that
+  deadline ends. `repeatWhileSuccessful(...)` remains exact-success and one-admission-per-cycle.
+  `withTimeout(...)`, `TaskRunner`, `TaskBindings`, capability interfaces, Plants, and the one
+  `LoopClock` heartbeat retain their current ownership and lifecycle roles. `UNKNOWN` remains a
+  valid terminal Task outcome, but never counts as evidence of success.
+- **Maintained caller migration:** keep exact-success `sequence(...)` in both Basic and Reference
+  lift `moveTo(...)` macros, Reference launcher spin-up/feed macros, and
+  `AdaptiveCollectionAttempt`'s collection-to-return-policy graph; that adaptive deadline records
+  its precise exit reason and completes successfully before the return policy is built. Change both
+  lift `home()` repair graphs and all three `ReferenceAutoRoutines` outcome-inspection graphs to
+  `sequenceOnCompletion(...)`. Keep their direct-cancellation suppression. Remove
+  `BasicAutoSuccessGate`, flatten `BasicAutoRoutines` and `BasicRobotAutoRoutines` into ordinary
+  exact-success sequences, and update tests from lazy-construction/next-cycle assumptions to eager
+  fixed-graph construction and same-cycle start gating.
+- **Maintained scenario and lesson migration:** keep the adaptive scenario's
+  preload-to-repeat `preParkWork` as exact sequence, but change its hard-timeout-to-park outer graph
+  to `sequenceOnCompletion(...)`; make the same change in the Timestamped Adaptive Collection
+  lesson. Preserve the timeout cleanup-failure and calibration searches that intentionally suppress
+  continuation after lifecycle failure. In Recommended Robot Design, use explicit completion
+  continuation for the intake disable-after-timeout recipe while retaining the warning that direct
+  cancellation needs owner cleanup.
+- **Documentation contract:** synchronize `Framework Principles.md`, `TaskOutcome`/`Task`/`Tasks`
+  and internal Task Javadocs, Tasks & Macros Quickstart, Tasks and Autonomous, Basic Mechanisms
+  Robot, Timestamped Adaptive Collection, Sushi Cheat Sheet, and the narrowly affected Recommended
+  Robot Design and Pedro wording. Teach the small decision first: use `sequence(...)` for normal
+  dependent steps;
+  use `sequenceOnCompletion(...)` only when a later recovery/takeover/repair step intentionally
+  follows a natural abnormal result; use cancellation/owner cleanup for mandatory safety. Keep Key
+  API links and source-backed complete files synchronized, remove the obsolete helper from the
+  Basic course manifest and stage matrix, and do not add another dense composition taxonomy.
+- **Requirements-arbitration conclusion:** do not add NextFTC-style requirement tokens, priorities,
+  suspension, or a global command scheduler. Requirements answer only dynamic overlap/exclusion;
+  they do not select queue, replace, merge, ignore, or recovery policy. In Sushi, imperative
+  capability calls and persistent source graphs can also exist outside Tasks, so a scheduler would
+  be a second policy plane unless all behavior were forced through it. The maintained examples use
+  one explicit root graph, one final writer, and owner-local cancellation; no caller currently needs
+  dynamic multi-owner conflict arbitration.
+- **TaskSlot finding and deferral:** an owner-local, single-active, no-queue `TaskSlot` could later
+  make replace semantics explicit: `replace(freshTask)` would cancel the old active Task before
+  starting the new one, `cancel()` would be idempotent, and `update(sharedClock)` would use the same
+  heartbeat. It could support manual takeover or coalescing repeated homing while unrelated owners
+  use independent slots. It is not selected now because it creates another heartbeat and cleanup
+  owner, cannot atomically arbitrate a multi-owner macro, and no two maintained robots repeat that
+  exact contract. Reopen only after two independent maintained robots require the same slot policy
+  and a complete side-by-side diff removes a public concept or recurring correctness obligation.
+- **Rejected syntax/API alternatives:** documentation-only warnings and retaining the local success
+  gate leave the unsafe default and repeated workaround. Adding only a separately named
+  success-sequence leaves ordinary `sequence(...)` as the attractive footgun. `Task.then(...)`,
+  `Task.and(...)`, a fluent command builder, and combined CallbackBindings/TaskBindings overloads
+  increase public vocabulary or obscure fresh single-use identities without removing another
+  obligation. A fail-fast parallel, race group, richer outcome algebra, and general cleanup/finally
+  combinator have no maintained caller and remain outside TASK-05.
+- **Framework Principles check:** the selected split keeps all behavior cooperative and nonblocking,
+  uses the one caller-supplied `LoopClock`, preserves each positive-duration Task's own start
+  boundary, keeps every Task single-use, makes active cancellation terminal and idempotent, rejects
+  malformed lifecycle evidence, preserves visible composition-root ownership, and introduces no
+  hardware writer or SDK/vendor dependency. It narrows the default toward truthful outcomes and
+  one clear API while giving exceptional continuation an explicit name.
+- **Verification plan:** add focused sequence and parallel-all outcome-matrix tests covering
+  immediate and update-time completion, same-cycle handoff, empty groups, direct cancellation,
+  reentrancy, single-use, defensive copy, duplicate identity, malformed terminal outcomes,
+  outcome caching, debug names, wait-all behavior, mixed parallel outcomes, and cleanup failure.
+  Extend branch tests for exact `SUCCESS`/`TIMEOUT`/`CANCELLED`/`UNKNOWN` and malformed results;
+  extend the public API and Task lifecycle matrices for `sequenceOnCompletion(...)`. Then run the
+  affected lift, Reference Auto, Basic Auto/robot, adaptive scenario, timeout, calibration, and
+  documentation-provenance tests; full `:TeamCode:testDebugUnitTest` and
+  `:TeamCode:compileDebugJavaWithJavac`; strict Javadocs/site/link checks; stale helper and old-
+  semantics scans; and `git diff --check`.
+- **Evidence boundary:** software can prove Task order, outcome retention, cancellation, lifecycle
+  failure, source/example synchronization, and attempted final-zero ownership. It cannot prove
+  physical homing recovery, route timing, park completion, mechanism safety, or robot STOP; those
+  remain adopting-robot tests with motion permissions reviewed locally.
+- **Gate 1 approval stop:** no implementation code has changed. Gate 2 requires explicit approval
+  of the breaking exact-success `sequence(...)` default, additive `sequenceOnCompletion(...)`,
+  truthful wait-all aggregation, fail-closed branching, the caller/documentation migrations, and
+  the requirements/TaskSlot deferrals above. Requested approval wording:
+  **“Approve the TASK-05 outcome-aware Task composition design and authorize Gate 2 implementation
+  on `codex/task-05-outcome-aware-composition`.”**
+- **Gate 2 implementation authorization (2026-09-01):** **In progress.** The user sent the exact
+  approval above. After a fresh `git fetch origin master`, this item branch and `origin/master`
+  both remain exactly at `6b0500b82be6bc335fdd0653d6a931effb0f91e5`. This authorizes only the
+  approved TASK-05 implementation, caller migrations, synchronized Javadocs/guides/examples, and
+  verification. It does not authorize staging, commit, push, pull request, merge, VISION-03, or any
+  other tracker item.
+- **Gate 2 implementation result (2026-09-01):** **Verifying.** `Tasks.sequence(...)` is now the
+  exact-success default; the additive `sequenceOnCompletion(...)` continues after valid natural
+  endings while retaining the first non-success result; `parallelAll(...)` waits for every child
+  and reports truthful matching/mixed outcomes; and `branchOnOutcome(...)` selects only exact
+  success/timeout branches. The package-private implementations validate and cache terminal
+  evidence, fail closed on malformed lifecycle results, preserve single-use and same-callback
+  timing, and use public factory names in diagnostics. No scheduler, requirement token, TaskSlot,
+  fluent Task API, public concrete Task type, SDK/vendor dependency, or second heartbeat was added.
+- **Gate 2 maintained migration:** both Basic Autos are flat, eager fixed graphs using the safe
+  ordinary sequence, and the obsolete 43-line `BasicAutoSuccessGate` workaround is removed. Basic
+  and Reference lift homing, all three Reference outcome-policy seams, and adaptive hard-timeout-to-
+  park takeover use explicit completion continuation; exact-success move/spin/feed/adaptive work
+  remains on ordinary sequence. Framework Principles, Javadocs, the focused Task guide, beginner
+  lessons, Basic course, adaptive lesson, cheat sheet, and narrowly affected design/Pedro wording
+  teach the same small decision and synchronized source.
+- **Gate 2 deterministic evidence (2026-09-01):** Android Studio JBR 21 passed the final protected-
+  core Task package at **12 suites / 157 tests / 0 failures / 0 errors / 0 skipped** and the complete
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run at **241 suites / 2,200 tests
+  / 0 failures / 0 errors / 0 skipped**, with successful TeamCode compilation. The final full run
+  includes `DocumentationLinksTest` at **19/19**. The pinned Python 3.12 renderer passed
+  `zensical build --clean --strict` with no issues; `:TeamCode:sushiJavadocs` passed; authored-link
+  verification resolved **19 API links** plus **90 maintained-source links** across 19 Markdown
+  pages; and the generated Pages artifact passed its six required-file/content/no-link checks. The
+  Basic course remains within its enforced **3,186/3,200 prose-word** and **115/120 visible-Java-
+  line** budgets, with all 26 complete source blocks exact. `git diff --check`, untracked-file
+  whitespace, stale-helper/old-semantics, caller-classification, and core dependency scans pass.
+  Only the established Java-8-on-JDK-21/deprecated-controller warnings remain.
+- **Gate 2 adversarial audit:** independent core/lifecycle, maintained-caller, scope/migration, and
+  student-documentation reviews found and corrected branch diagnostics that exposed an internal
+  name, missing cancellation-during-completion observation and between-cycle outcome matrices, a
+  stale takeover Javadoc recipe and any-completion sentence, adaptive cleanup-failure expectations,
+  incomplete Basic timeout matrices, stale helper/source manifests, and two student wording/API
+  examples. Final re-review reports no remaining scoped blocker.
+- **Gate 2 evidence boundary:** no robot hardware was exercised. Software proves composition order,
+  exact outcome propagation, continuation/cancellation policy, lifecycle failure cleanup attempts,
+  maintained-source synchronization, and generated documentation integrity. It does not prove
+  physical lift homing/repair, mechanism safety, route timing, park completion, physical zero, or
+  robot STOP; those remain adopting-robot evidence with motion permissions reviewed locally.
+- **Gate 2 Android Studio review stop:** inspect the exact unstaged and uncommitted diff on
+  `codex/task-05-outcome-aware-composition`. Review `Tasks` plus its package-private sequence,
+  parallel-all, and outcome-branch implementations; the terminal-outcome/reentrancy/lifecycle
+  matrices; flattened Basic Autos; homing and Reference repair policy; adaptive timeout-to-park
+  takeover; and the rendered Task/Basic lessons. This stop authorizes no staging, commit, push,
+  pull request, merge, VISION-03, or next tracker item. Requested combined approval wording:
+  **“TASK-05 looks good. Authorize committing the reviewed TASK-05 diff on
+  `codex/task-05-outcome-aware-composition`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`.”**
+- **Manual review and Gate 3 authorization (2026-09-01):** **Done.** The user completed the Android
+  Studio review and sent the exact combined authorization above. TASK-05 is approved for committing
+  on `codex/task-05-outcome-aware-composition`, pushing to the recorded origin, opening a pull
+  request, and merging only into `master`; VISION-03 and all later items remain unstarted.
 
 ### VISION-03 - Reusable color-blob pipeline
 

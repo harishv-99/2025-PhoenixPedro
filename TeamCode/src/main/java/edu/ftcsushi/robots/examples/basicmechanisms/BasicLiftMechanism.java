@@ -169,10 +169,11 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
                 .failAfterSec(homingTimeoutSec)
                 .build();
 
-        return Tasks.sequence(
+        return Tasks.sequenceOnCompletion(
                 Tasks.runOnce(() -> setHeight(Height.STOWED)),
                 search,
-                // This runs after success or timeout, but normal Task cancellation skips it.
+                // Repair after any natural terminal search outcome; direct parent cancellation
+                // remains terminal and skips this later Task.
                 Tasks.runOnce(() -> setHeight(Height.STOWED)));
     }
 

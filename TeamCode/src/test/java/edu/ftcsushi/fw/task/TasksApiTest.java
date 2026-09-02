@@ -56,6 +56,7 @@ public final class TasksApiTest {
         assertFactory("outputPulse", Tasks.OutputPulseStartStep.class, String.class);
         assertFactory("outputQueue", OutputTaskRunner.class);
         assertFactory("outputQueue", OutputTaskRunner.class, double.class);
+        assertFactory("sequenceOnCompletion", Task.class, Task[].class);
     }
 
     @Test

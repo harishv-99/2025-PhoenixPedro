@@ -33,7 +33,7 @@ public final class ReferenceAutoRoutines {
                 c.launcher(), "capabilities.launcher()");
 
         Task home = lift.home();
-        return Tasks.sequence(
+        return Tasks.sequenceOnCompletion(
                 home,
                 Tasks.buildAtStart("Reference Auto after home", () ->
                         home.getOutcome() == TaskOutcome.SUCCESS
@@ -44,7 +44,7 @@ public final class ReferenceAutoRoutines {
     private static Task moveLowThenLaunch(ReferenceLift lift,
                                           ReferenceLauncher launcher) {
         Task moveLow = lift.moveTo(ReferenceLift.Height.LOW);
-        return Tasks.sequence(
+        return Tasks.sequenceOnCompletion(
                 moveLow,
                 Tasks.buildAtStart("Reference Auto after LOW", () ->
                         moveLow.getOutcome() == TaskOutcome.SUCCESS
@@ -54,7 +54,7 @@ public final class ReferenceAutoRoutines {
 
     private static Task launchThenCheck(ReferenceLauncher launcher) {
         Task launch = launcher.launchOne();
-        return Tasks.sequence(
+        return Tasks.sequenceOnCompletion(
                 launch,
                 Tasks.buildAtStart("Reference Auto after launch", () ->
                         launch.getOutcome() == TaskOutcome.SUCCESS

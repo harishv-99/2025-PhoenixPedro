@@ -124,9 +124,11 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
                 .holdAfterReference(stowedHeightIn)
                 .failAfterSec(homingTimeoutSec)
                 .build();
-        return Tasks.sequence(
+        return Tasks.sequenceOnCompletion(
                 Tasks.runOnce(() -> setHeight(Height.STOWED)),
                 search,
+                // Repair after any natural terminal search outcome, but never after direct
+                // cancellation of the enclosing home Task.
                 Tasks.runOnce(() -> setHeight(Height.STOWED)));
     }
 

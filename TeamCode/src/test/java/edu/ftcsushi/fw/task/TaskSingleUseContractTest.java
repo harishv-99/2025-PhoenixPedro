@@ -141,6 +141,14 @@ public final class TaskSingleUseContractTest {
         assertSingleUseStartRejected(sequence, clock, "Tasks.sequence");
         assertEquals(1, sequenceChild.startCount);
 
+        CountingIncompleteTask continuationChild =
+                new CountingIncompleteTask("continuationChild");
+        Task continuation = Tasks.sequenceOnCompletion(continuationChild);
+        continuation.start(clock);
+        assertEquals(1, continuationChild.startCount);
+        assertSingleUseStartRejected(continuation, clock, "Tasks.sequenceOnCompletion");
+        assertEquals(1, continuationChild.startCount);
+
         CountingIncompleteTask parallelChild = new CountingIncompleteTask("parallelChild");
         Task parallel = Tasks.parallelAll(parallelChild);
         parallel.start(clock);
@@ -152,7 +160,7 @@ public final class TaskSingleUseContractTest {
         Task branch = Tasks.branchOnOutcome(move, Tasks.noop(), Tasks.noop());
         branch.start(clock);
         assertEquals(1, move.startCount);
-        assertSingleUseStartRejected(branch, clock, "BranchOnOutcome(move)");
+        assertSingleUseStartRejected(branch, clock, "Tasks.branchOnOutcome(...)");
         assertEquals(1, move.startCount);
     }
 
@@ -165,6 +173,11 @@ public final class TaskSingleUseContractTest {
         sequence.start(clock);
         assertTrue(sequence.isComplete());
         assertSingleUseStartRejected(sequence, clock, "Tasks.sequence");
+
+        Task continuation = Tasks.sequenceOnCompletion(Tasks.noop(), Tasks.runOnce(() -> { }));
+        continuation.start(clock);
+        assertTrue(continuation.isComplete());
+        assertSingleUseStartRejected(continuation, clock, "Tasks.sequenceOnCompletion");
 
         Task parallel = Tasks.parallelAll(Tasks.noop(), Tasks.runOnce(() -> { }));
         parallel.start(clock);
@@ -179,7 +192,7 @@ public final class TaskSingleUseContractTest {
         branch.update(clock);
         branch.update(clock);
         assertTrue(branch.isComplete());
-        assertSingleUseStartRejected(branch, clock, "BranchOnOutcome(Tasks.noop)");
+        assertSingleUseStartRejected(branch, clock, "Tasks.branchOnOutcome(...)");
     }
 
     @Test
@@ -194,6 +207,13 @@ public final class TaskSingleUseContractTest {
         assertSingleUseStartRejected(sequence, clock, "Tasks.sequence");
         assertEquals(1, sequenceChild.startCount);
 
+        ThrowingStartTask continuationChild = new ThrowingStartTask("continuationThrow");
+        Task continuation = Tasks.sequenceOnCompletion(continuationChild);
+        expectStartFailure(() -> continuation.start(clock));
+        assertEquals(1, continuationChild.startCount);
+        assertSingleUseStartRejected(continuation, clock, "Tasks.sequenceOnCompletion");
+        assertEquals(1, continuationChild.startCount);
+
         ThrowingStartTask parallelChild = new ThrowingStartTask("parallelThrow");
         Task parallel = Tasks.parallelAll(parallelChild);
         expectStartFailure(() -> parallel.start(clock));
@@ -205,7 +225,7 @@ public final class TaskSingleUseContractTest {
         Task branch = Tasks.branchOnOutcome(move, Tasks.noop(), Tasks.runOnce(() -> { }));
         expectStartFailure(() -> branch.start(clock));
         assertEquals(1, move.startCount);
-        assertSingleUseStartRejected(branch, clock, "BranchOnOutcome(branchThrow)");
+        assertSingleUseStartRejected(branch, clock, "Tasks.branchOnOutcome(...)");
         assertEquals(1, move.startCount);
     }
 
@@ -238,6 +258,15 @@ public final class TaskSingleUseContractTest {
         assertEquals(TaskOutcome.SUCCESS, sequence.getOutcome());
         assertSingleUseStartRejected(sequence, clock, "Tasks.sequence");
 
+        AtomicInteger continuationActions = new AtomicInteger();
+        Task continuation = Tasks.sequenceOnCompletion(
+                Tasks.runOnce(continuationActions::incrementAndGet));
+        continuation.cancel();
+        continuation.start(clock);
+        assertEquals(1, continuationActions.get());
+        assertEquals(TaskOutcome.SUCCESS, continuation.getOutcome());
+        assertSingleUseStartRejected(continuation, clock, "Tasks.sequenceOnCompletion");
+
         AtomicInteger parallelActions = new AtomicInteger();
         Task parallel = Tasks.parallelAll(Tasks.runOnce(parallelActions::incrementAndGet));
         parallel.cancel();
@@ -267,6 +296,8 @@ public final class TaskSingleUseContractTest {
                         1.0,
                         0.0),
                 Tasks.sequence(new CountingIncompleteTask("sequenceCancelChild")),
+                Tasks.sequenceOnCompletion(
+                        new CountingIncompleteTask("completionSequenceCancelChild")),
                 Tasks.parallelAll(new CountingIncompleteTask("parallelCancelChild")),
                 Tasks.branchOnOutcome(
                         new CountingIncompleteTask("branchCancelMove"),
@@ -294,6 +325,11 @@ public final class TaskSingleUseContractTest {
         assertTrue(expectIllegalArgument(
                 () -> Tasks.sequence(Tasks.noop(), null)).getMessage().contains("index 1"));
         assertTrue(expectIllegalArgument(
+                () -> Tasks.sequenceOnCompletion((Task[]) null)).getMessage().contains("tasks"));
+        assertTrue(expectIllegalArgument(
+                () -> Tasks.sequenceOnCompletion(Tasks.noop(), null))
+                        .getMessage().contains("index 1"));
+        assertTrue(expectIllegalArgument(
                 () -> Tasks.parallelAll((Task[]) null)).getMessage().contains("tasks"));
         assertTrue(expectIllegalArgument(
                 () -> Tasks.parallelAll(Tasks.noop(), null)).getMessage().contains("index 1"));
@@ -303,6 +339,12 @@ public final class TaskSingleUseContractTest {
         assertTrue(sequenceError.getMessage().contains("Tasks.sequence"));
         assertTrue(sequenceError.getMessage().contains("index 0"));
         assertTrue(sequenceError.getMessage().contains("index 1"));
+
+        IllegalArgumentException continuationError =
+                expectIllegalArgument(() -> Tasks.sequenceOnCompletion(shared, shared));
+        assertTrue(continuationError.getMessage().contains("Tasks.sequenceOnCompletion"));
+        assertTrue(continuationError.getMessage().contains("index 0"));
+        assertTrue(continuationError.getMessage().contains("index 1"));
 
         IllegalArgumentException parallelError =
                 expectIllegalArgument(() -> Tasks.parallelAll(shared, shared));
@@ -319,6 +361,7 @@ public final class TaskSingleUseContractTest {
         assertFalse(Modifier.isPublic(SequenceTask.class.getModifiers()));
         assertFalse(Modifier.isPublic(ParallelAllTask.class.getModifiers()));
         assertFalse(Modifier.isPublic(ParallelDeadlineTask.class.getModifiers()));
+        assertFalse(Modifier.isPublic(BranchOnOutcomeTask.class.getModifiers()));
     }
 
     @Test
@@ -354,6 +397,19 @@ public final class TaskSingleUseContractTest {
         assertEquals(0, sequenceReplacement.startCount);
         sequence.cancel();
 
+        CountingIncompleteTask continuationChild =
+                new CountingIncompleteTask("continuationChild");
+        CountingIncompleteTask continuationReplacement =
+                new CountingIncompleteTask("continuationReplacement");
+        Task[] continuationChildren = {continuationChild};
+        Task continuation = Tasks.sequenceOnCompletion(continuationChildren);
+        continuationChildren[0] = continuationReplacement;
+
+        continuation.start(manualClock.clock());
+        assertEquals(1, continuationChild.startCount);
+        assertEquals(0, continuationReplacement.startCount);
+        continuation.cancel();
+
         CountingIncompleteTask parallelChild = new CountingIncompleteTask("parallelChild");
         CountingIncompleteTask parallelReplacement =
                 new CountingIncompleteTask("parallelReplacement");
@@ -370,6 +426,11 @@ public final class TaskSingleUseContractTest {
         emptySequence.start(manualClock.clock());
         assertTrue(emptySequence.isComplete());
         assertEquals(TaskOutcome.SUCCESS, emptySequence.getOutcome());
+
+        Task emptyContinuation = Tasks.sequenceOnCompletion();
+        emptyContinuation.start(manualClock.clock());
+        assertTrue(emptyContinuation.isComplete());
+        assertEquals(TaskOutcome.SUCCESS, emptyContinuation.getOutcome());
 
         Task emptyParallel = Tasks.parallelAll();
         emptyParallel.start(manualClock.clock());
@@ -411,20 +472,29 @@ public final class TaskSingleUseContractTest {
     public void factoryOnlyCompositionsExposePublicDebugNamesToTaskRunner() {
         Task[] compositions = {
                 Tasks.sequence(new WaitUntilTask(BooleanSource.constant(false))),
+                Tasks.sequenceOnCompletion(new WaitUntilTask(BooleanSource.constant(false))),
                 Tasks.parallelAll(new WaitUntilTask(BooleanSource.constant(false))),
                 Tasks.parallelDeadline(
                         new WaitUntilTask(BooleanSource.constant(false)),
-                        new WaitUntilTask(BooleanSource.constant(false)))
+                        new WaitUntilTask(BooleanSource.constant(false))),
+                Tasks.branchOnOutcome(
+                        new WaitUntilTask(BooleanSource.constant(false)),
+                        Tasks.runOnce(() -> { }),
+                        Tasks.runOnce(() -> { }))
         };
         String[] publicNames = {
                 "Tasks.sequence(...)",
+                "Tasks.sequenceOnCompletion(...)",
                 "Tasks.parallelAll(...)",
-                "Tasks.parallelDeadline(...)"
+                "Tasks.parallelDeadline(...)",
+                "Tasks.branchOnOutcome(...)"
         };
         String[] hiddenNames = {
                 "SequenceTask",
+                "SequenceTask",
                 "ParallelAllTask",
-                "ParallelDeadlineTask"
+                "ParallelDeadlineTask",
+                "BranchOnOutcomeTask"
         };
 
         for (int i = 0; i < compositions.length; i++) {

@@ -46,16 +46,6 @@ public final class Tasks {
         // utility class; do not instantiate
     }
 
-    /**
-     * Internal phase enum used by {@link #branchOnOutcome(Task, Task, Task)}’s
-     * anonymous task. Declared at class scope to be Java 8 compatible.
-     */
-    private enum BranchPhase {
-        MOVE,
-        BRANCH,
-        DONE
-    }
-
     // ---------------------------------------------------------------------
     // Simple core tasks
     // ---------------------------------------------------------------------
@@ -531,14 +521,14 @@ public final class Tasks {
      *
      * <pre>{@code
      * Task prePark = Tasks.sequence(preload, attempts);
-     * Task auto = Tasks.sequence(
+     * Task auto = Tasks.sequenceOnCompletion(
      *         Tasks.withTimeout(prePark, parkTakeoverElapsedSec),
      *         park);
      * }</pre>
      *
      * <p>The timeout can cooperatively cancel active pre-park work at its boundary; the admission
-     * source alone cannot. Direct cancellation of the outer sequence still suppresses later
-     * children.</p>
+     * source alone cannot. Direct cancellation of the outer completion-continuation still
+     * suppresses later children.</p>
      *
      * @param debugName stable nonblank diagnostic name
      * @param maxIterations positive hard bound on child identities started by this composition
@@ -593,14 +583,21 @@ public final class Tasks {
      * Create a {@link Task} that runs the given tasks one after another.
      *
      * <p>The first child starts when the returned Task starts. Only the current child is updated.
-     * When it completes, the next child starts before that update returns; children that complete
-     * during their own start are skipped through immediately. The group completes after its final
-     * child.</p>
+     * When it completes with exact {@link TaskOutcome#SUCCESS}, the next child starts before that
+     * update returns; children that complete successfully during their own start are advanced
+     * through immediately.</p>
      *
-     * <p>Active cancellation makes the group terminal with {@link TaskOutcome#CANCELLED}, then
-     * asks only the current child to cancel; later children never start. On natural completion the
-     * outcome is {@link TaskOutcome#TIMEOUT} if any child timed out, otherwise
-     * {@link TaskOutcome#SUCCESS}.</p>
+     * <p>Only exact {@link TaskOutcome#SUCCESS} starts the next child. A child ending with
+     * {@link TaskOutcome#TIMEOUT}, {@link TaskOutcome#CANCELLED}, or
+     * {@link TaskOutcome#UNKNOWN} stops the sequence immediately and becomes its exact outcome.
+     * This is the safe ordinary choice for dependent robot steps. Use
+     * {@link #sequenceOnCompletion(Task...)} only when a later repair, recovery, or takeover step
+     * intentionally follows valid abnormal completion.</p>
+     *
+     * <p>Active cancellation makes the group terminal with {@code CANCELLED}, then asks only the
+     * current child to cancel; later children never start. A completed child that reports
+     * {@code null} or {@link TaskOutcome#NOT_DONE} is a lifecycle error and also never starts later
+     * work. Completed child outcomes are cached once.</p>
      *
      * <p>Every child position must contain a distinct, fresh Task instance. The array is copied,
      * and zero children are valid and complete successfully. The returned Task is single-use;
@@ -612,7 +609,33 @@ public final class Tasks {
      * @throws IllegalArgumentException if the array is null or contains a null or duplicate child
      */
     public static Task sequence(Task... tasks) {
-        return new SequenceTask(tasks);
+        return new SequenceTask(false, tasks);
+    }
+
+    /**
+     * Create a sequence whose later steps intentionally run after any valid natural completion.
+     *
+     * <p>This has the same fixed, eagerly constructed child graph and same-cycle advancement as
+     * {@link #sequence(Task...)}, but {@code SUCCESS}, {@code TIMEOUT}, {@code CANCELLED}, and
+     * {@code UNKNOWN} may all start the next child. The wrapper retains the first non-success
+     * outcome in execution order while later repair, recovery, or takeover steps run. An empty or
+     * all-success graph reports {@code SUCCESS}.</p>
+     *
+     * <p>This is not a {@code finally} facility. Direct cancellation, a child lifecycle exception,
+     * or a complete child reporting {@code null} or {@code NOT_DONE} terminalizes the wrapper and
+     * never starts later work. Mandatory safety cleanup belongs in each active Task's cancellation
+     * behavior, persistent safe requests, and owner stop lifecycle.</p>
+     *
+     * <p>Every child position must contain a distinct, fresh Task instance. The input array is
+     * copied, completed outcomes are cached once, and the returned Task is single-use.</p>
+     *
+     * @param tasks distinct Task instances to run in order; must not be {@code null} or contain
+     *              nulls or duplicate identities
+     * @return a fresh single-use completion-continuation sequence
+     * @throws IllegalArgumentException if the array is null or contains a null or duplicate child
+     */
+    public static Task sequenceOnCompletion(Task... tasks) {
+        return new SequenceTask(true, tasks);
     }
 
     /**
@@ -624,9 +647,15 @@ public final class Tasks {
      * group; all children must complete.</p>
      *
      * <p>Active cancellation makes the group terminal with {@link TaskOutcome#CANCELLED}, then
-     * best-effort asks every child to cancel. Cleanup attempts continue if one throws. On natural
-     * completion the outcome is {@link TaskOutcome#TIMEOUT} if any child timed out, otherwise
-     * {@link TaskOutcome#SUCCESS}.</p>
+     * best-effort asks every child to cancel. Cleanup attempts continue if one throws. On
+     * natural completion, all-success reports {@code SUCCESS}. If every non-success child reports
+     * the same outcome, successful siblings are ignored and that exact non-success is retained. A
+     * mixture of non-success kinds reports {@code UNKNOWN}. This method still waits for every valid
+     * child; it is not fail-fast.</p>
+     *
+     * <p>Each completed child outcome is validated and cached once. A complete child reporting
+     * {@code null} or {@link TaskOutcome#NOT_DONE} is a lifecycle error that triggers best-effort
+     * cleanup of started siblings.</p>
      *
      * <p>Use {@link #parallelDeadline(Task, Task...)} instead when one named Task should determine
      * the lifetime and outcome of bounded companions.</p>
@@ -694,207 +723,29 @@ public final class Tasks {
     // ---------------------------------------------------------------------
 
     /**
-     * Create a {@link Task} that:
-     * <ol>
-     *   <li>Runs the given {@link Task} until it completes, then</li>
-     *   <li>Runs either {@code onSuccess} or {@code onTimeout} depending on
-     *       the {@link TaskOutcome} reported by {@link Task#getOutcome()} on
-     *       the {@code move} task.</li>
-     * </ol>
+     * Run one move, then select an exact-success or exact-timeout continuation.
      *
-     * <p>Outcome semantics for the returned task:</p>
-     * <ul>
-     *   <li>While it is still running (move or branch phase), the outcome
-     *       mirrors the currently active child task's outcome.</li>
-     *   <li>Once the chosen branch has completed and the wrapper is done,
-     *       {@link Task#getOutcome()} returns <b>the chosen branch's outcome</b>.
-     *       The initial {@code move} outcome is used only to decide which
-     *       branch to execute; it does not directly drive the wrapper's
-     *       final outcome.</li>
-     * </ul>
+     * <p>{@link TaskOutcome#SUCCESS} starts {@code onSuccess};
+     * {@link TaskOutcome#TIMEOUT} starts {@code onTimeout}. A move ending with
+     * {@link TaskOutcome#CANCELLED} or {@link TaskOutcome#UNKNOWN} fails closed: the wrapper
+     * retains that exact outcome and starts neither branch. A complete child reporting
+     * {@code null} or {@link TaskOutcome#NOT_DONE} is a lifecycle error.</p>
      *
-     * <p>This makes {@code branchOnOutcome} behave like a structured
-     * "try/handle-timeout" block: a timeout in {@code move} is <em>handled</em>
-     * by running {@code onTimeout}, and from the outside, what matters is
-     * whether that timeout-handling branch ultimately succeeded or not.</p>
+     * <p>Once a selected branch completes, its validated exact outcome becomes the wrapper's final
+     * result. A successful timeout branch therefore truthfully handles the move timeout. Direct
+     * active cancellation terminalizes the wrapper and never starts another branch.</p>
      *
-     * <p>{@code move}, {@code onSuccess}, and {@code onTimeout} must be distinct Task instances.
-     * A nested alias that cannot be seen here is still rejected if it causes a Task to start a
-     * second time.</p>
+     * <p>{@code move}, {@code onSuccess}, and {@code onTimeout} must be distinct, fresh Task
+     * instances. A nested alias remains protected by each Task's single-use start guard.</p>
      *
-     * @param move      the task to run first
-     * @param onSuccess task to run if the move succeeds or completes normally
-     * @param onTimeout task to run if the move ends with {@link TaskOutcome#TIMEOUT}
+     * @param move first Task whose exact outcome selects a branch
+     * @param onSuccess Task to run only after exact move success
+     * @param onTimeout Task to run only after an exact move timeout
+     * @return a fresh single-use fail-closed outcome branch
+     * @throws NullPointerException if a child is {@code null}
+     * @throws IllegalArgumentException if a direct child identity is reused
      */
-    public static Task branchOnOutcome(final Task move,
-                                       final Task onSuccess,
-                                       final Task onTimeout) {
-
-        Objects.requireNonNull(move, "move is required");
-        Objects.requireNonNull(onSuccess, "onSuccess is required");
-        Objects.requireNonNull(onTimeout, "onTimeout is required");
-        requireDistinctBranchTasks(move, onSuccess, onTimeout);
-
-        return new Task() {
-            private boolean startAttempted = false;
-            private boolean started = false;
-            private BranchPhase phase = BranchPhase.MOVE;
-            private Task current = move;
-
-            private TaskOutcome branchOutcome = TaskOutcome.UNKNOWN;
-
-            /** {@inheritDoc} */
-            @Override
-            public void start(LoopClock clock) {
-                markStartAttempt();
-                started = true;
-                phase = BranchPhase.MOVE;
-                current = move;
-                branchOutcome = TaskOutcome.UNKNOWN;
-                current.start(clock);
-            }
-
-            /** {@inheritDoc} */
-            @Override
-            public void update(LoopClock clock) {
-                if (!started) {
-                    throw TaskLifecycle.updateBeforeStart(getDebugName());
-                }
-                if (phase == BranchPhase.DONE) {
-                    return;
-                }
-
-                current.update(clock);
-                if (phase == BranchPhase.DONE) {
-                    return;
-                }
-
-                boolean childComplete = current.isComplete();
-                if (phase == BranchPhase.DONE) {
-                    return;
-                }
-                if (!childComplete) {
-                    return;
-                }
-
-                switch (phase) {
-                    case MOVE:
-                        // Decide which branch to run based on the move's outcome.
-                        TaskOutcome moveOutcome = move.getOutcome();
-                        if (phase == BranchPhase.DONE) {
-                            return;
-                        }
-                        if (moveOutcome == TaskOutcome.TIMEOUT) {
-                            current = onTimeout;
-                            phase = BranchPhase.BRANCH;
-                            current.start(clock);
-                        } else if (moveOutcome == TaskOutcome.CANCELLED) {
-                            branchOutcome = TaskOutcome.CANCELLED;
-                            phase = BranchPhase.DONE;
-                        } else {
-                            current = onSuccess;
-                            phase = BranchPhase.BRANCH;
-                            current.start(clock);
-                        }
-                        break;
-
-                    case BRANCH:
-                        // Finished running the chosen branch.
-                        TaskOutcome outcome = current.getOutcome();
-                        if (phase == BranchPhase.DONE) {
-                            return;
-                        }
-                        branchOutcome = outcome;
-                        phase = BranchPhase.DONE;
-                        break;
-
-                    default:
-                        break;
-                }
-            }
-
-            /**
-             * {@inheritDoc}
-             */
-            @Override
-            public void cancel() {
-                if (!started || phase == BranchPhase.DONE) {
-                    return;
-                }
-                Task taskToCancel = current;
-                branchOutcome = TaskOutcome.CANCELLED;
-                phase = BranchPhase.DONE;
-                // Do not re-query completion while cleaning up a failed child lifecycle query.
-                if (taskToCancel != null) {
-                    taskToCancel.cancel();
-                }
-            }
-
-            /** {@inheritDoc} */
-            @Override
-            public boolean isComplete() {
-                return phase == BranchPhase.DONE;
-            }
-
-            /** {@inheritDoc} */
-            @Override
-            public TaskOutcome getOutcome() {
-                switch (phase) {
-                    case MOVE:
-                    case BRANCH:
-                        // While executing, mirror the active child.
-                        TaskOutcome outcome = current.getOutcome();
-                        return phase == BranchPhase.DONE ? branchOutcome : outcome;
-
-                    case DONE:
-                    default:
-                        // Once done, report the branch's outcome. Any timeout
-                        // in the move phase is considered "handled" by the
-                        // chosen branch.
-                        return branchOutcome;
-                }
-            }
-
-            /** {@inheritDoc} */
-            @Override
-            public String getDebugName() {
-                return "BranchOnOutcome(" + move.getDebugName() + ")";
-            }
-
-            /** Record the single permitted wrapper start before starting either child phase. */
-            private void markStartAttempt() {
-                if (startAttempted) {
-                    throw new IllegalStateException(
-                            getDebugName()
-                                    + " is single-use and start(...) was called more than once. "
-                                    + "Create a fresh task with its builder or macro method, a "
-                                    + "Supplier<Task>, or an OutputTaskFactory.");
-                }
-                startAttempted = true;
-            }
-        };
-    }
-
-    /** Reject direct aliases among the three retained branch children. */
-    private static void requireDistinctBranchTasks(Task move, Task onSuccess, Task onTimeout) {
-        if (move == onSuccess) {
-            throw duplicateBranchChild("move", "onSuccess");
-        }
-        if (move == onTimeout) {
-            throw duplicateBranchChild("move", "onTimeout");
-        }
-        if (onSuccess == onTimeout) {
-            throw duplicateBranchChild("onSuccess", "onTimeout");
-        }
-    }
-
-    /** Build one actionable direct-alias error for branch construction. */
-    private static IllegalArgumentException duplicateBranchChild(String firstRole,
-                                                                  String secondRole) {
-        return new IllegalArgumentException(
-                "branchOnOutcome requires distinct Task instances, but " + firstRole + " and "
-                        + secondRole + " reference the same object. Create each child as a fresh "
-                        + "task with its builder or macro method, a Supplier<Task>, or an "
-                        + "OutputTaskFactory.");
+    public static Task branchOnOutcome(Task move, Task onSuccess, Task onTimeout) {
+        return new BranchOnOutcomeTask(move, onSuccess, onTimeout);
     }
 }

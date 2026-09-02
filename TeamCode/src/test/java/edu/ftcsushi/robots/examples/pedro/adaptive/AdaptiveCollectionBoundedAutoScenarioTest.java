@@ -120,6 +120,13 @@ public final class AdaptiveCollectionBoundedAutoScenarioTest {
         assertEquals(1, fixture.parkBuildCount);
         assertEquals(31.5, fixture.parkBuiltFromPoseXInches, 0.0);
         assertBefore(fixture.events, "cancel.preload", "build.park");
+
+        fixture.execution("park").integrationStatus = RouteStatus.COMPLETED;
+        fixture.cycle(0.1);
+
+        assertTrue(fixture.root.isComplete());
+        assertEquals(RouteStatus.COMPLETED, fixture.park.getRouteStatus());
+        assertEquals(TaskOutcome.TIMEOUT, fixture.root.getOutcome());
     }
 
     @Test
@@ -310,12 +317,14 @@ public final class AdaptiveCollectionBoundedAutoScenarioTest {
             assertSame(cleanupFailure, expected);
         }
 
-        assertFalse(failedCleanup.root.isComplete());
-        assertEquals(TaskOutcome.NOT_DONE, failedCleanup.boundedPrePark.getOutcome());
+        assertTrue(failedCleanup.root.isComplete());
+        assertEquals(TaskOutcome.CANCELLED, failedCleanup.root.getOutcome());
+        assertEquals(TaskOutcome.CANCELLED, failedCleanup.boundedPrePark.getOutcome());
         assertEquals(RouteStatus.NOT_STARTED, failedCleanup.park.getRouteStatus());
         assertEquals(0, failedCleanup.parkBuildCount);
         assertEquals(1, failedCleanup.preload.cancelCount);
 
+        // Terminal cancellation remains idempotent and cannot release the suppressed park.
         failedCleanup.root.cancel();
         assertTrue(failedCleanup.root.isComplete());
         assertEquals(TaskOutcome.CANCELLED, failedCleanup.root.getOutcome());
@@ -382,7 +391,9 @@ public final class AdaptiveCollectionBoundedAutoScenarioTest {
                     this::buildParkFromCurrentPose,
                     30.0
             );
-            root = Tasks.sequence(boundedPrePark, park);
+            // Parking intentionally takes over after either natural completion or the hard
+            // pre-park timeout. Direct cancellation and lifecycle failures still suppress it.
+            root = Tasks.sequenceOnCompletion(boundedPrePark, park);
         }
 
         /** Mimic RobotProgram's START-cycle start plus first update on the shared clock. */

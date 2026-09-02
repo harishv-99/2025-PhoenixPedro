@@ -204,13 +204,21 @@ Task routine = Tasks.sequence(
 
 Task together = Tasks.parallelAll(firstTask, secondTask);
 Task bounded = Tasks.withTimeout(operation, 2.0);
+Task repairAfterAnyNaturalEnding = Tasks.sequenceOnCompletion(operation, repairRequest);
 ```
 
 - Every Task object is single-use. Call the factory again to repeat it.
-- `Tasks.sequence(...)` runs children in order.
-- `Tasks.parallelAll(...)` waits for every child.
+- `Tasks.sequence(...)` is the ordinary prerequisite chain: only exact `SUCCESS` starts the next
+  eagerly constructed child; `TIMEOUT`, `CANCELLED`, and `UNKNOWN` remain exact and stop it.
+- `Tasks.sequenceOnCompletion(...)` is only for intentional recovery, takeover, or repair after a
+  valid natural ending. It retains the first non-success result. Direct cancellation starts no
+  later child, so this is not `finally`.
+- `Tasks.parallelAll(...)` waits for every child and succeeds only when all succeed. Matching
+  non-success outcomes remain exact; mixed non-success outcomes report `UNKNOWN`.
 - `Tasks.parallelDeadline(deadline, companions...)` lets one child own the lifetime.
 - `Tasks.withTimeout(...)` adds one outer elapsed-time budget.
+- `Tasks.branchOnOutcome(...)` runs only the exact-success or exact-timeout branch;
+  `CANCELLED`/`UNKNOWN` fail closed.
 - A cancellation hook must clean the requests owned by that Task; cancellation is not a direct
   hardware write.
 

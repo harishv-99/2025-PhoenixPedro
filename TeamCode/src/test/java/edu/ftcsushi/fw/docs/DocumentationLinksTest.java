@@ -858,7 +858,8 @@ public final class DocumentationLinksTest {
                         && interfaceStage.contains("[`ScalarTasks.set(...)`](<")
                         && interfaceStage.contains(".needsReference(")
                         && interfaceStage.contains(".untilReachedBy(lift)")
-                        && interfaceStage.contains(".failAfterSec(homingTimeoutSec)"));
+                        && interfaceStage.contains(".failAfterSec(homingTimeoutSec)")
+                        && interfaceStage.contains("Tasks.sequenceOnCompletion("));
 
         int testStageStart = anchor.indexOf(requiredStageHeadings[1]);
         int testStageEnd = anchor.indexOf(requiredStageHeadings[2], testStageStart);
@@ -896,8 +897,10 @@ public final class DocumentationLinksTest {
         assertTrue("Stage 6 must keep a real independent bounded-drive fixture",
                 behaviorStage.contains("BasicDriveAuto.java")
                         && behaviorStage.contains("BasicDriveStopOwner.java")
+                        && behaviorStage.contains("return Tasks.sequence(")
                         && behaviorStage.contains("DriveTasks.driveExclusivelyForSeconds(")
                         && behaviorStage.contains("Tasks.parallelDeadline(")
+                        && behaviorStage.contains("constructed eagerly")
                         && behaviorStage.contains("program.output(driveStopOwner)")
                         && behaviorStage.contains("keep lift/claw absent")
                         && behaviorStage.contains("0.20 source request")
@@ -912,6 +915,7 @@ public final class DocumentationLinksTest {
         String completeStage = anchor.substring(completeStageStart, completeStageEnd);
         assertTrue("Stage 7 must teach the retained root and its terminal telemetry",
                 completeStage.contains("BasicRobotAutoRoutines.complete(")
+                        && completeStage.contains("return Tasks.sequence(")
                         && completeStage.contains("program.output(driveStopOwner)")
                         && completeStage.contains("auto.complete")
                         && completeStage.contains("auto.outcome")
@@ -938,8 +942,6 @@ public final class DocumentationLinksTest {
                         + "FirstDriveTeleOp.java",
                 "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
                         + "BasicAutoRoutines.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicAutoSuccessGate.java",
                 "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java",
                 "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
                         + "BasicClawControls.java",
@@ -1013,13 +1015,13 @@ public final class DocumentationLinksTest {
                 anchor.substring(0, warmUpEnd).contains(
                         "<!-- source-file: " + expectedCompleteFiles.get(0) + " -->"));
         int[][] expectedFileIndexesByStage = {
-            {3, 4, 5, 6, 9, 10, 12, 13, 14, 15, 16},
-            {22, 23, 24},
-            {7, 17},
+            {2, 3, 4, 5, 8, 9, 11, 12, 13, 14, 15},
+            {21, 22, 23},
+            {6, 16},
             {},
-            {21},
-            {1, 2, 8, 11, 18, 25},
-            {19, 20, 26}
+            {20},
+            {1, 7, 10, 17, 24},
+            {18, 19, 25}
         };
         for (int stageIndex = 0; stageIndex < requiredStageHeadings.length; stageIndex++) {
             int sectionStart = anchor.indexOf(requiredStageHeadings[stageIndex]);
@@ -1034,6 +1036,46 @@ public final class DocumentationLinksTest {
                         section.contains("<!-- source-file: " + expectedFile + " -->"));
             }
         }
+    }
+
+    @Test
+    public void taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair() throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        Path frameworkRoot = repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/fw");
+        Path docsRoot = frameworkRoot.resolve("docs");
+
+        String principles = readUtf8(frameworkRoot.resolve("Framework Principles.md"));
+        String tasks = readUtf8(docsRoot.resolve("design/Tasks & Macros Quickstart.md"));
+        String beginner = readUtf8(
+                docsRoot.resolve("getting-started/learn-sushi/Tasks and Autonomous.md"));
+        String adaptive = readUtf8(
+                docsRoot.resolve("examples/Timestamped Adaptive Collection.md"));
+        String cheatSheet = readUtf8(docsRoot.resolve("reference/Sushi Cheat Sheet.md"));
+
+        assertTrue("Framework Principles must make exact-success sequence the ordinary policy",
+                principles.contains("`sequence(...)` starts a later child")
+                        && principles.contains("only after exact `SUCCESS`"));
+        assertTrue("Tasks guide must distinguish eager construction from gated start",
+                tasks.contains("The child Tasks are constructed when this graph is built")
+                        && tasks.contains("Only exact\n`SUCCESS` starts the next child"));
+        assertTrue("Tasks guide must teach explicit natural-outcome repair without finally",
+                tasks.contains("Use `sequenceOnCompletion(...)` only when")
+                        && tasks.contains("It is not Java\n`finally`"));
+        assertTrue("Tasks guide must retain truthful wait-all and fail-closed branch policy",
+                tasks.contains("mixed non-success kinds report `UNKNOWN`")
+                        && tasks.contains("`CANCELLED` and `UNKNOWN`\nstart neither branch"));
+        assertTrue("Beginner Task lesson must teach the safe default before exceptional repair",
+                beginner.contains("`Tasks.sequence(...)` starts its next child only after exact")
+                        && beginner.contains("`Tasks.sequenceOnCompletion(...)`"));
+        assertTrue("Adaptive park takeover must use explicit completion continuation",
+                adaptive.contains(
+                        "program.rootTask(Tasks.sequenceOnCompletion(boundedPrePark, park));")
+                        && adaptive.contains("This continuation is not Java"));
+        assertTrue("Cheat sheet must keep both sequence choices visible",
+                cheatSheet.contains("`Tasks.sequence(...)` is the ordinary prerequisite chain")
+                        && cheatSheet.contains("`Tasks.sequenceOnCompletion(...)` is only for"));
     }
 
     @Test
@@ -1066,6 +1108,8 @@ public final class DocumentationLinksTest {
                         && lesson.contains("TaskOutcome")
                         && lesson.contains("FOLLOWER_TIMEOUT_OR_STALL")
                         && lesson.contains("UNKNOWN_TERMINAL"));
+        assertTrue("Pedro outcome branch must fail closed for cancellation and unknown results",
+                lesson.contains("A `CANCELLED` or `UNKNOWN` Task result starts neither branch"));
         assertTrue("Pedro lesson must retain the exact integration contract link",
                 lesson.contains("../../integrations/pedro/README.md"));
         assertTrue("Pedro lesson must keep physical motion blocked without route-time control",

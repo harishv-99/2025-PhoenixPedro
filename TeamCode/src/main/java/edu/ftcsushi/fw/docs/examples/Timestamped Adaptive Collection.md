@@ -346,7 +346,7 @@ park = RouteTasks.followBuiltAtStart(
         PARK_ROUTE_TIMEOUT_SEC
 );
 
-program.rootTask(Tasks.sequence(boundedPrePark, park));
+program.rootTask(Tasks.sequenceOnCompletion(boundedPrePark, park));
 // ...retain latestAttempt, boundedPrePark, and park for exact diagnostics...
 ```
 
@@ -361,7 +361,8 @@ program.rootTask(Tasks.sequence(boundedPrePark, park));
 
 - `Tasks.repeatWhileSuccessful(...)`: admits bounded fresh children only after exact success.
 - `Tasks.withTimeout(...)`: bounds and cooperatively cancels the active pre-park graph.
-- `Tasks.sequence(...)`: starts park only after the direct timed child becomes terminal.
+- `Tasks.sequenceOnCompletion(...)`: intentionally starts park after any valid natural pre-park
+  outcome while retaining the first non-success result.
 - `RouteTask.getRouteStatus()`: retains the exact park result independently of root outcome.
 
 `MAX_ATTEMPTS` is the hard count bound. `LATEST_NEW_ATTEMPT_SEC` is deliberately earlier than
@@ -388,19 +389,20 @@ it. `followBuiltAtStart(...)` invokes `buildParkFromCurrentPose()` exactly once 
 cleanup, so that method reads the then-current pose and builds one route. Do not add a surrounding
 `Tasks.buildAtStart(...)`; the typed route factory already owns that boundary.
 
-The direct outer `sequence(...)` means "attempt park after every non-throwing, cooperatively settled
-pre-park result." It therefore advances after an early finish, a hard timeout, or another valid
-terminal pre-park outcome. Before park starts, direct cancellation of the outer root, FTC STOP, a
-lifecycle exception, or a cleanup exception propagated by the pre-park graph suppresses park. A
-custom nested Task that silently returns from cancellation while remaining active violates the Task
-contract; a terminal composite cannot prove that hidden descendant state. This continuation is not
-Java `finally`, and Sushi does not add a general race, retry, or finally API for it.
+The explicit outer `sequenceOnCompletion(...)` means "attempt park after every valid natural,
+cooperatively settled pre-park result." It therefore advances after early success, a hard timeout,
+or another valid natural terminal pre-park outcome, and retains the first non-success result after
+park settles. Before park starts, direct cancellation of the outer root, FTC STOP, a lifecycle
+exception, or a cleanup exception propagated by the pre-park graph suppresses park. A custom nested
+Task that silently returns from cancellation while remaining active violates the Task contract; a
+terminal composite cannot prove that hidden descendant state. This continuation is not Java
+`finally`, and Sushi does not add a general race, retry, or finally API for it.
 
 Retain the objects shown above for diagnostics. `latestAttempt.status()` keeps the collection exit
 and both exact route statuses; `boundedPrePark.getOutcome()` keeps the enclosing result, and its
 debug snapshot records whether the hard timeout fired; `park.getRouteStatus()` retains the exact
-park execution. The final sequence outcome is intentionally a coarse scheduling summary and must
-not replace those facts.
+park execution. The completion-continuing sequence preserves its first abnormal Task outcome, but
+that scheduling result still must not replace those domain facts.
 
 ## What software tests cannot establish
 

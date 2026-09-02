@@ -163,12 +163,13 @@ return Tasks.branchOnOutcome(
 
 **What to notice**
 
-- Confirmed success, recoverable timeout, and cancellation-like failure lead to different actions.
+- Confirmed success, recoverable timeout, and fail-closed cancellation/unknown results lead to
+  different actions.
 - Robot-owned Auto policy interprets retained evidence; the integration does not choose strategy.
 
 **Key APIs:** `RouteStatus` retains the integration's exact ending; `TaskOutcome` classifies the
-Task boundary; `Tasks.branchOnOutcome(...)` selects success and timeout continuations while failing
-closed for cancellation-like endings.
+Task boundary; `Tasks.branchOnOutcome(...)` selects only exact-success and exact-timeout
+continuations. A `CANCELLED` or `UNKNOWN` Task result starts neither branch.
 
 For this routine:
 

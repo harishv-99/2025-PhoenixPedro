@@ -2,7 +2,7 @@
 
 **Learning mode:** Guided course
 
-<!-- buildable-files: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutines.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSuccessGate.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawControls.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawProfile.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawTeleOp.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveAuto.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveControls.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveProfile.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveStopOwner.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicHardwareOwnership.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftControls.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftProfile.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftTeleOp.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicMechanismsAuto.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAuto.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAutoRoutines.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotTeleOp.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanismTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanismTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicTeleOpControlsTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutinesTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotScenarioTest.java -->
+<!-- buildable-files: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutines.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawControls.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawProfile.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawTeleOp.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveAuto.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveControls.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveProfile.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveStopOwner.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicHardwareOwnership.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftControls.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftProfile.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftTeleOp.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicMechanismsAuto.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAuto.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAutoRoutines.java | TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotTeleOp.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanismTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanismTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicTeleOpControlsTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutinesTest.java | TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotScenarioTest.java -->
 
 Use this one course from first drivetrain motion through a referenced lift, claw, integrated TeleOp,
 and small Auto. Work one gate at a time. The checked-in examples remain `@Disabled` and all profile
@@ -351,7 +351,7 @@ public interface BasicLift {
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
 ```java
-// docs: Homing is a cooperative reference-search Task with explicit power, switch, zero, hold, and timeout.
+// docs: Homing owns search and an explicit post-outcome repair without treating cancellation as finally.
         Task search = PositionCalibrationTasks.search(lift)
                 .withPower(homingPower)
                 .until(bottomSwitch)
@@ -359,6 +359,13 @@ public interface BasicLift {
                 .holdAfterReference(stowedHeightIn)
                 .failAfterSec(homingTimeoutSec)
                 .build();
+
+        return Tasks.sequenceOnCompletion(
+                Tasks.runOnce(() -> setHeight(Height.STOWED)),
+                search,
+                // Repair after any natural terminal search outcome; direct parent cancellation
+                // remains terminal and skips this later Task.
+                Tasks.runOnce(() -> setHeight(Height.STOWED)));
 ```
 
 <!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
@@ -534,10 +541,11 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
                 .failAfterSec(homingTimeoutSec)
                 .build();
 
-        return Tasks.sequence(
+        return Tasks.sequenceOnCompletion(
                 Tasks.runOnce(() -> setHeight(Height.STOWED)),
                 search,
-                // This runs after success or timeout, but normal Task cancellation skips it.
+                // Repair after any natural terminal search outcome; direct parent cancellation
+                // remains terminal and skips this later Task.
                 Tasks.runOnce(() -> setHeight(Height.STOWED)));
     }
 
@@ -1354,7 +1362,7 @@ if any device moves during review, press STOP and investigate before continuing.
 - [`BasicDriveProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveProfile.java>) / [`BasicLiftProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftProfile.java>) / [`BasicClawProfile`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawProfile.java>) — one resource's facts and permission per file.
 - [`BasicDriveControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveControls.java>) / [`BasicLiftControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftControls.java>) / [`BasicClawControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawControls.java>) — one operator-meaning owner per capability.
 - [`FtcSensors.digitalLow(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcSensors.html>) / [`FtcActuators.plant(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcActuators.html>) — explicit FTC input and staged Plant construction boundaries.
-- [`PositionCalibrationTasks.search(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/PositionCalibrationTasks.html>) — non-blocking reference search recipe.
+- [`PositionCalibrationTasks.search(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/PositionCalibrationTasks.html>) / [`Tasks.sequenceOnCompletion(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — non-blocking reference search plus explicit natural-outcome repair.
 - [`ScalarTasks.set(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/ScalarTasks.html>) — fresh feedback-aware scalar command recipe.
 
 **If it fails:** Fix the first configuration or ownership error. Do not expose a raw Plant at the
@@ -2557,26 +2565,27 @@ regression.
 **Outcome:** Mechanism groups and timed drive prove order, prerequisite outcomes, cancellation, and
 physical readiness before full Auto.
 
-**Files:** Add `BasicAutoRoutines.java`, `BasicAutoSuccessGate.java`,
-`BasicMechanismsAuto.java`, `BasicDriveAuto.java`, `BasicDriveStopOwner.java`, and
+**Files:** Add `BasicAutoRoutines.java`, `BasicMechanismsAuto.java`, `BasicDriveAuto.java`,
+`BasicDriveStopOwner.java`, and
 `BasicAutoRoutinesTest.java`.
 
 ### Critical code
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutines.java -->
 ```java
-// docs: Sequence and parallel composition stay cooperative; later work is built only at its phase.
-    private static Task guideLowerAndClose(BasicLift lift, BasicClaw claw) {
-        // The lift is the deadline so its exact terminal outcome remains authoritative while the
-        // one-cycle claw request starts concurrently and then persists through the mechanism.
-        Task lowerAndClose = Tasks.parallelDeadline(
-                lift.moveTo(BasicLift.Height.LOW),
-                requestClaw(claw, BasicClaw.State.CLOSED));
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic guide after LOW and CLOSED",
-                lowerAndClose,
-                () -> guideHoldThenRelease(lift, claw));
-    }
+// docs: Side-effect-free capability Task factories build eagerly; exact success alone starts the next child.
+        return Tasks.sequence(
+                requiredLift.home(),
+                requiredLift.moveTo(BasicLift.Height.HIGH),
+                // The lift is the deadline, while the one-cycle claw request starts concurrently
+                // and persists through the mechanism after that companion Task completes.
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.LOW),
+                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                Tasks.waitForSeconds(GUIDE_HOLD_SEC),
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.STOWED),
+                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
 ```
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveAuto.java -->
@@ -2621,8 +2630,9 @@ public final class BasicAutoRoutines {
      * Builds the course's mechanism-only command-group lesson.
      *
      * <p>The exact sequence is home, HIGH, LOW and CLOSED in parallel, hold for 0.5 seconds, then
-     * OPEN and STOWED in parallel. Each feedback prerequisite must succeed before later motion is
-     * constructed. A timeout stays visible and does not quietly continue the routine.</p>
+     * OPEN and STOWED in parallel. The fixed graph calls these side-effect-free capability Task
+     * factories eagerly, but each feedback prerequisite must succeed before the next Task starts.
+     * A timeout stays visible and does not quietly continue the routine.</p>
      *
      * @return fresh single-use mechanism-only root Task
      */
@@ -2630,41 +2640,18 @@ public final class BasicAutoRoutines {
         BasicLift requiredLift = Objects.requireNonNull(lift, "lift");
         BasicClaw requiredClaw = Objects.requireNonNull(claw, "claw");
 
-        Task home = requiredLift.home();
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic guide after home",
-                home,
-                () -> guideRaiseHigh(requiredLift, requiredClaw));
-    }
-
-    private static Task guideRaiseHigh(BasicLift lift, BasicClaw claw) {
-        Task raiseHigh = lift.moveTo(BasicLift.Height.HIGH);
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic guide after HIGH",
-                raiseHigh,
-                () -> guideLowerAndClose(lift, claw));
-    }
-
-    private static Task guideLowerAndClose(BasicLift lift, BasicClaw claw) {
-        // The lift is the deadline so its exact terminal outcome remains authoritative while the
-        // one-cycle claw request starts concurrently and then persists through the mechanism.
-        Task lowerAndClose = Tasks.parallelDeadline(
-                lift.moveTo(BasicLift.Height.LOW),
-                requestClaw(claw, BasicClaw.State.CLOSED));
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic guide after LOW and CLOSED",
-                lowerAndClose,
-                () -> guideHoldThenRelease(lift, claw));
-    }
-
-    private static Task guideHoldThenRelease(BasicLift lift, BasicClaw claw) {
-        Task hold = Tasks.waitForSeconds(GUIDE_HOLD_SEC);
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic guide after hold",
-                hold,
-                () -> Tasks.parallelDeadline(
-                        lift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(claw, BasicClaw.State.OPEN)));
+        return Tasks.sequence(
+                requiredLift.home(),
+                requiredLift.moveTo(BasicLift.Height.HIGH),
+                // The lift is the deadline, while the one-cycle claw request starts concurrently
+                // and persists through the mechanism after that companion Task completes.
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.LOW),
+                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                Tasks.waitForSeconds(GUIDE_HOLD_SEC),
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.STOWED),
+                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
     }
 
     /** Creates a fresh one-cycle semantic command Task. */
@@ -2672,66 +2659,6 @@ public final class BasicAutoRoutines {
         return Tasks.runOnce(() -> claw.setState(state));
     }
 
-}
-```
-
-</details>
-<details>
-<summary>BasicAutoSuccessGate.java — continue only after exact success</summary>
-
-<!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSuccessGate.java -->
-```java
-// docs: Later work is constructed only after SUCCESS; other outcomes remain truthful.
-        return Tasks.repeatWhileSuccessful(
-                debugName,
-                2,
-                BooleanSource.constant(true),
-```
-
-<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSuccessGate.java -->
-```java
-package edu.ftcsushi.robots.examples.basicmechanisms;
-
-import java.util.Objects;
-import java.util.function.Supplier;
-
-import edu.ftcsushi.fw.core.source.BooleanSource;
-import edu.ftcsushi.fw.task.Task;
-import edu.ftcsushi.fw.task.Tasks;
-
-/** Package-local exact-success continuation shared by the two independent Auto lessons. */
-final class BasicAutoSuccessGate {
-
-    private BasicAutoSuccessGate() {
-        // Static task-composition helper.
-    }
-
-    /** Retains every terminal outcome and constructs the continuation only after exact success. */
-    static Task continueOnlyAfterSuccess(String debugName,
-                                         Task prerequisite,
-                                         Supplier<? extends Task> continuation) {
-        Task requiredPrerequisite = Objects.requireNonNull(prerequisite, "prerequisite");
-        Supplier<? extends Task> requiredContinuation = Objects.requireNonNull(
-                continuation, "continuation");
-
-        // This built-in composition starts iteration two only after iteration one reports SUCCESS;
-        // TIMEOUT, CANCELLED, and UNKNOWN remain the exact terminal result.
-        return Tasks.repeatWhileSuccessful(
-                debugName,
-                2,
-                BooleanSource.constant(true),
-                new Supplier<Task>() {
-                    private int iteration;
-
-                    @Override
-                    public Task get() {
-                        if (iteration++ == 0) {
-                            return requiredPrerequisite;
-                        }
-                        return requiredContinuation.get();
-                    }
-                });
-    }
 }
 ```
 
@@ -2946,7 +2873,6 @@ import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 
@@ -2961,26 +2887,31 @@ public final class BasicAutoRoutinesTest {
         ManualLoopClock time = new ManualLoopClock();
 
         assertEquals(1, lift.homeRequests);
-        assertTrue(lift.moveHeights.isEmpty());
+        assertEquals(
+                Arrays.asList(
+                        BasicLift.Height.HIGH,
+                        BasicLift.Height.LOW,
+                        BasicLift.Height.STOWED),
+                lift.moveHeights);
+        assertTrue(lift.startedHeights.isEmpty());
         root.start(time.clock());
 
         finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.moveHeights);
+        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedHeights);
         assertTrue(claw.states.isEmpty());
 
-        finishSuccessfullyAndStartNext(lift.lastMove, root, time);
+        finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
         assertEquals(
                 Arrays.asList(BasicLift.Height.HIGH, BasicLift.Height.LOW),
-                lift.moveHeights);
+                lift.startedHeights);
         assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.states);
 
-        finishSuccessfullyAndStartNext(lift.lastMove, root, time);
+        finishSuccessfullyAndStartNext(lift.moveTask(1), root, time);
         root.update(time.nextCycle(0.25));
         assertEquals(2, lift.startedHeights.size());
         assertEquals(1, claw.states.size());
 
-        root.update(time.nextCycle(0.25));
-        root.update(time.nextCycle(0.02));
+        root.update(time.nextCycle(0.26));
         assertEquals(
                 Arrays.asList(
                         BasicLift.Height.HIGH,
@@ -2991,7 +2922,7 @@ public final class BasicAutoRoutinesTest {
                 Arrays.asList(BasicClaw.State.CLOSED, BasicClaw.State.OPEN),
                 claw.states);
 
-        finishAndUpdate(lift.lastMove, TaskOutcome.SUCCESS, root, time, 0.02);
+        finishAndUpdate(lift.moveTask(2), TaskOutcome.SUCCESS, root, time, 0.02);
         assertEquals(TaskOutcome.SUCCESS, root.getOutcome());
     }
 
@@ -3010,7 +2941,13 @@ public final class BasicAutoRoutinesTest {
             finishAndUpdate(lift.lastHome, outcome, root, time, 0.02);
 
             assertEquals(outcome, root.getOutcome());
-            assertTrue(lift.moveHeights.isEmpty());
+            assertEquals(
+                    Arrays.asList(
+                            BasicLift.Height.HIGH,
+                            BasicLift.Height.LOW,
+                            BasicLift.Height.STOWED),
+                    lift.moveHeights);
+            assertTrue(lift.startedHeights.isEmpty());
             assertTrue(claw.states.isEmpty());
         }
     }
@@ -3018,6 +2955,7 @@ public final class BasicAutoRoutinesTest {
     @Test
     public void guidePreservesAbnormalHighAndLowDeadlineOutcomes() {
         for (TaskOutcome outcome : Arrays.asList(
+                TaskOutcome.TIMEOUT,
                 TaskOutcome.CANCELLED,
                 TaskOutcome.UNKNOWN)) {
             RecordingLift highLift = new RecordingLift();
@@ -3027,10 +2965,10 @@ public final class BasicAutoRoutinesTest {
             highRoot.start(highTime.clock());
             finishSuccessfullyAndStartNext(highLift.lastHome, highRoot, highTime);
 
-            finishAndUpdate(highLift.lastMove, outcome, highRoot, highTime, 0.02);
+            finishAndUpdate(highLift.moveTask(0), outcome, highRoot, highTime, 0.02);
 
             assertEquals(outcome, highRoot.getOutcome());
-            assertEquals(Arrays.asList(BasicLift.Height.HIGH), highLift.moveHeights);
+            assertEquals(Arrays.asList(BasicLift.Height.HIGH), highLift.startedHeights);
             assertTrue(highClaw.states.isEmpty());
 
             RecordingLift lowLift = new RecordingLift();
@@ -3039,14 +2977,14 @@ public final class BasicAutoRoutinesTest {
             ManualLoopClock lowTime = new ManualLoopClock();
             lowRoot.start(lowTime.clock());
             finishSuccessfullyAndStartNext(lowLift.lastHome, lowRoot, lowTime);
-            finishSuccessfullyAndStartNext(lowLift.lastMove, lowRoot, lowTime);
+            finishSuccessfullyAndStartNext(lowLift.moveTask(0), lowRoot, lowTime);
 
-            finishAndUpdate(lowLift.lastMove, outcome, lowRoot, lowTime, 0.02);
+            finishAndUpdate(lowLift.moveTask(1), outcome, lowRoot, lowTime, 0.02);
 
             assertEquals(outcome, lowRoot.getOutcome());
             assertEquals(
                     Arrays.asList(BasicLift.Height.HIGH, BasicLift.Height.LOW),
-                    lowLift.moveHeights);
+                    lowLift.startedHeights);
             assertEquals(Arrays.asList(BasicClaw.State.CLOSED), lowClaw.states);
         }
     }
@@ -3054,6 +2992,7 @@ public final class BasicAutoRoutinesTest {
     @Test
     public void guidePreservesAbnormalFinalStowDeadlineOutcomes() {
         for (TaskOutcome outcome : Arrays.asList(
+                TaskOutcome.TIMEOUT,
                 TaskOutcome.CANCELLED,
                 TaskOutcome.UNKNOWN)) {
             RecordingLift lift = new RecordingLift();
@@ -3062,14 +3001,13 @@ public final class BasicAutoRoutinesTest {
             ManualLoopClock time = new ManualLoopClock();
             root.start(time.clock());
             finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-            finishSuccessfullyAndStartNext(lift.lastMove, root, time);
-            finishSuccessfullyAndStartNext(lift.lastMove, root, time);
-            root.update(time.nextCycle(0.50));
-            root.update(time.nextCycle(0.02));
+            finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
+            finishSuccessfullyAndStartNext(lift.moveTask(1), root, time);
+            root.update(time.nextCycle(0.51));
 
             assertEquals(BasicLift.Height.STOWED, lift.startedHeights.get(2));
             assertEquals(BasicClaw.State.OPEN, claw.states.get(1));
-            finishAndUpdate(lift.lastMove, outcome, root, time, 0.02);
+            finishAndUpdate(lift.moveTask(2), outcome, root, time, 0.02);
 
             assertEquals(outcome, root.getOutcome());
         }
@@ -3088,8 +3026,8 @@ public final class BasicAutoRoutinesTest {
         cancelled.cancel();
         cancelled.cancel();
         assertEquals(TaskOutcome.CANCELLED, cancelled.getOutcome());
-        assertEquals(TaskOutcome.CANCELLED, cancelledLift.lastMove.getOutcome());
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), cancelledLift.moveHeights);
+        assertEquals(TaskOutcome.CANCELLED, cancelledLift.moveTask(0).getOutcome());
+        assertEquals(Arrays.asList(BasicLift.Height.HIGH), cancelledLift.startedHeights);
         assertTrue(cancelledClaw.states.isEmpty());
     }
 
@@ -3103,10 +3041,10 @@ public final class BasicAutoRoutinesTest {
 
         root.start(time.clock());
         finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.moveHeights);
+        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedHeights);
         assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.states);
 
-        finishSuccessfullyAndStartNext(lift.lastMove, root, time);
+        finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
         assertEquals(Arrays.asList("update", "drive"), drive.events);
         assertEquals(0.20, drive.lastCommand.axial, 0.0);
         assertEquals(0.0, drive.lastCommand.lateral, 0.0);
@@ -3116,15 +3054,14 @@ public final class BasicAutoRoutinesTest {
         root.update(time.nextCycle(0.75));
         assertEquals(1, drive.stopCount);
         assertEquals("stop", drive.events.get(drive.events.size() - 1));
-        root.update(time.nextCycle(0.02));
         assertEquals(
                 Arrays.asList(BasicLift.Height.HIGH, BasicLift.Height.STOWED),
-                lift.moveHeights);
+                lift.startedHeights);
         assertEquals(
                 Arrays.asList(BasicClaw.State.CLOSED, BasicClaw.State.OPEN),
                 claw.states);
 
-        finishAndUpdate(lift.lastMove, TaskOutcome.SUCCESS, root, time, 0.02);
+        finishAndUpdate(lift.moveTask(1), TaskOutcome.SUCCESS, root, time, 0.02);
         assertEquals(TaskOutcome.SUCCESS, root.getOutcome());
         assertEquals(1, drive.stopCount);
     }
@@ -3149,6 +3086,7 @@ public final class BasicAutoRoutinesTest {
     @Test
     public void carryFailureBeforeDrivePreservesOutcomeAndLifecycleStop() {
         for (TaskOutcome outcome : Arrays.asList(
+                TaskOutcome.TIMEOUT,
                 TaskOutcome.CANCELLED,
                 TaskOutcome.UNKNOWN)) {
             RecordingLift lift = new RecordingLift();
@@ -3160,7 +3098,7 @@ public final class BasicAutoRoutinesTest {
             root.start(time.clock());
             finishSuccessfullyAndStartNext(lift.lastHome, root, time);
 
-            finishAndUpdate(lift.lastMove, outcome, root, time, 0.02);
+            finishAndUpdate(lift.moveTask(0), outcome, root, time, 0.02);
 
             assertEquals(outcome, root.getOutcome());
             assertEquals(0, drive.driveCount);
@@ -3177,6 +3115,7 @@ public final class BasicAutoRoutinesTest {
     @Test
     public void completeAutoPreservesAbnormalFinalStowDeadlineOutcomes() {
         for (TaskOutcome outcome : Arrays.asList(
+                TaskOutcome.TIMEOUT,
                 TaskOutcome.CANCELLED,
                 TaskOutcome.UNKNOWN)) {
             RecordingLift lift = new RecordingLift();
@@ -3186,13 +3125,12 @@ public final class BasicAutoRoutinesTest {
             ManualLoopClock time = new ManualLoopClock();
             root.start(time.clock());
             finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-            finishSuccessfullyAndStartNext(lift.lastMove, root, time);
+            finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
             root.update(time.nextCycle(0.75));
-            root.update(time.nextCycle(0.02));
 
             assertEquals(BasicLift.Height.STOWED, lift.startedHeights.get(1));
             assertEquals(BasicClaw.State.OPEN, claw.states.get(1));
-            finishAndUpdate(lift.lastMove, outcome, root, time, 0.02);
+            finishAndUpdate(lift.moveTask(1), outcome, root, time, 0.02);
 
             assertEquals(outcome, root.getOutcome());
             assertEquals(1, drive.stopCount);
@@ -3209,7 +3147,7 @@ public final class BasicAutoRoutinesTest {
 
         root.start(time.clock());
         finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-        finishSuccessfullyAndStartNext(lift.lastMove, root, time);
+        finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
         assertEquals(1, drive.driveCount);
 
         root.cancel();
@@ -3217,7 +3155,7 @@ public final class BasicAutoRoutinesTest {
 
         assertEquals(TaskOutcome.CANCELLED, root.getOutcome());
         assertEquals(1, drive.stopCount);
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.moveHeights);
+        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedHeights);
         assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.states);
     }
 
@@ -3245,20 +3183,19 @@ public final class BasicAutoRoutinesTest {
         root.update(time.nextCycle(dtSec));
     }
 
-    /** Successful repeat iterations hand their continuation to the following loop cycle. */
+    /** Exact-success sequence handoff starts the next fixed child in the same lifecycle call. */
     private static void finishSuccessfullyAndStartNext(ControllableTask task,
                                                         Task root,
                                                         ManualLoopClock time) {
         finishAndUpdate(task, TaskOutcome.SUCCESS, root, time, 0.02);
-        root.update(time.nextCycle(0.02));
     }
 
     private static final class RecordingLift implements BasicLift {
         private final List<Height> moveHeights = new ArrayList<Height>();
         private final List<Height> startedHeights = new ArrayList<Height>();
+        private final List<ControllableTask> moveTasks = new ArrayList<ControllableTask>();
         private int homeRequests;
         private ControllableTask lastHome;
-        private ControllableTask lastMove;
 
         @Override
         public void setHeight(Height height) {
@@ -3268,10 +3205,11 @@ public final class BasicAutoRoutinesTest {
         @Override
         public Task moveTo(Height height) {
             moveHeights.add(height);
-            lastMove = new ControllableTask(
+            ControllableTask move = new ControllableTask(
                     "move-" + height,
                     () -> startedHeights.add(height));
-            return lastMove;
+            moveTasks.add(move);
+            return move;
         }
 
         @Override
@@ -3284,6 +3222,10 @@ public final class BasicAutoRoutinesTest {
         @Override
         public Status status() {
             return new Status(Height.STOWED, 0.0, 0.0, true, true);
+        }
+
+        private ControllableTask moveTask(int index) {
+            return moveTasks.get(index);
         }
     }
 
@@ -3421,6 +3363,8 @@ the sink's software STOP boundary; it does not prove physical zero.
 
 **What to notice**
 
+- Fixed child Tasks are constructed eagerly, but `Tasks.sequence(...)` starts each later child only
+  after the prior child reports exact `SUCCESS`.
 - `parallelDeadline(...)` makes the lift outcome authoritative while one-cycle claw intent persists.
 - The stop-only owner never competes with the active drive Task.
 - Fixed-time drive teaches exclusive ownership and stop, not a field path.
@@ -3429,8 +3373,8 @@ the sink's software STOP boundary; it does not prove physical zero.
 
 - [`BasicAutoRoutines.guide(...)`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutines.java>) — mechanism-only command-group factory.
 - [`BasicMechanismsAuto`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicMechanismsAuto.java>) / [`BasicDriveAuto`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveAuto.java>) / [`BasicDriveStopOwner`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveStopOwner.java>) — separate fixtures and STOP lifecycle owner.
-- [`Tasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — cooperative sequence, parallel, wait, and deferred construction.
-- [`TaskOutcome`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/TaskOutcome.html>) — success, timeout, and cancellation evidence.
+- [`Tasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — exact-success sequence, parallel deadline, waits, and explicit start-time construction.
+- [`TaskOutcome`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/TaskOutcome.html>) — exact SUCCESS, TIMEOUT, CANCELLED, and UNKNOWN terminal outcomes.
 
 **If it fails:** Keep full Auto disabled and repair the smallest failed phase. Never continue after
 a failed prerequisite.
@@ -3472,14 +3416,21 @@ terminal cleanup and no hidden cancellation continuation.
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAutoRoutines.java -->
 ```java
-// docs: Drive is a bounded phase; release and stow are built only after its exact success.
-        Task driveForward = DriveTasks.driveExclusivelyForSeconds(
-                driveSink,
-                new DriveSignal(FORWARD_REQUEST, 0.0, 0.0),
-                FORWARD_DURATION_SEC);
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic complete Auto after timed drive",
-                driveForward,
+// docs: Side-effect-free capability Task factories build eagerly; exact success starts later motion.
+        return Tasks.sequence(
+                requiredLift.home(),
+                // The lift deadline preserves its exact outcome; CLOSED starts concurrently and
+                // persists after its one-cycle Task completes.
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.HIGH),
+                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                DriveTasks.driveExclusivelyForSeconds(
+                        requiredDrive,
+                        new DriveSignal(FORWARD_REQUEST, 0.0, 0.0),
+                        FORWARD_DURATION_SEC),
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.STOWED),
+                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
 ```
 
 <!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAutoRoutines.java -->
@@ -3513,8 +3464,8 @@ public final class BasicRobotAutoRoutines {
      *
      * <p>The direct drive sink is exclusive to the timed {@link DriveTasks} phase; callers must
      * not also register it through {@code program.drive(...)}. Lift feedback gates every later
-     * motion, while normal cancellation stops the active task graph without starting a later
-     * phase.</p>
+     * motion. The fixed graph calls these side-effect-free capability Task factories eagerly, but
+     * normal cancellation stops the active task graph without starting a later phase.</p>
      *
      * @return fresh single-use full-robot root Task
      */
@@ -3525,39 +3476,20 @@ public final class BasicRobotAutoRoutines {
         BasicClaw requiredClaw = Objects.requireNonNull(claw, "claw");
         DriveCommandSink requiredDrive = Objects.requireNonNull(driveSink, "driveSink");
 
-        Task home = requiredLift.home();
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic complete Auto after home",
-                home,
-                () -> completeRaiseAndClose(requiredLift, requiredClaw, requiredDrive));
-    }
-
-    private static Task completeRaiseAndClose(BasicLift lift,
-                                              BasicClaw claw,
-                                              DriveCommandSink driveSink) {
-        // The lift deadline preserves its exact outcome; CLOSED starts concurrently and persists.
-        Task carryReady = Tasks.parallelDeadline(
-                lift.moveTo(BasicLift.Height.HIGH),
-                requestClaw(claw, BasicClaw.State.CLOSED));
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic complete Auto after carry position",
-                carryReady,
-                () -> completeDriveAndRelease(lift, claw, driveSink));
-    }
-
-    private static Task completeDriveAndRelease(BasicLift lift,
-                                                BasicClaw claw,
-                                                DriveCommandSink driveSink) {
-        Task driveForward = DriveTasks.driveExclusivelyForSeconds(
-                driveSink,
-                new DriveSignal(FORWARD_REQUEST, 0.0, 0.0),
-                FORWARD_DURATION_SEC);
-        return BasicAutoSuccessGate.continueOnlyAfterSuccess(
-                "Basic complete Auto after timed drive",
-                driveForward,
-                () -> Tasks.parallelDeadline(
-                        lift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(claw, BasicClaw.State.OPEN)));
+        return Tasks.sequence(
+                requiredLift.home(),
+                // The lift deadline preserves its exact outcome; CLOSED starts concurrently and
+                // persists after its one-cycle Task completes.
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.HIGH),
+                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                DriveTasks.driveExclusivelyForSeconds(
+                        requiredDrive,
+                        new DriveSignal(FORWARD_REQUEST, 0.0, 0.0),
+                        FORWARD_DURATION_SEC),
+                Tasks.parallelDeadline(
+                        requiredLift.moveTo(BasicLift.Height.STOWED),
+                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
     }
 
     /** Creates a fresh one-cycle semantic command Task. */
