@@ -1035,12 +1035,18 @@ bindings.onRise(pads.p1().a(), intakeSupervisor::requestFeedOne);
 ### Auto interaction
 
 ```java
-Task acquirePiece = Tasks.sequence(
+Task acquirePiece = Tasks.sequenceOnCompletion(
         Tasks.runOnce(() -> intakeSupervisor.setIntakeEnabled(true)),
         Tasks.waitUntil(() -> intakeSupervisor.status().piecePresent(), 1.5),
         Tasks.runOnce(() -> intakeSupervisor.setIntakeEnabled(false))
 );
 ```
+
+This graph intentionally disables intake after either successful detection or a natural timeout,
+so it uses the explicitly named completion-continuing sequence and retains the timeout outcome.
+Direct cancellation still skips the later disable Task. The active operation's cancellation path or
+the intake owner's managed cleanup must therefore clear any persistent request that must be safe on
+abort or STOP; `sequenceOnCompletion(...)` is not a `finally` block.
 
 ### Why this is the recommended design
 
@@ -1314,20 +1320,21 @@ Even though drive is special, the rest of the robot should still follow the same
 - mechanisms are exposed through intent + status APIs
 - Auto routes call the same mechanism intents as TeleOp
 - route interruption should use Sushi cancellation seams
-- continue/fallback/abort decisions remain visible as robot-owned strategy
+- exact-success prerequisite gating comes from ordinary `Tasks.sequence(...)`, while
+  continue/fallback/abort decisions remain visible as robot-owned strategy
 - direct routine cancellation never starts a fallback
 - failure cleanup clears only capability requests owned by that routine phase
 
-Truthful route status deliberately does not choose that strategy. Each robot routine must apply its
-own explicit route-failure policy; generic Task sequences do not silently acquire a new
-short-circuit rule.
+Truthful route status deliberately does not choose that strategy. Ordinary `Tasks.sequence(...)`
+stops after a non-success Task outcome, but it cannot distinguish every precise route status or
+select a fallback. Each robot routine still applies its own explicit route-failure policy.
 
 ### Route-policy inputs with shared mechanism intents
 
 Construct fresh status-bearing route Tasks and semantic capability Tasks, then give them to one
-robot-owned routine helper/coordinator. Do not put the lift and shot directly after the route in a
-generic sequence: that sequence deliberately does not decide whether a non-normal route result is
-safe to continue from.
+robot-owned routine helper/coordinator. A generic exact-success sequence can prevent the lift and
+shot from starting after a non-success route outcome, but it does not choose a timeout fallback or
+distinguish route statuses that need different strategy.
 
 ```java
 RouteTask<YourRoute> preloadRoute = RouteTasks.follow(
@@ -1403,10 +1410,12 @@ right place to store the normal steady-state target of a mechanism.
 
 ### Use deadline composition for bounded work beside an owner
 
-When several Tasks must all finish, use `Tasks.parallelAll(...)`. When one Task owns the useful
-lifetime of bounded companion work, use `Tasks.parallelDeadline(deadline, companions...)`. For
-example, a route can own a cancellation-safe collection macro: route completion and outcome end
-the group, while collection finishing early does not end the route.
+When several Tasks must all finish, use `Tasks.parallelAll(...)`. It waits for every child and
+succeeds only if every child succeeds; matching abnormal outcomes remain exact and mixed abnormal
+outcomes report `UNKNOWN`. When one Task owns the useful lifetime of bounded companion work, use
+`Tasks.parallelDeadline(deadline, companions...)`. For example, a route can own a cancellation-safe
+collection macro: route completion and outcome end the group, while collection finishing early
+does not end the route.
 
 The composite does not invent mechanism cleanup; it only calls each companion's `cancel()`. Do not
 use `sequence(enable, wait, disable)` as a companion because cancellation skips the future disable

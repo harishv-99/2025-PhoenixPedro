@@ -70,6 +70,8 @@ public final class TaskCancellationSemanticsTest {
                         1.0,
                         0.0),
                 Tasks.sequence(new WaitUntilTask(BooleanSource.constant(false))),
+                Tasks.sequenceOnCompletion(
+                        new WaitUntilTask(BooleanSource.constant(false))),
                 Tasks.parallelAll(new WaitUntilTask(BooleanSource.constant(false))),
                 Tasks.parallelDeadline(
                         new WaitUntilTask(BooleanSource.constant(false)),
@@ -86,9 +88,10 @@ public final class TaskCancellationSemanticsTest {
                 "directOutput",
                 "gatedOutput",
                 "Tasks.sequence(...)",
+                "Tasks.sequenceOnCompletion(...)",
                 "Tasks.parallelAll(...)",
                 "Tasks.parallelDeadline(...)",
-                "BranchOnOutcome"
+                "Tasks.branchOnOutcome(...)"
         };
 
         for (int i = 0; i < tasks.length; i++) {

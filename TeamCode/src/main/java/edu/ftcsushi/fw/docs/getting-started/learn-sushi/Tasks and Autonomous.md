@@ -97,11 +97,19 @@ Outcome-aware Tasks retain what happened:
 - `CANCELLED`: active work was cancelled or deliberately failed closed.
 - `UNKNOWN`: no more specific result is available.
 
-A timeout reports evidence; it does not silently choose recovery. The Reference routine explicitly
-aborts launcher work after a home, move, or launch timeout and retains `TIMEOUT`. A bare
-`Tasks.sequence(...)` retains a child's timeout but can still advance, so use an outcome branch when
-the next step requires success. The checked-in timeout values are software configuration, not proof
-that the real mechanism is fast or safe. The launcher feeds only after its readiness wait succeeds;
+A timeout reports evidence; it does not silently choose recovery. Ordinary
+`Tasks.sequence(...)` starts its next child only after exact `SUCCESS`, so it is the safe default
+when each step is a prerequisite. The fixed child Tasks are constructed eagerly, but later children
+do not start early.
+
+The Reference routine has a different requirement: after a home, move, or launch timeout, it must
+run an explicit launcher-abort repair and still retain `TIMEOUT`. It therefore uses
+`Tasks.sequenceOnCompletion(...)`, examines the preceding outcome in a start-time-built policy
+Task, and selects either the next motion or the repair. Direct cancellation and lifecycle failure
+still start no later Task. Use `Tasks.branchOnOutcome(...)` for the simpler two-way case: exact
+success selects its success branch, exact timeout selects its timeout branch, and `CANCELLED` or
+`UNKNOWN` selects neither. The checked-in timeout values are software configuration, not proof that
+the real mechanism is fast or safe. The launcher feeds only after its readiness wait succeeds;
 timeout clears temporary requests without feeding.
 
 Cancellation before start has no effect. Active cancellation is terminal and idempotent; repeated

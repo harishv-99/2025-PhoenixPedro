@@ -88,6 +88,26 @@ public final class ReferenceAutoRoutinesTest {
     }
 
     @Test
+    public void unknownHomeOutcomeRunsAbortWithoutStartingEitherSuccessContinuation() {
+        RecordingLift lift = new RecordingLift();
+        RecordingLauncher launcher = new RecordingLauncher();
+        Task root = ReferenceAutoRoutines.homeMoveLowThenLaunch(
+                new ReferenceCapabilities(lift, launcher));
+        ManualLoopClock time = new ManualLoopClock();
+
+        root.start(time.clock());
+        lift.lastHome.finish(TaskOutcome.UNKNOWN);
+        root.update(time.nextCycle(0.02));
+
+        assertTrue(root.isComplete());
+        assertEquals(TaskOutcome.UNKNOWN, root.getOutcome());
+        assertEquals(0, lift.moveRequests);
+        assertEquals(0, launcher.launchRequests);
+        assertEquals(1, launcher.abortRequests);
+        assertEquals(list("abort"), launcher.events);
+    }
+
+    @Test
     public void lowMoveTimeoutAbortsWithoutConstructingLaunchAndRemainsTimeout() {
         RecordingLift lift = new RecordingLift();
         RecordingLauncher launcher = new RecordingLauncher();

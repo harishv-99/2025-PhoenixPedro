@@ -208,17 +208,22 @@ Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one tel
   update while idle and starts its queued head during that update. Its total abort cancels the
   current Task, discards pending Tasks, clears its state, and never exposes a drop-without-cancel
   queue operation.
-- Composition states lifetime explicitly. `parallelAll(...)` waits for every child;
-  `parallelDeadline(deadline, companions...)` lets the deadline own group lifetime and cancels
-  started companions. Cancellation never runs later steps in a sequence, so cleanup belongs in the
+- Composition states lifetime and outcome policy explicitly. `sequence(...)` starts a later child
+  only after exact `SUCCESS`; `sequenceOnCompletion(...)` is the exceptional recovery/repair form
+  that may continue after any valid natural terminal outcome while retaining the first non-success
+  result. Direct cancellation never runs a later child. `parallelAll(...)` waits for every child
+  and succeeds only when every child succeeds; matching abnormal outcomes remain exact and mixed
+  abnormal outcomes become `UNKNOWN`. `parallelDeadline(deadline, companions...)` lets the
+  deadline own group lifetime and cancels started companions. Mandatory cleanup belongs in the
   active owner's cancellation behavior or persistent capability state.
 - A timeout reports an outcome; it does not silently choose recovery. When a required continuation
   must take over at a reserved elapsed boundary, put every preceding Task inside `withTimeout(...)`
-  and sequence the continuation outside that timeout. The direct timed child must become terminal
-  through its cooperative cancellation path before the continuation starts, and every nested Task
-  is required to honor active-cancellation terminality. A propagated lifecycle/cleanup failure,
-  direct cancellation of the outer sequence/root, or STOP never launches the continuation. Branch
-  on retained results when success and failure must continue differently.
+  and use `sequenceOnCompletion(...)` for the continuation outside that timeout. The direct timed
+  child must become terminal through its cooperative cancellation path before the continuation
+  starts, and every nested Task is required to honor active-cancellation terminality. A propagated
+  lifecycle/cleanup failure, direct cancellation of the outer sequence/root, or STOP never launches
+  the continuation. This is not `finally`; branch on retained results when success and failure must
+  continue differently.
 - A feedback move explicitly chooses whether active cancellation writes a caller-selected finite
   target or leaves its persistent request unchanged. That request still travels through the source
   graph; cancellation never writes hardware directly.

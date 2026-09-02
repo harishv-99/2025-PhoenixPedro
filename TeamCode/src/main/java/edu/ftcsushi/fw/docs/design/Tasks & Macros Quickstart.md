@@ -204,23 +204,77 @@ Common factories (high‑level view):
     * `Tasks.repeatWhileSuccessful(String debugName, int maxIterations,
       BooleanSource mayStartIteration, Supplier<? extends Task> taskFactory)` – admit and run at
       most that many fresh Tasks, continuing only after exact success.
-    * `Tasks.sequence(Task... steps)` – run tasks one after another.
-    * `Tasks.parallelAll(Task... steps)` – run tasks in parallel and finish when all are done.
+    * `Tasks.sequence(Task... steps)` – run tasks in order, starting the next only after exact
+      success.
+    * `Tasks.sequenceOnCompletion(Task... steps)` – explicitly run a later recovery or repair step
+      after any valid natural terminal outcome.
+    * `Tasks.parallelAll(Task... steps)` – run tasks in parallel, wait for all, and succeed only
+      when all succeed.
     * `Tasks.parallelDeadline(Task deadline, Task... companions)` – run bounded companions only
       while one named Task is active; that deadline determines completion and outcome.
     * `Tasks.withTimeout(Task task, double timeoutSec)` – impose one hard outer time budget on a
       complete Task or Task graph.
+    * `Tasks.branchOnOutcome(Task move, Task onSuccess, Task onTimeout)` – select only the exact
+      success or timeout branch; cancellation and unknown outcomes fail closed.
 
 > `Tasks.*` is the one public construction layer for generic composition and ordinary leaf Tasks,
-> including `runOnce(...)`, `waitUntil(...)`, `sequence(...)`, `parallelAll(...)`,
+> including `runOnce(...)`, `waitUntil(...)`, `sequence(...)`, `sequenceOnCompletion(...)`,
+> `parallelAll(...)`,
 > `parallelDeadline(...)`, `repeatWhileSuccessful(...)`, `withTimeout(...)`, and
 > `branchOnOutcome(...)`.
 > `RunForSecondsTask` remains directly constructible because its start/update/finish callback
 > capability is distinct from a fixed wait.
 
-### 3.1 Choose the parallel owner explicitly
+### 3.1 Choose how a sequence advances
 
-Use `parallelAll(...)` when every child is required before the group can finish. Use
+For ordinary dependent steps, use `sequence(...)`:
+
+```java
+Task score = Tasks.sequence(
+        lift.home(),
+        lift.moveTo(BasicLift.Height.HIGH),
+        Tasks.runOnce(() -> claw.setState(BasicClaw.State.OPEN))
+);
+```
+
+The child Tasks are constructed when this graph is built, but they start one at a time. Only exact
+`SUCCESS` starts the next child. `TIMEOUT`, naturally reported `CANCELLED`, or `UNKNOWN` stops the
+sequence immediately and becomes its exact outcome. This makes the short form safe for normal
+prerequisite chains. A child that succeeds immediately may start the next child in the same
+lifecycle call; a newly started positive-duration child is not updated again by that same call.
+
+Use `sequenceOnCompletion(...)` only when a later recovery, takeover, or repair step intentionally
+follows a valid natural abnormal result:
+
+Assume `search` below is the mechanism's already-built reference-search Task:
+
+```java
+Task homeAndRestoreRequest = Tasks.sequenceOnCompletion(
+        search,
+        Tasks.runOnce(() -> lift.setHeight(BasicLift.Height.STOWED))
+);
+```
+
+This form runs later children after `SUCCESS`, `TIMEOUT`, natural `CANCELLED`, or `UNKNOWN`, then
+retains the first non-success outcome after the later work settles. Direct cancellation of the
+outer graph and lifecycle failures remain terminal and never start a later child. It is not Java
+`finally`; mandatory safety still belongs in the active Task's cancellation path, a persistent safe
+request, or owner `stop()`.
+
+Both sequence factories receive eagerly constructed, single-use child Tasks. Use
+`Tasks.buildAtStart(...)` when construction itself needs a live pose, vision result, earlier outcome,
+or another fact that is knowable only when that phase starts.
+
+When success and timeout require different actions, use `branchOnOutcome(...)`. Exact `SUCCESS`
+selects the success branch and exact `TIMEOUT` selects the timeout branch. `CANCELLED` and `UNKNOWN`
+start neither branch. The selected branch's validated result becomes the wrapper result, so a
+successful timeout branch can handle a timeout without erasing the retained domain fact.
+
+### 3.2 Choose the parallel owner explicitly
+
+Use `parallelAll(...)` when every child is required before the group can finish. It waits for every
+child rather than failing fast. It reports `SUCCESS` only when every child succeeds; one kind of
+non-success result remains exact, while mixed non-success kinds report `UNKNOWN`. Use
 `parallelDeadline(...)` when one Task owns the lifetime of bounded companion work:
 
 ```java
@@ -240,15 +294,14 @@ Each companion must already make active cancellation safe. Do not use
 Build a bounded robot macro whose own `cancel()` restores its caller-selected state, or keep a
 long-lived flywheel/intake/aim request as ordinary capability or service state.
 
-Route failure policy is also deliberately outside generic composition. `Tasks.sequence(...)` does
-not stop merely because a child route timed out or reported a cancellation-like terminal outcome,
-and broad `TaskOutcome` values do not replace a route's precise status. Keep the returned
-`RouteTask`, gate position-dependent work in a robot-owned routine, and explicitly choose whether a
-non-normal status continues, starts a fallback, or aborts. Direct cancellation never starts the
-fallback. Cleanup belongs to the phase that created the request and goes through robot capabilities,
-not direct Plant or hardware writes.
+Route failure policy is still outside generic composition. `Tasks.sequence(...)` now stops unless a
+child reports exact `SUCCESS`, but broad `TaskOutcome` values do not replace a route's precise
+status or choose a fallback. Keep the returned `RouteTask`; use `branchOnOutcome(...)` or a
+robot-owned routine when timeout should start a named fallback or several route statuses need
+different strategy. Direct cancellation never starts the fallback. Cleanup belongs to the phase
+that created the request and goes through robot capabilities, not direct Plant or hardware writes.
 
-### 3.2 Admit bounded fresh attempts between iterations
+### 3.3 Admit bounded fresh attempts between iterations
 
 Use `repeatWhileSuccessful(...)` when one policy wants a bounded series of fresh attempts and can
 decide whether another attempt may start:
@@ -289,7 +342,7 @@ running. It is deliberately not an arbitrary retry, active-child race, or `final
 unsuccessful children are not restarted, and takeover/continuation policy stays explicit in the
 surrounding Task graph.
 
-### 3.3 Put a required continuation outside its hard time budget
+### 3.4 Put a required continuation outside its hard time budget
 
 Use `withTimeout(...)` when a parent owns a hard budget around one complete Task or composite. A
 bounded Auto normally combines the soft latest-start rule above with a distinct hard takeover:
@@ -305,7 +358,7 @@ RouteTask<MyRoute> park = RouteTasks.followBuiltAtStart(
         PARK_ROUTE_TIMEOUT_SEC
 );
 
-Task auto = Tasks.sequence(boundedPrePark, park);
+Task auto = Tasks.sequenceOnCompletion(boundedPrePark, park);
 program.rootTask(auto);
 ```
 
@@ -321,23 +374,25 @@ Park is outside the timeout, so the old pre-park cutoff cannot cancel or restart
 `followBuiltAtStart(...)` supplier reads the live pose and builds exactly one park route when that
 Route Task starts; do not wrap it in another `Tasks.buildAtStart(...)` layer.
 
-A direct `sequence(...)` advances to park after every non-throwing, cooperatively settled
-`boundedPrePark` outcome. That includes early completion and timeout takeover, and is appropriate
-only when the robot's declared strategy is to attempt park in every such case. Direct cancellation
-of the outer sequence—including FTC STOP—never starts a later child. A lifecycle or cleanup
-exception propagated by the pre-park graph also fails closed and suppresses park. A custom nested
-Task that silently returns from cancellation while remaining active violates the Task contract; a
-terminal composite cannot prove that hidden descendant state. This is a bounded continuation, not
-Java `finally`; mandatory physical cleanup belongs in the active owner's cancellation behavior or
-persistent capability state.
+The explicit `sequenceOnCompletion(...)` advances to park after every valid natural
+`boundedPrePark` outcome. That includes early success and timeout takeover, and is appropriate only
+when the robot's declared strategy is to attempt park in every such case. It retains the timeout as
+the enclosing sequence outcome even if park later succeeds. Direct cancellation of the outer
+sequence—including FTC STOP—never starts park. A lifecycle or cleanup exception propagated by the
+pre-park graph also fails closed and suppresses park. A custom nested Task that silently returns
+from cancellation while remaining active violates the Task contract; a terminal composite cannot
+prove that hidden descendant state. This is a bounded continuation, not Java `finally`; mandatory
+physical cleanup belongs in the active owner's cancellation behavior or persistent capability
+state.
 
 Keep references to `boundedPrePark`, the repetition Task, the latest attempt's exact status, and the
-park `RouteTask`. The sequence's aggregate `TaskOutcome` is intentionally too coarse to replace the
-attempt exit reason, the timeout wrapper outcome, or the park's exact `RouteStatus`.
+park `RouteTask`. The completion-continuing sequence retains its first abnormal Task outcome, but
+that result is still too coarse to replace the attempt exit reason, the timeout wrapper diagnostics,
+or the park's exact `RouteStatus`.
 
-If a domain result should suppress the continuation, keep the same timed A/B shape inside a
-robot-owned policy coordinator instead of relying on bare `sequence(...)` to decide. Direct
-cancellation still must not launch fallback.
+If only success should continue, use ordinary `sequence(...)`. If different domain results need
+different continuations, keep the timed A/B shape inside a robot-owned policy coordinator or an
+explicit outcome branch. Direct cancellation still must not launch fallback.
 
 An outer timeout is intentionally different from operation-owned timeouts. A route-local timeout
 can retain `RouteStatus.TASK_TIMEOUT`; a feedback move can apply its timeout target; a gated output
@@ -669,8 +724,8 @@ implementation class. One public generic leaf remains because it exposes a disti
 * `RunForSecondsTask` – when you want full control over what happens during the time window (custom callbacks each loop).
 
 Even inside a team-specific helper factory, compose child Tasks through `Tasks.*`, such as
-`sequence(...)`, `parallelAll(...)`, `parallelDeadline(...)`, `repeatWhileSuccessful(...)`,
-`withTimeout(...)`, or `branchOnOutcome(...)`. Implement
+`sequence(...)`, `sequenceOnCompletion(...)`, `parallelAll(...)`, `parallelDeadline(...)`,
+`repeatWhileSuccessful(...)`, `withTimeout(...)`, or `branchOnOutcome(...)`. Implement
 `Task` directly only when the behavior genuinely needs a new state machine rather than another
 spelling of existing composition.
 
@@ -796,9 +851,11 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
   through `rootTask(...)` and `taskBindings()` rather than constructing it.
   `cancelAndClear()` is the total-abort operation and lifecycle failures clear owned work before
   they are rethrown.
-* **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`,
-  `parallelDeadline`, `repeatWhileSuccessful`, `withTimeout`, `noop`, ...) are the main building
-  blocks you should reach for first.
+* **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`,
+  `sequenceOnCompletion`, `parallelAll`, `parallelDeadline`, `repeatWhileSuccessful`,
+  `withTimeout`, `noop`, ...)
+  are the main building blocks you should reach for first. Normal prerequisite chains use
+  `sequence`; only intentional recovery/repair continuation uses `sequenceOnCompletion`.
 * **`ScalarTasks.set(target, value)`** is the direct deferred-write path when the request itself is
   numeric: build it directly, add a timed branch, or add a feedback-aware branch.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement

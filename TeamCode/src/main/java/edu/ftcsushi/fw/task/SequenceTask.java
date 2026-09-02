@@ -1,182 +1,149 @@
 package edu.ftcsushi.fw.task;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.time.LoopClock;
 
 /**
- * Internal {@link Task} implementation for {@link Tasks#sequence(Task...)}.
+ * Internal sequential composition used by {@link Tasks#sequence(Task...)} and
+ * {@link Tasks#sequenceOnCompletion(Task...)}.
  *
- * <p>Semantics:</p>
- * <ul>
- *   <li>On {@link #start(LoopClock)}, the first child is started.</li>
- *   <li>On each {@link #update(LoopClock)}, the current child is updated.</li>
- *   <li>When the current child finishes, the next child starts before that update returns; a child
- *       that finishes in its own {@code start()} method is skipped through immediately.</li>
- *   <li>The sequence finishes when all children have finished.</li>
- *   <li>Active {@link #cancel()} marks the sequence terminal, then asks its current child to
- *       cancel. Pre-start and terminal cancellation are no-ops.</li>
- * </ul>
+ * <p>The ordinary sequence advances only after exact {@link TaskOutcome#SUCCESS}. The explicit
+ * completion-continuation form advances after every valid natural terminal outcome and retains the
+ * first non-success result. Both forms cache each completed child's outcome once, preserve
+ * same-callback advancement through immediately successful children, and never advance after
+ * direct cancellation or a child lifecycle failure.</p>
  *
- * <p>Robot code constructs this composition through {@link Tasks}:</p>
- * <pre>{@code
- * program.rootTask(Tasks.sequence(
- *     Tasks.runOnce(() -> log("start")),
- *     Tasks.waitUntil(readySensor),
- *     Tasks.runOnce(() -> log("done"))
- * ));
- * }</pre>
- *
- * <p>This is the standard Sushi "do A, then B, then C" implementation for macros. It remains
- * package-private so composition has one public construction surface through {@link Tasks}.</p>
- *
- * <p>A sequence is single-use, and each child position must contain a distinct Task instance.
- * Repeated behavior should construct a fresh sequence with fresh children.</p>
+ * <p>This type remains package-private so {@link Tasks} is the one public construction surface.</p>
  */
 final class SequenceTask implements Task {
 
-    private final List<Task> tasks = new ArrayList<>();
+    private final Task[] tasks;
+    private final TaskOutcome[] completedOutcomes;
+    private final boolean continueOnCompletion;
+    private final String factoryCall;
+
     private boolean startAttempted = false;
     private boolean started = false;
-    private boolean cancelled = false;
-    /**
-     * Index of the current task; {@code -1} before the first task is started.
-     */
+    private boolean complete = false;
+    private TaskOutcome outcome = TaskOutcome.NOT_DONE;
+    private TaskOutcome firstNonSuccess = null;
+    /** Index of the current child, or {@code -1} before one is selected. */
     private int index = -1;
 
     /**
-     * Create a sequence from an ordered array of tasks.
+     * Create one defensively copied sequential graph.
      *
-     * <p>The array is copied; subsequent modifications to {@code tasks} do not affect this
-     * sequence.</p>
-     *
-     * @param tasks ordered array of distinct child tasks; must not be {@code null} or contain
-     *              {@code null} or duplicate instances
+     * @param continueOnCompletion whether valid abnormal completion may start the next child
+     * @param tasks ordered array of distinct, fresh child Tasks
      */
-    SequenceTask(Task... tasks) {
+    SequenceTask(boolean continueOnCompletion, Task... tasks) {
+        this.continueOnCompletion = continueOnCompletion;
+        this.factoryCall = continueOnCompletion
+                ? "Tasks.sequenceOnCompletion(...)"
+                : "Tasks.sequence(...)";
         if (tasks == null) {
-            throw new IllegalArgumentException("tasks is required");
+            throw new IllegalArgumentException(factoryCall + " tasks are required");
         }
-        List<Task> copiedTasks = new ArrayList<>(tasks.length);
-        for (Task task : tasks) {
-            copiedTasks.add(task);
-        }
-        validateDistinctChildren(copiedTasks);
-        this.tasks.addAll(copiedTasks);
+        this.tasks = Arrays.copyOf(tasks, tasks.length);
+        validateDistinctChildren(this.tasks, factoryCall);
+        this.completedOutcomes = new TaskOutcome[this.tasks.length];
     }
 
     /**
-     * {@inheritDoc}
-     *
-     * <p>Initializes the sequence and starts the first available child task
-     * immediately. If one or more children finish in their own {@code start()} calls, the sequence
-     * keeps advancing until it finds a still-running child or runs out of tasks.</p>
+     * Start the first child and drain immediately completed children according to this sequence's
+     * continuation policy.
      */
     @Override
     public void start(LoopClock clock) {
         markStartAttempt();
         started = true;
-        cancelled = false;
-        index = -1;
-        advanceToNextTask(clock);
+        try {
+            if (tasks.length == 0) {
+                finishNaturally(TaskOutcome.SUCCESS);
+                return;
+            }
+            index = 0;
+            startCurrentAndDrain(clock);
+        } catch (RuntimeException failure) {
+            throw failClosed(failure);
+        }
     }
 
     /**
-     * {@inheritDoc}
-     *
-     * <p>Updates only the current child task. When that child finishes, the sequence advances to
-     * the next child before returning.</p>
+     * Update only the current child. A child that became terminal between cycles is observed before
+     * another update, and an immediately completed successor is drained in this same callback.
      */
     @Override
     public void update(LoopClock clock) {
         if (!started) {
-            throw TaskLifecycle.updateBeforeStart("Task returned by Tasks.sequence(...)");
+            throw TaskLifecycle.updateBeforeStart("Task returned by " + factoryCall);
         }
-        Task current = getCurrentTask();
-        if (current == null) {
+        if (complete) {
             return;
         }
-        current.update(clock);
-        if (current.isComplete()) {
-            advanceToNextTask(clock);
+
+        try {
+            Task current = tasks[index];
+            boolean childComplete = current.isComplete();
+            if (complete) {
+                return;
+            }
+            if (!childComplete) {
+                current.update(clock);
+                if (complete) {
+                    return;
+                }
+                childComplete = current.isComplete();
+                if (complete) {
+                    return;
+                }
+            }
+            if (childComplete) {
+                finishCurrentAndAdvance(clock);
+            }
+        } catch (RuntimeException failure) {
+            throw failClosed(failure);
         }
     }
 
     /**
-     * {@inheritDoc}
-     *
-     * <p>Marks the whole sequence complete with {@link TaskOutcome#CANCELLED}, then asks the
-     * current child to cancel. Later children are never started.</p>
+     * Make this sequence terminal before best-effort cancellation of only its current child.
+     * Later children never start.
      */
     @Override
     public void cancel() {
-        if (!started || isComplete()) {
+        if (!started || complete) {
             return;
         }
-        Task current = getCurrentTask();
-        // Establish terminal state before child cleanup so a throwing hook cannot reopen the graph.
-        cancelled = true;
-        index = tasks.size();
-        // The Task contract makes pre-start and terminal cancellation safe no-ops. Do not query
-        // child completion here: this path may be cleaning up that exact failed lifecycle query.
+        Task current = currentTaskOrNull();
+        complete = true;
+        outcome = TaskOutcome.CANCELLED;
         if (current != null) {
             current.cancel();
         }
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>The sequence is complete once it has advanced past its final child, or immediately after a
-     * direct cancellation.</p>
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean isComplete() {
-        return started && index >= tasks.size();
+        return complete;
     }
 
-    /**
-     * Report the aggregated outcome for this sequence.
-     *
-     * <p>Semantics:</p>
-     * <ul>
-     *   <li>While the sequence is still running, this returns {@link TaskOutcome#NOT_DONE}.</li>
-     *   <li>If the sequence itself was cancelled, this returns {@link TaskOutcome#CANCELLED}.</li>
-     *   <li>Otherwise, once all children have completed, if <b>any</b> child reports
-     *       {@link TaskOutcome#TIMEOUT}, this returns {@link TaskOutcome#TIMEOUT}.</li>
-     *   <li>Otherwise this returns {@link TaskOutcome#SUCCESS}, regardless of whether individual
-     *       children report {@link TaskOutcome#SUCCESS} or {@link TaskOutcome#UNKNOWN}.</li>
-     * </ul>
-     */
+    /** Return the retained exact outcome without re-querying completed children. */
     @Override
     public TaskOutcome getOutcome() {
-        if (!isComplete()) {
-            return TaskOutcome.NOT_DONE;
-        }
-        if (cancelled) {
-            return TaskOutcome.CANCELLED;
-        }
-        for (Task task : tasks) {
-            if (task.getOutcome() == TaskOutcome.TIMEOUT) {
-                return TaskOutcome.TIMEOUT;
-            }
-        }
-        return TaskOutcome.SUCCESS;
+        return complete ? outcome : TaskOutcome.NOT_DONE;
     }
 
     /** Identify this internal implementation by the public factory robot code calls. */
     @Override
     public String getDebugName() {
-        return "Tasks.sequence(...)";
+        return factoryCall;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>Dumps aggregate sequence state plus the currently active child, if one exists.</p>
-     */
+    /** Dump cached wrapper state without re-sampling completed child outcomes. */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -184,62 +151,135 @@ final class SequenceTask implements Task {
         }
         String p = (prefix == null || prefix.isEmpty()) ? "sequence" : prefix;
         dbg.addData(p + ".started", started)
-                .addData(p + ".cancelled", cancelled)
-                .addData(p + ".size", tasks.size())
+                .addData(p + ".complete", complete)
+                .addData(p + ".size", tasks.length)
                 .addData(p + ".index", index)
-                .addData(p + ".complete", isComplete())
                 .addData(p + ".outcome", getOutcome());
-        Task current = getCurrentTask();
-        if (current != null) {
-            dbg.addData(p + ".currentName", current.getDebugName())
-                    .addData(p + ".currentComplete", current.isComplete())
-                    .addData(p + ".currentOutcome", current.getOutcome());
-            current.debugDump(dbg, p + ".current");
+        if (index >= 0 && index < tasks.length) {
+            dbg.addData(p + ".currentName", tasks[index].getDebugName())
+                    .addData(p + ".currentCapturedOutcome", completedOutcomes[index]);
         }
     }
 
     /**
-     * @return the current child task, or {@code null} if there is none.
+     * Start the selected child and keep draining children that complete within their own start.
      */
-    private Task getCurrentTask() {
-        if (!started || index < 0 || index >= tasks.size()) {
-            return null;
-        }
-        return tasks.get(index);
-    }
-
-    /**
-     * Advance to the next task and start it immediately.
-     *
-     * <p>If the next task finishes during its own {@code start()}, this method continues advancing
-     * until it finds a non-finished task or runs out of children.</p>
-     */
-    private void advanceToNextTask(LoopClock clock) {
-        while (true) {
+    private void startCurrentAndDrain(LoopClock clock) {
+        while (!complete && index < tasks.length) {
+            Task current = tasks[index];
+            current.start(clock);
+            if (complete) {
+                return;
+            }
+            boolean childComplete = current.isComplete();
+            if (complete || !childComplete) {
+                return;
+            }
+            if (!captureAndApplyCurrentOutcome()) {
+                return;
+            }
             index++;
-            if (index >= tasks.size()) {
-                return;
-            }
-            Task next = tasks.get(index);
-            next.start(clock);
-            if (!next.isComplete()) {
-                return;
+            if (index >= tasks.length) {
+                finishNaturally(finalNaturalOutcome());
             }
         }
     }
 
-    /** Reject child aliases that would start one stateful Task instance more than once. */
-    private static void validateDistinctChildren(List<Task> children) {
-        for (int i = 0; i < children.size(); i++) {
-            Task child = children.get(i);
+    /** Capture the current child's terminal result, apply policy, and start later work if allowed. */
+    private void finishCurrentAndAdvance(LoopClock clock) {
+        if (!captureAndApplyCurrentOutcome()) {
+            return;
+        }
+        index++;
+        if (index >= tasks.length) {
+            finishNaturally(finalNaturalOutcome());
+            return;
+        }
+        startCurrentAndDrain(clock);
+    }
+
+    /**
+     * Capture and validate one terminal child outcome exactly once.
+     *
+     * @return {@code true} when this policy permits a later child to start
+     */
+    private boolean captureAndApplyCurrentOutcome() {
+        TaskOutcome childOutcome = completedOutcomes[index];
+        if (childOutcome == null) {
+            childOutcome = tasks[index].getOutcome();
+            if (complete) {
+                // A custom outcome callback may have directly cancelled this wrapper.
+                return false;
+            }
+            if (childOutcome == null || childOutcome == TaskOutcome.NOT_DONE) {
+                throw malformedChildOutcome(index, childOutcome);
+            }
+            completedOutcomes[index] = childOutcome;
+        }
+
+        if (childOutcome != TaskOutcome.SUCCESS) {
+            if (!continueOnCompletion) {
+                finishNaturally(childOutcome);
+                return false;
+            }
+            if (firstNonSuccess == null) {
+                firstNonSuccess = childOutcome;
+            }
+        }
+        return true;
+    }
+
+    /** Return this sequence's aggregate natural result after every permitted child has completed. */
+    private TaskOutcome finalNaturalOutcome() {
+        return firstNonSuccess == null ? TaskOutcome.SUCCESS : firstNonSuccess;
+    }
+
+    /** Record a natural terminal outcome before any later callback can re-enter this wrapper. */
+    private void finishNaturally(TaskOutcome terminalOutcome) {
+        outcome = terminalOutcome;
+        complete = true;
+    }
+
+    /**
+     * Terminalize after a lifecycle failure, best-effort cancel the current child, and preserve the
+     * original failure as the exception visible to the caller.
+     */
+    private RuntimeException failClosed(RuntimeException failure) {
+        if (complete) {
+            return failure;
+        }
+        Task current = currentTaskOrNull();
+        complete = true;
+        outcome = TaskOutcome.CANCELLED;
+        if (current != null) {
+            try {
+                current.cancel();
+            } catch (RuntimeException cleanupFailure) {
+                if (cleanupFailure != failure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        return failure;
+    }
+
+    /** Return the current selected child without invoking its lifecycle. */
+    private Task currentTaskOrNull() {
+        return index >= 0 && index < tasks.length ? tasks[index] : null;
+    }
+
+    /** Reject nulls and direct aliases before any child can acquire state. */
+    private static void validateDistinctChildren(Task[] children, String factoryCall) {
+        for (int i = 0; i < children.length; i++) {
+            Task child = children[i];
             if (child == null) {
                 throw new IllegalArgumentException(
-                        "Tasks.sequence children must not contain null; found null at index " + i);
+                        factoryCall + " children must not contain null; found null at index " + i);
             }
             for (int previous = 0; previous < i; previous++) {
-                if (child == children.get(previous)) {
+                if (child == children[previous]) {
                     throw new IllegalArgumentException(
-                            "Tasks.sequence child at index " + i
+                            factoryCall + " child at index " + i
                                     + " reuses the same Task instance as index " + previous + ". "
                                     + "Each child must be a distinct, fresh task; create it with "
                                     + "its builder or macro method, a Supplier<Task>, or an "
@@ -249,12 +289,22 @@ final class SequenceTask implements Task {
         }
     }
 
-    /** Record the single permitted start attempt before starting any child. */
+    /** Build an actionable error for a complete child with a non-terminal result. */
+    private IllegalStateException malformedChildOutcome(int childIndex,
+                                                        TaskOutcome reportedOutcome) {
+        return new IllegalStateException(
+                factoryCall + " child at index " + childIndex + " is complete but reported "
+                        + reportedOutcome + ". A completed child Task must report SUCCESS, TIMEOUT, "
+                        + "CANCELLED, or UNKNOWN from getOutcome(). Fix that child's lifecycle "
+                        + "contract.");
+    }
+
+    /** Consume the one permitted wrapper start before invoking any child callback. */
     private void markStartAttempt() {
         if (startAttempted) {
             throw new IllegalStateException(
-                    "The Task returned by Tasks.sequence(...) is single-use and start(...) was "
-                            + "called more than once. "
+                    "The Task returned by " + factoryCall
+                            + " is single-use and start(...) was called more than once. "
                             + "Create a fresh task with its builder or macro method, a "
                             + "Supplier<Task>, or an OutputTaskFactory.");
         }

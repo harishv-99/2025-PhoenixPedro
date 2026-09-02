@@ -1,202 +1,132 @@
 package edu.ftcsushi.fw.task;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.time.LoopClock;
 
 /**
- * Internal {@link Task} implementation for {@link Tasks#parallelAll(Task...)}.
+ * Internal wait-all composition for {@link Tasks#parallelAll(Task...)}.
  *
- * <p>Use {@link Tasks#parallelDeadline(Task, Task...)} instead when one named Task should end the
- * group and cancel the remaining bounded companions.</p>
+ * <p>Every valid child starts and the group remains active until every child finishes. Completed
+ * child outcomes are validated and cached once. All-success reports {@link TaskOutcome#SUCCESS};
+ * identical non-success outcomes are retained; mixed non-success kinds report
+ * {@link TaskOutcome#UNKNOWN}. This is deliberately not a fail-fast or race composition.</p>
  *
- * <p>Semantics:</p>
- * <ul>
- *   <li>On {@link #start(LoopClock)}, all children are started.</li>
- *   <li>On each {@link #update(LoopClock)}, all children that are not yet finished are updated
- *       once.</li>
- *   <li>The parallel group finishes when every child task reports complete.</li>
- *   <li>Active {@link #cancel()} marks the group terminal, then asks every child to cancel.
- *       Pre-start and terminal child cancellation are no-ops.</li>
- * </ul>
- *
- * <p>Robot code constructs this composition through {@link Tasks}:</p>
- * <pre>{@code
- * program.rootTask(Tasks.parallelAll(
- *     Tasks.waitUntil(sensorReady, 1.5),
- *     Tasks.outputForSeconds("intakePulse", 1.0, 0.20)
- * ));
- * }</pre>
- *
- * <p>This implementation remains package-private so composition has one public construction
- * surface through {@link Tasks}.</p>
- *
- * <p>A parallel group is single-use, and each child position must contain a distinct Task
- * instance. Repeated behavior should construct a fresh group with fresh children.</p>
+ * <p>This type remains package-private so {@link Tasks} is the one public construction surface.</p>
  */
 final class ParallelAllTask implements Task {
 
-    private final List<Task> tasks = new ArrayList<>();
+    private final Task[] tasks;
+    private final boolean[] childStartAttempted;
+    private final TaskOutcome[] completedOutcomes;
+
     private boolean startAttempted = false;
     private boolean started = false;
-    private boolean finished = false;
-    private boolean cancelled = false;
+    private boolean complete = false;
+    private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
-    /**
-     * Create a parallel group from an array of tasks.
-     *
-     * <p>The array is copied; subsequent modifications to {@code tasks} do not affect this parallel
-     * group.</p>
-     *
-     * @param tasks array of distinct child tasks to run in parallel; must not be {@code null} or
-     *              contain {@code null} or duplicate instances
-     */
+    /** Create one defensively copied all-children parallel graph. */
     ParallelAllTask(Task... tasks) {
         if (tasks == null) {
-            throw new IllegalArgumentException("tasks is required");
+            throw new IllegalArgumentException("Tasks.parallelAll(...) tasks are required");
         }
-        List<Task> copiedTasks = new ArrayList<>(tasks.length);
-        for (Task task : tasks) {
-            copiedTasks.add(task);
-        }
-        validateDistinctChildren(copiedTasks);
-        this.tasks.addAll(copiedTasks);
+        this.tasks = Arrays.copyOf(tasks, tasks.length);
+        validateDistinctChildren(this.tasks);
+        this.childStartAttempted = new boolean[this.tasks.length];
+        this.completedOutcomes = new TaskOutcome[this.tasks.length];
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>Starts every child task once. If all children finish immediately during their own
-     * {@code start()} calls, the parallel group also becomes complete immediately.</p>
-     */
+    /** Start each valid child in declaration order, then capture any immediate completions. */
     @Override
     public void start(LoopClock clock) {
         markStartAttempt();
-        if (started) {
-            return;
-        }
         started = true;
-        finished = false;
-        cancelled = false;
-        for (Task t : tasks) {
-            if (finished) {
-                // A child's start callback may have reentrantly cancelled this group.
-                break;
+        try {
+            for (int i = 0; i < tasks.length; i++) {
+                if (complete) {
+                    return;
+                }
+                childStartAttempted[i] = true;
+                tasks[i].start(clock);
             }
-            t.start(clock);
-        }
-        if (!finished && allFinished()) {
-            finished = true;
+            observeAllCompletions();
+        } catch (RuntimeException failure) {
+            throw failClosed(failure);
         }
     }
 
     /**
-     * {@inheritDoc}
-     *
-     * <p>Updates every child that is not yet complete. Children that have already finished are not
-     * updated again.</p>
+     * Update every still-active child once in declaration order. Completion is checked before each
+     * update so a child that became terminal between cycles receives no extra update.
      */
     @Override
     public void update(LoopClock clock) {
         if (!started) {
             throw TaskLifecycle.updateBeforeStart("Task returned by Tasks.parallelAll(...)");
         }
-        if (finished) {
-            return;
-        }
-        for (Task t : tasks) {
-            if (finished) {
-                break;
-            }
-            boolean childComplete = t.isComplete();
-            if (finished) {
-                break;
-            }
-            if (!childComplete) {
-                t.update(clock);
-            }
-        }
-        if (!finished && allFinished()) {
-            finished = true;
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     *
-     * <p>The group becomes terminal first, then cancellation is best-effort propagated to every
-     * child. Pre-start and terminal child cancellation are defined no-ops, so this avoids querying
-     * a child's possibly-failed completion hook during cleanup. If multiple child cleanup hooks
-     * throw, the later failures are suppressed on the first.</p>
-     */
-    @Override
-    public void cancel() {
-        if (!started || finished) {
+        if (complete) {
             return;
         }
 
-        // Establish terminal state before child cleanup and still give every child a cleanup
-        // attempt when an earlier hook fails.
-        cancelled = true;
-        finished = true;
-        RuntimeException firstFailure = null;
-        for (Task t : tasks) {
-            try {
-                // A child's isComplete() may be the lifecycle hook whose failure led here.
-                t.cancel();
-            } catch (RuntimeException failure) {
-                if (firstFailure == null) {
-                    firstFailure = failure;
-                } else if (failure != firstFailure) {
-                    firstFailure.addSuppressed(failure);
+        try {
+            for (int i = 0; i < tasks.length; i++) {
+                if (complete) {
+                    return;
+                }
+                if (completedOutcomes[i] != null) {
+                    continue;
+                }
+
+                Task child = tasks[i];
+                boolean childComplete = child.isComplete();
+                if (complete) {
+                    return;
+                }
+                if (!childComplete) {
+                    child.update(clock);
+                    if (complete) {
+                        return;
+                    }
+                    childComplete = child.isComplete();
+                    if (complete) {
+                        return;
+                    }
+                }
+                if (childComplete) {
+                    captureOutcome(i);
                 }
             }
-        }
-        if (firstFailure != null) {
-            throw firstFailure;
+            finishIfAllComplete();
+        } catch (RuntimeException failure) {
+            throw failClosed(failure);
         }
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>The parallel group is complete once all children have completed, or immediately after a
-     * direct cancellation.</p>
-     */
+    /** Terminalize first, then best-effort cancel every direct child. */
+    @Override
+    public void cancel() {
+        if (!started || complete) {
+            return;
+        }
+        complete = true;
+        outcome = TaskOutcome.CANCELLED;
+        RuntimeException cleanupFailure = cancelChildren(null, false);
+        if (cleanupFailure != null) {
+            throw cleanupFailure;
+        }
+    }
+
+    /** {@inheritDoc} */
     @Override
     public boolean isComplete() {
-        return finished;
+        return complete;
     }
 
-    /**
-     * Report the aggregated outcome for this parallel group.
-     *
-     * <p>Semantics:</p>
-     * <ul>
-     *   <li>While the group is still running, this returns {@link TaskOutcome#NOT_DONE}.</li>
-     *   <li>If the group itself was cancelled, this returns {@link TaskOutcome#CANCELLED}.</li>
-     *   <li>Otherwise, once all children have completed, if <b>any</b> child reports
-     *       {@link TaskOutcome#TIMEOUT}, this returns {@link TaskOutcome#TIMEOUT}.</li>
-     *   <li>Otherwise this returns {@link TaskOutcome#SUCCESS}, regardless of whether individual
-     *       children report {@link TaskOutcome#SUCCESS} or {@link TaskOutcome#UNKNOWN}.</li>
-     * </ul>
-     */
+    /** Return the cached aggregate without re-querying completed children. */
     @Override
     public TaskOutcome getOutcome() {
-        if (!finished) {
-            return TaskOutcome.NOT_DONE;
-        }
-        if (cancelled) {
-            return TaskOutcome.CANCELLED;
-        }
-        for (Task task : tasks) {
-            if (task.getOutcome() == TaskOutcome.TIMEOUT) {
-                return TaskOutcome.TIMEOUT;
-            }
-        }
-        return TaskOutcome.SUCCESS;
+        return complete ? outcome : TaskOutcome.NOT_DONE;
     }
 
     /** Identify this internal implementation by the public factory robot code calls. */
@@ -205,63 +135,139 @@ final class ParallelAllTask implements Task {
         return "Tasks.parallelAll(...)";
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>Dumps aggregate state plus each child task under a numbered child prefix.</p>
-     */
+    /** Dump cached group and child-completion state without re-sampling child outcomes. */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "parallelAll" : prefix;
-        int completeCount = 0;
-        for (Task task : tasks) {
-            if (task.isComplete()) {
-                completeCount++;
+        int completedCount = 0;
+        for (TaskOutcome childOutcome : completedOutcomes) {
+            if (childOutcome != null) {
+                completedCount++;
             }
         }
         dbg.addData(p + ".started", started)
-                .addData(p + ".finished", finished)
-                .addData(p + ".cancelled", cancelled)
-                .addData(p + ".size", tasks.size())
-                .addData(p + ".completeCount", completeCount)
-                .addData(p + ".complete", isComplete())
+                .addData(p + ".complete", complete)
+                .addData(p + ".size", tasks.length)
+                .addData(p + ".completedCount", completedCount)
                 .addData(p + ".outcome", getOutcome());
-        for (int i = 0; i < tasks.size(); i++) {
-            tasks.get(i).debugDump(dbg, p + ".child" + i);
+        for (int i = 0; i < tasks.length; i++) {
+            dbg.addData(p + ".child" + i + ".name", tasks[i].getDebugName())
+                    .addData(p + ".child" + i + ".startAttempted", childStartAttempted[i])
+                    .addData(p + ".child" + i + ".capturedOutcome", completedOutcomes[i]);
         }
+    }
+
+    /** Observe and cache every child that is already complete. */
+    private void observeAllCompletions() {
+        for (int i = 0; i < tasks.length; i++) {
+            if (complete || completedOutcomes[i] != null) {
+                continue;
+            }
+            boolean childComplete = tasks[i].isComplete();
+            if (complete) {
+                return;
+            }
+            if (childComplete) {
+                captureOutcome(i);
+            }
+        }
+        finishIfAllComplete();
+    }
+
+    /** Capture and validate one completed child result exactly once. */
+    private void captureOutcome(int childIndex) {
+        if (completedOutcomes[childIndex] != null) {
+            return;
+        }
+        TaskOutcome childOutcome = tasks[childIndex].getOutcome();
+        if (complete) {
+            // A custom outcome callback may have directly cancelled this wrapper.
+            return;
+        }
+        if (childOutcome == null || childOutcome == TaskOutcome.NOT_DONE) {
+            throw malformedChildOutcome(childIndex, childOutcome);
+        }
+        completedOutcomes[childIndex] = childOutcome;
+    }
+
+    /** Finish and aggregate only after every child has one cached terminal outcome. */
+    private void finishIfAllComplete() {
+        if (complete) {
+            return;
+        }
+        for (TaskOutcome childOutcome : completedOutcomes) {
+            if (childOutcome == null) {
+                return;
+            }
+        }
+
+        TaskOutcome retainedNonSuccess = null;
+        for (TaskOutcome childOutcome : completedOutcomes) {
+            if (childOutcome == TaskOutcome.SUCCESS) {
+                continue;
+            }
+            if (retainedNonSuccess == null) {
+                retainedNonSuccess = childOutcome;
+            } else if (retainedNonSuccess != childOutcome) {
+                retainedNonSuccess = TaskOutcome.UNKNOWN;
+                break;
+            }
+        }
+        outcome = retainedNonSuccess == null ? TaskOutcome.SUCCESS : retainedNonSuccess;
+        complete = true;
     }
 
     /**
-     * @return true once every child task reports complete.
+     * Fail closed on a child lifecycle error, attempt every started child's cleanup, and keep the
+     * original error primary.
      */
-    private boolean allFinished() {
-        for (Task t : tasks) {
-            if (!t.isComplete()) {
-                return false;
-            }
-            if (finished) {
-                return true;
-            }
+    private RuntimeException failClosed(RuntimeException failure) {
+        if (complete) {
+            return failure;
         }
-        return true;
+        complete = true;
+        outcome = TaskOutcome.CANCELLED;
+        cancelChildren(failure, true);
+        return failure;
     }
 
-    /** Reject child aliases that would start or update one stateful Task instance twice. */
-    private static void validateDistinctChildren(List<Task> children) {
-        for (int i = 0; i < children.size(); i++) {
-            Task child = children.get(i);
+    /** Best-effort cancellation with later failures suppressed on the supplied primary failure. */
+    private RuntimeException cancelChildren(RuntimeException primaryFailure,
+                                            boolean startedChildrenOnly) {
+        RuntimeException retainedFailure = primaryFailure;
+        for (int i = 0; i < tasks.length; i++) {
+            if (startedChildrenOnly && !childStartAttempted[i]) {
+                continue;
+            }
+            try {
+                tasks[i].cancel();
+            } catch (RuntimeException cleanupFailure) {
+                if (retainedFailure == null) {
+                    retainedFailure = cleanupFailure;
+                } else if (cleanupFailure != retainedFailure) {
+                    retainedFailure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        return retainedFailure;
+    }
+
+    /** Reject nulls and direct aliases before any child can acquire state. */
+    private static void validateDistinctChildren(Task[] children) {
+        for (int i = 0; i < children.length; i++) {
+            Task child = children[i];
             if (child == null) {
                 throw new IllegalArgumentException(
-                        "Tasks.parallelAll children must not contain null; found null at index "
+                        "Tasks.parallelAll(...) children must not contain null; found null at index "
                                 + i);
             }
             for (int previous = 0; previous < i; previous++) {
-                if (child == children.get(previous)) {
+                if (child == children[previous]) {
                     throw new IllegalArgumentException(
-                            "Tasks.parallelAll child at index " + i
+                            "Tasks.parallelAll(...) child at index " + i
                                     + " reuses the same Task instance as index " + previous + ". "
                                     + "Each child must be a distinct, fresh task; create it with "
                                     + "its builder or macro method, a Supplier<Task>, or an "
@@ -271,14 +277,23 @@ final class ParallelAllTask implements Task {
         }
     }
 
-    /** Record the single permitted start attempt before starting any child. */
+    /** Build an actionable error for a complete child with a non-terminal result. */
+    private static IllegalStateException malformedChildOutcome(int childIndex,
+                                                               TaskOutcome reportedOutcome) {
+        return new IllegalStateException(
+                "Tasks.parallelAll(...) child at index " + childIndex
+                        + " is complete but reported " + reportedOutcome
+                        + ". A completed child Task must report SUCCESS, TIMEOUT, CANCELLED, or "
+                        + "UNKNOWN from getOutcome(). Fix that child's lifecycle contract.");
+    }
+
+    /** Consume the one permitted wrapper start before invoking any child callback. */
     private void markStartAttempt() {
         if (startAttempted) {
             throw new IllegalStateException(
                     "The Task returned by Tasks.parallelAll(...) is single-use and start(...) was "
-                            + "called more than once. "
-                            + "Create a fresh task with its builder or macro method, a "
-                            + "Supplier<Task>, or an OutputTaskFactory.");
+                            + "called more than once. Create a fresh task with its builder or macro "
+                            + "method, a Supplier<Task>, or an OutputTaskFactory.");
         }
         startAttempted = true;
     }

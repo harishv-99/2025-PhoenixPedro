@@ -114,17 +114,19 @@ public interface Task {
     /**
      * Returns the outcome of this task, if it exposes one.
      *
-     * <p>Every Task implementation supplies this method. A simple task that does not distinguish
-     * between terminal states may return {@link TaskOutcome#UNKNOWN}.</p>
+     * <p>Every Task implementation supplies this method and returns a non-null value. A simple task
+     * that cannot distinguish terminal states may return {@link TaskOutcome#UNKNOWN}; that is a
+     * valid terminal result, but composition does not treat it as success.</p>
      *
      * <p>Tasks that track outcomes (for example, that may finish with success vs timeout vs
      * cancellation) should follow this convention:</p>
      * <ul>
      *   <li>While the task is still running (before {@link #isComplete()} becomes {@code true}),
      *       return {@link TaskOutcome#NOT_DONE}.</li>
-     *   <li>Once the task has completed, return a terminal value such as
-     *       {@link TaskOutcome#SUCCESS}, {@link TaskOutcome#TIMEOUT}, or
-     *       {@link TaskOutcome#CANCELLED}.</li>
+     *   <li>Once the task has completed, return exactly one terminal value:
+     *       {@link TaskOutcome#SUCCESS}, {@link TaskOutcome#TIMEOUT},
+     *       {@link TaskOutcome#CANCELLED}, or {@link TaskOutcome#UNKNOWN}. Returning {@code null}
+     *       or {@code NOT_DONE} after completion is a lifecycle contract violation.</li>
      * </ul>
      *
      * @return the current outcome for this task
