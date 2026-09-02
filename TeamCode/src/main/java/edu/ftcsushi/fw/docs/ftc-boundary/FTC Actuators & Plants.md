@@ -162,6 +162,14 @@ the same boundary through `PlantTargets.exact(source)`. For
 `PlantTargets.overlay(...)`, only a `ScalarTarget` carried by the base graph becomes the command
 target; conditional layers never do.
 
+When the robot API names a semantic request such as `Height`, `Mode`, or `Pose`, use a
+`SemanticScalarCommand<S>` instead of exposing the numeric command. Its mapper validates and
+publishes one immutable semantic/numeric request, and every successful set receives a fresh request
+identity even when the name and number repeat. Bind it through
+`targetFromResolver(PlantTargets.exact(command))`; equivalent-position and overlay overloads retain
+the same private provenance. It intentionally provides no `ScalarTarget`, so direct numeric
+`ScalarTasks` cannot bypass the mechanism's semantic setter.
+
 Velocity and power Plants stay simpler than position Plants because they do not have position
 periodicity or homing/reference questions. Power is simpler still: every direct power Plant has the
 fixed normalized range `[-1.0, +1.0]`, so there is no redundant bounds step. A finite request outside
@@ -1327,23 +1335,71 @@ Motor current remains a raw, shareable measurement source rather than Plant/actu
 current-response policy. See [`FTC Sensors`](<FTC Sensors.md#motor-current>) for its sampling,
 returned-value, reset, and adopting-hardware boundaries.
 
-### Plant status
+### Plant snapshots
 
-Feedback-capable plants expose their authoritative measurement through the plant itself:
+Every Plant can freeze its common cached public facts in one immutable `PlantSnapshot`:
 
 ```java
 plant.update(clock);
+PlantSnapshot status = plant.snapshot();
 
-telemetry.addData("target", plant.getRequestedTarget());
-telemetry.addData("measurement", plant.getMeasurement());
-telemetry.addData("requestedError", plant.getRequestedTargetError());
-telemetry.addData("atTarget", plant.atTarget());
+telemetry.addData("target", status.requestedTarget());
+telemetry.addData("appliedTarget", status.appliedTarget());
+telemetry.addData("measurement", status.measurement());
+telemetry.addData("requestedError", status.requestedTargetError());
+telemetry.addData("atTarget", status.atTarget());
 ```
 
-For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getRequestedTargetError()` are all in plant units.
-`PositionPlant.positionSource()` is also in plant units. Context-aware target resolvers such as
+The snapshot also contains target resolution/status, feedback and measurement availability, applied
+error, the captured live numeric command when one exists, and provenance-aware
+`atCommandTarget()`. It performs no Plant update or hardware poll: it captures the current live
+command value and the cached facts from the most recent heartbeat. An older snapshot never changes,
+and the API does not claim atomic publication, safe capture from inside an update callback, or
+cross-thread synchronization.
+
+`PositionPlant.snapshot()` returns the covariant `PositionPlantSnapshot`, adding periodicity,
+period, legal range, reference state/status, and calibration-search support. Requested, applied,
+measured, and error values remain in Plant units. `PositionPlant.positionSource()` is also in Plant
+units. Context-aware target resolvers such as
 `PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan(request)` receive the Plant measurement,
 range, and periodicity automatically through the Plant target context during `update(clock)`.
+
+For named requests, the mechanism composes rather than copies those facts internally:
+
+```java
+SemanticScalarSnapshot<Height, PositionPlantSnapshot> status =
+        heightCommand.snapshot(lift.snapshot());
+
+telemetry.addData("height", status.request().semantic());
+telemetry.addData("heightIn", status.request().commandTarget());
+telemetry.addData("measuredIn", status.plant().measurement());
+telemetry.addData("atCurrentHeight", status.currentRequestAtTarget());
+```
+
+This distinguishes a newly issued request from same-valued evidence cached for an older request.
+That nested value is framework/mechanism backing and an advanced diagnostic, not the ordinary
+robot-facing lift API. A named capability projects it into its own vocabulary:
+
+```java
+BasicLift.Status status = lift.status();
+telemetry.addData("height", status.requestedHeight());
+telemetry.addData("heightIn", status.requestedPositionIn());
+telemetry.addData("appliedIn", status.appliedPositionIn());
+telemetry.addData("measuredIn", status.measuredPositionIn());
+telemetry.addData("atCurrentHeight", status.atTarget());
+```
+
+The enum is the semantic name. `setHeight(height)` replaces the persistent request and returns
+without waiting; `moveTo(height)` builds a fresh single-use feedback Task that requests the same
+height when it starts and waits for truthful arrival. Numeric coordinates stay in configuration and
+the mechanism's semantic-to-numeric mapping. Do not add a second `NamedPosition` type or parallel
+`toHigh` aliases for the same decision.
+
+The same pattern applies to named launcher speeds: a semantic speed enum maps forward to a velocity
+command, while a fresh move/spin-up Task waits on feedback. Power and velocity Plants use the same
+`PlantSnapshot`; velocity adds no different generic status facts and therefore no separate snapshot
+subtype. For a grouped shooter, generic `PlantSnapshot.atTarget()` remains the grouped Plant's
+aggregate contract. Per-wheel balance and readiness remain explicit capability-status facts.
 
 ---
 
@@ -1639,12 +1695,21 @@ lifecycle stop need not reacquire it.
 Grouped device-managed feedback inverse-maps each child's sample into shared group units and reports
 their overflow-safe arithmetic mean. Consequently, grouped `atTarget()` compares that aggregate
 with the one shared target; it is not proof that every motor is independently inside tolerance.
-Opposing child errors can cancel in the aggregate.
+Opposing child errors can cancel in the aggregate. `plant.snapshot()` preserves exactly that same
+aggregate measurement and arrival contract; it does not manufacture per-member evidence.
 
-If robot testing proves a constant additive or nonlinear trajectory trim, or readiness must prove
-each wheel independently, that mechanism has two commanded degrees of freedom rather than one
-scalar group target. Keep two private one-motor Plants inside the shooter subsystem and expose one
-semantic paired command:
+Requiring readiness to prove each wheel independently does not, by itself, create another command
+degree of freedom. When every wheel still follows one shared group-unit target through fixed child
+scales, keep the grouped Plant. Compose its `PlantSnapshot` with separately sampled per-wheel
+measurements and per-wheel readiness facts in the capability-owned status. The
+[`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
+demonstrates that per-wheel readiness policy around one grouped flywheel command. The generic
+snapshot remains truthful about only the group's aggregate arrival contract.
+
+If robot testing instead proves that the wheels need independently commanded targets—for example,
+a live additive or nonlinear trajectory trim—then the mechanism has two commanded degrees of
+freedom rather than one scalar group target. Keep two private one-motor Plants inside the shooter
+subsystem and expose one semantic paired command:
 
 ```java
 void setFlywheelVelocity(double baseVelocityNative,
@@ -1673,7 +1738,10 @@ adapter may still enter the neutral grammar through
 `Plants.fromOutputs().regulatedPosition(groupOutput, feedback)` or
 `Plants.fromOutputs().regulatedVelocity(groupOutput, feedback)`, then answer the ordinary typed
 control stages or the advanced `controlFromCustomRegulator(...)` stage after tolerance. That adapter
-owns its complete group lifecycle and failure contract. Independently combining public
+owns its complete group lifecycle and failure contract. Its snapshot reports the one scalar
+`feedback` source supplied to that regulated Plant; unlike the standard device-managed group, the
+framework does not synthesize an inverse-mapped per-member mean for this custom boundary.
+Independently combining public
 `FtcHardware.motorPower(...)` outputs does not receive the standard builder's all-child preflight,
 so sequential child writes are not an equivalent safe construction path.
 

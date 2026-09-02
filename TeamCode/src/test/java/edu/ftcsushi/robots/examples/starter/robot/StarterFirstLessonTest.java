@@ -86,10 +86,7 @@ public final class StarterFirstLessonTest {
 
         @Override
         public Status status() {
-            Mode mode = modeRequests.isEmpty()
-                    ? Mode.STOPPED
-                    : modeRequests.get(modeRequests.size() - 1);
-            return new Status(mode, 0.0);
+            throw new AssertionError("RecordingIntake status is not used by this lesson test");
         }
     }
 }

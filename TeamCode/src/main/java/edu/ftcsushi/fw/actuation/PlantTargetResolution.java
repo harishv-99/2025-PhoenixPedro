@@ -49,9 +49,7 @@ public final class PlantTargetResolution {
     private final double selectedAgeSec;
     private final LoopTimestamp selectedTimestamp;
     private final String reason;
-    private final ScalarTarget resolutionCommandTarget;
-    private final boolean commandPathSelected;
-    private final double logicalCommandValue;
+    private final CommandEvidence commandEvidence;
 
     private PlantTargetResolution(boolean hasTarget,
                                   double target,
@@ -64,9 +62,7 @@ public final class PlantTargetResolution {
                                   double selectedAgeSec,
                                   LoopTimestamp selectedTimestamp,
                                   String reason,
-                                  ScalarTarget resolutionCommandTarget,
-                                  boolean commandPathSelected,
-                                  double logicalCommandValue) {
+                                  CommandEvidence commandEvidence) {
         this.hasTarget = hasTarget;
         this.target = target;
         this.kind = Objects.requireNonNull(kind, "kind");
@@ -78,9 +74,7 @@ public final class PlantTargetResolution {
         this.selectedAgeSec = selectedAgeSec;
         this.selectedTimestamp = Objects.requireNonNull(selectedTimestamp, "selectedTimestamp");
         this.reason = reason != null ? reason : "";
-        this.resolutionCommandTarget = resolutionCommandTarget;
-        this.commandPathSelected = commandPathSelected;
-        this.logicalCommandValue = logicalCommandValue;
+        this.commandEvidence = commandEvidence;
     }
 
     /**
@@ -90,7 +84,7 @@ public final class PlantTargetResolution {
         requireFinite(target, "target");
         return new PlantTargetResolution(true, target, Kind.EXACT, true, false, false,
                 "exact", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "exact target"), null, false, Double.NaN);
+                clean(reason, "exact target"), null);
     }
 
     /** Creates a planned alternative after the framework planner validates its metadata. */
@@ -115,7 +109,7 @@ public final class PlantTargetResolution {
                 alternative.quality(),
                 alternative.observed() ? selectedAgeSec : Double.NaN,
                 alternative.observed() ? alternative.timestamp() : LoopTimestamp.unavailable(),
-                clean(reason, "planned target"), null, false, Double.NaN);
+                clean(reason, "planned target"), null);
     }
 
     /**
@@ -125,7 +119,7 @@ public final class PlantTargetResolution {
         requireFinite(target, "target");
         return new PlantTargetResolution(true, target, Kind.FALLBACK, false, true, false,
                 "fallback", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "fallback target"), null, false, Double.NaN);
+                clean(reason, "fallback target"), null);
     }
 
     /**
@@ -135,7 +129,7 @@ public final class PlantTargetResolution {
         requireFinite(target, "target");
         return new PlantTargetResolution(true, target, Kind.HOLD_LAST_TARGET, false, true, false,
                 "hold-last", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "holding last target"), null, false, Double.NaN);
+                clean(reason, "holding last target"), null);
     }
 
     /**
@@ -146,7 +140,7 @@ public final class PlantTargetResolution {
         return new PlantTargetResolution(true, target, Kind.HOLD_MEASURED_TARGET,
                 false, true, false,
                 "hold-measured", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "holding measured target"), null, false, Double.NaN);
+                clean(reason, "holding measured target"), null);
     }
 
     /**
@@ -156,7 +150,7 @@ public final class PlantTargetResolution {
         return new PlantTargetResolution(false, Double.NaN, Kind.UNAVAILABLE,
                 false, false, false,
                 "", Double.NaN, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "target unavailable"), null, false, Double.NaN);
+                clean(reason, "target unavailable"), null);
     }
 
     /** Attach internal evidence that this resolution selected one graph-owned command value. */
@@ -166,13 +160,39 @@ public final class PlantTargetResolution {
         if (!hasTarget) {
             throw new IllegalStateException("Cannot select a command path without a target");
         }
-        return copy(target, kind, reason, commandTarget, true, logicalValue);
+        return copy(target, kind, reason,
+                CommandEvidence.selected(commandTarget, null, logicalValue));
     }
 
     /** Attach internal evidence that this graph's command path did not produce the final target. */
     PlantTargetResolution withoutSelectedCommand(ScalarTarget commandTarget) {
-        return copy(target, kind, reason, Objects.requireNonNull(commandTarget, "commandTarget"),
-                false, Double.NaN);
+        return copy(target, kind, reason,
+                CommandEvidence.notSelected(
+                        Objects.requireNonNull(commandTarget, "commandTarget")));
+    }
+
+    /** Attach internal evidence for one selected semantic-command request identity. */
+    PlantTargetResolution withSelectedSemanticCommand(
+            SemanticScalarCommand<?> command,
+            SemanticScalarCommand.Request<?> request) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(request, "request");
+        if (!hasTarget) {
+            throw new IllegalStateException("Cannot select a command path without a target");
+        }
+        return copy(target, kind, reason,
+                CommandEvidence.selected(command, request, request.commandTarget()));
+    }
+
+    /** Attach internal evidence that this semantic command did not produce the final target. */
+    PlantTargetResolution withoutSelectedSemanticCommand(SemanticScalarCommand<?> command) {
+        return copy(target, kind, reason,
+                CommandEvidence.notSelected(Objects.requireNonNull(command, "command")));
+    }
+
+    /** Remove provenance inherited from a target graph that did not win this composition. */
+    PlantTargetResolution withoutCommandEvidence() {
+        return commandEvidence == null ? this : copy(target, kind, reason, null);
     }
 
     /**
@@ -188,35 +208,83 @@ public final class PlantTargetResolution {
                 : kind;
         return copy(equivalentTarget, resolvedKind,
                 clean(equivalentReason, "selected equivalent position"),
-                resolutionCommandTarget, commandPathSelected, logicalCommandValue);
+                commandEvidence);
     }
 
     /** True when this resolution reports the winning-path relation for {@code commandTarget}. */
     boolean reportsCommandResolutionFor(ScalarTarget commandTarget) {
-        return resolutionCommandTarget == commandTarget;
+        return commandEvidence != null && commandEvidence.owner == commandTarget;
     }
 
     /** True when this resolution represents the supplied value from the supplied command path. */
     boolean satisfiesCommand(ScalarTarget commandTarget, double logicalValue) {
         return reportsCommandResolutionFor(commandTarget)
-                && commandPathSelected
-                && logicalCommandValue == logicalValue
+                && commandEvidence.requestIdentity == null
+                && commandEvidence.pathSelected
+                && commandEvidence.logicalValue == logicalValue
                 && hasTarget
                 && satisfiesIntent
                 && !usedFallback
                 && !clampedByPlanner;
     }
 
+    /** True when this resolution represents exactly the supplied semantic request identity. */
+    boolean satisfiesSemanticCommand(SemanticScalarCommand<?> command,
+                                     SemanticScalarCommand.Request<?> request) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(request, "request");
+        return commandEvidence != null
+                && commandEvidence.owner == command
+                && commandEvidence.requestIdentity == request
+                && commandEvidence.pathSelected
+                && commandEvidence.logicalValue == request.commandTarget()
+                && hasTarget
+                && satisfiesIntent
+                && !usedFallback
+                && !clampedByPlanner;
+    }
+
+    /** True when this resolution reports the path relation for {@code command}. */
+    boolean reportsSemanticCommandResolutionFor(SemanticScalarCommand<?> command) {
+        return commandEvidence != null && commandEvidence.owner == command;
+    }
+
     private PlantTargetResolution copy(double copiedTarget,
                                        Kind copiedKind,
                                        String copiedReason,
-                                       ScalarTarget copiedCommandTarget,
-                                       boolean copiedCommandPathSelected,
-                                       double copiedLogicalCommandValue) {
+                                       CommandEvidence copiedCommandEvidence) {
         return new PlantTargetResolution(hasTarget, copiedTarget, copiedKind, satisfiesIntent,
                 usedFallback, clampedByPlanner, selectedCandidateId, selectedQuality,
-                selectedAgeSec, selectedTimestamp, copiedReason, copiedCommandTarget,
-                copiedCommandPathSelected, copiedLogicalCommandValue);
+                selectedAgeSec, selectedTimestamp, copiedReason, copiedCommandEvidence);
+    }
+
+    /** Private command-correlation evidence carried only by framework-created resolutions. */
+    private static final class CommandEvidence {
+        final Object owner;
+        final Object requestIdentity;
+        final boolean pathSelected;
+        final double logicalValue;
+
+        private CommandEvidence(Object owner,
+                                Object requestIdentity,
+                                boolean pathSelected,
+                                double logicalValue) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.requestIdentity = requestIdentity;
+            this.pathSelected = pathSelected;
+            this.logicalValue = logicalValue;
+        }
+
+        static CommandEvidence selected(Object owner,
+                                        Object requestIdentity,
+                                        double logicalValue) {
+            requireFinite(logicalValue, "logicalValue");
+            return new CommandEvidence(owner, requestIdentity, true, logicalValue);
+        }
+
+        static CommandEvidence notSelected(Object owner) {
+            return new CommandEvidence(owner, null, false, Double.NaN);
+        }
     }
 
     /**

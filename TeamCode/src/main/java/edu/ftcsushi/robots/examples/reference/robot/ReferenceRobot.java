@@ -69,8 +69,8 @@ public final class ReferenceRobot {
         ReferenceLift.Status liftStatus = lift.status();
         ReferenceLauncher.Status launcherStatus = launcher.status();
         telemetry.addData("lift", "%s %.2f/%.2f in referenced=%s",
-                liftStatus.requestedHeight, liftStatus.measuredPositionIn,
-                liftStatus.requestedPositionIn, liftStatus.referenced);
+                liftStatus.requestedHeight(), liftStatus.measuredPositionIn(),
+                liftStatus.requestedPositionIn(), liftStatus.referenced());
         telemetry.addData("launcher",
                 "target=%.0f ticks/sec left=%.0f right=%.0f ready=%s object=%s",
                 launcherStatus.targetVelocityTicksPerSec,

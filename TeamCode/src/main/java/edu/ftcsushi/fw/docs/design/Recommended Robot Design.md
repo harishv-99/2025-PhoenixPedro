@@ -122,7 +122,8 @@ Think of a robot as four layers:
    - robot-owned capability families such as `gamePiece()` or `targeting()`
    - small public methods like `setTargetHeightIn(...)`, `setIntakeEnabled(...)`,
      `requestSingleShot()`
-   - small status snapshots like `Lift.Status`, `ShooterSupervisor.Status`
+   - generic actuator snapshots like `PositionPlantSnapshot` and custom policy snapshots like
+     `ShooterSupervisor.Status`
 
 3. **Mechanism layer**
    - subsystems own plants, sensors, and final target calculation
@@ -464,7 +465,7 @@ public interface LiftApi {
     void setTargetHeightIn(double heightIn);
     void home();
     void cancelTransientActions();
-    LiftStatus status();
+    PositionPlantSnapshot status();
 }
 ```
 
@@ -550,50 +551,41 @@ public final class Wrist {
     public enum Pose { STOW, INTAKE, SCORE }
 
     public static final class Status {
-        private final Pose desiredPose;
-        private final double requestedTarget;
-        private final double appliedTarget;
+        private final SemanticScalarSnapshot<Pose, PositionPlantSnapshot> actuator;
 
-        public Status(Pose desiredPose, double requestedTarget, double appliedTarget) {
-            this.desiredPose = desiredPose;
-            this.requestedTarget = requestedTarget;
-            this.appliedTarget = appliedTarget;
+        private Status(SemanticScalarSnapshot<Pose, PositionPlantSnapshot> actuator) {
+            this.actuator = actuator;
         }
 
-        public Pose desiredPose() {
-            return desiredPose;
+        public Pose requestedPose() {
+            return actuator.request().semantic();
         }
 
-        public double requestedTarget() {
-            return requestedTarget;
+        public double requestedPosition() {
+            return actuator.request().commandTarget();
         }
 
-        public double appliedTarget() {
-            return appliedTarget;
+        public double appliedPosition() {
+            return actuator.plant().appliedTarget();
         }
-    }
 
-    private static final class Request {
-        private final Pose pose;
-        private final double target;
-
-        private Request(Pose pose, double target) {
-            this.pose = pose;
-            this.target = target;
+        public PositionPlantSnapshot plantSnapshot() {
+            return actuator.plant();
         }
     }
 
-    private final Plant plant;
+    private final SemanticScalarCommand<Pose> poseCommand;
+    private final PositionPlant plant;
     private final double stowTarget;
     private final double intakeTarget;
     private final double scoreTarget;
-    private Request request;
 
     public Wrist(HardwareMap hardwareMap, WristConfig config) {
         WristConfig snapshot = Objects.requireNonNull(config, "config").copy();
         stowTarget = snapshot.stowPosition;
         intakeTarget = snapshot.intakePosition;
         scoreTarget = snapshot.scorePosition;
+        poseCommand = SemanticScalarCommand.create(Pose.STOW, this::targetFor);
 
         plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .servo(snapshot.servoName, snapshot.direction)
@@ -601,21 +593,16 @@ public final class Wrist {
                 .nonPeriodic()
                     .bounded(0.0, 1.0)
                     .nativeUnits()
-                .targetFromNewCommand(stowTarget)
+                .targetFromResolver(PlantTargets.exact(poseCommand))
                 .build();
-        request = new Request(Pose.STOW, stowTarget);
     }
 
     public void setPose(Pose pose) {
-        Pose selected = Objects.requireNonNull(pose, "pose");
-        Request next = new Request(selected, targetFor(selected));
-        plant.commandTarget().set(next.target);
-        request = next;
+        poseCommand.set(Objects.requireNonNull(pose, "pose"));
     }
 
     public Status status() {
-        Request current = request;
-        return new Status(current.pose, current.target, plant.getAppliedTarget());
+        return new Status(poseCommand.snapshot(plant.snapshot()));
     }
 
     public void update(LoopClock clock) {
@@ -635,7 +622,7 @@ public final class Wrist {
             case SCORE:
                 return scoreTarget;
             default:
-                return stowTarget;
+                throw new IllegalStateException("Unhandled Wrist.Pose: " + pose);
         }
     }
 }
@@ -648,11 +635,15 @@ wrist = new Wrist(hardwareMap, profile.wrist);
 ```
 
 The mechanism copies and validates that slice before its own hardware lookup, constructs the Plant,
-keeps it private, and asks the Plant for `getAppliedTarget()` instead of keeping a second field that
-merely guesses what the Plant applied. After each `plant.update(clock)`, that readback reflects the
-bounds and guards the Plant actually applied. `setPose(...)` maps first, writes the numeric command,
-then publishes one immutable semantic/numeric request. A failed write therefore cannot expose a pose
-whose matching command was never accepted, and direct calls and Tasks share that same setter.
+keeps it private, and composes `poseCommand.snapshot(plant.snapshot())` instead of rebuilding common
+Plant status fields. `SemanticScalarCommand` maps and validates before publishing one immutable
+semantic/numeric request. The one-field `Status` view gives ordinary clients wrist vocabulary while
+retaining `plantSnapshot()` for advanced diagnostics. After each `plant.update(clock)`, the backing
+Plant snapshot reflects the
+bounds and guards actually applied. A failed mapping cannot expose a pose whose matching command was
+never accepted, and direct calls and Tasks share that same setter. This open-loop servo can prove
+that the request selected its target, but not physical arrival; add authoritative feedback before
+using `currentRequestAtTarget()` as readiness.
 
 ### TeleOp interaction
 
@@ -700,41 +691,15 @@ together so they cannot be wired to different owners:
 
 ```java
 public final class Lift {
-    public static final class Status {
-        private final double targetHeightIn;
-        private final double measuredHeightIn;
-        private final boolean atTarget;
-
-        public Status(double targetHeightIn, double measuredHeightIn, boolean atTarget) {
-            this.targetHeightIn = targetHeightIn;
-            this.measuredHeightIn = measuredHeightIn;
-            this.atTarget = atTarget;
-        }
-
-        public double targetHeightIn() {
-            return targetHeightIn;
-        }
-
-        public double measuredHeightIn() {
-            return measuredHeightIn;
-        }
-
-        public boolean atTarget() {
-            return atTarget;
-        }
-    }
-
     private final PositionPlant liftPlant;
     private final double minimumHeightIn;
     private final double maximumHeightIn;
-    private double targetHeightIn;
 
     public Lift(HardwareMap hardwareMap, LiftConfig config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
         LiftConfig snapshot = Objects.requireNonNull(config, "config").copy();
         minimumHeightIn = snapshot.minimumHeightIn;
         maximumHeightIn = snapshot.maximumHeightIn;
-        targetHeightIn = minimumHeightIn;
 
         ScalarSource measuredHeightIn =
                 FtcSensors.distanceIn(hardwareMap, snapshot.heightSensorName);
@@ -752,7 +717,7 @@ public final class Lift {
                 .feedbackFromPid(snapshot.kP, snapshot.kI, snapshot.kD)
                 .feedforwardFromLift(snapshot.kG)
                 .outputPowerLimitedTo(snapshot.maximumPower)
-                .targetFromNewCommand(targetHeightIn)
+                .targetFromNewCommand(minimumHeightIn)
                 .build();
     }
 
@@ -760,14 +725,12 @@ public final class Lift {
         if (!Double.isFinite(heightIn)) {
             throw new IllegalArgumentException("heightIn must be finite");
         }
-        targetHeightIn = Math.max(minimumHeightIn, Math.min(heightIn, maximumHeightIn));
-        liftPlant.commandTarget().set(targetHeightIn);
+        double boundedHeightIn = Math.max(minimumHeightIn, Math.min(heightIn, maximumHeightIn));
+        liftPlant.commandTarget().set(boundedHeightIn);
     }
 
-    public Status status() {
-        double measured = liftPlant.getMeasurement();
-        boolean atTarget = liftPlant.atTarget();
-        return new Status(targetHeightIn, measured, atTarget);
+    public PositionPlantSnapshot status() {
+        return liftPlant.snapshot();
     }
 
     public void update(LoopClock clock) {
@@ -801,7 +764,7 @@ bindings.onRise(pads.p2().dpadDown(), () -> lift.setTargetHeightIn(0.0));
 ```java
 Task liftToHigh = Tasks.sequence(
         Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
-        Tasks.waitUntil(() -> lift.status().atTarget(), 2.0)
+        Tasks.waitUntil(() -> lift.status().atCommandTarget(), 2.0)
 );
 ```
 
@@ -810,7 +773,8 @@ Task liftToHigh = Tasks.sequence(
 - Auto and TeleOp share the same intent method
 - the subsystem constructs and owns one authoritative Plant and its feedback source
 - the profile's declared bounds, the public clamp, and the shown presets describe the same range
-- `status()` gives Auto a clean wait condition
+- `status()` reuses the complete position-Plant facts without a parallel field list
+- `atCommandTarget()` rejects stale arrival evidence if the command changed before the next heartbeat
 - the rest of the robot never needs to know about the PID internals
 
 ### What not to do
@@ -1365,12 +1329,12 @@ RouteTask<YourRoute> preloadRoute = RouteTasks.follow(
 );
 ```
 
-Build the semantic lift move separately, including its timeout outcome:
+Build the numeric lift move separately, including its timeout outcome:
 
 ```java
 Task raiseLift = Tasks.sequence(
         Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
-        Tasks.waitUntil(() -> lift.status().atTarget(), 1.5)
+        Tasks.waitUntil(() -> lift.status().atCommandTarget(), 1.5)
 );
 
 Task scorePreload = Tasks.branchOnOutcome(
@@ -1468,7 +1432,18 @@ Good status fields are things like:
 - whether a transient action is active
 - whether an assist is ready or blocked
 
-Status snapshots should usually **not** expose every internal object.
+Do not copy common scalar-Plant facts into every capability. `Plant.snapshot()` already captures
+the current command value (when one exists), requested/applied targets, resolution/status,
+feedback/measurement, errors, and arrival. `PositionPlant.snapshot()` adds range, periodicity, and
+reference facts. A numeric position or velocity capability can return that snapshot directly.
+
+For named points or modes, the mechanism composes them with Plant facts through
+`SemanticScalarSnapshot<S, P>`, then exposes a small capability-shaped status view. The semantic
+request stays authoritative and is never inferred from a number. The view projects ordinary domain
+facts without copying mutable state and may retain `plantSnapshot()` for advanced diagnostics. A
+capability with extra evidence—piece presence, per-wheel balance, transient state, debounced
+readiness, or a failure reason—adds those facts there. Status snapshots should still **not** expose
+mutable internal owners.
 
 Bad external status design:
 
@@ -1476,41 +1451,26 @@ Bad external status design:
 - return raw `Plant`
 - make callers inspect several booleans spread across many objects
 
-Good external status design:
+Good external status use:
 
 ```java
-public final class LiftStatus {
-    private final double targetHeightIn;
-    private final double measuredHeightIn;
-    private final boolean atTarget;
-    private final boolean homed;
-
-    public LiftStatus(double targetHeightIn, double measuredHeightIn, boolean atTarget, boolean homed) {
-        this.targetHeightIn = targetHeightIn;
-        this.measuredHeightIn = measuredHeightIn;
-        this.atTarget = atTarget;
-        this.homed = homed;
-    }
-
-    public double targetHeightIn() {
-        return targetHeightIn;
-    }
-
-    public double measuredHeightIn() {
-        return measuredHeightIn;
-    }
-
-    public boolean atTarget() {
-        return atTarget;
-    }
-
-    public boolean homed() {
-        return homed;
-    }
-}
+BasicLift.Status status = lift.status();
+telemetry.addData("height", status.requestedHeight());
+telemetry.addData("requestedIn", status.requestedPositionIn());
+telemetry.addData("appliedIn", status.appliedPositionIn());
+telemetry.addData("measuredIn", status.measuredPositionIn());
+telemetry.addData("referenced", status.referenced());
+telemetry.addData("atTarget", status.atTarget());
 ```
 
-That keeps debugging readable without forcing the rest of the robot to know the internals.
+The mechanism still uses `SemanticScalarCommand` and `SemanticScalarSnapshot` to keep request
+identity, numeric mapping, and Plant evidence coherent. Ordinary callers get one-hop capability
+names; `status.plantSnapshot()` deliberately exposes the immutable generic facts only when a
+diagnostic needs them. The enum is the named position, `setHeight(...)` is a persistent non-waiting
+request, and `moveTo(...)` returns a fresh single-use feedback Task. Config and the mechanism mapper
+own the numeric coordinates; do not add a second `NamedPosition` abstraction or parallel `toHigh`
+alias. Named velocities use the same pattern. A grouped Plant's `atTarget()` remains aggregate;
+per-wheel readiness belongs in capability status.
 
 ---
 

@@ -46,6 +46,17 @@ import edu.ftcsushi.fw.core.time.LoopClock;
 public interface PositionPlant extends Plant {
 
     /**
+     * Capture the base Plant facts and this position coordinate's cached public facts.
+     *
+     * <p>The inherited capture boundary applies: this does not update or poll the Plant and is not
+     * an atomic-publication or cross-thread synchronization contract.</p>
+     */
+    @Override
+    default PositionPlantSnapshot snapshot() {
+        return new PositionPlantSnapshot(this);
+    }
+
+    /**
      * Periodicity of the caller-facing position coordinate.
      */
     enum Periodicity {

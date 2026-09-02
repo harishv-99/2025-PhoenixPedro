@@ -5,7 +5,9 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import org.junit.Test;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -30,6 +32,32 @@ import static org.junit.Assert.fail;
 
 /** Verifies the starter controls vocabulary and the intake's source-driven realization. */
 public final class StarterIntakeAndControlsTest {
+
+    @Test
+    public void statusIsADelegateOnlyDomainView() {
+        Field[] fields = StarterIntake.Status.class.getDeclaredFields();
+        assertEquals(1, fields.length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                fields[0].getType());
+        assertTrue(Modifier.isPrivate(fields[0].getModifiers()));
+        assertTrue(Modifier.isFinal(fields[0].getModifiers()));
+
+        Constructor<?>[] constructors = StarterIntake.Status.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertTrue(Modifier.isPublic(constructors[0].getModifiers()));
+        assertEquals(1, constructors[0].getParameterTypes().length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                constructors[0].getParameterTypes()[0]);
+
+        try {
+            new StarterIntake.Status(null);
+            fail("Expected a null intake status delegate to fail");
+        } catch (NullPointerException expected) {
+            assertEquals("delegate", expected.getMessage());
+        }
+    }
 
     @Test
     public void controlsConstructionBuildsSourcesWithoutRegisteringCallbacks() throws Exception {
@@ -142,29 +170,29 @@ public final class StarterIntakeAndControlsTest {
         StarterIntakeMechanism intake = new StarterIntakeMechanism(hardwareMap, config);
         ManualLoopClock time = new ManualLoopClock();
 
-        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0, 0.0);
         assertEquals(0, motor.powerWrites());
 
         intake.setMode(StarterIntake.Mode.COLLECT);
-        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65, 0.0);
         assertEquals(0, motor.powerWrites());
         intake.update(time.clock());
-        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65, 0.65);
         assertEquals(0.65, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
-        assertStatus(intake, StarterIntake.Mode.EJECT, 0.65);
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45, 0.65);
         intake.update(time.nextCycle(0.02));
-        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45);
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45, -0.45);
         assertEquals(-0.45, motor.power(), 0.0);
 
         expectNullPointer(() -> intake.setMode(null));
-        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45);
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45, -0.45);
 
         intake.setMode(StarterIntake.Mode.STOPPED);
-        assertStatus(intake, StarterIntake.Mode.STOPPED, -0.45);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0, -0.45);
         intake.update(time.nextCycle(0.02));
-        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0, 0.0);
         assertEquals(0.0, motor.power(), 0.0);
     }
 
@@ -181,13 +209,13 @@ public final class StarterIntakeAndControlsTest {
 
         intake.setMode(StarterIntake.Mode.COLLECT);
         intake.update(time.clock());
-        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.40);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.40, 0.40);
         assertEquals(0.40, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
         assertEquals(StarterIntake.Mode.EJECT, intake.status().mode());
         intake.update(time.nextCycle(0.02));
-        assertStatus(intake, StarterIntake.Mode.EJECT, 0.40);
+        assertStatus(intake, StarterIntake.Mode.EJECT, 0.40, 0.40);
         assertEquals(0.40, motor.power(), 0.0);
     }
 
@@ -207,12 +235,12 @@ public final class StarterIntakeAndControlsTest {
         intake.stop();
 
         assertEquals(0.0, motor.power(), 0.0);
-        assertStatus(intake, StarterIntake.Mode.EJECT, 0.0);
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45, 0.0);
 
         intake.setMode(StarterIntake.Mode.COLLECT);
         intake.update(time.nextCycle(0.02));
         assertEquals(0.0, motor.power(), 0.0);
-        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65, 0.0);
     }
 
     @Test
@@ -232,7 +260,7 @@ public final class StarterIntakeAndControlsTest {
 
         time.nextCycle(37.0);
         first.start(time.clock());
-        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.0);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65, 0.0);
         intake.update(time.clock());
         assertEquals(0.65, motor.power(), 0.0);
         assertFalse(first.isComplete());
@@ -243,16 +271,16 @@ public final class StarterIntakeAndControlsTest {
         assertEquals(0.65, motor.power(), 0.0);
 
         intake.setMode(StarterIntake.Mode.EJECT);
-        assertStatus(intake, StarterIntake.Mode.EJECT, 0.65);
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45, 0.65);
         first.update(time.clock());
-        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65);
+        assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65, 0.65);
 
         first.update(time.nextCycle(0.01));
         assertTrue(first.isComplete());
         assertEquals(TaskOutcome.SUCCESS, first.getOutcome());
-        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.65);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0, 0.65);
         intake.update(time.clock());
-        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0, 0.0);
         assertEquals(0.0, motor.power(), 0.0);
 
         second.start(time.nextCycle(0.02));
@@ -285,7 +313,7 @@ public final class StarterIntakeAndControlsTest {
         task.cancel();
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
-        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.65);
+        assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0, 0.65);
         intake.update(time.nextCycle(0.02));
         assertEquals(0.0, motor.power(), 0.0);
 
@@ -304,10 +332,13 @@ public final class StarterIntakeAndControlsTest {
 
     private static void assertStatus(StarterIntakeMechanism intake,
                                      StarterIntake.Mode expectedMode,
+                                     double expectedRequestedPower,
                                      double expectedAppliedPower) {
         StarterIntake.Status status = intake.status();
         assertEquals(expectedMode, status.mode());
-        assertEquals(expectedAppliedPower, status.appliedTargetPower(), 0.0);
+        assertEquals(expectedRequestedPower, status.requestedPower(), 0.0);
+        assertEquals(expectedAppliedPower, status.appliedPower(), 0.0);
+        assertEquals(expectedAppliedPower, status.plantSnapshot().appliedTarget(), 0.0);
     }
 
     private static void pulse(Gamepad driver,
@@ -405,10 +436,7 @@ public final class StarterIntakeAndControlsTest {
 
         @Override
         public Status status() {
-            Mode mode = modeRequests.isEmpty()
-                    ? Mode.STOPPED
-                    : modeRequests.get(modeRequests.size() - 1);
-            return new Status(mode, 0.0);
+            throw new AssertionError("RecordingIntake status is not used by these controls tests");
         }
     }
 

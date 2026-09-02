@@ -1,5 +1,9 @@
 package edu.ftcsushi.robots.examples.starter.capability.intake;
 
+import java.util.Objects;
+
+import edu.ftcsushi.fw.actuation.PlantSnapshot;
+import edu.ftcsushi.fw.actuation.SemanticScalarSnapshot;
 import edu.ftcsushi.fw.task.Task;
 
 /** Mode-neutral intake capability shared by the starter TeleOp and Auto. */
@@ -12,34 +16,33 @@ public interface StarterIntake {
         EJECT
     }
 
-    /**
-     * Small immutable status snapshot for telemetry and higher-level decisions.
-     * The mode is the held semantic request; it is not reconstructed from motor power. The applied
-     * target is the Plant's cached final target after guards, not hardware readback.
-     */
+    /** Domain-named view of one coherent intake request and cached Plant snapshot. */
     final class Status {
-        private final Mode mode;
-        private final double appliedTargetPower;
+        private final SemanticScalarSnapshot<Mode, PlantSnapshot> delegate;
 
-        public Status(Mode mode, double appliedTargetPower) {
-            this.mode = mode;
-            this.appliedTargetPower = appliedTargetPower;
+        /** Wraps one coherent semantic request and scalar Plant snapshot. */
+        public Status(SemanticScalarSnapshot<Mode, PlantSnapshot> delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
-        /** Returns the held semantic request, independent of its configured numeric realization. */
+        /** Returns the selected semantic intake mode. */
         public Mode mode() {
-            return mode;
+            return delegate.request().semantic();
         }
 
-        /** Returns the Plant's cached applied target, not measured motor motion. */
-        public double appliedTargetPower() {
-            return appliedTargetPower;
+        /** Returns the normalized power paired with the selected mode. */
+        public double requestedPower() {
+            return delegate.request().commandTarget();
         }
 
-        @Override
-        public String toString() {
-            return "Status{mode=" + mode
-                    + ", appliedTargetPower=" + appliedTargetPower + '}';
+        /** Returns the Plant's cached final normalized power after bounds and guards. */
+        public double appliedPower() {
+            return delegate.plant().appliedTarget();
+        }
+
+        /** Returns the underlying immutable Plant snapshot for advanced diagnostics. */
+        public PlantSnapshot plantSnapshot() {
+            return delegate.plant();
         }
     }
 
@@ -55,6 +58,6 @@ public interface StarterIntake {
      */
     Task collectForSeconds(double durationSec);
 
-    /** Returns the held semantic request and the Plant's cached applied target. */
+    /** Returns a domain-named view of the held request and cached scalar evidence. */
     Status status();
 }

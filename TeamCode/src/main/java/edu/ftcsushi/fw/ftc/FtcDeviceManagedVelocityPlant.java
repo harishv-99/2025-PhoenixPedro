@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
+import edu.ftcsushi.fw.actuation.PlantSnapshot;
 import edu.ftcsushi.fw.actuation.PlantTargetResolution;
 import edu.ftcsushi.fw.actuation.PlantTargetStatus;
 import edu.ftcsushi.fw.actuation.ScalarRange;
@@ -108,6 +109,7 @@ final class FtcDeviceManagedVelocityPlant implements Plant {
     @Override public boolean atTarget(double target) { return delegate.atTarget(target); }
     @Override public boolean hasCommandTarget() { return delegate.hasCommandTarget(); }
     @Override public ScalarTarget commandTarget() { return delegate.commandTarget(); }
+    @Override public PlantSnapshot snapshot() { return delegate.snapshot(); }
     @Override
     public void stop() {
         synchronized (this) {

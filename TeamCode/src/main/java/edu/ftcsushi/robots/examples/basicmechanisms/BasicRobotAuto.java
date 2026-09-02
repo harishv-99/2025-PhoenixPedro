@@ -43,11 +43,11 @@ public final class BasicRobotAuto extends FtcRobotOpMode {
                 BasicLift.Status liftStatus = lift.status();
                 BasicClaw.Status clawStatus = claw.status();
                 telemetry.addData("lift", "%s %.2f/%.2f in referenced=%s atTarget=%s",
-                        liftStatus.requestedHeight,
-                        liftStatus.measuredPositionIn,
-                        liftStatus.requestedPositionIn,
-                        liftStatus.referenced,
-                        liftStatus.atTarget);
+                        liftStatus.requestedHeight(),
+                        liftStatus.measuredPositionIn(),
+                        liftStatus.requestedPositionIn(),
+                        liftStatus.referenced(),
+                        liftStatus.atTarget());
                 telemetry.addData("claw", "%s command=%.2f",
                         clawStatus.requestedState, clawStatus.appliedPosition);
                 telemetry.addData("auto.complete", auto.isComplete());

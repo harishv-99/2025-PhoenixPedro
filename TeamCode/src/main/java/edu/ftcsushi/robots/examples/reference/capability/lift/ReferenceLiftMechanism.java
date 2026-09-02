@@ -6,6 +6,8 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
+import edu.ftcsushi.fw.actuation.PlantTargets;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -17,15 +19,9 @@ import edu.ftcsushi.fw.task.Tasks;
 
 /** Owns a bounded lift Plant and exposes reference-aware semantic commands. */
 public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram.Output {
-    /** One owner-published semantic request and its forward-mapped Plant command. */
-    private static final class RequestSnapshot {
-        private final Height height;
-        private final double positionIn;
-
-        private RequestSnapshot(Height height, double positionIn) {
-            this.height = height;
-            this.positionIn = positionIn;
-        }
+    /** Exact request revision selected when one feedback move starts. */
+    private static final class StartedRequest {
+        private SemanticScalarCommand.Request<Height> request;
     }
 
     /** Data-only lift wiring, coordinate, and homing recipe. */
@@ -75,13 +71,20 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     private final double homingPower;
     private final double homingTimeoutSec;
     private final double moveTimeoutSec;
-    private RequestSnapshot request;
-    private Status lastStatus;
+    private final SemanticScalarCommand<Height> heightCommand;
 
     /** Constructs the lift after validating every retained configuration field. */
     public ReferenceLiftMechanism(HardwareMap hardwareMap, Config config) {
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
         Config c = copyAndValidate(config);
+        stowedHeightIn = c.stowedHeightIn;
+        lowHeightIn = c.lowHeightIn;
+        highHeightIn = c.highHeightIn;
+        homingPower = c.homingPower;
+        homingTimeoutSec = c.homingTimeoutSec;
+        moveTimeoutSec = c.moveTimeoutSec;
+        heightCommand = SemanticScalarCommand.create(Height.STOWED, this::positionFor);
+
         bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
                 .debouncedOnOff(0.02, 0.02);
         lift = FtcActuators.plant(map)
@@ -94,44 +97,26 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
                 .needsReference("reference lift has not been homed")
                 .positionTolerance(c.toleranceIn)
                 .outputPowerLimitedTo(c.maximumPower)
-                .targetFromNewCommand(c.stowedHeightIn)
+                .targetFromResolver(PlantTargets.exact(heightCommand))
                 .build();
-        stowedHeightIn = c.stowedHeightIn;
-        lowHeightIn = c.lowHeightIn;
-        highHeightIn = c.highHeightIn;
-        homingPower = c.homingPower;
-        homingTimeoutSec = c.homingTimeoutSec;
-        moveTimeoutSec = c.moveTimeoutSec;
-        request = requestFor(Height.STOWED);
-        lastStatus = new Status(
-                request.height, request.positionIn, Double.NaN, false, false);
     }
 
     @Override
     public void setHeight(Height height) {
-        RequestSnapshot next = requestFor(height);
-
-        // Publish no semantic request unless its matching numeric command was accepted.
-        lift.commandTarget().set(next.positionIn);
-        request = next;
-        lastStatus = new Status(
-                next.height,
-                next.positionIn,
-                lastStatus.measuredPositionIn,
-                lastStatus.referenced,
-                false);
+        setHeightAndReturnRequest(height);
     }
 
     @Override
     public Task moveTo(Height height) {
         Height selectedHeight = Objects.requireNonNull(height, "height");
+        StartedRequest started = new StartedRequest();
         BooleanSource selectedRequestReached = BooleanSource.of(() -> {
             Status snapshot = status();
-            return snapshot.requestedHeight == selectedHeight && snapshot.atTarget;
+            return snapshot.isAtTargetFor(started.request);
         });
 
         return Tasks.sequence(
-                Tasks.runOnce(() -> setHeight(selectedHeight)),
+                Tasks.runOnce(() -> started.request = setHeightAndReturnRequest(selectedHeight)),
                 Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
     }
 
@@ -150,39 +135,21 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
 
     @Override
     public Status status() {
-        return lastStatus;
+        return new Status(heightCommand.snapshot(lift.snapshot()));
     }
 
     @Override
     public void update(LoopClock clock) {
         lift.update(clock);
-        RequestSnapshot current = request;
-        lastStatus = new Status(
-                current.height,
-                current.positionIn,
-                lift.getMeasurement(),
-                lift.isReferenced(),
-                lift.atTarget());
     }
 
     @Override
     public void stop() {
-        try {
-            lift.stop();
-        } finally {
-            RequestSnapshot current = request;
-            lastStatus = new Status(
-                    current.height,
-                    current.positionIn,
-                    lastStatus.measuredPositionIn,
-                    lastStatus.referenced,
-                    false);
-        }
+        lift.stop();
     }
 
-    private RequestSnapshot requestFor(Height height) {
-        Height required = Objects.requireNonNull(height, "height");
-        return new RequestSnapshot(required, positionFor(required));
+    private SemanticScalarCommand.Request<Height> setHeightAndReturnRequest(Height height) {
+        return heightCommand.set(Objects.requireNonNull(height, "height"));
     }
 
     private double positionFor(Height height) {
@@ -192,8 +159,9 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
             case LOW:
                 return lowHeightIn;
             case STOWED:
-            default:
                 return stowedHeightIn;
+            default:
+                throw new IllegalStateException("Unhandled ReferenceLift.Height: " + height);
         }
     }
 

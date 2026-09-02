@@ -349,6 +349,23 @@ public final class FtcControlPanelsTesterTest {
     }
 
     @Test
+    public void velocityFailedBoundarySnapshotIsNotRetriedAfterTargetMutation() {
+        VelocityFixture fixture = new VelocityFixture(
+                ControlTuningModel.ReconfigurationPolicy.HOT);
+        fixture.startAtZeroWith(1.0, 20.0);
+        fixture.plant.snapshotRequestedFailuresRemaining = 1;
+        fixture.draft.values = velocityDraft(1.0, 30.0, 0.0);
+
+        fixture.pressA(0.50);
+
+        ControlExperimentHistory.Record ended = fixture.tester.historyRecords().get(0);
+        assertTrue(Double.isNaN(ended.metrics.get("finalRequestedTarget")));
+        assertTrue(Double.isNaN(ended.metrics.get("finalAppliedTarget")));
+        assertTrue(Double.isNaN(ended.metrics.get("finalMeasurement")));
+        assertEquals(1, fixture.plant.snapshotRequestedQueries);
+    }
+
+    @Test
     public void rejectedTypedCandidateCannotEndOrZeroAnActiveGroupedExperiment() {
         VelocityFixture fixture = new VelocityFixture(
                 ControlTuningModel.ReconfigurationPolicy.ZERO_AND_SETTLE);
@@ -622,6 +639,23 @@ public final class FtcControlPanelsTesterTest {
                 .metrics.get("finalRequestedTarget"), 0.0);
         assertEquals("TERMINAL_FAILURE",
                 fixture.tester.historyRecords().get(0).terminationReason);
+    }
+
+    @Test
+    public void positionFailedBoundarySnapshotIsNotRetriedAfterHoldMutation() {
+        PositionFixture fixture = new PositionFixture(true, null);
+        fixture.startHeldAt(50.0);
+        fixture.draft.values = positionDraft(1.0, 0.0, 100.0, 0.0);
+        fixture.pressA(0.20);
+        fixture.plant.snapshotRequestedFailuresRemaining = 1;
+
+        fixture.pressB(0.50);
+
+        ControlExperimentHistory.Record ended = fixture.tester.historyRecords().get(0);
+        assertTrue(Double.isNaN(ended.metrics.get("finalRequestedTarget")));
+        assertTrue(Double.isNaN(ended.metrics.get("finalAppliedTarget")));
+        assertTrue(Double.isNaN(ended.metrics.get("finalMeasurement")));
+        assertEquals(1, fixture.plant.snapshotRequestedQueries);
     }
 
     @Test
@@ -1313,6 +1347,8 @@ public final class FtcControlPanelsTesterTest {
         double applied;
         double measurement;
         int stopCount;
+        int snapshotRequestedFailuresRemaining;
+        int snapshotRequestedQueries;
 
         FakePlant(List<String> events, ScalarRange range) {
             this.events = events;
@@ -1325,7 +1361,17 @@ public final class FtcControlPanelsTesterTest {
             applied = requested;
             events.add("plant.update");
         }
-        @Override public double getRequestedTarget() { return requested; }
+        @Override public double getRequestedTarget() {
+            if (snapshotRequestedFailuresRemaining > 0) {
+                snapshotRequestedFailuresRemaining--;
+                snapshotRequestedQueries++;
+                throw new IllegalStateException("snapshot requested-target failure");
+            }
+            if (snapshotRequestedQueries > 0) {
+                snapshotRequestedQueries++;
+            }
+            return requested;
+        }
         @Override public double getAppliedTarget() { return applied; }
         @Override public PlantTargetStatus getTargetStatus() { return PlantTargetStatus.ACCEPTED; }
         @Override public boolean hasFeedback() { return true; }

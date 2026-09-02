@@ -171,7 +171,7 @@ public final class BasicRobotScenarioTest {
         assertAllDriveMotorsStopped(f);
         heartbeat(root, f, 0.02);
         assertEquals(BasicClaw.State.OPEN, f.claw.status().requestedState);
-        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight());
 
         f.liftMotor.setCurrentPositionTicks(0);
         heartbeat(root, f, 0.02);
@@ -196,7 +196,7 @@ public final class BasicRobotScenarioTest {
         assertEquals(TaskOutcome.CANCELLED, root.getOutcome());
         assertAllDriveMotorsStopped(f);
         assertEquals(BasicClaw.State.CLOSED, f.claw.status().requestedState);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
     }
 
     private static void beginAndReachTimedDrive(Task root, Scenario f) {
@@ -208,7 +208,7 @@ public final class BasicRobotScenarioTest {
         heartbeat(root, f, 0.01);
         heartbeat(root, f, 0.03);
         heartbeat(root, f, 0.02);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
         assertEquals(BasicClaw.State.CLOSED, f.claw.status().requestedState);
 
         f.liftMotor.setCurrentPositionTicks(

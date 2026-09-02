@@ -200,9 +200,16 @@ focused Controls owners, and `BasicHardwareOwnership.java`. Compile after each f
      */
     Task home();
 
-    /** Returns cached request and feedback evidence without polling hardware. */
+    /**
+     * Captures the current semantic request together with the Plant's cached position evidence.
+     * Reading this snapshot does not poll hardware or advance the mechanism.
+     */
     Status status();
 ```
+
+`Height` is the semantic name. `setHeight(...)` persists it without waiting; `moveTo(...)` returns a
+fresh single-use feedback Task. Configuration and its mapper own numeric inches—do not
+add `NamedPosition` or `toHigh` aliases.
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java -->
 ```java
@@ -216,13 +223,12 @@ focused Controls owners, and `BasicHardwareOwnership.java`. Compile after each f
 
 ### Implement the foundation before testing
 
-1. Define the semantic interfaces.
-2. Give each mechanism a data-only `Config`, defensively snapshot it, and privately build its final
-   Plant. The lift also resolves its bottom switch.
-3. Implement fresh lift move/home Task factories; keep `update` as the only hardware heartbeat.
-4. Put each resource's facts and false-by-default permission in its own Drive/Lift/Claw Profile.
-5. Give drive, lift, and claw separate Controls owners; map only semantic operator meanings there.
-6. Add the cross-resource motor collision check, then compile before any test or OpMode.
+1. Define semantic interfaces and data-only configuration.
+2. Each mechanism snapshots its configuration, privately builds the final Plant, and owns its
+   sensor and update.
+3. Build fresh move/home Tasks; give drive, lift, and claw separate Profiles and Controls with
+   semantic mappings.
+4. Add the cross-resource motor collision check, then compile before any test or OpMode.
 
 The implementation excerpts below are exact and annotated. Expand only the file you are building.
 
@@ -233,6 +239,11 @@ The implementation excerpts below are exact and annotated. Expand only the file 
 ```java
 package edu.ftcsushi.robots.examples.basicmechanisms;
 
+import java.util.Objects;
+
+import edu.ftcsushi.fw.actuation.PositionPlantSnapshot;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
+import edu.ftcsushi.fw.actuation.SemanticScalarSnapshot;
 import edu.ftcsushi.fw.task.Task;
 
 /**
@@ -250,39 +261,58 @@ public interface BasicLift {
         HIGH
     }
 
-    /** Immutable snapshot of the current request and cached feedback evidence. */
+    /**
+     * Immutable capability-shaped view of one semantic request and one Plant evidence capture.
+     *
+     * <p>This wrapper owns only the source snapshot. It does not republish fields, poll hardware,
+     * or maintain a second status cache.</p>
+     */
     final class Status {
-        /** Most recent semantic request, updated synchronously by command methods or Task start. */
-        public final Height requestedHeight;
+        private final SemanticScalarSnapshot<Height, PositionPlantSnapshot> snapshot;
 
-        /** Numeric position selected by {@link #requestedHeight}, in mechanism inches. */
-        public final double requestedPositionIn;
+        /** Adapts one source-backed semantic position snapshot. */
+        public Status(SemanticScalarSnapshot<Height, PositionPlantSnapshot> snapshot) {
+            this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
+        }
 
-        /**
-         * Last encoder measurement published by a successful output heartbeat, in mechanism
-         * inches, or {@link Double#NaN} while measurement evidence is unavailable.
-         */
-        public final double measuredPositionIn;
+        /** Returns the named height in this captured request. */
+        public Height requestedHeight() {
+            return snapshot.request().semantic();
+        }
 
-        /** Whether the last successful output heartbeat had an established position reference. */
-        public final boolean referenced;
+        /** Returns the numeric target paired with the semantic request, in mechanism inches. */
+        public double requestedPositionIn() {
+            return snapshot.request().commandTarget();
+        }
 
-        /**
-         * Whether the last successful output heartbeat proved arrival for the current request.
-         * A new request and terminal stop both invalidate this evidence immediately.
-         */
-        public final boolean atTarget;
+        /** Returns the Plant's cached final target after bounds and guards, in mechanism inches. */
+        public double appliedPositionIn() {
+            return snapshot.plant().appliedTarget();
+        }
 
-        public Status(Height requestedHeight,
-                      double requestedPositionIn,
-                      double measuredPositionIn,
-                      boolean referenced,
-                      boolean atTarget) {
-            this.requestedHeight = requestedHeight;
-            this.requestedPositionIn = requestedPositionIn;
-            this.measuredPositionIn = measuredPositionIn;
-            this.referenced = referenced;
-            this.atTarget = atTarget;
+        /** Returns the cached encoder measurement, in mechanism inches, or {@code NaN}. */
+        public double measuredPositionIn() {
+            return snapshot.plant().measurement();
+        }
+
+        /** Returns whether the captured Plant evidence has an established position reference. */
+        public boolean referenced() {
+            return snapshot.plant().isReferenced();
+        }
+
+        /** Returns whether this exact semantic request is selected and physically at target. */
+        public boolean atTarget() {
+            return snapshot.currentRequestAtTarget();
+        }
+
+        /** Returns the complete immutable position-Plant capture for advanced diagnostics. */
+        public PositionPlantSnapshot plantSnapshot() {
+            return snapshot.plant();
+        }
+
+        /** Whether the supplied exact request revision owns this capture and is at target. */
+        boolean isAtTargetFor(SemanticScalarCommand.Request<Height> request) {
+            return snapshot.request() == request && snapshot.currentRequestAtTarget();
         }
     }
 
@@ -312,10 +342,12 @@ public interface BasicLift {
      */
     Task home();
 
-    /** Returns cached request and feedback evidence without polling hardware. */
+    /**
+     * Captures the current semantic request together with the Plant's cached position evidence.
+     * Reading this snapshot does not poll hardware or advance the mechanism.
+     */
     Status status();
 }
-
 ```
 
 </details>
@@ -337,22 +369,21 @@ public interface BasicLift {
                 .needsReference("basic lift has not been homed")
                 .positionTolerance(c.toleranceIn)
                 .outputPowerLimitedTo(c.maximumPower)
-                .targetFromNewCommand(c.stowedHeightIn)
+                .targetFromResolver(PlantTargets.exact(heightCommand))
                 .build();
 ```
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
 ```java
-// docs: The Task uses the same semantic setter, then waits on one paired status snapshot.
+// docs: The Task uses the same semantic setter, then waits on one capability status snapshot.
         Height selectedHeight = Objects.requireNonNull(height, "height");
-        BooleanSource selectedRequestReached = BooleanSource.of(() -> {
-            Status snapshot = status();
-            return snapshot.requestedHeight == selectedHeight && snapshot.atTarget;
-        });
+        StartedRequest started = new StartedRequest();
+        BooleanSource selectedRequestReached = BooleanSource.of(
+                () -> status().isAtTargetFor(started.request));
 
         // Every semantic Task routes through the same owner setter as direct controls.
         return Tasks.sequence(
-                Tasks.runOnce(() -> setHeight(selectedHeight)),
+                Tasks.runOnce(() -> started.request = setHeightAndReturnRequest(selectedHeight)),
                 Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
 ```
 
@@ -381,6 +412,8 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
+import edu.ftcsushi.fw.actuation.PlantTargets;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -393,15 +426,9 @@ import edu.ftcsushi.fw.task.Tasks;
 /** Owns one bounded referenced-position Plant and realizes {@link BasicLift} intent. */
 public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output {
 
-    /** One owner-published semantic request and its forward-mapped Plant command. */
-    private static final class RequestSnapshot {
-        private final Height height;
-        private final double positionIn;
-
-        private RequestSnapshot(Height height, double positionIn) {
-            this.height = height;
-            this.positionIn = positionIn;
-        }
+    /** Exact request revision selected when one feedback move starts. */
+    private static final class StartedRequest {
+        private SemanticScalarCommand.Request<Height> request;
     }
 
     /** Data-only lift wiring, coordinate, limits, and timeout choices. */
@@ -483,9 +510,7 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
     private final double homingPower;
     private final double homingTimeoutSec;
     private final double moveTimeoutSec;
-
-    private RequestSnapshot request;
-    private Status lastStatus;
+    private final SemanticScalarCommand<Height> heightCommand;
 
     /**
      * Validates a defensive configuration snapshot, then constructs and privately owns the Plant.
@@ -496,6 +521,14 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
     public BasicLiftMechanism(HardwareMap hardwareMap, Config config) {
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
         Config c = copyAndValidate(config);
+
+        stowedHeightIn = c.stowedHeightIn;
+        lowHeightIn = c.lowHeightIn;
+        highHeightIn = c.highHeightIn;
+        homingPower = c.homingPower;
+        homingTimeoutSec = c.homingTimeoutSec;
+        moveTimeoutSec = c.moveTimeoutSec;
+        heightCommand = SemanticScalarCommand.create(Height.STOWED, this::positionFor);
 
         bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
                 .debouncedOnOff(0.02, 0.02);
@@ -509,46 +542,25 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
                 .needsReference("basic lift has not been homed")
                 .positionTolerance(c.toleranceIn)
                 .outputPowerLimitedTo(c.maximumPower)
-                .targetFromNewCommand(c.stowedHeightIn)
+                .targetFromResolver(PlantTargets.exact(heightCommand))
                 .build();
-
-        stowedHeightIn = c.stowedHeightIn;
-        lowHeightIn = c.lowHeightIn;
-        highHeightIn = c.highHeightIn;
-        homingPower = c.homingPower;
-        homingTimeoutSec = c.homingTimeoutSec;
-        moveTimeoutSec = c.moveTimeoutSec;
-        request = requestFor(Height.STOWED);
-        lastStatus = new Status(
-                request.height, request.positionIn, Double.NaN, false, false);
     }
 
     @Override
     public void setHeight(Height height) {
-        RequestSnapshot next = requestFor(height);
-
-        // Publish no semantic request unless its matching numeric command was accepted.
-        lift.commandTarget().set(next.positionIn);
-        request = next;
-        lastStatus = new Status(
-                next.height,
-                next.positionIn,
-                lastStatus.measuredPositionIn,
-                lastStatus.referenced,
-                false);
+        setHeightAndReturnRequest(height);
     }
 
     @Override
     public Task moveTo(Height height) {
         Height selectedHeight = Objects.requireNonNull(height, "height");
-        BooleanSource selectedRequestReached = BooleanSource.of(() -> {
-            Status snapshot = status();
-            return snapshot.requestedHeight == selectedHeight && snapshot.atTarget;
-        });
+        StartedRequest started = new StartedRequest();
+        BooleanSource selectedRequestReached = BooleanSource.of(
+                () -> status().isAtTargetFor(started.request));
 
         // Every semantic Task routes through the same owner setter as direct controls.
         return Tasks.sequence(
-                Tasks.runOnce(() -> setHeight(selectedHeight)),
+                Tasks.runOnce(() -> started.request = setHeightAndReturnRequest(selectedHeight)),
                 Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
     }
 
@@ -568,42 +580,23 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
 
     @Override
     public Status status() {
-        return lastStatus;
+        return new Status(heightCommand.snapshot(lift.snapshot()));
     }
 
-    /** Applies the current request once, then publishes one cached evidence snapshot. */
+    /** Applies the current request once and refreshes the Plant's cached evidence. */
     @Override
     public void update(LoopClock clock) {
         lift.update(clock);
-        RequestSnapshot current = request;
-        lastStatus = new Status(
-                current.height,
-                current.positionIn,
-                lift.getMeasurement(),
-                lift.isReferenced(),
-                lift.atTarget());
     }
 
     /** Terminally stops the one privately owned Plant. */
     @Override
     public void stop() {
-        try {
-            lift.stop();
-        } finally {
-            // Terminal stop makes prior arrival evidence inapplicable even if cleanup throws.
-            RequestSnapshot current = request;
-            lastStatus = new Status(
-                    current.height,
-                    current.positionIn,
-                    lastStatus.measuredPositionIn,
-                    lastStatus.referenced,
-                    false);
-        }
+        lift.stop();
     }
 
-    private RequestSnapshot requestFor(Height height) {
-        Height required = Objects.requireNonNull(height, "height");
-        return new RequestSnapshot(required, positionFor(required));
+    private SemanticScalarCommand.Request<Height> setHeightAndReturnRequest(Height height) {
+        return heightCommand.set(Objects.requireNonNull(height, "height"));
     }
 
     private double positionFor(Height height) {
@@ -613,8 +606,9 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
             case LOW:
                 return lowHeightIn;
             case STOWED:
-            default:
                 return stowedHeightIn;
+            default:
+                throw new IllegalStateException("Unhandled BasicLift.Height: " + height);
         }
     }
 
@@ -674,7 +668,6 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
         return value;
     }
 }
-
 ```
 
 </details>
@@ -738,7 +731,7 @@ public interface BasicClaw {
                 .nonPeriodic()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetFromNewCommand(positionFor(c.initialState))
+                .targetFromResolver(PlantTargets.exact(stateCommand))
                 .build();
 ```
 
@@ -751,6 +744,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
+import edu.ftcsushi.fw.actuation.PlantTargets;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.ftc.FtcActuators;
@@ -799,7 +794,7 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
     private final Plant claw;
     private final double closedPosition;
     private final double openPosition;
-    private State requestedState;
+    private final SemanticScalarCommand<State> stateCommand;
     private double lastAppliedPosition = Double.NaN;
     private boolean stopped;
 
@@ -815,27 +810,25 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
 
         closedPosition = c.closedPosition;
         openPosition = c.openPosition;
-        requestedState = c.initialState;
+        stateCommand = SemanticScalarCommand.create(c.initialState, this::positionFor);
         claw = FtcActuators.plant(map)
                 .servo(c.servoName, c.direction)
                 .position()
                 .nonPeriodic()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetFromNewCommand(positionFor(c.initialState))
+                .targetFromResolver(PlantTargets.exact(stateCommand))
                 .build();
     }
 
     @Override
     public void setState(State state) {
-        State requested = Objects.requireNonNull(state, "state");
-        claw.commandTarget().set(positionFor(requested));
-        requestedState = requested;
+        stateCommand.set(Objects.requireNonNull(state, "state"));
     }
 
     @Override
     public Status status() {
-        return new Status(requestedState, lastAppliedPosition);
+        return new Status(stateCommand.request().semantic(), lastAppliedPosition);
     }
 
     /** Applies the held command through the one final Plant path. */
@@ -864,7 +857,14 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
     }
 
     private double positionFor(State state) {
-        return state == State.OPEN ? openPosition : closedPosition;
+        switch (state) {
+            case OPEN:
+                return openPosition;
+            case CLOSED:
+                return closedPosition;
+            default:
+                throw new IllegalStateException("Unhandled BasicClaw.State: " + state);
+        }
     }
 
     private static Config copyAndValidate(Config source) {
@@ -1402,8 +1402,8 @@ feedback truth, fresh Tasks, and button meanings before hardware is enabled.
         assertEquals(targetWritesBeforeRequest, f.motor.targetPositionWrites());
 
         f.lift.update(time.nextCycle(0.02));
-        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(
                 (int) Math.round(f.originalLowHeightIn * f.originalTicksPerIn),
                 f.motor.targetPositionTicks());
@@ -1430,6 +1430,10 @@ package edu.ftcsushi.robots.examples.basicmechanisms;
 
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
@@ -1449,10 +1453,10 @@ public final class BasicLiftMechanismTest {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
 
-        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight);
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
-        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn));
+        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight());
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
+        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn()));
 
         homeSuccessfully(f, time);
         BasicLift.Status beforeRequest = f.lift.status();
@@ -1460,23 +1464,70 @@ public final class BasicLiftMechanismTest {
         f.lift.setHeight(BasicLift.Height.LOW);
 
         // Semantic intent is synchronous; hardware and feedback evidence wait for the heartbeat.
-        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertEquals(beforeRequest.measuredPositionIn, f.lift.status().measuredPositionIn, 0.0);
-        assertEquals(beforeRequest.referenced, f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertEquals(beforeRequest.measuredPositionIn(),
+                f.lift.status().measuredPositionIn(), 0.0);
+        assertEquals(beforeRequest.referenced(), f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
         assertEquals(targetWritesBeforeRequest, f.motor.targetPositionWrites());
 
         f.lift.update(time.nextCycle(0.02));
-        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(
                 (int) Math.round(f.originalLowHeightIn * f.originalTicksPerIn),
                 f.motor.targetPositionTicks());
 
         f.motor.setCurrentPositionTicks(25);
         f.lift.update(time.nextCycle(0.02));
-        assertEquals(2.5, f.lift.status().measuredPositionIn, 0.0);
+        assertEquals(2.5, f.lift.status().measuredPositionIn(), 0.0);
+    }
+
+    @Test
+    public void statusIsANewFlatImmutableViewOfOneSourceSnapshot() {
+        Fixture f = fixture();
+
+        BasicLift.Status before = f.lift.status();
+        BasicLift.Status sameState = f.lift.status();
+
+        assertNotSame(before, sameState);
+        Field[] fields = BasicLift.Status.class.getDeclaredFields();
+        assertEquals(1, fields.length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                fields[0].getType());
+        assertTrue(Modifier.isPrivate(fields[0].getModifiers()));
+        assertTrue(Modifier.isFinal(fields[0].getModifiers()));
+
+        Constructor<?>[] constructors = BasicLift.Status.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertTrue(Modifier.isPublic(constructors[0].getModifiers()));
+        assertEquals(1, constructors[0].getParameterTypes().length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                constructors[0].getParameterTypes()[0]);
+        try {
+            new BasicLift.Status(null);
+            fail("Expected a null lift status snapshot to fail");
+        } catch (NullPointerException expected) {
+            assertEquals("snapshot", expected.getMessage());
+        }
+
+        assertEquals(before.plantSnapshot().appliedTarget(), before.appliedPositionIn(), 0.0);
+        assertEquals(before.plantSnapshot().measurement(), before.measuredPositionIn(), 0.0);
+        assertEquals(before.plantSnapshot().isReferenced(), before.referenced());
+        assertEquals(BasicLift.Height.STOWED, before.requestedHeight());
+        assertEquals(f.config.stowedHeightIn, before.requestedPositionIn(), 0.0);
+
+        f.lift.setHeight(BasicLift.Height.HIGH);
+        BasicLift.Status after = f.lift.status();
+
+        assertEquals(BasicLift.Height.STOWED, before.requestedHeight());
+        assertEquals(f.config.stowedHeightIn, before.requestedPositionIn(), 0.0);
+        assertEquals(BasicLift.Height.HIGH, after.requestedHeight());
+        assertEquals(f.config.highHeightIn, after.requestedPositionIn(), 0.0);
+        assertFalse(after.atTarget());
     }
 
     @Test
@@ -1492,7 +1543,7 @@ public final class BasicLiftMechanismTest {
         f.lift.setHeight(BasicLift.Height.LOW);
         f.lift.update(time.nextCycle(0.02));
 
-        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(
                 (int) Math.round(f.originalLowHeightIn * f.originalTicksPerIn),
                 f.motor.targetPositionTicks());
@@ -1511,16 +1562,16 @@ public final class BasicLiftMechanismTest {
         f.motor.setCurrentPositionTicks(
                 (int) Math.round(f.config.highHeightIn * f.originalTicksPerIn));
         first.start(time.nextCycle(0.02));
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertFalse(f.lift.status().atTarget());
         f.lift.update(time.clock());
         assertFalse(first.isComplete());
 
         first.update(time.nextCycle(0.02));
         f.lift.update(time.clock());
         assertEquals(TaskOutcome.SUCCESS, first.getOutcome());
-        assertTrue(f.lift.status().atTarget);
+        assertTrue(f.lift.status().atTarget());
 
         expectSingleUse(() -> first.start(time.nextCycle(0.02)));
     }
@@ -1531,19 +1582,19 @@ public final class BasicLiftMechanismTest {
         ManualLoopClock time = new ManualLoopClock();
 
         f.lift.setHeight(BasicLift.Height.HIGH);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn));
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn()));
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
         assertEquals(0, f.motor.targetPositionWrites());
 
         f.lift.update(time.clock());
 
         assertEquals(0, f.motor.targetPositionWrites());
         assertEquals(0.0, f.motor.power(), 0.0);
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -1558,12 +1609,12 @@ public final class BasicLiftMechanismTest {
         update(move, f.lift, time, f.config.moveTimeoutSec + 0.01);
 
         assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(
                 (int) Math.round(f.config.highHeightIn * f.originalTicksPerIn),
                 f.motor.targetPositionTicks());
-        assertFalse(f.lift.status().atTarget);
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -1584,10 +1635,10 @@ public final class BasicLiftMechanismTest {
         f.lift.update(time.nextCycle(0.02));
 
         assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
-        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(selectedTicks, f.motor.targetPositionTicks());
-        assertFalse(f.lift.status().atTarget);
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -1601,19 +1652,47 @@ public final class BasicLiftMechanismTest {
         f.motor.setCurrentPositionTicks(
                 (int) Math.round(f.config.lowHeightIn * f.originalTicksPerIn));
         f.lift.update(time.clock());
-        assertTrue(f.lift.status().atTarget);
+        assertTrue(f.lift.status().atTarget());
 
         // A newer semantic request invalidates the old arrival before the move samples it.
         f.lift.setHeight(BasicLift.Height.HIGH);
         move.update(time.nextCycle(0.01));
         assertFalse(move.isComplete());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
 
         move.update(time.nextCycle(f.config.moveTimeoutSec));
         assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+    }
+
+    @Test
+    public void feedbackMoveRetainsItsExactRequestWhenSameHeightIsRequestedAgain() {
+        Fixture f = fixture();
+        ManualLoopClock time = new ManualLoopClock();
+        homeSuccessfully(f, time);
+
+        Task move = f.lift.moveTo(BasicLift.Height.LOW);
+        move.start(time.nextCycle(0.02));
+        f.motor.setCurrentPositionTicks(
+                (int) Math.round(f.config.lowHeightIn * f.originalTicksPerIn));
+        f.lift.update(time.clock());
+        assertTrue(f.lift.status().atTarget());
+
+        f.lift.setHeight(BasicLift.Height.LOW);
+        assertFalse(f.lift.status().atTarget());
+        f.lift.update(time.nextCycle(0.01));
+        assertTrue("the newer equal-valued request itself has arrived",
+                f.lift.status().atTarget());
+
+        move.update(time.clock());
+        assertFalse(move.isComplete());
+
+        move.update(time.nextCycle(f.config.moveTimeoutSec));
+        assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
     }
 
     @Test
@@ -1626,25 +1705,25 @@ public final class BasicLiftMechanismTest {
                 (int) Math.round(f.config.lowHeightIn * f.originalTicksPerIn));
         f.lift.setHeight(BasicLift.Height.LOW);
         f.lift.update(time.nextCycle(0.02));
-        assertTrue(f.lift.status().atTarget);
-        double lowMeasurement = f.lift.status().measuredPositionIn;
+        assertTrue(f.lift.status().atTarget());
+        double lowMeasurement = f.lift.status().measuredPositionIn();
 
         f.lift.setHeight(BasicLift.Height.HIGH);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(lowMeasurement, f.lift.status().measuredPositionIn, 0.0);
-        assertTrue(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(lowMeasurement, f.lift.status().measuredPositionIn(), 0.0);
+        assertTrue(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
 
         f.motor.setCurrentPositionTicks(
                 (int) Math.round(f.config.highHeightIn * f.originalTicksPerIn));
         f.lift.update(time.nextCycle(0.02));
-        assertTrue(f.lift.status().atTarget);
-        double highMeasurement = f.lift.status().measuredPositionIn;
+        assertTrue(f.lift.status().atTarget());
+        double highMeasurement = f.lift.status().measuredPositionIn();
 
         f.lift.stop();
-        assertEquals(highMeasurement, f.lift.status().measuredPositionIn, 0.0);
-        assertTrue(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(highMeasurement, f.lift.status().measuredPositionIn(), 0.0);
+        assertTrue(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -1657,9 +1736,9 @@ public final class BasicLiftMechanismTest {
         ManualLoopClock successTime = new ManualLoopClock();
         success.lift.setHeight(BasicLift.Height.HIGH);
         firstHome.start(successTime.clock());
-        assertEquals(BasicLift.Height.HIGH, success.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, success.lift.status().requestedHeight());
         assertEquals(success.config.highHeightIn,
-                success.lift.status().requestedPositionIn, 0.0);
+                success.lift.status().requestedPositionIn(), 0.0);
         success.lift.update(successTime.clock());
         assertEquals(success.config.homingPower, success.motor.power(), 0.0);
 
@@ -1669,13 +1748,13 @@ public final class BasicLiftMechanismTest {
         firstHome.update(successTime.nextCycle(0.03));
 
         assertEquals(TaskOutcome.SUCCESS, firstHome.getOutcome());
-        assertEquals(BasicLift.Height.STOWED, success.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.STOWED, success.lift.status().requestedHeight());
         assertEquals(success.config.stowedHeightIn,
-                success.lift.status().requestedPositionIn, 0.0);
+                success.lift.status().requestedPositionIn(), 0.0);
         assertEquals(targetWritesBeforeSuccess, success.motor.targetPositionWrites());
 
         success.lift.update(successTime.clock());
-        assertTrue(success.lift.status().referenced);
+        assertTrue(success.lift.status().referenced());
         assertEquals(
                 (int) Math.round(success.config.stowedHeightIn * success.originalTicksPerIn),
                 success.motor.targetPositionTicks());
@@ -1685,15 +1764,15 @@ public final class BasicLiftMechanismTest {
         Task timedOutHome = timeout.lift.home();
         timedOutHome.start(timeoutTime.clock());
         timeout.lift.setHeight(BasicLift.Height.HIGH);
-        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight());
         timeout.lift.update(timeoutTime.clock());
         update(timedOutHome, timeout.lift, timeoutTime, timeout.config.homingTimeoutSec);
 
         assertEquals(TaskOutcome.TIMEOUT, timedOutHome.getOutcome());
-        assertFalse(timeout.lift.status().referenced);
-        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight);
+        assertFalse(timeout.lift.status().referenced());
+        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight());
         assertEquals(timeout.config.highHeightIn,
-                timeout.lift.status().requestedPositionIn, 0.0);
+                timeout.lift.status().requestedPositionIn(), 0.0);
         assertEquals(0.0, timeout.motor.power(), 0.0);
     }
 
@@ -1705,7 +1784,7 @@ public final class BasicLiftMechanismTest {
         Task home = f.lift.home();
 
         home.start(time.clock());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
         f.lift.update(time.clock());
         assertEquals(f.config.homingPower, f.motor.power(), 0.0);
 
@@ -1715,10 +1794,10 @@ public final class BasicLiftMechanismTest {
 
         assertEquals(TaskOutcome.CANCELLED, home.getOutcome());
         assertEquals(0.0, f.motor.power(), 0.0);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -1822,7 +1901,6 @@ public final class BasicLiftMechanismTest {
         }
     }
 }
-
 ```
 
 </details>
@@ -2215,7 +2293,7 @@ public final class BasicTeleOpControlsTest {
 
         @Override
         public Status status() {
-            return new Status(Height.STOWED, 0.0, 0.0, false, false);
+            throw new AssertionError("RecordingLift status is not used by this controls test");
         }
     }
 
@@ -2334,11 +2412,11 @@ public final class BasicLiftTeleOp extends FtcRobotOpMode {
 
         program.presenter((clock, telemetry) -> {
             BasicLift.Status status = lift.status();
-            telemetry.addData("lift.request", status.requestedHeight);
+            telemetry.addData("lift.request", status.requestedHeight());
             telemetry.addData("lift.positionIn", "%.2f / %.2f",
-                    status.measuredPositionIn, status.requestedPositionIn);
-            telemetry.addData("lift.referenced", status.referenced);
-            telemetry.addData("lift.atTarget", status.atTarget);
+                    status.measuredPositionIn(), status.requestedPositionIn());
+            telemetry.addData("lift.referenced", status.referenced());
+            telemetry.addData("lift.atTarget", status.atTarget());
         });
     }
 }
@@ -2452,11 +2530,11 @@ telemetry truth, and physical STOP independently.
 // docs: The presenter formats cached evidence; it never becomes another behavior owner.
         program.presenter((clock, telemetry) -> {
             BasicLift.Status status = lift.status();
-            telemetry.addData("lift.request", status.requestedHeight);
+            telemetry.addData("lift.request", status.requestedHeight());
             telemetry.addData("lift.positionIn", "%.2f / %.2f",
-                    status.measuredPositionIn, status.requestedPositionIn);
-            telemetry.addData("lift.referenced", status.referenced);
-            telemetry.addData("lift.atTarget", status.atTarget);
+                    status.measuredPositionIn(), status.requestedPositionIn());
+            telemetry.addData("lift.referenced", status.referenced());
+            telemetry.addData("lift.atTarget", status.atTarget());
         });
 ```
 
@@ -2571,11 +2649,11 @@ public final class BasicRobotTeleOp extends FtcRobotOpMode {
             BasicLift.Status liftStatus = lift.status();
             BasicClaw.Status clawStatus = claw.status();
             telemetry.addData("lift", "%s %.2f/%.2f in referenced=%s atTarget=%s",
-                    liftStatus.requestedHeight,
-                    liftStatus.measuredPositionIn,
-                    liftStatus.requestedPositionIn,
-                    liftStatus.referenced,
-                    liftStatus.atTarget);
+                    liftStatus.requestedHeight(),
+                    liftStatus.measuredPositionIn(),
+                    liftStatus.requestedPositionIn(),
+                    liftStatus.referenced(),
+                    liftStatus.atTarget());
             telemetry.addData("claw", "%s command=%.2f",
                     clawStatus.requestedState, clawStatus.appliedPosition);
         });
@@ -2763,11 +2841,11 @@ public final class BasicMechanismsAuto extends FtcRobotOpMode {
             BasicLift.Status liftStatus = lift.status();
             BasicClaw.Status clawStatus = claw.status();
             telemetry.addData("lift", "%s %.2f/%.2f in referenced=%s atTarget=%s",
-                    liftStatus.requestedHeight,
-                    liftStatus.measuredPositionIn,
-                    liftStatus.requestedPositionIn,
-                    liftStatus.referenced,
-                    liftStatus.atTarget);
+                    liftStatus.requestedHeight(),
+                    liftStatus.measuredPositionIn(),
+                    liftStatus.requestedPositionIn(),
+                    liftStatus.referenced(),
+                    liftStatus.atTarget());
             telemetry.addData("claw", "%s command=%.2f",
                     clawStatus.requestedState, clawStatus.appliedPosition);
             telemetry.addData("auto.complete", auto.isComplete());
@@ -3283,7 +3361,7 @@ public final class BasicAutoRoutinesTest {
 
         @Override
         public Status status() {
-            return new Status(Height.STOWED, 0.0, 0.0, true, true);
+            throw new AssertionError("RecordingLift status is not used by these Auto tests");
         }
 
         private ControllableTask moveTask(int index) {
@@ -3612,11 +3690,11 @@ public final class BasicRobotAuto extends FtcRobotOpMode {
                 BasicLift.Status liftStatus = lift.status();
                 BasicClaw.Status clawStatus = claw.status();
                 telemetry.addData("lift", "%s %.2f/%.2f in referenced=%s atTarget=%s",
-                        liftStatus.requestedHeight,
-                        liftStatus.measuredPositionIn,
-                        liftStatus.requestedPositionIn,
-                        liftStatus.referenced,
-                        liftStatus.atTarget);
+                        liftStatus.requestedHeight(),
+                        liftStatus.measuredPositionIn(),
+                        liftStatus.requestedPositionIn(),
+                        liftStatus.referenced(),
+                        liftStatus.atTarget());
                 telemetry.addData("claw", "%s command=%.2f",
                         clawStatus.requestedState, clawStatus.appliedPosition);
                 telemetry.addData("auto.complete", auto.isComplete());
@@ -3809,7 +3887,7 @@ public final class BasicRobotScenarioTest {
         assertAllDriveMotorsStopped(f);
         heartbeat(root, f, 0.02);
         assertEquals(BasicClaw.State.OPEN, f.claw.status().requestedState);
-        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight());
 
         f.liftMotor.setCurrentPositionTicks(0);
         heartbeat(root, f, 0.02);
@@ -3834,7 +3912,7 @@ public final class BasicRobotScenarioTest {
         assertEquals(TaskOutcome.CANCELLED, root.getOutcome());
         assertAllDriveMotorsStopped(f);
         assertEquals(BasicClaw.State.CLOSED, f.claw.status().requestedState);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
     }
 
     private static void beginAndReachTimedDrive(Task root, Scenario f) {
@@ -3846,7 +3924,7 @@ public final class BasicRobotScenarioTest {
         heartbeat(root, f, 0.01);
         heartbeat(root, f, 0.03);
         heartbeat(root, f, 0.02);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
         assertEquals(BasicClaw.State.CLOSED, f.claw.status().requestedState);
 
         f.liftMotor.setCurrentPositionTicks(

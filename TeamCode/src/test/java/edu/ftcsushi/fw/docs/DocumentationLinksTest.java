@@ -816,6 +816,13 @@ public final class DocumentationLinksTest {
                         && interfaceStage.contains("Task moveTo(Height height);")
                         && interfaceStage.contains("Task home();")
                         && interfaceStage.contains("void setState(State state);")
+                        && interfaceStage.contains("public Height requestedHeight()")
+                        && interfaceStage.contains("public double requestedPositionIn()")
+                        && interfaceStage.contains("public double appliedPositionIn()")
+                        && interfaceStage.contains("public double measuredPositionIn()")
+                        && interfaceStage.contains("public boolean referenced()")
+                        && interfaceStage.contains("public boolean atTarget()")
+                        && interfaceStage.contains("public PositionPlantSnapshot plantSnapshot()")
                         && interfaceStage.contains("Status status();"));
         assertTrue("Stage 1 must implement the mechanism/profile/control foundation before tests",
                 interfaceStage.contains("### Implement the foundation before testing")
@@ -860,7 +867,10 @@ public final class DocumentationLinksTest {
                         && interfaceStage.contains(
                                 "Tasks.waitUntil(selectedRequestReached, moveTimeoutSec)")
                         && interfaceStage.contains(".failAfterSec(homingTimeoutSec)")
-                        && interfaceStage.contains("Tasks.runOnce(() -> setHeight(")
+                        && interfaceStage.contains("status().isAtTargetFor(started.request)")
+                        && interfaceStage.contains("snapshot.request() == request")
+                        && interfaceStage.contains(
+                                "started.request = setHeightAndReturnRequest(selectedHeight)")
                         && interfaceStage.contains("Tasks.sequence("));
 
         int testStageStart = anchor.indexOf(requiredStageHeadings[1]);

@@ -158,6 +158,21 @@ public final class PlantTargets {
     }
 
     /**
+     * Convert one semantic scalar command into an exact Plant target resolver.
+     *
+     * <p>The resolver samples one immutable semantic/numeric request per Plant update and carries
+     * its private request identity through framework target composition. That evidence lets
+     * {@link SemanticScalarCommand#snapshot(PlantSnapshot)} distinguish current-request arrival
+     * from an older or same-valued request. The command deliberately remains outside the
+     * {@link ScalarTarget} API, so named mechanism intent cannot be bypassed by an independent
+     * numeric writer.</p>
+     */
+    public static PlantTargetResolver exact(SemanticScalarCommand<?> command) {
+        return new ExactSemanticPlantTargetResolver(
+                Objects.requireNonNull(command, "command"));
+    }
+
+    /**
      * Return the stable command target carried by a framework-created target graph, if any.
      *
      * <p>This package-private query deliberately exposes no public graph-inspection API. Framework
@@ -167,6 +182,13 @@ public final class PlantTargets {
     static ScalarTarget commandTargetOf(PlantTargetResolver resolver) {
         return resolver instanceof CommandTargetOwner
                 ? ((CommandTargetOwner) resolver).commandTarget()
+                : null;
+    }
+
+    /** Return the semantic command inherited by a framework graph, if any. */
+    private static SemanticScalarCommand<?> semanticCommandOf(PlantTargetResolver resolver) {
+        return resolver instanceof SemanticCommandOwner
+                ? ((SemanticCommandOwner) resolver).semanticCommand()
                 : null;
     }
 
@@ -210,6 +232,13 @@ public final class PlantTargets {
     }
 
     /**
+     * Start a Plant-target overlay whose stable base is one semantic scalar command.
+     */
+    public static OverlayBuilder overlay(SemanticScalarCommand<?> baseCommand) {
+        return overlay(exact(Objects.requireNonNull(baseCommand, "baseCommand")));
+    }
+
+    /**
      * Start a Plant-target overlay with a total base resolver.
      */
     public static OverlayBuilder overlay(PlantTargetResolver baseTarget) {
@@ -227,6 +256,17 @@ public final class PlantTargets {
     public static EquivalentPositionPreferenceStage equivalentPositionsOf(
             ScalarTarget commandTarget) {
         return equivalentPositionsOf(exact(Objects.requireNonNull(commandTarget, "commandTarget")));
+    }
+
+    /**
+     * Interpret one semantic scalar command as an equivalent-position family.
+     *
+     * <p>The selected physical representative retains the immutable semantic request identity, so
+     * status can correlate physical arrival with the current named request.</p>
+     */
+    public static EquivalentPositionPreferenceStage equivalentPositionsOf(
+            SemanticScalarCommand<?> command) {
+        return equivalentPositionsOf(exact(Objects.requireNonNull(command, "command")));
     }
 
     /**
@@ -268,6 +308,11 @@ public final class PlantTargets {
     /** Private metadata seam implemented only by framework graphs with a stable command base. */
     private interface CommandTargetOwner {
         ScalarTarget commandTarget();
+    }
+
+    /** Private metadata seam implemented only by framework graphs with a semantic command base. */
+    private interface SemanticCommandOwner {
+        SemanticScalarCommand<?> semanticCommand();
     }
 
     private static final class ExactPlantTargetResolver
@@ -318,6 +363,41 @@ public final class PlantTargets {
             dbg.addData(p + ".class", "ExactPlantTargetResolver")
                     .addData(p + ".reason", reason);
             source.debugDump(dbg, p + ".scalar");
+        }
+    }
+
+    /** Exact resolver that samples one atomically published semantic/numeric request pair. */
+    private static final class ExactSemanticPlantTargetResolver
+            implements PlantTargetResolver, SemanticCommandOwner {
+        private final SemanticScalarCommand<?> command;
+
+        ExactSemanticPlantTargetResolver(SemanticScalarCommand<?> command) {
+            this.command = Objects.requireNonNull(command, "command");
+        }
+
+        @Override
+        public SemanticScalarCommand<?> semanticCommand() {
+            return command;
+        }
+
+        @Override
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
+            SemanticScalarCommand.Request<?> request = command.request();
+            return PlantTargetResolution.exact(
+                    request.commandTarget(), "exact semantic scalar command")
+                    .withSelectedSemanticCommand(command, request);
+        }
+
+        @Override
+        public void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) return;
+            String p = (prefix == null || prefix.isEmpty())
+                    ? "exactSemanticPlantTarget"
+                    : prefix;
+            SemanticScalarCommand.Request<?> request = command.request();
+            dbg.addData(p + ".class", "ExactSemanticPlantTargetResolver")
+                    .addData(p + ".semantic", request.semantic())
+                    .addData(p + ".commandTarget", request.commandTarget());
         }
     }
 
@@ -548,12 +628,13 @@ public final class PlantTargets {
     }
 
     private static final class OverlayTargetResolver
-            implements PlantTargetResolver, CommandTargetOwner {
+            implements PlantTargetResolver, CommandTargetOwner, SemanticCommandOwner {
         private static final PlantTargetResolution INCOMPLETE_RESOLUTION =
                 PlantTargetResolution.unavailable("overlay resolution did not complete");
 
         private final PlantTargetResolver base;
         private final ScalarTarget commandTarget;
+        private final SemanticScalarCommand<?> semanticCommand;
         private final Layer[] layers;
         private final LayerRuntimeState[] layerStates;
         private PlantTargetResolution lastResolution =
@@ -564,6 +645,7 @@ public final class PlantTargets {
         OverlayTargetResolver(PlantTargetResolver base, Layer[] layers) {
             this.base = base;
             this.commandTarget = commandTargetOf(base);
+            this.semanticCommand = semanticCommandOf(base);
             this.layers = layers;
             this.layerStates = new LayerRuntimeState[layers.length];
             for (int i = 0; i < layerStates.length; i++) {
@@ -574,6 +656,11 @@ public final class PlantTargets {
         @Override
         public ScalarTarget commandTarget() {
             return commandTarget;
+        }
+
+        @Override
+        public SemanticScalarCommand<?> semanticCommand() {
+            return semanticCommand;
         }
 
         @Override
@@ -670,8 +757,16 @@ public final class PlantTargets {
                 winner = base.resolve(context, clock);
             }
 
-            if (decisiveLayerIndex >= 0 && commandTarget != null) {
-                winner = winner.withoutSelectedCommand(commandTarget);
+            if (decisiveLayerIndex >= 0) {
+                // A layer may itself carry command provenance, but the final overlay owns only
+                // its stable base command. Never let a winning layer impersonate that base or leak
+                // an unrelated command identity through an ownerless overlay.
+                winner = winner.withoutCommandEvidence();
+                if (commandTarget != null) {
+                    winner = winner.withoutSelectedCommand(commandTarget);
+                } else if (semanticCommand != null) {
+                    winner = winner.withoutSelectedSemanticCommand(semanticCommand);
+                }
             }
             lastResolution = winner;
             return winner;
@@ -1146,9 +1241,10 @@ public final class PlantTargets {
     }
 
     private static final class EquivalentPositionsTargetResolver
-            implements PlantTargetResolver, CommandTargetOwner {
+            implements PlantTargetResolver, CommandTargetOwner, SemanticCommandOwner {
         private final PlantTargetResolver logicalTarget;
         private final ScalarTarget commandTarget;
+        private final SemanticScalarCommand<?> semanticCommand;
         private final CandidatePreference preference;
         private final UnavailableKind unavailableKind;
         private final double unavailableValue;
@@ -1168,6 +1264,7 @@ public final class PlantTargets {
                                           double unavailableValue) {
             this.logicalTarget = Objects.requireNonNull(logicalTarget, "logicalTarget");
             this.commandTarget = commandTargetOf(logicalTarget);
+            this.semanticCommand = semanticCommandOf(logicalTarget);
             this.preference = Objects.requireNonNull(preference, "preference");
             this.unavailableKind = Objects.requireNonNull(unavailableKind, "unavailableKind");
             this.unavailableValue = unavailableValue;
@@ -1183,6 +1280,11 @@ public final class PlantTargets {
         @Override
         public ScalarTarget commandTarget() {
             return commandTarget;
+        }
+
+        @Override
+        public SemanticScalarCommand<?> semanticCommand() {
+            return semanticCommand;
         }
 
         @Override
@@ -1259,7 +1361,13 @@ public final class PlantTargets {
                                                     + logicalResolution.reason());
                             if (commandTarget != null
                                     && !resolved.reportsCommandResolutionFor(commandTarget)) {
-                                resolved = resolved.withoutSelectedCommand(commandTarget);
+                                resolved = resolved.withoutCommandEvidence()
+                                        .withoutSelectedCommand(commandTarget);
+                            } else if (semanticCommand != null
+                                    && !resolved.reportsSemanticCommandResolutionFor(
+                                            semanticCommand)) {
+                                resolved = resolved.withoutCommandEvidence()
+                                        .withoutSelectedSemanticCommand(semanticCommand);
                             }
                             candidate = new ResolverCandidate(
                                     resolved, physicalTarget, false, Double.NaN);
@@ -1322,9 +1430,16 @@ public final class PlantTargets {
                 candidateUnavailableActive = true;
                 candidateLastTarget = candidateHeldMeasuredTarget;
             }
-            PlantTargetResolution resolved = commandTarget != null
-                    ? resolution.withoutSelectedCommand(commandTarget)
-                    : resolution;
+            PlantTargetResolution resolved;
+            if (commandTarget != null) {
+                resolved = resolution.withoutCommandEvidence()
+                        .withoutSelectedCommand(commandTarget);
+            } else if (semanticCommand != null) {
+                resolved = resolution.withoutCommandEvidence()
+                        .withoutSelectedSemanticCommand(semanticCommand);
+            } else {
+                resolved = resolution.withoutCommandEvidence();
+            }
             return new ResolverCandidate(resolved,
                     candidateLastTarget,
                     candidateUnavailableActive,

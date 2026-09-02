@@ -518,7 +518,8 @@ final class MappedVelocityPlant implements Plant {
 
     @Override
     public boolean atTarget(double target) {
-        return (regulatedPowerChannel == null || regulatedActuationCompleted)
+        return lifecycle.isActive()
+                && (regulatedPowerChannel == null || regulatedActuationCompleted)
                 && (regulatedPowerChannel == null
                         || regulatedPowerChannel.setpointSettledAt(appliedTarget))
                 && Double.isFinite(target)

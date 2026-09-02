@@ -38,7 +38,7 @@ public final class ReferenceLiftSoftwareScenarioTest {
         scenario.advance(0.01);
 
         assertEquals(TaskOutcome.SUCCESS, scenario.currentTask.getOutcome());
-        assertTrue(scenario.lift.status().referenced);
+        assertTrue(scenario.lift.status().referenced());
 
         int lowTargetTicks = (int) Math.round(
                 scenario.config.lowHeightIn * scenario.config.ticksPerIn);
@@ -55,7 +55,7 @@ public final class ReferenceLiftSoftwareScenarioTest {
 
         assertEquals(
                 injectedTicks / scenario.config.ticksPerIn,
-                scenario.lift.status().measuredPositionIn,
+                scenario.lift.status().measuredPositionIn(),
                 0.0);
     }
 
@@ -77,11 +77,11 @@ public final class ReferenceLiftSoftwareScenarioTest {
 
         assertTrue(scenario.bottomSwitch.high());
         assertEquals(TaskOutcome.TIMEOUT, scenario.currentTask.getOutcome());
-        assertFalse(scenario.lift.status().referenced);
+        assertFalse(scenario.lift.status().referenced());
         assertEquals(ReferenceLift.Height.HIGH,
-                scenario.lift.status().requestedHeight);
+                scenario.lift.status().requestedHeight());
         assertEquals(scenario.config.highHeightIn,
-                scenario.lift.status().requestedPositionIn, 0.0);
+                scenario.lift.status().requestedPositionIn(), 0.0);
         assertEquals(0.0, scenario.motor.power(), 0.0);
     }
 

@@ -2,6 +2,10 @@ package edu.ftcsushi.robots.examples.basicmechanisms;
 
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
@@ -21,10 +25,10 @@ public final class BasicLiftMechanismTest {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
 
-        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight);
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
-        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn));
+        assertEquals(BasicLift.Height.STOWED, f.lift.status().requestedHeight());
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
+        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn()));
 
         homeSuccessfully(f, time);
         BasicLift.Status beforeRequest = f.lift.status();
@@ -32,23 +36,70 @@ public final class BasicLiftMechanismTest {
         f.lift.setHeight(BasicLift.Height.LOW);
 
         // Semantic intent is synchronous; hardware and feedback evidence wait for the heartbeat.
-        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertEquals(beforeRequest.measuredPositionIn, f.lift.status().measuredPositionIn, 0.0);
-        assertEquals(beforeRequest.referenced, f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertEquals(beforeRequest.measuredPositionIn(),
+                f.lift.status().measuredPositionIn(), 0.0);
+        assertEquals(beforeRequest.referenced(), f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
         assertEquals(targetWritesBeforeRequest, f.motor.targetPositionWrites());
 
         f.lift.update(time.nextCycle(0.02));
-        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(
                 (int) Math.round(f.originalLowHeightIn * f.originalTicksPerIn),
                 f.motor.targetPositionTicks());
 
         f.motor.setCurrentPositionTicks(25);
         f.lift.update(time.nextCycle(0.02));
-        assertEquals(2.5, f.lift.status().measuredPositionIn, 0.0);
+        assertEquals(2.5, f.lift.status().measuredPositionIn(), 0.0);
+    }
+
+    @Test
+    public void statusIsANewFlatImmutableViewOfOneSourceSnapshot() {
+        Fixture f = fixture();
+
+        BasicLift.Status before = f.lift.status();
+        BasicLift.Status sameState = f.lift.status();
+
+        assertNotSame(before, sameState);
+        Field[] fields = BasicLift.Status.class.getDeclaredFields();
+        assertEquals(1, fields.length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                fields[0].getType());
+        assertTrue(Modifier.isPrivate(fields[0].getModifiers()));
+        assertTrue(Modifier.isFinal(fields[0].getModifiers()));
+
+        Constructor<?>[] constructors = BasicLift.Status.class.getDeclaredConstructors();
+        assertEquals(1, constructors.length);
+        assertTrue(Modifier.isPublic(constructors[0].getModifiers()));
+        assertEquals(1, constructors[0].getParameterTypes().length);
+        assertEquals(
+                edu.ftcsushi.fw.actuation.SemanticScalarSnapshot.class,
+                constructors[0].getParameterTypes()[0]);
+        try {
+            new BasicLift.Status(null);
+            fail("Expected a null lift status snapshot to fail");
+        } catch (NullPointerException expected) {
+            assertEquals("snapshot", expected.getMessage());
+        }
+
+        assertEquals(before.plantSnapshot().appliedTarget(), before.appliedPositionIn(), 0.0);
+        assertEquals(before.plantSnapshot().measurement(), before.measuredPositionIn(), 0.0);
+        assertEquals(before.plantSnapshot().isReferenced(), before.referenced());
+        assertEquals(BasicLift.Height.STOWED, before.requestedHeight());
+        assertEquals(f.config.stowedHeightIn, before.requestedPositionIn(), 0.0);
+
+        f.lift.setHeight(BasicLift.Height.HIGH);
+        BasicLift.Status after = f.lift.status();
+
+        assertEquals(BasicLift.Height.STOWED, before.requestedHeight());
+        assertEquals(f.config.stowedHeightIn, before.requestedPositionIn(), 0.0);
+        assertEquals(BasicLift.Height.HIGH, after.requestedHeight());
+        assertEquals(f.config.highHeightIn, after.requestedPositionIn(), 0.0);
+        assertFalse(after.atTarget());
     }
 
     @Test
@@ -64,7 +115,7 @@ public final class BasicLiftMechanismTest {
         f.lift.setHeight(BasicLift.Height.LOW);
         f.lift.update(time.nextCycle(0.02));
 
-        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(f.originalLowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(
                 (int) Math.round(f.originalLowHeightIn * f.originalTicksPerIn),
                 f.motor.targetPositionTicks());
@@ -83,16 +134,16 @@ public final class BasicLiftMechanismTest {
         f.motor.setCurrentPositionTicks(
                 (int) Math.round(f.config.highHeightIn * f.originalTicksPerIn));
         first.start(time.nextCycle(0.02));
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertFalse(f.lift.status().atTarget());
         f.lift.update(time.clock());
         assertFalse(first.isComplete());
 
         first.update(time.nextCycle(0.02));
         f.lift.update(time.clock());
         assertEquals(TaskOutcome.SUCCESS, first.getOutcome());
-        assertTrue(f.lift.status().atTarget);
+        assertTrue(f.lift.status().atTarget());
 
         expectSingleUse(() -> first.start(time.nextCycle(0.02)));
     }
@@ -103,19 +154,19 @@ public final class BasicLiftMechanismTest {
         ManualLoopClock time = new ManualLoopClock();
 
         f.lift.setHeight(BasicLift.Height.HIGH);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn));
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertTrue(Double.isNaN(f.lift.status().measuredPositionIn()));
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
         assertEquals(0, f.motor.targetPositionWrites());
 
         f.lift.update(time.clock());
 
         assertEquals(0, f.motor.targetPositionWrites());
         assertEquals(0.0, f.motor.power(), 0.0);
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -130,12 +181,12 @@ public final class BasicLiftMechanismTest {
         update(move, f.lift, time, f.config.moveTimeoutSec + 0.01);
 
         assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(
                 (int) Math.round(f.config.highHeightIn * f.originalTicksPerIn),
                 f.motor.targetPositionTicks());
-        assertFalse(f.lift.status().atTarget);
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -156,10 +207,10 @@ public final class BasicLiftMechanismTest {
         f.lift.update(time.nextCycle(0.02));
 
         assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
-        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight);
-        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
         assertEquals(selectedTicks, f.motor.targetPositionTicks());
-        assertFalse(f.lift.status().atTarget);
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -173,19 +224,47 @@ public final class BasicLiftMechanismTest {
         f.motor.setCurrentPositionTicks(
                 (int) Math.round(f.config.lowHeightIn * f.originalTicksPerIn));
         f.lift.update(time.clock());
-        assertTrue(f.lift.status().atTarget);
+        assertTrue(f.lift.status().atTarget());
 
         // A newer semantic request invalidates the old arrival before the move samples it.
         f.lift.setHeight(BasicLift.Height.HIGH);
         move.update(time.nextCycle(0.01));
         assertFalse(move.isComplete());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
 
         move.update(time.nextCycle(f.config.moveTimeoutSec));
         assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+    }
+
+    @Test
+    public void feedbackMoveRetainsItsExactRequestWhenSameHeightIsRequestedAgain() {
+        Fixture f = fixture();
+        ManualLoopClock time = new ManualLoopClock();
+        homeSuccessfully(f, time);
+
+        Task move = f.lift.moveTo(BasicLift.Height.LOW);
+        move.start(time.nextCycle(0.02));
+        f.motor.setCurrentPositionTicks(
+                (int) Math.round(f.config.lowHeightIn * f.originalTicksPerIn));
+        f.lift.update(time.clock());
+        assertTrue(f.lift.status().atTarget());
+
+        f.lift.setHeight(BasicLift.Height.LOW);
+        assertFalse(f.lift.status().atTarget());
+        f.lift.update(time.nextCycle(0.01));
+        assertTrue("the newer equal-valued request itself has arrived",
+                f.lift.status().atTarget());
+
+        move.update(time.clock());
+        assertFalse(move.isComplete());
+
+        move.update(time.nextCycle(f.config.moveTimeoutSec));
+        assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
+        assertEquals(BasicLift.Height.LOW, f.lift.status().requestedHeight());
+        assertEquals(f.config.lowHeightIn, f.lift.status().requestedPositionIn(), 0.0);
     }
 
     @Test
@@ -198,25 +277,25 @@ public final class BasicLiftMechanismTest {
                 (int) Math.round(f.config.lowHeightIn * f.originalTicksPerIn));
         f.lift.setHeight(BasicLift.Height.LOW);
         f.lift.update(time.nextCycle(0.02));
-        assertTrue(f.lift.status().atTarget);
-        double lowMeasurement = f.lift.status().measuredPositionIn;
+        assertTrue(f.lift.status().atTarget());
+        double lowMeasurement = f.lift.status().measuredPositionIn();
 
         f.lift.setHeight(BasicLift.Height.HIGH);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(lowMeasurement, f.lift.status().measuredPositionIn, 0.0);
-        assertTrue(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(lowMeasurement, f.lift.status().measuredPositionIn(), 0.0);
+        assertTrue(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
 
         f.motor.setCurrentPositionTicks(
                 (int) Math.round(f.config.highHeightIn * f.originalTicksPerIn));
         f.lift.update(time.nextCycle(0.02));
-        assertTrue(f.lift.status().atTarget);
-        double highMeasurement = f.lift.status().measuredPositionIn;
+        assertTrue(f.lift.status().atTarget());
+        double highMeasurement = f.lift.status().measuredPositionIn();
 
         f.lift.stop();
-        assertEquals(highMeasurement, f.lift.status().measuredPositionIn, 0.0);
-        assertTrue(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(highMeasurement, f.lift.status().measuredPositionIn(), 0.0);
+        assertTrue(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test
@@ -229,9 +308,9 @@ public final class BasicLiftMechanismTest {
         ManualLoopClock successTime = new ManualLoopClock();
         success.lift.setHeight(BasicLift.Height.HIGH);
         firstHome.start(successTime.clock());
-        assertEquals(BasicLift.Height.HIGH, success.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, success.lift.status().requestedHeight());
         assertEquals(success.config.highHeightIn,
-                success.lift.status().requestedPositionIn, 0.0);
+                success.lift.status().requestedPositionIn(), 0.0);
         success.lift.update(successTime.clock());
         assertEquals(success.config.homingPower, success.motor.power(), 0.0);
 
@@ -241,13 +320,13 @@ public final class BasicLiftMechanismTest {
         firstHome.update(successTime.nextCycle(0.03));
 
         assertEquals(TaskOutcome.SUCCESS, firstHome.getOutcome());
-        assertEquals(BasicLift.Height.STOWED, success.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.STOWED, success.lift.status().requestedHeight());
         assertEquals(success.config.stowedHeightIn,
-                success.lift.status().requestedPositionIn, 0.0);
+                success.lift.status().requestedPositionIn(), 0.0);
         assertEquals(targetWritesBeforeSuccess, success.motor.targetPositionWrites());
 
         success.lift.update(successTime.clock());
-        assertTrue(success.lift.status().referenced);
+        assertTrue(success.lift.status().referenced());
         assertEquals(
                 (int) Math.round(success.config.stowedHeightIn * success.originalTicksPerIn),
                 success.motor.targetPositionTicks());
@@ -257,15 +336,15 @@ public final class BasicLiftMechanismTest {
         Task timedOutHome = timeout.lift.home();
         timedOutHome.start(timeoutTime.clock());
         timeout.lift.setHeight(BasicLift.Height.HIGH);
-        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight());
         timeout.lift.update(timeoutTime.clock());
         update(timedOutHome, timeout.lift, timeoutTime, timeout.config.homingTimeoutSec);
 
         assertEquals(TaskOutcome.TIMEOUT, timedOutHome.getOutcome());
-        assertFalse(timeout.lift.status().referenced);
-        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight);
+        assertFalse(timeout.lift.status().referenced());
+        assertEquals(BasicLift.Height.HIGH, timeout.lift.status().requestedHeight());
         assertEquals(timeout.config.highHeightIn,
-                timeout.lift.status().requestedPositionIn, 0.0);
+                timeout.lift.status().requestedPositionIn(), 0.0);
         assertEquals(0.0, timeout.motor.power(), 0.0);
     }
 
@@ -277,7 +356,7 @@ public final class BasicLiftMechanismTest {
         Task home = f.lift.home();
 
         home.start(time.clock());
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
         f.lift.update(time.clock());
         assertEquals(f.config.homingPower, f.motor.power(), 0.0);
 
@@ -287,10 +366,10 @@ public final class BasicLiftMechanismTest {
 
         assertEquals(TaskOutcome.CANCELLED, home.getOutcome());
         assertEquals(0.0, f.motor.power(), 0.0);
-        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight);
-        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn, 0.0);
-        assertFalse(f.lift.status().referenced);
-        assertFalse(f.lift.status().atTarget);
+        assertEquals(BasicLift.Height.HIGH, f.lift.status().requestedHeight());
+        assertEquals(f.config.highHeightIn, f.lift.status().requestedPositionIn(), 0.0);
+        assertFalse(f.lift.status().referenced());
+        assertFalse(f.lift.status().atTarget());
     }
 
     @Test

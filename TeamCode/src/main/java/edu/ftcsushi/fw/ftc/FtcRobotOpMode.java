@@ -20,7 +20,8 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
  *         // This short form assumes the complete standard drive config was reviewed.
  *         program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap));
  *         program.presenter((clock, telemetry) ->
- *                 telemetry.addData("intake.mode", intake.status().mode));
+ *                 telemetry.addData("intake.mode",
+ *                         intake.status().mode()));
  *     }
  * }
  * }</pre>

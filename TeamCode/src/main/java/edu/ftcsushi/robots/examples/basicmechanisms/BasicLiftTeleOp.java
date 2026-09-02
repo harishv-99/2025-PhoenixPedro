@@ -34,11 +34,11 @@ public final class BasicLiftTeleOp extends FtcRobotOpMode {
 
         program.presenter((clock, telemetry) -> {
             BasicLift.Status status = lift.status();
-            telemetry.addData("lift.request", status.requestedHeight);
+            telemetry.addData("lift.request", status.requestedHeight());
             telemetry.addData("lift.positionIn", "%.2f / %.2f",
-                    status.measuredPositionIn, status.requestedPositionIn);
-            telemetry.addData("lift.referenced", status.referenced);
-            telemetry.addData("lift.atTarget", status.atTarget);
+                    status.measuredPositionIn(), status.requestedPositionIn());
+            telemetry.addData("lift.referenced", status.referenced());
+            telemetry.addData("lift.atTarget", status.atTarget());
         });
     }
 }

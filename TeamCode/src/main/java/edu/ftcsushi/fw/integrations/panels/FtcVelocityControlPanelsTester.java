@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.function.Function;
 
 import edu.ftcsushi.fw.actuation.Plant;
+import edu.ftcsushi.fw.actuation.PlantSnapshot;
 import edu.ftcsushi.fw.actuation.ScalarRange;
 import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
@@ -147,24 +148,6 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         }
     }
 
-    private static final class PlantFacts {
-        final double requestedTarget;
-        final double appliedTarget;
-        final double measurement;
-
-        PlantFacts(double requestedTarget, double appliedTarget, double measurement) {
-            this.requestedTarget = requestedTarget;
-            this.appliedTarget = appliedTarget;
-            this.measurement = measurement;
-        }
-
-        void addTo(Map<String, Double> destination) {
-            destination.put("finalRequestedTarget", requestedTarget);
-            destination.put("finalAppliedTarget", appliedTarget);
-            destination.put("finalMeasurement", measurement);
-        }
-    }
-
     private static final class PanelsDraftPort implements DraftPort {
         private static final PanelsDraftPort INSTANCE = new PanelsDraftPort();
 
@@ -196,7 +179,8 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
     private PendingCapture pendingCapture;
     private PendingReconfiguration pendingReconfiguration;
     private ActiveSegment activeSegment;
-    private PlantFacts pendingEndingFacts;
+    private PlantSnapshot pendingEndingSnapshot;
+    private boolean pendingEndingSnapshotAttempted;
     private ControlExperimentHistory history;
     private long nextSegmentId;
     private boolean started;
@@ -274,7 +258,8 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         pendingCapture = null;
         pendingReconfiguration = null;
         activeSegment = null;
-        pendingEndingFacts = null;
+        pendingEndingSnapshot = null;
+        pendingEndingSnapshotAttempted = false;
         lastAcceptedCandidate = null;
         history = new ControlExperimentHistory();
         nextSegmentId = 1L;
@@ -474,7 +459,7 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         boolean coldBoundary = activeSegment == null;
         if (controllerRequiresZero || coldBoundary) {
             if (activeSegment != null) {
-                pendingEndingFacts = capturePlantFacts();
+                captureEndingSnapshotOnce();
             }
             try {
                 plant.commandTarget().set(0.0);
@@ -527,7 +512,7 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
                 || activeSegment == null
                 || !ControlTuningModel.sameDouble(plant.commandTarget().get(), candidate.target);
         if (activeSegment != null) {
-            pendingEndingFacts = capturePlantFacts();
+            captureEndingSnapshotOnce();
         }
         if (controllerChanged) {
             try {
@@ -586,7 +571,7 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         pendingCapture = null;
         pendingReconfiguration = null;
         if (activeSegment != null) {
-            pendingEndingFacts = capturePlantFacts();
+            captureEndingSnapshotOnce();
         }
         try {
             plant.commandTarget().set(0.0);
@@ -623,11 +608,11 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
             return;
         }
         ActiveSegment ending = activeSegment;
-        PlantFacts finalFacts = pendingEndingFacts == null
-                ? capturePlantFacts() : pendingEndingFacts;
+        captureEndingSnapshotOnce();
+        PlantSnapshot finalSnapshot = pendingEndingSnapshot;
         ending.metrics.finish(clock.nowSec());
         Map<String, Double> metrics = new LinkedHashMap<String, Double>(ending.metrics.snapshot());
-        finalFacts.addTo(metrics);
+        addFinalPlantFacts(metrics, finalSnapshot);
         history.add(new ControlExperimentHistory.Record(
                 history.sessionId(),
                 ending.id,
@@ -644,7 +629,8 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         if (activeSegment == ending) {
             activeSegment = null;
         }
-        pendingEndingFacts = null;
+        pendingEndingSnapshot = null;
+        pendingEndingSnapshotAttempted = false;
     }
 
     private void stopFromBack() {
@@ -679,8 +665,8 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         cleanupClaimed = true;
         pendingCapture = null;
         pendingReconfiguration = null;
-        if (activeSegment != null && pendingEndingFacts == null) {
-            pendingEndingFacts = capturePlantFacts();
+        if (activeSegment != null) {
+            captureEndingSnapshotOnce();
         }
         CleanupActions.attemptAll(
                 () -> stopIfConstructed(plant),
@@ -961,35 +947,35 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
                 + ", recovery=" + metrics.get("disturbanceRecoverySec");
     }
 
-    private PlantFacts capturePlantFacts() {
-        return new PlantFacts(
-                safeRequestedTarget(plant),
-                safeAppliedTarget(plant),
-                safeMeasurement(plant));
-    }
-
-    private static double safeRequestedTarget(Plant plant) {
+    private PlantSnapshot capturePlantSnapshot() {
         try {
-            return plant == null ? Double.NaN : plant.getRequestedTarget();
+            return plant == null ? null : plant.snapshot();
         } catch (RuntimeException ignored) {
-            return Double.NaN;
+            return null;
         }
     }
 
-    private static double safeAppliedTarget(Plant plant) {
-        try {
-            return plant == null ? Double.NaN : plant.getAppliedTarget();
-        } catch (RuntimeException ignored) {
-            return Double.NaN;
+    /** Preserve one boundary attempt even when capture fails, so cleanup cannot recapture later. */
+    private void captureEndingSnapshotOnce() {
+        if (pendingEndingSnapshotAttempted) {
+            return;
         }
+        pendingEndingSnapshotAttempted = true;
+        pendingEndingSnapshot = capturePlantSnapshot();
     }
 
-    private static double safeMeasurement(Plant plant) {
-        try {
-            return plant == null ? Double.NaN : plant.getMeasurement();
-        } catch (RuntimeException ignored) {
-            return Double.NaN;
-        }
+    private static void addFinalPlantFacts(
+            Map<String, Double> destination,
+            PlantSnapshot snapshot) {
+        destination.put(
+                "finalRequestedTarget",
+                snapshot == null ? Double.NaN : snapshot.requestedTarget());
+        destination.put(
+                "finalAppliedTarget",
+                snapshot == null ? Double.NaN : snapshot.appliedTarget());
+        destination.put(
+                "finalMeasurement",
+                snapshot == null ? Double.NaN : snapshot.measurement());
     }
 
     private static String describe(RuntimeException failure) {

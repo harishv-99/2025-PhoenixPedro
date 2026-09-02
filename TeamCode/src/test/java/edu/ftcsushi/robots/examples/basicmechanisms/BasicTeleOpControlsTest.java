@@ -204,7 +204,7 @@ public final class BasicTeleOpControlsTest {
 
         @Override
         public Status status() {
-            return new Status(Height.STOWED, 0.0, 0.0, false, false);
+            throw new AssertionError("RecordingLift status is not used by this controls test");
         }
     }
 
