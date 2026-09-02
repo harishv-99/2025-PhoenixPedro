@@ -2,6 +2,7 @@ package edu.ftcsushi.fw.actuation;
 
 import org.junit.Test;
 
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -44,7 +45,6 @@ public final class PositionReferenceValidationTest {
             fixture.assertUntouched();
 
             Task retry = referenceStep.establishReferenceAt(-0.0)
-                    .resumeTargeting()
                     .failAfterSec(1.0)
                     .build();
             TaskRunner runner = new TaskRunner();
@@ -65,48 +65,33 @@ public final class PositionReferenceValidationTest {
     }
 
     @Test
-    public void taskHoldRejectsNonFiniteBeforeEffectsAndAllowsRetry() {
-        for (double invalid : nonFiniteValues()) {
-            TaskFixture fixture = new TaskFixture();
-            PositionCalibrationTasks.SearchAfterStep afterStep =
-                    PositionCalibrationTasks.search(fixture.plant)
-                            .withPower(0.2)
-                            .until(fixture.cue)
-                            .establishReferenceAt(2.0);
+    public void publicSearchGrammarContinuesDirectlyFromReferenceToTimeoutPolicy()
+            throws NoSuchMethodException {
+        Method establishReferenceAt = PositionCalibrationTasks.SearchReferenceStep.class
+                .getMethod("establishReferenceAt", double.class);
+        assertEquals(PositionCalibrationTasks.SearchTimeoutStep.class,
+                establishReferenceAt.getReturnType());
 
-            RuntimeException failure = expectRuntime(
-                    () -> afterStep.holdAfterReference(invalid));
-
-            assertFiniteDiagnostic(failure,
-                    "PositionCalibrationTasks.holdAfterReference(...)",
-                    "plantTarget", "plant units", invalid);
-            fixture.assertUntouched();
-
-            Task retry = afterStep.holdAfterReference(-0.0)
-                    .failAfterSec(1.0)
-                    .build();
-            TaskRunner runner = new TaskRunner();
-            runner.enqueue(retry);
-            runner.update(fixture.clock.clock());
-
-            assertEquals(TaskOutcome.SUCCESS, retry.getOutcome());
-            assertEquals(2.0, fixture.plant.getMeasurement(), 0.0);
-            assertRawEquals(-0.0, fixture.command.value);
-            assertEquals(1, fixture.command.getCalls);
-            assertEquals(1, fixture.command.setCalls);
-            assertEquals(1, fixture.source.sampleCalls);
-            assertEquals(2, fixture.normalOutput.stopCalls);
+        for (Class<?> nested : PositionCalibrationTasks.class.getDeclaredClasses()) {
+            assertFalse("obsolete post-reference stage remains public",
+                    nested.getSimpleName().equals("SearchAfterStep"));
+            for (Method method : nested.getDeclaredMethods()) {
+                assertFalse("obsolete resumeTargeting method remains public",
+                        method.getName().equals("resumeTargeting"));
+                assertFalse("obsolete holdAfterReference method remains public",
+                        method.getName().equals("holdAfterReference"));
+            }
         }
     }
 
     @Test
-    public void retainedTaskAliasesKeepEarlierFiniteReferenceAndHoldAnswers() {
+    public void retainedTaskAliasKeepsEarlierFiniteReferenceAnswer() {
         TaskFixture fixture = new TaskFixture();
         PositionCalibrationTasks.SearchReferenceStep retainedReference =
                 PositionCalibrationTasks.search(fixture.plant)
                         .withPower(0.2)
                         .until(fixture.cue);
-        PositionCalibrationTasks.SearchAfterStep acceptedReference =
+        PositionCalibrationTasks.SearchTimeoutStep acceptedReference =
                 retainedReference.establishReferenceAt(3.25);
 
         for (double invalid : nonFiniteValues()) {
@@ -116,36 +101,28 @@ public final class PositionReferenceValidationTest {
                     "plantPosition", "plant units", invalid);
         }
 
-        PositionCalibrationTasks.SearchTimeoutStep acceptedHold =
-                acceptedReference.holdAfterReference(4.5);
-        for (double invalid : nonFiniteValues()) {
-            assertFiniteDiagnostic(
-                    expectRuntime(() -> acceptedReference.holdAfterReference(invalid)),
-                    "PositionCalibrationTasks.holdAfterReference(...)",
-                    "plantTarget", "plant units", invalid);
-        }
-
         fixture.assertUntouched();
 
-        Task task = acceptedHold.failAfterSec(1.0).build();
+        Task task = acceptedReference.failAfterSec(1.0).build();
         TaskRunner runner = new TaskRunner();
         runner.enqueue(task);
         runner.update(fixture.clock.clock());
 
         assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
         assertRawEquals(3.25, fixture.plant.getMeasurement());
-        assertRawEquals(4.5, fixture.command.value);
+        assertRawEquals(5.0, fixture.command.value);
+        assertEquals(0, fixture.command.getCalls);
+        assertEquals(0, fixture.command.setCalls);
     }
 
     @Test
-    public void taskForwardsEveryFiniteReferenceAndHoldBoundaryExactly() {
+    public void taskForwardsEveryFiniteReferenceBoundaryWithoutCommandAccess() {
         for (double value : finiteBoundaries()) {
             TaskFixture fixture = new TaskFixture();
             Task task = PositionCalibrationTasks.search(fixture.plant)
                     .withPower(0.2)
                     .until(fixture.cue)
                     .establishReferenceAt(value)
-                    .holdAfterReference(value)
                     .failAfterSec(1.0)
                     .build();
             TaskRunner runner = new TaskRunner();
@@ -154,88 +131,10 @@ public final class PositionReferenceValidationTest {
 
             assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
             assertRawEquals(value, fixture.plant.getMeasurement());
-            assertRawEquals(value, fixture.command.value);
+            assertRawEquals(5.0, fixture.command.value);
+            assertEquals(0, fixture.command.getCalls);
+            assertEquals(0, fixture.command.setCalls);
         }
-    }
-
-    @Test
-    public void finiteOutOfRangeHoldsRetainNormalExactAndEquivalentTargetSemantics() {
-        RecordingPositionOutput exactOutput = new RecordingPositionOutput();
-        RecordingPowerOutput exactSearchOutput = new RecordingPowerOutput();
-        MutableScalarSource exactSource = new MutableScalarSource(0.0);
-        CountingTarget exactCommand = new CountingTarget(5.0);
-        PositionPlant exactPlant = Plants.fromOutputs()
-                .deviceManagedPosition(exactOutput, exactSource)
-                .searchPowerOutput(exactSearchOutput)
-                .nonPeriodic()
-                .bounded(0.0, 10.0)
-                .nativeUnits()
-                .needsReference("not homed")
-                .positionTolerance(0.0)
-                .targetFromResolver(PlantTargets.exact(exactCommand))
-                .build();
-        ManualLoopClock exactClock = new ManualLoopClock();
-        Task exactTask = PositionCalibrationTasks.search(exactPlant)
-                .withPower(0.2)
-                .until(BooleanSource.constant(true))
-                .establishReferenceAt(-1.0)
-                .holdAfterReference(11.0)
-                .failAfterSec(1.0)
-                .build();
-        TaskRunner exactRunner = new TaskRunner();
-        exactRunner.enqueue(exactTask);
-
-        exactRunner.update(exactClock.clock());
-        assertEquals(TaskOutcome.SUCCESS, exactTask.getOutcome());
-        assertEquals(-1.0, exactPlant.getMeasurement(), 0.0);
-        assertEquals(11.0, exactCommand.value, 0.0);
-        exactPlant.update(exactClock.clock());
-
-        assertEquals(11.0, exactPlant.getRequestedTarget(), 0.0);
-        assertEquals(10.0, exactPlant.getAppliedTarget(), 0.0);
-        assertEquals(PlantTargetStatus.Kind.CLAMPED_TO_RANGE,
-                exactPlant.getTargetStatus().kind());
-        assertEquals(11.0, exactOutput.commanded, 0.0);
-
-        RecordingPositionOutput equivalentOutput = new RecordingPositionOutput();
-        RecordingPowerOutput equivalentSearchOutput = new RecordingPowerOutput();
-        MutableScalarSource equivalentSource = new MutableScalarSource(350.0);
-        CountingTarget equivalentCommand = new CountingTarget(0.0);
-        PlantTargetResolver equivalentResolver = PlantTargets
-                .equivalentPositionsOf(equivalentCommand)
-                .nearestToMeasurement()
-                .whenUnavailable().reportUnavailable();
-        PositionPlant equivalentPlant = Plants.fromOutputs()
-                .deviceManagedPosition(equivalentOutput, equivalentSource)
-                .searchPowerOutput(equivalentSearchOutput)
-                .periodic(360.0)
-                .bounded(0.0, 720.0)
-                .nativeUnits()
-                .needsReference("not indexed")
-                .positionTolerance(0.0)
-                .targetFromResolver(equivalentResolver)
-                .build();
-        ManualLoopClock equivalentClock = new ManualLoopClock();
-        Task equivalentTask = PositionCalibrationTasks.search(equivalentPlant)
-                .withPower(0.2)
-                .until(BooleanSource.constant(true))
-                .establishReferenceAt(350.0)
-                .holdAfterReference(-10.0)
-                .failAfterSec(1.0)
-                .build();
-        TaskRunner equivalentRunner = new TaskRunner();
-        equivalentRunner.enqueue(equivalentTask);
-
-        equivalentRunner.update(equivalentClock.clock());
-        equivalentPlant.update(equivalentClock.clock());
-
-        assertEquals(TaskOutcome.SUCCESS, equivalentTask.getOutcome());
-        assertEquals(-10.0, equivalentCommand.value, 0.0);
-        assertEquals(350.0, equivalentPlant.getRequestedTarget(), 0.0);
-        assertEquals(350.0, equivalentPlant.getAppliedTarget(), 0.0);
-        assertEquals(PlantTargetStatus.Kind.ACCEPTED,
-                equivalentPlant.getTargetStatus().kind());
-        assertEquals(350.0, equivalentOutput.commanded, 0.0);
     }
 
     @Test
@@ -660,7 +559,7 @@ public final class PositionReferenceValidationTest {
     }
 
     @Test
-    public void periodicOverflowThroughTaskRunnerCancelsAndReleasesWithoutHoldWrite() {
+    public void periodicOverflowThroughTaskRunnerCancelsAndReleasesWithoutCommandWrite() {
         RecordingPositionOutput output = new RecordingPositionOutput();
         RecordingPowerOutput searchOutput = new RecordingPowerOutput();
         MutableScalarSource source = new MutableScalarSource(721.5);
@@ -683,7 +582,6 @@ public final class PositionReferenceValidationTest {
                 .withPower(0.2)
                 .until(BooleanSource.constant(true))
                 .establishReferenceAt(-Double.MAX_VALUE)
-                .holdAfterReference(0.0)
                 .failAfterSec(1.0)
                 .build();
         TaskRunner runner = new TaskRunner();

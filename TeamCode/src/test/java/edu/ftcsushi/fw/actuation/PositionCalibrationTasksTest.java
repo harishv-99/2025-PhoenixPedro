@@ -53,7 +53,6 @@ public final class PositionCalibrationTasksTest {
             Task retry = powerStep.withPower(0.25)
                     .until(cue)
                     .establishReferenceAt(0.0)
-                    .resumeTargeting()
                     .failAfterSec(1.0)
                     .build();
             assertTrue("building a retry must not reset its cue or touch its Plant",
@@ -92,7 +91,6 @@ public final class PositionCalibrationTasksTest {
         Task task = accepted
                 .until(new ScriptedCondition(events, false))
                 .establishReferenceAt(0.0)
-                .resumeTargeting()
                 .failAfterSec(1.0)
                 .build();
         task.start(new ManualLoopClock().clock());
@@ -116,7 +114,6 @@ public final class PositionCalibrationTasksTest {
                     .withPower(power)
                     .until(BooleanSource.constant(false))
                     .establishReferenceAt(0.0)
-                    .resumeTargeting()
                     .failAfterSec(1.0)
                     .build();
 
@@ -305,7 +302,7 @@ public final class PositionCalibrationTasksTest {
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 7.0);
         ScriptedCondition cue = new ScriptedCondition(events, false, false, true);
-        Task search = resumeSearch(plant, cue, 5.0);
+        Task search = searchTask(plant, cue, 5.0);
         TaskRunner runner = new TaskRunner();
         ManualLoopClock clock = new ManualLoopClock();
         runner.enqueue(search);
@@ -339,10 +336,10 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void initiallyTrueCueSkipsSearchPulseAndHoldIsVisibleToSameLoopNormalPhase() {
+    public void initiallyTrueCueSkipsSearchPulseAndPreservesCommandForSameLoopNormalPhase() {
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 9.0);
-        Task search = holdSearch(plant, new ScriptedCondition(events, true), 3.0, 2.0);
+        Task search = searchTask(plant, new ScriptedCondition(events, true), 2.0);
         TaskRunner runner = new TaskRunner();
         ManualLoopClock clock = new ManualLoopClock();
         runner.enqueue(search);
@@ -356,23 +353,48 @@ public final class PositionCalibrationTasksTest {
                 "cue.sample(true)",
                 "plant.reference.enter(0.0)",
                 "plant.reference.exit",
-                "command.set.enter(3.0)",
-                "command.set.exit",
                 "plant.end",
-                "plant.update.normal(3.0)"
+                "plant.update.normal(9.0)"
         ), events);
         assertEquals(0, plant.searchWriteCount);
         assertEquals(1, plant.updateCount);
         assertEquals(1, plant.normalWriteCount);
-        assertEquals(3.0, plant.command.get(), 0.0);
+        assertEquals(9.0, plant.command.get(), 0.0);
         assertEquals(TaskOutcome.SUCCESS, search.getOutcome());
+    }
+
+    @Test
+    public void searchDoesNotRequireOrTouchACommandTarget() {
+        List<String> events = new ArrayList<>();
+        LifecyclePlant plant = new LifecyclePlant(events, 0.0, false);
+        Task search = searchTask(plant, new ScriptedCondition(events, true), 2.0);
+        TaskRunner runner = new TaskRunner();
+        ManualLoopClock clock = new ManualLoopClock();
+        runner.enqueue(search);
+
+        runner.update(clock.clock());
+
+        assertEquals(Arrays.asList(
+                "cue.reset",
+                "plant.begin.enter(-0.2)",
+                "plant.begin.exit",
+                "cue.sample(true)",
+                "plant.reference.enter(0.0)",
+                "plant.reference.exit",
+                "plant.end"
+        ), events);
+        assertEquals(TaskOutcome.SUCCESS, search.getOutcome());
+        assertFalse(plant.hasCommandTarget());
+        assertEquals(1, plant.beginCount);
+        assertEquals(1, plant.endCount);
+        assertEquals(0, plant.updateCount);
     }
 
     @Test
     public void cueWinsAtExactTimeoutBoundary() {
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 4.0);
-        Task search = resumeSearch(plant, new ScriptedCondition(events, false, true), 1.0);
+        Task search = searchTask(plant, new ScriptedCondition(events, false, true), 1.0);
         TaskRunner runner = new TaskRunner();
         ManualLoopClock clock = new ManualLoopClock();
         runner.enqueue(search);
@@ -397,7 +419,7 @@ public final class PositionCalibrationTasksTest {
     public void exactTimeoutEndsBeforeOwnerPhaseAndPreservesCommand() {
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 8.0);
-        Task search = resumeSearch(plant, new ScriptedCondition(events, false, false), 1.0);
+        Task search = searchTask(plant, new ScriptedCondition(events, false, false), 1.0);
         TaskRunner runner = new TaskRunner();
         ManualLoopClock clock = new ManualLoopClock();
         runner.enqueue(search);
@@ -421,7 +443,7 @@ public final class PositionCalibrationTasksTest {
     public void cancellationEndsBeforeOwnerPhaseAndPreservesCommand() {
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 6.0);
-        Task search = resumeSearch(plant, new ScriptedCondition(events, false), 5.0);
+        Task search = searchTask(plant, new ScriptedCondition(events, false), 5.0);
         TaskRunner runner = new TaskRunner();
         ManualLoopClock clock = new ManualLoopClock();
         runner.enqueue(search);
@@ -450,7 +472,7 @@ public final class PositionCalibrationTasksTest {
         LifecyclePlant plant = new LifecyclePlant(events, 5.0);
         ManualLoopClock clock = new ManualLoopClock();
         TaskRunner runner = new TaskRunner();
-        Task first = resumeSearch(plant, new ScriptedCondition(events, false), 5.0);
+        Task first = searchTask(plant, new ScriptedCondition(events, false), 5.0);
         runner.enqueue(first);
         runOwnerCycle(runner, plant, clock.clock());
         assertTrue(runner.cancelCurrent());
@@ -459,7 +481,7 @@ public final class PositionCalibrationTasksTest {
         RuntimeException restart = expectRuntime(() -> first.start(clock.clock()));
         assertTrue(restart.getMessage().contains("single-use"));
 
-        Task fresh = resumeSearch(plant, new ScriptedCondition(events, true), 5.0);
+        Task fresh = searchTask(plant, new ScriptedCondition(events, true), 5.0);
         runner.enqueue(fresh);
         runOwnerCycle(runner, plant, clock.nextCycle(0.10));
 
@@ -477,7 +499,7 @@ public final class PositionCalibrationTasksTest {
         LifecyclePlant resetPlant = new LifecyclePlant(resetEvents, 0.0);
         ScriptedCondition resetCue = new ScriptedCondition(resetEvents, false);
         resetCue.resetFailure = resetFailure;
-        Task resetTask = resumeSearch(resetPlant, resetCue, 1.0);
+        Task resetTask = searchTask(resetPlant, resetCue, 1.0);
         TaskRunner resetRunner = new TaskRunner();
         resetRunner.enqueue(resetTask);
 
@@ -495,7 +517,7 @@ public final class PositionCalibrationTasksTest {
         List<String> beginEvents = new ArrayList<>();
         LifecyclePlant beginPlant = new LifecyclePlant(beginEvents, 0.0);
         beginPlant.beginFailure = beginFailure;
-        Task beginTask = resumeSearch(beginPlant, new ScriptedCondition(beginEvents, false), 1.0);
+        Task beginTask = searchTask(beginPlant, new ScriptedCondition(beginEvents, false), 1.0);
         TaskRunner beginRunner = new TaskRunner();
         beginRunner.enqueue(beginTask);
 
@@ -521,7 +543,7 @@ public final class PositionCalibrationTasksTest {
         LifecyclePlant plant = new LifecyclePlant(events, 0.0);
         ScriptedCondition cue = new ScriptedCondition(events, false);
         cue.sampleFailure = cueFailure;
-        Task search = resumeSearch(plant, cue, 1.0);
+        Task search = searchTask(plant, cue, 1.0);
         TaskRunner runner = new TaskRunner();
         runner.enqueue(search);
 
@@ -547,7 +569,7 @@ public final class PositionCalibrationTasksTest {
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 0.0);
         plant.referenceFailure = referenceFailure;
-        Task search = resumeSearch(plant, new ScriptedCondition(events, true), 1.0);
+        Task search = searchTask(plant, new ScriptedCondition(events, true), 1.0);
         TaskRunner runner = new TaskRunner();
         runner.enqueue(search);
 
@@ -569,45 +591,12 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void holdFailureReleasesSearchExactlyOnceAndPreservesOldCommand() {
-        RuntimeException holdFailure = new IllegalStateException("hold failed");
-        List<String> events = new ArrayList<>();
-        LifecyclePlant plant = new LifecyclePlant(events, 11.0);
-        plant.command.setFailure = holdFailure;
-        plant.command.mutateBeforeSetFailure = true;
-        Task search = holdSearch(plant, new ScriptedCondition(events, true), 2.0, 1.0);
-        TaskRunner runner = new TaskRunner();
-        runner.enqueue(search);
-
-        RuntimeException observed = expectRuntime(
-                () -> runner.update(new ManualLoopClock().clock()));
-
-        assertSame(holdFailure, observed);
-        assertEquals(Arrays.asList(
-                "cue.reset",
-                "plant.begin.enter(-0.2)",
-                "plant.begin.exit",
-                "cue.sample(true)",
-                "plant.reference.enter(0.0)",
-                "plant.reference.exit",
-                "command.set.enter(2.0)",
-                "command.set.enter(11.0)",
-                "command.set.exit",
-                "plant.end"
-        ), events);
-        assertEquals(11.0, plant.command.get(), 0.0);
-        assertEquals(1, plant.endCount);
-        assertFalse(plant.searchActive);
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
-    }
-
-    @Test
     public void endFailureLeavesSearchTerminalAndCannotStartSequenceContinuation() {
         RuntimeException endFailure = new IllegalStateException("end failed");
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 0.0);
         plant.endFailure = endFailure;
-        Task search = resumeSearch(plant, new ScriptedCondition(events, true), 1.0);
+        Task search = searchTask(plant, new ScriptedCondition(events, true), 1.0);
         AtomicInteger continuationStarts = new AtomicInteger();
         Task sequence = Tasks.sequence(search, Tasks.runOnce(continuationStarts::incrementAndGet));
         TaskRunner runner = new TaskRunner();
@@ -636,7 +625,7 @@ public final class PositionCalibrationTasksTest {
         plant.endFailure = endFailure;
         ScriptedCondition cue = new ScriptedCondition(events, false);
         cue.sampleFailure = cueFailure;
-        Task search = resumeSearch(plant, cue, 1.0);
+        Task search = searchTask(plant, cue, 1.0);
         TaskRunner runner = new TaskRunner();
         runner.enqueue(search);
 
@@ -656,7 +645,7 @@ public final class PositionCalibrationTasksTest {
         LifecyclePlant plant = new LifecyclePlant(events, 0.0);
         ScriptedCondition cue = new ScriptedCondition(events, false);
         TaskRunner runner = new TaskRunner();
-        Task search = resumeSearch(plant, cue, 1.0);
+        Task search = searchTask(plant, cue, 1.0);
         plant.onBegin = runner::cancelCurrent;
         runner.enqueue(search);
         ManualLoopClock clock = new ManualLoopClock();
@@ -684,7 +673,7 @@ public final class PositionCalibrationTasksTest {
         List<String> events = new ArrayList<>();
         LifecyclePlant plant = new LifecyclePlant(events, 0.0);
         TaskRunner runner = new TaskRunner();
-        Task search = resumeSearch(plant, new ScriptedCondition(events, true), 1.0);
+        Task search = searchTask(plant, new ScriptedCondition(events, true), 1.0);
         plant.onReference = runner::cancelCurrent;
         runner.enqueue(search);
         ManualLoopClock clock = new ManualLoopClock();
@@ -709,48 +698,14 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void reentrantCancellationDuringHoldRestoresCommandAndEndsOnce() {
-        List<String> events = new ArrayList<>();
-        LifecyclePlant plant = new LifecyclePlant(events, 1.0);
-        TaskRunner runner = new TaskRunner();
-        Task search = holdSearch(plant, new ScriptedCondition(events, true), 2.0, 1.0);
-        plant.command.onSet = runner::cancelCurrent;
-        runner.enqueue(search);
-        ManualLoopClock clock = new ManualLoopClock();
-
-        runner.update(clock.clock());
-        plant.update(clock.clock());
-
-        assertEquals(Arrays.asList(
-                "cue.reset",
-                "plant.begin.enter(-0.2)",
-                "plant.begin.exit",
-                "cue.sample(true)",
-                "plant.reference.enter(0.0)",
-                "plant.reference.exit",
-                "command.set.enter(2.0)",
-                "plant.end",
-                "command.set.exit",
-                "command.set.enter(1.0)",
-                "command.set.exit",
-                "plant.update.normal(1.0)"
-        ), events);
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
-        assertEquals(1.0, plant.command.get(), 0.0);
-        assertEquals(1, plant.endCount);
-        assertFalse(plant.searchActive);
-        assertTrue(runner.isIdle());
-    }
-
-    @Test
     public void overlappingOutputSearchCannotDisturbOrReleaseFirstOwner() {
         RecordingPositionOutput position = new RecordingPositionOutput();
         RecordingPowerOutput searchOutput = new RecordingPowerOutput();
         ScalarTarget command = ScalarTarget.create(5.0);
         PositionPlant plant = outputPositionPlant(
                 position, searchOutput, clock -> 0.0, command);
-        Task first = resumeSearch(plant, BooleanSource.constant(false), 5.0);
-        Task second = resumeSearch(plant, BooleanSource.constant(false), 5.0);
+        Task first = searchTask(plant, BooleanSource.constant(false), 5.0);
+        Task second = searchTask(plant, BooleanSource.constant(false), 5.0);
         TaskRunner firstRunner = new TaskRunner();
         TaskRunner secondRunner = new TaskRunner();
         ManualLoopClock clock = new ManualLoopClock();
@@ -793,7 +748,7 @@ public final class PositionCalibrationTasksTest {
         searchOutput.stopFailure = stopFailure;
         PositionPlant plant = outputPositionPlant(
                 position, searchOutput, clock -> 0.0, ScalarTarget.create(6.0));
-        Task search = resumeSearch(plant, BooleanSource.constant(false), 5.0);
+        Task search = searchTask(plant, BooleanSource.constant(false), 5.0);
         TaskRunner runner = new TaskRunner();
         ManualLoopClock clock = new ManualLoopClock();
         runner.enqueue(search);
@@ -846,7 +801,7 @@ public final class PositionCalibrationTasksTest {
 
         nativeMeasurement.value = 1081.5;
         LoopClock referenceClock = clock.nextCycle(0.10);
-        Task search = resumeSearch(plant, BooleanSource.constant(true), 1.0);
+        Task search = searchTask(plant, BooleanSource.constant(true), 1.0);
         TaskRunner runner = new TaskRunner();
         runner.enqueue(search);
         runner.update(referenceClock);
@@ -868,25 +823,11 @@ public final class PositionCalibrationTasksTest {
                 plant.updateCount);
     }
 
-    private static Task resumeSearch(PositionPlant plant, BooleanSource cue, double timeoutSec) {
+    private static Task searchTask(PositionPlant plant, BooleanSource cue, double timeoutSec) {
         return PositionCalibrationTasks.search(plant)
                 .withPower(-0.2)
                 .until(cue)
                 .establishReferenceAt(0.0)
-                .resumeTargeting()
-                .failAfterSec(timeoutSec)
-                .build();
-    }
-
-    private static Task holdSearch(PositionPlant plant,
-                                   BooleanSource cue,
-                                   double holdTarget,
-                                   double timeoutSec) {
-        return PositionCalibrationTasks.search(plant)
-                .withPower(-0.2)
-                .until(cue)
-                .establishReferenceAt(0.0)
-                .holdAfterReference(holdTarget)
                 .failAfterSec(timeoutSec)
                 .build();
     }
@@ -1033,6 +974,7 @@ public final class PositionCalibrationTasksTest {
     private static final class LifecyclePlant implements PositionPlant {
         private final List<String> events;
         private final RecordingTarget command;
+        private final boolean hasCommandTarget;
         private boolean referenced;
         private boolean searchActive;
         private double searchPower;
@@ -1050,8 +992,15 @@ public final class PositionCalibrationTasksTest {
         private Runnable onReference;
 
         private LifecyclePlant(List<String> events, double initialCommand) {
+            this(events, initialCommand, true);
+        }
+
+        private LifecyclePlant(List<String> events,
+                               double initialCommand,
+                               boolean hasCommandTarget) {
             this.events = events;
             this.command = new RecordingTarget(events, initialCommand);
+            this.hasCommandTarget = hasCommandTarget;
             this.appliedTarget = initialCommand;
         }
 
@@ -1087,11 +1036,14 @@ public final class PositionCalibrationTasksTest {
 
         @Override
         public boolean hasCommandTarget() {
-            return true;
+            return hasCommandTarget;
         }
 
         @Override
         public ScalarTarget commandTarget() {
+            if (!hasCommandTarget) {
+                throw new AssertionError("calibration search must not access commandTarget()");
+            }
             return command;
         }
 
@@ -1169,9 +1121,6 @@ public final class PositionCalibrationTasksTest {
     private static final class RecordingTarget implements ScalarTarget {
         private final List<String> events;
         private double value;
-        private RuntimeException setFailure;
-        private boolean mutateBeforeSetFailure;
-        private Runnable onSet;
 
         private RecordingTarget(List<String> events, double value) {
             this.events = events;
@@ -1181,11 +1130,6 @@ public final class PositionCalibrationTasksTest {
         @Override
         public void set(double value) {
             events.add("command.set.enter(" + value + ")");
-            if (onSet != null) onSet.run();
-            RuntimeException failure = setFailure;
-            setFailure = null;
-            if (failure != null && mutateBeforeSetFailure) this.value = value;
-            if (failure != null) throw failure;
             this.value = value;
             events.add("command.set.exit");
         }

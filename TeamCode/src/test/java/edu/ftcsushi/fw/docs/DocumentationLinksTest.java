@@ -76,6 +76,26 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void currentGuidesDoNotTeachRemovedCalibrationCommandHandoffApis()
+            throws IOException {
+        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
+        List<Path> currentGuides = new ArrayList<Path>();
+        collectMarkdownFiles(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/fw/docs"), currentGuides);
+
+        for (Path guide : currentGuides) {
+            String text = readUtf8(guide);
+            assertTrue(guide + " still teaches removed SearchAfterStep",
+                    !text.contains("SearchAfterStep"));
+            assertTrue(guide + " still teaches removed resumeTargeting()",
+                    !text.contains("resumeTargeting"));
+            assertTrue(guide + " still teaches removed holdAfterReference(...) ",
+                    !text.contains("holdAfterReference"));
+        }
+    }
+
+    @Test
     public void studentLearningJavaExcerptsDeclareAndMatchTheirSourceTruth()
             throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
@@ -831,15 +851,17 @@ public final class DocumentationLinksTest {
                                 "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
                                         + "edu/ftcsushi/robots/examples/basicmechanisms/"
                                         + "BasicClawControls.java -->"));
-        assertTrue("Stage 1 must teach the actual Plant, sensor, move, and homing APIs",
+        assertTrue("Stage 1 must teach the actual Plant, sensor, semantic move, and homing APIs",
                 interfaceStage.contains("[`FtcSensors.digitalLow(...)`](<")
                         && interfaceStage.contains("[`FtcActuators.plant(...)`](<")
                         && interfaceStage.contains("[`PositionCalibrationTasks.search(...)`](<")
-                        && interfaceStage.contains("[`ScalarTasks.set(...)`](<")
+                        && interfaceStage.contains("[`Tasks.waitUntil(...)`](<")
                         && interfaceStage.contains(".needsReference(")
-                        && interfaceStage.contains(".untilReachedBy(lift)")
+                        && interfaceStage.contains(
+                                "Tasks.waitUntil(selectedRequestReached, moveTimeoutSec)")
                         && interfaceStage.contains(".failAfterSec(homingTimeoutSec)")
-                        && interfaceStage.contains("Tasks.sequenceOnCompletion("));
+                        && interfaceStage.contains("Tasks.runOnce(() -> setHeight(")
+                        && interfaceStage.contains("Tasks.sequence("));
 
         int testStageStart = anchor.indexOf(requiredStageHeadings[1]);
         int testStageEnd = anchor.indexOf(requiredStageHeadings[2], testStageStart);

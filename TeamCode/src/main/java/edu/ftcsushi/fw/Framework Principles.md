@@ -121,6 +121,15 @@ both target and Plant because the target receives the request while the Plant su
 feedback and provenance. A read-only or planned realization requires no command: retain its Plant
 and do not manufacture a command target that the graph does not own.
 
+When a capability's public request has named semantic meaning such as `Height`, `Mode`, or a
+semantic pose, one mechanism owner maps that value forward to the numeric Plant command. Every
+direct control and Task path calls that same owner setter; no raw numeric Task may bypass it, and
+status must not reverse-infer the semantic value from a double. Publish the semantic request only
+after its command write succeeds. If the mechanism retains or publishes both representations, keep
+them together in one immutable semantic/numeric request snapshot, and invalidate prior arrival
+evidence synchronously. Use `ScalarTasks` directly only when the scalar is the complete capability
+request rather than one representation of richer named intent.
+
 ### Boundary ownership
 
 - The reusable framework core is the part of `edu.ftcsushi.fw` outside the explicit
@@ -260,10 +269,14 @@ command or planned intent
 - Direct-power Plants own the normalized target range `[-1, +1]`. A static guard fallback and every
   final guarded target must be finite and inside the declared Plant range.
 - A Task changes a request; the mechanism's ordinary output phase updates the Plant. A calibration
-  Task may stage a calibration mode, and an output queue may propose an overlay value, but the
-  mechanism remains the one Plant heartbeat and final writer.
-- Open-loop Plants may hold a command but cannot claim sensor-based arrival. A feedback move names
-  the exact graph-owned command target it writes and the feedback Plant that proves completion.
+  Task may stage a temporary command-preserving calibration mode, and an output queue may propose
+  an overlay value, but the mechanism remains the one Plant heartbeat and final writer. Any
+  post-reference semantic request goes through that mechanism's normal setter after exact search
+  success.
+- Open-loop Plants may hold a command but cannot claim sensor-based arrival. A direct scalar
+  feedback move names the exact graph-owned command target it writes and the feedback Plant that
+  proves completion; a named semantic move instead calls its mechanism setter and waits on the
+  owner's coherent request/arrival status.
 - `Plant.stop()` is the one final Plant lifecycle operation. It latches the Plant terminal, invokes
   the realization's natural stop, and makes later updates inert before resolver, plan, feedback,
   guard, controller, or hardware work. It does not rewrite the command target or reset the resolver

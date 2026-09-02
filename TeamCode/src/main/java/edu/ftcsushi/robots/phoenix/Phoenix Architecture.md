@@ -364,9 +364,12 @@ This keeps the conceptual layers without making a student assemble or navigate a
 active control-mode slice before hardware effects, builds its private Plants, and exposes only the
 `PhoenixCapabilities.Scoring` vocabulary.
 
-Feedback-aware Tasks name both command target and Plant because they write the target while the
-Plant supplies completion feedback/provenance. Ordinary exact mechanisms retain only their Plant
-and use its stable `commandTarget()` when constructing a command.
+Direct scalar feedback Tasks name both command target and Plant because they write the complete
+numeric request while the Plant supplies completion feedback/provenance. Ordinary exact mechanisms
+retain only their Plant and use its stable `commandTarget()` when constructing such a command. A
+mechanism with named semantic intent instead routes direct behavior and Tasks through one owner
+setter that writes the mapped numeric command before publishing the semantic value. If it retains
+or publishes both request forms, it keeps them paired in one immutable snapshot.
 
 ## Dedicated Panels tuning
 

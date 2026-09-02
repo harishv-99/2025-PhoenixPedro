@@ -155,12 +155,12 @@ Put the stable robot request in the base when tasks should be able to command a 
 is a construction-time excerpt from the mechanism that owns `arm`:
 
 ```java
-private final ScalarTarget armCommand = ScalarTarget.create(STOWED);
+private final ScalarTarget armCommand = ScalarTarget.create(ARM_IDLE_TICKS);
 private final PositionPlant arm;
 
 // In the ArmMechanism constructor:
 PlantTargetResolver finalArmTarget = PlantTargets.overlay(armCommand)
-        .add("autoStow", autoStowRequested, STOWED)
+        .add("autoRetract", autoRetractRequested, ARM_IDLE_TICKS)
         .add("manual", manualActive, manualTarget)
         .build();
 
@@ -178,16 +178,18 @@ this.arm = FtcActuators.plant(hardwareMap)
 ```
 
 ```java
-Task raiseArm = ScalarTasks.set(armCommand, HIGH)
+Task moveArmToTicks = ScalarTasks.set(armCommand, ARM_RAISED_TICKS)
         .untilReachedBy(arm)
-        .cancelTo(STOWED)
+        .cancelTo(ARM_IDLE_TICKS)
         .build();
 ```
 
 This writes the graph-owned `armCommand`, then waits until that command path wins and the Plant is
-physically at the target selected from it. If `autoStow` or `manual` wins the overlay—even with the
+physically at the target selected from it. If `autoRetract` or `manual` wins the overlay—even with the
 same numeric value—the task does not complete from the wrong behavior path. If the active move is
-cancelled, it changes `armCommand` to the explicit Plant-unit `STOWED` request once.
+cancelled, it changes `armCommand` to the explicit Plant-unit `ARM_IDLE_TICKS` request once. This
+example deliberately exposes a numeric Plant-unit request; an owner exposing named arm poses would
+route the Task through its semantic setter instead.
 
 The resulting vocabulary stays consistent across every Plant:
 
@@ -292,43 +294,52 @@ Here the target identifies the persistent request being written, while the Plant
 resolution provenance and physical feedback used for completion. A target may feed more than one
 Plant, so the observer cannot be inferred from the target.
 
+This direct `ScalarTasks` path assumes the scalar is the complete capability request. If a public
+capability names `Height`, `Mode`, or another semantic value, its one mechanism setter maps first,
+writes the Plant command, then publishes the semantic request and invalidates prior arrival evidence.
+If the mechanism retains or publishes both representations, it owns one paired snapshot of the
+semantic value and its forward-mapped numeric command. Direct controls and Tasks call that setter;
+they do not write the raw command or reconstruct the semantic value from a double. A Task can
+sequence `runOnce(() -> setHeight(selected))` with a bounded wait on the mechanism's coherent
+status.
+
 ## Exact targets
 
-For an ordinary exact Plant, create the command inline in the owning mechanism constructor and
-retrieve it from the Plant when a semantic method or Task writes it:
+For an ordinary exact Plant whose numeric position is itself the public request, create the command
+inline in the owning mechanism constructor and retrieve it when a numeric method or Task writes it:
 
 ```java
-private final PositionPlant lift;
+private final PositionPlant testAxis;
 
-// In the LiftMechanism constructor:
-this.lift = FtcActuators.plant(hardwareMap)
-        .motor("lift", Direction.FORWARD)
+// In the numeric test-axis owner constructor:
+this.testAxis = FtcActuators.plant(hardwareMap)
+        .motor("testAxis", Direction.FORWARD)
         .position()
         .deviceManaged()
         .nonPeriodic()
             .bounded(0.0, 4200.0)
             .nativeUnits()
-            .needsReference("lift not homed")
+            .needsReference("test axis not homed")
         .positionTolerance(20.0)
         .targetFromNewCommand(0.0)
         .build();
 
-// In semantic command/update methods on LiftMechanism:
-void selectBasket() {
-    lift.commandTarget().set(BASKET_TICKS);
+// The public request is explicitly numeric ticks.
+void setPositionTicks(double positionTicks) {
+    testAxis.commandTarget().set(positionTicks);
 }
 
 void update(LoopClock clock) {
-    lift.update(clock);
+    testAxis.update(clock);
 }
 ```
 
 The same Plant-owned target is also the Task entry point:
 
 ```java
-Task raiseLift = ScalarTasks.set(lift.commandTarget(), BASKET_TICKS)
-        .untilReachedBy(lift)
-        .cancelTo(0.0)
+Task moveAxis = ScalarTasks.set(testAxis.commandTarget(), GOAL_TICKS)
+        .untilReachedBy(testAxis)
+        .cancelTo(IDLE_TICKS)
         .build();
 ```
 
@@ -797,11 +808,10 @@ publish an invalid target range until it becomes meaningful. A turret or lift se
 homing/indexing tasks and semantic goals.
 
 ```java
-Task homeLift = PositionCalibrationTasks.search(lift)
+Task findBottomReference = PositionCalibrationTasks.search(lift)
         .withPower(-0.20)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
-        .holdAfterReference(0.0)
         .failAfterSec(3.0)
         .build();
 ```
@@ -811,20 +821,28 @@ rejects `NaN`, infinities, and overshoot at `.withPower(...)` instead of clampin
 structural check does not select a safe magnitude, direction, cue, or mechanical setup—the lift
 service still owns those robot-specific decisions.
 
-The reference and post-success hold are separate plant-unit answers and must also be finite. The
-recipe rejects `NaN` or infinity at each answer without clamping. A reference is a coordinate anchor
-and need not lie inside the Plant's target range. A finite hold is a logical command, so the normal
-resolver, range, overlays, and target guards may still transform or clamp it; choose a deliberately
-safe in-range hold when exact predictable holding is intended.
+The reference is a plant-unit answer and must also be finite. The recipe rejects `NaN` or infinity
+without clamping. A reference is a coordinate anchor and need not lie inside the Plant's target
+range.
 
 The Task runner advances this recipe before the mechanism's downstream update. The search Task
-owns the cue, reference, timeout, and handoff decisions, but it never calls `lift.update(clock)`;
-the lift mechanism remains the sole Plant heartbeat owner. `holdAfterReference(0.0)` changes the
-Plant's graph-owned command before that same downstream Plant phase, which still evaluates the
-complete resolver and may select an enabled overlay instead. Use `resumeTargeting()` when success
-should preserve the existing persistent command and resume the unchanged resolver. Timeout and
-active cancellation also preserve that command while requesting a temporary-output stop and
-releasing the search.
+owns the cue, reference, timeout, temporary-output stop, and release, but it never calls
+`lift.update(clock)` or changes the persistent command; the lift mechanism remains the sole Plant
+heartbeat owner. Success, timeout, and active cancellation all preserve the command and unchanged
+resolver.
+
+If this lift exposes named heights, its owner adds post-success policy through the same semantic
+setter used everywhere else:
+
+```java
+return Tasks.sequence(
+        findBottomReference,
+        Tasks.runOnce(() -> setHeight(Height.STOWED)));
+```
+
+Exact success starts that setter before the same downstream Plant phase. Timeout and cancellation
+skip it and retain the prior—or any during-search superseding—paired request. There is no initial
+STOWED write because temporary search ownership already suspends normal target realization.
 
 That calibration stop is an internal, nonterminal output handoff, not public `Plant.stop()`.
 Calibration can therefore resume normal targeting after it releases search ownership without

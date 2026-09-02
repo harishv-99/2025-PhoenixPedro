@@ -106,7 +106,7 @@ The subsystem:
 
 - receives `HardwareMap` and a robot-owned data-only config, copies and validates the config before
   its own hardware effects, and constructs its private Plant
-- owns the state (`desiredPose`)
+- owns one paired semantic/numeric pose request
 - exposes semantic commands and applies the target each loop
 
 The composition root constructs and immediately registers the owner, not the raw Plant. It then
@@ -124,10 +124,21 @@ is robot code, not a framework type):
 
 ```java
 final class WristSubsystem implements RobotProgram.Output {
+    private static final class PoseRequest {
+        private final WristPose pose;
+        private final double position;
+
+        private PoseRequest(WristPose pose, double position) {
+            this.pose = pose;
+            this.position = position;
+        }
+    }
+
     private final Plant wrist;
     private final double stowedPosition;
     private final double intakePosition;
     private final double scorePosition;
+    private PoseRequest request;
 
     WristSubsystem(HardwareMap hardwareMap, WristConfig config) {
         WristConfig snapshot = Objects.requireNonNull(config, "config").copy();
@@ -143,10 +154,14 @@ final class WristSubsystem implements RobotProgram.Output {
                     .nativeUnits()
                 .targetFromNewCommand(snapshot.stowedPosition)
                 .build();
+        this.request = new PoseRequest(WristPose.STOW, stowedPosition);
     }
 
     void selectPose(WristPose pose) {
-        wrist.commandTarget().set(targetFor(pose));
+        WristPose selected = Objects.requireNonNull(pose, "pose");
+        PoseRequest next = new PoseRequest(selected, targetFor(selected));
+        wrist.commandTarget().set(next.position);
+        request = next;
     }
 
     @Override
@@ -160,7 +175,7 @@ final class WristSubsystem implements RobotProgram.Output {
     }
 
     private double targetFor(WristPose pose) {
-        switch (Objects.requireNonNull(pose, "pose")) {
+        switch (pose) {
             case STOW:
                 return stowedPosition;
             case INTAKE:
@@ -173,6 +188,10 @@ final class WristSubsystem implements RobotProgram.Output {
     }
 }
 ```
+
+The setter maps first, writes the numeric command, then publishes the paired request. Any status
+method would read `request.pose` and `request.position` from that one snapshot; Tasks call the same
+setter instead of bypassing it with a raw scalar write.
 
 ---
 

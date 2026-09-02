@@ -1043,11 +1043,10 @@ of producing unsafe requested targets.
 Use `PositionCalibrationTasks` to establish the reference:
 
 ```java
-Task homeLift = PositionCalibrationTasks.search(lift)
+Task findBottomReference = PositionCalibrationTasks.search(lift)
         .withPower(-0.20)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
-        .holdAfterReference(0.0)
         .failAfterSec(3.0)
         .build();
 ```
@@ -1068,12 +1067,6 @@ recipe rejects `NaN` or infinity at that answer before starting or changing its 
 the direct `PositionPlant` seam repeats the check before sampling feedback or changing reference state.
 This coordinate anchor is not required to lie inside `targetRange()` and is never clamped into it.
 
-`holdAfterReference(value)` separately requires a finite plant-unit logical command. It rejects a
-non-finite answer immediately without overwriting an earlier accepted answer or command. A finite
-hold remains a normal command request: the complete resolver can overlay or transform it, and the
-Plant range and target guards can clamp or otherwise protect it. Select a deliberately safe,
-in-range hold value when exact predictable holding is intended.
-
 This numeric contract is structural, not robot-specific safety approval. The mechanism owner must
 still select a safe magnitude and direction, verify the cue and timeout/cancellation paths, provide
 any required external interlock or physical safeguard, and confirm that the mechanism is free to
@@ -1087,14 +1080,19 @@ owning mechanism's one downstream Plant update submits the staged raw/open-loop 
 search remains active. If the cue is already true, the Task establishes the reference and releases
 the search before that Plant phase, so no search-power command is submitted.
 
-On success, `holdAfterReference(value)` changes the graph-owned command before releasing the search;
-the same downstream Plant phase then evaluates the complete normal resolver. Use
-`resumeTargeting()` to preserve the existing persistent command and resume that unchanged resolver.
-Timeout and active cancellation make the same preserve-command handoff. Every release clears search
-ownership and requests an immediate output stop, so a later update cannot refresh search power even
-if that stop throws. For a normally returning FTC motor-power stop, zero remains in raw/open-loop
-mode; the next device-managed position command reasserts `RUN_TO_POSITION`. Calibration establishes
-the Plant reference and never resets the encoder as a hidden side effect.
+Success, timeout, and active cancellation all preserve the existing persistent command and final
+resolver. Every release clears search ownership and requests an immediate output stop, so a later
+update cannot refresh search power even if that stop throws. For a normally returning FTC
+motor-power stop, zero remains in raw/open-loop mode; the next device-managed position command
+reasserts `RUN_TO_POSITION`. Calibration establishes the Plant reference and never resets the
+encoder as a hidden side effect.
+
+Post-reference policy belongs to the mechanism that owns the request. For example, a named-height
+lift can put the search first in `Tasks.sequence(...)`, then call its ordinary
+`setHeight(STOWED)` setter in a `Tasks.runOnce(...)` continuation. Exact success starts that setter
+before the same downstream Plant phase; timeout and cancellation skip it and retain the prior or
+latest coherent semantic/numeric request. Do not preselect STOWED merely to enter search: temporary
+search ownership already suspends normal target realization.
 
 The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 

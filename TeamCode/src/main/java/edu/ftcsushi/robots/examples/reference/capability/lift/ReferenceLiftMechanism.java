@@ -6,7 +6,6 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
-import edu.ftcsushi.fw.actuation.ScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -18,6 +17,17 @@ import edu.ftcsushi.fw.task.Tasks;
 
 /** Owns a bounded lift Plant and exposes reference-aware semantic commands. */
 public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram.Output {
+    /** One owner-published semantic request and its forward-mapped Plant command. */
+    private static final class RequestSnapshot {
+        private final Height height;
+        private final double positionIn;
+
+        private RequestSnapshot(Height height, double positionIn) {
+            this.height = height;
+            this.positionIn = positionIn;
+        }
+    }
+
     /** Data-only lift wiring, coordinate, and homing recipe. */
     public static final class Config {
         public String motorName;
@@ -65,7 +75,7 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     private final double homingPower;
     private final double homingTimeoutSec;
     private final double moveTimeoutSec;
-    private Height requestedHeight = Height.STOWED;
+    private RequestSnapshot request;
     private Status lastStatus;
 
     /** Constructs the lift after validating every retained configuration field. */
@@ -92,27 +102,37 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
         homingPower = c.homingPower;
         homingTimeoutSec = c.homingTimeoutSec;
         moveTimeoutSec = c.moveTimeoutSec;
+        request = requestFor(Height.STOWED);
         lastStatus = new Status(
-                Height.STOWED, stowedHeightIn, Double.NaN, false, false);
+                request.height, request.positionIn, Double.NaN, false, false);
     }
 
     @Override
     public void setHeight(Height height) {
-        requestedHeight = Objects.requireNonNull(height, "height");
-        lift.commandTarget().set(positionFor(height));
+        RequestSnapshot next = requestFor(height);
+
+        // Publish no semantic request unless its matching numeric command was accepted.
+        lift.commandTarget().set(next.positionIn);
+        request = next;
+        lastStatus = new Status(
+                next.height,
+                next.positionIn,
+                lastStatus.measuredPositionIn,
+                lastStatus.referenced,
+                false);
     }
 
     @Override
     public Task moveTo(Height height) {
         Height selectedHeight = Objects.requireNonNull(height, "height");
-        double selectedPositionIn = positionFor(selectedHeight);
+        BooleanSource selectedRequestReached = BooleanSource.of(() -> {
+            Status snapshot = status();
+            return snapshot.requestedHeight == selectedHeight && snapshot.atTarget;
+        });
+
         return Tasks.sequence(
-                Tasks.runOnce(() -> requestedHeight = selectedHeight),
-                ScalarTasks.set(lift.commandTarget(), selectedPositionIn)
-                        .untilReachedBy(lift)
-                        .leaveTargetOnCancel()
-                        .timeout(moveTimeoutSec)
-                        .build());
+                Tasks.runOnce(() -> setHeight(selectedHeight)),
+                Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
     }
 
     @Override
@@ -121,14 +141,10 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
                 .withPower(homingPower)
                 .until(bottomSwitch)
                 .establishReferenceAt(0.0)
-                .holdAfterReference(stowedHeightIn)
                 .failAfterSec(homingTimeoutSec)
                 .build();
-        return Tasks.sequenceOnCompletion(
-                Tasks.runOnce(() -> setHeight(Height.STOWED)),
+        return Tasks.sequence(
                 search,
-                // Repair after any natural terminal search outcome, but never after direct
-                // cancellation of the enclosing home Task.
                 Tasks.runOnce(() -> setHeight(Height.STOWED)));
     }
 
@@ -140,9 +156,10 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     @Override
     public void update(LoopClock clock) {
         lift.update(clock);
+        RequestSnapshot current = request;
         lastStatus = new Status(
-                requestedHeight,
-                lift.commandTarget().get(),
+                current.height,
+                current.positionIn,
                 lift.getMeasurement(),
                 lift.isReferenced(),
                 lift.atTarget());
@@ -150,7 +167,22 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
 
     @Override
     public void stop() {
-        lift.stop();
+        try {
+            lift.stop();
+        } finally {
+            RequestSnapshot current = request;
+            lastStatus = new Status(
+                    current.height,
+                    current.positionIn,
+                    lastStatus.measuredPositionIn,
+                    lastStatus.referenced,
+                    false);
+        }
+    }
+
+    private RequestSnapshot requestFor(Height height) {
+        Height required = Objects.requireNonNull(height, "height");
+        return new RequestSnapshot(required, positionFor(required));
     }
 
     private double positionFor(Height height) {

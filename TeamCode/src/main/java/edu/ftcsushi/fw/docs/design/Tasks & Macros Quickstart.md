@@ -246,13 +246,10 @@ lifecycle call; a newly started positive-duration child is not updated again by 
 Use `sequenceOnCompletion(...)` only when a later recovery, takeover, or repair step intentionally
 follows a valid natural abnormal result:
 
-Assume `search` below is the mechanism's already-built reference-search Task:
+Assume `boundedPrePark` owns an explicit hard budget and `park` is the required takeover attempt:
 
 ```java
-Task homeAndRestoreRequest = Tasks.sequenceOnCompletion(
-        search,
-        Tasks.runOnce(() -> lift.setHeight(BasicLift.Height.STOWED))
-);
+Task attemptParkAfterBoundedWork = Tasks.sequenceOnCompletion(boundedPrePark, park);
 ```
 
 This form runs later children after `SUCCESS`, `TIMEOUT`, natural `CANCELLED`, or `UNKNOWN`, then
@@ -453,33 +450,54 @@ shared, owned by target-only policy, or useful while assembling a composed targe
 target is the Plant's complete exact graph, bind it through
 `targetFromResolver(PlantTargets.exact(target))`.
 
+This direct path is for a scalar-complete request: the number itself is the public meaning. If a
+capability instead names intent with `Height`, `Mode`, or another semantic value, its mechanism
+maps that value forward, writes the numeric command, and then publishes the semantic request through
+one setter. If status retains both forms, it publishes them as one paired snapshot. Direct methods
+and Tasks call that setter; they do not use raw `ScalarTasks` to change the number behind the owner's
+status.
+
 #### Calibration-search handoff
 
 `PositionCalibrationTasks.search(positionPlant)` is a narrow Task recipe for homing or indexing.
 It acquires and releases the temporary search mode, samples the cue, establishes the reference, and
-selects the success handoff; it never updates the Plant. In an ordinary program, the private runner
-phase comes before the registered mechanism output, which advances its private Plants once. A
-custom host must preserve that same Task-before-mechanism order explicitly.
+requests the temporary output stop; it never updates the Plant or reads or writes its persistent
+command. In an ordinary program, the private runner phase comes before the registered mechanism
+output, which advances its private Plants once. A custom host must preserve that same
+Task-before-mechanism order explicitly.
 
 `.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range and
 rejects `NaN`, infinities, and overshoot at that builder step. It does not clamp a bad recipe into a
 different command. This validates the number's shape only; robot code must still choose a safe
 magnitude and direction and verify the cue and mechanism setup.
 
-The plant-unit answer to `establishReferenceAt(...)` and the separate command supplied to
-`holdAfterReference(...)` must also be finite. Each rejects `NaN` or infinity at its builder step
-without clamping or overwriting an earlier accepted answer. A reference defines the coordinate map
-and need not lie inside the Plant's target range; it is not a target command.
+The plant-unit answer to `establishReferenceAt(...)` must also be finite. It rejects `NaN` or
+infinity at that builder step without clamping or overwriting an earlier accepted answer. A
+reference defines the coordinate map and need not lie inside the Plant's target range; it is not a
+target command.
 
-After `establishReferenceAt(...)`, choose `resumeTargeting()` to preserve the Plant's existing
-persistent command and final resolver, or `holdAfterReference(value)` to write a new graph-owned
-command before the downstream Plant phase. Neither choice bypasses overlays, bounds, references, or
-guards, and `resumeTargeting()` does not leave a continuously updated Plant disabled. Timeout and
-active cancellation also request a temporary-output stop and release the search while preserving
-the persistent command. A finite hold can still be transformed or clamped by that normal graph;
-choose a deliberately safe in-range value when exact predictable holding is intended. These
-numeric checks do not prove the robot is physically at the declared reference or that the hold is
-safe.
+Success, timeout, and active cancellation all release temporary search ownership while preserving
+the persistent command and final resolver. Post-reference policy belongs to the mechanism that owns
+the request. A named-height lift can use ordinary exact-success composition:
+
+```java
+Task search = PositionCalibrationTasks.search(lift)
+        .withPower(homingPower)
+        .until(bottomSwitch)
+        .establishReferenceAt(0.0)
+        .failAfterSec(homingTimeoutSec)
+        .build();
+
+return Tasks.sequence(
+        search,
+        Tasks.runOnce(() -> setHeight(Height.STOWED)));
+```
+
+There is no initial STOWED write: temporary search ownership already suspends normal target
+realization. Exact success starts the semantic setter in the same lifecycle callback before the
+downstream Plant phase. Timeout and cancellation skip it and retain the prior—or any during-search
+superseding—coherent semantic/numeric request. These numeric checks do not prove the robot is
+physically at the declared reference or that its later request is safe.
 
 ### 4.1 Guided writes for time-based commands
 
@@ -583,16 +601,16 @@ overlays, and reset every mechanism request needed for coordinated shutdown.
 To request a final target after success or timeout:
 
 ```java
-Task moveAndStow = ScalarTasks.set(arm.commandTarget(), ARM_SCORE_POS)
-        .untilReachedBy(arm)
-        .cancelTo(ARM_STOW_POS)
+Task spinAndStop = ScalarTasks.set(flywheel.commandTarget(), SHOT_RPM)
+        .untilReachedBy(flywheel)
+        .cancelTo(STOPPED_RPM)
         .timeout(1.0)
-        .thenTarget(ARM_STOW_POS)
+        .thenTarget(STOPPED_RPM)
         .build();
 ```
 
-Here `.thenTarget(...)` handles success or timeout, while `.cancelTo(...)` independently handles
-active cancellation.
+Here the numeric RPM is the complete request. `.thenTarget(...)` handles success or timeout, while
+`.cancelTo(...)` independently handles active cancellation.
 
 > If `untilReachedBy(...)` receives an open-loop Plant or a Plant commanded by a different
 > `ScalarTarget`, construction throws an actionable exception. Use the timed branch for open-loop
@@ -714,7 +732,7 @@ Because everything is non‑blocking, your loop can also update telemetry, visio
 For **most** robots, you only need:
 
 * `Tasks.*` factory methods.
-* `ScalarTasks.set(...)` for write-once, timed, and feedback-aware scalar commands.
+* `ScalarTasks.set(...)` for write-once, timed, and feedback-aware scalar-complete commands.
 * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
   drive-sink ownership.
 
@@ -833,6 +851,13 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
       `plant.commandTarget() == target`.
     * For servos and other open-loop outputs, use `.build()` for one write or
       `.forSeconds(...)` with an explicit `.then(...)`/`.leaveThere()` ending.
+
+* **Do not bypass a named semantic request.**
+
+    * If status names a `Height`, `Mode`, or semantic pose, call the mechanism's one setter from
+      both direct behavior and Tasks, then wait on that owner's coherent status. If status retains
+      both semantic and numeric request forms, publish them as one paired snapshot.
+    * Use `ScalarTasks` directly only when the number itself is the complete request.
 
 * **Be intentional about completion and cancellation targets.**
 

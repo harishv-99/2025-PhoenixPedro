@@ -2,7 +2,7 @@
 
 Sushi has two common ways to express mechanism behavior over time:
 
-1. **Tasks that change a persistent scalar command target** (`ScalarTasks`)
+1. **Tasks that change a scalar-complete persistent command target** (`ScalarTasks`)
 2. **Tasks that produce a temporary scalar output** (`OutputTask` + `OutputTaskRunner`)
 
 This document is about the second pattern. Use it when a short behavior should temporarily influence a Plant target without becoming a second Plant writer.
@@ -321,15 +321,22 @@ Typical abort situations:
 Use **ScalarTasks** when:
 
 - one task should change a Plant's persistent command target, or an intentionally standalone/shared
-  `ScalarTarget`
+  `ScalarTarget`, and that number is the complete capability request
 - the task may wait until its logical command path wins and Plant feedback confirms physical arrival
 - the behavior is naturally “move this mechanism target and wait”
 
 For an ordinary exact Plant, write
-`ScalarTasks.set(arm.commandTarget(), SCORE).untilReachedBy(arm)...build()`. The Plant accessor
-returns its stable command without sampling hardware or changing state; the feedback branch validates
-that the Plant follows that exact command. Keep a separately named `ScalarTarget` when it is useful
-on its own or while assembling a shared, overlay, equivalent-position, or advanced target graph.
+`ScalarTasks.set(flywheel.commandTarget(), SHOT_RPM).untilReachedBy(flywheel)...build()` when RPM is
+the public request. The Plant accessor returns its stable command without sampling hardware or
+changing state; the feedback branch validates that the Plant follows that exact command. Keep a
+separately named `ScalarTarget` when it is useful on its own or while assembling a shared, overlay,
+equivalent-position, or advanced target graph.
+
+If the capability names a `Height`, `Mode`, or semantic pose, do not write the backing number with
+`ScalarTasks`. The mechanism's one setter maps and writes the numeric command before publishing the
+semantic request; when status retains both forms, it publishes one paired snapshot. A Task calls
+that setter and waits on the owner's coherent status. Output queues likewise remain temporary
+target producers rather than alternate semantic-state writers.
 
 Use **OutputTaskRunner** when:
 

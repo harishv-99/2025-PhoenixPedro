@@ -158,20 +158,23 @@ A reference search is a normal non-blocking `Task`:
 
 ### Critical code
 
-Replace the demonstration mechanism, cue, powers, holds, and timeout with reviewed robot facts.
+Replace the demonstration mechanism, cue, power, reference, and timeout with reviewed robot facts.
 
 Abbreviated shape (omissions shown):
 
 <!-- teaching-shape -->
 ```java
 // ...inside the mechanism's fresh homing-task factory...
-Task homeLift = PositionCalibrationTasks.search(lift)
+Task search = PositionCalibrationTasks.search(lift)
         .withPower(-0.20)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
-        .holdAfterReference(0.0)
         .failAfterSec(3.0)
         .build();
+
+return Tasks.sequence(
+        search,
+        Tasks.runOnce(() -> setHeight(Height.STOWED)));
 ```
 
 `.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range. It
@@ -181,10 +184,7 @@ direction, cue polarity/behavior, hard stops, and clearance on the actual robot.
 
 `establishReferenceAt(...)` also requires a finite plant-unit coordinate and rejects `NaN` or
 infinity at the recipe step, before search lifecycle effects. It is a reference anchor rather than
-a target, so it is not clamped to `targetRange()`. `holdAfterReference(...)` requires a separate
-finite plant-unit command. A finite hold still goes through the complete target resolver, range,
-overlays, and guards; choose a deliberately safe in-range value when the mechanism should hold that
-exact position predictably.
+a target, so it is not clamped to `targetRange()`.
 
 Build a fresh search Task for every homing attempt. A search Task that has begun is not restarted;
 the same builder recipe can create the next attempt.
@@ -207,7 +207,6 @@ Task indexTray = PositionCalibrationTasks.search(tray)
         .withPower(0.12)
         .until(paintedMarkSeen)
         .establishReferenceAt(0.0)
-        .resumeTargeting()
         .failAfterSec(5.0)
         .build();
 ```
@@ -215,8 +214,10 @@ Task indexTray = PositionCalibrationTasks.search(tray)
 **What to notice**
 
 - Each attempt builds a fresh single-use `Task`; the mechanism remains the sole Plant heartbeat owner.
-- The search stages temporary raw output and must end with an explicit hold or resume policy.
-- Timeout/cancellation stops and releases the search without redefining the persistent target graph.
+- The search stages temporary raw output and always preserves the persistent target graph.
+- Success, timeout, and cancellation stop and release the search without changing its command.
+- A success-only semantic continuation calls the mechanism's ordinary setter; timeout and
+  cancellation skip it and retain the latest coherent request.
 - Finite software validation does not prove switch polarity, physical zero, clearance, or safe power.
 
 **Key APIs**
@@ -224,16 +225,16 @@ Task indexTray = PositionCalibrationTasks.search(tray)
 - `PositionCalibrationTasks.search(plant)` — starts the non-blocking reference-task recipe.
 - `until(BooleanSource)` — supplies the independently owned reference cue.
 - `establishReferenceAt(...)` — anchors the public coordinate at the cue sample.
-- `holdAfterReference(...)` / `resumeTargeting()` — explicitly chooses the post-reference request policy.
 - `failAfterSec(...)` — gives the search a bounded lifetime.
+- `Tasks.sequence(...)` / `Tasks.runOnce(...)` — adds mechanism-owned policy after exact success.
 
-`resumeTargeting()` preserves the Plant's persistent command and final target resolver. It requests
-a nonterminal stop of the temporary raw output and releases the search; it does not call terminal
-`Plant.stop()`. The downstream Plant phase immediately evaluates the unchanged graph. By contrast,
-`holdAfterReference(value)` writes that graph-owned command before releasing
-the search. The full resolver still runs afterward, so an enabled overlay may select another
-target. Timeout and active cancellation request the same stop and release the search without
-changing the persistent command.
+The search preserves the Plant's persistent command and final target resolver on every terminal
+path. It requests a nonterminal stop of the temporary raw output and releases the search; it does
+not call terminal `Plant.stop()`. The downstream Plant phase immediately evaluates the unchanged
+graph. In the homing macro above, exact search success starts the normal semantic setter before that
+Plant phase. Timeout and active cancellation stop the sequence before the setter and retain the
+prior—or any during-search superseding—semantic/numeric request. There is no need to preselect
+STOWED before search because temporary search ownership already suspends target realization.
 
 Every reference search must explicitly choose timeout behavior. Prefer `failAfterSec(...)`; use `neverTimeout()` only when a driver button, scheduler, or other safety interlock is guaranteed to cancel the task.
 

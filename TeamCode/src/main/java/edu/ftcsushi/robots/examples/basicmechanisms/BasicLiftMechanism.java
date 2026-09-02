@@ -6,7 +6,6 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
-import edu.ftcsushi.fw.actuation.ScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -18,6 +17,17 @@ import edu.ftcsushi.fw.task.Tasks;
 
 /** Owns one bounded referenced-position Plant and realizes {@link BasicLift} intent. */
 public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output {
+
+    /** One owner-published semantic request and its forward-mapped Plant command. */
+    private static final class RequestSnapshot {
+        private final Height height;
+        private final double positionIn;
+
+        private RequestSnapshot(Height height, double positionIn) {
+            this.height = height;
+            this.positionIn = positionIn;
+        }
+    }
 
     /** Data-only lift wiring, coordinate, limits, and timeout choices. */
     public static final class Config {
@@ -99,7 +109,7 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
     private final double homingTimeoutSec;
     private final double moveTimeoutSec;
 
-    private Height requestedHeight = Height.STOWED;
+    private RequestSnapshot request;
     private Status lastStatus;
 
     /**
@@ -133,30 +143,38 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
         homingPower = c.homingPower;
         homingTimeoutSec = c.homingTimeoutSec;
         moveTimeoutSec = c.moveTimeoutSec;
-        lastStatus = new Status(Height.STOWED, stowedHeightIn, Double.NaN, false, false);
+        request = requestFor(Height.STOWED);
+        lastStatus = new Status(
+                request.height, request.positionIn, Double.NaN, false, false);
     }
 
     @Override
     public void setHeight(Height height) {
-        Height requested = Objects.requireNonNull(height, "height");
-        double requestedPositionIn = positionFor(requested);
-        lift.commandTarget().set(requestedPositionIn);
-        publishNewRequest(requested, requestedPositionIn);
+        RequestSnapshot next = requestFor(height);
+
+        // Publish no semantic request unless its matching numeric command was accepted.
+        lift.commandTarget().set(next.positionIn);
+        request = next;
+        lastStatus = new Status(
+                next.height,
+                next.positionIn,
+                lastStatus.measuredPositionIn,
+                lastStatus.referenced,
+                false);
     }
 
     @Override
     public Task moveTo(Height height) {
         Height selectedHeight = Objects.requireNonNull(height, "height");
-        double selectedPositionIn = positionFor(selectedHeight);
+        BooleanSource selectedRequestReached = BooleanSource.of(() -> {
+            Status snapshot = status();
+            return snapshot.requestedHeight == selectedHeight && snapshot.atTarget;
+        });
 
-        // The Task writes intent; this mechanism's update remains the only hardware heartbeat.
+        // Every semantic Task routes through the same owner setter as direct controls.
         return Tasks.sequence(
-                Tasks.runOnce(() -> publishNewRequest(selectedHeight, selectedPositionIn)),
-                ScalarTasks.set(lift.commandTarget(), selectedPositionIn)
-                        .untilReachedBy(lift)
-                        .leaveTargetOnCancel()
-                        .timeout(moveTimeoutSec)
-                        .build());
+                Tasks.runOnce(() -> setHeight(selectedHeight)),
+                Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
     }
 
     @Override
@@ -165,15 +183,11 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
                 .withPower(homingPower)
                 .until(bottomSwitch)
                 .establishReferenceAt(0.0)
-                .holdAfterReference(stowedHeightIn)
                 .failAfterSec(homingTimeoutSec)
                 .build();
 
-        return Tasks.sequenceOnCompletion(
-                Tasks.runOnce(() -> setHeight(Height.STOWED)),
+        return Tasks.sequence(
                 search,
-                // Repair after any natural terminal search outcome; direct parent cancellation
-                // remains terminal and skips this later Task.
                 Tasks.runOnce(() -> setHeight(Height.STOWED)));
     }
 
@@ -186,9 +200,10 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
     @Override
     public void update(LoopClock clock) {
         lift.update(clock);
+        RequestSnapshot current = request;
         lastStatus = new Status(
-                requestedHeight,
-                lift.commandTarget().get(),
+                current.height,
+                current.positionIn,
                 lift.getMeasurement(),
                 lift.isReferenced(),
                 lift.atTarget());
@@ -201,24 +216,19 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
             lift.stop();
         } finally {
             // Terminal stop makes prior arrival evidence inapplicable even if cleanup throws.
+            RequestSnapshot current = request;
             lastStatus = new Status(
-                    requestedHeight,
-                    lastStatus.requestedPositionIn,
+                    current.height,
+                    current.positionIn,
                     lastStatus.measuredPositionIn,
                     lastStatus.referenced,
                     false);
         }
     }
 
-    /** Publish intent immediately while retaining only still-valid cached feedback facts. */
-    private void publishNewRequest(Height height, double positionIn) {
-        requestedHeight = height;
-        lastStatus = new Status(
-                height,
-                positionIn,
-                lastStatus.measuredPositionIn,
-                lastStatus.referenced,
-                false);
+    private RequestSnapshot requestFor(Height height) {
+        Height required = Objects.requireNonNull(height, "height");
+        return new RequestSnapshot(required, positionFor(required));
     }
 
     private double positionFor(Height height) {
