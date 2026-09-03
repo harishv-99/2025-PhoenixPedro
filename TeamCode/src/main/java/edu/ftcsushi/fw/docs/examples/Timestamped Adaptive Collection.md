@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Timestamped adaptive collection
 
 **Learning mode:** Architecture reference
@@ -7,7 +12,7 @@ blank-file tutorial: use the verified excerpts to understand the boundaries, the
 maintained example and its tests as a unit.
 
 **Audience:** teams that already have a managed Pedro robot and need one vision-selected collection
-attempt. Start with [Your first Pedro Auto](<../getting-started/First Pedro Auto.md>) if route
+attempt. Start with [Follow one Pedro route](<../build/First Pedro Auto.md>) if route
 lifecycle and exact route outcomes are new.
 
 This optional case study teaches how to turn one delayed Limelight detector frame into one bounded,
@@ -41,7 +46,7 @@ Three example-owned roles keep that chain visible:
 | [`AdaptiveCollectionAttempt`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/pedro/adaptive/AdaptiveCollectionAttempt.html>) | One fresh Task graph, milestone/inventory exit policy, exact collection and return status, and conditional return. | A scheduler, repeated cycles, match-time policy, parking, or mechanism realization. |
 
 An adopting robot should reuse its existing intake capability and semantic inventory source. The
-case study uses `BasicPedroAutoMechanism` only to keep the companion Task concrete and
+case study uses the adaptive-local `AdaptiveCollectionIntake` only to keep the companion Task concrete and
 cancellation-safe.
 
 ## Declare the history owner before vision
@@ -426,7 +431,7 @@ behavior in this one-attempt owner.
 
 ## Related reading
 
-- [Your first Pedro Auto](<../getting-started/First Pedro Auto.md>)
+- [Follow one Pedro route](<../build/First Pedro Auto.md>)
 - [Spatial queries and timestamp-aware frames](<../drive-vision/Spatial Queries.md>)
 - [Pedro integration contract](<../../integrations/pedro/README.md>)
 - [Tasks and Macros](<../design/Tasks & Macros Quickstart.md>)

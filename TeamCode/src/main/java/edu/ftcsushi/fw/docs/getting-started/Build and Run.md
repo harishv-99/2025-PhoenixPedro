@@ -1,3 +1,8 @@
+---
+tags:
+  - Get Started
+---
+
 # Build and run Sushi
 
 **Learning mode:** Operational runbook
@@ -18,12 +23,12 @@ motion.
 - Git, or a ZIP download tool, to obtain this repository as a complete project; and
 - any network access required for the first Gradle dependency download.
 
-**Files for this lesson:**
+**Files for this checkpoint:**
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [Basic Mechanisms Robot](<Basic Mechanisms Robot.md>) — the cumulative, source-backed TeleOp and
-  Auto course you will use after this software baseline passes.
+- [Build recipes](<../build/README.md>) — choose one independent robot outcome after this software
+  baseline passes.
 
 **Safety:** Keep the course OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.
@@ -78,32 +83,13 @@ software fakes. They do not move hardware.
 
 ## 4. Find the learning sources
 
-### Critical code
+Open [`FtcRobotOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcRobotOpMode.html>)
+and [`RobotProgram`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html>)
+from Android Studio or the generated API reference. Every Build recipe links one disabled, compiling
+OpMode and labels its GitHub link **Complete source**.
 
-Open the complete course entry files linked from
-[Basic Mechanisms Robot](<Basic Mechanisms Robot.md#complete-source-and-owner-map>). They contain
-`@Disabled`, so they compile but do not appear on the Driver Station yet:
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-@TeleOp(name = "My Robot: TeleOp")
-@Disabled
-public final class MyRobotTeleOp extends FtcRobotOpMode {
-    // ...
-}
-```
-
-**What to notice**
-
-- `@Disabled` keeps a compiling lesson OpMode off the Driver Station menu.
-- The ordinary entry extends the managed FTC host instead of owning a private loop.
-
-**Key APIs**
-
-- `FtcRobotOpMode` — Sushi's ordinary FTC lifecycle host.
-- `@Disabled` — FTC registration guard; removing it is a separate hardware-readiness decision.
+The `@Disabled` annotation keeps a teaching OpMode off the Driver Station menu. Extending the
+managed host means the example declares its roles rather than recreating FTC lifecycle callbacks.
 
 Do not remove `@Disabled` merely to follow the source-based walkthrough. A later physical run must
 first review every hardware name, direction,
@@ -137,7 +123,7 @@ Sushi begins after those FTC controller and deployment steps are working.
 - Gradle sync finishes.
 - `:TeamCode:compileDebugJavaWithJavac` reports `BUILD SUCCESSFUL`.
 - `:TeamCode:testDebugUnitTest` reports `BUILD SUCCESSFUL`.
-- Android Studio can navigate to `FtcRobotOpMode`, `RobotProgram`, and the Basic Mechanisms sources.
+- Android Studio can navigate to `FtcRobotOpMode`, `RobotProgram`, and the focused example sources.
 - No example OpMode has been enabled and no hardware has moved.
 
 ## Common problems
@@ -165,8 +151,7 @@ that separate work.
 
 ## Continue with robot code
 
-With the software baseline green, follow
-[Build the Basic Mechanisms robot](<Basic Mechanisms Robot.md>) from first drive through a
-referenced lift, claw, integrated TeleOp, and Auto.
+With the software baseline green, [choose one robot outcome to build](<../build/README.md>). Start
+with first drive, then select only the mechanism your robot needs.
 
 **Framework tour:** [`Sushi in one picture`](<Framework Overview.md>)

@@ -30,7 +30,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies the starter controls vocabulary and the intake's source-driven realization. */
+/** Maintainer contract behind the two focused Starter controls and realization lesson tests. */
 public final class StarterIntakeAndControlsTest {
 
     @Test

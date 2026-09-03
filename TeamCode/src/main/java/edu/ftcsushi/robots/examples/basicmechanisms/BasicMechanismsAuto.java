@@ -37,7 +37,7 @@ public final class BasicMechanismsAuto extends FtcRobotOpMode {
                     liftStatus.referenced(),
                     liftStatus.atTarget());
             telemetry.addData("claw", "%s coordinate=%.2f",
-                    clawStatus.requestedState, clawStatus.appliedCoordinate);
+                    clawStatus.requestedState(), clawStatus.appliedCoordinate());
             telemetry.addData("auto.complete", auto.isComplete());
             telemetry.addData("auto.outcome", auto.getOutcome());
         });

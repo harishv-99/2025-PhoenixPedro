@@ -33,35 +33,149 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies deterministic repository-local Markdown navigation without network access. */
+/** Verifies the current Sushi documentation information architecture without network access. */
 public final class DocumentationLinksTest {
 
+    private static final String FRAMEWORK_DOCS_PATH =
+            "TeamCode/src/main/java/edu/ftcsushi/fw";
     private static final String PUBLISHED_API_ROOT =
             "https://harishv-99.github.io/2025-PhoenixPedro/api/";
-    private static final String MAINTAINED_SOURCE_ROOT =
-            "https://github.com/harishv-99/2025-PhoenixPedro/blob/master/";
-    private static final Pattern LINKED_KEY_API = Pattern.compile(
-            "\\[`([^`]+)`\\]\\(<(https://[^>]+)>\\)");
-    private static final Set<String> SOURCE_ONLY_KEY_APIS = new HashSet<String>(Arrays.asList(
-            "RecordingCallbackBindings",
-            "ManualLoopClock",
-            "FtcTestHardware",
-            "ReferenceFlywheelSpinUpExperiment.TrialState",
-            "StarterProfile.current()",
-            "controls.bind(...)",
-            "MotorProbe",
+    private static final String MAINTAINED_REPOSITORY_ROOT =
+            "https://github.com/harishv-99/2025-PhoenixPedro/";
+    private static final String FENCE =
+            String.valueOf((char) 96) + (char) 96 + (char) 96;
+
+    private static final List<String> GUIDE_AREAS = Arrays.asList(
+            "Get Started",
+            "Learn",
+            "Build",
+            "Test & Tune",
+            "Advanced",
+            "Reference");
+
+    private static final List<String> BUILD_MARKDOWN_FILES = Arrays.asList(
+            "Continuous Intake.md",
+            "First Autonomous.md",
+            "First Drive.md",
+            "First Pedro Auto.md",
+            "Named Claw.md",
+            "README.md",
+            "Referenced Lift.md");
+
+    private static final List<String> BUILD_RECIPE_FILES = Arrays.asList(
+            "First Drive.md",
+            "Continuous Intake.md",
+            "Named Claw.md",
+            "Referenced Lift.md",
+            "First Autonomous.md",
+            "First Pedro Auto.md");
+
+    private static final List<String> BUILD_NAV_TARGETS = Arrays.asList(
+            "docs/build/README.md",
+            "docs/build/First Drive.md",
+            "docs/build/Continuous Intake.md",
+            "docs/build/Named Claw.md",
+            "docs/build/Referenced Lift.md",
+            "docs/build/First Autonomous.md",
+            "docs/build/First Pedro Auto.md");
+
+    private static final List<String> REFERENCE_CATEGORY_FILES = Arrays.asList(
+            "Actuation Plants and control.md",
+            "Drive geometry and spatial reasoning.md",
+            "FTC adapters testing and tuning.md",
+            "Integrations and extension seams.md",
+            "Program and lifecycle.md",
+            "Sensing localization and vision.md",
+            "Tasks outcomes and coordination.md",
+            "Values sources and bindings.md");
+
+    private static final List<String> REFERENCE_MARKDOWN_FILES = Arrays.asList(
+            "Actuation Plants and control.md",
+            "Drive geometry and spatial reasoning.md",
+            "FTC adapters testing and tuning.md",
+            "Glossary.md",
+            "Integrations and extension seams.md",
+            "Program and lifecycle.md",
+            "README.md",
+            "Sensing localization and vision.md",
+            "Sushi Cheat Sheet.md",
+            "Tasks outcomes and coordination.md",
+            "Values sources and bindings.md");
+
+    private static final List<String> REFERENCE_NAV_TARGETS = Arrays.asList(
+            "docs/reference/README.md",
+            "docs/reference/Program and lifecycle.md",
+            "docs/reference/Values sources and bindings.md",
+            "docs/reference/Actuation Plants and control.md",
+            "docs/reference/Tasks outcomes and coordination.md",
+            "docs/reference/Drive geometry and spatial reasoning.md",
+            "docs/reference/Sensing localization and vision.md",
+            "docs/reference/FTC adapters testing and tuning.md",
+            "docs/reference/Integrations and extension seams.md",
+            "docs/reference/Sushi Cheat Sheet.md",
+            "docs/reference/Glossary.md",
+            PUBLISHED_API_ROOT);
+
+    private static final List<String> JAVADOC_GROUPS = Arrays.asList(
+            "Program & lifecycle",
+            "Values, sources & bindings",
+            "Actuation, Plants & control",
+            "Tasks, outcomes & coordination",
+            "Drive, geometry & spatial reasoning",
+            "Sensing, localization & vision",
+            "FTC adapters, testing & tuning",
+            "Integrations & extension seams",
+            "Maintained robot examples");
+
+    private static final List<String> DELETED_EXAMPLE_SYMBOLS = Arrays.asList(
+            "BasicDriveAuto",
             "BasicDriveControls",
-            "BasicLiftControls",
-            "BasicClawControls",
-            "BasicLiftControls.bind(...)",
-            "BasicClawControls.bind(...)",
+            "BasicDriveProfile",
             "BasicDriveStopOwner",
-            "BasicLiftMechanismTest",
-            "BasicClawMechanismTest",
-            "BasicTeleOpControlsTest",
-            "BasicAutoRoutinesTest",
+            "BasicHardwareOwnership",
+            "BasicRobotAuto",
+            "BasicRobotAutoRoutines",
+            "BasicRobotTeleOp",
             "BasicRobotScenarioTest",
-            "ServoProbe"));
+            "BasicPedroAutoPaths",
+            "BasicPedroAutoRoutine",
+            "BasicPedroAutoMechanism",
+            "BasicPedroAutoExample",
+            "BasicPedroAutoRobot",
+            "BasicPedroProfile",
+            "BasicPedroAutoMechanismTest",
+            "BasicPedroAutoRoutineTest",
+            "BasicPedroMechanismTestFactory",
+            "BasicPedroAutoExampleTest",
+            "BasicPedroAutoConfigurationTest",
+            "BasicPedroAutoRobotTest",
+            "BasicPedroProfileAndApiTest",
+            "ReferenceAutoRoutines",
+            "ReferenceLift",
+            "ReferenceLiftMechanism",
+            "ReferenceAuto",
+            "ReferenceTeleOp",
+            "ReferenceCapabilities",
+            "ReferenceProfile",
+            "ReferenceRobot",
+            "ReferenceTeleOpControls",
+            "ReferenceRobotTesters",
+            "ReferenceLiftMechanismTest",
+            "ReferenceLiftSoftwareScenarioTest",
+            "ReferenceAutoRoutinesTest",
+            "ReferenceRobotTest",
+            "ReferenceTeleOpControlsTest");
+
+    private static final Pattern JAVA_FENCE = Pattern.compile(
+            "(?m)^\\x60\\x60\\x60java[ \\t]*$");
+    private static final Pattern SOURCE_EXCERPT = Pattern.compile(
+            "(?m)^<!-- source-excerpt: ([^>]+) -->\\r?\\n"
+                    + "\\x60\\x60\\x60java[ \\t]*\\r?\\n"
+                    + "([\\s\\S]*?)\\r?\\n\\x60\\x60\\x60[ \\t]*$");
+    private static final Pattern COMPLETE_SOURCE = Pattern.compile(
+            "\\[Complete source:[^]]+]\\(<"
+                    + Pattern.quote(MAINTAINED_REPOSITORY_ROOT)
+                    + "(?:blob|tree)/master/([^>]+)>\\)");
 
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -69,8 +183,7 @@ public final class DocumentationLinksTest {
     @Test
     public void maintainedRepositoryMarkdownHasValidLocalLinksAnchorsAndFences()
             throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
+        Path repositoryRoot = repositoryRoot();
 
         assertNoFailures(MarkdownIntegrity.validateRepository(repositoryRoot));
     }
@@ -78,11 +191,10 @@ public final class DocumentationLinksTest {
     @Test
     public void currentGuidesDoNotTeachRemovedCalibrationCommandHandoffApis()
             throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
+        Path repositoryRoot = repositoryRoot();
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
         List<Path> currentGuides = new ArrayList<Path>();
-        collectMarkdownFiles(repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs"), currentGuides);
+        collectMarkdownFiles(configuredDocsRoot(repositoryRoot, config), currentGuides);
 
         for (Path guide : currentGuides) {
             String text = readUtf8(guide);
@@ -90,383 +202,508 @@ public final class DocumentationLinksTest {
                     !text.contains("SearchAfterStep"));
             assertTrue(guide + " still teaches removed resumeTargeting()",
                     !text.contains("resumeTargeting"));
-            assertTrue(guide + " still teaches removed holdAfterReference(...) ",
+            assertTrue(guide + " still teaches removed holdAfterReference(...)",
                     !text.contains("holdAfterReference"));
         }
     }
 
     @Test
-    public void studentLearningJavaExcerptsDeclareAndMatchTheirSourceTruth()
+    public void siteNavigationHasExactlySixGoalAreasWithTabsAndPruning()
             throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        Path docsRoot = repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs");
-        List<Path> learningPages = new ArrayList<Path>();
-        collectMarkdownFiles(docsRoot.resolve("getting-started"), learningPages);
-        collectMarkdownFiles(docsRoot.resolve("examples"), learningPages);
-        collectMarkdownFiles(docsRoot.resolve("testing-calibration"), learningPages);
-
-        Pattern javaFence = Pattern.compile("(?m)^```java\\s*$");
-        Pattern markedFence = Pattern.compile(
-                "(?m)^<!-- (?:(source-excerpt|annotated-source-excerpt|source-file|"
-                        + "annotated-source-file): "
-                        + "([^>]+)|(teaching-shape)) -->\\r?\\n"
-                        + "```java\\r?\\n([\\s\\S]*?)\\r?\\n```");
-        List<String> failures = new ArrayList<String>();
-        for (Path page : learningPages) {
-            String markdown = readUtf8(page);
-            int fenceCount = matcherCount(javaFence.matcher(markdown));
-            Matcher marked = markedFence.matcher(markdown);
-            int markedCount = 0;
-            while (marked.find()) {
-                markedCount++;
-                String marker = marked.group(1);
-                String sourcePath = marked.group(2);
-                String snippet = marked.group(4);
-                if (marked.group(3) != null) {
-                    int contextStart = Math.max(0, marked.start() - 240);
-                    String context = markdown.substring(contextStart, marked.start());
-                    if (!context.contains("Abbreviated shape (omissions shown):")) {
-                        failures.add(repositoryRelativePath(repositoryRoot, page)
-                                + ": teaching shape lacks visible abbreviated-shape label");
-                    }
-                    if (!snippet.contains("// ...")) {
-                        failures.add(repositoryRelativePath(repositoryRoot, page)
-                                + ": teaching shape lacks // ... omission marker");
-                    }
-                    continue;
-                }
-
-                Path source = repositoryRoot.resolve(sourcePath.trim())
-                        .toAbsolutePath().normalize();
-                if (!source.startsWith(repositoryRoot.toAbsolutePath().normalize())
-                        || !Files.isRegularFile(source)
-                        || !source.getFileName().toString().endsWith(".java")) {
-                    failures.add(repositoryRelativePath(repositoryRoot, page)
-                            + ": invalid source excerpt path " + sourcePath.trim());
-                    continue;
-                }
-                if (marker.startsWith("annotated-")) {
-                    snippet = stripDocumentationAnnotations(
-                            repositoryRoot, page, snippet, failures);
-                } else if (snippet.contains("// docs:")) {
-                    failures.add(repositoryRelativePath(repositoryRoot, page)
-                            + ": // docs: comments require annotated-source-excerpt");
-                }
-                String normalizedSnippet = normalizeExcerpt(snippet);
-                String sourceText = readUtf8(source);
-                String normalizedSource = normalizeExcerpt(sourceText);
-                boolean wholeFile = marker.endsWith("source-file");
-                boolean matches = wholeFile
-                        ? normalizedSource.equals(normalizedSnippet)
-                        : containsDedentedBlock(sourceText, normalizedSnippet);
-                if (normalizedSnippet.isEmpty() || !matches) {
-                    failures.add(repositoryRelativePath(repositoryRoot, page)
-                            + (wholeFile
-                            ? ": complete file does not match "
-                            : ": excerpt does not occur contiguously in ")
-                            + sourcePath.trim());
-                }
-            }
-            if (fenceCount != markedCount) {
-                failures.add(repositoryRelativePath(repositoryRoot, page)
-                        + ": found " + fenceCount + " Java fences but " + markedCount
-                        + " provenance markers");
-            }
-        }
-        assertTrue("Student learning excerpt provenance failures: " + failures,
-                failures.isEmpty());
-    }
-
-    @Test
-    public void primaryStudentCourseKeepsInlineLearningBlocks() throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
-        List<String> pages = Arrays.asList(
-                "getting-started/Basic Mechanisms Robot.md");
-
-        List<String> failures = new ArrayList<String>();
-        for (String page : pages) {
-            String markdown = readUtf8(repositoryRoot.resolve(docs + page));
-            if (!markdown.contains("### Critical code")) {
-                failures.add(page + ": missing Critical code");
-            }
-            if (!markdown.contains("**What to notice**")) {
-                failures.add(page + ": missing What to notice");
-            }
-            if (!markdown.contains("**Key APIs")) {
-                failures.add(page + ": missing Key APIs");
-            }
-        }
-        assertTrue("Student learning block failures: " + failures, failures.isEmpty());
-    }
-
-    @Test
-    public void substantiveStudentLearningPagesKeepInlineLearningBlocks() throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
-        List<String> pages = Arrays.asList(
-                "examples/Field-relative Drive.md",
-                "examples/Hardware-free Reference Scenarios.md",
-                "examples/Subsystem Experiments.md",
-                "examples/Timestamped Adaptive Collection.md",
-                "getting-started/Basic Mechanisms Robot.md",
-                "getting-started/Build and Run.md",
-                "getting-started/First Pedro Auto.md",
-                "getting-started/Framework Overview.md",
-                "getting-started/learn-sushi/Controls and Intent.md",
-                "getting-started/learn-sushi/Evidence and Experiments.md",
-                "getting-started/learn-sushi/From Requirement to Robot.md",
-                "getting-started/learn-sushi/Plants and Hardware.md",
-                "getting-started/learn-sushi/Robot Roles.md",
-                "getting-started/learn-sushi/Tasks and Autonomous.md",
-                "testing-calibration/Actuator Bring-up.md",
-                "testing-calibration/Control Tuning Workflow.md",
-                "testing-calibration/Guided Calibration Walkthroughs.md",
-                "testing-calibration/Robot Calibration Tutorials.md");
-
-        List<String> failures = new ArrayList<String>();
-        for (String page : pages) {
-            String markdown = readUtf8(repositoryRoot.resolve(docs + page));
-            if (!markdown.contains("### Critical code")) {
-                failures.add(page + ": missing Critical code");
-            }
-            if (!markdown.contains("**What to notice**")) {
-                failures.add(page + ": missing What to notice");
-            }
-            if (!markdown.contains("**Key APIs")) {
-                failures.add(page + ": missing Key APIs");
-            }
-        }
-        assertTrue("Student learning block failures: " + failures, failures.isEmpty());
-    }
-
-    @Test
-    public void primaryStudentLessonsLinkEveryNamedKeyApi() throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
-        Map<String, Integer> expectedSections = new LinkedHashMap<String, Integer>();
-        expectedSections.put("getting-started/Basic Mechanisms Robot.md", 8);
-
-        List<String> failures = new ArrayList<String>();
-        Set<String> maintainedJavaSources = collectMaintainedJavaSourcePaths(repositoryRoot);
-        for (Map.Entry<String, Integer> entry : expectedSections.entrySet()) {
-            String page = entry.getKey();
-            List<String> lines = Files.readAllLines(
-                    repositoryRoot.resolve(docs + page), StandardCharsets.UTF_8);
-            int sectionCount = 0;
-            boolean readingApis = false;
-            boolean sectionHasBullet = false;
-            StringBuilder currentBullet = null;
-            int currentBulletLine = -1;
-            for (int index = 0; index < lines.size(); index++) {
-                String line = lines.get(index);
-                if (line.trim().equals("**Key APIs**")) {
-                    if (currentBullet != null) {
-                        validateLinkedKeyApiBullet(
-                                page,
-                                currentBulletLine,
-                                currentBullet.toString(),
-                                maintainedJavaSources,
-                                failures);
-                        currentBullet = null;
-                    }
-                    if (readingApis && !sectionHasBullet) {
-                        failures.add(page + ":" + (index + 1)
-                                + ": prior Key APIs section has no bullets");
-                    }
-                    sectionCount++;
-                    readingApis = true;
-                    sectionHasBullet = false;
-                    continue;
-                }
-                if (!readingApis) {
-                    continue;
-                }
-                if (line.trim().isEmpty()) {
-                    if (currentBullet != null) {
-                        validateLinkedKeyApiBullet(
-                                page,
-                                currentBulletLine,
-                                currentBullet.toString(),
-                                maintainedJavaSources,
-                                failures);
-                        currentBullet = null;
-                        readingApis = false;
-                    }
-                    continue;
-                }
-                if (line.startsWith("- ")) {
-                    if (currentBullet != null) {
-                        validateLinkedKeyApiBullet(
-                                page,
-                                currentBulletLine,
-                                currentBullet.toString(),
-                                maintainedJavaSources,
-                                failures);
-                    }
-                    sectionHasBullet = true;
-                    currentBullet = new StringBuilder(line);
-                    currentBulletLine = index + 1;
-                } else if (line.startsWith("* ") || line.startsWith("+ ")) {
-                    if (currentBullet != null) {
-                        validateLinkedKeyApiBullet(
-                                page,
-                                currentBulletLine,
-                                currentBullet.toString(),
-                                maintainedJavaSources,
-                                failures);
-                        currentBullet = null;
-                    }
-                    failures.add(page + ":" + (index + 1)
-                            + ": Key APIs must use '-' bullets so every symbol is validated");
-                } else if (currentBullet != null) {
-                    currentBullet.append(' ').append(line.trim());
-                } else {
-                    failures.add(page + ":" + (index + 1)
-                            + ": Key APIs section has no bullets");
-                    readingApis = false;
-                }
-            }
-            if (currentBullet != null) {
-                validateLinkedKeyApiBullet(
-                        page,
-                        currentBulletLine,
-                        currentBullet.toString(),
-                        maintainedJavaSources,
-                        failures);
-            }
-            if (readingApis && !sectionHasBullet) {
-                failures.add(page + ": final Key APIs section has no bullets");
-            }
-            if (sectionCount != entry.getValue()) {
-                failures.add(page + ": expected " + entry.getValue()
-                        + " Key APIs sections but found " + sectionCount);
-            }
-        }
-
-        assertTrue("Primary student Key API link failures: " + failures, failures.isEmpty());
-    }
-
-    @Test
-    public void studentLearningPagesDeclareAndHonorTheirLearningMode() throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        Path docsRoot = repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs");
-        List<Path> pages = new ArrayList<Path>();
-        collectMarkdownFiles(docsRoot.resolve("getting-started"), pages);
-        collectMarkdownFiles(docsRoot.resolve("examples"), pages);
-        collectMarkdownFiles(docsRoot.resolve("testing-calibration"), pages);
-        Pattern modePattern = Pattern.compile(
-                "(?m)^\\*\\*Learning mode:\\*\\* (Buildable implementation|"
-                        + "Guided course|Operational runbook|Architecture reference|Router)\\s*$");
-        List<String> failures = new ArrayList<String>();
-        for (Path page : pages) {
-            String markdown = readUtf8(page);
-            Matcher modes = modePattern.matcher(markdown);
-            if (!modes.find()) {
-                failures.add(repositoryRelativePath(repositoryRoot, page)
-                        + ": missing supported Learning mode");
-                continue;
-            }
-            String mode = modes.group(1);
-            if (modes.find()) {
-                failures.add(repositoryRelativePath(repositoryRoot, page)
-                        + ": declares more than one Learning mode");
-            }
-            if (!"Buildable implementation".equals(mode)) {
-                continue;
-            }
-            requireText(repositoryRoot, page, markdown,
-                    "### Critical code", "Critical code", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "**What to notice**", "What to notice", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "**Key APIs", "Key APIs", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "## Files you will create", "Files you will create", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "## Complete working slice", "Complete working slice", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "## Verify the slice", "Verify the slice", failures);
-            requireText(repositoryRoot, page, markdown,
-                    "<details>", "collapsed complete files", failures);
-            Matcher manifest = Pattern.compile("<!-- buildable-files: ([^>]+) -->")
-                    .matcher(markdown);
-            if (!manifest.find()) {
-                failures.add(repositoryRelativePath(repositoryRoot, page)
-                        + ": buildable page lacks a buildable-files manifest");
-            } else {
-                Set<String> declaredFiles = new LinkedHashSet<String>(
-                        Arrays.asList(manifest.group(1).trim().split("\\s*\\|\\s*")));
-                Set<String> completeFiles = new LinkedHashSet<String>();
-                Matcher complete = Pattern.compile(
-                        "<!-- (?:annotated-)?source-file: ([^>]+) -->")
-                        .matcher(markdown);
-                while (complete.find()) {
-                    completeFiles.add(complete.group(1).trim());
-                    int openDetails = markdown.lastIndexOf("<details>", complete.start());
-                    int closeDetails = markdown.lastIndexOf("</details>", complete.start());
-                    if (openDetails < 0 || closeDetails > openDetails) {
-                        failures.add(repositoryRelativePath(repositoryRoot, page)
-                                + ": complete source file is not inside collapsed details: "
-                                + complete.group(1).trim());
-                    }
-                }
-                if (!declaredFiles.equals(completeFiles)) {
-                    failures.add(repositoryRelativePath(repositoryRoot, page)
-                            + ": buildable-files manifest " + declaredFiles
-                            + " does not equal complete source files " + completeFiles);
-                }
-            }
-            if (markdown.contains("<!-- teaching-shape -->")) {
-                failures.add(repositoryRelativePath(repositoryRoot, page)
-                        + ": buildable page contains teaching-shape pseudocode");
-            }
-            if (!markdown.contains("gradlew.bat")) {
-                failures.add(repositoryRelativePath(repositoryRoot, page)
-                        + ": buildable page lacks an exact Gradle verification command");
-            }
-        }
-        assertTrue("Student learning-mode failures: " + failures, failures.isEmpty());
-    }
-
-    @Test
-    public void documentationSiteNavigationTargetsExistingMarkdown() throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        String config = new String(
-                Files.readAllBytes(repositoryRoot.resolve("zensical.toml")),
-                StandardCharsets.UTF_8);
+        Path repositoryRoot = repositoryRoot();
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
         Path docsRoot = configuredDocsRoot(repositoryRoot, config);
-        Matcher entries = Pattern.compile("=\\s*\\\"([^\\\"]+\\.md)\\\"").matcher(config);
-        List<String> failures = new ArrayList<String>();
+
+        assertEquals("Top-level documentation areas changed", GUIDE_AREAS, topLevelAreas(config));
+        assertEquals("navigation.tabs must be enabled exactly once",
+                1, literalCount(config, "\"navigation.tabs\""));
+        assertEquals("navigation.prune must be enabled exactly once",
+                1, literalCount(config, "\"navigation.prune\""));
+        assertTrue("The site must use focused section navigation",
+                config.contains("\"navigation.sections\""));
+
+        Matcher entries = Pattern.compile("=\\s*\"([^\"]+\\.md)\"").matcher(config);
+        List<String> missing = new ArrayList<String>();
         while (entries.find()) {
             String target = entries.group(1);
             Path resolved = docsRoot.resolve(target).toAbsolutePath().normalize();
-            if (!resolved.startsWith(docsRoot.toAbsolutePath().normalize())) {
-                failures.add(target + " (escapes docs_dir)");
+            if (!resolved.startsWith(docsRoot)) {
+                missing.add(target + " (escapes docs_dir)");
             } else if (!Files.isRegularFile(resolved)) {
-                failures.add(target + " (missing)");
+                missing.add(target + " (missing)");
             }
         }
-        assertTrue("Missing documentation navigation targets: " + failures, failures.isEmpty());
+        assertTrue("Missing documentation navigation targets: " + missing, missing.isEmpty());
+
+        String frameworkHome = readUtf8(docsRoot.resolve("README.md"));
+        assertTrue("The framework doorway must use a visual card grid",
+                frameworkHome.contains("<div class=\"grid cards\" markdown>"));
+        for (String area : GUIDE_AREAS) {
+            assertEquals("The framework doorway must show one card for " + area,
+                    1, literalCount(frameworkHome, "**" + area + "**"));
+        }
+    }
+
+    @Test
+    public void searchableMarkdownHasOneAllowedAreaTagAndRedirectsHaveNone()
+            throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        Path docsRoot = configuredDocsRoot(repositoryRoot, config);
+        List<Path> pages = new ArrayList<Path>();
+        collectMarkdownFiles(docsRoot, pages);
+        List<String> failures = new ArrayList<String>();
+
+        Map<String, String> navAreaByPage = new LinkedHashMap<String, String>();
+        for (String area : GUIDE_AREAS) {
+            for (String target : navTargets(navAreaBlock(config, area))) {
+                if (!target.endsWith(".md")) {
+                    continue;
+                }
+                String prior = navAreaByPage.put(target, area);
+                if (prior != null) {
+                    failures.add(target + ": appears in both " + prior + " and " + area);
+                }
+            }
+        }
+
+        Set<String> allowed = new LinkedHashSet<String>(GUIDE_AREAS);
+        Map<String, Integer> areaCounts = new LinkedHashMap<String, Integer>();
+        for (String area : GUIDE_AREAS) {
+            areaCounts.put(area, 0);
+        }
+        Set<String> excluded = new LinkedHashSet<String>();
+
+        for (Path page : pages) {
+            PageMetadata metadata = pageMetadata(page);
+            String relative = repositoryRelativePath(docsRoot, page);
+            String navArea = navAreaByPage.get(relative);
+            if (!metadata.hasFrontMatter) {
+                failures.add(relative + ": missing YAML front matter");
+                continue;
+            }
+            if (metadata.searchExcluded) {
+                excluded.add(relative);
+                if (!metadata.tags.isEmpty()) {
+                    failures.add(relative + ": search-excluded page must not declare an area tag");
+                }
+                if (navArea != null) {
+                    failures.add(relative + ": search-excluded page must not remain in navigation");
+                }
+                continue;
+            }
+            if (metadata.tags.size() != 1) {
+                failures.add(relative + ": searchable page needs exactly one area tag, found "
+                        + metadata.tags);
+                continue;
+            }
+            String tag = metadata.tags.get(0);
+            if (!allowed.contains(tag)) {
+                failures.add(relative + ": unsupported area tag " + tag);
+                continue;
+            }
+            areaCounts.put(tag, areaCounts.get(tag) + 1);
+            if (navArea == null) {
+                failures.add(relative + ": searchable page is absent from navigation");
+            } else if (!tag.equals(navArea)) {
+                failures.add(relative + ": area tag " + tag
+                        + " disagrees with navigation area " + navArea);
+            }
+        }
+
+        assertEquals("Only the two superseded course URLs should be search-excluded",
+                new LinkedHashSet<String>(Arrays.asList(
+                        "docs/getting-started/Basic Mechanisms Robot.md",
+                        "docs/getting-started/First Pedro Auto.md")),
+                excluded);
+        for (Map.Entry<String, Integer> count : areaCounts.entrySet()) {
+            if (count.getValue() == 0) {
+                failures.add("No searchable page uses area tag " + count.getKey());
+            }
+        }
+        assertTrue("Area-tag failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void globalGuideSearchUsesTheBuiltInIndexAndSeparatesApiSearch()
+            throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        Path docsRoot = configuredDocsRoot(repositoryRoot, config);
+        String override = readUtf8(repositoryRoot.resolve("overrides/main.html"));
+        String requirements = readUtf8(repositoryRoot.resolve("requirements-docs.txt"));
+        String frameworkHome = readUtf8(docsRoot.resolve("README.md"));
+        String docsHome = readUtf8(docsRoot.resolve("docs/README.md"));
+        String referenceHome = readUtf8(docsRoot.resolve("docs/reference/README.md"));
+
+        assertTrue("The theme must retain Zensical's built-in search UI",
+                config.contains("custom_dir = \"overrides\"")
+                        && config.contains("\"search.highlight\"")
+                        && requirements.contains("zensical==0.0.51")
+                        && override.contains("{% extends \"base.html\" %}")
+                        && override.contains("{{ super() }}")
+                        && override.contains("data-md-component=\"search\""));
+        assertTrue("The scope helper must integrate with the pinned open ShadowRoot search",
+                !override.contains("data-md-component=\"search-query\"")
+                        && override.contains("element.shadowRoot")
+                        && override.contains("input[role=\"combobox\"]")
+                        && override.contains("discoverSearchRoots(document.documentElement)")
+                        && override.contains("new MutationObserver")
+                        && override.contains("controls.insertAdjacentElement(\"afterend\", help)"));
+        assertTrue("The search input must state its global guide scope accessibly",
+                override.contains("const searchLabel = \"Search all guides\"")
+                        && override.contains(
+                                "headerLabel.setAttribute(\"aria-label\", searchLabel)")
+                        && override.contains(
+                                "headerLabel.setAttribute(\"title\", searchLabel)")
+                        && override.contains(
+                                "search.setAttribute(\"aria-label\", searchLabel)")
+                        && override.contains(
+                                "trigger.setAttribute(\"aria-label\", searchLabel)")
+                        && override.contains("input.placeholder = searchLabel")
+                        && override.contains("input.setAttribute(\"aria-label\", searchLabel)")
+                        && override.contains("input.setAttribute(\"aria-describedby\"")
+                        && override.contains(
+                                "Searches all six guide areas. Filter by area. "
+                                        + "For exact classes and methods, use API search."));
+        assertTrue("Closed search controls must leave the tab and accessibility trees",
+                override.contains("root.host.setAttribute(\"aria-hidden\", \"true\")")
+                        && override.contains("root.host.removeAttribute(\"aria-hidden\")")
+                        && override.contains("savedTabIndexes.set(control")
+                        && override.contains("control.tabIndex = -1")
+                        && override.contains("savedTabIndexes.delete(control)"));
+        assertTrue("Existing area filters must be valid keyboard controls with toggle state",
+                override.contains("list.setAttribute(\"role\", \"group\")")
+                        && override.contains("item.setAttribute(\"role\", \"button\")")
+                        && override.contains("item.setAttribute(\"aria-pressed\"")
+                        && override.contains("filterBaseClasses.get(root)")
+                        && override.contains("item.tabIndex = isAvailableToKeyboard")
+                        && override.contains("item.addEventListener(\"keydown\"")
+                        && override.contains("event.key === \"Enter\"")
+                        && override.contains("event.key === \" \"")
+                        && override.contains("event.stopPropagation()")
+                        && override.contains("item.click()"));
+        assertTrue("The helper must not implement a second search engine",
+                !override.contains("fetch(")
+                        && !override.contains("XMLHttpRequest")
+                        && !override.contains("search_index")
+                        && !override.toLowerCase(Locale.ROOT).contains("lunr"));
+
+        assertTrue("The visual doorway must say search remains global across tabs",
+                frameworkHome.contains("**Search all guides** searches all six areas")
+                        && frameworkHome.contains("even while one tab is open")
+                        && frameworkHome.contains("area tags")
+                        && frameworkHome.contains(PUBLISHED_API_ROOT));
+        assertTrue("The exhaustive hub must distinguish guide and API searches",
+                docsHome.contains("The site search is global, not limited to the selected tab")
+                        && docsHome.contains("one area tag")
+                        && docsHome.contains("exact classes, members, signatures, or overloads")
+                        && docsHome.contains(PUBLISHED_API_ROOT));
+        assertTrue("Reference must repeat the guide/API distinction",
+                referenceHome.contains("**Search all guides** searches every area")
+                        && referenceHome.contains("Javadoc search is separate")
+                        && referenceHome.contains("Java types and members"));
+        assertTrue("Navigation must expose API member search separately",
+                config.contains("{ \"API: search types and members\" = \""
+                        + PUBLISHED_API_ROOT + "\" }"));
+    }
+
+    @Test
+    public void buildAreaHasExactlySixIndependentRecipes() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        Path buildRoot = docsRoot.resolve("docs/build");
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+
+        assertEquals("Build Markdown inventory changed",
+                BUILD_MARKDOWN_FILES, markdownFileNames(buildRoot));
+        assertEquals("Build navigation inventory or order changed",
+                BUILD_NAV_TARGETS, navTargets(navAreaBlock(config, "Build")));
+
+        String index = readUtf8(buildRoot.resolve("README.md"));
+        for (String recipe : BUILD_RECIPE_FILES) {
+            assertTrue("Build index does not link " + recipe,
+                    index.contains("(<" + recipe + ">)"));
+        }
+        assertTrue("Build index must keep mechanisms goal-selective",
+                index.contains("independent checkpoint")
+                        && index.contains("You do not need a lift to learn a claw"));
+    }
+
+    @Test
+    public void everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path buildRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH).resolve("docs/build");
+        List<String> failures = new ArrayList<String>();
+
+        for (String fileName : BUILD_RECIPE_FILES) {
+            Path page = buildRoot.resolve(fileName);
+            String markdown = readUtf8(page);
+
+            requireExactlyOnce(markdown, "**Outcome:**", fileName, failures);
+            requireExactlyOnce(markdown, "**Prerequisites:**", fileName, failures);
+            requireExactlyOnce(markdown, "## Critical production idea", fileName, failures);
+            requireExactlyOnce(markdown, "## Files in this checkpoint", fileName, failures);
+            requireExactlyOnce(markdown, "## Software checkpoint:", fileName, failures);
+            requireExactlyOnce(markdown, "## Isolated hardware gate", fileName, failures);
+            requireExactlyOnce(markdown, "**Next gate:**", fileName, failures);
+            requireOrdered(markdown, fileName, failures,
+                    "**Outcome:**",
+                    "**Prerequisites:**",
+                    "## Critical production idea",
+                    "## Files in this checkpoint",
+                    "## Software checkpoint:",
+                    "## Isolated hardware gate",
+                    "**Next gate:**");
+
+            requireExactlyOnce(markdown, "- **Question:**", fileName, failures);
+            requireExactlyOnce(markdown, "- **Keep real:**", fileName, failures);
+            requireExactlyOnce(markdown, "- **Replace:**", fileName, failures);
+            requireExactlyOnce(markdown, "- **Observe:**", fileName, failures);
+            requireExactlyOnce(markdown, "- **Cannot conclude:**", fileName, failures);
+            requireOrdered(markdown, fileName, failures,
+                    "- **Question:**",
+                    "- **Keep real:**",
+                    "- **Replace:**",
+                    "- **Observe:**",
+                    "- **Cannot conclude:**");
+
+            requireExactlyOnce(markdown, "**Read the causal chain:**", fileName, failures);
+            requireExactlyOnce(markdown, "**Proves:**", fileName, failures);
+            requireExactlyOnce(markdown, "**Does not prove:**", fileName, failures);
+            requireOrdered(markdown, fileName, failures,
+                    "**Read the causal chain:**",
+                    "**Proves:**",
+                    "**Does not prove:**",
+                    "**Next gate:**");
+
+            boolean hasMainManifest = Pattern.compile(
+                    "(?m)^\\*\\*Main(?: added here)?:\\*\\*$")
+                    .matcher(markdown).find();
+            boolean hasTestManifest = Pattern.compile("(?m)^\\*\\*Test:\\*\\*$")
+                    .matcher(markdown).find();
+            if (!hasMainManifest || !hasTestManifest) {
+                failures.add(fileName + ": missing exact Main/Test checkpoint manifest");
+            }
+            if (!markdown.contains(".\\gradlew.bat --console=plain "
+                    + ":TeamCode:testDebugUnitTest --tests")) {
+                failures.add(fileName + ": missing focused Gradle scenario command");
+            }
+            if (!markdown.contains(PUBLISHED_API_ROOT)) {
+                failures.add(fileName + ": missing generated API link");
+            }
+            if (markdown.contains("source-file:")
+                    || markdown.contains("annotated-source")
+                    || markdown.contains("teaching-shape")) {
+                failures.add(fileName + ": contains a full, annotated, or invented Java source");
+            }
+
+            int noticeStart = markdown.indexOf("\nNotice:\n");
+            int filesStart = markdown.indexOf("## Files in this checkpoint");
+            if (noticeStart < 0 || filesStart <= noticeStart) {
+                failures.add(fileName + ": missing bounded Notice section");
+            } else {
+                String notice = markdown.substring(noticeStart, filesStart);
+                int observations = matcherCount(Pattern.compile("(?m)^- ").matcher(notice));
+                if (observations < 1 || observations > 3) {
+                    failures.add(fileName + ": Notice must contain one to three observations, found "
+                            + observations);
+                }
+            }
+
+            validateBuildSources(repositoryRoot, fileName, markdown, failures);
+        }
+
+        assertTrue("Build recipe contract failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void testingGuideDefinesTheFiveLevelLadderAndExplanationGrammar()
+            throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH).resolve("docs");
+        String testing = readUtf8(docsRoot.resolve(
+                "testing-calibration/How to test a Sushi component.md"));
+        String testingHome = readUtf8(docsRoot.resolve("testing-calibration/README.md"));
+
+        assertTrue("Testing philosophy must name owner, outside world, heartbeat, and evidence",
+                testing.contains("Test the owner of one question")
+                        && testing.contains("replace only the world outside that owner")
+                        && testing.contains("preserve the")
+                        && testing.contains("production heartbeat")
+                        && testing.contains("claim only the evidence actually observed"));
+
+        String[] levels = {
+            "| 1. Semantic intent |",
+            "| 2. Software-device scenario |",
+            "| 3. Supplied managed slice |",
+            "| 4. Maintainer regression |",
+            "| 5. Physical bring-up, calibration, or experiment |"
+        };
+        for (String level : levels) {
+            assertEquals("Evidence ladder row changed: " + level,
+                    1, literalCount(testing, level));
+        }
+        assertEquals("Evidence ladder must contain exactly five numbered levels",
+                5, matcherCount(Pattern.compile("(?m)^\\| [1-5]\\. ").matcher(testing)));
+
+        String[] preamble = {
+            "- **Question:**",
+            "- **Keep real:**",
+            "- **Replace:**",
+            "- **Observe:**",
+            "- **Cannot conclude:**"
+        };
+        for (String label : preamble) {
+            assertEquals("Testing preamble label changed: " + label,
+                    1, literalCount(testing, label));
+        }
+
+        String[] causalLabels = {
+            "// ARRANGE:",
+            "// REQUEST:",
+            "// BEFORE HEARTBEAT:",
+            "// HEARTBEAT:",
+            "// INJECT EVIDENCE:",
+            "// ASSERT:",
+            "// NEXT GATE:"
+        };
+        for (String label : causalLabels) {
+            assertEquals("Causal Java label changed: " + label,
+                    1, literalCount(testing, label));
+        }
+
+        String[] postEvidence = {
+            "- **Read the causal chain:**",
+            "- **Proves:**",
+            "- **Does not prove:**",
+            "- **Next gate:**"
+        };
+        for (String label : postEvidence) {
+            assertEquals("Post-evidence label changed: " + label,
+                    1, literalCount(testing, label));
+        }
+
+        assertTrue("Student-facing complexity budget is missing",
+                testing.contains("no more than two")
+                        && testing.contains("35 executable lines")
+                        && testing.contains("100–120 physical lines"));
+        assertTrue("Maintainer-only test techniques must remain clearly supplied evidence",
+                testing.contains("reflection-based")
+                        && testing.contains("dynamic proxies")
+                        && testing.contains("bytecode or annotation checks")
+                        && testing.contains("not a")
+                        && testing.contains("template a beginner must reverse engineer"));
+        assertTrue("Test & Tune home must route to the testing philosophy first",
+                testingHome.contains(
+                        "[How to test a Sushi component](<How to test a Sushi component.md>)"));
+    }
+
+    @Test
+    public void referenceHasEightCategoriesAndMatchingJavadocGroups() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        Path referenceRoot = docsRoot.resolve("docs/reference");
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        String referenceHome = readUtf8(referenceRoot.resolve("README.md"));
+        String build = readUtf8(repositoryRoot.resolve("TeamCode/build.gradle"));
+
+        assertEquals("Reference Markdown inventory changed",
+                REFERENCE_MARKDOWN_FILES, markdownFileNames(referenceRoot));
+        assertEquals("Reference navigation inventory or order changed",
+                REFERENCE_NAV_TARGETS, navTargets(navAreaBlock(config, "Reference")));
+
+        for (String category : REFERENCE_CATEGORY_FILES) {
+            String categoryText = readUtf8(referenceRoot.resolve(category));
+            assertTrue("Reference index does not link " + category,
+                    referenceHome.contains("(<" + category + ">)"));
+            assertTrue(category + " must start from ordinary or explicit entry points",
+                    categoryText.contains("## Ordinary entry points")
+                            || categoryText.contains("## Entry points"));
+            assertTrue(category + " must link exact generated API documentation",
+                    categoryText.contains(PUBLISHED_API_ROOT));
+            assertTrue(category + " must preserve one concise truth reminder",
+                    categoryText.contains("## Remember"));
+        }
+
+        List<String> groupNames = new ArrayList<String>();
+        Matcher groups = Pattern.compile("options\\.group\\('([^']+)'").matcher(build);
+        while (groups.find()) {
+            groupNames.add(groups.group(1));
+        }
+        assertEquals("Javadoc categories must parallel eight Reference areas plus examples",
+                JAVADOC_GROUPS, groupNames);
+        assertTrue("Strict Javadocs must cover framework and maintained examples",
+                build.contains("tasks.register('sushiJavadocs', Javadoc)")
+                        && build.contains("include('edu/ftcsushi/fw/**/*.java')")
+                        && build.contains("include('edu/ftcsushi/robots/examples/**/*.java')")
+                        && build.contains("options.addBooleanOption('Werror', true)"));
+    }
+
+    @Test
+    public void supersededCourseUrlsAreSmallSearchExcludedRedirects() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH).resolve("docs");
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        Map<String, String> redirects = new LinkedHashMap<String, String>();
+        redirects.put("getting-started/Basic Mechanisms Robot.md",
+                "../build/README.md");
+        redirects.put("getting-started/First Pedro Auto.md",
+                "../build/First Pedro Auto.md");
+
+        for (Map.Entry<String, String> redirect : redirects.entrySet()) {
+            Path page = docsRoot.resolve(redirect.getKey());
+            String markdown = readUtf8(page);
+            PageMetadata metadata = pageMetadata(page);
+
+            assertTrue(redirect.getKey() + " must be search-excluded",
+                    metadata.hasFrontMatter && metadata.searchExcluded);
+            assertTrue(redirect.getKey() + " must have no area tag", metadata.tags.isEmpty());
+            assertTrue(redirect.getKey() + " is no longer a small redirect",
+                    Files.readAllLines(page, StandardCharsets.UTF_8).size() <= 15
+                            && proseWordCount(page) <= 80);
+            assertTrue(redirect.getKey() + " must point to its current Build destination",
+                    markdown.contains("(<" + redirect.getValue() + ">)"));
+            assertTrue(redirect.getKey() + " must not carry old course content",
+                    !markdown.contains("source-excerpt:")
+                            && !markdown.contains("source-file:")
+                            && !markdown.contains(FENCE + "java")
+                            && !markdown.contains("**Learning mode:**"));
+            assertTrue(redirect.getKey() + " must not remain in navigation",
+                    !config.contains(redirect.getKey()));
+        }
+    }
+
+    @Test
+    public void currentGuidesDoNotNameDeletedExampleAuthorities() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        List<Path> pages = new ArrayList<Path>();
+        collectMarkdownFiles(docsRoot, pages);
+        List<String> failures = new ArrayList<String>();
+
+        for (Path page : pages) {
+            String markdown = readUtf8(page);
+            for (String symbol : DELETED_EXAMPLE_SYMBOLS) {
+                if (Pattern.compile("\\b" + Pattern.quote(symbol) + "\\b")
+                        .matcher(markdown).find()) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + ": names deleted example " + symbol);
+                }
+            }
+        }
+        assertTrue("Deleted example references remain: " + failures, failures.isEmpty());
     }
 
     @Test
     public void sushiFrameworkIdentityAndDocumentationBoundaryStayExplicit() throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
+        Path repositoryRoot = repositoryRoot();
         String rootReadme = readUtf8(repositoryRoot.resolve("README.md"));
         String namespaceReadme = readUtf8(repositoryRoot.resolve(
                 "TeamCode/src/main/java/edu/ftcsushi/README.md"));
-        String docsHome = readUtf8(repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md"));
+        Path frameworkRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        String frameworkHome = readUtf8(frameworkRoot.resolve("README.md"));
+        String docsHome = readUtf8(frameworkRoot.resolve("docs/README.md"));
         String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
         String build = readUtf8(repositoryRoot.resolve("TeamCode/build.gradle"));
 
@@ -474,63 +711,36 @@ public final class DocumentationLinksTest {
                 rootReadme.startsWith("# Sushi framework"));
         assertTrue("Namespace README must identify Sushi as the framework",
                 namespaceReadme.startsWith("# Sushi framework"));
-        assertTrue("Documentation home must identify Sushi",
-                docsHome.startsWith("# Sushi documentation"));
-        Path configuredDocsRoot = configuredDocsRoot(repositoryRoot, config);
-        assertTrue("Documentation site must use the Sushi identity",
+        assertTrue("Framework doorway must identify Sushi",
+                frameworkHome.contains("# Build a robot with Sushi"));
+        assertTrue("Documentation hub must identify Sushi",
+                docsHome.contains("# Sushi documentation"));
+        assertTrue("Documentation site must use the Sushi identity and framework docs root",
                 config.contains("site_name = \"Sushi Framework\"")
-                        && config.contains("\"Learn Sushi topics\"")
-                        && configuredDocsRoot.equals(repositoryRoot.resolve(
-                                "TeamCode/src/main/java/edu/ftcsushi/fw").toAbsolutePath()
-                                .normalize())
-                        && config.contains("{ \"Home\" = \"docs/README.md\" }")
+                        && configuredDocsRoot(repositoryRoot, config).equals(frameworkRoot)
                         && !config.contains("= \"fw/")
                         && !config.contains("ftcphoenix"));
         assertTrue("Strict API documentation must use the Sushi task and title",
                 build.contains("tasks.register('sushiJavadocs', Javadoc)")
                         && build.contains("Sushi Framework API")
                         && !build.contains("phoenixJavadocs"));
-        assertTrue("Current beginner and reference pages must exist",
-                Files.isRegularFile(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                + "Basic Mechanisms Robot.md"))
-                        && Files.isDirectory(repositoryRoot.resolve(
-                                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                        + "learn-sushi"))
-                        && Files.isRegularFile(repositoryRoot.resolve(
-                                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/reference/"
-                                        + "Sushi Cheat Sheet.md")));
-        assertTrue("Former framework page paths must not remain",
-                !Files.exists(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                + "First Phoenix Robot Code.md"))
-                        && !Files.exists(repositoryRoot.resolve(
-                                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                        + "learn-phoenix"))
-                        && !Files.exists(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/reference/"
-                                        + "Phoenix Cheat Sheet.md"))
-                        && !Files.exists(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                + "First Sushi Robot Code.md"))
-                        && !Files.exists(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                + "Build a Robot Step by Step.md"))
-                        && !Files.exists(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                                + "Test a Mechanism Without Hardware.md"))
-                        && !Files.exists(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcsushi/fw/docs/examples/"
-                                + "Modern Starter Robot.md")));
-        assertTrue("Former Java namespace roots must not remain",
-                !Files.exists(repositoryRoot.resolve(
-                        "TeamCode/src/main/java/edu/ftcphoenix"))
+        assertTrue("The six current area homes must exist",
+                Files.isRegularFile(frameworkRoot.resolve("docs/getting-started/Build and Run.md"))
+                        && Files.isRegularFile(frameworkRoot.resolve(
+                                "docs/getting-started/Beginner's Guide.md"))
+                        && Files.isRegularFile(frameworkRoot.resolve("docs/build/README.md"))
+                        && Files.isRegularFile(frameworkRoot.resolve(
+                                "docs/testing-calibration/README.md"))
+                        && Files.isRegularFile(frameworkRoot.resolve("docs/advanced/README.md"))
+                        && Files.isRegularFile(frameworkRoot.resolve("docs/reference/README.md")));
+        assertTrue("Former framework namespace roots must not remain",
+                !Files.exists(repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcphoenix"))
                         && !Files.exists(repositoryRoot.resolve(
                                 "TeamCode/src/test/java/edu/ftcphoenix")));
 
         assertNoStaleFrameworkBranding(
                 repositoryRoot,
-                repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcsushi/fw"),
+                frameworkRoot,
                 Arrays.asList(
                         repositoryRoot.resolve("README.md"),
                         repositoryRoot.resolve(
@@ -547,7 +757,7 @@ public final class DocumentationLinksTest {
 
         assertNoProductionApplicationReferences(
                 repositoryRoot,
-                repositoryRoot.resolve("TeamCode/src/main/java/edu/ftcsushi/fw"),
+                frameworkRoot,
                 Arrays.asList(
                         repositoryRoot.resolve(
                                 "TeamCode/src/main/java/edu/ftcsushi/README.md"),
@@ -557,8 +767,7 @@ public final class DocumentationLinksTest {
     @Test
     public void currentTrackerGuidanceDoesNotDependOnTheProductionApplication()
             throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
+        Path repositoryRoot = repositoryRoot();
         List<String> lines = Files.readAllLines(
                 repositoryRoot.resolve("FRAMEWORK_IMPROVEMENT_TRACKER.md"),
                 StandardCharsets.UTF_8);
@@ -593,500 +802,6 @@ public final class DocumentationLinksTest {
 
         assertTrue("Production application references remain in current tracker guidance: "
                 + failures, failures.isEmpty());
-    }
-
-    @Test
-    public void learningNavigationKeepsOneCurrentCourseWithoutCompatibilityStubs()
-            throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
-        Matcher startGroup = Pattern.compile(
-                "\\{\\s*\"Start here\"\\s*=\\s*\\[([^]]+)]\\s*},",
-                Pattern.DOTALL).matcher(config);
-        assertTrue("Missing Start here navigation group", startGroup.find());
-        assertNavigationEntries(
-                "Start here",
-                startGroup.group(1),
-                Arrays.asList(
-                        "Set up and verify the project",
-                        "Build the Basic Mechanisms robot",
-                        "Sushi in one picture",
-                        "Choose a Sushi topic"),
-                Arrays.asList(
-                        "docs/getting-started/Build and Run.md",
-                        "docs/getting-started/Basic Mechanisms Robot.md",
-                        "docs/getting-started/Framework Overview.md",
-                        "docs/getting-started/Beginner's Guide.md"));
-
-        Matcher learningGroup = Pattern.compile(
-                "\\{\\s*\"Learn Sushi topics\"\\s*=\\s*\\[([^]]+)]\\s*},",
-                Pattern.DOTALL).matcher(config);
-        assertTrue("Missing Learn Sushi topics navigation group", learningGroup.find());
-
-        assertNavigationEntries(
-                "Learn Sushi topics",
-                learningGroup.group(1),
-                Arrays.asList(
-                        "Robot roles",
-                        "Controls and intent",
-                        "Plants and hardware",
-                        "Tasks and autonomous",
-                        "Evidence and experiments",
-                        "From requirement to robot"),
-                Arrays.asList(
-                        "docs/getting-started/learn-sushi/Robot Roles.md",
-                        "docs/getting-started/learn-sushi/Controls and Intent.md",
-                        "docs/getting-started/learn-sushi/Plants and Hardware.md",
-                        "docs/getting-started/learn-sushi/Tasks and Autonomous.md",
-                        "docs/getting-started/learn-sushi/Evidence and Experiments.md",
-                        "docs/getting-started/learn-sushi/From Requirement to Robot.md"));
-
-        Matcher examplesGroup = Pattern.compile(
-                "\\{\\s*\"Examples\"\\s*=\\s*\\[([^]]+)]\\s*},",
-                Pattern.DOTALL).matcher(config);
-        assertTrue("Missing Examples navigation group", examplesGroup.find());
-        assertNavigationEntries(
-                "Examples",
-                examplesGroup.group(1),
-                Arrays.asList(
-                        "Examples home",
-                        "Hardware-free reference scenarios",
-                        "Field-relative drive",
-                        "Your first Pedro Auto",
-                        "Subsystem experiments"),
-                Arrays.asList(
-                        "docs/examples/README.md",
-                        "docs/examples/Hardware-free Reference Scenarios.md",
-                        "docs/examples/Field-relative Drive.md",
-                        "docs/getting-started/First Pedro Auto.md",
-                        "docs/examples/Subsystem Experiments.md"));
-
-        String docs = "TeamCode/src/main/java/edu/ftcsushi/fw/docs/";
-        for (String removed : Arrays.asList(
-                "getting-started/First Mechanism.md",
-                "getting-started/First TeleOp.md",
-                "getting-started/First Task and Auto.md",
-                "getting-started/README.md",
-                "getting-started/First Sushi Robot Code.md",
-                "getting-started/Build a Robot Step by Step.md",
-                "getting-started/Test a Mechanism Without Hardware.md",
-                "getting-started/learn-sushi/Role Paths.md",
-                "examples/Framework Components Through Examples.md",
-                "examples/Modern Starter Robot.md",
-                "examples/BIOBUZZ Capability Map.md",
-                "examples/Pedro Autonomous Reference.md")) {
-            assertTrue("Redundant documentation page still exists: " + removed,
-                    !Files.exists(repositoryRoot.resolve(docs + removed)));
-        }
-    }
-
-    @Test
-    public void basicMechanismsCourseKeepsSevenRunnableRobotCheckpoints() throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        Path anchorPath = repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                        + "Basic Mechanisms Robot.md");
-        assertTrue("Basic Mechanisms course is missing", Files.isRegularFile(anchorPath));
-
-        String anchor = readUtf8(anchorPath);
-        assertTrue("Basic Mechanisms course must declare Guided course mode",
-                anchor.contains("**Learning mode:** Guided course"));
-        assertTrue("Basic Mechanisms course exceeds 3,200 prose words",
-                proseWordCount(anchorPath) <= 3200);
-        assertTrue("Basic Mechanisms course exceeds 120 visible Java lines",
-                displayedJavaLineCount(anchorPath) <= 120);
-        assertTrue("Basic Mechanisms course must keep complete files collapsed",
-                anchor.contains("## Complete working slice") && anchor.contains("<details>"));
-
-        int firstStageStart = anchor.indexOf(
-                "## 1. Define lift and claw capability interfaces");
-        String warmUp = anchor.substring(0, firstStageStart);
-        assertTrue("First-drive warm-up lost its disabled compile checkpoint",
-                warmUp.contains(":TeamCode:compileDebugJavaWithJavac")
-                        && warmUp.contains("Keep `@Disabled`")
-                        && warmUp.contains("BUILD SUCCESSFUL"));
-        assertTrue("First-drive warm-up lost its raised-wheel diagnosis table",
-                warmUp.contains("| Left stick forward | forward | forward | forward | forward |")
-                        && warmUp.contains("| Left stick right | forward | reverse | reverse | forward |")
-                        && warmUp.contains("| Right stick right | forward | reverse | forward | reverse |")
-                        && warmUp.contains("| Sticks released | stop | stop | stop | stop |")
-                        && warmUp.contains("If one corner is wrong")
-                        && warmUp.contains("wheel placement and configuration mapping"));
-        assertTrue("First-drive warm-up lost its bounded floor acceptance",
-                warmUp.contains("brief forward move")
-                        && warmUp.contains("right strafe")
-                        && warmUp.contains("clockwise turn")
-                        && warmUp.contains("observed stopping distance")
-                        && warmUp.contains("staff STOP"));
-        assertTrue("First-drive warm-up lost its critical code and linked API teaching",
-                warmUp.contains("### Critical code")
-                        && warmUp.contains("new GamepadDevice(gamepad1)")
-                        && warmUp.contains("new GamepadDriveSource(")
-                        && warmUp.contains("FtcDrives.MecanumConfig.defaults()")
-                        && warmUp.contains("program.drive(controls.driveSource(),")
-                        && warmUp.contains("**What to notice**")
-                        && warmUp.contains("[`FtcRobotOpMode`](<")
-                        && warmUp.contains("[`GamepadDevice`](<")
-                        && warmUp.contains("[`GamepadDriveSource`](<")
-                        && warmUp.contains("[`FtcDrives`](<")
-                        && warmUp.contains("[`RobotProgram.drive(...)`](<"));
-        String[] requiredStageHeadings = {
-            "## 1. Define lift and claw capability interfaces",
-            "## 2. Test the interfaces without hardware",
-            "## 3. Connect hardware and run focused TeleOp",
-            "## 4. Run a bounded subsystem experiment",
-            "## 5. Integrate the complete TeleOp",
-            "## 6. Test individual Auto behaviors",
-            "## 7. Test end-to-end Auto"
-        };
-        String[] requiredEvidenceLabels = {
-            "**Outcome:**", "**Files:**", "### Critical code", "**Run:**",
-            "**Expect:**", "**Software checkpoint:**", "**Physical gate:**",
-            "**What to notice**", "**Key APIs**", "**If it fails:**", "**Advance when:**"
-        };
-        int priorStage = -1;
-        for (int stageIndex = 0; stageIndex < requiredStageHeadings.length; stageIndex++) {
-            String stageHeading = requiredStageHeadings[stageIndex];
-            int sectionStart = anchor.indexOf(stageHeading);
-            assertTrue("Build-season anchor is missing stage: " + stageHeading,
-                    sectionStart >= 0);
-            assertTrue("Build-season stages are out of order: " + stageHeading,
-                    sectionStart > priorStage);
-            priorStage = sectionStart;
-            int sectionEnd = stageIndex + 1 < requiredStageHeadings.length
-                    ? anchor.indexOf(requiredStageHeadings[stageIndex + 1], sectionStart)
-                    : anchor.indexOf("## Complete working slice", sectionStart);
-            assertTrue("Build-season stage has no closing boundary: " + stageHeading,
-                    sectionEnd > sectionStart);
-            String section = anchor.substring(sectionStart, sectionEnd);
-
-            for (String label : requiredEvidenceLabels) {
-                int occurrences = matcherCount(Pattern.compile(Pattern.quote(label))
-                        .matcher(section));
-                assertTrue(stageHeading + " must contain exactly one " + label
-                                + "; found " + occurrences,
-                        occurrences == 1);
-            }
-            int runStart = section.indexOf("**Run:**");
-            int expectStart = section.indexOf("**Expect:**", runStart);
-            String runBlock = section.substring(runStart, expectStart);
-            assertTrue(stageHeading + " needs an exact focused Gradle command in Run",
-                    Pattern.compile("(?m)^```powershell\\r?$[\\s\\S]*?"
-                                    + "^\\.\\\\gradlew\\.bat --console=plain :TeamCode:"
-                                    + "[^\\r\\n]+[\\s\\S]*?^```\\r?$")
-                            .matcher(runBlock).find());
-            int softwareStart = section.indexOf("**Software checkpoint:**", expectStart);
-            int physicalStart = section.indexOf("**Physical gate:**", softwareStart);
-            int noticeStart = section.indexOf("**What to notice**", physicalStart);
-            assertTrue(stageHeading + " must separate observable software and physical evidence",
-                    expectStart >= 0
-                            && softwareStart > expectStart
-                            && physicalStart > softwareStart
-                            && noticeStart > physicalStart
-                            && section.substring(physicalStart, noticeStart).contains("STOP"));
-            assertTrue(stageHeading + " is missing a maintained source excerpt",
-                    Pattern.compile("<!-- (?:annotated-)?source-excerpt: [^>]+ -->")
-                            .matcher(section).find());
-
-            int apiStart = section.indexOf("**Key APIs**");
-            int apiEnd = section.indexOf("**If it fails:**", apiStart);
-            assertTrue(stageHeading + " has an invalid Key APIs boundary",
-                    apiStart >= 0 && apiEnd > apiStart);
-            String apiBlock = section.substring(apiStart, apiEnd);
-            Matcher apiBullets = Pattern.compile("(?m)^- (.+)$").matcher(apiBlock);
-            int apiCount = 0;
-            while (apiBullets.find()) {
-                apiCount++;
-                assertTrue(stageHeading + " has a Key APIs bullet without a concrete API: "
-                                + apiBullets.group(),
-                        apiBullets.group(1).startsWith("[`")
-                                && apiBullets.group(1).contains("](<https://"));
-            }
-            assertTrue(stageHeading + " must name one to six key APIs; found " + apiCount,
-                    apiCount >= 1 && apiCount <= 6);
-        }
-
-        int interfaceStageStart = anchor.indexOf(requiredStageHeadings[0]);
-        int interfaceStageEnd = anchor.indexOf(requiredStageHeadings[1], interfaceStageStart);
-        String interfaceStage = anchor.substring(interfaceStageStart, interfaceStageEnd);
-        assertTrue("Stage 1 must show the real semantic capability methods",
-                interfaceStage.contains("void setHeight(Height height);")
-                        && interfaceStage.contains("Task moveTo(Height height);")
-                        && interfaceStage.contains("Task home();")
-                        && interfaceStage.contains("void setState(State state);")
-                        && interfaceStage.contains("Task setStateTask(State state);")
-                        && interfaceStage.contains("public Height requestedHeight()")
-                        && interfaceStage.contains("public double requestedPositionIn()")
-                        && interfaceStage.contains("public double appliedPositionIn()")
-                        && interfaceStage.contains("public double measuredPositionIn()")
-                        && interfaceStage.contains("public boolean referenced()")
-                        && interfaceStage.contains("public boolean atTarget()")
-                        && interfaceStage.contains("public PositionPlantSnapshot plantSnapshot()")
-                        && interfaceStage.contains("Status status();"));
-        assertTrue("Stage 1 must implement the mechanism/profile/control foundation before tests",
-                interfaceStage.contains("### Implement the foundation before testing")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicLiftMechanism.java -->")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicClawMechanism.java -->")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicDriveProfile.java -->")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicLiftProfile.java -->")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicClawProfile.java -->")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicDriveControls.java -->")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicLiftControls.java -->")
-                        && interfaceStage.contains(
-                                "<!-- annotated-source-excerpt: TeamCode/src/main/java/"
-                                        + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                        + "BasicClawControls.java -->"));
-        assertTrue("Stage 1 must teach the actual Plant, sensor, semantic move, and homing APIs",
-                interfaceStage.contains("[`FtcSensors.digitalLow(...)`](<")
-                        && interfaceStage.contains("[`FtcActuators.plant(...)`](<")
-                        && interfaceStage.contains("[`PositionCalibrationTasks.search(...)`](<")
-                        && interfaceStage.contains("[`SemanticScalarTasks.set(...)`](<")
-                        && interfaceStage.contains(
-                                "SemanticScalarCommand.forEnum(Height.STOWED)")
-                        && interfaceStage.contains(".map(Height.STOWED, c.stowedHeightIn)")
-                        && interfaceStage.contains(".map(Height.LOW, c.lowHeightIn)")
-                        && interfaceStage.contains(".map(Height.HIGH, c.highHeightIn)")
-                        && interfaceStage.contains(
-                                "SemanticScalarCommand.forEnum(c.initialState)")
-                        && interfaceStage.contains(
-                                "private static final double CLOSED_TARGET = 0.0;")
-                        && interfaceStage.contains(
-                                "private static final double OPEN_TARGET = 1.0;")
-                        && interfaceStage.contains(".map(State.CLOSED, CLOSED_TARGET)")
-                        && interfaceStage.contains(".map(State.OPEN, OPEN_TARGET)")
-                        && interfaceStage.contains(".position()")
-                        && interfaceStage.contains(".nonPeriodic()")
-                        && interfaceStage.contains(".bounded(CLOSED_TARGET, OPEN_TARGET)")
-                        && interfaceStage.contains(
-                                ".rangeMapsToNative(c.closedNativePosition, c.openNativePosition)")
-                        && interfaceStage.contains(".targetExactlyFrom(heightCommand)")
-                        && interfaceStage.contains(".targetExactlyFrom(stateCommand)")
-                        && interfaceStage.contains(
-                                "SemanticScalarTasks.set(stateCommand, "
-                                        + "Objects.requireNonNull(state, \"state\"))")
-                        && interfaceStage.contains(".needsReference(")
-                        && interfaceStage.contains(
-                                "SemanticScalarTasks.set(heightCommand, "
-                                        + "Objects.requireNonNull(height, \"height\"))")
-                        && interfaceStage.contains(".untilReachedBy(lift)")
-                        && interfaceStage.contains(".leaveRequestOnCancel()")
-                        && interfaceStage.contains(".timeout(moveTimeoutSec)")
-                        && interfaceStage.contains(".failAfterSec(homingTimeoutSec)")
-                        && interfaceStage.contains(
-                                "SemanticScalarTasks.set(heightCommand, Height.STOWED).build()")
-                        && interfaceStage.contains("Tasks.sequence(")
-                        && !interfaceStage.contains(
-                                ".targetFromResolver(PlantTargets.exact(")
-                        && !interfaceStage.contains(".nativePosition()"));
-
-        int testStageStart = anchor.indexOf(requiredStageHeadings[1]);
-        int testStageEnd = anchor.indexOf(requiredStageHeadings[2], testStageStart);
-        String testStage = anchor.substring(testStageStart, testStageEnd);
-        assertTrue("Stage 2 must be runnable one focused file at a time",
-                testStage.contains("BasicLiftMechanismTest.java")
-                        && testStage.contains("BasicClawMechanismTest.java")
-                        && testStage.contains("BasicTeleOpControlsTest.java")
-                        && matcherCount(Pattern.compile(
-                                Pattern.quote(":TeamCode:testDebugUnitTest --tests "))
-                                .matcher(testStage)) == 3
-                        && testStage.contains("Deliberately make one expectation wrong")
-                        && testStage.contains("FtcTestHardware")
-                        && testStage.contains("ManualLoopClock"));
-        assertTrue("Stage 2 must preserve repository invariants without teaching unsafe edits",
-                testStage.contains("Repository-example invariants")
-                        && testStage.contains("all permissions false")
-                        && testStage.contains("Do not weaken those assertions")
-                        && testStage.contains("team-owned hosts/profiles")
-                        && testStage.contains("BasicRobotScenarioTest"));
-
-        int hardwareStageStart = anchor.indexOf(requiredStageHeadings[2]);
-        int hardwareStageEnd = anchor.indexOf(requiredStageHeadings[3], hardwareStageStart);
-        String hardwareStage = anchor.substring(hardwareStageStart, hardwareStageEnd);
-        assertTrue("Stage 3 must split lift and claw evidence",
-                hardwareStage.contains("- Lift host:")
-                        && hardwareStage.contains("- Claw host:")
-                        && hardwareStage.contains("initial `CLOSED` target")
-                        && hardwareStage.contains("first active heartbeat")
-                        && hardwareStage.contains("before A/B is pressed"));
-
-        int behaviorStageStart = anchor.indexOf(requiredStageHeadings[5]);
-        int behaviorStageEnd = anchor.indexOf(requiredStageHeadings[6], behaviorStageStart);
-        String behaviorStage = anchor.substring(behaviorStageStart, behaviorStageEnd);
-        assertTrue("Stage 6 must keep a real independent bounded-drive fixture",
-                behaviorStage.contains("BasicDriveAuto.java")
-                        && behaviorStage.contains("BasicDriveStopOwner.java")
-                        && behaviorStage.contains("return Tasks.sequence(")
-                        && behaviorStage.contains("DriveTasks.driveExclusivelyForSeconds(")
-                        && behaviorStage.contains("Tasks.parallelDeadline(")
-                        && behaviorStage.contains(
-                                "requiredClaw.setStateTask(BasicClaw.State.CLOSED)")
-                        && behaviorStage.contains(
-                                "requiredClaw.setStateTask(BasicClaw.State.OPEN)")
-                        && !behaviorStage.contains("requestClaw(")
-                        && behaviorStage.contains("constructed eagerly")
-                        && behaviorStage.contains("program.output(driveStopOwner)")
-                        && behaviorStage.contains("keep lift/claw absent")
-                        && behaviorStage.contains("0.20 source request")
-                        && behaviorStage.contains("0.25 profile scale")
-                        && behaviorStage.contains("straight wheel command 0.05")
-                        && behaviorStage.contains("does not prove physical zero")
-                        && behaviorStage.contains("auto.complete")
-                        && behaviorStage.contains("auto.outcome"));
-
-        int completeStageStart = anchor.indexOf(requiredStageHeadings[6]);
-        int completeStageEnd = anchor.indexOf("## Complete working slice", completeStageStart);
-        String completeStage = anchor.substring(completeStageStart, completeStageEnd);
-        assertTrue("Stage 7 must teach the retained root and its terminal telemetry",
-                completeStage.contains("BasicRobotAutoRoutines.complete(")
-                        && completeStage.contains("return Tasks.sequence(")
-                        && completeStage.contains(
-                                "requiredClaw.setStateTask(BasicClaw.State.CLOSED)")
-                        && completeStage.contains(
-                                "requiredClaw.setStateTask(BasicClaw.State.OPEN)")
-                        && !completeStage.contains("requestClaw(")
-                        && completeStage.contains("program.output(driveStopOwner)")
-                        && completeStage.contains("auto.complete")
-                        && completeStage.contains("auto.outcome")
-                        && completeStage.contains("complete alone does not distinguish"));
-
-        assertTrue("Course must start with the maintained one-file drive milestone",
-                anchor.contains("## Before the season: get first drive moving")
-                        && anchor.contains("FirstDriveTeleOp.java"));
-        assertTrue("Course must distinguish software evidence from physical evidence",
-                Pattern.compile("(?is)software.{0,240}not.{0,120}physical")
-                        .matcher(anchor).find()
-                        && anchor.contains("FtcTestHardware")
-                        && anchor.contains("STOP"));
-        assertTrue("Physical TeleOp exposure must remain an explicit gate",
-                anchor.contains("remove `@Disabled`")
-                        && anchor.contains("INIT with controls neutral"));
-        assertTrue("Subsystem experiments must remain a separate physical evidence gate",
-                anchor.contains("../examples/Subsystem Experiments.md"));
-        assertTrue("The basic timed drive must point students to Pedro for real paths",
-                anchor.contains("First Pedro Auto.md") && anchor.contains("Pedro"));
-
-        List<String> expectedCompleteFiles = Arrays.asList(
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/"
-                        + "FirstDriveTeleOp.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicAutoRoutines.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicClawControls.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicClawMechanism.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicClawProfile.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicClawTeleOp.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicDriveAuto.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicDriveControls.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicDriveProfile.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicDriveStopOwner.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicHardwareOwnership.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicLiftControls.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicLiftMechanism.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicLiftProfile.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicLiftTeleOp.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicMechanismsAuto.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicRobotAuto.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicRobotAutoRoutines.java",
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicRobotTeleOp.java",
-                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicLiftMechanismTest.java",
-                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicClawMechanismTest.java",
-                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicTeleOpControlsTest.java",
-                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicAutoRoutinesTest.java",
-                "TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/"
-                        + "BasicRobotScenarioTest.java");
-        Matcher manifest = Pattern.compile("<!-- buildable-files: ([^>]+) -->").matcher(anchor);
-        assertTrue("Basic Mechanisms course lacks its complete-file manifest", manifest.find());
-        List<String> declaredFiles = Arrays.asList(
-                manifest.group(1).trim().split("\\s*\\|\\s*"));
-        assertEquals("Basic Mechanisms manifest changed without updating its course contract",
-                expectedCompleteFiles, declaredFiles);
-        for (String expectedFile : expectedCompleteFiles) {
-            String marker = "<!-- source-file: " + expectedFile + " -->";
-            assertTrue("Course is missing complete source: " + expectedFile,
-                    matcherCount(Pattern.compile(Pattern.quote(marker)).matcher(anchor)) == 1);
-            int markerAt = anchor.indexOf(marker);
-            int openDetails = anchor.lastIndexOf("<details>", markerAt);
-            int priorCloseDetails = anchor.lastIndexOf("</details>", markerAt);
-            int closeDetails = anchor.indexOf("</details>", markerAt);
-            assertTrue("Complete source must stay collapsed: " + expectedFile,
-                    openDetails >= 0 && priorCloseDetails < openDetails && closeDetails > markerAt);
-            String disclosure = anchor.substring(openDetails, closeDetails);
-            assertTrue("Each source disclosure must contain exactly one complete file: "
-                            + expectedFile,
-                    matcherCount(Pattern.compile("<!-- source-file: ").matcher(disclosure)) == 1);
-        }
-
-        int warmUpEnd = anchor.indexOf(requiredStageHeadings[0]);
-        assertTrue("FirstDriveTeleOp must stay beside the warm-up",
-                anchor.substring(0, warmUpEnd).contains(
-                        "<!-- source-file: " + expectedCompleteFiles.get(0) + " -->"));
-        int[][] expectedFileIndexesByStage = {
-            {2, 3, 4, 5, 8, 9, 11, 12, 13, 14, 15},
-            {21, 22, 23},
-            {6, 16},
-            {},
-            {20},
-            {1, 7, 10, 17, 24},
-            {18, 19, 25}
-        };
-        for (int stageIndex = 0; stageIndex < requiredStageHeadings.length; stageIndex++) {
-            int sectionStart = anchor.indexOf(requiredStageHeadings[stageIndex]);
-            int sectionEnd = stageIndex + 1 < requiredStageHeadings.length
-                    ? anchor.indexOf(requiredStageHeadings[stageIndex + 1], sectionStart)
-                    : anchor.indexOf("## Complete working slice", sectionStart);
-            String section = anchor.substring(sectionStart, sectionEnd);
-            for (int fileIndex : expectedFileIndexesByStage[stageIndex]) {
-                String expectedFile = expectedCompleteFiles.get(fileIndex);
-                assertTrue(requiredStageHeadings[stageIndex]
-                                + " is missing its stage-local complete file: " + expectedFile,
-                        section.contains("<!-- source-file: " + expectedFile + " -->"));
-            }
-        }
     }
 
     @Test
@@ -1127,58 +842,6 @@ public final class DocumentationLinksTest {
         assertTrue("Cheat sheet must keep both sequence choices visible",
                 cheatSheet.contains("`Tasks.sequence(...)` is the ordinary prerequisite chain")
                         && cheatSheet.contains("`Tasks.sequenceOnCompletion(...)` is only for"));
-    }
-
-    @Test
-    public void survivingPedroLessonKeepsTheCompleteTruthfulTeachingSurface()
-            throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        Path lessonPath = repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/"
-                        + "First Pedro Auto.md");
-        assertTrue("Surviving Pedro lesson is missing", Files.isRegularFile(lessonPath));
-        String lesson = readUtf8(lessonPath);
-
-        String sourcePrefix = "<!-- source-excerpt: TeamCode/src/main/java/"
-                + "edu/ftcsushi/robots/examples/pedro/";
-        assertTrue("Pedro lesson must retain source-backed fixed path geometry",
-                lesson.contains(sourcePrefix
-                        + "autonomous/BasicPedroAutoPaths.java -->"));
-        assertTrue("Pedro lesson must retain source-backed route policy",
-                lesson.contains(sourcePrefix
-                        + "autonomous/BasicPedroAutoRoutine.java -->")
-                        && lesson.contains("RouteTasks.follow(")
-                        && lesson.contains("Tasks.branchOnOutcome("));
-        assertTrue("Pedro lesson must retain its source-backed disabled host",
-                lesson.contains(sourcePrefix + "opmode/BasicPedroAutoExample.java -->")
-                        && lesson.contains("@Disabled")
-                        && lesson.contains("allowRobotMotion"));
-        assertTrue("Pedro lesson must distinguish exact route status from Task outcome",
-                lesson.contains("RouteStatus")
-                        && lesson.contains("TaskOutcome")
-                        && lesson.contains("FOLLOWER_TIMEOUT_OR_STALL")
-                        && lesson.contains("UNKNOWN_TERMINAL"));
-        assertTrue("Pedro outcome branch must fail closed for cancellation and unknown results",
-                lesson.contains("A `CANCELLED` or `UNKNOWN` Task result starts neither branch"));
-        assertTrue("Pedro lesson must retain the exact integration contract link",
-                lesson.contains("../../integrations/pedro/README.md"));
-        assertTrue("Pedro lesson must keep physical motion blocked without route-time control",
-                lesson.contains("Ordinary Sushi route callers cannot currently set")
-                        && lesson.contains("does not authorize a later physical test")
-                        && lesson.contains("Do not set it true for physical motion"));
-
-        String profile = readUtf8(repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/"
-                        + "BasicPedroProfile.java"));
-        String robot = readUtf8(repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/robot/"
-                        + "BasicPedroAutoRobot.java"));
-        assertTrue("Pedro example source must not present review alone as motion permission",
-                profile.contains("Keep {@link #allowRobotMotion} false for physical use")
-                        && profile.contains("physical motion remains blocked")
-                        && robot.contains("Keep it false for physical")
-                        && robot.contains("persistent Follower power limit"));
     }
 
     @Test
@@ -1266,14 +929,12 @@ public final class DocumentationLinksTest {
     }
 
     @Test
-    public void firstContactLearningPagesStayWithinProgressiveDisclosureBudgets()
+    public void firstContactPagesStayWithinProgressiveDisclosureBudgets()
             throws IOException {
-        Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
-                Paths.get(System.getProperty("user.dir")));
-        Path learningRoot = repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started");
+        Path repositoryRoot = repositoryRoot();
+        Path learningRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH)
+                .resolve("docs/getting-started");
         Path overview = learningRoot.resolve("Framework Overview.md");
-        Path basicCourse = learningRoot.resolve("Basic Mechanisms Robot.md");
         Path hub = learningRoot.resolve("Beginner's Guide.md");
         Path topics = learningRoot.resolve("learn-sushi");
 
@@ -1283,105 +944,6 @@ public final class DocumentationLinksTest {
                 javaFenceCount(overview) <= 3);
         assertTrue("First-contact overview exceeds 30 displayed Java lines",
                 displayedJavaLineCount(overview) <= 30);
-        assertTrue("Basic Mechanisms course is missing", Files.isRegularFile(basicCourse));
-        assertTrue("Basic Mechanisms course exceeds 3,200 prose words",
-                proseWordCount(basicCourse) <= 3200);
-        String basicCourseText = readUtf8(basicCourse);
-        String firstDrivePath = "TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/"
-                + "FirstDriveTeleOp.java";
-        Path firstDrive = repositoryRoot.resolve(firstDrivePath);
-        assertTrue("Maintained first-drive example is missing", Files.isRegularFile(firstDrive));
-        assertTrue("Basic Mechanisms course must reproduce the maintained first-drive example",
-                basicCourseText.contains("<!-- source-file: " + firstDrivePath + " -->"));
-        String firstDriveSource = readUtf8(firstDrive);
-        assertTrue("First-drive example must stay disabled by default",
-                Pattern.compile("(?m)^@Disabled[ \\t]*$")
-                        .matcher(firstDriveSource).find());
-        assertTrue("First-drive example must declare a real TeleOp",
-                Pattern.compile("(?m)^@TeleOp\\([^\\r\\n]+\\)[ \\t]*$")
-                        .matcher(firstDriveSource).find());
-        assertTrue("First-drive example must remain one final managed OpMode",
-                Pattern.compile("public\\s+final\\s+class\\s+FirstDriveTeleOp\\s+"
-                                + "extends\\s+FtcRobotOpMode")
-                        .matcher(firstDriveSource).find()
-                        && !Pattern.compile("\\bvoid\\s+loop\\s*\\(")
-                        .matcher(firstDriveSource).find());
-        assertTrue("First-drive controls must own the three selected gamepad meanings",
-                firstDriveSource.contains(
-                        "new FirstDriveControls(new GamepadDevice(gamepad1))")
-                        && firstDriveSource.contains("new GamepadDriveSource(")
-                        && firstDriveSource.contains("driver.leftX()")
-                        && firstDriveSource.contains("driver.leftY()")
-                        && firstDriveSource.contains("driver.rightX()")
-                        && firstDriveSource.contains("GamepadDriveSource.Config.defaults()")
-                        && firstDriveSource.contains(".scaled(FIRST_RUN_TRANSLATION_SCALE, "
-                                + "FIRST_RUN_TURN_SCALE)"));
-        assertTrue("First-drive composition must expose reviewed wiring and one configured sink",
-                firstDriveSource.contains("FtcDrives.MecanumConfig.defaults()")
-                        && firstDriveSource.contains("drive.wiring.frontLeftName")
-                        && firstDriveSource.contains("drive.wiring.frontRightName")
-                        && firstDriveSource.contains("drive.wiring.backLeftName")
-                        && firstDriveSource.contains("drive.wiring.backRightName")
-                        && firstDriveSource.contains("drive.wiring.frontLeftDirection")
-                        && firstDriveSource.contains("drive.wiring.frontRightDirection")
-                        && firstDriveSource.contains("drive.wiring.backLeftDirection")
-                        && firstDriveSource.contains("drive.wiring.backRightDirection")
-                        && firstDriveSource.contains("drive.enableZeroPowerBrake = true")
-                        && firstDriveSource.contains("program.drive(controls.driveSource(), "
-                                + "FtcDrives.mecanum(hardwareMap, drive))")
-                        && matcherCount(Pattern.compile("program\\.drive\\s*\\(")
-                                .matcher(firstDriveSource)) == 1);
-        assertTrue("First-drive example must not introduce another managed role or raw lookup",
-                !firstDriveSource.contains("program.output(")
-                        && !firstDriveSource.contains("program.service(")
-                        && !firstDriveSource.contains("program.rootTask(")
-                        && !firstDriveSource.contains("hardwareMap.get("));
-        int firstDriveJavaFiles = 0;
-        try (DirectoryStream<Path> children = Files.newDirectoryStream(firstDrive.getParent())) {
-            for (Path child : children) {
-                if (Files.isRegularFile(child)
-                        && child.getFileName().toString().endsWith(".java")) {
-                    firstDriveJavaFiles++;
-                }
-            }
-        }
-        assertTrue("First-drive milestone must remain exactly one Java file; found "
-                        + firstDriveJavaFiles,
-                firstDriveJavaFiles == 1);
-        long nonblankFirstDriveLines = Files.readAllLines(firstDrive, StandardCharsets.UTF_8)
-                .stream().filter(line -> !line.trim().isEmpty()).count();
-        assertTrue("First-drive example exceeds 45 nonblank Java lines: "
-                        + nonblankFirstDriveLines,
-                nonblankFirstDriveLines <= 45);
-        assertTrue("Course must keep the first-drive physical evidence boundary visible",
-                basicCourseText.contains("HW: Actuator Bring-up")
-                        && basicCourseText.contains("@Disabled")
-                        && basicCourseText.contains("raised")
-                        && basicCourseText.contains("floor")
-                        && basicCourseText.contains("STOP"));
-        assertTrue("Course must include its compiled hardware-free lift scenario",
-                basicCourseText.contains(
-                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
-                                + "edu/ftcsushi/robots/examples/basicmechanisms/"
-                                + "BasicLiftMechanismTest.java")
-                        && basicCourseText.contains("FtcTestHardware")
-                        && basicCourseText.contains("ManualLoopClock"));
-
-        Path referenceScenarios = repositoryRoot.resolve(
-                "TeamCode/src/main/java/edu/ftcsushi/fw/docs/examples/"
-                        + "Hardware-free Reference Scenarios.md");
-        String referenceScenarioText = readUtf8(referenceScenarios);
-        assertTrue("Reference scenario guide must link the compiled lift scenario on GitHub",
-                referenceScenarioText.contains(
-                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
-                                + "edu/ftcsushi/robots/examples/reference/capability/lift/"
-                                + "ReferenceLiftSoftwareScenarioTest.java"));
-        assertTrue("Reference scenario guide must link the compiled launcher scenario on GitHub",
-                referenceScenarioText.contains(
-                        "github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/"
-                                + "edu/ftcsushi/robots/examples/reference/capability/launcher/"
-                                + "ReferenceLauncherSoftwareScenarioTest.java"));
-        assertEvidenceBoundary("Hardware-free Reference scenarios", referenceScenarioText);
         assertTrue("Topic router exceeds 450 prose words", proseWordCount(hub) <= 450);
 
         int topicWords = 0;
@@ -1394,9 +956,19 @@ public final class DocumentationLinksTest {
                 "From Requirement to Robot.md")) {
             topicWords += proseWordCount(topics.resolve(topic));
         }
-        // Learning-mode orientation makes each topic's intended use explicit without adding code.
-        assertTrue("Six Sushi topic pages exceed 4,800 prose words: " + topicWords,
-                topicWords <= 4800);
+        assertTrue("Six Learn pages exceed 5,400 prose words: " + topicWords,
+                topicWords <= 5400);
+    }
+
+    @Test
+    public void validatesAuthoredBuildAreaWhileSkippingGeneratedBuildOutput()
+            throws IOException {
+        Path root = temporaryFolder.getRoot().toPath();
+        write(root, "docs/build/Guide.md", "# Authored build guide\n");
+        write(root, "README.md", "[guide](docs/build/Guide.md)\n");
+        write(root, "build/Generated.md", "[ignored](Missing.md)\n");
+
+        assertNoFailures(MarkdownIntegrity.validateRepository(root));
     }
 
     @Test
@@ -1478,38 +1050,16 @@ public final class DocumentationLinksTest {
                 "local path must use '/' separators");
     }
 
-    private static void write(Path root, String relativePath, String contents) throws IOException {
-        Path file = root.resolve(relativePath);
-        Files.createDirectories(file.getParent());
-        Files.write(file, contents.getBytes(StandardCharsets.UTF_8));
+    private static Path repositoryRoot() {
+        return MarkdownIntegrity.findRepositoryRoot(
+                Paths.get(System.getProperty("user.dir")));
     }
 
-    private static void assertEvidenceBoundary(String pageName, String contents) {
-        assertTrue(pageName + " must state what its evidence proves",
-                contents.contains("### Proves"));
-        assertTrue(pageName + " must state what its evidence does not prove",
-                contents.contains("### Does not prove"));
-        assertTrue(pageName + " must state the next evidence gate",
-                contents.contains("### Next gate"));
-    }
-
-    private static void assertNavigationEntries(String groupName,
-                                                String groupContents,
-                                                List<String> expectedLabels,
-                                                List<String> expectedTargets) {
-        Matcher entries = Pattern.compile(
-                "\\{\\s*\"([^\"]+)\"\\s*=\\s*\"([^\"]+\\.md)\"\\s*}")
-                .matcher(groupContents);
-        List<String> actualLabels = new ArrayList<String>();
-        List<String> actualTargets = new ArrayList<String>();
-        while (entries.find()) {
-            actualLabels.add(entries.group(1));
-            actualTargets.add(entries.group(2));
-        }
-        assertTrue("Unexpected " + groupName + " navigation labels: " + actualLabels,
-                expectedLabels.equals(actualLabels));
-        assertTrue("Unexpected " + groupName + " navigation order: " + actualTargets,
-                expectedTargets.equals(actualTargets));
+    private static void write(Path root, String relativePath, String contents)
+            throws IOException {
+        Path path = root.resolve(relativePath);
+        Files.createDirectories(path.getParent() == null ? root : path.getParent());
+        Files.write(path, contents.getBytes(StandardCharsets.UTF_8));
     }
 
     private static String readUtf8(Path path) throws IOException {
@@ -1521,30 +1071,229 @@ public final class DocumentationLinksTest {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
-                if (file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".md")) {
+                if (attributes.isRegularFile()
+                        && file.getFileName().toString().endsWith(".md")) {
                     files.add(file);
                 }
                 return FileVisitResult.CONTINUE;
             }
         });
+        Collections.sort(files);
     }
 
-    private static Set<String> collectMaintainedJavaSourcePaths(final Path repositoryRoot)
-            throws IOException {
-        final Set<String> sources = new HashSet<String>();
-        Path sourceRoot = repositoryRoot.resolve("TeamCode/src");
-        Files.walkFileTree(sourceRoot, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
-                if (attributes.isRegularFile()
-                        && attributes.size() > 0
-                        && file.getFileName().toString().endsWith(".java")) {
-                    sources.add(repositoryRelativePath(repositoryRoot, file));
-                }
-                return FileVisitResult.CONTINUE;
+    private static List<String> markdownFileNames(Path directory) throws IOException {
+        List<String> names = new ArrayList<String>();
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(directory, "*.md")) {
+            for (Path file : files) {
+                names.add(file.getFileName().toString());
             }
-        });
-        return sources;
+        }
+        Collections.sort(names);
+        return names;
+    }
+
+    private static List<String> topLevelAreas(String config) {
+        List<String> areas = new ArrayList<String>();
+        Matcher groups = Pattern.compile("(?m)^  \\{ \"([^\"]+)\" = \\[$")
+                .matcher(config);
+        while (groups.find()) {
+            areas.add(groups.group(1));
+        }
+        return areas;
+    }
+
+    private static String navAreaBlock(String config, String area) {
+        String marker = "{ \"" + area + "\" = [";
+        int markerStart = config.indexOf(marker);
+        assertTrue("Missing navigation area " + area, markerStart >= 0);
+        assertEquals("Navigation area must occur exactly once: " + area,
+                markerStart, config.lastIndexOf(marker));
+
+        int listStart = config.indexOf('[', markerStart);
+        int listEnd = matchingBracket(config, listStart);
+        assertTrue("Unclosed navigation area " + area, listEnd > listStart);
+        return config.substring(listStart + 1, listEnd);
+    }
+
+    private static int matchingBracket(String text, int opening) {
+        int depth = 0;
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int index = opening; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (quoted) {
+                if (escaped) {
+                    escaped = false;
+                } else if (character == '\\') {
+                    escaped = true;
+                } else if (character == '"') {
+                    quoted = false;
+                }
+                continue;
+            }
+            if (character == '"') {
+                quoted = true;
+            } else if (character == '[') {
+                depth++;
+            } else if (character == ']') {
+                depth--;
+                if (depth == 0) {
+                    return index;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static List<String> navTargets(String areaBlock) {
+        List<String> targets = new ArrayList<String>();
+        Matcher entries = Pattern.compile("=\\s*\"([^\"]+)\"").matcher(areaBlock);
+        while (entries.find()) {
+            targets.add(entries.group(1));
+        }
+        return targets;
+    }
+
+    private static PageMetadata pageMetadata(Path page) throws IOException {
+        List<String> lines = Files.readAllLines(page, StandardCharsets.UTF_8);
+        if (lines.isEmpty() || !"---".equals(lines.get(0).trim())) {
+            return new PageMetadata(false, false, Collections.<String>emptyList());
+        }
+
+        int end = -1;
+        for (int index = 1; index < lines.size(); index++) {
+            if ("---".equals(lines.get(index).trim())) {
+                end = index;
+                break;
+            }
+        }
+        if (end < 0) {
+            return new PageMetadata(false, false, Collections.<String>emptyList());
+        }
+
+        boolean excluded = false;
+        String section = "";
+        List<String> tags = new ArrayList<String>();
+        for (int index = 1; index < end; index++) {
+            String line = lines.get(index);
+            String trimmed = line.trim();
+            if (!line.isEmpty() && !Character.isWhitespace(line.charAt(0))) {
+                section = trimmed.endsWith(":")
+                        ? trimmed.substring(0, trimmed.length() - 1)
+                        : "";
+                continue;
+            }
+            if ("tags".equals(section) && trimmed.startsWith("- ")) {
+                tags.add(trimmed.substring(2).trim());
+            } else if ("search".equals(section) && "exclude: true".equals(trimmed)) {
+                excluded = true;
+            }
+        }
+        return new PageMetadata(true, excluded, tags);
+    }
+
+    private static void requireExactlyOnce(String markdown,
+                                           String required,
+                                           String page,
+                                           List<String> failures) {
+        int count = literalCount(markdown, required);
+        if (count != 1) {
+            failures.add(page + ": expected one " + required + ", found " + count);
+        }
+    }
+
+    private static void requireOrdered(String markdown,
+                                       String page,
+                                       List<String> failures,
+                                       String... required) {
+        int previous = -1;
+        for (String token : required) {
+            int found = markdown.indexOf(token);
+            if (found < 0) {
+                return;
+            }
+            if (found <= previous) {
+                failures.add(page + ": teaching elements are out of order at " + token);
+                return;
+            }
+            previous = found;
+        }
+    }
+
+    private static void validateBuildSources(Path repositoryRoot,
+                                             String pageName,
+                                             String markdown,
+                                             List<String> failures) throws IOException {
+        Set<String> completeSources = new LinkedHashSet<String>();
+        boolean linksMain = false;
+        boolean linksTest = false;
+        int manifestStart = markdown.indexOf("## Files in this checkpoint");
+        int manifestEnd = markdown.indexOf("## Software checkpoint:", manifestStart);
+        String manifest = manifestStart >= 0 && manifestEnd > manifestStart
+                ? markdown.substring(manifestStart, manifestEnd)
+                : "";
+        Matcher links = COMPLETE_SOURCE.matcher(markdown);
+        while (links.find()) {
+            String sourcePath = links.group(1);
+            completeSources.add(sourcePath);
+            linksMain |= sourcePath.startsWith("TeamCode/src/main/java/");
+            linksTest |= sourcePath.startsWith("TeamCode/src/test/java/");
+            if (!Files.exists(repositoryRoot.resolve(sourcePath))) {
+                failures.add(pageName + ": complete source link is missing " + sourcePath);
+            }
+        }
+        if (completeSources.size() < 2 || !linksMain || !linksTest) {
+            failures.add(pageName + ": complete-source manifest needs main and test authorities");
+        }
+
+        Matcher excerpts = SOURCE_EXCERPT.matcher(markdown);
+        int excerptCount = 0;
+        boolean excerptsMain = false;
+        boolean excerptsTest = false;
+        while (excerpts.find()) {
+            excerptCount++;
+            String sourcePath = excerpts.group(1).trim();
+            String snippet = normalizeExcerpt(excerpts.group(2));
+            int lines = snippet.isEmpty() ? 0 : snippet.split("\\n", -1).length;
+            if (lines < 3 || lines > 12) {
+                failures.add(pageName + ": source excerpt must contain 3–12 lines, found "
+                        + lines + " for " + sourcePath);
+            }
+            Path source = repositoryRoot.resolve(sourcePath).toAbsolutePath().normalize();
+            if (!source.startsWith(repositoryRoot.toAbsolutePath().normalize())
+                    || !Files.isRegularFile(source)
+                    || !source.getFileName().toString().endsWith(".java")) {
+                failures.add(pageName + ": invalid source excerpt path " + sourcePath);
+            } else if (!containsDedentedBlock(readUtf8(source), snippet)) {
+                failures.add(pageName + ": excerpt is not exact contiguous source from "
+                        + sourcePath);
+            }
+            if (!manifest.contains(source.getFileName().toString())) {
+                failures.add(pageName + ": checkpoint manifest does not name excerpt authority "
+                        + source.getFileName());
+            }
+            excerptsMain |= sourcePath.startsWith("TeamCode/src/main/java/");
+            excerptsTest |= sourcePath.startsWith("TeamCode/src/test/java/");
+        }
+
+        int javaFences = matcherCount(JAVA_FENCE.matcher(markdown));
+        if (excerptCount != 2 || javaFences != excerptCount || !excerptsMain || !excerptsTest) {
+            failures.add(pageName + ": expected exactly one main and one test source excerpt; "
+                    + "excerpts=" + excerptCount + ", Java fences=" + javaFences);
+        }
+    }
+
+    private static int literalCount(String text, String literal) {
+        int count = 0;
+        int from = 0;
+        while (true) {
+            int found = text.indexOf(literal, from);
+            if (found < 0) {
+                return count;
+            }
+            count++;
+            from = found + literal.length();
+        }
     }
 
     private static int matcherCount(Matcher matcher) {
@@ -1553,18 +1302,6 @@ public final class DocumentationLinksTest {
             count++;
         }
         return count;
-    }
-
-    private static void requireText(Path repositoryRoot,
-                                    Path page,
-                                    String markdown,
-                                    String required,
-                                    String description,
-                                    List<String> failures) {
-        if (!markdown.contains(required)) {
-            failures.add(repositoryRelativePath(repositoryRoot, page)
-                    + ": missing " + description);
-        }
     }
 
     private static String normalizeExcerpt(String text) {
@@ -1626,29 +1363,6 @@ public final class DocumentationLinksTest {
             }
         }
         return false;
-    }
-
-    private static String stripDocumentationAnnotations(Path repositoryRoot,
-                                                         Path page,
-                                                         String snippet,
-                                                         List<String> failures) {
-        StringBuilder stripped = new StringBuilder();
-        String[] lines = snippet.replace("\r\n", "\n").replace('\r', '\n')
-                .split("\n", -1);
-        for (String line : lines) {
-            if (line.trim().startsWith("// docs:")) {
-                continue;
-            }
-            if (line.contains("// docs:")) {
-                failures.add(repositoryRelativePath(repositoryRoot, page)
-                        + ": // docs: must occupy a standalone comment line");
-            }
-            if (stripped.length() > 0) {
-                stripped.append('\n');
-            }
-            stripped.append(line);
-        }
-        return stripped.toString();
     }
 
     private static Path configuredDocsRoot(Path repositoryRoot, String config) {
@@ -1832,7 +1546,7 @@ public final class DocumentationLinksTest {
         StringBuilder prose = new StringBuilder();
         for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
             String trimmed = line.trim();
-            if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+            if (trimmed.startsWith(FENCE) || trimmed.startsWith("~~~")) {
                 insideFence = !insideFence;
             } else if (!insideFence) {
                 prose.append(' ').append(trimmed);
@@ -1842,70 +1556,10 @@ public final class DocumentationLinksTest {
         return text.isEmpty() ? 0 : text.split("\\s+").length;
     }
 
-    private static void validateLinkedKeyApiBullet(
-            String page,
-            int lineNumber,
-            String bullet,
-            Set<String> maintainedJavaSources,
-            List<String> failures) {
-        int descriptionStart = bullet.indexOf(" \u2014 ");
-        if (descriptionStart < 3) {
-            failures.add(page + ":" + lineNumber
-                    + ": Key API bullet needs a linked symbol followed by an em-dash description");
-            return;
-        }
-        String description = bullet.substring(descriptionStart + 3).trim();
-        if (description.isEmpty()) {
-            failures.add(page + ":" + lineNumber
-                    + ": Key API bullet needs a nonempty plain-language description");
-        }
-        if (description.indexOf('`') >= 0) {
-            failures.add(page + ":" + lineNumber
-                    + ": put every code-formatted Key API in the linked symbol label");
-        }
-
-        String symbols = bullet.substring(2, descriptionStart);
-        Matcher links = LINKED_KEY_API.matcher(symbols);
-        int linkedSymbols = 0;
-        while (links.find()) {
-            linkedSymbols++;
-            String symbol = links.group(1);
-            String target = links.group(2);
-            if (!target.startsWith(PUBLISHED_API_ROOT)
-                    && !target.startsWith(MAINTAINED_SOURCE_ROOT)) {
-                failures.add(page + ":" + lineNumber
-                        + ": Key API target is not generated API or maintained source: " + target);
-            } else if (SOURCE_ONLY_KEY_APIS.contains(symbol)
-                    && !target.startsWith(MAINTAINED_SOURCE_ROOT)) {
-                failures.add(page + ":" + lineNumber + ": lesson-owned or test-only symbol "
-                        + symbol + " must link to maintained source");
-            } else if (!SOURCE_ONLY_KEY_APIS.contains(symbol)
-                    && !target.startsWith(PUBLISHED_API_ROOT)) {
-                failures.add(page + ":" + lineNumber + ": public Sushi symbol " + symbol
-                        + " must link to generated API documentation");
-            }
-            if (target.startsWith(MAINTAINED_SOURCE_ROOT)) {
-                String sourcePath = target.substring(MAINTAINED_SOURCE_ROOT.length());
-                if (!sourcePath.endsWith(".java")
-                        || !maintainedJavaSources.contains(sourcePath)) {
-                    failures.add(page + ":" + lineNumber
-                            + ": maintained source target is missing, empty, or wrong-case: "
-                            + target);
-                }
-            }
-        }
-        String unlinked = LINKED_KEY_API.matcher(symbols).replaceAll("")
-                .replace("/", "").trim();
-        if (linkedSymbols == 0 || !unlinked.isEmpty()) {
-            failures.add(page + ":" + lineNumber
-                    + ": every Key API symbol must be linked; unresolved label: " + symbols);
-        }
-    }
-
     private static int javaFenceCount(Path path) throws IOException {
         int count = 0;
         for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-            if (line.trim().equals("```java")) {
+            if (line.trim().equals(FENCE + "java")) {
                 count++;
             }
         }
@@ -1924,9 +1578,9 @@ public final class DocumentationLinksTest {
                     && collapsedDetailsDepth > 0) {
                 collapsedDetailsDepth--;
             }
-            if (!insideJava && trimmed.equals("```java")) {
+            if (!insideJava && trimmed.equals(FENCE + "java")) {
                 insideJava = true;
-            } else if (insideJava && trimmed.equals("```")) {
+            } else if (insideJava && trimmed.equals(FENCE)) {
                 insideJava = false;
             } else if (insideJava && collapsedDetailsDepth == 0 && !trimmed.isEmpty()) {
                 count++;
@@ -1945,7 +1599,7 @@ public final class DocumentationLinksTest {
                 return;
             }
         }
-        fail("Expected a failure containing '" + expectedText + "' but found:\n"
+        fail("Expected a failure containing '" + expectedText + "' but got:\n"
                 + joinLines(failures));
     }
 
@@ -1955,19 +1609,33 @@ public final class DocumentationLinksTest {
                 return;
             }
         }
-        fail("Expected a failure starting with '" + expectedText + "' but found:\n"
+        fail("Expected a failure starting with '" + expectedText + "' but got:\n"
                 + joinLines(failures));
     }
 
     private static String joinLines(List<String> lines) {
-        StringBuilder result = new StringBuilder();
+        StringBuilder joined = new StringBuilder();
         for (String line : lines) {
-            if (result.length() > 0) {
-                result.append('\n');
+            if (joined.length() > 0) {
+                joined.append('\n');
             }
-            result.append(line);
+            joined.append(line);
         }
-        return result.toString();
+        return joined.toString();
+    }
+
+    private static final class PageMetadata {
+        private final boolean hasFrontMatter;
+        private final boolean searchExcluded;
+        private final List<String> tags;
+
+        private PageMetadata(boolean hasFrontMatter,
+                             boolean searchExcluded,
+                             List<String> tags) {
+            this.hasFrontMatter = hasFrontMatter;
+            this.searchExcluded = searchExcluded;
+            this.tags = new ArrayList<String>(tags);
+        }
     }
 
     static final class MarkdownIntegrity {
@@ -1984,7 +1652,6 @@ public final class DocumentationLinksTest {
                 ".git",
                 ".gradle",
                 ".idea",
-                "build",
                 "generated",
                 "vendor"
         ));
@@ -2037,7 +1704,7 @@ public final class DocumentationLinksTest {
                     public FileVisitResult preVisitDirectory(
                             Path directory,
                             BasicFileAttributes attributes) {
-                        if (!directory.equals(root) && isIgnoredDirectory(directory)) {
+                        if (!directory.equals(root) && isIgnoredDirectory(root, directory)) {
                             return FileVisitResult.SKIP_SUBTREE;
                         }
                         inventory.canonicalPaths.add(root, directory);
@@ -2062,9 +1729,20 @@ public final class DocumentationLinksTest {
                 return inventory;
             }
 
-            private static boolean isIgnoredDirectory(Path directory) {
+            private static boolean isIgnoredDirectory(Path root, Path directory) {
                 Path name = directory.getFileName();
-                return name != null && IGNORED_DIRECTORY_NAMES.contains(name.toString());
+                if (name == null) {
+                    return false;
+                }
+                String value = name.toString();
+                if ("build".equals(value)) {
+                    Path parent = directory.getParent();
+                    return root.equals(parent)
+                            || (parent != null
+                            && (Files.isRegularFile(parent.resolve("build.gradle"))
+                            || Files.isRegularFile(parent.resolve("build.gradle.kts"))));
+                }
+                return IGNORED_DIRECTORY_NAMES.contains(value);
             }
         }
 

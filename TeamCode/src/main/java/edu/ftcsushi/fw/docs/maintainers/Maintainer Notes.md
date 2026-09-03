@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Maintainer Notes
 
 This document is for mentors and framework maintainers.
@@ -141,16 +146,26 @@ from the hub.
 
 Use this authoring contract:
 
-- Give each page one purpose and one primary audience; state both near the top.
-- Structure a tutorial checkpoint as: goal, prerequisites, files to inspect or edit, numbered
-  steps, observable result, common problems, and one next step.
-- End a software scenario or experiment lesson with the exact evidence headings **Proves**,
-  **Does not prove**, and **Next gate**. Do not make students infer where software evidence ends.
-- Buildable lessons and the primary course must include their complete, source-backed files in
-  collapsed sections so a student can work from the page alone. Keep the critical excerpt for each
-  checkpoint visible, short, inline-commented where explanation helps, and linked to the generated
-  API or exact maintained example source. Reference and runbook pages should use only the short
-  excerpts needed for their distinct purpose.
+- Give each page one outcome and one primary audience; state the prerequisites before code.
+- Keep the six guide areas stable: **Get Started**, **Learn**, **Build**, **Test & Tune**,
+  **Advanced**, and **Reference**. Every searchable guide declares exactly one of those tags.
+- Structure a Build recipe as: outcome and prerequisites, a three-to-twelve-line exact source
+  excerpt, at most three observations, exact main/test file manifests, visibly labeled complete-
+  source links, an explained software checkpoint, an isolated hardware gate, and one next action.
+  Do not embed complete files in prose or require unrelated mechanisms to finish a recipe.
+- Link a named framework or example class to generated Javadocs. Use repository links only when
+  visibly labeled **Complete source** so API lookup and source study remain distinct actions.
+- Before a displayed test, state **Question**, **Keep real**, **Replace**, **Observe**, and
+  **Cannot conclude**. Make ARRANGE, REQUEST, BEFORE HEARTBEAT, HEARTBEAT, INJECT EVIDENCE, ASSERT,
+  and NEXT GATE visible in Java where applicable. Follow with **Read the causal chain**,
+  **Proves**, **Does not prove**, and **Next gate**.
+- Keep one question per student-facing test method, at most two displayed methods per file, roughly
+  35 executable lines per method, and about 100–120 physical lines including comments. Treat broad
+  failure matrices, reflection, proxies, custom Task fixtures, and structural checks as supplied
+  maintainer evidence rather than beginner-authored lessons.
+- Keep search global because readers may not know the owning area. Use precise outcome headings,
+  one area tag, and `search.exclude` for compatibility pointers or boilerplate that would dilute
+  results. The narrative search and generated Javadoc type/member search remain separate.
 - Describe the supported present state directly. Keep migration narratives, completed work logs,
   and speculative backlogs out of user documentation.
 - Keep Markdown as the sole authored source for narrative guides and generated guide-site

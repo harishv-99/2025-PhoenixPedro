@@ -75,10 +75,10 @@ def verify(repository_root: Path) -> list[str]:
     published_api_root = urljoin(project["site_url"].rstrip("/") + "/", "api/")
     published_parts = urlsplit(published_api_root)
     api_link_pattern = re.compile(
-        r"\]\(<(" + re.escape(published_api_root) + r"[^>\s]+)>\)"
+        r"\]\(<(" + re.escape(published_api_root) + r"[^>\s]*)>\)"
     )
     source_link_pattern = re.compile(
-        r"\[`([^`]+)`\]\(<("
+        r"\[(?:Complete source:\s*)?`([^`]+)`\]\(<("
         + re.escape(MAINTAINED_SOURCE_ROOT)
         + r"[^>\s]+)>\)"
     )
@@ -143,6 +143,17 @@ def verify(repository_root: Path) -> list[str]:
                 fragment = _strict_unquote(parts.fragment)
             except (UnicodeDecodeError, ValueError) as error:
                 failures.append(f"{location}: invalid API URL encoding ({error}): {url}")
+                continue
+            if relative_target in ("", "index.html"):
+                generated_index = generated_api_root / "index.html"
+                if fragment:
+                    failures.append(
+                        f"{location}: the API search entry link must not contain a fragment: {url}"
+                    )
+                elif not generated_index.is_file() or generated_index.stat().st_size == 0:
+                    failures.append(
+                        f"{location}: generated API search entry is missing or empty: {url}"
+                    )
                 continue
             generated_target = api_inventory.get(relative_target)
             if generated_target is None:

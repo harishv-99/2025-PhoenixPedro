@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Core concepts
 
 Use these guides after [Sushi in one picture](<../getting-started/Framework Overview.md>) when you

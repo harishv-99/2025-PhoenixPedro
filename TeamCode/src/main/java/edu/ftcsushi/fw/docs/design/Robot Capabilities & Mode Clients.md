@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Robot Capabilities and Mode Clients
 
 This document explains a robot-owned concept that will likely exist every year even though it does
@@ -13,7 +18,7 @@ Read this when you want to answer questions like:
 
 Useful companions:
 
-- [`Basic Mechanisms Robot.md`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>)
+- [Choose one robot outcome to build](<../build/README.md>)
 - [`Framework Lanes & Robot Controls.md`](<Framework Lanes & Robot Controls.md>)
 - [`Recommended Robot Design.md`](<Recommended Robot Design.md>)
 - [`Supervisors & Pipelines.md`](<Supervisors & Pipelines.md>)
@@ -231,10 +236,10 @@ Keep the composition-root constructor resource-only. It may retain the stable FT
 to construct the selected graph; pass configuration and mode-active inputs synchronously to the
 mode declaration instead.
 
-The Reference example keeps that constructor literal:
+Keep that constructor literal:
 
 ```java
-ReferenceRobot robot = new ReferenceRobot(hardwareMap);
+MyRobot robot = new MyRobot(hardwareMap);
 ```
 
 `declareTeleOp(...)` receives one local profile and its active Gamepad. `declareAuto(...)` receives
@@ -345,12 +350,13 @@ controls owner and final drive source; `StarterAuto` builds one fresh root Task 
 capability. Both construct `StarterRobot` through `configure(program)`, and neither owns another
 clock, runner, telemetry commit, or manual cleanup path.
 
-The Reference example expands that same shape with lift and launcher capability families.
-`ReferenceRobot.declareTeleOp(...)` binds driver meanings while
-`ReferenceRobot.declareAuto(...)` returns `ReferenceCapabilities` for the selected routine. The
-Basic Pedro example separately demonstrates a persistent vendor heartbeat, truthful route status,
-and one Auto-only root. It does not make Pedro configuration part of the Reference or Starter
-robots.
+Focused Reference examples demonstrate advanced roles without adding a second complete robot
+template. `ReferenceFlywheels` is one mode-neutral numeric capability;
+`ReferenceLauncherMechanism` delegates to it while owning release/feed policy; and
+`ReferenceCoordinatedShotService` is a separate upstream computation owner. A season robot may
+group several such families when its real TeleOp and Auto clients benefit, but a one-member
+forwarding aggregate adds no capability. The Basic Pedro example separately demonstrates a
+persistent vendor heartbeat, truthful route status, and one Auto-only root.
 
 Each example is an independent application of the managed grammar. Copy the example closest to the
 problem being solved rather than combining their profiles, roots, or lifecycle owners.

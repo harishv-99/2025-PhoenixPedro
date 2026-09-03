@@ -1,3 +1,8 @@
+---
+tags:
+  - Learn
+---
+
 # From requirement to robot
 
 **Learning mode:** Architecture reference
@@ -30,25 +35,25 @@ That complete path needs no supervisor, Service, feedback controller, or capabil
 a button in controls, a power or motor name in configuration, and hardware realization in the
 mechanism. Prove software contracts first and physical behavior separately.
 
-## Scale when the requirement needs feedback: a lift
+## Scale when the requirement needs feedback: a periodic turret
 
 ### Critical code
 
 Suppose the team decides:
 
-> TeleOp and Auto must select LOW and HIGH. Auto must be able to wait for arrival, and the lift must
-> establish its bottom reference without blocking the robot.
+> TeleOp and Auto must request a turret angle. Auto must be able to wait for arrival, and the
+> mechanism must choose the nearest legal full-turn equivalent inside reviewed cable bounds.
 
 Work from that meaning toward hardware:
 
-| Step | One owner | Lift answer |
+| Step | One owner | Turret answer |
 |---|---|---|
-| Requirement | Team design | Select named heights, wait when needed, and home safely. |
-| Capability | `ReferenceLift` | Expose shared intent and status without motor details. |
-| Configuration | `ReferenceLiftMechanism.Config` | Hold the hardware name, direction, units, bounds, powers, tolerances, and time budgets. |
-| Realization | `ReferenceLiftMechanism` | Privately own the final Plant graph, bottom-switch conditioning, update order, and stop. |
-| Mode clients | Controls and Auto routine | Give buttons meaning or compose fresh Tasks through the capability. |
-| Evidence | Cached `Status` and presenter | Distinguish requested height/position, measurement, reference state, and at-target state. |
+| Requirement | Team design | Request a logical angle, choose a safe representative, and wait when needed. |
+| Capability | `ReferencePeriodicTurretMechanism` public methods | Expose the complete numeric request and cached status without exposing the Plant. |
+| Configuration | `ReferencePeriodicTurretMechanism.Config` | Hold the motor name, direction, radian scale, physical bounds, tolerance, and initial hold. |
+| Realization | `ReferencePeriodicTurretMechanism` | Privately own the command, equivalent-position resolver, Plant update, and stop. |
+| Mode clients | Controls and Auto routine | Give buttons meaning or compose fresh Tasks through the same mechanism API. |
+| Evidence | Cached `Status` and presenter | Distinguish logical request, selected representative, applied target, measurement, and arrival. |
 | Proof | Tests, then experiment | Prove software contracts separately from physical direction, clearance, and performance. |
 
 The mode-neutral vocabulary stays small:
@@ -58,29 +63,28 @@ Abbreviated shape (omissions shown):
 <!-- teaching-shape -->
 ```java
 // ...
-void setHeight(Height height);
-Task moveTo(Height height);
-Task home();
+void setAngleRad(double angleRad);
+Task setAngleTask(double angleRad, double timeoutSec);
 Status status();
 // ...
 ```
 
 **What to notice**
 
-- The capability names robot meanings and evidence, not FTC device details.
-- TeleOp may replace a persistent request; Auto may create fresh work that waits for feedback.
+- A numeric angle is the complete request here, so no extra semantic wrapper is needed.
+- TeleOp may replace the persistent request; Auto may create fresh work that waits for feedback.
 
 **Key APIs:** `Task` represents non-blocking work; capability `Status` is the shared read-only
 evidence vocabulary.
 
-[`ReferenceLift`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLift.html>)
-does not mention an FTC motor, switch polarity, encoder scaling, or homing power. Those physical and
-realization details belong to the Config and mechanism.
+[`ReferencePeriodicTurretMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.html>)
+does not expose its FTC motor or Plant. Hardware identity, encoder scaling, cable bounds, tolerance,
+and the already-referenced assumption remain explicit configuration and realization facts.
 
-Controls call `setHeight(...)` when replacing the persistent request is enough. Auto builds a fresh
-`moveTo(...)` when its next action must wait for feedback. Neither client reaches into the Plant.
-If the team later changes the reference sensor, the mechanism and configuration can change while
-“home the lift” remains the same robot meaning.
+Controls call `setAngleRad(...)` when replacing the persistent request is enough. Auto builds a
+fresh `setAngleTask(...)` when its next action must wait for command-correlated arrival. Neither
+client reaches into the Plant. If the cable bounds change, the mechanism can select a different
+physical representative while the logical angle request stays the same.
 
 ## Prove only what each boundary knows
 
@@ -131,7 +135,8 @@ mode-neutral behavior.
 ## Go deeper when needed
 
 - Capability/client ownership: [Robot Capabilities and Mode Clients](<../../design/Robot Capabilities & Mode Clients.md>)
-- Complete Reference composition: [`ReferenceRobot`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.html>)
+- Focused paired-velocity capability: [`ReferenceFlywheels`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.html>)
+- Focused periodic-position realization: [`ReferencePeriodicTurretMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.html>)
 - Topic-specific routes: [Choose a Sushi topic](<../Beginner's Guide.md>)
 - [Choose another Sushi topic](<../Beginner's Guide.md>)
 - [Return to the Basic Mechanisms course](<../Basic Mechanisms Robot.md>)

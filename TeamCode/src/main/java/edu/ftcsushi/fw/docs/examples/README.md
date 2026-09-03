@@ -1,23 +1,23 @@
-# Examples
+---
+tags:
+  - Advanced
+---
 
-**Learning mode:** Router
+# Maintained examples by outcome
 
-First [set up and verify the project](<../getting-started/Build and Run.md>), then
-[build the Basic Mechanisms robot](<../getting-started/Basic Mechanisms Robot.md>). Use this page,
-[Sushi in one picture](<../getting-started/Framework Overview.md>), or
-[choose a Sushi topic](<../getting-started/Beginner's Guide.md>) only when the current checkpoint
-needs more detail. All ordinary examples use the managed
-`FtcRobotOpMode`/`RobotProgram` lifecycle; students do not need to copy clock, loop, telemetry, or
-cleanup ceremony.
+Beginner examples live in the [Build area](<../build/README.md>) so each mechanism can be learned,
+tested, and brought up independently. Use this index for patterns that add a distinct policy,
+integration, or evidence boundary.
 
-| Start here | Teaches |
+| Outcome | Maintained example |
 |---|---|
-| [Basic Mechanisms Robot](<../getting-started/Basic Mechanisms Robot.md>) | The canonical cumulative drive, lift, claw, TeleOp, Auto, and software-test course. |
-| [Hardware-free Reference Scenarios](<Hardware-free Reference Scenarios.md>) | Optional lift, launcher, sensor-derived inventory, and coordinated-shot/turret cases that inject observations through unchanged production/example owners. |
-| [Reference case-study topics](<../getting-started/Beginner's Guide.md>) | Short routes into its lift, launcher, shared capabilities, Tasks, status, and experiment; study the relevant slice rather than copying it wholesale. |
-| [Field-relative Drive](<Field-relative Drive.md>) | Optional station-defined driver “up”; it is an example composition, not part of Sushi drive. |
-| [Your first Pedro Auto](<../getting-started/First Pedro Auto.md>) | Optional third-party route integration after the ordinary Tasks and guidance lessons. |
-| [Timestamped Adaptive Collection](<Timestamped Adaptive Collection.md>) | Optional one-attempt case study: immutable delayed-frame selection, explicit fallback, semantic Pedro milestones, inventory-gated exit, and exact route outcomes. |
-| [Subsystem Experiments](<Subsystem Experiments.md>) | How to turn a subsystem question into a locked, measurable trial with team-authored success criteria. |
+| drive in a field frame and fail closed when heading is unavailable | [Field-relative drive](<Field-relative Drive.md>) |
+| coordinate two measured velocity motors | [Paired flywheel velocity](<../advanced/Paired Flywheel Velocity.md>) |
+| choose among periodic physical positions | [Periodic turret position](<../advanced/Periodic Turret Position.md>) |
+| run a bounded robot-specific hardware experiment | [Subsystem experiments](<Subsystem Experiments.md>) |
+| combine timestamped vision, pose history, bounded retries, and park takeover | [Timestamped adaptive collection](<Timestamped Adaptive Collection.md>) |
+| understand software-device evidence across several actuator families | [Software-device scenarios](<Hardware-free Reference Scenarios.md>) |
 
-[Back to the Sushi docs home](<../README.md>)
+These are complete compiling authorities, not one robot to copy wholesale. Follow the closest
+focused example and keep your robot's capability vocabulary, profile values, and physical evidence
+inside its own package.

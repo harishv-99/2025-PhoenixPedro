@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Subsystem experiments
 
 **Learning mode:** Architecture reference
@@ -20,9 +25,9 @@ semantic test
     -> promote only accepted configuration into robot use
 ```
 
-Before powered work, use
-[the Basic Mechanisms software checkpoint](<../getting-started/Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>) or
-an optional [Reference software scenario](<Hardware-free Reference Scenarios.md>) to establish that
+Before powered work, use a
+[focused Build software checkpoint](<../build/README.md>) or
+a [software-device scenario](<Hardware-free Reference Scenarios.md>) to establish that
 the production mechanism interprets injected inputs and sends expected outputs. A software
 scenario supplies readings explicitly; it does not mirror commands into feedback or model physics.
 Its green result removes software uncertainty, but it does not authorize motion or replace the
@@ -103,23 +108,21 @@ requesting reusable idle, and terminally stops the owned mechanism from `onStop(
 - Criteria are copied and validated before hardware construction; the checked-in motion lock stays false.
 - INIT constructs the selected tester but does not command motion.
 - One bounded trial freezes a single immutable terminal result before requesting reusable idle, so
-  deceleration cannot rewrite its launcher Status, authored target, elapsed time, or outcome.
+  deceleration cannot rewrite its flywheel Status, authored target, elapsed time, or outcome.
 - STOP terminally cleans the owned mechanism even after abort or partial progress.
 
 **Key APIs**
 
 - `BaseTeleOpTester`: supplies the shared non-blocking tester lifecycle and clock.
 - `ReferenceFlywheelSpinUpCriteria`: owns the locked question, command, and powered-time boundary.
-- [`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>): combines one grouped Plant snapshot with captured per-wheel, sensor,
-  transient, and readiness evidence without declaring the lab-card decision.
+- [`ReferenceFlywheels.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.Status.html>): combines one grouped Plant snapshot with independent per-wheel measurements and readiness without declaring the lab-card decision.
 - `FtcTeleOpTesterOpMode`: hosts a fresh tester tree without creating another FTC loop.
 
 [`ReferenceFlywheelSpinUpExperiment.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
 answers one narrow question: how quickly do both flywheels reach the reviewed velocity condition
 from the card's starting state? The trial action changes only flywheel velocity and never requests
-a release or transfer pulse. Because it updates the complete production mechanism, normal active
-idle still commands zero transfer and the configured retracted release position; the card must
-review that servo clearance. No object is launched or scored.
+a release or transfer pulse because the focused mechanism owns only the two flywheels. No object is
+launched or scored.
 
 The checked-in card remains locked:
 
@@ -128,7 +131,7 @@ The checked-in card remains locked:
 | Motion review | `ReferenceFlywheelSpinUpCriteria.current().reviewedForMotion` | `false` prevents construction of the motion-capable mechanism. |
 | Command | `targetVelocityTicksPerSec` | Team-reviewed target in encoder ticks per second, positive, above the copied tolerance, and no greater than the configured maximum. |
 | Safety cap | `maximumPoweredRunSec` | Cooperative elapsed-time boundary checked each active loop; zero is applied on the first loop observed at or after it, not by a hard real-time cutoff. It is not automatically the acceptable spin-up threshold. |
-| Computed evidence | terminal result plus `ReferenceLauncher.Status` | Authored target and elapsed time, requested/applied target, left/right measured velocity and at-target facts, and readiness; display errors are derived from the frozen target and measurements. |
+| Computed evidence | terminal result plus `ReferenceFlywheels.Status` | Authored target and elapsed time, requested/applied target, left/right measured velocity and at-target facts, and readiness; display errors are derived from the frozen target and measurements. |
 | Minimal display | experiment telemetry | State and control hint always; trial number plus target, left/right evidence, elapsed/spin-up time, and frozen result only when a trial supplies them. |
 | Physical evidence | operator results row | Direction, vibration, sound, damage, clearance, and STOP response. |
 | Decision | reviewed lab card | Accept, revise, or reject from all criteria; `TARGET_REACHED` alone is not `PASS`. |
@@ -138,14 +141,14 @@ The evidence flow is deliberately one-way:
 ```text
 reviewed card values
     -> ReferenceFlywheelSpinUpCriteria
-    -> ReferenceLauncher.Status
+    -> ReferenceFlywheels.Status
     -> minimal telemetry with trialNumber
     -> operator matches the external row
     -> team decision
 ```
 
 Press A to begin one trial and B to abort it. A terminal transition freezes one immutable result
-containing the launcher Status, authored target, and elapsed time before requesting zero, so
+containing the flywheel Status, authored target, and elapsed time before requesting zero, so
 deceleration readings cannot change a retained `TARGET_REACHED`, `TIME_LIMIT_REACHED`, or `ABORTED`
 result. A while `RUNNING` is ignored to prevent
 overlapping or restarted work. After a terminal result, pressing A again increments the trial
@@ -160,7 +163,7 @@ STOP plan must allow for the worst-case loop delay.
 Each trial ignores the Status present when it began. A same-valued ready publication retained from
 the prior trial cannot finish the new trial before its own output heartbeat publishes evidence.
 
-That boundary behavior relies on the launcher's all-or-nothing publication timing. The experiment
+That boundary behavior relies on the flywheel owner's all-or-nothing publication timing. The experiment
 checks the prior successful Status before the deadline, then checks newly published per-wheel
 evidence after the output heartbeat. It does not replace those later per-wheel facts with the
 grouped Plant's aggregate arrival sample taken earlier in the mechanism update.
@@ -171,11 +174,11 @@ The Reference example has two permissions with different owners:
 
 - `ReferenceFlywheelSpinUpCriteria.current().reviewedForMotion` authorizes only this bounded tester
   after its lab-card review.
-- `ReferenceProfile.current().allowLauncherMotion` authorizes construction of the production
-  Reference launcher graph for a normal Reference OpMode.
+- `ReferenceFlywheelMechanismOpMode.MOTION_REVIEWED` is the separate, checked-in lock on the
+  disabled mechanism-only host.
 
 Enabling one does not enable, imply, or replace the other. Tester evidence may support a later
-profile decision, but a production permission still requires its own complete robot review.
+host decision, but enabling any production robot still requires its own complete review.
 
 ## Add a team-owned subsystem experiment
 
@@ -203,86 +206,27 @@ generic experiment framework:
 8. Record external observations outside the Robot Controller and promote configuration only after
    the reviewed decision accepts it.
 
-## Files you will create
+## Maintained experiment slice
 
 Create a criteria card, one `BaseTeleOpTester` experiment, and one robot-owned tester registry. The
-complete criteria and registry below show the lock and fresh-supplier boundaries. The experiment
-class owns the trial state machine and hardware lifecycle described above.
+checked-in criteria begin locked:
 
-## Complete working slice
-
-<details>
-<summary>Complete working slice: locked criteria card</summary>
-
-<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpCriteria.java -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpCriteria.java -->
 ```java
-package edu.ftcsushi.robots.examples.reference.tester;
-
-/** Team-authored physical gate for the checked-in flywheel spin-up experiment. */
-final class ReferenceFlywheelSpinUpCriteria {
-    boolean reviewedForMotion;
-    double targetVelocityTicksPerSec;
-
-    /**
-     * Cooperative elapsed-time boundary checked once per active tester loop.
-     *
-     * <p>The experiment requests and applies zero on the first loop observed at or after this
-     * boundary; this is not a hard real-time cutoff. The reviewed lab card and STOP plan must allow
-     * for the worst-case active-loop delay.</p>
-     */
-    double maximumPoweredRunSec;
-
-    private ReferenceFlywheelSpinUpCriteria() {
-    }
-
-    /** Returns the checked-in locked card with software-valid placeholders, not safety facts. */
-    static ReferenceFlywheelSpinUpCriteria current() {
-        ReferenceFlywheelSpinUpCriteria criteria = new ReferenceFlywheelSpinUpCriteria();
-        criteria.reviewedForMotion = false;
-        criteria.targetVelocityTicksPerSec = 3000.0;
-        criteria.maximumPoweredRunSec = 3.0;
-        return criteria;
-    }
-}
+ReferenceFlywheelSpinUpCriteria criteria = new ReferenceFlywheelSpinUpCriteria();
+criteria.reviewedForMotion = false;
+criteria.targetVelocityTicksPerSec = 3000.0;
+criteria.maximumPoweredRunSec = 3.0;
+return criteria;
 ```
 
-</details>
+The registry supplies a fresh experiment from that card for each menu entry; the experiment owns
+the bounded trial state machine and hardware lifecycle described above.
 
-<details>
-<summary>Complete working slice: fresh tester registration</summary>
-
-<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceRobotTesters.java -->
-```java
-package edu.ftcsushi.robots.examples.reference.tester;
-
-import edu.ftcsushi.fw.tools.tester.StandardTesters;
-import edu.ftcsushi.fw.tools.tester.TesterSuite;
-import edu.ftcsushi.robots.examples.reference.robot.ReferenceProfile;
-
-/** Builds the reference robot's experiment menu beside the canonical framework tools. */
-public final class ReferenceRobotTesters {
-    private ReferenceRobotTesters() {
-    }
-
-    /** Returns a fresh tester tree; motion experiments are locked in checked-in configuration. */
-    public static TesterSuite create() {
-        ReferenceProfile profile = ReferenceProfile.current();
-        ReferenceFlywheelSpinUpCriteria criteria = ReferenceFlywheelSpinUpCriteria.current();
-        TesterSuite suite = new TesterSuite()
-                .setTitle("Reference experiments")
-                .setHelp("Review the lab card before unlocking motion");
-        suite.add("Flywheel spin-up",
-                "Independent per-wheel velocity evidence",
-                criteria.reviewedForMotion ? "READY" : "LOCKED",
-                () -> new ReferenceFlywheelSpinUpExperiment(
-                        profile.launcher, criteria));
-        StandardTesters.register(suite);
-        return suite;
-    }
-}
-```
-
-</details>
+- [`ReferenceExperimentTesters`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/tester/ReferenceExperimentTesters.html>)
+- [Complete source: `ReferenceFlywheelSpinUpCriteria.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpCriteria.java>)
+- [Complete source: `ReferenceFlywheelSpinUpExperiment.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceFlywheelSpinUpExperiment.java>)
+- [Complete source: `ReferenceExperimentTesters.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/tester/ReferenceExperimentTesters.java>)
 
 ## Verify the slice
 
@@ -318,6 +262,6 @@ the [`Control tuning workflow`](<../testing-calibration/Control Tuning Workflow.
 controller experiments. The [Evidence and experiments](<../getting-started/learn-sushi/Evidence and Experiments.md>)
 chapter explains the full evidence ladder and how to read status without overclaiming it.
 
-[Return to the Basic Mechanisms course](<../getting-started/Basic Mechanisms Robot.md>)
+[Choose another focused build](<../build/README.md>)
 
 [Back to the examples index](<README.md>)

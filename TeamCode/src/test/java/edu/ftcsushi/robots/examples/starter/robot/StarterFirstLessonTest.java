@@ -18,11 +18,19 @@ import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
 
 import static org.junit.Assert.assertEquals;
 
-/** Hardware-free proof of the Starter's first operator meanings. */
+/**
+ * Hardware-free proof of the Starter's first operator meanings.
+ *
+ * <p>The testing idea is deliberately small: replace the intake with a recorder, stimulate the
+ * real bindings with gamepad edges, and inspect only the semantic requests that cross that
+ * boundary. This test is about controls vocabulary, so it does not pretend to prove motor wiring
+ * or physical motion.</p>
+ */
 public final class StarterFirstLessonTest {
 
     @Test
     public void buttonsRequestSemanticModesOnRisingEdgesWithoutCreatingTasks() {
+        // ARRANGE: real controls and bindings, but a tiny recorder instead of hardware.
         Gamepad driver = new Gamepad();
         RecordingIntake intake = new RecordingIntake();
         RecordingCallbackBindings callbacks = new RecordingCallbackBindings();
@@ -35,10 +43,14 @@ public final class StarterFirstLessonTest {
         ManualLoopClock time = new ManualLoopClock();
         bindings.update(time.clock());
 
+        // ACT: one A-button rising edge means COLLECT.
         driver.a = true;
         bindings.update(time.nextCycle(0.02));
+
+        // EVIDENCE: assert the meaning at the boundary, not a private implementation detail.
         assertEquals(Arrays.asList(StarterIntake.Mode.COLLECT), intake.modeRequests);
 
+        // EDGE CONTRACT: holding and releasing the button must not repeat the request.
         bindings.update(time.nextCycle(0.02)); // Holding A is not another rising edge.
         driver.a = false;
         bindings.update(time.nextCycle(0.02)); // Releasing A is not a rising edge.
@@ -46,6 +58,8 @@ public final class StarterFirstLessonTest {
 
         pulseB(driver, bindings, time);
         pulseX(driver, bindings, time);
+
+        // COVERAGE: the remaining buttons preserve the same semantic, direct-command pattern.
         assertEquals(
                 Arrays.asList(
                         StarterIntake.Mode.COLLECT,

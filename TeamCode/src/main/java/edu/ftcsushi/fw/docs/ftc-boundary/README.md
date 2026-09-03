@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # FTC boundary reference
 
 Sushi keeps FTC SDK hardware and UI details at this explicit boundary. Ordinary robot mechanisms

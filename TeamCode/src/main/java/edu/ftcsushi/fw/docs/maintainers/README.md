@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Maintainers
 
 This section is for people changing or extending the framework itself. It is not part of the

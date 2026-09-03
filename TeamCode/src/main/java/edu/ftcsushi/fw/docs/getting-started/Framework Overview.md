@@ -1,3 +1,8 @@
+---
+tags:
+  - Get Started
+---
+
 # Sushi in one picture
 
 **Learning mode:** Architecture reference
@@ -157,6 +162,5 @@ their Plants private so controls, Tasks, and Auto all use the same visible inten
 ## Choose one next route
 
 1. Verify the software project with [Build and run Sushi](<Build and Run.md>).
-2. Follow [Build the Basic Mechanisms robot](<Basic Mechanisms Robot.md>) through the next visible
-   implementation checkpoint.
+2. [Choose one robot outcome to build](<../build/README.md>) and finish its next visible checkpoint.
 3. Open [Choose a Sushi topic](<Beginner's Guide.md>) only for the deeper question in front of you.

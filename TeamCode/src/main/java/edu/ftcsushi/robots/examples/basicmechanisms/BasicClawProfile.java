@@ -7,7 +7,8 @@ public final class BasicClawProfile {
 
     /**
      * Complete standard-servo wiring, direction, initial semantic request, and CLOSED/OPEN native
-     * Servo positions in {@code [0, 1]}. These command positions are not feedback measurements.
+     * Servo endpoints in {@code [0, 1]}. HALF is derived between those endpoints; none of these
+     * command positions are feedback measurements.
      */
     public BasicClawMechanism.Config claw;
 

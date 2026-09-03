@@ -15,7 +15,7 @@ final class BasicClawControls {
         this.driver = Objects.requireNonNull(driver, "driver");
     }
 
-    /** Declares the claw controls exactly once for one callback graph. */
+    /** Declares A=CLOSED, Y=HALF, and B=OPEN exactly once for one callback graph. */
     void bind(CallbackBindings callbacks, BasicClaw claw) {
         CallbackBindings requiredCallbacks = Objects.requireNonNull(callbacks, "callbacks");
         BasicClaw requiredClaw = Objects.requireNonNull(claw, "claw");
@@ -24,6 +24,9 @@ final class BasicClawControls {
         requiredCallbacks.onRise(
                 driver.a(),
                 () -> requiredClaw.setState(BasicClaw.State.CLOSED));
+        requiredCallbacks.onRise(
+                driver.y(),
+                () -> requiredClaw.setState(BasicClaw.State.HALF));
         requiredCallbacks.onRise(
                 driver.b(),
                 () -> requiredClaw.setState(BasicClaw.State.OPEN));

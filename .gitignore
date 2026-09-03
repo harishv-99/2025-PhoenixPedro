@@ -23,6 +23,9 @@ out/
 # Gradle files
 .gradle/
 build/
+# This is authored documentation named for the learning outcome, not generated build output.
+!TeamCode/src/main/java/edu/ftcsushi/fw/docs/build/
+!TeamCode/src/main/java/edu/ftcsushi/fw/docs/build/**
 
 # Local configuration file (sdk path, etc)
 local.properties

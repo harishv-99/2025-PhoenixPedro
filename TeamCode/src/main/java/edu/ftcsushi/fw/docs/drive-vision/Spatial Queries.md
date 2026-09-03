@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Spatial Queries
 
 `SpatialQuery` is the shared framework layer for **field/robot geometry**. It answers a task-space question:

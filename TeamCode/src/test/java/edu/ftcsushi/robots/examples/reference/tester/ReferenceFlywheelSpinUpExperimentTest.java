@@ -15,7 +15,7 @@ import java.util.Map;
 
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.tools.tester.TesterContext;
-import edu.ftcsushi.robots.examples.reference.capability.launcher.ReferenceLauncherMechanism;
+import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelMechanism;
 import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
 import edu.ftcsushi.fw.testing.ftc.FtcTestHardware.MotorProbe;
 
@@ -52,7 +52,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
 
     @Test
     public void invalidLockedCriteriaFailBeforeAnyHardwareLookup() {
-        ReferenceLauncherMechanism.Config config = testConfig();
+        ReferenceFlywheelMechanism.Config config = testConfig();
         ReferenceFlywheelSpinUpCriteria criteria = ReferenceFlywheelSpinUpCriteria.current();
         criteria.reviewedForMotion = true;
         criteria.targetVelocityTicksPerSec = config.velocityToleranceTicksPerSec;
@@ -75,7 +75,7 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         RecordingTelemetry telemetry = new RecordingTelemetry();
         LoopClock clock = new LoopClock();
         ReferenceFlywheelSpinUpExperiment tester = new ReferenceFlywheelSpinUpExperiment(
-                ReferenceLauncherMechanism.Config.defaults(),
+                ReferenceFlywheelMechanism.Config.defaults(),
                 ReferenceFlywheelSpinUpCriteria.current());
 
         tester.init(context(hardware, telemetry.telemetry, new Gamepad(), clock));
@@ -380,13 +380,13 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         return new RecordingTelemetry().telemetry;
     }
 
-    private static ReferenceLauncherMechanism.Config testConfig() {
-        ReferenceLauncherMechanism.Config config =
-                ReferenceLauncherMechanism.Config.defaults();
+    private static ReferenceFlywheelMechanism.Config testConfig() {
+        ReferenceFlywheelMechanism.Config config =
+                ReferenceFlywheelMechanism.Config.defaults();
+        config.leftMotorName = "left";
+        config.rightMotorName = "right";
         config.maximumVelocityTicksPerSec = 2000.0;
         config.velocityToleranceTicksPerSec = 50.0;
-        config.launchVelocityTicksPerSec = 1000.0;
-        config.spinUpTimeoutSec = 1.0;
         return config;
     }
 
@@ -399,11 +399,11 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
     }
 
     private static final class Rig {
-        private final ReferenceLauncherMechanism.Config config = testConfig();
+        private final ReferenceFlywheelMechanism.Config config = testConfig();
         private final ReferenceFlywheelSpinUpCriteria criteria = reviewedCriteria();
         private final FtcTestHardware hardware = new FtcTestHardware();
-        private final MotorProbe left = hardware.addMotor(config.leftFlywheelName);
-        private final MotorProbe right = hardware.addMotor(config.rightFlywheelName);
+        private final MotorProbe left = hardware.addMotor(config.leftMotorName);
+        private final MotorProbe right = hardware.addMotor(config.rightMotorName);
         private final Gamepad gamepad1 = new Gamepad();
         private final LoopClock clock = new LoopClock();
         private final RecordingTelemetry telemetry = new RecordingTelemetry();
@@ -411,9 +411,6 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         private double nowSec;
 
         private Rig() {
-            hardware.addCrServo(config.transferName);
-            hardware.addServo(config.releaseServoName);
-            hardware.addDigitalInput(config.objectSensorName);
             clock.reset(0.0);
             tester = new ReferenceFlywheelSpinUpExperiment(config, criteria);
             tester.init(new TesterContext(

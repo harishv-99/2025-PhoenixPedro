@@ -1,3 +1,8 @@
+---
+tags:
+  - Test & Tune
+---
+
 # Robot calibration tutorials
 
 **Learning mode:** Operational runbook

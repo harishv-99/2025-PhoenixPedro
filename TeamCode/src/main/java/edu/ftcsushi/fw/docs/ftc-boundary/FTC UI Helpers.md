@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # FTC UI Helpers
 
 Sushi's FTC UI helpers are small telemetry-screen building blocks for places where an FTC

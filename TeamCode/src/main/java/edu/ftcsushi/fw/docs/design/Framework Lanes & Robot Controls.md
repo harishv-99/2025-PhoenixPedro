@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Architecture Roles, Framework Lanes, and Robot Controls
 
 This is the detailed architecture guide for **structuring a complete robot**. Start with
@@ -157,7 +162,7 @@ It should own:
 
 Example:
 
-- `ReferenceTeleOpControls`
+- `StarterTeleOpControls`
 
 A controls owner answers:
 
@@ -181,8 +186,8 @@ It should usually **not** own:
 
 Examples:
 
-- `ReferenceCapabilities.lift()`
-- `ReferenceCapabilities.launcher()`
+- `StarterIntake`
+- `ReferenceLauncher`
 
 A capability family answers:
 
@@ -286,7 +291,7 @@ It should not quietly absorb policy that belongs elsewhere.
 
 Example:
 
-- `ReferenceRobot`
+- `StarterRobot`
 
 A composition root answers:
 
@@ -314,7 +319,7 @@ default requirement and can accidentally validate or retain dormant mode/backend
 
 Example:
 
-- `ReferenceProfile`
+- `StarterProfile`
 
 A profile answers:
 
@@ -395,7 +400,7 @@ Good:
 - `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
 - `MecanumDrivebase`
 - `ShooterSupervisor`
-- `ReferenceTeleOpControls`
+- `StarterTeleOpControls`
 - `ReferenceCoordinatedShotService`
 - `MyTelemetryPresenter`
 
@@ -451,10 +456,10 @@ Then it is **profile/config**.
 
 This section is intentionally concrete. The goal is that you can design a new robot without opening an old robot first.
 
-For a cumulative compiling proof of these roles, read
-the [`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>).
-Its cumulative slices keep profiles, capability and Plant owners, controls, composition, and thin
-TeleOp/Auto clients visible. The larger examples below remain a menu of roles to add only when the
+For focused compiling proofs of these roles, choose an independent
+[Build recipe](<../build/README.md>). Its slices keep profiles, capability and Plant owners,
+controls, composition, and thin TeleOp/Auto clients visible without requiring unrelated mechanisms.
+The larger examples below remain a menu of roles to add only when the
 robot actually needs them.
 
 Not every robot needs every role shown below. For example, a simple TeleOp-only robot may have no vision lane, no localization lane, and no targeting service. The point of the taxonomy is not to force every robot into the same shape. The point is to give each concern a principled home when that concern exists.
@@ -1495,24 +1500,24 @@ framework template:
 - Starter controls owner: `StarterTeleOpControls`
 - Starter capability and mechanism owner: `StarterIntake` / `StarterIntakeMechanism`
 - Starter composition root and profile: `StarterRobot` / `StarterProfile`
-- Reference capability family: `ReferenceCapabilities.lift()` /
-  `ReferenceCapabilities.launcher()`
-- Reference controls owner: `ReferenceTeleOpControls`
-- Reference composition root and profile: `ReferenceRobot` / `ReferenceProfile`
+- focused paired-velocity capability and mechanism: `ReferenceFlywheels` /
+  `ReferenceFlywheelMechanism`
+- focused delegated launcher policy: `ReferenceLauncher` / `ReferenceLauncherMechanism`
+- focused periodic-position mechanism: `ReferencePeriodicTurretMechanism`
 - focused sensing service: `ReferenceInventoryStatusService`
 - focused coordination service: `ReferenceCoordinatedShotService`
 - framework vision lanes: `AprilTagVisionLane` with a concrete FTC backend, independently of robot
   field facts and strategy
 
-Use the Starter for the copyable minimum, the Reference robot for a larger capability split, and
-focused examples only for the concern they name. Do not combine their profiles or make one example
-own another example's lifecycle.
+Use the Starter for the copyable complete minimum and each focused Reference example only for the
+concern it names. Add a larger robot-owned capability aggregate only when actual mode clients need
+one; do not make one example own another example's lifecycle.
 
 ---
 
 ## Read next
 
-- [`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>)
+- [Choose one robot outcome to build](<../build/README.md>)
 - [`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mode Clients.md>)
 - [`Recommended Robot Design`](<Recommended Robot Design.md>)
 - [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>)

@@ -1,3 +1,8 @@
+---
+tags:
+  - Learn
+---
+
 # Controls and intent
 
 **Learning mode:** Architecture reference
@@ -79,26 +84,33 @@ requires an explicitly chosen field frame and is demonstrated only in the option
 Use a callback when an action completes synchronously by replacing intent. Use a Task binding when
 non-blocking behavior unfolds over several managed cycles:
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceTeleOpControls.java -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferenceFlywheelMechanismOpMode.java -->
 ```java
-requiredCallbacks.onRise(gamepad.dpadUp(),
-        () -> requiredLift.setHeight(ReferenceLift.Height.HIGH));
-requiredTasks.onRise(gamepad.x(), requiredLift::home);
+program.callbackBindings().onRise(
+        operator.a(),
+        () -> flywheels.setVelocityTicksPerSec(TEST_VELOCITY_TICKS_PER_SEC));
+program.taskBindings().onRise(
+        operator.y(),
+        () -> flywheels.setVelocityTask(
+                TEST_VELOCITY_TICKS_PER_SEC,
+                WAIT_TIMEOUT_SEC));
 ```
 
 **What to notice**
 
-- A synchronous height selection is a callback; homing across cycles is a Task.
-- `requiredLift::home` is a factory, so each eligible edge receives fresh work.
+- A synchronous persistent velocity request is a callback; waiting for feedback is a Task.
+- The lambda calls `setVelocityTask(...)` on each eligible edge, so every run receives fresh work.
 
 **Key APIs:** `TaskBindings.onRise(...)` accepts a Task supplier; `CallbackBindings.onRise(...)`
 accepts an immediate semantic callback.
 
-`lift::home` is a factory. Each eligible press returns a **fresh, single-use Task**; controls never
-run it in a private loop. The
-[`ReferenceTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceTeleOpControls.java>)
-also uses this rule for launcher spin-up/feed behavior. Declaration order remains observable when
-multiple buttons rise in one cycle.
+`setVelocityTask(...)` is a factory method. Each eligible press returns a **fresh, single-use
+Task**; controls never run it in a private loop. The focused
+[`ReferenceFlywheelMechanismOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/opmode/ReferenceFlywheelMechanismOpMode.html>)
+shows the direct and deferred forms side by side; its
+[Complete source: `ReferenceFlywheelMechanismOpMode.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferenceFlywheelMechanismOpMode.java>)
+is the compiling authority. Declaration order remains observable when multiple buttons rise in one
+cycle.
 
 ## Check your understanding
 

@@ -11,7 +11,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Reactive hardware-free scenarios with explicit observations and no simulated flywheel physics. */
+/**
+ * Causal software scenarios for the launcher's feed policy after paired-wheel readiness.
+ *
+ * <p>Question: does one real launch Task wait for independent readiness, order release before
+ * transfer, preserve outcomes, and clean its requests? Keep real: launcher, Plants, Task graph,
+ * and heartbeat. Replace: FTC devices only. Observe: commands, cached status, and Task outcome.
+ * This cannot prove safe motion, flywheel balance under load, object release, or scoring.</p>
+ */
 public final class ReferenceLauncherSoftwareScenarioTest {
 
     private static final double CYCLE_SEC = 0.02;
@@ -19,6 +26,7 @@ public final class ReferenceLauncherSoftwareScenarioTest {
 
     @Test
     public void launchReactsToIndependentMeasurementsThenRunsReleaseAndTransfer() {
+        // ARRANGE / REQUEST: start one fresh launch with zero measured wheel velocity.
         Scenario scenario = new Scenario();
         scenario.launch = scenario.launcher.launchOne();
         scenario.launch.start(scenario.time.clock());
@@ -31,29 +39,35 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         assertEquals(targetTicksPerSec,
                 scenario.right.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0,
-                scenario.launcher.status().leftMeasuredVelocityTicksPerSec(), EPSILON);
+                scenario.launcher.status().flywheels()
+                        .leftMeasuredVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0,
-                scenario.launcher.status().rightMeasuredVelocityTicksPerSec(), EPSILON);
+                scenario.launcher.status().flywheels()
+                        .rightMeasuredVelocityTicksPerSec(), EPSILON);
         assertFalse("a recorded command is not measured feedback",
-                scenario.launcher.status().ready());
+                scenario.launcher.status().flywheels().ready());
         assertFeedIdle(scenario);
 
-        double outsideTolerance = scenario.config.velocityToleranceTicksPerSec + 25.0;
+        // INJECT EVIDENCE: a correct group mean is insufficient when both members are wrong.
+        double outsideTolerance =
+                scenario.config.flywheels.velocityToleranceTicksPerSec + 25.0;
         scenario.left.setMeasuredVelocityTicksPerSec(
                 targetTicksPerSec + outsideTolerance);
         scenario.right.setMeasuredVelocityTicksPerSec(
                 targetTicksPerSec - outsideTolerance);
         scenario.advance(CYCLE_SEC);
         assertFalse("opposite errors must not become ready by averaging",
-                scenario.launcher.status().ready());
+                scenario.launcher.status().flywheels().ready());
         assertFeedIdle(scenario);
 
+        // INJECT EVIDENCE: both independent measurements now justify the feed transition.
         scenario.left.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
         scenario.right.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
+        // HEARTBEAT / ASSERT: release is observable before the temporary transfer pulse.
         scenario.advance(CYCLE_SEC);
-        assertTrue(scenario.launcher.status().leftAtTarget());
-        assertTrue(scenario.launcher.status().rightAtTarget());
-        assertTrue(scenario.launcher.status().ready());
+        assertTrue(scenario.launcher.status().flywheels().leftAtTarget());
+        assertTrue(scenario.launcher.status().flywheels().rightAtTarget());
+        assertTrue(scenario.launcher.status().flywheels().ready());
         assertFeedIdle(scenario);
 
         scenario.advance(CYCLE_SEC);
@@ -71,6 +85,7 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         assertTrue(scenario.launcher.status().transferPulseActive());
         assertFalse(scenario.launch.isComplete());
 
+        // ASSERT: natural success retains its outcome and leaves every mechanism request idle.
         scenario.advance(scenario.config.transferDurationSec + CYCLE_SEC);
         assertTrue(scenario.launch.isComplete());
         assertEquals(TaskOutcome.SUCCESS, scenario.launch.getOutcome());
@@ -79,6 +94,7 @@ public final class ReferenceLauncherSoftwareScenarioTest {
 
     @Test
     public void stalledWheelTimesOutWithoutFeedingThenCleansUp() {
+        // ARRANGE / REQUEST: one wheel can reach the request while its partner remains stalled.
         Scenario scenario = new Scenario();
         scenario.launch = scenario.launcher.launchOne();
         scenario.launch.start(scenario.time.clock());
@@ -95,9 +111,9 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         scenario.left.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
         scenario.right.setMeasuredVelocityTicksPerSec(0.0);
         scenario.advance(CYCLE_SEC);
-        assertTrue(scenario.launcher.status().leftAtTarget());
-        assertFalse(scenario.launcher.status().rightAtTarget());
-        assertFalse(scenario.launcher.status().ready());
+        assertTrue(scenario.launcher.status().flywheels().leftAtTarget());
+        assertFalse(scenario.launcher.status().flywheels().rightAtTarget());
+        assertFalse(scenario.launcher.status().flywheels().ready());
         assertFeedIdle(scenario);
 
         double finalCycleSec = 0.01;
@@ -107,6 +123,7 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         assertFalse(scenario.launch.isComplete());
         assertFeedIdle(scenario);
 
+        // HEARTBEAT / ASSERT: the exact deadline reports TIMEOUT and never starts feed.
         scenario.advance(finalCycleSec);
         assertEquals(scenario.config.spinUpTimeoutSec,
                 scenario.time.clock().nowSec(), EPSILON);
@@ -117,8 +134,8 @@ public final class ReferenceLauncherSoftwareScenarioTest {
 
     private static void assertActiveMatchIdle(Scenario scenario) {
         ReferenceLauncher.Status status = scenario.launcher.status();
-        assertEquals(0.0, status.requestedVelocityTicksPerSec(), EPSILON);
-        assertFalse(status.ready());
+        assertEquals(0.0, status.flywheels().requestedVelocityTicksPerSec(), EPSILON);
+        assertFalse(status.flywheels().ready());
         assertEquals(0.0, scenario.left.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0, scenario.right.commandedVelocityTicksPerSec(), EPSILON);
         assertFeedIdle(scenario);
@@ -136,9 +153,9 @@ public final class ReferenceLauncherSoftwareScenarioTest {
                 ReferenceLauncherMechanism.Config.defaults();
         private final FtcTestHardware hardware = new FtcTestHardware();
         private final FtcTestHardware.MotorProbe left =
-                hardware.addMotor(config.leftFlywheelName);
+                hardware.addMotor(config.flywheels.leftMotorName);
         private final FtcTestHardware.MotorProbe right =
-                hardware.addMotor(config.rightFlywheelName);
+                hardware.addMotor(config.flywheels.rightMotorName);
         private final FtcTestHardware.CrServoProbe transfer =
                 hardware.addCrServo(config.transferName);
         private final FtcTestHardware.ServoProbe release =

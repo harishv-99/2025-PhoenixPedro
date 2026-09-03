@@ -3,8 +3,8 @@ package edu.ftcsushi.robots.examples.reference.tester;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcsushi.robots.examples.reference.capability.launcher.ReferenceLauncher;
-import edu.ftcsushi.robots.examples.reference.capability.launcher.ReferenceLauncherMechanism;
+import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelMechanism;
+import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheels;
 
 /**
  * Measures independent flywheel spin-up evidence without feeding or scoring an object.
@@ -25,11 +25,11 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
 
     /** One immutable terminal capture kept until the next numbered trial begins. */
     private static final class TerminalResult {
-        private final ReferenceLauncher.Status status;
+        private final ReferenceFlywheels.Status status;
         private final double authoredTargetVelocityTicksPerSec;
         private final double elapsedSec;
 
-        private TerminalResult(ReferenceLauncher.Status status,
+        private TerminalResult(ReferenceFlywheels.Status status,
                                double authoredTargetVelocityTicksPerSec,
                                double elapsedSec) {
             this.status = Objects.requireNonNull(status, "status");
@@ -38,26 +38,26 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         }
     }
 
-    private final ReferenceLauncherMechanism.Config launcherConfig;
+    private final ReferenceFlywheelMechanism.Config flywheelConfig;
     private final boolean reviewedForMotion;
     private final double targetVelocityTicksPerSec;
     private final double maximumPoweredRunSec;
 
-    private ReferenceLauncherMechanism launcher;
+    private ReferenceFlywheelMechanism flywheels;
     private boolean active;
     private TrialState trialState = TrialState.IDLE;
     private long trialNumber;
     private double startedAtSec = Double.NaN;
-    private ReferenceLauncher.Status trialStartStatus;
+    private ReferenceFlywheels.Status trialStartStatus;
     private TerminalResult terminalResult;
 
-    /** Defensively snapshots the launcher recipe and the team's experiment card. */
+    /** Defensively snapshots the focused flywheel recipe and the team's experiment card. */
     ReferenceFlywheelSpinUpExperiment(
-            ReferenceLauncherMechanism.Config launcherConfig,
+            ReferenceFlywheelMechanism.Config flywheelConfig,
             ReferenceFlywheelSpinUpCriteria criteria) {
-        this.launcherConfig = copyLauncherConfig(Objects.requireNonNull(
-                launcherConfig,
-                "launcherConfig"));
+        this.flywheelConfig = copyFlywheelConfig(Objects.requireNonNull(
+                flywheelConfig,
+                "flywheelConfig"));
         ReferenceFlywheelSpinUpCriteria requiredCriteria = Objects.requireNonNull(
                 criteria,
                 "criteria");
@@ -79,7 +79,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         if (!reviewedForMotion) {
             return;
         }
-        launcher = new ReferenceLauncherMechanism(ctx.hw, launcherConfig);
+        flywheels = new ReferenceFlywheelMechanism(ctx.hw, flywheelConfig);
         bindings.onRise(gamepads.p1().a(), () -> {
             if (active) {
                 beginTrial();
@@ -117,9 +117,9 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
      */
     @Override
     protected void onLoop(double dtSec) {
-        if (launcher != null) {
+        if (flywheels != null) {
             if (trialState == TrialState.RUNNING) {
-                ReferenceLauncher.Status status = launcher.status();
+                ReferenceFlywheels.Status status = flywheels.status();
                 double elapsedSec = runningElapsedSec();
                 if (status != trialStartStatus && status.ready()) {
                     finishTrial(TrialState.TARGET_REACHED, status, elapsedSec);
@@ -127,9 +127,9 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
                     finishTrial(TrialState.TIME_LIMIT_REACHED, status, elapsedSec);
                 }
             }
-            launcher.update(clock);
+            flywheels.update(clock);
             if (trialState == TrialState.RUNNING) {
-                ReferenceLauncher.Status status = launcher.status();
+                ReferenceFlywheels.Status status = flywheels.status();
                 if (status.ready()) {
                     finishTrial(
                             TrialState.TARGET_REACHED,
@@ -145,8 +145,8 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         active = false;
-        if (launcher != null) {
-            launcher.stop();
+        if (flywheels != null) {
+            flywheels.stop();
         }
     }
 
@@ -161,23 +161,23 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         trialNumber++;
         trialState = TrialState.RUNNING;
         startedAtSec = clock.nowSec();
-        trialStartStatus = launcher.status();
+        trialStartStatus = flywheels.status();
         terminalResult = null;
-        launcher.setTargetVelocityTicksPerSec(targetVelocityTicksPerSec);
+        flywheels.setVelocityTicksPerSec(targetVelocityTicksPerSec);
     }
 
     /** Retain an active B-button abort without relabeling an already terminal trial. */
     private void abortTrial() {
         if (trialState == TrialState.RUNNING) {
-            finishTrial(TrialState.ABORTED, launcher.status(), runningElapsedSec());
+            finishTrial(TrialState.ABORTED, flywheels.status(), runningElapsedSec());
         } else {
-            launcher.abortLaunches();
+            flywheels.setVelocityTicksPerSec(0.0);
         }
     }
 
     /** Freeze all result evidence before the abort request changes the persistent wheel target. */
     private void finishTrial(TrialState terminalState,
-                             ReferenceLauncher.Status status,
+                             ReferenceFlywheels.Status status,
                              double elapsedSec) {
         // The copied trial answer remains truthful even when A and B rise before the first
         // mechanism update has published the newly requested target.
@@ -186,7 +186,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
                 targetVelocityTicksPerSec,
                 elapsedSec);
         trialState = terminalState;
-        launcher.abortLaunches();
+        flywheels.setVelocityTicksPerSec(0.0);
     }
 
     /** Draw only the locked gate or the computed per-wheel evidence needed by this experiment. */
@@ -209,12 +209,12 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
             return;
         }
 
-        ReferenceLauncher.Status liveStatus = launcher.status();
+        ReferenceFlywheels.Status liveStatus = flywheels.status();
         boolean terminal = isTerminal(trialState);
         TerminalResult displayedResult = terminal
                 ? Objects.requireNonNull(terminalResult, "terminalResult")
                 : null;
-        ReferenceLauncher.Status displayedStatus = terminal
+        ReferenceFlywheels.Status displayedStatus = terminal
                 ? displayedResult.status
                 : liveStatus;
         double displayedTargetVelocityTicksPerSec = terminal
@@ -285,16 +285,16 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
                     "targetVelocityTicksPerSec must be finite and > 0");
         }
         if (targetVelocityTicksPerSec
-                <= launcherConfig.velocityToleranceTicksPerSec) {
+                <= flywheelConfig.velocityToleranceTicksPerSec) {
             throw new IllegalArgumentException(
                     "targetVelocityTicksPerSec must be > "
-                            + "launcherConfig.velocityToleranceTicksPerSec");
+                            + "flywheelConfig.velocityToleranceTicksPerSec");
         }
         if (targetVelocityTicksPerSec
-                > launcherConfig.maximumVelocityTicksPerSec) {
+                > flywheelConfig.maximumVelocityTicksPerSec) {
             throw new IllegalArgumentException(
                     "targetVelocityTicksPerSec must be <= "
-                            + "launcherConfig.maximumVelocityTicksPerSec");
+                            + "flywheelConfig.maximumVelocityTicksPerSec");
         }
         if (!Double.isFinite(maximumPoweredRunSec) || maximumPoweredRunSec <= 0.0) {
             throw new IllegalArgumentException(
@@ -302,28 +302,16 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         }
     }
 
-    /** Copy every public data-only launcher answer without introducing another construction API. */
-    private static ReferenceLauncherMechanism.Config copyLauncherConfig(
-            ReferenceLauncherMechanism.Config source) {
-        ReferenceLauncherMechanism.Config copy = ReferenceLauncherMechanism.Config.defaults();
-        copy.leftFlywheelName = source.leftFlywheelName;
-        copy.leftFlywheelDirection = source.leftFlywheelDirection;
-        copy.rightFlywheelName = source.rightFlywheelName;
-        copy.rightFlywheelDirection = source.rightFlywheelDirection;
-        copy.transferName = source.transferName;
-        copy.transferDirection = source.transferDirection;
-        copy.releaseServoName = source.releaseServoName;
-        copy.releaseServoDirection = source.releaseServoDirection;
-        copy.objectSensorName = source.objectSensorName;
+    /** Copy every public data-only flywheel answer without adding a second construction path. */
+    private static ReferenceFlywheelMechanism.Config copyFlywheelConfig(
+            ReferenceFlywheelMechanism.Config source) {
+        ReferenceFlywheelMechanism.Config copy = ReferenceFlywheelMechanism.Config.defaults();
+        copy.leftMotorName = source.leftMotorName;
+        copy.leftMotorDirection = source.leftMotorDirection;
+        copy.rightMotorName = source.rightMotorName;
+        copy.rightMotorDirection = source.rightMotorDirection;
         copy.maximumVelocityTicksPerSec = source.maximumVelocityTicksPerSec;
         copy.velocityToleranceTicksPerSec = source.velocityToleranceTicksPerSec;
-        copy.launchVelocityTicksPerSec = source.launchVelocityTicksPerSec;
-        copy.spinUpTimeoutSec = source.spinUpTimeoutSec;
-        copy.transferPower = source.transferPower;
-        copy.transferDurationSec = source.transferDurationSec;
-        copy.releaseRetractedNativePosition = source.releaseRetractedNativePosition;
-        copy.releaseExtendedNativePosition = source.releaseExtendedNativePosition;
-        copy.releaseDurationSec = source.releaseDurationSec;
         return copy;
     }
 }

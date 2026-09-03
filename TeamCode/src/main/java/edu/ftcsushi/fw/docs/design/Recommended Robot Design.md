@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Recommended Robot Design
 
 ## Recommended top-level split
@@ -81,8 +86,8 @@ If you keep those rules, a robot can stay understandable even as it grows.
 Most examples in this document use real Sushi types. A few route-library snippets are
 intentionally conceptual, because the exact adapter API depends on the library you choose to wrap.
 
-For ordinary FTC mechanisms, the examples follow the same construction boundary as the
-[`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>):
+For ordinary FTC mechanisms, the focused [Build recipes](<../build/README.md>) follow the same
+construction boundary:
 the composition root checks the
 robot-level permissions and cross-owner relationships it owns, then passes the selected active
 Config to `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism defensively captures and
@@ -1254,29 +1259,19 @@ motor output, Follower construction, or Pedro-global mutation. It then privately
 Pinpoint, Follower, Mecanum, constraint, and transform graph. Do not retain a Config or nested Pedro
 constants as a live-tuning channel; edit checked-in data and reconstruct the OpMode instead.
 
-The checked-in basic reference instead keeps its complete example configuration in one local,
-fresh profile and gives that short-lived value to its sole composition-root construction path:
+The checked-in basic reference keeps one route and its runtime construction in the disabled
+`BasicPedroAuto` composition root. This is deliberate: a profile, robot wrapper, and unrelated
+intake added no ownership value to a first-route lesson. A larger robot may move reviewed data into
+its own profile while leaving runtime construction and service registration at the composition
+root.
 
-```java
-BasicPedroAutoRobot robot = new BasicPedroAutoRobot(
-        program,
-        hardwareMap,
-        BasicPedroProfile.current());
-```
-
-`BasicPedroProfile.current()` returns a fresh `PedroPathingRuntime.Config`, a fresh owner-local
-intake Config, and `allowRobotMotion = false`. The root checks that permission and the intake-versus-
-drive motor ownership collision before effects, creates and immediately registers the runtime, then
-constructs and registers the intake. Each long-lived owner snapshots only its own active Config, so
-the root retains no mutable profile and a later intake failure receives managed drive cleanup.
-
-The profile's explicit Mecanum `maxPower = 0.25` is initial software data, not a durable route cap:
+The example's explicit Mecanum `maxPower = 0.25` is initial software data, not a durable route cap:
 Pedro 2.1.2 restores the Follower's separate `globalMaxPower` to `1.0` when `followPath(...)`
 starts, and ordinary managed Sushi route callers cannot currently set that persistent limit. The
-false permission blocks route motion in the checked-in construction; `@Disabled` separately hides
-its FTC entry. Physical route qualification remains blocked pending a focused integration
-improvement. After that control exists, every runtime, intake, route, placement, and STOP fact still
-requires physical review before enabling.
+false `ROBOT_MOTION_REVIEWED` gate blocks route construction in the checked-in example;
+`@Disabled` separately hides its FTC entry. Physical route qualification remains blocked pending a
+focused integration improvement. After that control exists, every runtime, route, placement, and
+STOP fact still requires physical review before enabling.
 
 The registered service owns localization first and the recurring adapter heartbeat second. It owns
 `pedro.motionPredictor().update(clock)` followed by `pedro.driveAdapter().update(clock)` on every

@@ -54,6 +54,38 @@ sushiAndroidComponents.onVariants(
         options.windowTitle = 'Sushi Framework API'
         options.docTitle = 'Sushi Framework API'
         options.noTimestamp = true
+        options.group('Program & lifecycle', [
+                'edu.ftcsushi.fw.core.lifecycle*',
+                'edu.ftcsushi.fw.core.time*',
+                'edu.ftcsushi.fw.core.debug*'])
+        options.group('Values, sources & bindings', [
+                'edu.ftcsushi.fw.core.source*',
+                'edu.ftcsushi.fw.input*',
+                'edu.ftcsushi.fw.haptic*',
+                'edu.ftcsushi.fw.supervisor*'])
+        options.group('Actuation, Plants & control', [
+                'edu.ftcsushi.fw.actuation*',
+                'edu.ftcsushi.fw.core.control*',
+                'edu.ftcsushi.fw.core.hal*'])
+        options.group('Tasks, outcomes & coordination', [
+                'edu.ftcsushi.fw.task*'])
+        options.group('Drive, geometry & spatial reasoning', [
+                'edu.ftcsushi.fw.drive*',
+                'edu.ftcsushi.fw.field*',
+                'edu.ftcsushi.fw.spatial*',
+                'edu.ftcsushi.fw.core.geometry*',
+                'edu.ftcsushi.fw.core.math*'])
+        options.group('Sensing, localization & vision', [
+                'edu.ftcsushi.fw.sensing*',
+                'edu.ftcsushi.fw.localization*'])
+        options.group('FTC adapters, testing & tuning', [
+                'edu.ftcsushi.fw.ftc*',
+                'edu.ftcsushi.fw.tools*',
+                'edu.ftcsushi.fw.core.color*'])
+        options.group('Integrations & extension seams', [
+                'edu.ftcsushi.fw.integrations*'])
+        options.group('Maintained robot examples', [
+                'edu.ftcsushi.robots.examples*'])
         options.addBooleanOption('Xdoclint:all,-missing', true)
         options.addBooleanOption('Werror', true)
     }

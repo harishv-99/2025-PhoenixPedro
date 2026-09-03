@@ -17,8 +17,6 @@ import edu.ftcsushi.fw.drive.route.RouteFollower;
 import edu.ftcsushi.fw.drive.route.RouteStatus;
 import edu.ftcsushi.fw.task.TaskRunner;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
-import edu.ftcsushi.robots.examples.pedro.capability.intake.BasicPedroAutoMechanism;
-import edu.ftcsushi.robots.examples.pedro.capability.intake.BasicPedroMechanismTestFactory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -110,8 +108,8 @@ public final class AdaptiveCollectionSoftwareScenarioTest {
                         return new PathChain();
                     }
             );
-            BasicPedroAutoMechanism intake =
-                    BasicPedroMechanismTestFactory.fromPlant(intakePlant);
+            AdaptiveCollectionIntake intake =
+                    new AdaptiveCollectionIntake(intakePlant);
             attempt = new AdaptiveCollectionAttempt(
                     () -> decision,
                     paths,

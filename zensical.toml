@@ -7,14 +7,14 @@ docs_dir = "TeamCode/src/main/java/edu/ftcsushi/fw"
 site_dir = "build/docs-site"
 
 nav = [
-  { "Home" = "docs/README.md" },
-  { "Start here" = [
-    { "Set up and verify the project" = "docs/getting-started/Build and Run.md" },
-    { "Build the Basic Mechanisms robot" = "docs/getting-started/Basic Mechanisms Robot.md" },
+  { "Get Started" = [
+    { "Welcome to Sushi" = "README.md" },
+    { "All guides" = "docs/README.md" },
+    { "Set up and verify" = "docs/getting-started/Build and Run.md" },
     { "Sushi in one picture" = "docs/getting-started/Framework Overview.md" },
-    { "Choose a Sushi topic" = "docs/getting-started/Beginner's Guide.md" },
   ] },
-  { "Learn Sushi topics" = [
+  { "Learn" = [
+    { "Choose a concept" = "docs/getting-started/Beginner's Guide.md" },
     { "Robot roles" = "docs/getting-started/learn-sushi/Robot Roles.md" },
     { "Controls and intent" = "docs/getting-started/learn-sushi/Controls and Intent.md" },
     { "Plants and hardware" = "docs/getting-started/learn-sushi/Plants and Hardware.md" },
@@ -22,69 +22,98 @@ nav = [
     { "Evidence and experiments" = "docs/getting-started/learn-sushi/Evidence and Experiments.md" },
     { "From requirement to robot" = "docs/getting-started/learn-sushi/From Requirement to Robot.md" },
   ] },
-  { "Reference and troubleshooting" = [
+  { "Build" = [
+    { "Choose a build" = "docs/build/README.md" },
+    { "Drive with a gamepad" = "docs/build/First Drive.md" },
+    { "Run a named intake" = "docs/build/Continuous Intake.md" },
+    { "Open and close a claw" = "docs/build/Named Claw.md" },
+    { "Home and move a lift" = "docs/build/Referenced Lift.md" },
+    { "Sequence an autonomous" = "docs/build/First Autonomous.md" },
+    { "Follow a Pedro route" = "docs/build/First Pedro Auto.md" },
+  ] },
+  { "Test & Tune" = [
+    { "Test and tune home" = "docs/testing-calibration/README.md" },
+    { "How to test a Sushi component" = "docs/testing-calibration/How to test a Sushi component.md" },
+    { "Software device scenarios" = "docs/examples/Hardware-free Reference Scenarios.md" },
+    { "Actuator bring-up" = "docs/testing-calibration/Actuator Bring-up.md" },
+    { "Robot calibration" = "docs/testing-calibration/Robot Calibration Tutorials.md" },
+    { "Control tuning" = "docs/testing-calibration/Control Tuning Workflow.md" },
+    { "Guided calibration" = "docs/testing-calibration/Guided Calibration Walkthroughs.md" },
+    { "Troubleshooting" = [
+      { "Start from a symptom" = "docs/troubleshooting/README.md" },
+      { "Common problems" = "docs/troubleshooting/Common Problems.md" },
+    ] },
+  ] },
+  { "Advanced" = [
+    { "Advanced home" = "docs/advanced/README.md" },
+    { "Focused examples" = [
+      { "Examples home" = "docs/examples/README.md" },
+      { "Paired flywheel velocity" = "docs/advanced/Paired Flywheel Velocity.md" },
+      { "Periodic turret position" = "docs/advanced/Periodic Turret Position.md" },
+      { "Field-relative drive" = "docs/examples/Field-relative Drive.md" },
+      { "Subsystem experiments" = "docs/examples/Subsystem Experiments.md" },
+      { "Timestamped adaptive collection" = "docs/examples/Timestamped Adaptive Collection.md" },
+    ] },
+    { "Core concepts" = [
+      { "Core concepts home" = "docs/core-concepts/README.md" },
+      { "Loop structure" = "docs/core-concepts/Loop Structure.md" },
+      { "Sources and signals" = "docs/core-concepts/Sources and Signals.md" },
+    ] },
+    { "Robot design" = [
+      { "Robot design home" = "docs/design/README.md" },
+      { "Tasks and macros" = "docs/design/Tasks & Macros Quickstart.md" },
+      { "Architecture roles and controls" = "docs/design/Framework Lanes & Robot Controls.md" },
+      { "Capabilities and mode clients" = "docs/design/Robot Capabilities & Mode Clients.md" },
+      { "Recommended robot design" = "docs/design/Recommended Robot Design.md" },
+      { "Supervisors and pipelines" = "docs/design/Supervisors & Pipelines.md" },
+      { "Output Tasks and queues" = "docs/design/Output Tasks & Queues.md" },
+    ] },
+    { "FTC boundary" = [
+      { "FTC boundary home" = "docs/ftc-boundary/README.md" },
+      { "Actuators and Plants" = "docs/ftc-boundary/FTC Actuators & Plants.md" },
+      { "Sensors" = "docs/ftc-boundary/FTC Sensors.md" },
+      { "UI helpers" = "docs/ftc-boundary/FTC UI Helpers.md" },
+      { "Auto-to-TeleOp handoff" = "docs/ftc-boundary/FTC Auto-to-TeleOp Handoff.md" },
+      { "Manual bulk caching" = "docs/ftc-boundary/FTC Manual Bulk Caching.md" },
+    ] },
+    { "Drive, geometry, and vision" = [
+      { "Drive and vision home" = "docs/drive-vision/README.md" },
+      { "Spatial queries" = "docs/drive-vision/Spatial Queries.md" },
+      { "Drive guidance" = "docs/drive-vision/Drive Guidance.md" },
+      { "Mechanism target planning" = "docs/drive-vision/Mechanism Target Planning.md" },
+      { "AprilTag localization" = "docs/drive-vision/AprilTag Localization & Fixed Layouts.md" },
+      { "AprilTag practice setup" = "docs/drive-vision/AprilTag Practice Setup.md" },
+    ] },
+    { "Pedro integration" = "integrations/pedro/README.md" },
+    { "Maintainers" = [
+      { "Maintainers home" = "docs/maintainers/README.md" },
+      { "Framework Principles" = "Framework Principles.md" },
+      { "Maintainer Notes" = "docs/maintainers/Maintainer Notes.md" },
+    ] },
+  ] },
+  { "Reference" = [
     { "Reference home" = "docs/reference/README.md" },
+    { "Program and lifecycle" = "docs/reference/Program and lifecycle.md" },
+    { "Values, sources, and bindings" = "docs/reference/Values sources and bindings.md" },
+    { "Actuation, Plants, and control" = "docs/reference/Actuation Plants and control.md" },
+    { "Tasks, outcomes, and coordination" = "docs/reference/Tasks outcomes and coordination.md" },
+    { "Drive, geometry, and spatial reasoning" = "docs/reference/Drive geometry and spatial reasoning.md" },
+    { "Sensing, localization, and vision" = "docs/reference/Sensing localization and vision.md" },
+    { "FTC adapters, testing, and tuning" = "docs/reference/FTC adapters testing and tuning.md" },
+    { "Integrations and extension seams" = "docs/reference/Integrations and extension seams.md" },
     { "Sushi Cheat Sheet" = "docs/reference/Sushi Cheat Sheet.md" },
     { "Glossary" = "docs/reference/Glossary.md" },
-    { "Troubleshooting home" = "docs/troubleshooting/README.md" },
-    { "Common Problems" = "docs/troubleshooting/Common Problems.md" },
-  ] },
-  { "API reference" = "api/" },
-  { "Examples" = [
-    { "Examples home" = "docs/examples/README.md" },
-    { "Hardware-free reference scenarios" = "docs/examples/Hardware-free Reference Scenarios.md" },
-    { "Field-relative drive" = "docs/examples/Field-relative Drive.md" },
-    { "Your first Pedro Auto" = "docs/getting-started/First Pedro Auto.md" },
-    { "Subsystem experiments" = "docs/examples/Subsystem Experiments.md" },
-  ] },
-  { "Core concepts" = [
-    { "Core concepts home" = "docs/core-concepts/README.md" },
-    { "Loop structure" = "docs/core-concepts/Loop Structure.md" },
-    { "Sources and signals" = "docs/core-concepts/Sources and Signals.md" },
-  ] },
-  { "Mechanisms and FTC hardware" = [
-    { "FTC boundary home" = "docs/ftc-boundary/README.md" },
-    { "FTC actuators and Plants" = "docs/ftc-boundary/FTC Actuators & Plants.md" },
-    { "FTC sensors" = "docs/ftc-boundary/FTC Sensors.md" },
-    { "FTC UI helpers" = "docs/ftc-boundary/FTC UI Helpers.md" },
-    { "Auto-to-TeleOp handoff" = "docs/ftc-boundary/FTC Auto-to-TeleOp Handoff.md" },
-  ] },
-  { "Tasks and robot design" = [
-    { "Robot design home" = "docs/design/README.md" },
-    { "Tasks and macros" = "docs/design/Tasks & Macros Quickstart.md" },
-    { "Architecture roles and controls" = "docs/design/Framework Lanes & Robot Controls.md" },
-    { "Robot capabilities and mode clients" = "docs/design/Robot Capabilities & Mode Clients.md" },
-    { "Recommended robot design" = "docs/design/Recommended Robot Design.md" },
-    { "Supervisors and pipelines" = "docs/design/Supervisors & Pipelines.md" },
-    { "Output Tasks and queues" = "docs/design/Output Tasks & Queues.md" },
-  ] },
-  { "Drive, spatial reasoning, and vision" = [
-    { "Drive and vision home" = "docs/drive-vision/README.md" },
-    { "Spatial queries" = "docs/drive-vision/Spatial Queries.md" },
-    { "Drive guidance" = "docs/drive-vision/Drive Guidance.md" },
-    { "Mechanism target planning" = "docs/drive-vision/Mechanism Target Planning.md" },
-    { "AprilTag localization and fixed layouts" = "docs/drive-vision/AprilTag Localization & Fixed Layouts.md" },
-    { "AprilTag practice setup" = "docs/drive-vision/AprilTag Practice Setup.md" },
-  ] },
-  { "Testing and calibration" = [
-    { "Testing and calibration home" = "docs/testing-calibration/README.md" },
-    { "Actuator bring-up" = "docs/testing-calibration/Actuator Bring-up.md" },
-    { "Robot calibration tutorials" = "docs/testing-calibration/Robot Calibration Tutorials.md" },
-    { "Control tuning" = "docs/testing-calibration/Control Tuning Workflow.md" },
-    { "Guided calibration walkthroughs" = "docs/testing-calibration/Guided Calibration Walkthroughs.md" },
-  ] },
-  { "Pedro Pathing integration" = "integrations/pedro/README.md" },
-  { "Maintainers" = [
-    { "Maintainers home" = "docs/maintainers/README.md" },
-    { "Framework Principles" = "Framework Principles.md" },
-    { "Maintainer Notes" = "docs/maintainers/Maintainer Notes.md" },
+    { "API: search types and members" = "https://harishv-99.github.io/2025-PhoenixPedro/api/" },
   ] },
 ]
 
 [project.theme]
 variant = "modern"
+custom_dir = "overrides"
 features = [
+  "navigation.tabs",
   "navigation.sections",
+  "navigation.prune",
   "navigation.path",
   "navigation.top",
   "search.highlight",

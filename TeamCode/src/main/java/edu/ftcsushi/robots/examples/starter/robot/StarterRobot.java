@@ -53,8 +53,7 @@ public final class StarterRobot {
                 activeProfile.allowDriveMotion);
         requireDistinctMotorOwners(activeProfile);
 
-        StarterIntakeMechanism intake = program.output(
-                new StarterIntakeMechanism(hardwareMap, activeProfile.intake));
+        StarterIntakeMechanism intake = declareIntake(program, activeProfile);
         StarterTeleOpControls controls = new StarterTeleOpControls(
                 new GamepadDevice(requiredGamepad));
         controls.bind(program.callbackBindings(), intake);
@@ -62,7 +61,31 @@ public final class StarterRobot {
         program.drive(
                 controls.driveSource(),
                 FtcDrives.mecanum(hardwareMap, activeProfile.drive));
-        program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
+    }
+
+    /**
+     * Declare only the intake controls, output, and status used by the focused power lesson.
+     *
+     * <p>This path deliberately does not inspect or construct the drivetrain. It lets a student
+     * prove one continuous-power mechanism before combining it with another hardware owner, while
+     * preserving the same capability, controls, Plant, heartbeat, and stop ownership used by the
+     * complete Starter TeleOp.</p>
+     */
+    public void declareIntakeTeleOp(RobotProgram program,
+                                    StarterProfile profile,
+                                    Gamepad gamepad1) {
+        Objects.requireNonNull(program, "program");
+        StarterProfile activeProfile = Objects.requireNonNull(profile, "profile");
+        Gamepad requiredGamepad = Objects.requireNonNull(gamepad1, "gamepad1");
+        requireMotionAllowed(
+                "focused intake TeleOp",
+                "StarterProfile.allowIntakeMotion",
+                activeProfile.allowIntakeMotion);
+
+        StarterIntakeMechanism intake = declareIntake(program, activeProfile);
+        StarterTeleOpControls controls = new StarterTeleOpControls(
+                new GamepadDevice(requiredGamepad));
+        controls.bind(program.callbackBindings(), intake);
     }
 
     /**
@@ -83,10 +106,7 @@ public final class StarterRobot {
                 "StarterProfile.allowIntakeMotion",
                 activeProfile.allowIntakeMotion);
 
-        StarterIntakeMechanism intake = program.output(
-                new StarterIntakeMechanism(hardwareMap, activeProfile.intake));
-        program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
-        return intake;
+        return declareIntake(program, activeProfile);
     }
 
     private static void requireMotionAllowed(String mode,
@@ -147,6 +167,14 @@ public final class StarterRobot {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private StarterIntakeMechanism declareIntake(RobotProgram program,
+                                                  StarterProfile profile) {
+        StarterIntakeMechanism intake = program.output(
+                new StarterIntakeMechanism(hardwareMap, profile.intake));
+        program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
+        return intake;
     }
 
     private static void presentIntake(Telemetry telemetry, StarterIntake intake) {

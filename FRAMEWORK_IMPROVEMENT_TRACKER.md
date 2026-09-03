@@ -232,6 +232,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 123 | STATUS-02 | Reference launcher snapshot composition cleanup | Done | The reviewed launcher snapshot composition, transactional publication, fresh experiment evidence, caller/test migrations, synchronized teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 124 | TASK-06 | Parallel numeric and semantic scalar Task lifetimes | Done | The reviewed parallel scalar Task API, maintained-caller migration, synchronized documentation, adversarial review, deterministic verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 125 | SIMPLICITY-02 | Concise actuator declaration and use | Done | Revised implementation reviewed and publication authorized for the recorded item branch, origin push URL, pull request, and `master` target. |
+| 126 | DOC-11 | Outcome-focused learning, examples, reference, and search | Done | The reviewed six-area learning site, concise explained scenarios, accessible global guide search, categorized API reference, evidence ladder, focused example cleanup, verification, Android Studio review, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -26745,6 +26746,173 @@ implementation.
   completed the Android Studio review and supplied the exact combined authorization to commit the
   reviewed 40-path SIMPLICITY-02 diff on
   `codex/simplicity-02-concise-actuator-recipes`, push that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. This authorizes only those publication steps; it does not authorize starting VISION-03
+  or another tracker item.
+
+### DOC-11 - Outcome-focused learning, examples, reference, and search
+
+- **Gate 1 status and implementation approval (2026-09-03):** **In progress** on
+  `codex/doc-11-outcome-focused-learning`, created from merged
+  `origin/master@9557d4a`. The user asked for another student-teaching pass informed by NextFTC's
+  visually obvious product areas, focused sections, and short examples; then explicitly approved
+  the revised plan and directed **“Implement the plan.”** The approval includes clean replacement
+  of obsolete teaching examples, creation of missing focused examples, mechanism-only TeleOps,
+  categorized references, an explicit testing philosophy, and guide-wide search. It authorizes no
+  staging, commit, push, pull request, merge, VISION-03 work, production-robot change, or reusable
+  framework API change.
+- **Confirmed behavior and current callers:** Sushi's maintained story is correct but hard to
+  consume. The top navigation exposes thirteen peer topics instead of a small learning map. The
+  4,000-plus-line Basic Mechanisms course embeds complete sources and five large regression suites,
+  tells a literal reader to place tests under `src/main/java`, and introduces a Gate-6 test that
+  depends on a Gate-7-only Auto class. Its cumulative drive-plus-lift-plus-claw route is not
+  goal-selective. Starter, Basic, and Reference repeat several robot, lift, and Auto concepts;
+  beginner tests include reflection, proxies, and custom fakes that are useful maintainer evidence
+  but poor student-authored examples. The generated flat search index consequently overweights
+  repeated full-file text and generic headings. The source-facing callers are the maintained
+  `edu.ftcsushi.robots.examples` packages, their tests, `zensical.toml`, generated-Javadoc inputs,
+  and documentation contract tests; protected framework and production robot APIs are not callers
+  of this documentation design.
+- **Alternatives and simplicity comparison:** no change preserves source completeness but leaves
+  navigation, duplication, compilation blockers, and unexplained tests. Fixing only the two build
+  blockers retains the monolithic course and search noise. Keeping every example and merely
+  relabeling it retains competing beginner paths. A new custom search engine adds maintenance and
+  accessibility risk without improving the authored content. The selected replacement uses six
+  stable areas—**Get Started, Learn, Build, Test & Tune, Advanced, Reference**—with one outcome per
+  page, short exact excerpts, explicit complete-source links, focused scenario tests, and the
+  renderer's global flat search plus area tags. This reduces the ordinary path, file copying,
+  duplicate architecture, and concepts per lesson while preserving complete compiling authorities
+  outside the prose.
+- **Chosen information architecture and search contract:** the framework README becomes a visual
+  six-card doorway; `docs/README.md` remains the exhaustive canonical hub. Navigation scopes each
+  area so unrelated subjects recede. Every searchable guide declares exactly one area tag near the
+  top. The guide search is labeled **Search all guides** and says it searches all six areas, with
+  area filters; exact classes and methods route to the separate **Search API types and members**
+  Javadoc search. Search stays global rather than tab-local because students often do not know the
+  owning category. Titles and headings name outcomes and common synonyms, while source manifests,
+  redirects, boilerplate, and repeated full files are removed from the indexed narrative. Use the
+  built-in Zensical index and only the smallest supported wording/accessibility template override;
+  do not create a second search implementation.
+- **Chosen learning and reference contract:** the student route is setup, first drive, mechanism
+  anatomy, one chosen mechanism, software proof, isolated hardware gate, integration, then Auto.
+  Each build recipe states the outcome and prerequisites, shows a three-to-twelve-line maintained
+  excerpt with no more than three observations, lists exact main/test file manifests, links visibly
+  labeled complete sources, supplies an explained software checkpoint, separates the hardware
+  gate, and ends with one next action. API names link to Javadocs. Reference is divided into eight
+  framework categories—program/lifecycle; values/sources/bindings; Plants/control;
+  Tasks/outcomes/coordination; drive/geometry/spatial reasoning; sensing/localization/vision; FTC
+  adapters/testing/tuning; integrations/extension seams—plus a maintained-examples Javadoc group.
+- **Chosen testing philosophy:** teach students to **test the owner of one question, replace only
+  the world outside that owner, preserve the production heartbeat, and claim only the evidence
+  actually observed.** The ladder is semantic intent, software-device scenario, supplied managed
+  slice, maintainer regression, and physical bring-up/calibration/experiment. Before each shown
+  test, state Question / Keep real / Replace / Observe / Cannot conclude. In Java, label the causal
+  steps ARRANGE, REQUEST, BEFORE HEARTBEAT, HEARTBEAT, INJECT EVIDENCE, ASSERT, and NEXT GATE as
+  applicable. Afterward explain the causal chain, what it proves, what it does not prove, and the
+  next gate. Keep one question per method, no more than two displayed methods per file, roughly 35
+  executable lines per method and 100–120 physical lines including comments. Reflection, proxies,
+  custom Task machines, annotation/bytecode checks, and broad abnormal-outcome matrices remain
+  supplied maintainer evidence rather than beginner-authored work.
+- **Bounded implementation:** replace the monolithic Basic course and redundant Starter/Basic/
+  Reference fixtures with a small independent portfolio: first drive; named intake; normalized
+  CLOSED/HALF/OPEN claw mapped to reviewed native endpoints; referenced lift home/move; rising-edge
+  controls; Auto sequencing of real capability Tasks; paired-flywheel readiness using independent
+  measurements; a periodic turret selecting the nearest legal equivalent; and cached sensor/service
+  status. Add mechanism-only hosts and focused velocity/periodic examples. Preserve uniquely
+  advanced launcher, inventory, experiment, Panels/tester, field-relative, and adaptive Pedro
+  examples. Simplify basic Pedro to one route without example-only intake coupling. Rehome truly
+  unique invariants into compact `*ContractTest` suites and delete obsolete duplicate fixtures.
+  Do not fit old examples into new prose; create the best focused compiling authority and remove
+  the unnecessary predecessor. If implementation discovers a missing reusable API, record a
+  separate Proposed tracker item rather than expanding DOC-11.
+- **Rejected designs and evidence boundary:** do not teach by breaking safe ownership or hardware
+  bounds; conceptual simplification may omit advanced policy only when the omission is explicit and
+  the shown code remains a supported safe path. Do not place all tests in the beginner path, make
+  search tab-local, hand-maintain HTML, retain full source dumps for completeness, add a generic
+  simulator, or modify production robot code. Software scenarios can prove mapping, lifecycle,
+  cached status, Task outcomes, and injected-feedback behavior. They cannot prove wiring,
+  directions, endpoint clearance, switch placement, encoder scale, physical arrival, flywheel
+  balance, tuning, route accuracy, or safe motion; each lesson must name the isolated hardware gate.
+- **Verification plan:** update documentation-contract tests for the six-area inventory, exactly-one
+  tags, concise recipe manifests, source/Javadoc links, test-explanation structure, global-search
+  wording, categorized reference, valid anchors/fences, and removal of obsolete source dumps.
+  Run focused example and documentation tests, all TeamCode unit tests, Java compilation, strict
+  Sushi Javadocs, the pinned Zensical build and rendered desktop/narrow inspection, exhaustive
+  caller/obsolete-example searches, XML test-count inspection, final-newline and whitespace scans,
+  and `git diff --check`. Run independent adversarial reviews for student pedagogy, lifecycle and
+  evidence truth, documentation/search accessibility, and orphaned callers. Hardware remains
+  unavailable and is neither required nor claimed for this documentation/example contract.
+- **Gate 2 implementation result (2026-09-03):** **Verifying.** `zensical.toml` and the framework
+  doorway now expose exactly **Get Started, Learn, Build, Test & Tune, Advanced, and Reference**.
+  Six independent Build recipes lead with one outcome, a short maintained excerpt, exact source
+  manifests, an explained software checkpoint, a separate hardware boundary, and one next action.
+  The old source-dump Basic/Pedro courses are small search-excluded redirects. Every searchable
+  guide has one navigation-matching area tag. The Reference area has eight framework categories;
+  Gradle gives those categories and maintained robot examples matching Javadoc groups, while
+  public class names link to generated API pages and visibly labeled complete-source links remain
+  available for whole files.
+- **Teaching/example replacement:** the maintained portfolio now has focused first-drive,
+  continuous-intake, normalized named-claw, referenced-lift, single-mechanism Auto, success-gated
+  combined Auto, one-route Pedro, paired-flywheel, and periodic-turret examples. The claw maps the
+  normalized `CLOSED`/`HALF`/`OPEN` vocabulary through reviewed native endpoints; the flywheel owner
+  retains one grouped command while publishing both member measurements; and the periodic turret
+  exposes logical request, selected legal representative, applied target, measurement, and arrival.
+  Small scenario tests make ARRANGE / REQUEST / HEARTBEAT / INJECT EVIDENCE / ASSERT / NEXT GATE
+  causality visible. Broader abnormal-outcome, reflection, proxy, and custom-Task fixtures are
+  labeled supplied maintainer evidence. Redundant Basic, Pedro, and Reference robot graphs and
+  their overlapping tests were removed; unique launcher, inventory, experiment, field-relative,
+  adaptive collection, parking, Panels, and tester examples remain.
+- **Search and evidence result:** the canonical five-level ladder is semantic intent,
+  software-device scenario, supplied managed slice, maintainer regression, and physical bring-up/
+  calibration/experiment; modeled simulation is a test shape whose assumptions must be stated, not
+  a competing evidence level. `overrides/main.html` augments Zensical 0.0.51's existing open-
+  ShadowRoot search rather than creating another engine: the header, dialog, and input say
+  **Search all guides**, visible help distinguishes all-six-area guide search from API member
+  search, closed controls leave the tab/accessibility trees, and the existing area filters expose
+  valid grouped button semantics, toggle state, and Enter/Space operation. CI now verifies the
+  pinned component contract and generated navigation/tag agreement. Physical Pedro route motion is
+  explicitly blocked while the managed integration cannot retain a reviewed route-time power
+  limit; the lesson does not suggest bypassing the managed follower boundary.
+- **Adversarial review and corrections:** independent reviews traced Task single-use behavior,
+  one-heartbeat ownership, cancellation/timeout cleanup, launcher extraction, status truth, source
+  and API links, package groups, navigation/search metadata, orphaned callers, and student test
+  size. They found and corrected the unsafe Pedro low-power-run wording; two competing evidence
+  ladders; one Test & Tune page tagged Advanced; hardware prerequisites placed before software
+  checkpoints; repeated lift/claw handoffs; a 247-line maintainer Auto fixture presented as the
+  beginner scenario; a nonexistent Task `failure` outcome; and an initially inert light-DOM search
+  selector plus keyboard/focus defects in the pinned ShadowRoot filter. The replacement beginner
+  Auto scenario is 119 lines, has one causal method, and uses framework Task factories rather than
+  a custom Task state machine. The final adversarial pass found no remaining high-value Java,
+  lifecycle, reference, navigation, or search-structure defect.
+- **Deterministic verification evidence (2026-09-03):** Android Studio JBR 21 completed
+  `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest`: **242 suites / 2,193 tests / 0
+  failures / 0 errors / 0 skipped**. The final focused documentation contract passes all 21 tests.
+  Pinned Zensical 0.0.51 completed a clean strict build with no issues; the generated-search verifier
+  checked the open-ShadowRoot enhancer and **868 indexed sections across all six areas**. Strict
+  `:TeamCode:sushiJavadocs` succeeded, and the generated-link verifier checked **148 API links and
+  50 maintained source links across 41 Markdown pages**. All required site/API/search files are
+  nonempty, the artifact has no symbolic links, final-newline and trailing-whitespace scans are
+  clean, stale-authority and navigation/tag checks are clean, and `git diff --check` passes. The
+  JDK reports only the repository's existing Java-8 source/target deprecation warnings.
+- **Unverified physical/interactive boundary:** no robot hardware was available, so this work does
+  not claim wiring, directions, safe endpoints, switch placement, encoder scale, tuning, route
+  accuracy, physical STOP response, loaded flywheel balance, release, or scoring. The in-app browser
+  service exposed no browser backend, so desktop/narrow and assistive-technology interaction could
+  not be observed live; the committed contract instead validates the authored enhancer against the
+  pinned generated bundle and rendered artifact. Those limits are stated in the lessons rather than
+  converted into software evidence.
+- **Android Studio review and publication stop (2026-09-03):** the complete **181-path unstaged**
+  DOC-11 diff remains on `codex/doc-11-outcome-focused-learning` at
+  `9557d4af6204a50d9260d1550c8418cfce91f736`, based on the same
+  `origin/master@9557d4af6204a50d9260d1550c8418cfce91f736`. Review the full diff in Android Studio,
+  especially the six-area navigation, short Build recipes, testing explanations, search overlay,
+  focused example ownership/lifecycle, deleted duplicate authorities, and Pedro physical-motion
+  block. No file is staged and no commit, push, pull request, merge, or next tracker item is
+  authorized. Publication requires the user's exact combined authorization for this reviewed diff,
+  branch, `https://github.com/harishv-99/2025-PhoenixPedro.git`, pull request, and `master` target.
+- **Gate 3 manual review and publication authorization (2026-09-03):** **Done.** The user completed
+  the Android Studio review and supplied the exact combined authorization to commit the reviewed
+  181-path DOC-11 diff on `codex/doc-11-outcome-focused-learning`, push that branch to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
   `master`. This authorizes only those publication steps; it does not authorize starting VISION-03
   or another tracker item.

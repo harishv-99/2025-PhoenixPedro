@@ -1,3 +1,8 @@
+---
+tags:
+  - Reference
+---
+
 # Sushi Glossary
 
 These definitions describe the current framework. Terms are grouped by what a student encounters,

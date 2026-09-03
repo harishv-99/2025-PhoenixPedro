@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # FTC Auto-to-TeleOp handoff
 
 `FtcAutoToTeleOpHandoff<T>` carries one immutable, short-lived robot-owned snapshot from a normally

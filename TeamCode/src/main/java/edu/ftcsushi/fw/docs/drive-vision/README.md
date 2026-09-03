@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Drive, spatial reasoning, and vision
 
 These guides are feature-specific. Start with the page that matches the result you need.

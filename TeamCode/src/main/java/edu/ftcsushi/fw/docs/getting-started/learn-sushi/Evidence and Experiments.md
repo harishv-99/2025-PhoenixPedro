@@ -1,3 +1,8 @@
+---
+tags:
+  - Learn
+---
+
 # Evidence and experiments
 
 **Learning mode:** Architecture reference
@@ -12,38 +17,49 @@ the linked scenario and experiment modules contain the code-authoring work.
 Sushi separates a request, an electrical observation, a measurement, and a physical conclusion.
 This page requires no sensor, code edit, or robot run.
 
-## Climb the evidence ladder
+## Climb the canonical evidence ladder
 
-Use the lowest-cost evidence that can truthfully answer the current question, then move upward only
-when the next fact requires it:
+Use the lowest-cost level that can truthfully answer the current question, then widen the boundary
+only when the next fact requires it. This is the same five-level ladder defined in
+[How to test a Sushi component](<../../testing-calibration/How to test a Sushi component.md#the-five-evidence-levels>):
 
 ```text
-semantic test
-    -> software device scenario
-    -> optional modeled simulation
-    -> supervised bring-up
-    -> robot experiment
+1. semantic intent
+    -> 2. software-device scenario
+    -> 3. supplied managed slice
+    -> 4. maintainer regression
+    -> 5. physical bring-up, calibration, or experiment
 ```
 
-1. A **semantic test** replaces a capability with a small recording object. It proves controls,
-   Tasks, or policy requested the right robot meaning without constructing FTC devices.
-2. A **software device scenario** constructs the real production mechanism and Plants with a
-   test-only `HardwareMap`. The scenario explicitly injects readings and records actuator commands.
-3. An **optional modeled simulation** evolves state with an authored dynamics model. Use that name
-   only when its assumptions and fidelity are explicit; many mechanism questions do not need it.
-4. **Supervised bring-up** establishes one physical device fact such as wiring, direction, encoder
-   sign, or STOP response with conservative commands.
-5. A **robot experiment** evaluates a complete physical subsystem question against team-authored
-   success criteria over controlled trials.
+1. **Semantic intent** keeps the control, Task, or policy decision real and replaces the capability
+   with a small recorder.
+2. A **software-device scenario** constructs the production mechanism and Plants with a test-only
+   `HardwareMap`, injects observations explicitly, and records actuator commands.
+3. A **supplied managed slice** keeps enough production lifecycle to establish phase order and
+   cleanup without claiming robot-specific response.
+4. A **maintainer regression** protects exhaustive edge cases or structural contracts that a
+   beginner may run without treating its fixtures as robot-code templates.
+5. **Physical bring-up, calibration, or experiment** observes the assembled robot under stated
+   conditions. Bring-up establishes one device fact; calibration records robot facts; an experiment
+   evaluates a written subsystem question and criterion.
 
-The arrow shows increasing kinds of evidence, not permission to skip safety review. A green lower
-step remains valuable, but it cannot make a physical claim from software alone.
+The arrow widens evidence scope; it is not permission to skip safety review. A green software level
+remains valuable, but it cannot make a physical claim.
+
+### Test shapes are not extra evidence levels
+
+A reactive Java scenario, modeled simulation, managed-lifecycle slice, or broad regression suite is
+a **test shape** chosen inside that ladder, not another ladder. An optional modeled simulation adds
+an authored dynamics model to a software question; state its assumptions and fidelity explicitly.
+It may support a level-2 mechanism scenario or a level-3 managed slice, but modeled motion never
+becomes level-5 physical evidence. Likewise, “managed slice” and “regression” describe scope and
+audience; neither word upgrades what the test actually observed.
 
 In a software device scenario, commanded power, velocity, or position must never be copied
 automatically into encoder or velocity feedback. The test supplies each observation independently;
 otherwise a broken feedback loop can pass by reading back its own command. The checked-in
-[Basic Mechanisms software checkpoint](<../Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>) and optional
-[Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>) show the boundary.
+[focused software checkpoints](<../../build/README.md>) and
+[software-device scenarios](<../../examples/Hardware-free Reference Scenarios.md>) show the boundary.
 
 The probes are passive, but a typed Java scenario can still be reactive. Request an action, run its
 Task and output phases, and assert the command that production code actually issued. Only then name
@@ -91,12 +107,16 @@ An FTC `DigitalChannel` reports an electrical level. Sushi makes the chosen pola
 - `FtcSensors.digitalHigh(...)` is true while the pin is HIGH.
 - `FtcSensors.digitalLow(...)` is true while the pin is LOW.
 
-The Reference lift deliberately selects and conditions active-low input:
+The Reference inventory service deliberately selects and conditions three active-low inputs:
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.java -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java -->
 ```java
-bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
-        .debouncedOnOff(0.02, 0.02);
+firstOccupied = FtcSensors.digitalLow(firstChannel)
+        .debouncedOnOff(occupiedDelay, vacatedDelay);
+secondOccupied = FtcSensors.digitalLow(secondChannel)
+        .debouncedOnOff(occupiedDelay, vacatedDelay);
+thirdOccupied = FtcSensors.digitalLow(thirdChannel)
+        .debouncedOnOff(occupiedDelay, vacatedDelay);
 ```
 
 **What to notice**
@@ -107,18 +127,20 @@ bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
 **Key APIs:** `FtcSensors.digitalLow(...)` adapts an active-low FTC channel;
 `BooleanSource.debouncedOnOff(...)` conditions the semantic fact over shared-clock time.
 
-For its reviewed wiring, released is HIGH/false and depressed is LOW/true. `digitalLow` does not
-discover the circuit or mechanical state; the robot author chooses it because LOW means “bottom
-switch depressed” for that circuit. Debounce then requires the selected value to remain stable for
-20 ms before changing. It neither inverts the value nor supplies its meaning.
+For its reviewed wiring, an empty position is HIGH/false and an occupied position is LOW/true.
+`digitalLow` does not discover the circuit or physical object; the robot author chooses it because
+LOW means “position occupied” for that circuit. Debounce then requires the selected value to remain
+stable for the configured interval before changing. It neither inverts the value nor supplies its
+meaning.
 
 ## Scale to measured readiness
 
-Each successful Reference launcher update publishes one immutable
-[`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>):
-the grouped flywheel snapshot plus per-wheel, sensor, and transfer facts. Flat requested/applied
+Each successful paired-flywheel update publishes one immutable
+[`ReferenceFlywheels.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.Status.html>):
+the grouped Plant snapshot plus two independent wheel measurements. Its requested/selected/applied
 methods avoid generic navigation. `ready()` requires one positive value selected and applied
-without fallback plus both wheels in tolerance; it does not prove a launch or score.
+without fallback plus both wheels in tolerance; it does not prove a launch or score. The launcher
+composes this complete value as `status().flywheels()` rather than mirroring its fields.
 
 `objectPresent` is status-only in the Reference mechanism. `launchOne()` does not use it to permit
 feeding. A team that needs object-gated feeding must add that policy explicitly rather than treating
@@ -136,14 +158,13 @@ sensor placement, capacity, or collection result on a robot.
 
 The locked Reference flywheel experiment prints what software must calculate: trial number and
 state, target velocity, both measured velocities, and elapsed time. When a trial ends, one immutable
-terminal result freezes the launcher Status, authored target, and elapsed time before requesting
+terminal result freezes the flywheel Status, authored target, and elapsed time before requesting
 zero, so later coast-down cannot relabel the result. The operator records directly visible or
 audible facts—direction, vibration, sound, damage, clearance, and STOP response.
 
-The trial changes only flywheel velocity; it never requests a transfer or release pulse. The whole
-production mechanism still updates its normal idle outputs, so the release servo may move to its
-configured retracted position and still needs reviewed clearance. A separate, team-authored loaded
-launch experiment could record score or miss; this spin-up trial cannot.
+The trial owns only the focused paired-flywheel mechanism; it has no transfer, release, or object
+sensor to move accidentally. A separate, team-authored loaded-launch experiment could record score
+or miss; this spin-up trial cannot.
 
 Checked-in criteria keep `reviewedForMotion` false. Their target and powered-run cap are placeholders,
 not physical permission or success criteria. The cap is a cooperative boundary checked once per
@@ -163,7 +184,7 @@ team rejects the configuration. Neither observation should be converted silently
 
 ## Go deeper when needed
 
-- Electrical conditioning: [`ReferenceLiftMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.html>)
+- Electrical conditioning: [`ReferenceInventoryStatusService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.html>)
 - All-or-nothing launcher publication: [`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
 - Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.html>)
 - Hardware-free feedback cases: [Hardware-free Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>)

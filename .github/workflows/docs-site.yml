@@ -90,6 +90,9 @@ jobs:
       - name: Build narrative documentation
         run: python -m zensical build --clean --strict
 
+      - name: Verify generated guide search
+        run: python .github/verify_generated_guide_search.py
+
       - name: Build framework API documentation
         run: ./gradlew --console=plain :TeamCode:sushiJavadocs
 

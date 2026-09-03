@@ -1,12 +1,10 @@
 package edu.ftcsushi.robots.examples.reference.capability.launcher;
 
-import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
-import edu.ftcsushi.fw.actuation.PlantSnapshot;
 import edu.ftcsushi.fw.actuation.PlantTargetResolver;
 import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.ScalarTasks;
@@ -22,24 +20,21 @@ import edu.ftcsushi.fw.task.OutputTaskRunner;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.task.Tasks;
+import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelMechanism;
+import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheels;
 
-/** Owns the reference launcher's Plants, sensor evidence, feed queue, and safe task factories. */
+/** Owns release/feed policy and delegates paired velocity to one focused flywheel owner. */
 public final class ReferenceLauncherMechanism
         implements ReferenceLauncher, RobotProgram.Output {
 
     /** Data-only wiring, bounds, and behavior values for the reference mechanism. */
     public static final class Config {
-        public String leftFlywheelName;
-        public Direction leftFlywheelDirection;
-        public String rightFlywheelName;
-        public Direction rightFlywheelDirection;
+        public ReferenceFlywheelMechanism.Config flywheels;
         public String transferName;
         public Direction transferDirection;
         public String releaseServoName;
         public Direction releaseServoDirection;
         public String objectSensorName;
-        public double maximumVelocityTicksPerSec;
-        public double velocityToleranceTicksPerSec;
         public double launchVelocityTicksPerSec;
         public double spinUpTimeoutSec;
         public double transferPower;
@@ -66,17 +61,12 @@ public final class ReferenceLauncherMechanism
         /** Returns compiling example values, not reviewed physical facts. */
         public static Config defaults() {
             Config c = new Config();
-            c.leftFlywheelName = "flywheelLeft";
-            c.leftFlywheelDirection = Direction.FORWARD;
-            c.rightFlywheelName = "flywheelRight";
-            c.rightFlywheelDirection = Direction.REVERSE;
+            c.flywheels = ReferenceFlywheelMechanism.Config.defaults();
             c.transferName = "transfer";
             c.transferDirection = Direction.FORWARD;
             c.releaseServoName = "release";
             c.releaseServoDirection = Direction.FORWARD;
             c.objectSensorName = "objectPresent";
-            c.maximumVelocityTicksPerSec = 5000.0;
-            c.velocityToleranceTicksPerSec = 100.0;
             c.launchVelocityTicksPerSec = 3000.0;
             c.spinUpTimeoutSec = 2.0;
             c.transferPower = 0.25;
@@ -93,16 +83,12 @@ public final class ReferenceLauncherMechanism
     private static final double RELEASE_RETRACTED_TARGET = 0.0;
     private static final double RELEASE_EXTENDED_TARGET = 1.0;
 
-    private final Plant flywheel;
+    private final ReferenceFlywheelMechanism flywheels;
     private final Plant transfer;
     private final Plant release;
-    private final ScalarSource leftMeasuredVelocityTicksPerSec;
-    private final ScalarSource rightMeasuredVelocityTicksPerSec;
     private final BooleanSource objectPresent;
     private final OutputTaskRunner transferOverrides =
             Tasks.outputQueue(IDLE_TRANSFER_POWER);
-    private final double maximumVelocityTicksPerSec;
-    private final double velocityToleranceTicksPerSec;
     private final double launchVelocityTicksPerSec;
     private final double spinUpTimeoutSec;
     private final double transferPower;
@@ -115,22 +101,14 @@ public final class ReferenceLauncherMechanism
     /**
      * Constructs the complete mechanism after validating its copied configuration.
      *
-     * <p>The two flywheel names are checked for distinct trimmed FTC keys before the first hardware
-     * lookup. The paired velocity Plant remains the one grouped actuator command/stop owner. Two
-     * separate memoized SDK velocity sources add no Sushi direction transform; their readings
-     * are observed only after the paired Plant has configured the motor directions. They provide
-     * truthful per-wheel evidence without creating another command path.</p>
+     * <p>The focused {@link ReferenceFlywheelMechanism} owns the grouped Plant and independent
+     * wheel evidence. This launcher composes that capability with release, transfer, and object
+     * sensing; it does not create a second flywheel target or writer.</p>
      */
     public ReferenceLauncherMechanism(HardwareMap hardwareMap, Config config) {
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
         Config c = copyAndValidate(config);
 
-        DcMotorEx leftFlywheel = map.get(DcMotorEx.class, c.leftFlywheelName);
-        DcMotorEx rightFlywheel = map.get(DcMotorEx.class, c.rightFlywheelName);
-        ScalarSource builtLeftMeasuredVelocityTicksPerSec =
-                FtcSensors.motorVelocityTicksPerSec(leftFlywheel);
-        ScalarSource builtRightMeasuredVelocityTicksPerSec =
-                FtcSensors.motorVelocityTicksPerSec(rightFlywheel);
         BooleanSource builtObjectPresent = FtcSensors.digitalLow(map, c.objectSensorName)
                 .debouncedOnOff(0.02, 0.02);
 
@@ -139,12 +117,12 @@ public final class ReferenceLauncherMechanism
                 .add("temporaryTransfer", transferOverrides.activeSource(), transferOverrides)
                 .build();
 
-        Plant builtFlywheel = null;
+        ReferenceFlywheelMechanism builtFlywheels = null;
         Plant builtTransfer = null;
         Plant builtRelease = null;
         Status builtInitialStatus;
         try {
-            builtFlywheel = createFlywheelPlant(map, c);
+            builtFlywheels = new ReferenceFlywheelMechanism(map, c.flywheels);
             builtTransfer = FtcActuators.plant(map)
                     .crServo(c.transferName, c.transferDirection)
                     .power()
@@ -161,14 +139,11 @@ public final class ReferenceLauncherMechanism
                     .targetFromNewCommand(RELEASE_RETRACTED_TARGET)
                     .build();
             builtInitialStatus = new Status(
-                    builtFlywheel.snapshot(),
-                    Double.NaN,
-                    Double.NaN,
-                    c.velocityToleranceTicksPerSec,
+                    builtFlywheels.status(),
                     false,
                     false);
         } catch (RuntimeException failure) {
-            Plant f = builtFlywheel;
+            ReferenceFlywheelMechanism f = builtFlywheels;
             Plant t = builtTransfer;
             Plant r = builtRelease;
             throw CleanupActions.attemptAllAfterFailure(
@@ -178,14 +153,10 @@ public final class ReferenceLauncherMechanism
                     () -> stopIfBuilt(f));
         }
 
-        flywheel = builtFlywheel;
+        flywheels = builtFlywheels;
         transfer = builtTransfer;
         release = builtRelease;
-        leftMeasuredVelocityTicksPerSec = builtLeftMeasuredVelocityTicksPerSec;
-        rightMeasuredVelocityTicksPerSec = builtRightMeasuredVelocityTicksPerSec;
         objectPresent = builtObjectPresent;
-        maximumVelocityTicksPerSec = c.maximumVelocityTicksPerSec;
-        velocityToleranceTicksPerSec = c.velocityToleranceTicksPerSec;
         launchVelocityTicksPerSec = c.launchVelocityTicksPerSec;
         spinUpTimeoutSec = c.spinUpTimeoutSec;
         transferPower = c.transferPower;
@@ -194,45 +165,10 @@ public final class ReferenceLauncherMechanism
         lastStatus = builtInitialStatus;
     }
 
-    /**
-     * Creates a fresh flywheel Plant for one exclusive Panels tuning workflow.
-     *
-     * <p>This advanced assembly seam uses the same canonical private recipe as the production
-     * mechanism. The returned Plant has not been updated; the caller becomes its only heartbeat
-     * and must stop it. The supplied configuration is defensively copied and validated before
-     * hardware lookup.</p>
-     */
-    public static Plant createFlywheelPlantForTuning(HardwareMap hardwareMap, Config config) {
-        HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
-        return createFlywheelPlant(map, copyAndValidate(config));
-    }
-
-    /** Builds the one canonical grouped flywheel realization used by match and tuning owners. */
-    private static Plant createFlywheelPlant(HardwareMap map, Config c) {
-        return FtcActuators.plant(map)
-                .motor(c.leftFlywheelName, c.leftFlywheelDirection)
-                .andMotor(c.rightFlywheelName, c.rightFlywheelDirection)
-                .velocity()
-                .deviceManaged()
-                .bounded(IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC,
-                        c.maximumVelocityTicksPerSec)
-                .nativeUnits()
-                .velocityTolerance(c.velocityToleranceTicksPerSec)
-                .targetFromNewCommand(IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC)
-                .build();
-    }
-
     /** {@inheritDoc} */
     @Override
-    public void setTargetVelocityTicksPerSec(double velocityTicksPerSec) {
-        if (!Double.isFinite(velocityTicksPerSec)
-                || velocityTicksPerSec < IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC
-                || velocityTicksPerSec > maximumVelocityTicksPerSec) {
-            throw new IllegalArgumentException(
-                    "velocityTicksPerSec must be finite and in [0, "
-                            + maximumVelocityTicksPerSec + "], got " + velocityTicksPerSec);
-        }
-        flywheel.commandTarget().set(velocityTicksPerSec);
+    public ReferenceFlywheels flywheels() {
+        return flywheels;
     }
 
     /** {@inheritDoc} */
@@ -255,30 +191,21 @@ public final class ReferenceLauncherMechanism
     }
 
     /**
-     * Advances the transfer queue and all three owned Plants once in program output order, then
-     * publishes one complete launcher Status for this loop cycle only after all three Plant
-     * updates and every subsequent evidence capture succeed.
+     * Advances the transfer queue, delegated flywheel owner, and two local Plants in output order,
+     * then publishes one complete launcher Status after every evidence capture succeeds.
      */
     @Override
     public void update(LoopClock clock) {
         transferOverrides.update(clock);
-        flywheel.update(clock);
+        flywheels.update(clock);
         transfer.update(clock);
         release.update(clock);
 
-        PlantSnapshot flywheelSnapshot = flywheel.snapshot();
-        double leftVelocityTicksPerSec =
-                leftMeasuredVelocityTicksPerSec.getAsDouble(clock);
-        double rightVelocityTicksPerSec =
-                rightMeasuredVelocityTicksPerSec.getAsDouble(clock);
         boolean capturedObjectPresent = objectPresent.getAsBoolean(clock);
         boolean transferPulseActive = transferOverrides.hasActiveTask();
 
         lastStatus = new Status(
-                flywheelSnapshot,
-                leftVelocityTicksPerSec,
-                rightVelocityTicksPerSec,
-                velocityToleranceTicksPerSec,
+                flywheels.status(),
                 capturedObjectPresent,
                 transferPulseActive);
     }
@@ -292,12 +219,9 @@ public final class ReferenceLauncherMechanism
                 transferOverrides::cancelAndClear,
                 release::stop,
                 transfer::stop,
-                flywheel::stop);
+                flywheels::stop);
         lastStatus = new Status(
-                flywheel.snapshot(),
-                priorStatus.leftMeasuredVelocityTicksPerSec(),
-                priorStatus.rightMeasuredVelocityTicksPerSec(),
-                velocityToleranceTicksPerSec,
+                flywheels.status(),
                 priorStatus.objectPresent(),
                 false);
     }
@@ -311,21 +235,12 @@ public final class ReferenceLauncherMechanism
                         transferDurationSec));
     }
 
-    /** Return whether the latest cached snapshot proves readiness for this launch target. */
-    private boolean launchTargetIsReady() {
-        Status status = lastStatus;
-        return Double.compare(
-                status.requestedVelocityTicksPerSec(),
-                launchVelocityTicksPerSec) == 0
-                && status.ready();
-    }
-
     /** Clear every temporary request without terminally stopping the owned Plants. */
     private void requestActiveMatchIdle() {
         CleanupActions.attemptAll(
                 transferOverrides::cancelAndClear,
                 () -> release.commandTarget().set(RELEASE_RETRACTED_TARGET),
-                () -> flywheel.commandTarget().set(
+                () -> flywheels.setVelocityTicksPerSec(
                         IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC));
     }
 
@@ -350,13 +265,20 @@ public final class ReferenceLauncherMechanism
         private LaunchTask(long generationAtCreation) {
             this.generationAtCreation = generationAtCreation;
 
+            ReferenceFlywheels.Status[] statusBeforeRequest = {null};
             spinUp = Tasks.sequence(
-                    Tasks.runOnce(() -> setTargetVelocityTicksPerSec(
-                            launchVelocityTicksPerSec)),
-                    Tasks.waitUntil(
-                            BooleanSource.of(
-                                    ReferenceLauncherMechanism.this::launchTargetIsReady),
-                            spinUpTimeoutSec));
+                    Tasks.runOnce(() -> {
+                        statusBeforeRequest[0] = flywheels.status();
+                        flywheels.setVelocityTicksPerSec(launchVelocityTicksPerSec);
+                    }),
+                    Tasks.waitUntil(BooleanSource.of(() -> {
+                        ReferenceFlywheels.Status status = flywheels.status();
+                        return status != statusBeforeRequest[0]
+                                && Double.compare(
+                                        status.requestedVelocityTicksPerSec(),
+                                        launchVelocityTicksPerSec) == 0
+                                && status.ready();
+                    }), spinUpTimeoutSec));
 
             Task feed = Tasks.sequence(
                     ScalarTasks.set(release.commandTarget(), RELEASE_EXTENDED_TARGET)
@@ -525,33 +447,21 @@ public final class ReferenceLauncherMechanism
     private static Config copyAndValidate(Config source) {
         Config s = Objects.requireNonNull(source, "ReferenceLauncherMechanism.Config is required");
         Config c = new Config();
-        c.leftFlywheelName = requireName(s.leftFlywheelName, "leftFlywheelName");
-        c.leftFlywheelDirection = Objects.requireNonNull(s.leftFlywheelDirection,
-                "leftFlywheelDirection");
-        c.rightFlywheelName = requireName(s.rightFlywheelName, "rightFlywheelName");
-        c.rightFlywheelDirection = Objects.requireNonNull(s.rightFlywheelDirection,
-                "rightFlywheelDirection");
-        requireDistinctFlywheelNames(c.leftFlywheelName, c.rightFlywheelName);
+        c.flywheels = ReferenceFlywheelMechanism.copyAndValidate(s.flywheels);
         c.transferName = requireName(s.transferName, "transferName");
         c.transferDirection = Objects.requireNonNull(s.transferDirection, "transferDirection");
         c.releaseServoName = requireName(s.releaseServoName, "releaseServoName");
         c.releaseServoDirection = Objects.requireNonNull(s.releaseServoDirection,
                 "releaseServoDirection");
         c.objectSensorName = requireName(s.objectSensorName, "objectSensorName");
-        c.maximumVelocityTicksPerSec = positive(
-                s.maximumVelocityTicksPerSec,
-                "maximumVelocityTicksPerSec");
-        c.velocityToleranceTicksPerSec = positive(
-                s.velocityToleranceTicksPerSec,
-                "velocityToleranceTicksPerSec");
         c.launchVelocityTicksPerSec = positive(
                 s.launchVelocityTicksPerSec,
                 "launchVelocityTicksPerSec");
-        if (c.launchVelocityTicksPerSec > c.maximumVelocityTicksPerSec) {
+        if (c.launchVelocityTicksPerSec > c.flywheels.maximumVelocityTicksPerSec) {
             throw new IllegalArgumentException(
                     "launchVelocityTicksPerSec must be <= maximumVelocityTicksPerSec");
         }
-        if (c.launchVelocityTicksPerSec <= c.velocityToleranceTicksPerSec) {
+        if (c.launchVelocityTicksPerSec <= c.flywheels.velocityToleranceTicksPerSec) {
             throw new IllegalArgumentException(
                     "launchVelocityTicksPerSec must be > velocityToleranceTicksPerSec");
         }
@@ -571,19 +481,6 @@ public final class ReferenceLauncherMechanism
                             + "must be different");
         }
         return c;
-    }
-
-    /** Require the two group members to resolve from different trimmed, case-sensitive keys. */
-    private static void requireDistinctFlywheelNames(String leftName, String rightName) {
-        String leftKey = leftName.trim();
-        String rightKey = rightName.trim();
-        if (leftKey.equals(rightKey)) {
-            throw new IllegalArgumentException(
-                    "ReferenceLauncherMechanism.Config.leftFlywheelName and "
-                            + "ReferenceLauncherMechanism.Config.rightFlywheelName must identify "
-                            + "different FTC hardware devices after trimming; got effective key \""
-                            + leftKey + "\".");
-        }
     }
 
     private static String requireName(String value, String field) {
@@ -616,8 +513,10 @@ public final class ReferenceLauncherMechanism
     }
 
     private static void stopIfBuilt(Plant plant) {
-        if (plant != null) {
-            plant.stop();
-        }
+        if (plant != null) plant.stop();
+    }
+
+    private static void stopIfBuilt(ReferenceFlywheelMechanism mechanism) {
+        if (mechanism != null) mechanism.stop();
     }
 }

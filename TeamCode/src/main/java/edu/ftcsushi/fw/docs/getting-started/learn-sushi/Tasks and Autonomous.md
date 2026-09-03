@@ -1,3 +1,8 @@
+---
+tags:
+  - Learn
+---
+
 # Tasks and autonomous
 
 **Learning mode:** Architecture reference
@@ -139,6 +144,7 @@ continue to launch only from its successful outcome.
 ## Go deeper when needed
 
 - Complete Starter API: [`StarterAuto`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.html>)
-- Scaling example: [`ReferenceAutoRoutines`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/autonomous/ReferenceAutoRoutines.html>)
+- Numeric feedback Task: [`ReferenceFlywheels.setVelocityTask(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.html#setVelocityTask(double,double)>)
+- Outcome-aware mechanism Task: [`ReferenceLauncher.launchOne()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.html#launchOne()>)
 - Task factories, composition, timing, and cancellation: [Tasks and Macros](<../../design/Tasks & Macros Quickstart.md>)
 - [Choose another Sushi topic](<../Beginner's Guide.md>)

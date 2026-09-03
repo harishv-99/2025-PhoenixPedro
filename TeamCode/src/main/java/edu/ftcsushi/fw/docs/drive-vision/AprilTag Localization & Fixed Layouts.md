@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # AprilTag Localization & Fixed Layouts
 
 This guide explains Sushi's AprilTag-localization policy, the difference between detector

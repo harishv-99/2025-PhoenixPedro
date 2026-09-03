@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Sources & Signals
 
 Sushi uses a *single loop heartbeat* (see [`Loop Structure`](<Loop Structure.md>)). A lot of robot logic is really

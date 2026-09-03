@@ -1,13 +1,18 @@
 package edu.ftcsushi.robots.examples.basicmechanisms;
 
+import java.util.Objects;
+
+import edu.ftcsushi.fw.actuation.PlantSnapshot;
+import edu.ftcsushi.fw.actuation.SemanticScalarSnapshot;
 import edu.ftcsushi.fw.task.Task;
 
-/** Semantic open/closed claw capability shared by TeleOp and Auto. */
+/** Semantic closed/half/open claw capability shared by TeleOp and Auto. */
 public interface BasicClaw {
 
-    /** Named claw requests; callers never repeat raw servo positions. */
+    /** Named claw requests over one normalized safe range; callers never repeat raw positions. */
     enum State {
         CLOSED,
+        HALF,
         OPEN
     }
 
@@ -15,28 +20,39 @@ public interface BasicClaw {
      * Immutable request/application snapshot.
      *
      * <p>A standard servo has no position feedback here, so {@code appliedCoordinate} is the
-     * Plant's final normalized target after bounds: {@code 0.0} is closed and {@code 1.0} is open.
-     * It is not the configured native FTC Servo endpoint or proof that the claw physically
-     * arrived.</p>
+     * Plant's final normalized target after bounds: {@code 0.0} is closed, {@code 0.5} is half,
+     * and {@code 1.0} is open. It is not the configured native FTC Servo position or proof that
+     * the claw physically arrived.</p>
      */
     final class Status {
-        /**
-         * Most recent semantic request, updated synchronously by {@link #setState(State)} or when
-         * the Task returned by {@link #setStateTask(State)} starts.
-         */
-        public final State requestedState;
+        private final SemanticScalarSnapshot<State, PlantSnapshot> delegate;
+
+        /** Wraps one coherent semantic request and scalar Plant snapshot. */
+        public Status(SemanticScalarSnapshot<State, PlantSnapshot> delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        /** Returns the most recent semantic claw request. */
+        public State requestedState() {
+            return delegate.request().semantic();
+        }
+
+        /** Returns the normalized coordinate paired with the semantic request. */
+        public double requestedCoordinate() {
+            return delegate.request().commandTarget();
+        }
 
         /**
-         * Last normalized Plant position successfully applied by an output heartbeat, where
-         * {@code 0.0} means {@link State#CLOSED} and {@code 1.0} means {@link State#OPEN}, or
-         * {@link Double#NaN} before the first successful heartbeat. This is applied-target
-         * evidence, not the mapped native Servo endpoint or physical-position feedback.
+         * Returns the Plant's cached final normalized target after bounds and guards.
+         * This is a software command fact, not standard-servo position feedback.
          */
-        public final double appliedCoordinate;
+        public double appliedCoordinate() {
+            return delegate.plant().appliedTarget();
+        }
 
-        public Status(State requestedState, double appliedCoordinate) {
-            this.requestedState = requestedState;
-            this.appliedCoordinate = appliedCoordinate;
+        /** Returns the underlying immutable Plant capture for advanced diagnostics. */
+        public PlantSnapshot plantSnapshot() {
+            return delegate.plant();
         }
     }
 

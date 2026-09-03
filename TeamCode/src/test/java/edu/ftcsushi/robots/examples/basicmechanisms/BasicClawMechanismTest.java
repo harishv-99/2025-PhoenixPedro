@@ -12,154 +12,64 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Teaches semantic servo requests without pretending a standard servo has feedback. */
+/** Compact regression contract behind the student-facing claw software scenario. */
 public final class BasicClawMechanismTest {
-
-    private static final double EPSILON = 1.0e-12;
-    private static final double CLOSED_TARGET = 0.0;
-    private static final double OPEN_TARGET = 1.0;
-
-    @Test
-    public void firstHeartbeatAppliesTheConfiguredInitialClosedRequest() {
-        Fixture f = fixture();
-        ManualLoopClock time = new ManualLoopClock();
-
-        assertStatus(f.claw, BasicClaw.State.CLOSED, Double.NaN);
-        assertEquals(0, f.servo.positionWrites());
-
-        f.claw.update(time.clock());
-
-        assertStatus(f.claw, BasicClaw.State.CLOSED, CLOSED_TARGET);
-        assertEquals(f.originalClosedNativePosition, f.servo.position(), 0.0);
-        assertEquals(1, f.servo.positionWrites());
-    }
-
-    @Test
-    public void requestIsImmediateButAppliedTargetWaitsForTheOutputHeartbeat() {
-        Fixture f = fixture();
-        ManualLoopClock time = new ManualLoopClock();
-
-        assertStatus(f.claw, BasicClaw.State.CLOSED, Double.NaN);
-        assertEquals(0, f.servo.positionWrites());
-
-        f.claw.setState(BasicClaw.State.OPEN);
-        assertStatus(f.claw, BasicClaw.State.OPEN, Double.NaN);
-        assertEquals(0, f.servo.positionWrites());
-
-        f.claw.update(time.clock());
-
-        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
-        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
-    }
 
     @Test
     public void stateTasksAreFreshDeferredAndSingleUse() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
-
         Task first = f.claw.setStateTask(BasicClaw.State.OPEN);
-        Task second = f.claw.setStateTask(BasicClaw.State.OPEN);
+        Task second = f.claw.setStateTask(BasicClaw.State.HALF);
 
         assertNotSame(first, second);
-        assertStatus(f.claw, BasicClaw.State.CLOSED, Double.NaN);
+        assertStatus(f.claw, BasicClaw.State.CLOSED, 0.0, 0.0);
         assertEquals(0, f.servo.positionWrites());
 
         first.start(time.clock());
-
-        assertTrue(first.isComplete());
         assertEquals(TaskOutcome.SUCCESS, first.getOutcome());
-        assertStatus(f.claw, BasicClaw.State.OPEN, Double.NaN);
+        assertStatus(f.claw, BasicClaw.State.OPEN, 1.0, 0.0);
         assertEquals(0, f.servo.positionWrites());
 
         f.claw.update(time.clock());
-        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
-        assertEquals(1, f.servo.positionWrites());
+        assertStatus(f.claw, BasicClaw.State.OPEN, 1.0, 1.0);
+        assertEquals(f.openNativePosition, f.servo.position(), 0.0);
 
         f.claw.setState(BasicClaw.State.CLOSED);
         try {
             first.start(time.clock());
-            fail("Expected one claw state Task instance to reject a second start");
+            fail("Expected one claw Task instance to reject a second start");
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("single-use"));
         }
-        assertStatus(f.claw, BasicClaw.State.CLOSED, OPEN_TARGET);
+        assertStatus(f.claw, BasicClaw.State.CLOSED, 0.0, 1.0);
 
         second.start(time.clock());
-        assertEquals(TaskOutcome.SUCCESS, second.getOutcome());
-        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
+        assertStatus(f.claw, BasicClaw.State.HALF, 0.5, 1.0);
+        f.claw.update(time.nextCycle(0.02));
+        assertStatus(f.claw, BasicClaw.State.HALF, 0.5, 0.5);
+        assertEquals(0.5, f.servo.position(), 1e-12);
     }
 
     @Test
-    public void stateTaskRejectsNullWithoutChangingTheRequest() {
-        Fixture f = fixture();
-
-        try {
-            f.claw.setStateTask(null);
-            fail("Expected null claw state Task request to fail");
-        } catch (NullPointerException expected) {
-            assertTrue(expected.getMessage().contains("state"));
-        }
-
-        assertStatus(f.claw, BasicClaw.State.CLOSED, Double.NaN);
-        assertEquals(0, f.servo.positionWrites());
-    }
-
-    @Test
-    public void stopBeforeFirstHeartbeatKeepsAppliedTargetUnknownAndWritesNothing() {
+    public void stopRetainsTheLastServoCommandAndPreventsLaterWrites() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
-
-        f.claw.setState(BasicClaw.State.OPEN);
-        f.claw.stop();
-        assertStatus(f.claw, BasicClaw.State.OPEN, Double.NaN);
-        assertEquals(0, f.servo.positionWrites());
-
-        f.claw.setState(BasicClaw.State.CLOSED);
-        f.claw.update(time.clock());
-        assertStatus(f.claw, BasicClaw.State.CLOSED, Double.NaN);
-        assertEquals(0, f.servo.positionWrites());
-    }
-
-    @Test
-    public void standardServoStopRetainsTheLastCommandWithoutClaimingArrival() {
-        Fixture f = fixture();
-        ManualLoopClock time = new ManualLoopClock();
-
         f.claw.setState(BasicClaw.State.OPEN);
         f.claw.update(time.clock());
-        int writesBeforeStop = f.servo.positionWrites();
 
         f.claw.stop();
-        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
-        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
         int writesAfterStop = f.servo.positionWrites();
-        assertTrue(writesAfterStop >= writesBeforeStop);
-
         f.claw.setState(BasicClaw.State.CLOSED);
         f.claw.update(time.nextCycle(0.02));
-        assertStatus(f.claw, BasicClaw.State.CLOSED, OPEN_TARGET);
+
+        assertStatus(f.claw, BasicClaw.State.CLOSED, 0.0, 1.0);
         assertEquals(writesAfterStop, f.servo.positionWrites());
-        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
+        assertEquals(f.openNativePosition, f.servo.position(), 0.0);
     }
 
     @Test
-    public void constructorDefensivelySnapshotsNamedPositions() {
-        Fixture f = fixture();
-        ManualLoopClock time = new ManualLoopClock();
-
-        f.config.openNativePosition = 0.95;
-        f.config.closedNativePosition = 0.05;
-        f.config.servoName = "replacementServo";
-
-        f.claw.setState(BasicClaw.State.OPEN);
-        f.claw.update(time.clock());
-
-        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
-        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
-    }
-
-    @Test
-    public void reversedNativeEndpointsKeepTheSemanticPlantCoordinateNormalized() {
+    public void configurationIsSnapshottedAndMayReverseNativeEndpoints() {
         BasicClawMechanism.Config config = config();
         config.closedNativePosition = 0.85;
         config.openNativePosition = 0.15;
@@ -168,18 +78,19 @@ public final class BasicClawMechanismTest {
         BasicClawMechanism claw = new BasicClawMechanism(hardware, config);
         ManualLoopClock time = new ManualLoopClock();
 
+        config.closedNativePosition = 0.05;
+        config.openNativePosition = 0.95;
         claw.update(time.clock());
-        assertStatus(claw, BasicClaw.State.CLOSED, CLOSED_TARGET);
-        assertEquals(config.closedNativePosition, servo.position(), EPSILON);
+        assertEquals(0.85, servo.position(), 0.0);
 
         claw.setState(BasicClaw.State.OPEN);
         claw.update(time.nextCycle(0.02));
-        assertStatus(claw, BasicClaw.State.OPEN, OPEN_TARGET);
-        assertEquals(config.openNativePosition, servo.position(), EPSILON);
+        assertEquals(0.15, servo.position(), 1e-12);
+        assertStatus(claw, BasicClaw.State.OPEN, 1.0, 1.0);
     }
 
     @Test
-    public void invalidConfigurationFailsBeforeAnyHardwareLookup() {
+    public void invalidConfigurationFailsBeforeHardwareLookup() {
         BasicClawMechanism.Config unnamed = config();
         unnamed.servoName = "  ";
         assertConfigFailureBeforeLookup(unnamed, "servoName");
@@ -197,7 +108,8 @@ public final class BasicClawMechanismTest {
         BasicClawMechanism.Config config = config();
         FtcTestHardware hardware = new FtcTestHardware();
         FtcTestHardware.ServoProbe servo = hardware.addServo(config.servoName);
-        return new Fixture(config, servo, new BasicClawMechanism(hardware, config));
+        return new Fixture(config.openNativePosition, servo,
+                new BasicClawMechanism(hardware, config));
     }
 
     private static BasicClawMechanism.Config config() {
@@ -210,10 +122,12 @@ public final class BasicClawMechanismTest {
 
     private static void assertStatus(BasicClaw claw,
                                      BasicClaw.State expectedState,
+                                     double expectedRequestedCoordinate,
                                      double expectedAppliedCoordinate) {
         BasicClaw.Status status = claw.status();
-        assertEquals(expectedState, status.requestedState);
-        assertEquals(expectedAppliedCoordinate, status.appliedCoordinate, 0.0);
+        assertEquals(expectedState, status.requestedState());
+        assertEquals(expectedRequestedCoordinate, status.requestedCoordinate(), 0.0);
+        assertEquals(expectedAppliedCoordinate, status.appliedCoordinate(), 0.0);
     }
 
     private static void assertConfigFailureBeforeLookup(
@@ -230,18 +144,14 @@ public final class BasicClawMechanismTest {
     }
 
     private static final class Fixture {
-        private final BasicClawMechanism.Config config;
-        private final double originalClosedNativePosition;
-        private final double originalOpenNativePosition;
+        private final double openNativePosition;
         private final FtcTestHardware.ServoProbe servo;
         private final BasicClawMechanism claw;
 
-        private Fixture(BasicClawMechanism.Config config,
+        private Fixture(double openNativePosition,
                         FtcTestHardware.ServoProbe servo,
                         BasicClawMechanism claw) {
-            this.config = config;
-            this.originalClosedNativePosition = config.closedNativePosition;
-            this.originalOpenNativePosition = config.openNativePosition;
+            this.openNativePosition = openNativePosition;
             this.servo = servo;
             this.claw = claw;
         }
