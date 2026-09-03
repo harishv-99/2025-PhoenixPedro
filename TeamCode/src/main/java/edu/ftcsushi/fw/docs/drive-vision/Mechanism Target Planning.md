@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Mechanism Target Planning
 
 `PlantTargets` is the framework's target-generation system for `Plant`s. It turns simple numbers,
@@ -26,8 +31,8 @@ semantic methods such as `collect()` or `aimAt(...)`.
 
 The short resolver and `FtcActuators` fragments in this guide are therefore construction-time
 excerpts from that owner unless a section explicitly labels a lower-level custom-adapter or test
-seam. Resolver graphs are built once, not rebuilt in `update(...)`. The complete beginner reference
-is the [`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>).
+seam. Resolver graphs are built once, not rebuilt in `update(...)`. Start with the focused
+[named claw](<../build/Named Claw.md>) or [referenced lift](<../build/Referenced Lift.md>) recipe.
 
 ```text
 controller / service / autonomous policy

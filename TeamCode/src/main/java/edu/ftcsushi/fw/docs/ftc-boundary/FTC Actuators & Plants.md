@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # FTC Actuators & Plants
 
 This page covers the FTC boundary for Sushi mechanism wiring:
@@ -25,9 +30,9 @@ visible; production mechanism code assigns the selected build to a private field
 examples do. The compiling
 [`StarterIntakeMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.html>) shows an
 ordinary direct-power private-Plant owner. The managed
-[`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
-adds paired velocity, servo, sensor, overlay, and outcome-aware Task examples without exposing
-manual OpMode lifecycle code.
+[`ReferenceFlywheelMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.html>)
+adds grouped velocity plus independent member evidence. The separate launcher delegates that Plant
+ownership while adding servo, sensor, overlay, and outcome-aware Task policy.
 
 ---
 
@@ -1422,11 +1427,12 @@ aggregate contract. Per-wheel balance and readiness remain explicit capability-s
 
 A capability that combines those facts may retain one immutable publication instead of rebuilding
 it on read.
-[`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>)
-owns one grouped Plant snapshot plus captured per-wheel,
-sensor, transient, and readiness evidence, and publishes the complete value only after a successful
-mechanism update. Its flat requested/applied velocity and readiness methods keep ordinary robot
-code in launcher vocabulary; `flywheelSnapshot()` is reserved for advanced diagnostics.
+[`ReferenceFlywheels.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.Status.html>)
+owns one grouped Plant snapshot plus captured per-wheel measurements and readiness, and publishes
+the complete value only after a successful mechanism update. Its requested/selected/applied
+velocity methods keep ordinary robot code in capability vocabulary; `plantSnapshot()` is reserved
+for advanced diagnostics. `ReferenceLauncher.Status` composes that immutable value as
+`flywheels()` beside object and transfer facts rather than mirroring the velocity fields.
 
 ---
 
@@ -1731,14 +1737,14 @@ degree of freedom. When every wheel still follows one shared group-unit target t
 scales, keep the grouped Plant. Compose its `PlantSnapshot` with separately sampled per-wheel
 measurements and per-wheel readiness facts in one capability-owned Status, published all-or-nothing
 after a successful update. The
-[`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
+[`ReferenceFlywheelMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.html>)
 demonstrates that policy around one grouped flywheel command. Active readiness keeps the later
 per-wheel sampling timing and requires a positive captured command value, both finite per-wheel
 tolerance facts, and an active Plant intent that requested and applied that same value without
 fallback or modification. It does not replace those per-wheel facts with the group's earlier
 aggregate arrival sample. A successful
-terminal stop publishes a post-stop Status with readiness false and transfer inactive; older Status
-values remain immutable historical captures.
+terminal stop publishes a post-stop flywheel Status with readiness false; older Status values
+remain immutable historical captures. The launcher separately publishes transfer state.
 
 If robot testing instead proves that the wheels need independently commanded targets—for example,
 a live additive or nonlinear trajectory trim—then the mechanism has two commanded degrees of

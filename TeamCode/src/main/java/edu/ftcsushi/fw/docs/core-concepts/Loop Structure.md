@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Loop Structure
 
 Sushi assumes that one OpMode loop is the “heartbeat” of the robot. In ordinary FTC robot code,
@@ -359,7 +364,7 @@ the following upstream order:
 Clock → Localization → Pedro heartbeat → Auto Tasks → Mechanism Plants → Telemetry
 ```
 
-`BasicPedroAutoExample` supplies only `configure(program)`; inherited final FTC callbacks own the
+`BasicPedroAuto` supplies only `configure(program)`; inherited final FTC callbacks own the
 shared clock and managed lifecycle. At START the program resets its clock, then the service applies
 the declared Pedro start pose before the order above. The complete hardware graph and fixed route
 are constructed once during configuration and are never retried or replaced inside the same

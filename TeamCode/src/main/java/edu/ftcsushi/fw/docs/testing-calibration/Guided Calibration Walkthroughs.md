@@ -1,3 +1,8 @@
+---
+tags:
+  - Test & Tune
+---
+
 # Guided calibration walkthroughs
 
 **Learning mode:** Architecture reference

@@ -13,7 +13,6 @@ import edu.ftcsushi.fw.drive.route.RouteTask;
 import edu.ftcsushi.fw.drive.route.RouteTasks;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.Tasks;
-import edu.ftcsushi.robots.examples.pedro.capability.intake.BasicPedroAutoMechanism;
 
 /**
  * Coordinates one timestamped collection route, its intake lifetime, and one optional return.
@@ -224,13 +223,13 @@ public final class AdaptiveCollectionAttempt {
      * @param vision cached timestamped selection owner
      * @param paths Pedro geometry and semantic-milestone owner
      * @param inventoryFull cached robot-owned inventory fact
-     * @param intake cancellation-safe Basic Pedro intake capability
+     * @param intake cancellation-safe adaptive-example intake capability
      * @param config complete data-only attempt configuration
      */
     public AdaptiveCollectionAttempt(AdaptiveCollectionVisionService vision,
                                      AdaptiveCollectionPaths paths,
                                      BooleanSource inventoryFull,
-                                     BasicPedroAutoMechanism intake,
+                                     AdaptiveCollectionIntake intake,
                                      Config config) {
         this(decisionSourceOf(vision), paths, inventoryFull, intake, config);
     }
@@ -240,7 +239,7 @@ public final class AdaptiveCollectionAttempt {
             Supplier<AdaptiveCollectionVisionService.Decision> decisionSource,
             AdaptiveCollectionPaths paths,
             BooleanSource inventoryFull,
-            BasicPedroAutoMechanism intake,
+            AdaptiveCollectionIntake intake,
             Config config) {
         Config source = Objects.requireNonNull(
                 config,
@@ -257,7 +256,7 @@ public final class AdaptiveCollectionAttempt {
         this.decisionSource = Objects.requireNonNull(decisionSource, "decisionSource");
         this.paths = Objects.requireNonNull(paths, "paths");
         this.inventoryFull = Objects.requireNonNull(inventoryFull, "inventoryFull");
-        BasicPedroAutoMechanism requiredIntake = Objects.requireNonNull(intake, "intake");
+        AdaptiveCollectionIntake requiredIntake = Objects.requireNonNull(intake, "intake");
         milestones = paths.newMilestones();
 
         RouteFollower<PathChain> routeFollower = paths.routeFollower();

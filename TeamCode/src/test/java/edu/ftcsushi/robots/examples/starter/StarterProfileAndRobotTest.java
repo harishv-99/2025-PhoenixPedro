@@ -4,6 +4,7 @@ import edu.ftcsushi.robots.examples.starter.support.StarterTestHardware;
 import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
 import edu.ftcsushi.robots.examples.starter.opmode.StarterAuto;
 import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
+import edu.ftcsushi.robots.examples.starter.opmode.StarterIntakeTeleOp;
 import edu.ftcsushi.robots.examples.starter.opmode.StarterTeleOp;
 import edu.ftcsushi.robots.examples.starter.robot.StarterProfile;
 import edu.ftcsushi.robots.examples.starter.robot.StarterRobot;
@@ -33,7 +34,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies starter configuration consumption, declarations, and managed lifecycle cleanup. */
+/** Maintainer regression contract for configuration, declarations, and lifecycle cleanup. */
 public final class StarterProfileAndRobotTest {
 
     @Test
@@ -58,6 +59,15 @@ public final class StarterProfileAndRobotTest {
         assertEquals(Void.TYPE, teleOp.getReturnType());
         assertEquals(1, declaredMethodCount(StarterRobot.class, "declareTeleOp"));
 
+        Method intakeTeleOp = StarterRobot.class.getDeclaredMethod(
+                "declareIntakeTeleOp",
+                RobotProgram.class,
+                StarterProfile.class,
+                Gamepad.class);
+        assertTrue(Modifier.isPublic(intakeTeleOp.getModifiers()));
+        assertEquals(Void.TYPE, intakeTeleOp.getReturnType());
+        assertEquals(1, declaredMethodCount(StarterRobot.class, "declareIntakeTeleOp"));
+
         Method auto = StarterRobot.class.getDeclaredMethod(
                 "declareAuto",
                 RobotProgram.class,
@@ -73,8 +83,10 @@ public final class StarterProfileAndRobotTest {
         assertTrue(Modifier.isFinal(rootFields[0].getModifiers()));
 
         assertOnlyPublicNoArgConstructor(StarterTeleOp.class);
+        assertOnlyPublicNoArgConstructor(StarterIntakeTeleOp.class);
         assertOnlyPublicNoArgConstructor(StarterAuto.class);
         assertNoRetainedProfile(StarterTeleOp.class);
+        assertNoRetainedProfile(StarterIntakeTeleOp.class);
         assertNoRetainedProfile(StarterAuto.class);
     }
 
@@ -115,6 +127,38 @@ public final class StarterProfileAndRobotTest {
         assertPermissionState(false, true);
         assertPermissionState(true, false);
         assertPermissionState(true, true);
+    }
+
+    @Test
+    public void focusedIntakeDeclarationDoesNotRequireOrConstructDrive() {
+        StarterProfile profile = readyProfile();
+        profile.allowDriveMotion = false;
+        profile.drive = null;
+        FtcTestHardware hardwareMap = new FtcTestHardware();
+        FtcTestHardware.MotorProbe intakeMotor =
+                hardwareMap.addMotor(profile.intake.motorName);
+        StarterTestHardware.TelemetryProbe telemetry =
+                new StarterTestHardware.TelemetryProbe();
+        Gamepad driver = new Gamepad();
+        TestStarterIntakeTeleOp mode = prepare(
+                new TestStarterIntakeTeleOp(profile),
+                hardwareMap,
+                telemetry,
+                driver);
+
+        mode.init();
+        assertEquals(1, hardwareMap.lookupCalls());
+
+        mode.start();
+        mode.loop();
+        driver.a = true;
+        mode.loop();
+
+        assertEquals(profile.intake.collectPower, intakeMotor.power(), 0.0);
+        assertEquals(StarterIntake.Mode.COLLECT, telemetry.dataValue("intake.mode"));
+
+        mode.stop();
+        assertEquals(0.0, intakeMotor.power(), 0.0);
     }
 
     @Test
@@ -588,6 +632,20 @@ public final class StarterProfileAndRobotTest {
         @Override
         protected void configure(RobotProgram program) {
             new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
+        }
+    }
+
+    /** Test-only host for the focused intake declaration. */
+    private static final class TestStarterIntakeTeleOp extends FtcRobotOpMode {
+        private final StarterProfile profile;
+
+        private TestStarterIntakeTeleOp(StarterProfile profile) {
+            this.profile = profile;
+        }
+
+        @Override
+        protected void configure(RobotProgram program) {
+            new StarterRobot(hardwareMap).declareIntakeTeleOp(program, profile, gamepad1);
         }
     }
 

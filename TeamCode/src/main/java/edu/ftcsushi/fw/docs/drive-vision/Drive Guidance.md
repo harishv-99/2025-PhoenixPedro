@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Drive Guidance
 
 `DriveGuidance` is the drivetrain consumer of the shared spatial-query layer. It turns field/robot geometry into a `DriveSignal` overlay or autonomous task.

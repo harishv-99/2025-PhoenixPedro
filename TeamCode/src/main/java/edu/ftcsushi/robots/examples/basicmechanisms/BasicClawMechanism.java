@@ -16,7 +16,7 @@ import edu.ftcsushi.fw.task.Task;
 /** Owns the claw's semantic request, final resolver, standard-servo Plant, update, and stop. */
 public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output {
 
-    /** Data-only standard-servo wiring and native endpoints for the named states. */
+    /** Data-only standard-servo wiring and native endpoints for the normalized named range. */
     public static final class Config {
         /** Nonblank FTC Robot Configuration name for the standard positional Servo. */
         public String servoName;
@@ -26,8 +26,9 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
 
         /**
          * Native FTC Servo endpoint mapped from normalized Plant target {@code 0.0}
-         * ({@link State#CLOSED}), in inclusive range {@code [0, 1]}. This fact must be backed off
-         * from unsafe travel and reviewed on the assembled mechanism.
+         * ({@link State#CLOSED}), in inclusive range {@code [0, 1]}. {@link State#HALF} is derived
+         * at the normalized midpoint rather than calibrated as another endpoint. This fact must
+         * be backed off from unsafe travel and reviewed on the assembled mechanism.
          */
         public double closedNativePosition;
 
@@ -63,12 +64,11 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
     }
 
     private static final double CLOSED_TARGET = 0.0;
+    private static final double HALF_TARGET = 0.5;
     private static final double OPEN_TARGET = 1.0;
 
     private final Plant claw;
     private final SemanticScalarCommand<State> stateCommand;
-    private double lastAppliedCoordinate = Double.NaN;
-    private boolean stopped;
 
     /**
      * Validates a defensive configuration snapshot, then privately constructs the servo Plant.
@@ -82,6 +82,7 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
 
         stateCommand = SemanticScalarCommand.forEnum(c.initialState)
                 .map(State.CLOSED, CLOSED_TARGET)
+                .map(State.HALF, HALF_TARGET)
                 .map(State.OPEN, OPEN_TARGET)
                 .build();
         claw = FtcActuators.plant(map)
@@ -107,18 +108,13 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
 
     @Override
     public Status status() {
-        return new Status(stateCommand.request().semantic(), lastAppliedCoordinate);
+        return new Status(stateCommand.snapshot(claw.snapshot()));
     }
 
     /** Applies the held command through the one final Plant path. */
     @Override
     public void update(LoopClock clock) {
-        if (stopped) {
-            return;
-        }
         claw.update(clock);
-        // Publish normalized target evidence only after the complete Plant heartbeat succeeds.
-        lastAppliedCoordinate = claw.getAppliedTarget();
     }
 
     /**
@@ -127,12 +123,7 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
      */
     @Override
     public void stop() {
-        try {
-            claw.stop();
-        } finally {
-            // A terminally stopped Plant cannot publish new applied-target evidence.
-            stopped = true;
-        }
+        claw.stop();
     }
 
     private static Config copyAndValidate(Config source) {

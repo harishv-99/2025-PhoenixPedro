@@ -24,8 +24,6 @@ import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.task.Tasks;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
-import edu.ftcsushi.robots.examples.pedro.capability.intake.BasicPedroAutoMechanism;
-import edu.ftcsushi.robots.examples.pedro.capability.intake.BasicPedroMechanismTestFactory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -352,8 +350,8 @@ public final class AdaptiveCollectionBoundedAutoScenarioTest {
                 .power(new InertPowerOutput())
                 .targetFromNewCommand(0.0)
                 .build();
-        final BasicPedroAutoMechanism intake =
-                BasicPedroMechanismTestFactory.fromPlant(intakePlant);
+        final AdaptiveCollectionIntake intake =
+                new AdaptiveCollectionIntake(intakePlant);
         final ControlledTask preload;
         final List<AdaptiveCollectionAttempt> attempts =
                 new ArrayList<AdaptiveCollectionAttempt>();

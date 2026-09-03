@@ -1,3 +1,8 @@
+---
+tags:
+  - Test & Tune
+---
+
 # Control Tuning Workflow
 
 **Learning mode:** Architecture reference
@@ -23,8 +28,8 @@ factory. It does not repeat a motor name, controller type, gain schema, target o
 
 - `ReferencePanelsTuningOpMode.java` — one disabled, exclusive Panels host for the tuning workflow.
 
-The maintained Reference launcher already supplies
-`ReferenceLauncherMechanism.createFlywheelPlantForTuning(...)`. Your own mechanism should expose the
+The maintained Reference flywheel owner already supplies
+`ReferenceFlywheelMechanism.createPlantForTuning(...)`. Your own mechanism should expose the
 same narrowly named advanced seam and build its production and tuning Plants through one private
 canonical recipe. Do not share a live Plant between the match and tuner.
 
@@ -34,16 +39,17 @@ This is the complete decision made by the Reference tuning host:
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferencePanelsTuningOpMode.java -->
 ```java
-// docs: Copy the reviewed profile once; the factory snapshots it again for each fresh Plant.
-ReferenceLauncherMechanism.Config launcher = ReferenceProfile.current().launcher;
+// docs: Declare the data-only recipe once; defaults are not reviewed physical safety facts.
+ReferenceFlywheelMechanism.Config flywheels =
+        ReferenceFlywheelMechanism.Config.defaults();
 // docs: This range is permission for typed targets, not an automatic sweep.
 return FtcPanelsTuners.velocityControl(
         "Reference Flywheel Velocity Control",
-        ScalarRange.bounded(0.0, launcher.maximumVelocityTicksPerSec),
+        ScalarRange.bounded(0.0, flywheels.maximumVelocityTicksPerSec),
         // docs: The workflow becomes the returned Plant's only heartbeat and stop owner.
-        hardwareMap -> ReferenceLauncherMechanism.createFlywheelPlantForTuning(
+        hardwareMap -> ReferenceFlywheelMechanism.createPlantForTuning(
                 hardwareMap,
-                launcher));
+                flywheels));
 ```
 
 **What to notice**
@@ -59,53 +65,13 @@ return FtcPanelsTuners.velocityControl(
 - `FtcPanelsTuners.positionControl(...)` — creates referenced or reference-task-assisted position experiments.
 - `ScalarRange.bounded(...)` — limits operator-entered physical targets for the session.
 
-## Complete working slice
+## Maintained tuning host
 
-The class stays `@Disabled` until a team reviews its hardware names, directions, target range, and
-STOP plan. Remove `@Disabled` only for the controlled tuning session.
-
-<details>
-<summary><code>ReferencePanelsTuningOpMode.java</code></summary>
-
-<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferencePanelsTuningOpMode.java -->
-```java
-package edu.ftcsushi.robots.examples.reference.opmode;
-
-import com.qualcomm.robotcore.eventloop.opmode.Disabled;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-
-import edu.ftcsushi.fw.actuation.ScalarRange;
-import edu.ftcsushi.fw.integrations.panels.FtcPanelsTeleOpTesterOpMode;
-import edu.ftcsushi.fw.integrations.panels.FtcPanelsTuners;
-import edu.ftcsushi.fw.tools.tester.TeleOpTester;
-import edu.ftcsushi.robots.examples.reference.capability.launcher.ReferenceLauncherMechanism;
-import edu.ftcsushi.robots.examples.reference.robot.ReferenceProfile;
-
-/** Disabled Panels host for learning the exclusive control-tuning workflow safely. */
-@TeleOp(name = "FW Reference: Tuning (Panels)", group = "FW Examples")
-@Disabled
-public final class ReferencePanelsTuningOpMode extends FtcPanelsTeleOpTesterOpMode {
-
-    /** Requires exactly one Panels client so one operator owns every tuning decision. */
-    public ReferencePanelsTuningOpMode() {
-        super(InputSource.PANELS, PanelsClientRequirement.EXACTLY_ONE);
-    }
-
-    /** Creates one tuner that owns a fresh Plant from the production flywheel recipe. */
-    @Override
-    protected TeleOpTester createTester() {
-        ReferenceLauncherMechanism.Config launcher = ReferenceProfile.current().launcher;
-        return FtcPanelsTuners.velocityControl(
-                "Reference Flywheel Velocity Control",
-                ScalarRange.bounded(0.0, launcher.maximumVelocityTicksPerSec),
-                hardwareMap -> ReferenceLauncherMechanism.createFlywheelPlantForTuning(
-                        hardwareMap,
-                        launcher));
-    }
-}
-```
-
-</details>
+[`ReferencePanelsTuningOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/opmode/ReferencePanelsTuningOpMode.html>)
+keeps this workflow in one disabled, exclusive host. Read the critical excerpt above first, then use
+the [Complete source: `ReferencePanelsTuningOpMode.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferencePanelsTuningOpMode.java>)
+when adapting it. The class stays `@Disabled` until a team reviews its hardware names, directions,
+target range, and STOP plan; remove `@Disabled` only for the controlled tuning session.
 
 ## Verify the slice
 

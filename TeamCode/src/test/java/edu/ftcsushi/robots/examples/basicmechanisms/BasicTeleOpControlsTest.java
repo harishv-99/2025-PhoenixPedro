@@ -20,11 +20,10 @@ import edu.ftcsushi.fw.testing.RecordingCallbackBindings;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies the complete TeleOp's student-facing button vocabulary and declaration lifecycle. */
+/** Maintainer contract for the independent lift and claw control vocabularies. */
 public final class BasicTeleOpControlsTest {
 
     @Test
@@ -35,7 +34,6 @@ public final class BasicTeleOpControlsTest {
         RecordingCallbackBindings callbacks = new RecordingCallbackBindings();
         TaskRunner runner = new TaskRunner();
         GamepadDevice driverDevice = new GamepadDevice(driver);
-        BasicDriveControls driveControls = new BasicDriveControls(driverDevice);
         BasicLiftControls liftControls = new BasicLiftControls(driverDevice);
         BasicClawControls clawControls = new BasicClawControls(driverDevice);
         liftControls.bind(callbacks, TaskBindings.of(callbacks, runner), lift);
@@ -43,14 +41,14 @@ public final class BasicTeleOpControlsTest {
         Bindings bindings = callbacks.root();
         ManualLoopClock time = new ManualLoopClock();
 
-        assertEquals(6, callbacks.successfulRegistrations());
-        assertSame(driveControls.driveSource(), driveControls.driveSource());
+        assertEquals(7, callbacks.successfulRegistrations());
         bindings.update(time.clock());
 
         pulse(driver, bindings, time, Button.DPAD_DOWN);
         pulse(driver, bindings, time, Button.DPAD_LEFT);
         pulse(driver, bindings, time, Button.DPAD_UP);
         pulse(driver, bindings, time, Button.A);
+        pulse(driver, bindings, time, Button.Y);
         pulse(driver, bindings, time, Button.B);
 
         assertEquals(
@@ -60,7 +58,10 @@ public final class BasicTeleOpControlsTest {
                         BasicLift.Height.HIGH),
                 lift.heightRequests);
         assertEquals(
-                Arrays.asList(BasicClaw.State.CLOSED, BasicClaw.State.OPEN),
+                Arrays.asList(
+                        BasicClaw.State.CLOSED,
+                        BasicClaw.State.HALF,
+                        BasicClaw.State.OPEN),
                 claw.stateRequests);
     }
 
@@ -113,7 +114,7 @@ public final class BasicTeleOpControlsTest {
         assertEquals(0, clawCallbacks.registrationAttempts());
 
         clawControls.bind(clawCallbacks, claw);
-        assertEquals(2, clawCallbacks.successfulRegistrations());
+        assertEquals(3, clawCallbacks.successfulRegistrations());
 
         RecordingCallbackBindings clawRetry = new RecordingCallbackBindings();
         expectAlreadyBound(() -> clawControls.bind(clawRetry, claw));
@@ -123,6 +124,7 @@ public final class BasicTeleOpControlsTest {
     private enum Button {
         A,
         B,
+        Y,
         X,
         DPAD_UP,
         DPAD_DOWN,
@@ -146,6 +148,9 @@ public final class BasicTeleOpControlsTest {
                 return;
             case B:
                 gamepad.b = value;
+                return;
+            case Y:
+                gamepad.y = value;
                 return;
             case X:
                 gamepad.x = value;
@@ -225,7 +230,7 @@ public final class BasicTeleOpControlsTest {
 
         @Override
         public Status status() {
-            return new Status(State.CLOSED, 0.0);
+            throw new AssertionError("RecordingClaw status is not used by this controls test");
         }
     }
 }

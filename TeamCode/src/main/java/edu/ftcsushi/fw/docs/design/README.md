@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Robot design and behavior
 
 These are intermediate and advanced guides. First read

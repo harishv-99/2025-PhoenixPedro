@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # FTC manual bulk caching
 
 `FtcBulkCaching.manual(hardwareMap)` is an advanced, opt-in FTC-boundary owner for a robot that has

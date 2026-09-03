@@ -1,70 +1,58 @@
+---
+tags:
+  - Get Started
+---
+
 # Sushi documentation
 
-Sushi helps an FTC team build non-blocking TeleOp and Auto programs from a small set of ideas:
-sources describe values, bindings turn controls into intent, Tasks coordinate behavior over time,
-Plants realize mechanism targets, and one managed program owns the loop.
+Sushi helps an FTC team turn intent into bounded hardware commands with one managed heartbeat. You
+do not need to read the framework from beginning to end. Choose the result you need, finish its
+software checkpoint, and cross the stated hardware gate before integrating it into the robot.
 
-## New to Sushi
+## Your shortest path to a working robot
 
-1. [Set up and verify the project](<getting-started/Build and Run.md>).
-2. [Build the Basic Mechanisms robot](<getting-started/Basic Mechanisms Robot.md>) from first drive
-   through a referenced lift, claw, semantic tests, integrated TeleOp, and Auto.
-3. Read [Sushi in one picture](<getting-started/Framework Overview.md>) when you need the managed
-   execution model.
-4. [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) when the current checkpoint needs a
-   deeper answer. The topic pages are lookups, not a required course sequence.
+1. [Set up and verify Sushi](<getting-started/Build and Run.md>).
+2. [Drive with a gamepad](<build/First Drive.md>).
+3. Read [Sushi in one picture](<getting-started/Framework Overview.md>) to recognize the owners.
+4. [Choose one mechanism](<build/README.md>)—intake, claw, or lift—and prove it in software.
+5. Use its isolated **Test & Tune** gate on the robot.
+6. Integrate the proven capability into TeleOp, then
+   [sequence real capability Tasks](<build/First Autonomous.md>) in Auto.
 
-Detailed hardware procedures live under [Testing and calibration](<testing-calibration/README.md>).
+## Choose by outcome
 
-## Find an answer
-
-| Goal | Start here |
+| I want to… | Go to… |
 |---|---|
-| Get a standard mecanum robot under joystick control | [Build the Basic Mechanisms robot](<getting-started/Basic Mechanisms Robot.md>) |
-| Understand how the framework executes | [Sushi in one picture](<getting-started/Framework Overview.md>) |
-| Exercise a real mechanism and Plant without hardware | [Run the Basic Mechanisms software checkpoint](<getting-started/Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>) |
-| Move from requirements through robot evidence one checkpoint at a time | [Build the Basic Mechanisms robot](<getting-started/Basic Mechanisms Robot.md>) |
-| Learn one framework area in depth | [Choose a Sushi topic](<getting-started/Beginner's Guide.md>) |
-| Decide where new robot code belongs | [From requirement to robot](<getting-started/learn-sushi/From Requirement to Robot.md>) |
-| Remember the ordinary API shape | [Sushi Cheat Sheet](<reference/Sushi Cheat Sheet.md>) |
-| Look up a Sushi term | [Glossary](<reference/Glossary.md>) |
-| Fix something that is not working | [Common Problems](<troubleshooting/Common Problems.md>) |
-| Build a mechanism or choose a Plant recipe | [FTC Actuators and Plants](<ftc-boundary/FTC Actuators & Plants.md>) |
-| Build a macro or Auto routine | [Tasks and Macros](<design/Tasks & Macros Quickstart.md>) |
-| Understand sources, edges, or signal shaping | [Sources and Signals](<core-concepts/Sources and Signals.md>) |
-| Structure a larger robot | [Architecture roles and controls](<design/Framework Lanes & Robot Controls.md>) |
-| Bring up or calibrate hardware | [Testing and calibration](<testing-calibration/README.md>) |
-| Add drive guidance or localization | [Drive and vision](<drive-vision/README.md>) |
-| Build a Pedro autonomous | [First Pedro Auto](<getting-started/First Pedro Auto.md>) |
-| Maintain or extend the framework | [Maintainers](<maintainers/README.md>) |
+| make the first safe drivetrain command | [Drive with a gamepad](<build/First Drive.md>) |
+| run a continuous motor with named intent | [Run a named intake](<build/Continuous Intake.md>) |
+| map OPEN, HALF, and CLOSED to reviewed servo endpoints | [Open and close a claw](<build/Named Claw.md>) |
+| reference a lift, move it, and wait for feedback | [Home and move a lift](<build/Referenced Lift.md>) |
+| combine mechanisms without blocking the loop | [Sequence an autonomous](<build/First Autonomous.md>) |
+| follow one Pedro route and inspect its truthful outcome | [Follow a Pedro route](<build/First Pedro Auto.md>) |
+| understand where a piece of code belongs | [Choose a concept](<getting-started/Beginner's Guide.md>) |
+| design a useful software or hardware test | [How to test a Sushi component](<testing-calibration/How to test a Sushi component.md>) |
+| bring up an actuator without assuming its safe range | [Actuator bring-up](<testing-calibration/Actuator Bring-up.md>) |
+| study a less-common composition | [Advanced patterns](<advanced/README.md>) |
+| look up an exact framework family | [Reference](<reference/README.md>) |
+| recover from an observed problem | [Common problems](<troubleshooting/Common Problems.md>) |
 
-## Browse by purpose
+## What each area is for
 
-### Learn and program a team robot
+- **Get Started** establishes the project and the six-part mental map.
+- **Learn** explains one framework idea without making you assemble a robot at the same time.
+- **Build** gives one focused, compiling authority per ordinary outcome.
+- **Test & Tune** separates software evidence from facts only hardware can establish.
+- **Advanced** contains optional patterns with additional ownership or evidence requirements.
+- **Reference** organizes exact vocabulary and links every API name to generated Javadocs.
 
-- [Examples](<examples/README.md>) — the Basic Mechanisms course, Reference case study, and focused integrations
-- [Reference](<reference/README.md>) — short lookups and exact current vocabulary
-- [Troubleshooting](<troubleshooting/README.md>) — symptom-led recovery
+## Search all guides
 
-### Add or validate a feature
+The site search is global, not limited to the selected tab. That is intentional: you should not
+need to know which area owns a term before searching for it. Filter results by the one area tag on
+each page. Search titles use both the framework term and the likely goal—for example, “referenced
+lift,” “home,” and “move.” For exact classes, members, signatures, or overloads, use
+[Search API types and members](<https://harishv-99.github.io/2025-PhoenixPedro/api/>).
 
-- [Core concepts](<core-concepts/README.md>) — loop and source semantics
-- [Design](<design/README.md>) — Tasks, capabilities, supervisors, and output queues
-- [FTC boundary](<ftc-boundary/README.md>) — gamepad, actuator, sensor, UI, and handoff APIs
-- [Drive and vision](<drive-vision/README.md>) — spatial queries, guidance, and localization
-- [Testing and calibration](<testing-calibration/README.md>) — route software evidence into physical bring-up and controller evidence
-- [Pedro Pathing integration](<../integrations/pedro/README.md>) — the narrow vendor boundary
-
-### Maintain the framework
-
-- [Framework Principles](<../Framework Principles.md>) — architecture and API design authority
-- [Maintainer notes](<maintainers/Maintainer Notes.md>) — tests and extension notes
-
-## Example labels
-
-- **Copyable starter** — the smallest ordinary managed robot shape.
-- **Teaching reference** — a larger coherent robot to study in layers, not copy wholesale.
-- **Focused example** — one optional composition or integration.
-
-The checked-in guides, compiling examples, Javadocs, and tests are the current documentation
-authority.
+The checked-in guides, compiling examples, Javadocs, and tests are one current documentation
+authority. [Framework Principles](<../Framework Principles.md>) governs framework and maintained
+example changes.

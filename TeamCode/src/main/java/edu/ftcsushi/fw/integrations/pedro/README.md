@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Pedro Pathing integration
 
 The Pedro integration is a narrow vendor boundary. Core Sushi Tasks and robot capabilities do
@@ -46,22 +51,13 @@ and publishes current finite pose and velocity, the passive localizer rejects th
 adapter fail-stops drive. Its diagnostic includes the predictor's cached last device status; it
 never polls the device through a second owner.
 
-The maintained Basic Pedro example keeps those facts in an independent profile and transfers the
-whole managed graph through one composition-root declaration:
-
-```java
-BasicPedroAutoRobot robot = new BasicPedroAutoRobot(
-        program,
-        hardwareMap,
-        BasicPedroProfile.current());
-```
-
-The root performs its intake-versus-drive motor ownership preflight before hardware effects, then
-constructs the runtime and immediately registers one private service. That service applies the
-declared start pose at START, updates `motionPredictor()` before `driveAdapter()` every active
-cycle, and owns final drive stop. Each long-lived owner snapshots only its active configuration;
-the root retains no mutable aggregate profile. Cross-owner hardware relationships remain robot
-policy, not a generic Pedro requirement.
+The maintained `BasicPedroAuto` keeps one fixed route, one runtime, and the service that owns its
+heartbeat in one focused composition root. It deliberately has no unrelated intake, aggregate
+profile, or robot wrapper. The root constructs the runtime and immediately registers one private
+service. That service applies the declared start pose at START, updates `motionPredictor()` before
+`driveAdapter()` every active cycle, and owns final drive stop. A larger robot may move reviewed
+data into its own profile; cross-owner hardware relationships remain robot policy, not a generic
+Pedro requirement.
 
 The managed service calls the adapter once at START and once per active loop. Route and guidance
 Tasks may call the same adapter hook; `PedroPathingDriveAdapter` deduplicates by

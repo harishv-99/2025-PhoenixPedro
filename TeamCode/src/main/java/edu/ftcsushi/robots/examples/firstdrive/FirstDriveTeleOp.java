@@ -28,14 +28,14 @@ public final class FirstDriveTeleOp extends FtcRobotOpMode {
         drive.wiring.backLeftDirection = Direction.FORWARD;
         drive.wiring.backRightDirection = Direction.REVERSE;
         drive.enableZeroPowerBrake = true; // Review BRAKE versus FLOAT for this drivetrain.
+        drive.drivebase.maxAxial = 0.25;
+        drive.drivebase.maxLateral = 0.25;
+        drive.drivebase.maxOmega = 0.20;
 
         program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, drive));
     }
 
     private static final class FirstDriveControls {
-        private static final double FIRST_RUN_TRANSLATION_SCALE = 0.25;
-        private static final double FIRST_RUN_TURN_SCALE = 0.20;
-
         private final DriveSource driveSource;
 
         FirstDriveControls(GamepadDevice driver) {
@@ -43,8 +43,7 @@ public final class FirstDriveTeleOp extends FtcRobotOpMode {
                     driver.leftX(),   // Left/right translation.
                     driver.leftY(),   // Forward/back translation.
                     driver.rightX(),  // Clockwise/counter-clockwise turn.
-                    GamepadDriveSource.Config.defaults())
-                    .scaled(FIRST_RUN_TRANSLATION_SCALE, FIRST_RUN_TURN_SCALE);
+                    GamepadDriveSource.Config.defaults());
         }
 
         DriveSource driveSource() {

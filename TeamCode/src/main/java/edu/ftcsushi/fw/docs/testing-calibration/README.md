@@ -1,109 +1,42 @@
-# Testing and calibration
+---
+tags:
+  - Test & Tune
+---
 
-**Learning mode:** Router
+# Test and tune one fact at a time
 
-Calibrate one physical fact at a time. Keep the robot clear of people, begin with conservative
-commands, know how to stop the OpMode, and do not treat a successful build as proof of safe motion.
+Begin with [How to test a Sushi component](<How to test a Sushi component.md>). It explains how to
+choose the owner under test, preserve the production heartbeat, replace only the outside world, and
+avoid claiming evidence the test cannot provide.
 
-If hardware is unavailable, stay in software: the
-[Basic Mechanisms software checkpoint](<../getting-started/Basic Mechanisms Robot.md#software-checkpoint-request-heartbeat-recorded-output>)
-uses a real course mechanism and Plant with a recording test device. The optional
-[Reference scenarios](<../examples/Hardware-free Reference Scenarios.md>) add explicit switch,
-encoder, and independent flywheel-velocity inputs. These scenarios can establish software behavior
-before a robot exists, but they do not model physics or authorize motion.
+## Choose the evidence you need
 
-If you copied the framework into another project, choose exactly one ready-made entry for a
-general-purpose tester run:
+| Current question | Use | Stop when you know |
+|---|---|---|
+| Does a button request the intended meaning? | a small semantic-intent test | the callback or fresh Task request is correct |
+| Does a real mechanism owner produce the expected command? | a [software-device scenario](<../examples/Hardware-free Reference Scenarios.md>) | the request/evidence/heartbeat decision is correct |
+| Does the managed lifecycle call owners in the right order? | a supplied managed-slice test | the tested phase order and cleanup are correct |
+| Which direction and backed-off range are safe? | [Actuator bring-up](<Actuator Bring-up.md>) | recorded robot evidence supports the profile values |
+| Which robot facts must be established next? | [Robot calibration tutorials](<Robot Calibration Tutorials.md>) | each required fact has an owner and recorded result |
+| Do controller gains meet a stated criterion? | [Control tuning workflow](<Control Tuning Workflow.md>) | the bounded experiment meets the criterion |
+| How should a guided team procedure be assembled? | [Guided calibration walkthroughs](<Guided Calibration Walkthroughs.md>) | the steps expose one fact at a time |
+| Something is already failing | [Common problems](<../troubleshooting/Common Problems.md>) | the observed symptom has one evidence-backed cause |
 
-| Entry | Sole input owner |
-|---|---|
-| **FW: Testers (Driver Station)** | Physical Driver Station gamepads |
-| **FW: Testers (Panels)** | Panels virtual gamepads |
+## The handoff from software to hardware
 
-Both entries open the same tester suite, use the same D-pad/button/bumper controls, and mirror the
-same row-oriented telemetry to both Driver Station and Panels. The entry name chooses who may
-command the tester: inputs are never merged or switched during a run. Stop the current OpMode and
-start the other entry to change input owners.
+Software tests may establish mappings, lifecycle, cached status, Task outcomes, and decisions made
+from explicitly injected measurements. They do not establish wiring, motor or servo direction,
+mechanism clearance, safe travel, switch placement, encoder scale, controller response, route
+accuracy, or tuning.
 
-For a supervised bench session without a Driver Hub or other Driver Station device, use Panels'
-OpMode controls to select, initialize, and start **FW: Testers (Panels)**, then use its virtual
-gamepads for the unchanged tester controls.
+Before running any mechanism OpMode:
 
-1. Connect the laptop or tablet to the Robot Controller's Wi-Fi network and open Panels.
-2. Open **OpModes Control**, choose **FW: Testers (Panels)**, and initialize it.
-3. Keep **Telemetry** visible for the same menu, warnings, and evidence shown on Driver Station.
-4. Use the default **Combined Gamepad** widget: gamepad 1 owns the ordinary tester controls, and
-   gamepad 2 is used only when a specific tester documents it. This widget contains the two Panels
-   virtual gamepads; it does not merge physical and browser input.
-5. Return both virtual gamepads to neutral before starting the OpMode or arming an actuator.
+1. Keep motion examples `@Disabled` and every motion-permission flag false.
+2. Inspect the assembled mechanism and establish an immediate stop plan.
+3. Use conservative commands and the device-focused bring-up tool.
+4. Record the direction and backed-off endpoints or operating range in the robot profile.
+5. Run the mechanism-only TeleOp before connecting drivetrain or multi-mechanism behavior.
+6. Re-run the software suite after recording the reviewed configuration.
 
-The Panels entry requires a connected Panels client. No connected client, loss of the last client,
-or an input-sampling failure terminally fail-stops that tester run and best-effort stops its active
-tester. Reconnecting does not rearm the same OpMode instance; stop it, reconnect, and begin a fresh
-INIT/start. Browser STOP is not a physical emergency stop, so powered testing still requires clear
-access to robot power and a person ready to remove it.
-
-Sushi can observe only the total Panels client count exposed by the pinned integration. If one
-Panels view closes while another client remains connected, the host cannot identify that view as
-the input owner; it then relies on Panels aging unattended virtual controls back to neutral. Treat
-that as transport behavior to validate on the robot, never as an emergency-stop guarantee. A
-stalled OpMode loop cannot apply a new neutral command.
-
-## When hardware is available, choose one question
-
-Hardware work is not required by either software lesson. When a supervised robot is available,
-start with the one physical question that must be answered rather than running every tool:
-
-| Question | Start here |
-|---|---|
-| Does this named actuator move in the intended direction and stop when commanded? | [Actuator bring-up](<Actuator Bring-up.md>) |
-| Are the mechanism reference, encoder scale, drivetrain response, or sensor axes correct? | [Robot Calibration Tutorials](<Robot Calibration Tutorials.md>) |
-| Which reviewed controller settings meet the mechanism's measured response goal? | [Control Tuning Workflow](<Control Tuning Workflow.md>) |
-| Does the whole subsystem meet a team-authored success criterion over repeated trials? | [Subsystem Experiments](<../examples/Subsystem Experiments.md>) |
-
-Stop after collecting the evidence needed for that question. A later question begins a separate
-reviewed test; one successful result does not validate unrelated hardware or behavior.
-
-After accepting the result, return to the relevant checkpoint in
-[Build the Basic Mechanisms robot](<../getting-started/Basic Mechanisms Robot.md>) to integrate the
-accepted configuration, or use [Subsystem Experiments](<../examples/Subsystem Experiments.md>) for
-a bounded physical trial. Do not turn a diagnostic OpMode into the production TeleOp.
-
-## Student runbooks
-
-1. [`Actuator bring-up`](<Actuator Bring-up.md>) — the one ordinary device-first workflow for
-   motor/servo direction and optional safe endpoint evidence.
-2. [`Robot Calibration Tutorials`](<Robot Calibration Tutorials.md>) — mechanism references,
-   drivetrain integration, encoders, camera mount, AprilTags, Pinpoint, and corrected localization.
-3. [`AprilTag Practice Setup`](<../drive-vision/AprilTag Practice Setup.md>) — a known small test
-   area when a complete field is unavailable.
-4. [`Control Tuning Workflow`](<Control Tuning Workflow.md>) — ready-made velocity and position
-   experiments for supported FTC device-managed and Sushi standard controllers.
-
-Each substantive runbook puts the critical call shape, the concepts to notice, and the important
-APIs beside the step that uses them. Physical procedures deliberately stay procedure-first: code
-can describe the owner and safety policy, but only a supervised hardware run can establish
-direction, clearance, reference truth, response quality, or subsystem success.
-
-Robot code calls `FtcPanelsTuners.velocityControl(...)` or `positionControl(...)` and supplies a
-factory for one fresh Plant built from its production owner's canonical recipe. The completed
-Plant selects the supported controller topology. The framework owns draft capture, the controller
-session, segments, metrics, history, restoration, and cleanup. This is not a generic raw-actuator
-editor: the Plant remains the sole actuation path and robot code declares the finite physical
-experiment envelope.
-
-A robot may provide a dedicated powered-tuning entry that opens one framework workflow directly
-instead of routing through a tester menu. Such an entry may tighten connection ownership to exactly
-one Panels client. Panels **Update All** still publishes only a draft; the OpMode must capture and
-apply one complete candidate on its loop. Read the
-[`control tuning runbook`](<Control Tuning Workflow.md>) before authoring or enabling that entry.
-
-## Mentor and tester-author reference
-
-- [`Guided Calibration Walkthroughs`](<Guided Calibration Walkthroughs.md>) explains how to create
-  ordered, checkpoint-based tester menus.
-- [`FTC Sensors`](<../ftc-boundary/FTC Sensors.md>) documents the boundary sources used by testers.
-
-For an immediate symptom, start with [`Common Problems`](<../troubleshooting/Common Problems.md>).
-
-[Back to the Sushi docs home](<../README.md>)
+Each Build recipe links its one next physical gate so a student does not have to infer which
+procedure applies.

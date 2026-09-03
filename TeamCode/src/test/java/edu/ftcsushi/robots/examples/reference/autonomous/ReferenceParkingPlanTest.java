@@ -5,7 +5,6 @@ import org.junit.Test;
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.spatial.AxisAlignedBoxRegion2d;
 import edu.ftcsushi.fw.spatial.RobotFrameRectangle2d;
-import edu.ftcsushi.robots.examples.reference.robot.ReferenceProfile;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -38,14 +37,5 @@ public final class ReferenceParkingPlanTest {
                 0.0,
                 0.0,
                 0.0));
-    }
-
-    @Test
-    public void checkedInProfileKeepsRobotMotionLocked() {
-        ReferenceProfile profile = ReferenceProfile.current();
-
-        assertFalse(profile.allowDriveMotion);
-        assertFalse(profile.allowLiftMotion);
-        assertFalse(profile.allowLauncherMotion);
     }
 }

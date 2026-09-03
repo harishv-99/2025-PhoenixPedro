@@ -17,7 +17,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Teaches the lift's semantic requests, evidence, configuration, and Task lifecycle. */
+/** Maintainer regression contract behind the focused, student-facing lift software scenario. */
 public final class BasicLiftMechanismTest {
 
     @Test

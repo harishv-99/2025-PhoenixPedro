@@ -1,3 +1,8 @@
+---
+tags:
+  - Learn
+---
+
 # Robot roles
 
 **Learning mode:** Architecture reference
@@ -78,12 +83,14 @@ capability directly because that is all its clients need.
 
 ## How the pattern scales
 
-The [`ReferenceRobot`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.html>) adds lift
-and launcher capability families without changing the roles. TeleOp controls and
-[`ReferenceAutoRoutines`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/autonomous/ReferenceAutoRoutines.html>)
-call the same mode-neutral capabilities; their mechanisms still privately own hardware realization.
-Its multi-family [`ReferenceCapabilities`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/robot/ReferenceCapabilities.html>)
-handoff is useful to that Auto routine, but it is not a registry every robot must copy.
+Focused Reference examples add one role at a time without presenting another complete robot as a
+template. [`ReferenceFlywheelMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.html>)
+is the output owner for a grouped paired-velocity Plant and independent readiness evidence.
+[`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
+delegates that concern while adding release/feed policy. The separate
+[`ReferenceCoordinatedShotService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.html>)
+shows an upstream service role. Add a multi-capability aggregate only when real TeleOp and Auto
+clients need that grouping; do not copy an otherwise empty forwarding registry.
 
 ## Check your understanding
 

@@ -7,8 +7,7 @@ import edu.ftcsushi.fw.actuation.ScalarRange;
 import edu.ftcsushi.fw.integrations.panels.FtcPanelsTeleOpTesterOpMode;
 import edu.ftcsushi.fw.integrations.panels.FtcPanelsTuners;
 import edu.ftcsushi.fw.tools.tester.TeleOpTester;
-import edu.ftcsushi.robots.examples.reference.capability.launcher.ReferenceLauncherMechanism;
-import edu.ftcsushi.robots.examples.reference.robot.ReferenceProfile;
+import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelMechanism;
 
 /** Disabled Panels host for learning the exclusive control-tuning workflow safely. */
 @TeleOp(name = "FW Reference: Tuning (Panels)", group = "FW Examples")
@@ -23,12 +22,13 @@ public final class ReferencePanelsTuningOpMode extends FtcPanelsTeleOpTesterOpMo
     /** Creates one tuner that owns a fresh Plant from the production flywheel recipe. */
     @Override
     protected TeleOpTester createTester() {
-        ReferenceLauncherMechanism.Config launcher = ReferenceProfile.current().launcher;
+        ReferenceFlywheelMechanism.Config flywheels =
+                ReferenceFlywheelMechanism.Config.defaults();
         return FtcPanelsTuners.velocityControl(
                 "Reference Flywheel Velocity Control",
-                ScalarRange.bounded(0.0, launcher.maximumVelocityTicksPerSec),
-                hardwareMap -> ReferenceLauncherMechanism.createFlywheelPlantForTuning(
+                ScalarRange.bounded(0.0, flywheels.maximumVelocityTicksPerSec),
+                hardwareMap -> ReferenceFlywheelMechanism.createPlantForTuning(
                         hardwareMap,
-                        launcher));
+                        flywheels));
     }
 }

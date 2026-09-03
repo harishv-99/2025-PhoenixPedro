@@ -1,3 +1,8 @@
+---
+tags:
+  - Reference
+---
+
 # Sushi Cheat Sheet
 
 This is a reminder, not a first lesson. Read

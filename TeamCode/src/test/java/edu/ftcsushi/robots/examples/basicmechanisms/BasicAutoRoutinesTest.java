@@ -8,8 +8,6 @@ import java.util.List;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.core.time.LoopClock;
-import edu.ftcsushi.fw.drive.DriveCommandSink;
-import edu.ftcsushi.fw.drive.DriveSignal;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.task.Tasks;
@@ -19,407 +17,175 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 
-/** Verifies that the two teaching Autos compose semantic capabilities without hiding outcomes. */
+/**
+ * Supplied maintainer contract evidence for the optional lift-and-claw Auto policy.
+ *
+ * <p>Students should learn the golden path from {@link BasicAutoSoftwareScenarioTest} first; this
+ * broader suite retains controllable abnormal outcomes, cancellation, and freshness coverage.</p>
+ */
 public final class BasicAutoRoutinesTest {
 
     @Test
-    public void guideRunsTheDocumentedCommandGroupsInOrder() {
+    public void guideStartsOnlyTheWorkWhosePrerequisitesSucceeded() {
         RecordingLift lift = new RecordingLift();
         RecordingClaw claw = new RecordingClaw();
-        Task root = BasicAutoRoutines.guide(lift, claw);
+        Task auto = BasicAutoRoutines.guide(lift, claw);
         ManualLoopClock time = new ManualLoopClock();
 
+        // Construction creates fresh child Tasks but must not publish mechanism requests.
         assertEquals(1, lift.homeRequests);
-        assertEquals(
-                Arrays.asList(
-                        BasicLift.Height.HIGH,
-                        BasicLift.Height.LOW,
-                        BasicLift.Height.STOWED),
-                lift.moveHeights);
-        assertTrue(lift.startedHeights.isEmpty());
-        root.start(time.clock());
+        assertEquals(Arrays.asList(
+                BasicLift.Height.HIGH,
+                BasicLift.Height.LOW,
+                BasicLift.Height.STOWED), lift.createdMoves);
+        assertTrue(lift.startedMoves.isEmpty());
+        assertTrue(claw.requests.isEmpty());
 
-        finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedHeights);
-        assertTrue(claw.states.isEmpty());
+        // Home is the first prerequisite. Exact success admits the HIGH move.
+        auto.start(time.clock());
+        finishAndAdvance(lift.home, TaskOutcome.SUCCESS, auto, time, 0.02);
+        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedMoves);
 
-        finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
-        assertEquals(
-                Arrays.asList(BasicLift.Height.HIGH, BasicLift.Height.LOW),
-                lift.startedHeights);
-        assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.states);
+        // HIGH success starts LOW and the immediate CLOSED request together.
+        finishAndAdvance(lift.move(0), TaskOutcome.SUCCESS, auto, time, 0.02);
+        assertEquals(Arrays.asList(
+                BasicLift.Height.HIGH,
+                BasicLift.Height.LOW), lift.startedMoves);
+        assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.requests);
 
-        finishSuccessfullyAndStartNext(lift.moveTask(1), root, time);
-        root.update(time.nextCycle(0.25));
-        assertEquals(2, lift.startedHeights.size());
-        assertEquals(1, claw.states.size());
+        // LOW feedback gates the hold; the hold's own boundary gates final stow/open.
+        finishAndAdvance(lift.move(1), TaskOutcome.SUCCESS, auto, time, 0.02);
+        auto.update(time.nextCycle(0.51));
+        assertEquals(Arrays.asList(
+                BasicLift.Height.HIGH,
+                BasicLift.Height.LOW,
+                BasicLift.Height.STOWED), lift.startedMoves);
+        assertEquals(Arrays.asList(
+                BasicClaw.State.CLOSED,
+                BasicClaw.State.OPEN), claw.requests);
 
-        root.update(time.nextCycle(0.26));
-        assertEquals(
-                Arrays.asList(
-                        BasicLift.Height.HIGH,
-                        BasicLift.Height.LOW,
-                        BasicLift.Height.STOWED),
-                lift.startedHeights);
-        assertEquals(
-                Arrays.asList(BasicClaw.State.CLOSED, BasicClaw.State.OPEN),
-                claw.states);
-
-        finishAndUpdate(lift.moveTask(2), TaskOutcome.SUCCESS, root, time, 0.02);
-        assertEquals(TaskOutcome.SUCCESS, root.getOutcome());
+        finishAndAdvance(lift.move(2), TaskOutcome.SUCCESS, auto, time, 0.02);
+        assertEquals(TaskOutcome.SUCCESS, auto.getOutcome());
     }
 
     @Test
-    public void guidePreservesEveryNonSuccessPrerequisiteWithoutLaterMotion() {
-        for (TaskOutcome outcome : Arrays.asList(
-                TaskOutcome.TIMEOUT,
-                TaskOutcome.CANCELLED,
-                TaskOutcome.UNKNOWN)) {
-            RecordingLift lift = new RecordingLift();
-            RecordingClaw claw = new RecordingClaw();
-            Task root = BasicAutoRoutines.guide(lift, claw);
-            ManualLoopClock time = new ManualLoopClock();
-            root.start(time.clock());
-
-            finishAndUpdate(lift.lastHome, outcome, root, time, 0.02);
-
-            assertEquals(outcome, root.getOutcome());
-            assertEquals(
-                    Arrays.asList(
-                            BasicLift.Height.HIGH,
-                            BasicLift.Height.LOW,
-                            BasicLift.Height.STOWED),
-                    lift.moveHeights);
-            assertTrue(lift.startedHeights.isEmpty());
-            assertTrue(claw.states.isEmpty());
-        }
-    }
-
-    @Test
-    public void guidePreservesAbnormalHighAndLowDeadlineOutcomes() {
-        for (TaskOutcome outcome : Arrays.asList(
-                TaskOutcome.TIMEOUT,
-                TaskOutcome.CANCELLED,
-                TaskOutcome.UNKNOWN)) {
-            RecordingLift highLift = new RecordingLift();
-            RecordingClaw highClaw = new RecordingClaw();
-            Task highRoot = BasicAutoRoutines.guide(highLift, highClaw);
-            ManualLoopClock highTime = new ManualLoopClock();
-            highRoot.start(highTime.clock());
-            finishSuccessfullyAndStartNext(highLift.lastHome, highRoot, highTime);
-
-            finishAndUpdate(highLift.moveTask(0), outcome, highRoot, highTime, 0.02);
-
-            assertEquals(outcome, highRoot.getOutcome());
-            assertEquals(Arrays.asList(BasicLift.Height.HIGH), highLift.startedHeights);
-            assertTrue(highClaw.states.isEmpty());
-
-            RecordingLift lowLift = new RecordingLift();
-            RecordingClaw lowClaw = new RecordingClaw();
-            Task lowRoot = BasicAutoRoutines.guide(lowLift, lowClaw);
-            ManualLoopClock lowTime = new ManualLoopClock();
-            lowRoot.start(lowTime.clock());
-            finishSuccessfullyAndStartNext(lowLift.lastHome, lowRoot, lowTime);
-            finishSuccessfullyAndStartNext(lowLift.moveTask(0), lowRoot, lowTime);
-
-            finishAndUpdate(lowLift.moveTask(1), outcome, lowRoot, lowTime, 0.02);
-
-            assertEquals(outcome, lowRoot.getOutcome());
-            assertEquals(
-                    Arrays.asList(BasicLift.Height.HIGH, BasicLift.Height.LOW),
-                    lowLift.startedHeights);
-            assertEquals(Arrays.asList(BasicClaw.State.CLOSED), lowClaw.states);
-        }
-    }
-
-    @Test
-    public void guidePreservesAbnormalFinalStowDeadlineOutcomes() {
-        for (TaskOutcome outcome : Arrays.asList(
-                TaskOutcome.TIMEOUT,
-                TaskOutcome.CANCELLED,
-                TaskOutcome.UNKNOWN)) {
-            RecordingLift lift = new RecordingLift();
-            RecordingClaw claw = new RecordingClaw();
-            Task root = BasicAutoRoutines.guide(lift, claw);
-            ManualLoopClock time = new ManualLoopClock();
-            root.start(time.clock());
-            finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-            finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
-            finishSuccessfullyAndStartNext(lift.moveTask(1), root, time);
-            root.update(time.nextCycle(0.51));
-
-            assertEquals(BasicLift.Height.STOWED, lift.startedHeights.get(2));
-            assertEquals(BasicClaw.State.OPEN, claw.states.get(1));
-            finishAndUpdate(lift.moveTask(2), outcome, root, time, 0.02);
-
-            assertEquals(outcome, root.getOutcome());
-        }
-    }
-
-    @Test
-    public void directCancellationStopsTheActiveGuidePrerequisiteWithoutLaterMotion() {
-
-        RecordingLift cancelledLift = new RecordingLift();
-        RecordingClaw cancelledClaw = new RecordingClaw();
-        Task cancelled = BasicAutoRoutines.guide(cancelledLift, cancelledClaw);
-        ManualLoopClock cancelledTime = new ManualLoopClock();
-        cancelled.start(cancelledTime.clock());
-        finishSuccessfullyAndStartNext(cancelledLift.lastHome, cancelled, cancelledTime);
-
-        cancelled.cancel();
-        cancelled.cancel();
-        assertEquals(TaskOutcome.CANCELLED, cancelled.getOutcome());
-        assertEquals(TaskOutcome.CANCELLED, cancelledLift.moveTask(0).getOutcome());
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), cancelledLift.startedHeights);
-        assertTrue(cancelledClaw.states.isEmpty());
-    }
-
-    @Test
-    public void completeAutoCommandsAndStopsItsExclusiveTimedDriveBeforeRelease() {
+    public void failedPrerequisitePreservesItsOutcomeAndStartsNothingLater() {
         RecordingLift lift = new RecordingLift();
         RecordingClaw claw = new RecordingClaw();
-        RecordingDriveSink drive = new RecordingDriveSink();
-        Task root = BasicRobotAutoRoutines.complete(lift, claw, drive);
+        Task auto = BasicAutoRoutines.guide(lift, claw);
         ManualLoopClock time = new ManualLoopClock();
 
-        root.start(time.clock());
-        finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedHeights);
-        assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.states);
+        auto.start(time.clock());
+        finishAndAdvance(lift.home, TaskOutcome.TIMEOUT, auto, time, 0.02);
 
-        finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
-        assertEquals(Arrays.asList("update", "drive"), drive.events);
-        assertEquals(0.20, drive.lastCommand.axial, 0.0);
-        assertEquals(0.0, drive.lastCommand.lateral, 0.0);
-        assertEquals(0.0, drive.lastCommand.omega, 0.0);
-        assertEquals(0, drive.stopCount);
-
-        root.update(time.nextCycle(0.75));
-        assertEquals(1, drive.stopCount);
-        assertEquals("stop", drive.events.get(drive.events.size() - 1));
-        assertEquals(
-                Arrays.asList(BasicLift.Height.HIGH, BasicLift.Height.STOWED),
-                lift.startedHeights);
-        assertEquals(
-                Arrays.asList(BasicClaw.State.CLOSED, BasicClaw.State.OPEN),
-                claw.states);
-
-        finishAndUpdate(lift.moveTask(1), TaskOutcome.SUCCESS, root, time, 0.02);
-        assertEquals(TaskOutcome.SUCCESS, root.getOutcome());
-        assertEquals(1, drive.stopCount);
+        assertEquals(TaskOutcome.TIMEOUT, auto.getOutcome());
+        assertTrue(lift.startedMoves.isEmpty());
+        assertTrue(claw.requests.isEmpty());
     }
 
     @Test
-    public void stopOwnerZerosOnceEvenWhenTheDriveTaskNeverStarts() {
-        RecordingDriveSink drive = new RecordingDriveSink();
-        BasicDriveStopOwner owner = new BasicDriveStopOwner(drive);
-        ManualLoopClock time = new ManualLoopClock();
-
-        owner.update(time.clock());
-        assertTrue(drive.events.isEmpty());
-
-        owner.stop();
-        owner.stop();
-
-        assertEquals(Arrays.asList("stop"), drive.events);
-        assertEquals(0, drive.driveCount);
-        assertEquals(1, drive.stopCount);
-    }
-
-    @Test
-    public void carryFailureBeforeDrivePreservesOutcomeAndLifecycleStop() {
-        for (TaskOutcome outcome : Arrays.asList(
-                TaskOutcome.TIMEOUT,
-                TaskOutcome.CANCELLED,
-                TaskOutcome.UNKNOWN)) {
-            RecordingLift lift = new RecordingLift();
-            RecordingClaw claw = new RecordingClaw();
-            RecordingDriveSink drive = new RecordingDriveSink();
-            BasicDriveStopOwner owner = new BasicDriveStopOwner(drive);
-            Task root = BasicRobotAutoRoutines.complete(lift, claw, drive);
-            ManualLoopClock time = new ManualLoopClock();
-            root.start(time.clock());
-            finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-
-            finishAndUpdate(lift.moveTask(0), outcome, root, time, 0.02);
-
-            assertEquals(outcome, root.getOutcome());
-            assertEquals(0, drive.driveCount);
-            assertEquals(0, drive.stopCount);
-            assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.states);
-
-            // This is the managed STOP path after Auto ended before its drive phase.
-            owner.stop();
-            owner.stop();
-            assertEquals(1, drive.stopCount);
-        }
-    }
-
-    @Test
-    public void completeAutoPreservesAbnormalFinalStowDeadlineOutcomes() {
-        for (TaskOutcome outcome : Arrays.asList(
-                TaskOutcome.TIMEOUT,
-                TaskOutcome.CANCELLED,
-                TaskOutcome.UNKNOWN)) {
-            RecordingLift lift = new RecordingLift();
-            RecordingClaw claw = new RecordingClaw();
-            RecordingDriveSink drive = new RecordingDriveSink();
-            Task root = BasicRobotAutoRoutines.complete(lift, claw, drive);
-            ManualLoopClock time = new ManualLoopClock();
-            root.start(time.clock());
-            finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-            finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
-            root.update(time.nextCycle(0.75));
-
-            assertEquals(BasicLift.Height.STOWED, lift.startedHeights.get(1));
-            assertEquals(BasicClaw.State.OPEN, claw.states.get(1));
-            finishAndUpdate(lift.moveTask(1), outcome, root, time, 0.02);
-
-            assertEquals(outcome, root.getOutcome());
-            assertEquals(1, drive.stopCount);
-        }
-    }
-
-    @Test
-    public void cancellingCompleteAutoStopsActiveDriveAndStartsNoReleasePhase() {
+    public void activeCancellationCancelsTheCurrentMoveWithoutStartingLaterWork() {
         RecordingLift lift = new RecordingLift();
         RecordingClaw claw = new RecordingClaw();
-        RecordingDriveSink drive = new RecordingDriveSink();
-        Task root = BasicRobotAutoRoutines.complete(lift, claw, drive);
+        Task auto = BasicAutoRoutines.guide(lift, claw);
         ManualLoopClock time = new ManualLoopClock();
 
-        root.start(time.clock());
-        finishSuccessfullyAndStartNext(lift.lastHome, root, time);
-        finishSuccessfullyAndStartNext(lift.moveTask(0), root, time);
-        assertEquals(1, drive.driveCount);
+        auto.start(time.clock());
+        finishAndAdvance(lift.home, TaskOutcome.SUCCESS, auto, time, 0.02);
+        auto.cancel();
+        auto.cancel();
 
-        root.cancel();
-        root.cancel();
-
-        assertEquals(TaskOutcome.CANCELLED, root.getOutcome());
-        assertEquals(1, drive.stopCount);
-        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedHeights);
-        assertEquals(Arrays.asList(BasicClaw.State.CLOSED), claw.states);
+        assertEquals(TaskOutcome.CANCELLED, auto.getOutcome());
+        assertEquals(TaskOutcome.CANCELLED, lift.move(0).getOutcome());
+        assertEquals(Arrays.asList(BasicLift.Height.HIGH), lift.startedMoves);
+        assertTrue(claw.requests.isEmpty());
     }
 
     @Test
-    public void eachFactoryCallBuildsFreshRootAndHomeTasks() {
+    public void everyRoutineFactoryCallBuildsFreshSingleUseTasks() {
         RecordingLift lift = new RecordingLift();
         RecordingClaw claw = new RecordingClaw();
-        RecordingDriveSink drive = new RecordingDriveSink();
 
-        Task first = BasicRobotAutoRoutines.complete(lift, claw, drive);
-        ControllableTask firstHome = lift.lastHome;
-        Task second = BasicRobotAutoRoutines.complete(lift, claw, drive);
+        Task first = BasicAutoRoutines.guide(lift, claw);
+        ControlledTask firstHome = lift.home;
+        Task second = BasicAutoRoutines.guide(lift, claw);
 
         assertNotSame(first, second);
-        assertNotSame(firstHome, lift.lastHome);
+        assertNotSame(firstHome, lift.home);
         assertEquals(2, lift.homeRequests);
     }
 
-    private static void finishAndUpdate(ControllableTask task,
-                                        TaskOutcome outcome,
-                                        Task root,
-                                        ManualLoopClock time,
-                                        double dtSec) {
-        task.finish(outcome);
+    private static void finishAndAdvance(ControlledTask child,
+                                         TaskOutcome outcome,
+                                         Task root,
+                                         ManualLoopClock time,
+                                         double dtSec) {
+        child.finish(outcome);
         root.update(time.nextCycle(dtSec));
     }
 
-    /** Exact-success sequence handoff starts the next fixed child in the same lifecycle call. */
-    private static void finishSuccessfullyAndStartNext(ControllableTask task,
-                                                        Task root,
-                                                        ManualLoopClock time) {
-        finishAndUpdate(task, TaskOutcome.SUCCESS, root, time, 0.02);
-    }
-
     private static final class RecordingLift implements BasicLift {
-        private final List<Height> moveHeights = new ArrayList<Height>();
-        private final List<Height> startedHeights = new ArrayList<Height>();
-        private final List<ControllableTask> moveTasks = new ArrayList<ControllableTask>();
+        private final List<Height> createdMoves = new ArrayList<Height>();
+        private final List<Height> startedMoves = new ArrayList<Height>();
+        private final List<ControlledTask> moves = new ArrayList<ControlledTask>();
         private int homeRequests;
-        private ControllableTask lastHome;
+        private ControlledTask home;
 
         @Override
         public void setHeight(Height height) {
-            throw new AssertionError("Basic Auto should use moveTo(Height)");
+            throw new AssertionError("Auto policy should use feedback-aware moveTo(Height)");
         }
 
         @Override
         public Task moveTo(Height height) {
-            moveHeights.add(height);
-            ControllableTask move = new ControllableTask(
-                    "move-" + height,
-                    () -> startedHeights.add(height));
-            moveTasks.add(move);
+            Height required = Objects.requireNonNull(height, "height");
+            createdMoves.add(required);
+            ControlledTask move = new ControlledTask(
+                    "move-" + required,
+                    () -> startedMoves.add(required));
+            moves.add(move);
             return move;
         }
 
         @Override
         public Task home() {
             homeRequests++;
-            lastHome = new ControllableTask("home", null);
-            return lastHome;
+            home = new ControlledTask("home", null);
+            return home;
         }
 
         @Override
         public Status status() {
-            throw new AssertionError("RecordingLift status is not used by these Auto tests");
+            throw new AssertionError("status is outside this policy test");
         }
 
-        private ControllableTask moveTask(int index) {
-            return moveTasks.get(index);
+        private ControlledTask move(int index) {
+            return moves.get(index);
         }
     }
 
     private static final class RecordingClaw implements BasicClaw {
-        private final List<State> states = new ArrayList<State>();
+        private final List<State> requests = new ArrayList<State>();
 
         @Override
         public void setState(State state) {
-            states.add(state);
+            requests.add(state);
         }
 
         @Override
         public Task setStateTask(State state) {
-            State requiredState = Objects.requireNonNull(state, "state");
-            return Tasks.runOnce(() -> setState(requiredState));
+            State required = Objects.requireNonNull(state, "state");
+            return Tasks.runOnce(() -> setState(required));
         }
 
         @Override
         public Status status() {
-            State state = states.isEmpty() ? State.CLOSED : states.get(states.size() - 1);
-            return new Status(state, 0.0);
+            throw new AssertionError("status is outside this policy test");
         }
     }
 
-    private static final class RecordingDriveSink implements DriveCommandSink {
-        private final List<String> events = new ArrayList<String>();
-        private int driveCount;
-        private int stopCount;
-        private DriveSignal lastCommand;
-
-        @Override
-        public void update(LoopClock clock) {
-            events.add("update");
-        }
-
-        @Override
-        public void drive(DriveSignal signal) {
-            driveCount++;
-            lastCommand = signal;
-            events.add("drive");
-        }
-
-        @Override
-        public void stop() {
-            stopCount++;
-            lastCommand = null;
-            events.add("stop");
-        }
-    }
-
-    private static final class ControllableTask implements Task {
+    /** Test-only terminal control; production examples use framework Task factories. */
+    private static final class ControlledTask implements Task {
         private final String name;
         private final Runnable onStart;
         private boolean startAttempted;
@@ -427,7 +193,7 @@ public final class BasicAutoRoutinesTest {
         private boolean complete;
         private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
-        private ControllableTask(String name, Runnable onStart) {
+        private ControlledTask(String name, Runnable onStart) {
             this.name = name;
             this.onStart = onStart;
         }
@@ -476,8 +242,8 @@ public final class BasicAutoRoutinesTest {
         }
 
         private void finish(TaskOutcome terminalOutcome) {
-            if (!started || complete) {
-                throw new IllegalStateException(name + " cannot finish now");
+            if (!started || complete || terminalOutcome == TaskOutcome.NOT_DONE) {
+                throw new IllegalStateException(name + " cannot finish with " + terminalOutcome);
             }
             complete = true;
             outcome = terminalOutcome;

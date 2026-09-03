@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Output Tasks & Queues
 
 Sushi has two common ways to express mechanism behavior over time:

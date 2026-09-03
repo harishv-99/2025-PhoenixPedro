@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Tasks and Macros
 
 This is the detailed guide to Sushi **Tasks**: non-blocking behaviors that continue over several
@@ -10,8 +15,8 @@ Tasks are used for:
 * TeleOp **macros** (e.g., shooting sequences).
 * **Autonomous routines** built out of reusable pieces.
 
-We assume you already have an ordinary robot owner wired like the
-[`Basic Mechanisms Robot`](<../getting-started/Basic Mechanisms Robot.md#complete-source-and-owner-map>):
+We assume you already have an ordinary robot owner wired like one of the focused
+[Build recipes](<../build/README.md>):
 
 * An `FtcRobotOpMode` receiving one framework-created `RobotProgram`.
 * Gamepad meanings declared through `program.callbackBindings()` or `program.taskBindings()`.
@@ -412,7 +417,7 @@ code, that constructor receives `HardwareMap` and its active data-only config, c
 the complete snapshot before its own hardware lookup, and uses the copied hardware name and
 direction. The composition root owns cross-owner policy and constructs the mechanism, not this raw
 Plant. See the compiling
-[`BasicPedroAutoMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/pedro/capability/intake/BasicPedroAutoMechanism.html>)
+[`ReferenceFlywheelMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.html>)
 for a complete numeric-target owner. This pattern is intentionally separate from the Starter
 intake's named `Mode` vocabulary.
 

@@ -1,3 +1,8 @@
+---
+tags:
+  - Learn
+---
+
 # Plants and hardware
 
 **Learning mode:** Architecture reference
@@ -103,19 +108,20 @@ change a request, but terminal cleanup follows and no later normal update is pro
 ## How the pattern scales
 
 The
-[`ReferenceLiftMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.html>)
-adds bounded public inches, encoder conversion, a required homing reference, tolerance, and cached
-measurement. Homing is a non-blocking Task that establishes the reference; the Plant still owns
-coordinates and final output.
+[`ReferencePeriodicTurretMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.html>)
+adds a bounded radian coordinate, encoder conversion, tolerance, and cached measurement. Its
+`equivalentPositionsOf(...)` resolver turns one logical periodic request into the nearest legal
+physical representative. Status keeps requested, selected, applied, measured, and arrived facts
+separate; selection alone is not physical arrival.
 
 The
-[`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
-owns its Plants, transfer overlay, and per-wheel evidence. Each successful update publishes one
-[`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>)
-containing the grouped snapshot and custom facts. Flat requested/applied velocity and readiness
-methods avoid generic navigation. Readiness needs a positive value selected and applied without
-fallback, plus both wheels in tolerance; it cannot prove scoring. Stop publishes readiness false
-and transfer inactive; older Status values remain immutable.
+[`ReferenceFlywheelMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.html>)
+owns one grouped paired-velocity Plant. Each successful update publishes a
+[`ReferenceFlywheels.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.Status.html>)
+containing the grouped snapshot and two independent wheel measurements. Readiness needs a positive
+value selected and applied without fallback plus both wheels in tolerance; it cannot prove release
+or scoring. `ReferenceLauncherMechanism` delegates to that owner and composes its publication with
+object-sensor and transfer state instead of duplicating the Plant or flywheel status fields.
 
 ## Check your understanding
 

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (() => {
+      const searchLabel = "Search all guides";
+      const scopeId = "sushi-search-scope";
+      const scopeText =
+        "Searches all six guide areas. Filter by area. For exact classes and methods, use API search.";
+      const observedRoots = new WeakSet();
+      const savedTabIndexes = new WeakMap();
+      const filterBaseClasses = new WeakMap();
+
+      // Zensical 0.0.51 mounts its built-in search inside an open ShadowRoot. Keep using that
+      // component and its index; this layer only supplies scope text and keyboard semantics.
+      const isAvailableToKeyboard = (element, root) => {
+        for (let current = element;
+             current && current !== root.host;
+             current = current.parentElement) {
+          const style = getComputedStyle(current);
+          const bounds = current.getBoundingClientRect();
+          if (style.display === "none" || style.visibility === "hidden" ||
+              style.pointerEvents === "none" || bounds.width === 0 || bounds.height === 0) {
+            return false;
+          }
+        }
+        return true;
+      };
+
+      const syncOverlayAccessibility = (root, input) => {
+        const available = isAvailableToKeyboard(input, root);
+        if (available) {
+          root.host.removeAttribute("aria-hidden");
+        } else {
+          root.host.setAttribute("aria-hidden", "true");
+        }
+
+        // CSS opacity and pointer-events do not remove native controls from the tab order.
+        // Preserve their original tabindex while the built-in search overlay is closed.
+        const nativeControls = root.querySelectorAll(
+          'a[href], button, input, select, textarea, [contenteditable="true"]'
+        );
+        for (const control of nativeControls) {
+          if (!(control instanceof HTMLElement)) continue;
+          if (!available && !savedTabIndexes.has(control)) {
+            savedTabIndexes.set(control, control.getAttribute("tabindex"));
+            control.tabIndex = -1;
+          } else if (available && savedTabIndexes.has(control)) {
+            const previous = savedTabIndexes.get(control);
+            if (previous === null) {
+              control.removeAttribute("tabindex");
+            } else {
+              control.setAttribute("tabindex", previous);
+            }
+            savedTabIndexes.delete(control);
+          }
+        }
+      };
+
+      const enhanceScope = (root) => {
+        const input = root.querySelector('input[role="combobox"]');
+        if (!input) return null;
+
+        input.placeholder = searchLabel;
+        input.setAttribute("aria-label", searchLabel);
+
+        let help = root.getElementById(scopeId);
+        if (!help) {
+          help = document.createElement("p");
+          help.id = scopeId;
+          help.setAttribute("role", "note");
+          help.setAttribute(
+            "style",
+            "margin:0;padding:6px 16px;border-bottom:1px solid " +
+              "rgb(var(--color-foreground)/var(--alpha-lightest));" +
+              "color:rgb(var(--color-foreground)/var(--alpha-light));font-size:12px;line-height:1.35"
+          );
+          const controls = input.parentElement && input.parentElement.parentElement;
+          if (controls && controls.parentElement) {
+            controls.insertAdjacentElement("afterend", help);
+          } else {
+            root.appendChild(help);
+          }
+        }
+        if (help.textContent !== scopeText) help.textContent = scopeText;
+
+        const descriptions = new Set(
+          (input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean)
+        );
+        descriptions.add(scopeId);
+        input.setAttribute("aria-describedby", Array.from(descriptions).join(" "));
+
+        const controls = input.parentElement && input.parentElement.parentElement;
+        if (controls) {
+          const buttons = Array.from(controls.children)
+            .filter((child) => child instanceof HTMLButtonElement);
+          if (buttons.length > 0) buttons[0].setAttribute("aria-label", "Close guide search");
+          if (buttons.length > 1) {
+            buttons[buttons.length - 1].setAttribute(
+              "aria-label", "Show or hide guide-area filters"
+            );
+          }
+        }
+        return input;
+      };
+
+      const enhanceFilters = (root) => {
+        const tagsHeading = Array.from(root.querySelectorAll("h4"))
+          .find((heading) => heading.textContent.trim() === "Tags");
+        const list = tagsHeading && tagsHeading.nextElementSibling;
+        if (!(list instanceof HTMLOListElement)) return;
+
+        if (!tagsHeading.id) tagsHeading.id = "sushi-search-area-filters";
+        list.setAttribute("role", "group");
+        list.setAttribute("aria-labelledby", tagsHeading.id);
+        const items = Array.from(list.querySelectorAll(":scope > li"));
+        let baseClasses = filterBaseClasses.get(root);
+        if (!baseClasses && items.length > 0) {
+          const leastDecorated = items.reduce((candidate, item) =>
+            item.classList.length < candidate.classList.length ? item : candidate
+          );
+          baseClasses = new Set(leastDecorated.classList);
+          filterBaseClasses.set(root, baseClasses);
+        }
+        for (const item of items) {
+          const area = item.firstElementChild
+            ? item.firstElementChild.textContent.trim()
+            : item.textContent.trim();
+          item.setAttribute("role", "button");
+          item.setAttribute("aria-label", `Filter search results by ${area}`);
+          const pressed = Array.from(item.classList)
+            .some((className) => !baseClasses.has(className));
+          item.setAttribute("aria-pressed", String(pressed));
+          item.tabIndex = isAvailableToKeyboard(item, root) ? 0 : -1;
+          if (item.dataset.sushiKeyboardFilter !== "true") {
+            item.dataset.sushiKeyboardFilter = "true";
+            item.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                item.click();
+              }
+            });
+          }
+        }
+      };
+
+      const enhanceRoot = (root) => {
+        const input = enhanceScope(root);
+        enhanceFilters(root);
+        if (input) syncOverlayAccessibility(root, input);
+      };
+
+      const watchRoot = (root) => {
+        if (observedRoots.has(root)) return;
+        observedRoots.add(root);
+        enhanceRoot(root);
+        new MutationObserver(() => enhanceRoot(root)).observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["class"]
+        });
+      };
+
+      const discoverSearchRoots = (node) => {
+        if (!(node instanceof Element)) return;
+        const elements = [node, ...node.querySelectorAll("*")];
+        for (const element of elements) {
+          if (element.shadowRoot) watchRoot(element.shadowRoot);
+        }
+      };
+
+      const enhanceTrigger = () => {
+        const headerLabel = document.querySelector('label[for="__search"]');
+        if (headerLabel) {
+          headerLabel.setAttribute("aria-label", searchLabel);
+          headerLabel.setAttribute("title", searchLabel);
+        }
+        const search = document.querySelector('[data-md-component="search"]');
+        const trigger = search && search.querySelector("button");
+        if (!trigger) return;
+        search.setAttribute("aria-label", searchLabel);
+        if (trigger.textContent.trim() !== searchLabel) trigger.textContent = searchLabel;
+        trigger.setAttribute("aria-label", searchLabel);
+      };
+
+      enhanceTrigger();
+      discoverSearchRoots(document.documentElement);
+      new MutationObserver((records) => {
+        enhanceTrigger();
+        for (const record of records) {
+          for (const node of record.addedNodes) discoverSearchRoots(node);
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    })();
+  </script>
+{% endblock %}

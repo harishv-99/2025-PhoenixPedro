@@ -28,7 +28,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Locks the Starter profile surface and the intake owner's Config/effect boundary. */
+/** Maintainer contract for the Starter's data-only configuration and owner-local effect boundary. */
 public final class StarterProfileAndMechanismConfigTest {
 
     @Test

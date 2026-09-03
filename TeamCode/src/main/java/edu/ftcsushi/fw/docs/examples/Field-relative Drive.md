@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # Field-relative Drive
 
 **Learning mode:** Architecture reference
@@ -106,80 +111,15 @@ The station-authored direction stays fixed for the match. This baseline delibera
 re-zero and restore state: changing driver meaning mid-match is robot policy, not required
 field-relative conversion.
 
-## Files you will create
+## Maintained files
 
-Create `FieldRelativeDriveExample`, `FieldRelativeExampleProfile`, `FieldRelativeExamplePrestart`,
-`FieldRelativeExampleControls`, and `FieldRelativeExampleRobot` in the packages shown by the
-maintained example. These two complete files show the FTC entry and the only field-relative intent
-conversion; the profile, prestart, and root supply the reviewed station facts and lifecycle owners
-described above.
+The compiling example keeps the FTC host, profile, frozen prestart facts, controls owner, and robot
+composition root separate. Read the short explanation above first, then use these authorities when
+adapting the pattern:
 
-## Complete working slice
-
-<details>
-<summary>Complete working slice: FTC host</summary>
-
-<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.java -->
-```java
-package edu.ftcsushi.robots.examples.fieldrelative.opmode;
-
-import com.qualcomm.robotcore.eventloop.opmode.Disabled;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-
-import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
-import edu.ftcsushi.fw.ftc.RobotProgram;
-import edu.ftcsushi.robots.examples.fieldrelative.robot.FieldRelativeExampleProfile;
-import edu.ftcsushi.robots.examples.fieldrelative.robot.FieldRelativeExampleRobot;
-
-/** Managed example of explicit station-relative TeleOp drive using the Hub IMU. */
-@TeleOp(name = "FW Example: Field-relative drive", group = "FW Examples")
-@Disabled
-public final class FieldRelativeDriveExample extends FtcRobotOpMode {
-    @Override
-    protected void configure(RobotProgram program) {
-        new FieldRelativeExampleRobot(hardwareMap).declareTeleOp(
-                program, FieldRelativeExampleProfile.current(), gamepad1);
-    }
-}
-```
-
-</details>
-
-<details>
-<summary>Complete working slice: controls owner</summary>
-
-<!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleControls.java -->
-```java
-package edu.ftcsushi.robots.examples.fieldrelative.robot;
-
-import edu.ftcsushi.fw.drive.DriveSource;
-import edu.ftcsushi.fw.drive.source.GamepadDriveSource;
-import edu.ftcsushi.fw.ftc.input.GamepadDevice;
-import edu.ftcsushi.fw.localization.HeadingEstimator;
-
-/** Owns the field-relative example's driver meanings. */
-final class FieldRelativeExampleControls {
-    private final DriveSource drive;
-
-    FieldRelativeExampleControls(GamepadDevice driver,
-                                 HeadingEstimator heading,
-                                 FieldRelativeExamplePrestart prestart,
-                                 GamepadDriveSource.Config config) {
-        drive = new GamepadDriveSource(
-                driver.leftX(),
-                driver.leftY(),
-                driver.rightX(),
-                config
-        ).fieldRelativeTo(heading, prestart::frozenControlUpFieldHeadingRad);
-    }
-
-    DriveSource drive() {
-        return drive;
-    }
-}
-```
-
-</details>
+- [`FieldRelativeDriveExample`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.html>)
+- [Complete source: field-relative example](<https://github.com/harishv-99/2025-PhoenixPedro/tree/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative>)
+- [Complete source: focused field-relative tests](<https://github.com/harishv-99/2025-PhoenixPedro/tree/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/fieldrelative>)
 
 ## Verify the slice
 

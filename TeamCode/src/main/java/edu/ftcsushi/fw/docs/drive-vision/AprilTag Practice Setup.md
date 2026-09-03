@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # AprilTag practice setups (outside a full game field)
 
 Sushi supports AprilTag-based localization in two ways:

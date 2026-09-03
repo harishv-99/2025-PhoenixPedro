@@ -1,3 +1,8 @@
+---
+tags:
+  - Advanced
+---
+
 # FTC Sensors
 
 Use this guide alongside [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) when deciding whether a sensor belongs in a local control loop, an event/classification supervisor, or a spatial-guidance stack.
