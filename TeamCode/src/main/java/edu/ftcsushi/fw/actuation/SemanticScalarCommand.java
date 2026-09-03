@@ -8,8 +8,10 @@ import java.util.function.ToDoubleFunction;
  *
  * <p>Use this type when the capability request is a named value such as a lift {@code Height},
  * claw {@code State}, or launcher {@code Speed}, while the final {@link Plant} consumes one numeric
- * target. The mechanism owns this command, maps every public direct or Task request through
- * {@link #set(Object)}, and binds it into the final Plant graph with
+ * target. The mechanism owns this command and maps every public direct or Task request through
+ * this same owner and mapper. Direct APIs use {@link #set(Object)}; {@link SemanticScalarTasks}
+ * uses owner-bound preparation and publication so Task builders validate without publishing.
+ * Bind the command into the final Plant graph with
  * {@link PlantTargets#exact(SemanticScalarCommand)} or one of the corresponding overlay or
  * equivalent-position overloads.</p>
  *
@@ -72,6 +74,31 @@ public final class SemanticScalarCommand<S> {
     }
 
     /**
+     * Map and validate one request without publishing it.
+     *
+     * <p>This package-private seam lets {@link SemanticScalarTasks} prepare every semantic/numeric
+     * pair while its builder stage is selected, then publish a fresh request occurrence only when
+     * the built Task starts. The returned template is bound to this command and cannot be
+     * published through another owner.</p>
+     */
+    PreparedRequest<S> prepare(S semantic) {
+        S actualSemantic = Objects.requireNonNull(semantic, "semantic");
+        return new PreparedRequest<>(this, actualSemantic, mappedTargetFor(actualSemantic));
+    }
+
+    /** Publish one fresh occurrence of a previously validated, owner-bound request template. */
+    Request<S> publish(PreparedRequest<S> prepared) {
+        PreparedRequest<S> actual = Objects.requireNonNull(prepared, "prepared");
+        if (actual.owner != this) {
+            throw new IllegalArgumentException(
+                    "Prepared semantic request belongs to a different SemanticScalarCommand");
+        }
+        Request<S> next = new Request<>(actual.semantic, actual.commandTarget);
+        request = next;
+        return next;
+    }
+
+    /**
      * Compose the current request with one immutable Plant snapshot.
      *
      * <p>Current-request arrival is true only when the Plant resolution carries this command's
@@ -89,13 +116,36 @@ public final class SemanticScalarCommand<S> {
 
     private Request<S> map(S semantic) {
         S actualSemantic = Objects.requireNonNull(semantic, "semantic");
+        return new Request<>(actualSemantic, mappedTargetFor(actualSemantic));
+    }
+
+    private double mappedTargetFor(S actualSemantic) {
         double commandTarget = commandTargetFor.applyAsDouble(actualSemantic);
         if (!Double.isFinite(commandTarget)) {
             throw new IllegalArgumentException(
                     "commandTargetFor must return a finite target, got " + commandTarget
                             + " for semantic request " + actualSemantic);
         }
-        return new Request<>(actualSemantic, commandTarget);
+        return commandTarget;
+    }
+
+    /** Immutable mapped request template retained only by framework Task builders. */
+    static final class PreparedRequest<S> {
+        private final SemanticScalarCommand<S> owner;
+        private final S semantic;
+        private final double commandTarget;
+
+        private PreparedRequest(SemanticScalarCommand<S> owner,
+                                S semantic,
+                                double commandTarget) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.semantic = Objects.requireNonNull(semantic, "semantic");
+            this.commandTarget = commandTarget;
+        }
+
+        S semantic() {
+            return semantic;
+        }
     }
 
     /**

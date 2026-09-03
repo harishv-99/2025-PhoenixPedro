@@ -38,18 +38,26 @@ program.rootTask(intake.collectForSeconds(0.75));
 **Key APIs:** `program.rootTask(...)` declares the one managed Auto root; `Task` is cooperative,
 single-use work.
 
-[`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>) owns that routine
+[`StarterAuto`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.html>) owns that routine
 choice. `StarterRobot` only declares the intake output and presenter. At START, the fresh root Task
-requests `Mode.COLLECT` through the same `setMode(...)` method used by TeleOp. The mechanism maps
-that named request to configured power, and managed output updates realize it through the private
-Plant. After 0.75 seconds, the Task requests `Mode.STOPPED`. Active cancellation also restores that
-stopped mode, and FTC STOP cancels active work before stopping declared outputs.
+publishes `Mode.COLLECT` through the same semantic command owner used by TeleOp's `setMode(...)`.
+The mechanism maps that named request to configured power, and managed output updates realize it
+through the private Plant. After 0.75 seconds, the Task requests `Mode.STOPPED`. Active cancellation
+also restores that stopped mode, and FTC STOP cancels active work before stopping declared outputs.
 
-This is temporal intent, not a second hardware writer: the Task changes the mechanism's semantic
-request through `SemanticScalarCommand`; the mechanism remains the one object that maps it, updates
-the Plant, and stops the Plant. Use `ScalarTasks` directly when the capability request itself is a
-number, such as flywheel velocity. The Starter uses `setMode(...)` because its public request and
-composed status are named modes.
+The mechanism uses the semantic Task builder:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
+```java
+return SemanticScalarTasks.set(modeCommand, Mode.COLLECT)
+        .forSeconds(durationSec)
+        .then(Mode.STOPPED)
+        .build();
+```
+
+[`SemanticScalarTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>)
+changes the command owner's request; the mechanism still maps it, updates the Plant, and stops the
+Plant. Use `ScalarTasks` when the number itself is the capability request.
 
 ## Every run needs a fresh Task
 
@@ -115,9 +123,10 @@ timeout clears temporary requests without feeding.
 
 Cancellation before start has no effect. Active cancellation is terminal and idempotent; repeated
 or terminal cancellation does nothing, and cancelled work still cannot be reused. For the Reference
-lift, timeout or active cancellation leaves its selected persistent height request in place. It
-does not bypass the source graph with a direct hardware write, and direct cancellation never starts
-a later fallback branch.
+lift, timeout or active cancellation leaves its selected persistent height request in place. Its
+`moveTo(...)` implementation makes that policy explicit with `leaveRequestOnCancel()`. It does not
+bypass the source graph with a direct hardware write, and direct cancellation never starts a later
+fallback branch.
 
 ## Check your understanding
 
@@ -129,7 +138,7 @@ continue to launch only from its successful outcome.
 
 ## Go deeper when needed
 
-- Complete Starter source: [`StarterAuto.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java>)
-- Scaling example: [`ReferenceAutoRoutines.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/autonomous/ReferenceAutoRoutines.java>)
+- Complete Starter API: [`StarterAuto`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.html>)
+- Scaling example: [`ReferenceAutoRoutines`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/autonomous/ReferenceAutoRoutines.html>)
 - Task factories, composition, timing, and cancellation: [Tasks and Macros](<../../design/Tasks & Macros Quickstart.md>)
 - [Choose another Sushi topic](<../Beginner's Guide.md>)

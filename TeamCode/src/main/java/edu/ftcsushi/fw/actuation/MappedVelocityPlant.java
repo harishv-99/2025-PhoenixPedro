@@ -42,6 +42,7 @@ final class MappedVelocityPlant implements Plant {
     private final ScalarSource nativeMeasurement;
     private final PlantTargetResolver targetResolver;
     private final ScalarTarget commandTarget;
+    private final SemanticScalarCommand<?> semanticCommand;
     private final PlantTargetGuards targetGuards;
     private final PlantLifecycle lifecycle = new PlantLifecycle();
     private final PlantUpdateCycle updateCycle = new PlantUpdateCycle("VelocityPlant");
@@ -75,6 +76,7 @@ final class MappedVelocityPlant implements Plant {
         this.nativeMeasurement = Objects.requireNonNull(nativeMeasurement, "nativeMeasurement").memoized();
         this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
         this.commandTarget = PlantTargets.commandTargetOf(this.targetResolver);
+        this.semanticCommand = PlantTargets.semanticCommandOf(this.targetResolver);
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.configuredRange = Objects.requireNonNull(configuredRange, "configuredRange");
         this.nativePerPlantUnit = nativePerPlantUnit;
@@ -461,6 +463,11 @@ final class MappedVelocityPlant implements Plant {
     public ScalarTarget commandTarget() {
         if (commandTarget == null) return Plant.super.commandTarget();
         return commandTarget;
+    }
+
+    @Override
+    public boolean carriesSemanticCommand(SemanticScalarCommand<?> command) {
+        return semanticCommand != null && semanticCommand == command;
     }
 
     StandardControlTuning claimStandardControlTuning() {

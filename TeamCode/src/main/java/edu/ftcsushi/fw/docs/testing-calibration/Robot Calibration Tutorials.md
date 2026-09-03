@@ -174,7 +174,7 @@ Task search = PositionCalibrationTasks.search(lift)
 
 return Tasks.sequence(
         search,
-        Tasks.runOnce(() -> setHeight(Height.STOWED)));
+        SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
 ```
 
 `.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range. It
@@ -216,8 +216,8 @@ Task indexTray = PositionCalibrationTasks.search(tray)
 - Each attempt builds a fresh single-use `Task`; the mechanism remains the sole Plant heartbeat owner.
 - The search stages temporary raw output and always preserves the persistent target graph.
 - Success, timeout, and cancellation stop and release the search without changing its command.
-- A success-only semantic continuation calls the mechanism's ordinary setter; timeout and
-  cancellation skip it and retain the latest coherent request.
+- A success-only semantic continuation publishes through the mechanism's command owner; timeout
+  and cancellation skip it and retain the latest coherent request.
 - Finite software validation does not prove switch polarity, physical zero, clearance, or safe power.
 
 **Key APIs**
@@ -226,13 +226,14 @@ Task indexTray = PositionCalibrationTasks.search(tray)
 - `until(BooleanSource)` — supplies the independently owned reference cue.
 - `establishReferenceAt(...)` — anchors the public coordinate at the cue sample.
 - `failAfterSec(...)` — gives the search a bounded lifetime.
-- `Tasks.sequence(...)` / `Tasks.runOnce(...)` — adds mechanism-owned policy after exact success.
+- `Tasks.sequence(...)` / `SemanticScalarTasks.set(...).build()` — adds mechanism-owned semantic
+  policy after exact success.
 
 The search preserves the Plant's persistent command and final target resolver on every terminal
 path. It requests a nonterminal stop of the temporary raw output and releases the search; it does
 not call terminal `Plant.stop()`. The downstream Plant phase immediately evaluates the unchanged
-graph. In the homing macro above, exact search success starts the normal semantic setter before that
-Plant phase. Timeout and active cancellation stop the sequence before the setter and retain the
+graph. In the homing macro above, exact search success publishes the semantic request before that
+Plant phase. Timeout and active cancellation stop the sequence before the request and retain the
 prior—or any during-search superseding—semantic/numeric request. There is no need to preselect
 STOWED before search because temporary search ownership already suspends target realization.
 

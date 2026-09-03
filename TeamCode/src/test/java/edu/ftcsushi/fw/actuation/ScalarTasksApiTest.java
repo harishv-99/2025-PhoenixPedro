@@ -56,14 +56,15 @@ public final class ScalarTasksApiTest {
                 publicDeclaredMethodSignatures(ScalarTasks.TimedBuildStep.class));
         assertEquals(setOf(
                         signature(ScalarTasks.ReachedReadyStep.class, "cancelTo", double.class),
-                        signature(ScalarTasks.ReachedReadyStep.class, "leaveTargetOnCancel")),
+                        signature(ScalarTasks.ReachedReadyStep.class, "leaveRequestOnCancel")),
                 publicDeclaredMethodSignatures(ScalarTasks.ReachedCancellationStep.class));
         assertEquals(setOf(
                         signature(Task.class, "build"),
                         signature(ScalarTasks.ReachedReadyStep.class, "stableFor", double.class),
-                        signature(ScalarTasks.ReachedReadyStep.class, "thenTarget", double.class),
                         signature(ScalarTasks.ReachedReadyStep.class, "timeout", double.class)),
                 publicDeclaredMethodSignatures(ScalarTasks.ReachedReadyStep.class));
+        assertFalse(publicStaticMethodNames(ScalarTasks.class).contains("move"));
+        assertFalse(publicStaticMethodNames(ScalarTasks.class).contains("once"));
         assertFalse(publicStaticMethodNames(PlantTargets.class).contains("fromScalar"));
     }
 
@@ -103,12 +104,11 @@ public final class ScalarTasksApiTest {
         TestPlant plant = new TestPlant(target, true);
         ScalarTasks.ReachedCancellationStep cancellation = ScalarTasks.set(target, 8.0)
                 .untilReachedBy(plant);
-        ScalarTasks.ReachedReadyStep feedbackLeave = cancellation.leaveTargetOnCancel();
+        ScalarTasks.ReachedReadyStep feedbackLeave = cancellation.leaveRequestOnCancel();
         ScalarTasks.ReachedReadyStep feedbackCancel = cancellation.cancelTo(-1.0);
         ScalarTasks.ReachedReadyStep configured = feedbackLeave
                 .stableFor(0.1)
-                .timeout(0.5)
-                .thenTarget(0.0);
+                .timeout(0.5);
         Task feedbackLeaveFirst = feedbackLeave.build();
         Task feedbackLeaveSecond = feedbackLeave.build();
         Task feedbackCancelFirst = feedbackCancel.build();
@@ -159,7 +159,7 @@ public final class ScalarTasksApiTest {
         plant.atTarget = true;
         Task move = ScalarTasks.set(shared, 1.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
 
@@ -178,16 +178,13 @@ public final class ScalarTasksApiTest {
         TestPlant plant = new TestPlant(target, true);
         ScalarTasks.ReachedReadyStep base = ScalarTasks.set(target, 3.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel();
+                .leaveRequestOnCancel();
 
         ScalarTasks.ReachedReadyStep stable = base.stableFor(0.1);
         assertFailure(() -> stable.stableFor(0.2), IllegalStateException.class,
                 "already been answered");
         ScalarTasks.ReachedReadyStep timed = base.timeout(0.5);
         assertFailure(() -> timed.timeout(1.0), IllegalStateException.class,
-                "already been answered");
-        ScalarTasks.ReachedReadyStep finalTarget = base.thenTarget(0.0);
-        assertFailure(() -> finalTarget.thenTarget(1.0), IllegalStateException.class,
                 "already been answered");
 
         assertNotSame(stable.build(), timed.build());
@@ -211,13 +208,11 @@ public final class ScalarTasksApiTest {
 
         ScalarTasks.ReachedReadyStep reached = ScalarTasks.set(target, 1.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel();
+                .leaveRequestOnCancel();
         assertFailure(() -> reached.stableFor(-0.1),
                 IllegalArgumentException.class, ">= 0");
         assertFailure(() -> reached.timeout(0.0),
                 IllegalArgumentException.class, "> 0");
-        assertFailure(() -> reached.thenTarget(Double.NEGATIVE_INFINITY),
-                IllegalArgumentException.class, "finite");
 
         assertEquals(0, target.getCount);
         assertEquals(0, target.setCount);

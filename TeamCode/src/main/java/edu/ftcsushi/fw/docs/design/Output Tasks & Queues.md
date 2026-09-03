@@ -2,7 +2,8 @@
 
 Sushi has two common ways to express mechanism behavior over time:
 
-1. **Tasks that change a scalar-complete persistent command target** (`ScalarTasks`)
+1. **Tasks that change a persistent numeric or named scalar command** (`ScalarTasks` or
+   `SemanticScalarTasks`)
 2. **Tasks that produce a temporary scalar output** (`OutputTask` + `OutputTaskRunner`)
 
 This document is about the second pattern. Use it when a short behavior should temporarily influence a Plant target without becoming a second Plant writer.
@@ -316,7 +317,7 @@ Typical abort situations:
 
 ---
 
-## 9. When to use ScalarTasks vs Output tasks
+## 9. When to use scalar set Tasks vs Output Tasks
 
 Use **ScalarTasks** when:
 
@@ -334,9 +335,11 @@ equivalent-position, or advanced target graph.
 
 If the capability names a `Height`, `Mode`, or semantic pose, do not write the backing number with
 `ScalarTasks`. The mechanism owns one `SemanticScalarCommand`, whose mapper validates and publishes
-the named request with its finite numeric target. A Task calls that same setter and waits on the
-composed `SemanticScalarSnapshot`; it cannot access a raw numeric writer. Output queues likewise
-remain temporary target producers rather than alternate semantic-state writers.
+the named request with its finite numeric target.
+[`SemanticScalarTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>)
+publishes immediate, timed, or feedback-aware work through that same command; it cannot access a raw
+numeric writer. Output queues likewise remain temporary target producers rather than alternate
+semantic-state writers.
 
 Use **OutputTaskRunner** when:
 
@@ -347,7 +350,7 @@ Use **OutputTaskRunner** when:
 Rule of thumb:
 
 ```text
-ScalarTasks.set(...) changes a command target.
+ScalarTasks.set(...) or SemanticScalarTasks.set(...) changes a persistent command.
 OutputTaskRunner proposes a temporary output.
 PlantTargets.overlay(...) decides the final Plant target.
 ```

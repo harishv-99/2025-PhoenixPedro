@@ -144,7 +144,7 @@ public final class PlantEquivalentPositionTaskTest {
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 100.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .build();
 
         move.start(time.clock());
@@ -178,7 +178,7 @@ public final class PlantEquivalentPositionTaskTest {
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 20.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .build();
 
         // Establish the limiter's physical starting point before the Task requests a move.
@@ -237,7 +237,7 @@ public final class PlantEquivalentPositionTaskTest {
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 20.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .stableFor(0.10)
                 .build();
 
@@ -277,7 +277,7 @@ public final class PlantEquivalentPositionTaskTest {
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 20.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .stableFor(0.10)
                 .build();
 
@@ -374,7 +374,7 @@ public final class PlantEquivalentPositionTaskTest {
     private static Task moveTo20(Plant plant) {
         return ScalarTasks.set(plant.commandTarget(), 20.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .build();
     }
 

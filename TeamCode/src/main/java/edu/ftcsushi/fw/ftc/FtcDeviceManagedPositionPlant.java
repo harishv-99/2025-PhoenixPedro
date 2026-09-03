@@ -9,6 +9,7 @@ import edu.ftcsushi.fw.actuation.PlantTargetStatus;
 import edu.ftcsushi.fw.actuation.PositionPlant;
 import edu.ftcsushi.fw.actuation.PositionPlantSnapshot;
 import edu.ftcsushi.fw.actuation.ScalarRange;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.source.ScalarTarget;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -72,6 +73,9 @@ final class FtcDeviceManagedPositionPlant implements PositionPlant {
     @Override public boolean atTarget(double target) { return delegate.atTarget(target); }
     @Override public boolean hasCommandTarget() { return delegate.hasCommandTarget(); }
     @Override public ScalarTarget commandTarget() { return delegate.commandTarget(); }
+    @Override public boolean carriesSemanticCommand(SemanticScalarCommand<?> command) {
+        return delegate.carriesSemanticCommand(command);
+    }
     @Override public PositionPlantSnapshot snapshot() { return delegate.snapshot(); }
     @Override public Periodicity periodicity() { return delegate.periodicity(); }
     @Override public double period() { return delegate.period(); }

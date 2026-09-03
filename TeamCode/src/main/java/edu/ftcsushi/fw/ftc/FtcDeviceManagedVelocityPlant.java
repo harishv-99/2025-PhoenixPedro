@@ -13,6 +13,7 @@ import edu.ftcsushi.fw.actuation.PlantSnapshot;
 import edu.ftcsushi.fw.actuation.PlantTargetResolution;
 import edu.ftcsushi.fw.actuation.PlantTargetStatus;
 import edu.ftcsushi.fw.actuation.ScalarRange;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.hal.VelocityOutput;
@@ -109,6 +110,9 @@ final class FtcDeviceManagedVelocityPlant implements Plant {
     @Override public boolean atTarget(double target) { return delegate.atTarget(target); }
     @Override public boolean hasCommandTarget() { return delegate.hasCommandTarget(); }
     @Override public ScalarTarget commandTarget() { return delegate.commandTarget(); }
+    @Override public boolean carriesSemanticCommand(SemanticScalarCommand<?> command) {
+        return delegate.carriesSemanticCommand(command);
+    }
     @Override public PlantSnapshot snapshot() { return delegate.snapshot(); }
     @Override
     public void stop() {

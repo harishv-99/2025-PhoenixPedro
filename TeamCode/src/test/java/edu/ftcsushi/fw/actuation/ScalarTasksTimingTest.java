@@ -46,9 +46,8 @@ public final class ScalarTasksTimingTest {
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         Task move = ScalarTasks.set(plant.command, 8.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .timeout(0.10)
-                .thenTarget(-2.0)
                 .build();
 
         manualClock.nextCycle(1.0);
@@ -66,7 +65,7 @@ public final class ScalarTasksTimingTest {
         move.update(manualClock.clock());
         assertTrue(move.isComplete());
         assertEquals(TaskOutcome.TIMEOUT, move.getOutcome());
-        assertEquals(-2.0, plant.command.get(), 0.0);
+        assertEquals(8.0, plant.command.get(), 0.0);
     }
 
     @Test
@@ -75,10 +74,9 @@ public final class ScalarTasksTimingTest {
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         Task move = ScalarTasks.set(plant.command, 12.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .stableFor(0.10)
                 .timeout(1.0)
-                .thenTarget(3.0)
                 .build();
 
         manualClock.nextCycle(0.75);
@@ -98,7 +96,7 @@ public final class ScalarTasksTimingTest {
         move.update(manualClock.clock());
         assertTrue(move.isComplete());
         assertEquals(TaskOutcome.SUCCESS, move.getOutcome());
-        assertEquals(3.0, plant.command.get(), 0.0);
+        assertEquals(12.0, plant.command.get(), 0.0);
     }
 
     @Test
@@ -108,7 +106,7 @@ public final class ScalarTasksTimingTest {
         plant.reached = true;
         Task move = ScalarTasks.set(plant.command, 4.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .stableFor(0.10)
                 .build();
 
@@ -145,10 +143,9 @@ public final class ScalarTasksTimingTest {
         plant.reached = true;
         Task move = ScalarTasks.set(plant.command, 6.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .stableFor(0.10)
                 .timeout(0.10)
-                .thenTarget(1.0)
                 .build();
 
         move.start(manualClock.clock());
@@ -158,7 +155,7 @@ public final class ScalarTasksTimingTest {
 
         assertTrue(move.isComplete());
         assertEquals(TaskOutcome.SUCCESS, move.getOutcome());
-        assertEquals(1.0, plant.command.get(), 0.0);
+        assertEquals(6.0, plant.command.get(), 0.0);
     }
 
     @Test
@@ -167,9 +164,8 @@ public final class ScalarTasksTimingTest {
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         Task move = ScalarTasks.set(plant.command, 5.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .timeout(1.0)
-                .thenTarget(-1.0)
                 .build();
 
         move.start(manualClock.clock());

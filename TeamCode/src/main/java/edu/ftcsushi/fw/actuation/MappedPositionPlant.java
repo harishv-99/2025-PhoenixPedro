@@ -85,6 +85,7 @@ final class MappedPositionPlant implements PositionPlant {
     private final PowerOutput searchPowerOut;
     private final PlantTargetResolver targetResolver;
     private final ScalarTarget commandTarget;
+    private final SemanticScalarCommand<?> semanticCommand;
     private final PlantTargetGuards targetGuards;
     private final PlantLifecycle lifecycle = new PlantLifecycle();
     private final PlantUpdateCycle updateCycle = new PlantUpdateCycle("PositionPlant");
@@ -143,6 +144,7 @@ final class MappedPositionPlant implements PositionPlant {
         this.searchPowerOut = searchPowerOut;
         this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
         this.commandTarget = PlantTargets.commandTargetOf(this.targetResolver);
+        this.semanticCommand = PlantTargets.semanticCommandOf(this.targetResolver);
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.periodicity = Objects.requireNonNull(periodicity, "periodicity");
         this.period = period;
@@ -770,6 +772,11 @@ final class MappedPositionPlant implements PositionPlant {
     public ScalarTarget commandTarget() {
         if (commandTarget == null) return PositionPlant.super.commandTarget();
         return commandTarget;
+    }
+
+    @Override
+    public boolean carriesSemanticCommand(SemanticScalarCommand<?> command) {
+        return semanticCommand != null && semanticCommand == command;
     }
 
     StandardControlTuning claimStandardControlTuning() {

@@ -201,6 +201,21 @@ public interface Plant {
     }
 
     /**
+     * Whether this Plant's final target graph carries {@code command} as its semantic base.
+     *
+     * <p>The relation is exact object identity, not semantic or numeric equality. Framework
+     * Plants report it for an exact semantic command, for that command as an overlay base, and
+     * through the equivalent-position transform. It remains false for a command used only by an
+     * overlay layer or another graph that cannot preserve authoritative request provenance.</p>
+     *
+     * <p>This is a narrow validation query for feedback-aware {@link SemanticScalarTasks}; it
+     * does not expose a semantic writer from the Plant or create a second command path.</p>
+     */
+    default boolean carriesSemanticCommand(SemanticScalarCommand<?> command) {
+        return false;
+    }
+
+    /**
      * Capture this Plant's cached public facts in one immutable value.
      *
      * <p>This method does not update the Plant, sample hardware, or add a publication heartbeat.

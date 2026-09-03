@@ -7,11 +7,11 @@ import java.util.Objects;
 import edu.ftcsushi.fw.actuation.Plant;
 import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
+import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.ftc.FtcActuators;
 import edu.ftcsushi.fw.ftc.RobotProgram;
-import edu.ftcsushi.fw.task.RunForSecondsTask;
 import edu.ftcsushi.fw.task.Task;
 
 /**
@@ -104,11 +104,10 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
             throw new IllegalArgumentException(
                     "durationSec must be finite and > 0, got " + durationSec);
         }
-        return new RunForSecondsTask(
-                durationSec,
-                () -> setMode(Mode.COLLECT),
-                ignoredClock -> setMode(Mode.COLLECT),
-                () -> setMode(Mode.STOPPED));
+        return SemanticScalarTasks.set(modeCommand, Mode.COLLECT)
+                .forSeconds(durationSec)
+                .then(Mode.STOPPED)
+                .build();
     }
 
     @Override

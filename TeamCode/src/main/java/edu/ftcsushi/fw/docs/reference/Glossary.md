@@ -146,8 +146,8 @@ Only APIs whose names say `Native` or a controller-native unit use them.
 
 ### Feedback-capable Plant
 
-A Plant with meaningful measurement and `atTarget` behavior. Feedback-aware ScalarTasks require
-both the explicit Plant and the exact command target it follows.
+A Plant with meaningful measurement and `atTarget` behavior. Feedback-aware `ScalarTasks` and
+`SemanticScalarTasks` require an explicit Plant carrying the exact command they publish.
 
 ### Open-loop Plant
 

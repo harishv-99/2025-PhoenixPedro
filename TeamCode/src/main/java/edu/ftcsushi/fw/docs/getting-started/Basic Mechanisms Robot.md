@@ -242,7 +242,6 @@ package edu.ftcsushi.robots.examples.basicmechanisms;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionPlantSnapshot;
-import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.actuation.SemanticScalarSnapshot;
 import edu.ftcsushi.fw.task.Task;
 
@@ -309,11 +308,6 @@ public interface BasicLift {
         public PositionPlantSnapshot plantSnapshot() {
             return snapshot.plant();
         }
-
-        /** Whether the supplied exact request revision owns this capture and is at target. */
-        boolean isAtTargetFor(SemanticScalarCommand.Request<Height> request) {
-            return snapshot.request() == request && snapshot.currentRequestAtTarget();
-        }
     }
 
     /** Selects a persistent semantic height without waiting for physical arrival. */
@@ -375,16 +369,12 @@ public interface BasicLift {
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
 ```java
-// docs: The Task uses the same semantic setter, then waits on one capability status snapshot.
-        Height selectedHeight = Objects.requireNonNull(height, "height");
-        StartedRequest started = new StartedRequest();
-        BooleanSource selectedRequestReached = BooleanSource.of(
-                () -> status().isAtTargetFor(started.request));
-
-        // Every semantic Task routes through the same owner setter as direct controls.
-        return Tasks.sequence(
-                Tasks.runOnce(() -> started.request = setHeightAndReturnRequest(selectedHeight)),
-                Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
+// docs: The semantic builder publishes through the owner and tracks feedback identity internally.
+        return SemanticScalarTasks.set(heightCommand, Objects.requireNonNull(height, "height"))
+                .untilReachedBy(lift)
+                .leaveRequestOnCancel()
+                .timeout(moveTimeoutSec)
+                .build();
 ```
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
@@ -399,7 +389,7 @@ public interface BasicLift {
 
         return Tasks.sequence(
                 search,
-                Tasks.runOnce(() -> setHeight(Height.STOWED)));
+                SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
 ```
 
 <!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
@@ -414,6 +404,7 @@ import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
 import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
+import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -425,11 +416,6 @@ import edu.ftcsushi.fw.task.Tasks;
 
 /** Owns one bounded referenced-position Plant and realizes {@link BasicLift} intent. */
 public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output {
-
-    /** Exact request revision selected when one feedback move starts. */
-    private static final class StartedRequest {
-        private SemanticScalarCommand.Request<Height> request;
-    }
 
     /** Data-only lift wiring, coordinate, limits, and timeout choices. */
     public static final class Config {
@@ -548,20 +534,16 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
 
     @Override
     public void setHeight(Height height) {
-        setHeightAndReturnRequest(height);
+        heightCommand.set(Objects.requireNonNull(height, "height"));
     }
 
     @Override
     public Task moveTo(Height height) {
-        Height selectedHeight = Objects.requireNonNull(height, "height");
-        StartedRequest started = new StartedRequest();
-        BooleanSource selectedRequestReached = BooleanSource.of(
-                () -> status().isAtTargetFor(started.request));
-
-        // Every semantic Task routes through the same owner setter as direct controls.
-        return Tasks.sequence(
-                Tasks.runOnce(() -> started.request = setHeightAndReturnRequest(selectedHeight)),
-                Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
+        return SemanticScalarTasks.set(heightCommand, Objects.requireNonNull(height, "height"))
+                .untilReachedBy(lift)
+                .leaveRequestOnCancel()
+                .timeout(moveTimeoutSec)
+                .build();
     }
 
     @Override
@@ -575,7 +557,7 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
 
         return Tasks.sequence(
                 search,
-                Tasks.runOnce(() -> setHeight(Height.STOWED)));
+                SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
     }
 
     @Override
@@ -593,10 +575,6 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
     @Override
     public void stop() {
         lift.stop();
-    }
-
-    private SemanticScalarCommand.Request<Height> setHeightAndReturnRequest(Height height) {
-        return heightCommand.set(Objects.requireNonNull(height, "height"));
     }
 
     private double positionFor(Height height) {
@@ -1368,8 +1346,8 @@ if any device moves during review, press STOP and investigate before continuing.
 - `FtcSensors.digitalLow(...)` makes the active-low switch meaning explicit.
 - The Plant builder declares units, bounds, reference, feedback tolerance, command source, and
   output limit before `build()`.
-- The lift's direct commands and Tasks share one setter; `PositionCalibrationTasks` searches
-  without changing that paired request.
+- The lift's setter and `SemanticScalarTasks` share one command owner;
+  `PositionCalibrationTasks` searches without changing that paired request.
 
 **Key APIs**
 
@@ -1378,7 +1356,7 @@ if any device moves during review, press STOP and investigate before continuing.
 - [`BasicDriveControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveControls.java>) / [`BasicLiftControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftControls.java>) / [`BasicClawControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawControls.java>) — one operator-meaning owner per capability.
 - [`FtcSensors.digitalLow(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcSensors.html>) / [`FtcActuators.plant(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcActuators.html>) — explicit FTC input and staged Plant construction boundaries.
 - [`PositionCalibrationTasks.search(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/PositionCalibrationTasks.html>) / [`Tasks.sequence(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — command-preserving reference search plus exact-success semantic continuation.
-- [`Tasks.waitUntil(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>) — bounded wait on the mechanism's coherent semantic request and arrival evidence.
+- [`SemanticScalarTasks.set(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>) — immediate, timed, and feedback-aware Tasks through the same semantic command owner.
 
 **If it fails:** Fix the first configuration or ownership error. Do not expose a raw Plant at the
 composition root or add hardware words to the capability.

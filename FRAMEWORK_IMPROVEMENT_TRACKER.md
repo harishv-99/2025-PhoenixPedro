@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -230,6 +230,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 121 | CAL-04 | Mechanism-owned semantic request consistency | Done | The reviewed command-preserving search API, mechanism-owned lift request snapshots, semantic move/home composition, maintained caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 122 | STATUS-01 | Composable scalar actuator snapshots | Done | The reviewed generic snapshot machinery, thin capability-shaped status views, named position/velocity guidance, maintained migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 123 | STATUS-02 | Reference launcher snapshot composition cleanup | Done | The reviewed launcher snapshot composition, transactional publication, fresh experiment evidence, caller/test migrations, synchronized teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 124 | TASK-06 | Parallel numeric and semantic scalar Task lifetimes | Done | The reviewed parallel scalar Task API, maintained-caller migration, synchronized documentation, adversarial review, deterministic verification, Android Studio review, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -26364,6 +26365,169 @@ implementation.
   committing the reviewed 16-path diff on `codex/status-02-reference-launcher-snapshot-cleanup`,
   pushing that branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull
   request, and merging only into `master`; VISION-03 and all later items remain unstarted.
+
+### TASK-06 - Parallel numeric and semantic scalar Task lifetimes
+
+- **Gate 1 start and confirmed behavior (2026-09-02):** **Ready.** Numeric requests already use one
+  staged `ScalarTasks.set(target, value)` entry for a write-once Task, a reasserting timed Task, or a
+  feedback-aware move. Named requests instead require each mechanism to expose the same semantic
+  setter through handwritten `Tasks.runOnce(...)`, `RunForSecondsTask`, and
+  `Tasks.runOnce(set) + Tasks.waitUntil(status)` compositions. `BasicLiftMechanism` and
+  `ReferenceLiftMechanism` each retain a mutable started-request holder solely to correlate one
+  named move; `StarterIntakeMechanism.collectForSeconds(...)` hand-codes the exact numeric timed
+  start/update/end lifecycle. This duplicates Task state, leaks request-correlation ceremony into
+  maintained robot code, and leaves numeric and named versions of the same lifetime with different
+  discoverability.
+- **Complete caller and public-construction audit:** `ScalarTasks` is the sole scalar Task facade and
+  has one `set(ScalarTarget, double)` factory whose staged branches are `build()`,
+  `forSeconds(...)`, and `untilReachedBy(Plant)`. Direct numeric requests remain
+  `ScalarTarget.set(double)`. `SemanticScalarCommand.create(initial, mapper)` and `set(S)` are the
+  sole named scalar owner construction/write paths; `snapshot(plantSnapshot)` already supplies
+  exact request-identity completion evidence, but there is no semantic Task facade. The two
+  maintained lift mechanisms are the concrete named-feedback callers, Starter intake is the
+  concrete named-timed caller, and post-home success continuations are concrete deferred named
+  writes. Numeric production callers cover write-once and timed power/position requests; feedback
+  final-target and cancellation names also occur throughout focused tests and current guidance.
+  `RunForSecondsTask` remains public for genuinely custom callbacks, not as the ordinary named
+  scalar recipe. No position- or velocity-specific Task facade adds distinct capability: Plant
+  feedback already owns position, grouped-motor, and velocity arrival truth.
+- **Staged-parameter and sibling result:** `ScalarTarget` and `SemanticScalarCommand<S>` are retained
+  owner references with distinct scalar-complete versus named-request meaning. The Plant supplied
+  to `untilReachedBy(...)` is a distinct feedback/provenance observer, not another spelling of the
+  writer: one command may feed more than one Plant, so it cannot infer the intended observer.
+  Durations, scalar/semantic values, stability windows, timeouts, and cancellation answers are
+  constructed inline and need direct staged answers rather than stored policy types. Numeric and
+  semantic facades therefore merit parallel lifetime grammar; separate position, velocity, power,
+  `move(...)`, `once(...)`, policy-enum, or bound-endpoint siblings would duplicate the supported
+  path without new evidence.
+- **Ordinary-call simplicity comparison:** the selected mechanism implementations are
+  `SemanticScalarTasks.set(heightCommand, HIGH).untilReachedBy(lift).leaveRequestOnCancel().timeout(t).build()`
+  and `SemanticScalarTasks.set(modeCommand, COLLECT).forSeconds(t).then(STOPPED).build()`. They ask
+  once for the named request, lifetime, observer where needed, explicit cancellation/end policy,
+  and optional timing. The current lift spelling separately introduces a mutable holder,
+  `BooleanSource`, instant Task, wait Task, and sequence; the current intake spelling introduces
+  callback lifecycle details. Documentation-only guidance retains that repetition. A mechanism-
+  local helper can shorten one caller but repeats the same state machine in the next mechanism.
+  A generic `move(...)` sibling or `set(..., completionMode)` argument makes lifetime a memorized
+  overload/enum choice instead of a discoverable staged branch. The selected facade removes robot
+  ceremony while keeping all safety decisions visible.
+- **Chosen public design:** add `SemanticScalarTasks.set(command, semantic)` with the same three
+  staged lifetime branches as `ScalarTasks.set(...)`: direct `build()`; timed
+  `forSeconds(...).then(...)/leaveThere().build()`; and feedback
+  `untilReachedBy(plant).cancelTo(...)/leaveRequestOnCancel().stableFor(...).timeout(...).build()`.
+  Rename numeric `leaveTargetOnCancel()` to `leaveRequestOnCancel()` and remove feedback-only
+  `thenTarget(...)`; add no semantic `thenRequest(...)`. Feedback success and timeout retain the
+  latest persistent request, while outcome-specific follow-up uses `Tasks.sequence(...)`,
+  `branchOnOutcome(...)`, or `sequenceOnCompletion(...)`. Timed `.then(...)` remains distinct and
+  required because it is the ending policy used on both natural expiry and active cancellation.
+  Direct capability setters and the direct `ScalarTarget.set`/`SemanticScalarCommand.set` APIs
+  remain unchanged.
+- **Semantic identity and timed-ownership contract:** each built semantic Task publishes a fresh
+  immutable semantic/numeric request occurrence only when it starts. A feedback branch writes once
+  and never fights a later request; same-valued supersession therefore cannot complete old work.
+  A timed branch deliberately owns the request for its interval. While uncontested it keeps the
+  same request identity without remapping or allocating each heartbeat. If another writer
+  supersedes it, the next timed update publishes a fresh occurrence of the Task's prepared
+  semantic/numeric pair rather than resurrecting stale arrival evidence. `.then(end)` publishes a
+  fresh ending occurrence once on natural expiry or active cancellation; `.leaveThere()` performs
+  no terminal write. Numeric timed Tasks retain their existing every-update reassertion because a
+  scalar value carries no occurrence identity. Competing timed/direct behavior remains robot-owned
+  coordination, with documented last-writer ordering rather than hidden arbitration.
+- **Validation, Plant relationship, and lifecycle:** semantic values are mapped and validated into
+  unpublished owner-bound templates at the staged builder boundary; the mapping contract remains a
+  side-effect-free value operation and no request changes before Task start. Every `build()` still
+  creates a fresh Task and every start/end/reclaim creates a fresh published occurrence. Add one
+  narrow read-only `Plant.carriesSemanticCommand(command)` relationship so
+  `untilReachedBy(...)` rejects a mismatched graph or feedback-free Plant during construction;
+  this is Plant-to-command evidence, not a command-to-Plant backlink, and does not remove the
+  explicit observer argument. Preserve single-use, update-before-start rejection, active-only
+  idempotent cancellation, own-start `clock.nowSec()` timing, exact Task outcomes, and at least one
+  downstream Plant observation for every positive timed request. Zero duration follows existing
+  numeric behavior.
+- **Framework Principles result:** the mechanism remains the one semantic owner and Plant heartbeat;
+  Tasks publish through that owner rather than bypassing it with raw doubles. The two facades exist
+  because numeric-complete and named requests expose distinct public meaning, while their parallel
+  lifetime vocabulary removes an arbitrary exception. Feedback completion remains evidence-based
+  and observer-specific, timeout remains an outcome rather than hidden recovery, cancellation
+  writes only another persistent request, and no Task writes hardware or advances a Plant.
+- **Rejected and deferred designs:** no change, documentation-only callbacks, and mechanism-local
+  helpers preserve repeated lifecycle code. One generic object-valued facade loses compile-time
+  scalar semantics; a mapping-function argument duplicates `SemanticScalarCommand` ownership;
+  binding a unique Plant into the command is false for shared commands; inferring semantic status
+  from numeric targets breaks coherence; per-loop fresh semantic `set(...)` calls churn identity
+  and evidence; re-publishing an old identity after supersession can revive stale evidence. Do not
+  add arbitrary begin/end hooks, position/velocity subclasses, a Plant-root semantic setter,
+  automatic feedback terminal targets, resource arbitration, or changes to calibration-search
+  ownership. `PositionCalibrationTasks.search(...)` remains command-preserving and post-reference
+  policy remains explicit composition.
+- **Bounded implementation and documentation scope:** add the semantic Task facade and only the
+  internal semantic-request preparation/publication support needed for its truthful lifecycle; add
+  the narrow Plant graph relationship and delegate it through maintained Plant implementations;
+  simplify Basic/Reference lift and Starter intake implementations; migrate every affected numeric
+  name/terminal-hook caller; and synchronize Framework Principles, Task guidance, the Basic
+  Mechanisms course, relevant Starter/reference lessons, Javadocs, and generated API-reference
+  links. Keep capability-shaped public names such as `setHeight`, `moveTo`, and
+  `collectForSeconds`; keep interface-hidden `Tasks.runOnce(...)` calls when the command owner is
+  intentionally unavailable. Do not change Phoenix application policy, Plant arrival algorithms,
+  calibration search, output queues, drive, or unrelated tracker items.
+- **Deterministic verification plan:** lock the exact staged public surface and absence of
+  `move`/`once`, legacy cancellation naming, and feedback terminal hooks. Cover write-once timing,
+  builder reuse/fresh identities, semantic mapping failure without publication, mismatched/open-
+  loop Plant rejection, exact semantic request selection, same-valued supersession, success,
+  stability, timeout, both cancellation choices, timed uncontested identity stability, fresh
+  identity on reclaim, `.then`/`.leaveThere`, zero/positive durations, first-cycle observability,
+  pre-start/active/terminal cancellation, update-before-start, and second-start rejection. Run the
+  Basic/Reference/Starter mechanism and scenario suites, equivalent-position regressions, exact
+  public API/documentation tests, full TeamCode unit tests, Java compilation, Sushi Javadocs,
+  exhaustive caller/static searches, trailing-whitespace checks, and `git diff --check`. Software
+  cannot prove physical motion, mapping calibration, settling, switch behavior, shooter response,
+  or safe cancellation targets; those remain adopting-robot validation.
+- **Gate 1 approval and Gate 2 start (2026-09-02):** **In progress.** After reviewing and refining
+  the complete plan—including explicit semantic timed reassertion—the user instructed
+  **“Implement the plan.”** This authorizes only TASK-06 implementation, caller/test/documentation
+  synchronization, and verification on `codex/task-06-parallel-scalar-set-tasks`, freshly based on
+  `origin/master@c979b64a4672e8f5bb0b70a9857094d45b2085de`. It does not authorize staging,
+  committing, pushing, opening or merging a pull request, VISION-03, or another tracker item.
+- **Gate 2 implementation result (2026-09-02):** **Verifying.** Added the parallel
+  `SemanticScalarTasks.set(command, request)` immediate, timed, and feedback-aware staged grammar;
+  kept its prepared semantic/numeric templates package-private and owner-bound; and added the
+  narrow `Plant.carriesSemanticCommand(command)` validation relationship through exact, overlay-
+  base, equivalent-position, mapped position/velocity, and FTC delegate Plants. Timed named Tasks
+  retain one request identity while uncontested and publish a fresh occurrence only when reclaiming
+  ownership; feedback Tasks publish once and yield permanently to supersession. Numeric feedback
+  now uses `leaveRequestOnCancel()` and has no terminal `thenTarget(...)` hook. Basic/Reference lift
+  moves and home continuations and Starter intake timing now use the shared semantic builder, with
+  their domain-shaped public APIs unchanged. Framework Principles, maintained guides, Javadocs,
+  source excerpts, generated-API links, and exact public-surface tests were synchronized.
+- **Deterministic verification evidence (2026-09-02):** using Android Studio's JBR, the combined
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run
+  completed successfully: 246 suites, 2,254 tests, zero failures, errors, or skips. After the final
+  review cleanups, compilation, Sushi Javadocs, `DocumentationLinksTest`, all
+  `SemanticScalarTasks*` tests, and `ScalarTasksApiTest` passed again: 5 suites, 51 tests, zero
+  failures, errors, or skips. Generated API pages include `SemanticScalarTasks` and
+  `Plant.carriesSemanticCommand(...)`. Exhaustive production/docs and executable-test searches find
+  no legacy `leaveTargetOnCancel`, `thenTarget(...)`, mutable started-request holder, or maintained
+  example callback lifecycle. `git diff --check` and explicit untracked-file trailing-whitespace/
+  final-newline checks are clean; only the repository's informational LF-to-CRLF notices appear.
+- **Adversarial review and residual boundary (2026-09-02):** independent lifecycle/API and robot-
+  simplicity/documentation reviews found no material defect, redundant public noun, hidden hook, or
+  Principles conflict. Review feedback corrected two stale homing descriptions, clarified a numeric
+  shooter example's ownership wording, and removed one unused package-private prepared-template
+  accessor. Software verification cannot prove motor direction, mechanism travel, reference-switch
+  behavior, calibrated named mappings, settling/tolerance, safe timeout/cancellation requests, or
+  timed reassertion under physical load; those remain adopting-robot hardware checks.
+- **Android Studio review and publication stop (2026-09-02):** the complete TASK-06 diff remains
+  unstaged and uncommitted on `codex/task-06-parallel-scalar-set-tasks`, whose unchanged HEAD and
+  base are `origin/master@c979b64a4672e8f5bb0b70a9857094d45b2085de`. The resolved push remote is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` and the intended target branch is `master`.
+  Review the complete unstaged diff in Android Studio. No commit, push, pull request, merge, or next
+  tracker item is authorized until the exact combined Gate 3 publication approval is supplied.
+- **Gate 3 manual review and publication authorization (2026-09-02):** **Done.** The user supplied
+  the exact combined approval for the reviewed TASK-06 diff on
+  `codex/task-06-parallel-scalar-set-tasks`, its push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, a pull request, and merge into `master`.
+  This records Android Studio review and authorizes only those publication coordinates; it does not
+  authorize starting the next tracker item.
 
 ### VISION-03 - Reusable color-blob pipeline
 

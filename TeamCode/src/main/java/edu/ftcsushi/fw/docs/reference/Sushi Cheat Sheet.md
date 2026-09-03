@@ -163,6 +163,12 @@ SemanticScalarCommand<Height> height =
         SemanticScalarCommand.create(Height.STOWED, this::heightInFor);
 SemanticScalarSnapshot<Height, PositionPlantSnapshot> namedStatus =
         height.snapshot(lift.snapshot());
+
+Task moveHigh = SemanticScalarTasks.set(height, Height.HIGH)
+        .untilReachedBy(lift)
+        .leaveRequestOnCancel()
+        .timeout(MOVE_TIMEOUT_SEC)
+        .build();
 ```
 
 `PlantSnapshot` covers command/requested/applied targets, resolution/status, feedback,
@@ -170,7 +176,9 @@ measurement/errors, and arrival for power, velocity, and position Plants. Positi
 range, periodicity, reference, and search capability. Named requests use one semantic/numeric
 command and compose the Plant snapshot; they do not infer an enum from a double or expose a raw
 numeric writer. Per-wheel balance, piece evidence, debounce, and other robot-specific readiness stay
-in a capability-owned status that composes these facts.
+in a capability-owned status that composes these facts. Use
+[`SemanticScalarTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>)
+for immediate, timed, or feedback-aware Tasks through that same command owner.
 
 For an ordinary named position, keep the public story smaller than its backing snapshot:
 

@@ -392,18 +392,20 @@ different continuations, keep the timed A/B shape inside a robot-owned policy co
 explicit outcome branch. Direct cancellation still must not launch fallback.
 
 An outer timeout is intentionally different from operation-owned timeouts. A route-local timeout
-can retain `RouteStatus.TASK_TIMEOUT`; a feedback move can apply its timeout target; a gated output
+can retain `RouteStatus.TASK_TIMEOUT`; a feedback move can report its own `TIMEOUT`; a gated output
 can time only its RUN phase. `withTimeout(...)` instead uses the child's normal cancellation path,
 so the wrapper may report `TIMEOUT` while the retained child reports `CANCELLED`. Keep both when
 they protect different scopes, but do not configure two copies of the same policy.
 
 ---
 
-## 4. Mechanisms: `ScalarTasks` for common patterns
+## 4. Mechanisms: scalar Task builders for common patterns
 
 When the capability request is itself a number, such as flywheel velocity or lift position, start
-with `edu.ftcsushi.fw.actuation.ScalarTasks`. A simple exact mechanism retains one Plant variable
-and creates its command inline:
+with `edu.ftcsushi.fw.actuation.ScalarTasks`. When it is a named `Height`, `Mode`, or other semantic
+value, use the parallel `edu.ftcsushi.fw.actuation.SemanticScalarTasks` path through the
+mechanism-owned command. A simple exact numeric mechanism retains one Plant variable and creates
+its command inline:
 
 The builder below is a construction-time excerpt from the mechanism owner. In ordinary FTC robot
 code, that constructor receives `HardwareMap` and its active data-only config, copies and validates
@@ -443,18 +445,21 @@ behavior (`ScalarTasks.set(roller.commandTarget(), ...)`). A feedback branch val
 supplied Plant follows that exact target, so a mismatched standalone or graph-owned target fails
 when the Task is constructed rather than silently waiting on the wrong mechanism.
 
-Calling `ScalarTasks.set(...)` or `build()` does not change the target. The built Task writes when
-it starts. Each `build()` creates a fresh single-use Task, so retain the Plant and rebuild the Task
-or macro for every later run. Keep a separately named `ScalarTarget` only when it is standalone,
-shared, owned by target-only policy, or useful while assembling a composed target graph. If that
-target is the Plant's complete exact graph, bind it through
-`targetFromResolver(PlantTargets.exact(target))`.
+Calling [`ScalarTasks.set(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/ScalarTasks.html>)
+or `build()` does not change the target. The built Task writes when it starts. Each `build()` creates
+a fresh single-use Task, so retain the Plant and rebuild the Task or macro for every later run. Keep
+a separately named `ScalarTarget` only when it is standalone, shared, owned by target-only policy,
+or useful while assembling a composed target graph. If that target is the Plant's complete exact
+graph, bind it through `targetFromResolver(PlantTargets.exact(target))`.
 
 This direct path is for a scalar-complete request: the number itself is the public meaning. If a
 capability instead names intent with `Height`, `Mode`, or another semantic value, its mechanism
-owns one `SemanticScalarCommand` that maps and atomically publishes the named/numeric pair. Direct
-methods and Tasks call its semantic setter and read the composed semantic/Plant snapshot; the helper
-exposes no `ScalarTarget`, so raw `ScalarTasks` cannot change the number behind the owner's status.
+owns one [`SemanticScalarCommand`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarCommand.html>)
+that maps and atomically publishes the named/numeric pair. Direct methods call its semantic setter;
+deferred behavior uses
+[`SemanticScalarTasks.set(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>).
+Both paths preserve the same owner and composed semantic/Plant status. The command exposes no
+`ScalarTarget`, so raw `ScalarTasks` cannot change the number behind that status.
 
 #### Calibration-search handoff
 
@@ -489,11 +494,11 @@ Task search = PositionCalibrationTasks.search(lift)
 
 return Tasks.sequence(
         search,
-        Tasks.runOnce(() -> setHeight(Height.STOWED)));
+        SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
 ```
 
 There is no initial STOWED write: temporary search ownership already suspends normal target
-realization. Exact success starts the semantic setter in the same lifecycle callback before the
+realization. Exact success publishes the semantic request in the same lifecycle callback before the
 downstream Plant phase. Timeout and cancellation skip it and retain the prior—or any during-search
 superseding—coherent semantic/numeric request. These numeric checks do not prove the robot is
 physically at the declared reference or that its later request is safe.
@@ -520,16 +525,24 @@ The `.then(0.0)` also runs if this timed write is cancelled while active. That m
 target return to zero; the Plant still resolves that request on its next update. If the Task is
 still queued and never started, discarding it has no target side effects.
 
-The `0.7` seconds begin when this task starts. Even if the preceding loop was unusually long, the
+The `0.7` seconds begin when this Task starts. Even if the preceding loop was unusually long, the
 new `+1.0` target is still available for the following `plant.update(clock)` call before a positive
 duration may finish.
 
-Do not use a numeric target to reconstruct a named capability state. The Starter intake publishes
-its requested `Mode` and mapped power through one `SemanticScalarCommand`, and builds its timed
-action with `RunForSecondsTask` callbacks that call the same setter. This keeps
-the capability-shaped `status().mode()` and `status().requestedPower()` truthful while the one-line
-robot call remains
-`intake.collectForSeconds(durationSec)`.
+Named requests use the parallel semantic builder. The Starter intake keeps its `Mode` and mapped
+power coherent without exposing either implementation detail to its callers:
+
+```java
+return SemanticScalarTasks.set(modeCommand, Mode.COLLECT)
+        .forSeconds(durationSec)
+        .then(Mode.STOPPED)
+        .build();
+```
+
+The timed Task publishes one fresh request when it starts and retains that exact identity while it
+remains current. If another request supersedes it, the next active update publishes a fresh
+occurrence of the prepared semantic/numeric pair; it never revives stale arrival evidence. The
+capability-shaped robot call remains `intake.collectForSeconds(durationSec)`.
 
 To hold and leave the target there:
 
@@ -577,12 +590,28 @@ Behavior:
 * If the timeout elapses first, the task completes with `TaskOutcome.TIMEOUT`.
 * If actively cancelled, the shooter command target changes to `0.0` once.
 
+Named feedback requests use the same lifetime vocabulary while still going through their semantic
+owner:
+
+```java
+Task moveHigh = SemanticScalarTasks.set(heightCommand, Height.HIGH)
+        .untilReachedBy(lift)
+        .leaveRequestOnCancel()
+        .timeout(moveTimeoutSec)
+        .build();
+```
+
+The semantic feedback Task publishes once and does not fight a later request. Success requires its
+exact semantic/numeric request to remain selected and the supplied Plant to report arrival. The
+builder validates that the Plant has feedback and carries that semantic command; the Plant remains
+explicit because one command may feed more than one observer.
+
 For readiness that must remain stable for a short period:
 
 ```java
 Task spinUpStable = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
         .untilReachedBy(shooter)
-        .leaveTargetOnCancel()
+        .leaveRequestOnCancel()
         .stableFor(0.15)
         .timeout(1.5)
         .build();
@@ -593,25 +622,31 @@ Every feedback move must choose one cancellation behavior immediately after
 
 * `.cancelTo(value)` writes that finite value, in the Plant's units, to its command target when
   an active move is cancelled.
-* `.leaveTargetOnCancel()` deliberately leaves the move request unchanged, so motion may continue.
+* `.leaveRequestOnCancel()` deliberately leaves the move request unchanged, so motion may continue.
 
 Neither choice is a direct hardware stop. The Plant's next update still resolves overlays and
 applies bounds, references, and guards. The robot owner must still cancel related queues, disable
 overlays, and reset every mechanism request needed for coordinated shutdown.
 
-To request a final target after success or timeout:
+Feedback completion and follow-up policy stay separate. To request a final target after either
+success or timeout while preserving the move's outcome:
 
 ```java
-Task spinAndStop = ScalarTasks.set(flywheel.commandTarget(), SHOT_RPM)
+Task spinUp = ScalarTasks.set(flywheel.commandTarget(), SHOT_RPM)
         .untilReachedBy(flywheel)
         .cancelTo(STOPPED_RPM)
         .timeout(1.0)
-        .thenTarget(STOPPED_RPM)
         .build();
+
+Task spinAndStop = Tasks.sequenceOnCompletion(
+        spinUp,
+        ScalarTasks.set(flywheel.commandTarget(), STOPPED_RPM).build());
 ```
 
-Here the numeric RPM is the complete request. `.thenTarget(...)` handles success or timeout, while
-`.cancelTo(...)` independently handles active cancellation.
+`sequenceOnCompletion(...)` runs the final request after any natural terminal move outcome and
+retains the first non-success result. Direct cancellation does not start the continuation;
+`.cancelTo(...)` independently handles active cancellation. Use ordinary `sequence(...)` for a
+success-only continuation or `branchOnOutcome(...)` when different outcomes need different policy.
 
 > If `untilReachedBy(...)` receives an open-loop Plant or a Plant commanded by a different
 > `ScalarTarget`, construction throws an actionable exception. Use the timed branch for open-loop
@@ -646,7 +681,7 @@ Inside the shooter mechanism, retain the two simple Plants as private fields:
 * `shooter` – a velocity command and feedback Plant for the flywheel.
 * `transfer` – a power command and Plant that feeds discs.
 
-A semantic Task factory on that owner could look like:
+A capability-owned Task factory on that owner could look like:
 
 ```java
 private final Plant shooter;
@@ -734,6 +769,7 @@ For **most** robots, you only need:
 
 * `Tasks.*` factory methods.
 * `ScalarTasks.set(...)` for write-once, timed, and feedback-aware scalar-complete commands.
+* `SemanticScalarTasks.set(...)` for the same lifetimes when a mechanism owns named intent.
 * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
   drive-sink ownership.
 
@@ -750,7 +786,7 @@ spelling of existing composition.
 
 A good rule of thumb:
 
-> Try the factories (`Tasks`, `ScalarTasks`, and the narrowly scoped `DriveTasks` helper) first. If you find yourself rewriting the same pattern many times using raw `Task` classes, wrap it in a new helper method so the next student can just call the helper.
+> Try the factories (`Tasks`, `ScalarTasks`, `SemanticScalarTasks`, and the narrowly scoped `DriveTasks` helper) first. If you find yourself rewriting the same pattern many times using raw `Task` classes, wrap it in a new helper method so the next student can just call the helper.
 
 ---
 
@@ -855,11 +891,10 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 
 * **Do not bypass a named semantic request.**
 
-    * If status names a `Height`, `Mode`, or semantic pose, call the mechanism's one setter from
-      both direct behavior and Tasks, then wait on the mechanism's capability-shaped status. The
-      mechanism may retain the exact request returned by its private `SemanticScalarCommand` at
-      Task start so same-valued supersession cannot complete old work; ordinary clients should not
-      have to navigate that backing request identity.
+    * If status names a `Height`, `Mode`, or semantic pose, direct behavior uses the mechanism's one
+      setter and deferred behavior uses `SemanticScalarTasks.set(...)` with the same private
+      command. The feedback builder tracks exact request identity internally, so same-valued
+      supersession cannot complete old work; ordinary clients never navigate that identity.
     * Use `ScalarTasks` directly only when the number itself is the complete request.
 
 * **Be intentional about completion and cancellation targets.**
@@ -867,8 +902,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
     * `.forSeconds(...).leaveThere().build()` keeps the same target after the timer.
     * `.forSeconds(...).then(...)` sets a different final target after time elapses and on active
       cancellation.
-    * Every feedback move requires `.cancelTo(...)` or `.leaveTargetOnCancel()` immediately after
-      `.untilReachedBy(...)`; `.thenTarget(...)` remains the success/timeout choice.
+    * Every feedback move requires `.cancelTo(...)` or `.leaveRequestOnCancel()` immediately after
+      `.untilReachedBy(...)`; compose any outcome-dependent follow-up explicitly.
 
 ---
 
@@ -886,6 +921,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
   `sequence`; only intentional recovery/repair continuation uses `sequenceOnCompletion`.
 * **`ScalarTasks.set(target, value)`** is the direct deferred-write path when the request itself is
   numeric: build it directly, add a timed branch, or add a feedback-aware branch.
+* **`SemanticScalarTasks.set(command, request)`** provides those same lifetimes for named intent
+  while keeping the semantic and mapped numeric request in one owner.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement
   when its Task is the sole behavior-command writer for the drive sink.
 * Ordinary leaf Tasks and generic composition use `Tasks.*`; `RunForSecondsTask` remains public for

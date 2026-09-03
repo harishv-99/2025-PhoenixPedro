@@ -110,14 +110,14 @@ public final class ActuationTaskSingleUseTest {
 
         Task first = ScalarTasks.set(plant.command, 3.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .build();
         first.start(manualClock.clock());
         first.cancel();
 
         Task fresh = ScalarTasks.set(plant.command, 3.0)
                 .untilReachedBy(plant)
-                .leaveTargetOnCancel()
+                .leaveRequestOnCancel()
                 .build();
         fresh.start(manualClock.clock());
 
