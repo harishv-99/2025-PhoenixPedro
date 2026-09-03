@@ -73,7 +73,7 @@ Status status();
 **Key APIs:** `Task` represents non-blocking work; capability `Status` is the shared read-only
 evidence vocabulary.
 
-[`ReferenceLift.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLift.java>)
+[`ReferenceLift`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLift.html>)
 does not mention an FTC motor, switch polarity, encoder scaling, or homing power. Those physical and
 realization details belong to the Config and mechanism.
 
@@ -113,7 +113,7 @@ inspect hardware and evidence instead of rewriting Auto sequencing.
 The Reference launcher shows the same path applied to paired flywheels, a transfer overlay, a
 release Plant, and outcome-aware launch policy. Its public client still asks for `launchOne()` and
 reads status; the mechanism keeps the multi-device realization private. Study
-[`ReferenceLauncher.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.java>)
+[`ReferenceLauncher`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.html>)
 only when that additional coordination helps your robot.
 
 The [examples index](<../../examples/README.md>) routes concrete robot needs to maintained examples
@@ -131,7 +131,7 @@ mode-neutral behavior.
 ## Go deeper when needed
 
 - Capability/client ownership: [Robot Capabilities and Mode Clients](<../../design/Robot Capabilities & Mode Clients.md>)
-- Complete Reference composition: [`ReferenceRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.java>)
+- Complete Reference composition: [`ReferenceRobot`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/robot/ReferenceRobot.html>)
 - Topic-specific routes: [Choose a Sushi topic](<../Beginner's Guide.md>)
 - [Choose another Sushi topic](<../Beginner's Guide.md>)
 - [Return to the Basic Mechanisms course](<../Basic Mechanisms Robot.md>)

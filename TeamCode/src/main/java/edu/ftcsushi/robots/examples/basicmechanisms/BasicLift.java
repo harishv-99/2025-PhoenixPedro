@@ -3,7 +3,6 @@ package edu.ftcsushi.robots.examples.basicmechanisms;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionPlantSnapshot;
-import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.actuation.SemanticScalarSnapshot;
 import edu.ftcsushi.fw.task.Task;
 
@@ -69,11 +68,6 @@ public interface BasicLift {
         /** Returns the complete immutable position-Plant capture for advanced diagnostics. */
         public PositionPlantSnapshot plantSnapshot() {
             return snapshot.plant();
-        }
-
-        /** Whether the supplied exact request revision owns this capture and is at target. */
-        boolean isAtTargetFor(SemanticScalarCommand.Request<Height> request) {
-            return snapshot.request() == request && snapshot.currentRequestAtTarget();
         }
     }
 

@@ -579,7 +579,7 @@ while (!shooter.atTarget()) { }
 Good:
 
 * use `ScalarTasks.set(target, value).untilReachedBy(plant).cancelTo(...).build()` (or deliberately
-  choose `.leaveTargetOnCancel()`) or use `Tasks.waitUntil(...)`, then declare it through
+  choose `.leaveRequestOnCancel()`) or use `Tasks.waitUntil(...)`, then declare it through
   `program.rootTask(...)` or `program.taskBindings()`. An explicitly owned custom/private runner is
   the advanced alternative.
 

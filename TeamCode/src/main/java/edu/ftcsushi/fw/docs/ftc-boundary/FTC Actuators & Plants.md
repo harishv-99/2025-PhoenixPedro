@@ -163,12 +163,15 @@ the same boundary through `PlantTargets.exact(source)`. For
 target; conditional layers never do.
 
 When the robot API names a semantic request such as `Height`, `Mode`, or `Pose`, use a
-`SemanticScalarCommand<S>` instead of exposing the numeric command. Its mapper validates and
-publishes one immutable semantic/numeric request, and every successful set receives a fresh request
-identity even when the name and number repeat. Bind it through
+[`SemanticScalarCommand<S>`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarCommand.html>)
+instead of exposing the numeric command. Its mapper validates and publishes one immutable
+semantic/numeric request, and every successful set receives a fresh request identity even when the
+name and number repeat. Bind it through
 `targetFromResolver(PlantTargets.exact(command))`; equivalent-position and overlay overloads retain
 the same private provenance. It intentionally provides no `ScalarTarget`, so direct numeric
-`ScalarTasks` cannot bypass the mechanism's semantic setter.
+`ScalarTasks` cannot bypass the owner. Build immediate, timed, and feedback-aware named Tasks with
+[`SemanticScalarTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>)
+through that same command.
 
 Velocity and power Plants stay simpler than position Plants because they do not have position
 periodicity or homing/reference questions. Power is simpler still: every direct power Plant has the
@@ -1392,8 +1395,9 @@ telemetry.addData("atCurrentHeight", status.atTarget());
 The enum is the semantic name. `setHeight(height)` replaces the persistent request and returns
 without waiting; `moveTo(height)` builds a fresh single-use feedback Task that requests the same
 height when it starts and waits for truthful arrival. Numeric coordinates stay in configuration and
-the mechanism's semantic-to-numeric mapping. Do not add a second `NamedPosition` type or parallel
-`toHigh` aliases for the same decision.
+the mechanism's semantic-to-numeric mapping. Internally, `SemanticScalarTasks` tracks exact request
+identity and Plant evidence without exposing either through capability status. Do not add a second
+`NamedPosition` type or parallel `toHigh` aliases for the same decision.
 
 The same pattern applies to named launcher speeds: a semantic speed enum maps forward to a velocity
 command, while a fresh move/spin-up Task waits on feedback. Power and velocity Plants use the same
@@ -1422,7 +1426,8 @@ This is the **plant-level** completion band used by `Plant.atTarget()` and liter
 `Plant.atTarget(value)`. A feedback-aware
 `ScalarTasks.set(command, value).untilReachedBy(plant)` may correlate a logical periodic command
 with a different selected physical equivalent, but the Plant query itself never compares modulo a
-period.
+period. A `SemanticScalarTasks.set(command, request).untilReachedBy(plant)` branch uses the same
+physical completion evidence while also requiring its exact named request to remain selected.
 
 * required exactly once after position mapping and reference policy
 * units: plant position units

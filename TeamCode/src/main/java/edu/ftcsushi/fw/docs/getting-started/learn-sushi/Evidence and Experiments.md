@@ -163,9 +163,9 @@ team rejects the configuration. Neither observation should be converted silently
 
 ## Go deeper when needed
 
-- Electrical conditioning: [`ReferenceLiftMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.java>)
-- All-or-nothing launcher publication: [`ReferenceLauncherMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
-- Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java>)
+- Electrical conditioning: [`ReferenceLiftMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/lift/ReferenceLiftMechanism.html>)
+- All-or-nothing launcher publication: [`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
+- Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.html>)
 - Hardware-free feedback cases: [Hardware-free Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>)
 - Safe experiment card and workflow: [Subsystem Experiments](<../../examples/Subsystem Experiments.md>)
 - Evidence vocabulary: [Glossary](<../../reference/Glossary.md#evidence>)

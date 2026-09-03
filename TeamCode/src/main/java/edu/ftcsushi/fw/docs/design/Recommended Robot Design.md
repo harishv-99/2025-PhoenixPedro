@@ -694,12 +694,17 @@ public final class Lift {
     private final PositionPlant liftPlant;
     private final double minimumHeightIn;
     private final double maximumHeightIn;
+    private final double moveTimeoutSec;
 
     public Lift(HardwareMap hardwareMap, LiftConfig config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
         LiftConfig snapshot = Objects.requireNonNull(config, "config").copy();
         minimumHeightIn = snapshot.minimumHeightIn;
         maximumHeightIn = snapshot.maximumHeightIn;
+        moveTimeoutSec = snapshot.moveTimeoutSec;
+        if (!(moveTimeoutSec > 0.0) || !Double.isFinite(moveTimeoutSec)) {
+            throw new IllegalArgumentException("moveTimeoutSec must be finite and > 0");
+        }
 
         ScalarSource measuredHeightIn =
                 FtcSensors.distanceIn(hardwareMap, snapshot.heightSensorName);
@@ -722,11 +727,15 @@ public final class Lift {
     }
 
     public void setTargetHeightIn(double heightIn) {
-        if (!Double.isFinite(heightIn)) {
-            throw new IllegalArgumentException("heightIn must be finite");
-        }
-        double boundedHeightIn = Math.max(minimumHeightIn, Math.min(heightIn, maximumHeightIn));
-        liftPlant.commandTarget().set(boundedHeightIn);
+        liftPlant.commandTarget().set(boundedHeightIn(heightIn));
+    }
+
+    public Task moveToHeightIn(double heightIn) {
+        return ScalarTasks.set(liftPlant.commandTarget(), boundedHeightIn(heightIn))
+                .untilReachedBy(liftPlant)
+                .leaveRequestOnCancel()
+                .timeout(moveTimeoutSec)
+                .build();
     }
 
     public PositionPlantSnapshot status() {
@@ -740,12 +749,19 @@ public final class Lift {
     public void stop() {
         liftPlant.stop();
     }
+
+    private double boundedHeightIn(double heightIn) {
+        if (!Double.isFinite(heightIn)) {
+            throw new IllegalArgumentException("heightIn must be finite");
+        }
+        return Math.max(minimumHeightIn, Math.min(heightIn, maximumHeightIn));
+    }
 }
 ```
 
 For the preset values below, this profile declares a range that includes them, such as
-`minimumHeightIn = 0.0` and `maximumHeightIn = 30.0`. The composition root constructs the owner,
-not the Plant:
+`minimumHeightIn = 0.0` and `maximumHeightIn = 30.0`, plus a positive `moveTimeoutSec`. The
+composition root constructs the owner, not the Plant:
 
 ```java
 lift = new Lift(hardwareMap, profile.lift);
@@ -762,10 +778,7 @@ bindings.onRise(pads.p2().dpadDown(), () -> lift.setTargetHeightIn(0.0));
 ### Auto interaction
 
 ```java
-Task liftToHigh = Tasks.sequence(
-        Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
-        Tasks.waitUntil(() -> lift.status().atCommandTarget(), 2.0)
-);
+Task liftToHigh = lift.moveToHeightIn(24.0);
 ```
 
 ### Why this is the recommended design
@@ -773,6 +786,7 @@ Task liftToHigh = Tasks.sequence(
 - Auto and TeleOp share the same intent method
 - the subsystem constructs and owns one authoritative Plant and its feedback source
 - the profile's declared bounds, the public clamp, and the shown presets describe the same range
+- direct and feedback requests use the same bounds normalization
 - `status()` reuses the complete position-Plant facts without a parallel field list
 - `atCommandTarget()` rejects stale arrival evidence if the command changed before the next heartbeat
 - the rest of the robot never needs to know about the PID internals
@@ -1332,10 +1346,7 @@ RouteTask<YourRoute> preloadRoute = RouteTasks.follow(
 Build the numeric lift move separately, including its timeout outcome:
 
 ```java
-Task raiseLift = Tasks.sequence(
-        Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
-        Tasks.waitUntil(() -> lift.status().atCommandTarget(), 1.5)
-);
+Task raiseLift = lift.moveToHeightIn(24.0);
 
 Task scorePreload = Tasks.branchOnOutcome(
         raiseLift,

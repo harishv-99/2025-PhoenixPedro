@@ -2886,6 +2886,7 @@ public final class Plants {
     private abstract static class AbstractSourceDrivenPlant implements Plant {
         private final PlantTargetResolver targetResolver;
         private final ScalarTarget commandTarget;
+        private final SemanticScalarCommand<?> semanticCommand;
         private final PlantTargetGuards guards;
         private final PlantLifecycle lifecycle = new PlantLifecycle();
         private final PlantUpdateCycle updateCycle = new PlantUpdateCycle("PowerPlant");
@@ -2898,6 +2899,7 @@ public final class Plants {
         AbstractSourceDrivenPlant(PlantTargetResolver targetResolver, PlantTargetGuards guards) {
             this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
             this.commandTarget = PlantTargets.commandTargetOf(this.targetResolver);
+            this.semanticCommand = PlantTargets.semanticCommandOf(this.targetResolver);
             this.guards = guards == null ? PlantTargetGuards.none() : guards;
         }
 
@@ -3056,6 +3058,11 @@ public final class Plants {
         public final ScalarTarget commandTarget() {
             if (commandTarget == null) return Plant.super.commandTarget();
             return commandTarget;
+        }
+
+        @Override
+        public final boolean carriesSemanticCommand(SemanticScalarCommand<?> command) {
+            return semanticCommand != null && semanticCommand == command;
         }
 
         protected final void markStopped(double appliedAfterStop) {

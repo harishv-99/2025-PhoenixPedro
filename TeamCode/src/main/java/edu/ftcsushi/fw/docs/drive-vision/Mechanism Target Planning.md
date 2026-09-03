@@ -116,6 +116,9 @@ ScalarTarget
 SemanticScalarCommand<S>
     One named capability request atomically paired with its mapped finite scalar target.
 
+SemanticScalarTasks
+    Deferred immediate, timed, and feedback-aware Tasks that publish through that semantic owner.
+
 PlantTargetResolver
     A Plant-aware graph that uses Plant context to resolve the requested target.
 
@@ -192,7 +195,7 @@ physically at the target selected from it. If `autoRetract` or `manual` wins the
 same numeric value—the task does not complete from the wrong behavior path. If the active move is
 cancelled, it changes `armCommand` to the explicit Plant-unit `ARM_IDLE_TICKS` request once. This
 example deliberately exposes a numeric Plant-unit request; an owner exposing named arm poses would
-route the Task through its semantic setter instead.
+build the Task through `SemanticScalarTasks` instead.
 
 The resulting vocabulary stays consistent across every Plant:
 
@@ -282,9 +285,9 @@ seam, a custom hardware adapter, or another deliberately portable host. Label th
 such. At that seam, pass the Plant alone—never a Plant and its target as peer dependencies—and
 validate `hasCommandTarget()` only when the injected owner needs a writable command.
 
-Do not replace this rule with `Plant.set(...)`, a Plant-root Task facade, a target-to-Plant backlink,
-or a public binding wrapper. Those add a second command path or another noun. The one intentional
-place both objects remain explicit is a feedback-aware Task:
+Do not replace this rule with `Plant.set(...)`, a Plant-root Task facade, a command-to-Plant
+backlink, or a public binding wrapper. Those add a second command path or another noun. The one
+intentional place both objects remain explicit is a feedback-aware Task:
 
 ```java
 ScalarTasks.set(intake.commandTarget(), GOAL)
@@ -299,7 +302,9 @@ Plant, so the observer cannot be inferred from the target.
 
 This direct `ScalarTasks` path assumes the scalar is the complete capability request. If a public
 capability names `Height`, `Mode`, or another semantic value, use one
-`SemanticScalarCommand<S>` whose mapper is the mechanism's only semantic-to-numeric answer:
+[`SemanticScalarCommand<S>`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarCommand.html>)
+whose mapper is the mechanism's only semantic-to-numeric answer, and build deferred behavior with
+[`SemanticScalarTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>):
 
 ```java
 private final SemanticScalarCommand<Height> heightCommand;
@@ -324,6 +329,14 @@ public void setHeight(Height height) {
     heightCommand.set(height);
 }
 
+public Task moveTo(Height height) {
+    return SemanticScalarTasks.set(heightCommand, height)
+            .untilReachedBy(lift)
+            .leaveRequestOnCancel()
+            .timeout(MOVE_TIMEOUT_SEC)
+            .build();
+}
+
 private SemanticScalarSnapshot<Height, PositionPlantSnapshot> actuatorSnapshot() {
     return heightCommand.snapshot(lift.snapshot());
 }
@@ -334,14 +347,22 @@ semantic/numeric `Request`; a mapper failure leaves the prior request untouched.
 set publishes a fresh identity even when the semantic value and scalar repeat. Consequently,
 `currentRequestSelected()` and `currentRequestAtTarget()` cannot reuse cached resolution or arrival
 evidence from an older same-valued request. The helper exposes no `ScalarTarget`, so controls and
-Tasks must call the same semantic setter rather than bypass it with a raw numeric Task.
+Tasks cannot bypass it with a raw numeric write.
 
-A semantic move retains the exact `Request` returned when its Task starts and waits for a private
-actuator snapshot whose `request()` is that object and whose `currentRequestAtTarget()` is true.
-The capability's public `status()` projects the same immutable evidence into domain accessors such
-as `requestedHeight()`, `measuredPositionIn()`, and `atTarget()`. This preserves
-single-use Task identity if another caller supersedes the request, including with the same named
-height. `PlantTargets.overlay(command)` and `equivalentPositionsOf(command)` preserve the same
+`SemanticScalarTasks` prepares and validates the semantic/numeric pair without publishing it, then
+publishes a fresh request when the Task starts. A feedback branch waits for that exact request and
+the supplied Plant's cached arrival evidence; it publishes only once and yields if another caller
+supersedes it, including with the same named height. The Plant is explicit because one command may
+feed multiple observers. Its narrow `carriesSemanticCommand(command)` check rejects a mismatched or
+feedback-free graph when the Task is constructed; it is Plant-to-command evidence, not a command
+backlink. The capability's public `status()` projects the same immutable evidence into domain
+accessors such as `requestedHeight()`, `measuredPositionIn()`, and `atTarget()`.
+
+The same facade supports an immediate `.build()` and timed
+`.forSeconds(...).then(...).build()`/`.leaveThere().build()` branch. A semantic timed Task keeps one
+request identity while uncontested. If superseded, its next active update publishes a fresh
+occurrence to reclaim the interval; it never republishes an old identity with stale arrival
+evidence. `PlantTargets.overlay(command)` and `equivalentPositionsOf(command)` preserve the same
 private provenance; an overlay winner, fallback, hold, unavailable path, or planner clamp cannot
 claim current semantic arrival.
 
@@ -385,7 +406,7 @@ Task moveAxis = ScalarTasks.set(testAxis.commandTarget(), GOAL_TICKS)
         .build();
 ```
 
-Every feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
+Every feedback move must choose `.cancelTo(value)` or `.leaveRequestOnCancel()` immediately after
 `.untilReachedBy(plant)`. The latter deliberately leaves the move request in place, so motion may
 continue.
 Neither option imperatively stops hardware: `cancelTo(...)` changes the command target, while
@@ -403,7 +424,7 @@ turretCommand.set(GOAL_ANGLE_DEG);
 
 Task aim = ScalarTasks.set(turretCommand, GOAL_ANGLE_DEG)
         .untilReachedBy(turret)
-        .leaveTargetOnCancel()
+        .leaveRequestOnCancel()
         .timeout(1.0)
         .build();
 ```
@@ -874,15 +895,15 @@ heartbeat owner. Success, timeout, and active cancellation all preserve the comm
 resolver.
 
 If this lift exposes named heights, its owner adds post-success policy through the same semantic
-setter used everywhere else:
+command used everywhere else:
 
 ```java
 return Tasks.sequence(
         findBottomReference,
-        Tasks.runOnce(() -> setHeight(Height.STOWED)));
+        SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
 ```
 
-Exact success starts that setter before the same downstream Plant phase. Timeout and cancellation
+Exact success publishes that request before the same downstream Plant phase. Timeout and cancellation
 skip it and retain the prior—or any during-search superseding—paired request. There is no initial
 STOWED write because temporary search ownership already suspends normal target realization.
 

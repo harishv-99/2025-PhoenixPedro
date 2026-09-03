@@ -20,8 +20,9 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  *
  * <p>If a mechanism exposes richer named intent such as {@code Height}, {@code Mode}, or a semantic
  * pose, its owner must map and publish that semantic/numeric request through one authoritative
- * setter. Compose a Task from that setter and the owner's status; do not use a raw numeric
- * {@code ScalarTasks} write to bypass the semantic owner.</p>
+ * setter. Use {@link SemanticScalarTasks} inside that mechanism so direct and Task requests both
+ * pass through the semantic owner; do not use a raw numeric {@code ScalarTasks} write to bypass
+ * it.</p>
  *
  * <h2>Examples</h2>
  * <pre>{@code
@@ -86,7 +87,7 @@ public final class ScalarTasks {
 
     /** Required ending policy for a timed set. */
     public interface TimedEndStep {
-        /** Leave the requested value in place after natural completion or active cancellation. */
+        /** Perform no terminal write; leave whichever target value is current when the Task ends. */
         TimedBuildStep leaveThere();
 
         /** Write {@code finalValue} after natural completion or active cancellation. */
@@ -111,7 +112,7 @@ public final class ScalarTasks {
          * Deliberately leave the requested value unchanged if the active Task is cancelled.
          * The mechanism may continue moving until another owner changes its request.
          */
-        ReachedReadyStep leaveTargetOnCancel();
+        ReachedReadyStep leaveRequestOnCancel();
     }
 
     /** Optional completion policy for a feedback-aware set. */
@@ -121,12 +122,6 @@ public final class ScalarTasks {
 
         /** Complete with {@link TaskOutcome#TIMEOUT} after {@code seconds} if not reached. */
         ReachedReadyStep timeout(double seconds);
-
-        /**
-         * Write {@code target} after success or timeout, never because of cancellation.
-         * Cancellation follows the required cancellation policy instead.
-         */
-        ReachedReadyStep thenTarget(double target);
 
         /** Build a fresh single-use feedback-aware Task. */
         Task build();
@@ -229,7 +224,7 @@ public final class ScalarTasks {
         }
 
         @Override
-        public ReachedReadyStep leaveTargetOnCancel() {
+        public ReachedReadyStep leaveRequestOnCancel() {
             return ReachedBuilder.initial(target, value, plant, false, Double.NaN);
         }
     }
@@ -244,8 +239,6 @@ public final class ScalarTasks {
         private final double stableSec;
         private final boolean timeoutAnswered;
         private final double timeoutSec;
-        private final boolean finalAnswered;
-        private final double finalTarget;
 
         private ReachedBuilder(ScalarTarget target,
                                double value,
@@ -255,9 +248,7 @@ public final class ScalarTasks {
                                boolean stableAnswered,
                                double stableSec,
                                boolean timeoutAnswered,
-                               double timeoutSec,
-                               boolean finalAnswered,
-                               double finalTarget) {
+                               double timeoutSec) {
             this.target = target;
             this.value = value;
             this.plant = plant;
@@ -267,8 +258,6 @@ public final class ScalarTasks {
             this.stableSec = stableSec;
             this.timeoutAnswered = timeoutAnswered;
             this.timeoutSec = timeoutSec;
-            this.finalAnswered = finalAnswered;
-            this.finalTarget = finalTarget;
         }
 
         static ReachedBuilder initial(ScalarTarget target,
@@ -277,7 +266,7 @@ public final class ScalarTasks {
                                       boolean hasCancellationTarget,
                                       double cancellationTarget) {
             return new ReachedBuilder(target, value, plant, hasCancellationTarget,
-                    cancellationTarget, false, 0.0, false, -1.0, false, Double.NaN);
+                    cancellationTarget, false, 0.0, false, -1.0);
         }
 
         @Override
@@ -288,8 +277,7 @@ public final class ScalarTasks {
             }
             requireNonNegativeFinite(seconds, "seconds");
             return new ReachedBuilder(target, value, plant, hasCancellationTarget,
-                    cancellationTarget, true, seconds, timeoutAnswered, timeoutSec,
-                    finalAnswered, finalTarget);
+                    cancellationTarget, true, seconds, timeoutAnswered, timeoutSec);
         }
 
         @Override
@@ -300,26 +288,13 @@ public final class ScalarTasks {
             }
             requirePositiveFinite(seconds, "seconds");
             return new ReachedBuilder(target, value, plant, hasCancellationTarget,
-                    cancellationTarget, stableAnswered, stableSec, true, seconds,
-                    finalAnswered, finalTarget);
-        }
-
-        @Override
-        public ReachedReadyStep thenTarget(double targetValue) {
-            if (finalAnswered) {
-                throw new IllegalStateException(
-                        "thenTarget(...) has already been answered for this ScalarTasks.set(...) branch");
-            }
-            requireFinite(targetValue, "target");
-            return new ReachedBuilder(target, value, plant, hasCancellationTarget,
-                    cancellationTarget, stableAnswered, stableSec, timeoutAnswered, timeoutSec,
-                    true, targetValue);
+                    cancellationTarget, stableAnswered, stableSec, true, seconds);
         }
 
         @Override
         public Task build() {
             return new ReachedTask(plant, target, value, hasCancellationTarget,
-                    cancellationTarget, stableSec, timeoutSec, finalAnswered, finalTarget);
+                    cancellationTarget, stableSec, timeoutSec);
         }
     }
 
@@ -394,8 +369,6 @@ public final class ScalarTasks {
         private final double cancellationTarget;
         private final double stableSec;
         private final double timeoutSec;
-        private final boolean hasFinalTarget;
-        private final double finalTarget;
         private boolean startAttempted;
         private boolean started;
         private boolean complete;
@@ -409,9 +382,7 @@ public final class ScalarTasks {
                             boolean hasCancellationTarget,
                             double cancellationTarget,
                             double stableSec,
-                            double timeoutSec,
-                            boolean hasFinalTarget,
-                            double finalTarget) {
+                            double timeoutSec) {
             this.plant = plant;
             this.target = target;
             this.requestedValue = requestedValue;
@@ -419,8 +390,6 @@ public final class ScalarTasks {
             this.cancellationTarget = cancellationTarget;
             this.stableSec = stableSec;
             this.timeoutSec = timeoutSec;
-            this.hasFinalTarget = hasFinalTarget;
-            this.finalTarget = finalTarget;
         }
 
         @Override
@@ -483,11 +452,6 @@ public final class ScalarTasks {
         }
 
         private void finish(TaskOutcome result) {
-            if (hasFinalTarget) {
-                target.set(finalTarget);
-                // Preserve cancellation if the target callback re-entered its runner.
-                if (complete) return;
-            }
             outcome = result;
             complete = true;
         }

@@ -54,9 +54,9 @@ parallel beginner choices.
   `ScalarSource.of(...)` or `BooleanSource.of(...)`, and constants with `Source.constant(...)`.
   Direct `Source` implementation is reserved for a named framework or integration abstraction that
   adds a real domain contract.
-- Prefer framework factories such as `Tasks`, `ScalarTasks`, `DriveTasks`, route helpers, and output
-  task helpers. Write a custom state machine only when the factories cannot express the required
-  lifecycle.
+- Prefer framework factories such as `Tasks`, `ScalarTasks`, `SemanticScalarTasks`, `DriveTasks`,
+  route helpers, and output task helpers. Write a custom state machine only when the factories
+  cannot express the required lifecycle.
 - Staged builders ask each conceptual question once and use types to prevent invalid combinations.
   Use a `done...()` step only when it closes a branch containing several related settings. Optional
   tuning must never conceal a required safety or cancellation decision.
@@ -123,14 +123,16 @@ and do not manufacture a command target that the graph does not own.
 
 When a capability's public request has named semantic meaning such as `Height`, `Mode`, or a
 semantic pose, one mechanism owner maps that value forward to the numeric Plant command. Every
-direct control and Task path calls that same owner setter; no raw numeric Task may bypass it, and
-status must not reverse-infer the semantic value from a double. Use one
+direct control and Task path publishes through that same command owner; no raw numeric Task may
+bypass it, and status must not reverse-infer the semantic value from a double. Use one
 `SemanticScalarCommand<S>` to validate and publish the named value with its mapped finite scalar,
 and bind that owner through `PlantTargets.exact(...)` or `equivalentPositionsOf(...)`. Its composed
 semantic/Plant snapshot invalidates prior arrival evidence synchronously, including when a new
 request repeats the same name and scalar. The semantic owner deliberately exposes no
 `ScalarTarget`; use `ScalarTasks` directly only when the scalar is the complete capability request
-rather than one representation of richer named intent.
+rather than one representation of richer named intent. Use `SemanticScalarTasks` for immediate,
+timed, or feedback-aware deferred semantic requests; it publishes through that same command owner
+and names the feedback Plant explicitly when completion depends on one observer's evidence.
 
 Use `Plant.snapshot()` for the common immutable requested/applied target, resolution/status,
 feedback, measurement, error, and arrival facts; a `PositionPlant` covariantly adds its coordinate,
@@ -230,6 +232,9 @@ Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one tel
   never interrupts an active child.
 - A timed Task or timed phase starts at its own `clock.nowSec()` boundary. It never consumes the
   `dtSec()` interval from before it started.
+- A timed scalar Task owns its request for the interval. It reasserts a superseded numeric request;
+  a semantic timed Task retains one exact request identity while uncontested and publishes a fresh
+  occurrence when reclaiming ownership, never an old identity with stale arrival evidence.
 - Cancellation before start has no effect. Active cancellation is terminal and idempotent;
   terminal or repeated cancellation does nothing. `Tasks.noop()` is the intentional
   terminal-at-construction exception.
@@ -255,7 +260,9 @@ Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one tel
   continue differently.
 - A feedback move explicitly chooses whether active cancellation writes a caller-selected finite
   target or leaves its persistent request unchanged. That request still travels through the source
-  graph; cancellation never writes hardware directly.
+  graph; cancellation never writes hardware directly. A feedback move publishes once and does not
+  fight a later request. Success or timeout does not hide a terminal command; compose any required
+  outcome-dependent follow-up explicitly.
 
 When a supported third-party follower requires updates beyond an active route Task, one stable
 composition-root heartbeat updates it throughout the relevant loop. An adapter reached by both

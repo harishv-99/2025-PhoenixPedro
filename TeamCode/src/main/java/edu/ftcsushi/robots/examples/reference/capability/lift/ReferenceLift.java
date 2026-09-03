@@ -3,7 +3,6 @@ package edu.ftcsushi.robots.examples.reference.capability.lift;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionPlantSnapshot;
-import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.actuation.SemanticScalarSnapshot;
 import edu.ftcsushi.fw.task.Task;
 
@@ -57,10 +56,6 @@ public interface ReferenceLift {
         /** Returns the underlying immutable Plant snapshot for advanced diagnostics. */
         public PositionPlantSnapshot plantSnapshot() {
             return delegate.plant();
-        }
-
-        boolean isAtTargetFor(SemanticScalarCommand.Request<Height> request) {
-            return delegate.request() == request && delegate.currentRequestAtTarget();
         }
     }
 

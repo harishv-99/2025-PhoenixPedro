@@ -8,6 +8,7 @@ import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
 import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
+import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -19,11 +20,6 @@ import edu.ftcsushi.fw.task.Tasks;
 
 /** Owns a bounded lift Plant and exposes reference-aware semantic commands. */
 public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram.Output {
-    /** Exact request revision selected when one feedback move starts. */
-    private static final class StartedRequest {
-        private SemanticScalarCommand.Request<Height> request;
-    }
-
     /** Data-only lift wiring, coordinate, and homing recipe. */
     public static final class Config {
         public String motorName;
@@ -103,21 +99,16 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
 
     @Override
     public void setHeight(Height height) {
-        setHeightAndReturnRequest(height);
+        heightCommand.set(Objects.requireNonNull(height, "height"));
     }
 
     @Override
     public Task moveTo(Height height) {
-        Height selectedHeight = Objects.requireNonNull(height, "height");
-        StartedRequest started = new StartedRequest();
-        BooleanSource selectedRequestReached = BooleanSource.of(() -> {
-            Status snapshot = status();
-            return snapshot.isAtTargetFor(started.request);
-        });
-
-        return Tasks.sequence(
-                Tasks.runOnce(() -> started.request = setHeightAndReturnRequest(selectedHeight)),
-                Tasks.waitUntil(selectedRequestReached, moveTimeoutSec));
+        return SemanticScalarTasks.set(heightCommand, Objects.requireNonNull(height, "height"))
+                .untilReachedBy(lift)
+                .leaveRequestOnCancel()
+                .timeout(moveTimeoutSec)
+                .build();
     }
 
     @Override
@@ -130,7 +121,7 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
                 .build();
         return Tasks.sequence(
                 search,
-                Tasks.runOnce(() -> setHeight(Height.STOWED)));
+                SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
     }
 
     @Override
@@ -146,10 +137,6 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     @Override
     public void stop() {
         lift.stop();
-    }
-
-    private SemanticScalarCommand.Request<Height> setHeightAndReturnRequest(Height height) {
-        return heightCommand.set(Objects.requireNonNull(height, "height"));
     }
 
     private double positionFor(Height height) {

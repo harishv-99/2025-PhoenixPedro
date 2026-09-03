@@ -862,15 +862,17 @@ public final class DocumentationLinksTest {
                 interfaceStage.contains("[`FtcSensors.digitalLow(...)`](<")
                         && interfaceStage.contains("[`FtcActuators.plant(...)`](<")
                         && interfaceStage.contains("[`PositionCalibrationTasks.search(...)`](<")
-                        && interfaceStage.contains("[`Tasks.waitUntil(...)`](<")
+                        && interfaceStage.contains("[`SemanticScalarTasks.set(...)`](<")
                         && interfaceStage.contains(".needsReference(")
                         && interfaceStage.contains(
-                                "Tasks.waitUntil(selectedRequestReached, moveTimeoutSec)")
+                                "SemanticScalarTasks.set(heightCommand, "
+                                        + "Objects.requireNonNull(height, \"height\"))")
+                        && interfaceStage.contains(".untilReachedBy(lift)")
+                        && interfaceStage.contains(".leaveRequestOnCancel()")
+                        && interfaceStage.contains(".timeout(moveTimeoutSec)")
                         && interfaceStage.contains(".failAfterSec(homingTimeoutSec)")
-                        && interfaceStage.contains("status().isAtTargetFor(started.request)")
-                        && interfaceStage.contains("snapshot.request() == request")
                         && interfaceStage.contains(
-                                "started.request = setHeightAndReturnRequest(selectedHeight)")
+                                "SemanticScalarTasks.set(heightCommand, Height.STOWED).build()")
                         && interfaceStage.contains("Tasks.sequence("));
 
         int testStageStart = anchor.indexOf(requiredStageHeadings[1]);

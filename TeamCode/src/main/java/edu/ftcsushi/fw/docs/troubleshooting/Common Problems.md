@@ -183,6 +183,10 @@ arrival. Use a bounded timed command or an independent sensor condition. For a f
 `plant.commandTarget()` rather than constructing an unrelated target beside it, then choose the
 move's explicit active-cancellation policy.
 
+`SemanticScalarTasks.set(command, request).untilReachedBy(plant)` likewise requires feedback and a
+Plant whose resolver carries that exact semantic command. Keep the Plant argument: one command may
+feed multiple observers, and only the selected Plant supplies the completion evidence.
+
 ## A Plant target is rejected or looks scaled incorrectly
 
 First name the domain of each number:
@@ -218,11 +222,12 @@ mechanism remains the one hardware realization owner.
 Cancellation is cooperative and active-only. It asks the active Task to release or change the
 requests that Task owns. It does not bypass the Plant source graph or directly stop hardware.
 
-For a feedback move, choose either `cancelTo(...)` or `leaveTargetOnCancel()`. For a timed scalar
-write, choose the documented final-target behavior. For a queued output, use the total-abort API
-that cancels active work and clears pending work. Robot-level STOP must still cancel independently
-owned coordinated work and terminally stop the final owners; it need not neutralize every stopped
-Plant's resolver graph.
+For a feedback move, choose either `cancelTo(...)` or `leaveRequestOnCancel()`. For a timed numeric
+or semantic write, choose `.then(...)` or `.leaveThere()`. Timed work owns and reasserts its request
+for the interval; feedback work publishes once and yields to superseding requests. For a queued
+output, use the total-abort API that cancels active work and clears pending work. Robot-level STOP
+must still cancel independently owned coordinated work and terminally stop the final owners; it
+need not neutralize every stopped Plant's resolver graph.
 
 ## Drive commands fight or an assist has no effect
 

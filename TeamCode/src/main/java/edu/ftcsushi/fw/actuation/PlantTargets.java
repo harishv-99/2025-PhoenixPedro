@@ -186,7 +186,7 @@ public final class PlantTargets {
     }
 
     /** Return the semantic command inherited by a framework graph, if any. */
-    private static SemanticScalarCommand<?> semanticCommandOf(PlantTargetResolver resolver) {
+    static SemanticScalarCommand<?> semanticCommandOf(PlantTargetResolver resolver) {
         return resolver instanceof SemanticCommandOwner
                 ? ((SemanticCommandOwner) resolver).semanticCommand()
                 : null;
