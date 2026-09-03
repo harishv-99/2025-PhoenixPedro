@@ -7,6 +7,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import edu.ftcsushi.fw.ftc.input.GamepadDevice;
 import edu.ftcsushi.fw.input.binding.Bindings;
@@ -214,6 +215,12 @@ public final class BasicTeleOpControlsTest {
         @Override
         public void setState(State state) {
             stateRequests.add(state);
+        }
+
+        @Override
+        public Task setStateTask(State state) {
+            State requiredState = Objects.requireNonNull(state, "state");
+            return Tasks.runOnce(() -> setState(requiredState));
         }
 
         @Override

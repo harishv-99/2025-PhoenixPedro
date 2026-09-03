@@ -233,7 +233,7 @@ For ordinary dependent steps, use `sequence(...)`:
 Task score = Tasks.sequence(
         lift.home(),
         lift.moveTo(BasicLift.Height.HIGH),
-        Tasks.runOnce(() -> claw.setState(BasicClaw.State.OPEN))
+        claw.setStateTask(BasicClaw.State.OPEN)
 );
 ```
 
@@ -459,7 +459,10 @@ that maps and atomically publishes the named/numeric pair. Direct methods call i
 deferred behavior uses
 [`SemanticScalarTasks.set(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>).
 Both paths preserve the same owner and composed semantic/Plant status. The command exposes no
-`ScalarTarget`, so raw `ScalarTasks` cannot change the number behind that status.
+`ScalarTarget`, so raw `ScalarTasks` cannot change the number behind that status. A final exact
+Plant binds that owner with `targetExactlyFrom(command)`; a periodic mechanism that wants the
+nearest interchangeable position instead uses the explicit
+`PlantTargets.equivalentPositionsOf(command)` resolver.
 
 #### Calibration-search handoff
 

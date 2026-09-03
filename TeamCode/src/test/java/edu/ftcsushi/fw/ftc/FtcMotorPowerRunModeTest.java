@@ -450,8 +450,8 @@ public final class FtcMotorPowerRunModeTest {
                 () -> targetStep.targetFromResolver(PlantTargets.exact(0.2)));
         Plant plant = retainedBuildStep.build();
 
-        assertTrue(repeated.getMessage().contains("targetFromResolver(...)"));
-        assertTrue(repeated.getMessage().contains("already been answered"));
+        assertTrue(repeated.getMessage().contains("target has already been selected"));
+        assertTrue(repeated.getMessage().contains("power Plant"));
         assertTrue(repeated.getMessage().contains("new builder"));
         assertTrue(plant.hasCommandTarget());
         assertSame(command, plant.commandTarget());
@@ -486,8 +486,8 @@ public final class FtcMotorPowerRunModeTest {
                 () -> targetStep.targetFromNewCommand(20.0));
         PositionPlant plant = retainedBuildStep.build();
 
-        assertTrue(repeated.getMessage().contains("targetFromResolver(...)"));
-        assertTrue(repeated.getMessage().contains("already been answered"));
+        assertTrue(repeated.getMessage().contains("target has already been selected"));
+        assertTrue(repeated.getMessage().contains("motor position Plant"));
         assertTrue(repeated.getMessage().contains("new builder"));
         assertTrue(plant.hasCommandTarget());
         assertSame(command, plant.commandTarget());
@@ -522,8 +522,8 @@ public final class FtcMotorPowerRunModeTest {
                 () -> targetStep.targetFromResolver(PlantTargets.exact(0.0)));
         RuntimeException frozen = expectRuntime(
                 () -> motorStep.andMotor("other", Direction.FORWARD));
-        assertTrue(repeatedTarget.getMessage().contains("targetFromNewCommand(...)"));
-        assertTrue(repeatedTarget.getMessage().contains("already been answered"));
+        assertTrue(repeatedTarget.getMessage().contains("target has already been selected"));
+        assertTrue(repeatedTarget.getMessage().contains("power Plant"));
         assertTrue(frozen instanceof IllegalStateException);
         assertTrue(frozen.getMessage().contains("cannot change"));
         assertEquals(0, hardwareMap.lookupCount("motor"));

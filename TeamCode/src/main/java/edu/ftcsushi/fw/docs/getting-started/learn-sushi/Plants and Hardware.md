@@ -37,7 +37,7 @@ plant = FtcActuators.plant(
         )
         .motor(motorName, direction)
         .power()
-        .targetFromResolver(PlantTargets.exact(modeCommand))
+        .targetExactlyFrom(modeCommand)
         .build();
 ```
 
@@ -47,7 +47,9 @@ plant = FtcActuators.plant(
 - The builder names one motor and one semantic target source whose initial request is safe zero.
 
 **Key APIs:** `FtcActuators.plant(hardwareMap)` begins ordinary FTC construction;
-`PlantTargets.exact(...)` binds the mechanism-owned semantic command into the final resolver.
+`targetExactlyFrom(...)` binds the mechanism-owned semantic command into the final resolver. The
+name is literal: a periodic mechanism that wants an interchangeable representative uses
+`PlantTargets.equivalentPositionsOf(...)` explicitly instead.
 
 The builder answers which FTC motor is owned, its logical direction, the public target kind, and
 where the final target comes from. A direct-power Plant owns normalized range `[-1, +1]` and begins

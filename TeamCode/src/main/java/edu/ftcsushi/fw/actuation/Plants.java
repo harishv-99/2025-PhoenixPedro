@@ -1116,6 +1116,31 @@ public final class Plants {
         BuildStep<P> targetFromNewCommand(double initialValue);
 
         /**
+         * Bind one semantic scalar command as this Plant's literal exact target.
+         *
+         * <p>This is the ordinary binding for a mechanism-owned named request such as a lift
+         * {@code Height}, claw {@code State}, or launcher {@code Speed}. It is exactly equivalent
+         * to {@code targetFromResolver(PlantTargets.exact(command))}: the command's immutable
+         * semantic/numeric request identity remains available to semantic snapshots and Tasks,
+         * while no independent numeric {@link ScalarTarget} is exposed. Position periodicity does
+         * not select an equivalent representative; use
+         * {@link PlantTargets#equivalentPositionsOf(SemanticScalarCommand)} when that policy is
+         * intended.</p>
+         *
+         * <p>The command is first sampled by Plant update, not by configuration or build. A valid
+         * answer freezes every earlier configuration answer.</p>
+         *
+         * @param command mechanism-owned semantic command to bind exactly
+         * @return the single-use build step
+         * @throws NullPointerException if {@code command} is null
+         * @throws IllegalStateException if guards remain open, a target was already selected, or
+         *                               configuration is incomplete/frozen
+         */
+        default BuildStep<P> targetExactlyFrom(SemanticScalarCommand<?> command) {
+            return targetFromResolver(PlantTargets.exact(command));
+        }
+
+        /**
          * Bind the one final Plant-aware target resolver.
          *
          * <p>The resolver is first sampled by Plant update, not by configuration or build. A graph
@@ -1452,8 +1477,9 @@ public final class Plants {
         @Override
         public final P build() {
             if (!targetAnswered) {
-                throw new IllegalStateException("Plant construction requires targetFromNewCommand(...) "
-                        + "or targetFromResolver(...)");
+                throw new IllegalStateException("Plant construction requires "
+                        + "targetFromNewCommand(...), targetExactlyFrom(...), or "
+                        + "targetFromResolver(...)");
             }
             if (buildAttempted) {
                 throw new IllegalStateException("This Plant recipe has already attempted build(); "

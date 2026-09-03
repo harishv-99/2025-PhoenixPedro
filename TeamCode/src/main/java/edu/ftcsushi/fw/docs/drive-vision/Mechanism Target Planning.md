@@ -129,10 +129,12 @@ PlantTargets
     The factory/builder family that creates exact, overlay, equivalent, and planned resolvers.
 ```
 
-The Plant builder has one ordinary binding and one advanced binding:
+The Plant builder has concise bindings for ordinary numeric and exact semantic commands, plus one
+advanced resolver binding:
 
 ```java
 .targetFromNewCommand(double initialValue)         // create the ordinary exact command
+.targetExactlyFrom(SemanticScalarCommand<?> command) // bind one named request literally
 .targetFromResolver(PlantTargetResolver resolver)  // bind the supplied final resolver
 ```
 
@@ -140,6 +142,10 @@ For a simple exact Plant, keep one Plant variable and create its command inline 
 `targetFromNewCommand(initialValue)`. Immediate methods and Tasks retrieve that generated, stable
 command with `plant.commandTarget()`. Retrieval is side-effect-free, so ordinary robot code
 may do that at the point of use instead of retaining a second field beside the Plant.
+
+When a capability already owns a `SemanticScalarCommand`, bind its literal numeric member with
+`targetExactlyFrom(command)`. That shortcut preserves the same semantic provenance as
+`PlantTargets.exact(command)`; it deliberately does not choose a periodic equivalent position.
 
 Keep a named `ScalarTarget` when it is useful before the Plant exists: for a standalone or shared
 request, a target-only policy object, or the base of an overlay, equivalent-position transform, or
@@ -311,7 +317,11 @@ private final SemanticScalarCommand<Height> heightCommand;
 private final PositionPlant lift;
 
 // In the mechanism constructor, after copying and validating the height values:
-heightCommand = SemanticScalarCommand.create(Height.STOWED, this::heightInFor);
+heightCommand = SemanticScalarCommand.forEnum(Height.STOWED)
+        .map(Height.STOWED, stowedHeightIn)
+        .map(Height.LOW, lowHeightIn)
+        .map(Height.HIGH, highHeightIn)
+        .build();
 lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
@@ -322,7 +332,7 @@ lift = FtcActuators.plant(hardwareMap)
             .alreadyReferenced()
         .positionTolerance(HEIGHT_TOLERANCE_IN)
         .outputPowerLimitedTo(MAX_POWER)
-        .targetFromResolver(PlantTargets.exact(heightCommand))
+        .targetExactlyFrom(heightCommand)
         .build();
 
 public void setHeight(Height height) {
@@ -342,6 +352,10 @@ private SemanticScalarSnapshot<Height, PositionPlantSnapshot> actuatorSnapshot()
 }
 ```
 
+For a fixed enum table, `forEnum(...)` also proves that every declared value has one finite mapping
+before construction completes. Keep `create(initial, mapper)` for computed mappings and non-enum
+semantic types. `targetExactlyFrom(...)` is literal: if a periodic mechanism may choose an
+interchangeable position, bind `PlantTargets.equivalentPositionsOf(command)` explicitly instead.
 Mapping and finite validation complete before the helper publishes one immutable
 semantic/numeric `Request`; a mapper failure leaves the prior request untouched. Each successful
 set publishes a fresh identity even when the semantic value and scalar repeat. Consequently,

@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -231,6 +231,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 122 | STATUS-01 | Composable scalar actuator snapshots | Done | The reviewed generic snapshot machinery, thin capability-shaped status views, named position/velocity guidance, maintained migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 123 | STATUS-02 | Reference launcher snapshot composition cleanup | Done | The reviewed launcher snapshot composition, transactional publication, fresh experiment evidence, caller/test migrations, synchronized teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 124 | TASK-06 | Parallel numeric and semantic scalar Task lifetimes | Done | The reviewed parallel scalar Task API, maintained-caller migration, synchronized documentation, adversarial review, deterministic verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 125 | SIMPLICITY-02 | Concise actuator declaration and use | Done | Revised implementation reviewed and publication authorized for the recorded item branch, origin push URL, pull request, and `master` target. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -26528,6 +26529,225 @@ implementation.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, a pull request, and merge into `master`.
   This records Android Studio review and authorizes only those publication coordinates; it does not
   authorize starting the next tracker item.
+
+### SIMPLICITY-02 - Concise actuator declaration and use
+
+- **Gate 1 start and confirmed behavior (2026-09-03):** **Ready.** The user requested a complete
+  CLI-formatted comparison of ordinary Sushi and pinned official NextFTC robot code, with each
+  Sushi-shortening opportunity assessed rather than accepted for cosmetic parity. Basic and
+  Reference lifts retain three numeric mapping-only fields, assignments, and enum switches around
+  `SemanticScalarCommand.create(...)`; Basic Claw and Starter intake repeat the same pattern for
+  two or three values. Every maintained exact semantic Plant spells
+  `targetFromResolver(PlantTargets.exact(command))`. Both maintained raw standard-servo Plants
+  repeat `position().nonPeriodic().bounded(0.0, 1.0).nativeUnits()`. Basic Auto and Basic Robot
+  Auto each define the same private `Tasks.runOnce(() -> claw.setState(...))` adapter. These are
+  real robot-code repetitions whose omitted answers are fixed or already owned elsewhere.
+- **Complete caller and construction-path audit:** `SemanticScalarCommand.create(initial, mapper)`
+  is its sole public construction path and remains necessary for computed and non-enum semantics.
+  Its four maintained enum callers use finite tables. `Plants.TargetStep` exposes only a new
+  numeric command or an arbitrary final resolver; exact semantic commands are constructed inline
+  solely for that step and retain no independent resolver role. Eighteen maintained FTC actuator
+  recipes include seven motor-power, three CR-servo-power, two standard-servo-position, three
+  device-managed-position, and three device-managed-velocity syntax paths. Only raw FTC standard
+  servos share a complete fixed position profile: non-periodic shared coordinate, inclusive
+  `[0, 1]` range, and native units. Motor position and velocity recipes retain independent
+  controller, periodicity, range, units, reference, tolerance, effort, grouping, and target choices.
+  Direct numeric and semantic request APIs already have parallel `ScalarTasks` and
+  `SemanticScalarTasks` forms; only the Basic Claw capability has duplicated maintained scheduling
+  adapters without a capability-shaped fresh Task factory.
+- **Simplicity and NextFTC comparison:** the selected Basic Claw recipe becomes
+  `forEnum(...).map(...).build()` plus
+  `servo(...).nativePosition().targetExactlyFrom(command).build()`, while Auto calls
+  `claw.setStateTask(CLOSED)`. Each remaining argument is a distinct robot fact. Pinned NextFTC is
+  shorter in drive/configuration/homing/shooter examples only by globalizing gamepad/hardware
+  ownership or omitting Sushi's explicit axes, final sink/stop, copied configuration, motion
+  permission, switch search, timeout/outcome, reference guard, aggregate/per-wheel evidence, or
+  immutable status. Its `MotorGroup` delegates feedback to the leader and its encoder `zero()` is
+  not a reference search. Sushi's existing `lift.home()`, `launcher.status().ready()`, flat
+  capability statuses, and source-driven drive registration are already the shorter equal-contract
+  robot APIs; no changes are selected there.
+- **Chosen public design:** add
+  `SemanticScalarCommand.forEnum(initialSemantic).map(semantic, finiteTarget).build()` with one
+  nested concrete `EnumMappingBuilder`. Null or non-finite answers and duplicates reject before
+  mutation; incomplete build names every missing constant in declaration order and remains
+  repairable; a complete build defensively copies the table and consumes the builder. Distinct enum
+  values may share a scalar. Add default
+  `Plants.TargetStep.targetExactlyFrom(SemanticScalarCommand<?>)`, delegating to
+  `targetFromResolver(PlantTargets.exact(command))`; the name deliberately promises literal exact
+  resolution rather than periodic equivalence. Add FTC-only
+  `FtcActuators.ServoSingleStep.nativePosition()`, expanding to the raw standard-servo profile.
+  For a group, `[0, 1]` is the shared native coordinate before later-child scale/bias, and existing
+  endpoint validation remains authoritative. Add `BasicClaw.setStateTask(State)`, implemented by
+  `BasicClawMechanism` through `SemanticScalarTasks` so every call returns a fresh single-use Task,
+  validates without publishing at construction, publishes on start, and leaves hardware writing
+  to the normal downstream output heartbeat.
+- **Rejected designs and bounded scope:** retain `SemanticScalarCommand.create(...)` for its
+  distinct computed-mapping capability; do not add a `NamedPosition` registry, enum-embedded
+  calibration, position/velocity-specific semantic types, Map-valued constructor, or arity
+  overloads. Do not add motor position/velocity presets, generic configuration validation,
+  config-less drive overloads, search begin/end hooks, velocity snapshots, grouped-member status,
+  `abortLaunchesTask()`, or Task twins without repeated callers. Do not change Reference Launcher's
+  timed release to `.then(retracted)`: its generation-aware invalidation deliberately prevents a
+  stale Task cancellation from overwriting a newer release request. Preserve the expanded Plant
+  grammar for custom coordinates and preserve explicit
+  `PlantTargets.equivalentPositionsOf(command)` for periodic policy.
+- **Maintained migration and documentation boundary:** migrate Basic/Reference lift, Basic Claw,
+  and Starter intake enum mappings; migrate their exact semantic target answers; migrate Basic Claw
+  and Reference Launcher's raw servo recipes; and replace only the two duplicated Basic Auto claw
+  adapters. Remove only mapping-specific retained fields/switches and obsolete helpers. Synchronize
+  Framework Principles, Javadocs, actuator/target/Task guidance, the Basic Mechanisms course,
+  source excerpts, cheat sheet, generated API links, and exact documentation tests. Retain expanded
+  examples that intentionally teach custom periodicity, bounds, units, or endpoint mapping.
+- **Deterministic verification plan:** cover enum completeness, out-of-order answers, aliases,
+  invalid/duplicate transactional retry, incomplete-build repair, defensive freezing, configurable
+  initial values, and the retained computed mapper. Prove the exact shortcut preserves semantic
+  request identity and differs from equivalent-position selection on a periodic Plant. Prove
+  `nativePosition()` for single and mirrored groups, invalid child endpoint rejection and retry,
+  range/periodicity, and absence from motor/CR-servo stages. Prove the claw Task has no construction
+  side effect, publishes once at start, writes only on output update, returns fresh identities, and
+  rejects reuse. Run affected mechanism/scenario/docs suites, full TeamCode unit tests, Java
+  compilation, Sushi Javadocs, exhaustive caller/API searches, whitespace checks, and
+  `git diff --check`. These behavior-preserving APIs require no new physical claim; direction,
+  calibration, endpoint, reference, and mechanism-response validation remain adopting-robot work.
+- **Gate 1 approval and Gate 2 start (2026-09-03):** **In progress.** The user accepted the exact
+  versus periodic-equivalent naming correction, explicitly selected the exhaustive `forEnum(...)`
+  path, accepted the remaining comparison conclusions, and then instructed **“Implement the
+  plan.”** This authorizes only SIMPLICITY-02 implementation, caller/test/documentation
+  synchronization, and verification on
+  `codex/simplicity-02-concise-actuator-recipes`, based exactly on
+  `origin/master@92611a14a8b7f36083526062ee822550cc91ddf3`. It does not authorize staging,
+  committing, pushing, opening or merging a pull request, VISION-03, or another tracker item.
+- **Gate 2 implementation result (2026-09-03):** **Verifying.** Added the concrete exhaustive
+  `SemanticScalarCommand.forEnum(initial).map(...).build()` path while preserving the computed and
+  non-enum `create(...)` path. Complete enum tables accept shared numeric targets, freeze a
+  defensive copy, and consume the builder; null, non-finite, duplicate, wrong-enum, and incomplete
+  answers fail transactionally with repairable incomplete tables. Added the default literal
+  `Plants.TargetStep.targetExactlyFrom(command)` answer without adding a numeric writer or periodic
+  selection, and the FTC-only `ServoSingleStep.nativePosition()` preset for the full non-periodic
+  native `[0, 1]` standard-servo coordinate, inherited by valid transformed groups. Basic and
+  Reference lift, Starter intake, Basic Claw, and Reference Launcher now use only the applicable
+  concise forms. Basic Claw exposes a fresh `setStateTask(...)` through `SemanticScalarTasks`, and
+  both Basic Auto helpers now call it directly; lift homing and launcher generation-aware cleanup
+  remain unchanged.
+- **Documentation and maintained-caller result (2026-09-03):** Framework Principles, target,
+  actuator, Task, architecture, learning, and cheat-sheet guidance now teach complete fixed enum
+  tables, literal exact versus explicit periodic-equivalent resolution, the bounded native-servo
+  preset, and the capability-owned claw Task. The Basic Mechanisms course's eight affected complete
+  source copies and four annotated excerpts match source truth. Exhaustive maintained production
+  and documentation searches find no old enum `SemanticScalarCommand.create(...)` caller, verbose
+  exact semantic binding for the migrated command owners, duplicated `requestClaw(...)` helper, or
+  expanded full-native `[0, 1]` servo recipe; intentionally computed test mappings and expanded
+  custom-coordinate recipes remain.
+- **Deterministic verification evidence (2026-09-03):** using Android Studio's JBR, the combined
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run
+  completed successfully: 246 suites, 2,263 tests, zero failures, errors, or skips. After the final
+  course wording cleanup, `DocumentationLinksTest` passed again with 20 tests and no failures,
+  errors, or skips. Focused enum, Plant/FTC grammar, servo mapping, Basic Claw, Auto, and controls
+  suites also passed. `git diff --check` is clean; only Git's informational LF-to-CRLF notices and
+  the existing JDK-21/source-8 deprecation warnings appeared. The exact 29-path diff is unstaged and
+  uncommitted, with HEAD, merge base, and `origin/master` all still
+  `92611a14a8b7f36083526062ee822550cc91ddf3`.
+- **Adversarial review and residual boundary (2026-09-03):** independent core/API and application-
+  behavior reviews found no remaining correctness, lifecycle, staged-builder, provenance,
+  periodicity, group-transform, homing, or launcher-cleanup defect. One low-priority coverage gap
+  was resolved by proving constant-specific enum subclasses use `getDeclaringClass()`, a raw
+  different-enum answer rejects without mutation, and the builder then completes normally.
+  Software verification cannot prove servo endpoints, motor directions, lift switch behavior,
+  calibrated named positions, mechanism travel, or feedback settling; those remain adopting-robot
+  hardware validation.
+- **Android Studio review and publication stop (2026-09-03):** the complete SIMPLICITY-02 diff
+  remains unstaged and uncommitted on `codex/simplicity-02-concise-actuator-recipes`, whose unchanged
+  HEAD and base are `origin/master@92611a14a8b7f36083526062ee822550cc91ddf3`. The resolved push
+  remote is `https://github.com/harishv-99/2025-PhoenixPedro.git` and the intended target branch is
+  `master`. Review the complete unstaged diff in Android Studio. No commit, push, pull request,
+  merge, or next tracker item is authorized until the exact combined Gate 3 publication approval
+  is supplied.
+- **Gate 3 review reopened the servo-safety decision (2026-09-03):** **Researching.** The user
+  challenged whether the new zero-argument `ServoSingleStep.nativePosition()` makes an
+  evidence-free full native `[0, 1]` Plant range look like the ordinary safe choice. The concern is
+  valid: an FTC-valid logical Servo command range and a servo programmer's configured travel do not
+  establish the installed mechanism's safe software command interval. Neither maintained caller
+  supplies such evidence. Basic Claw's named commands are `0.25` and `0.70`, and Reference
+  Launcher's release commands are `0.25` and `0.60`; both presets explicitly require later physical
+  review. The existing actuator bring-up guidance already teaches backed-off, mechanism-specific
+  endpoints inside the controller/programmer envelope.
+- **Revised design recommendation and rejected alternatives:** remove the zero-argument
+  `nativePosition()` rather than renaming it or adding a bounded overload. It adds no capability:
+  the existing staged grammar already expresses
+  `position().nonPeriodic().bounded(min, max).nativeUnits()` and existing integration tests cover
+  that path for single and grouped servos. A two-argument overload would ask for the important
+  bounds but still create a parallel construction path and silently answer periodicity and mapping.
+  Retain an explicit `[0, 1]` native range only where a robot has physically validated the entire
+  mechanism travel. For Basic Claw and Reference Launcher, bound the private native-coordinate
+  Plant to the ordered interval between their two configured, physically reviewed endpoint
+  commands; keep their exact endpoint writes and existing raw-unit status/task semantics. Use
+  `bounded(0, 1).rangeMapsToNative(a, b)` only when `0..1` truthfully means a public normalized
+  mechanism coordinate, not merely to shorten a two-state raw-servo recipe.
+- **Revised implementation and verification boundary:** keep the approved enum-table builder,
+  literal exact-semantic target answer, and Basic Claw Task factory. Remove the native-servo preset
+  and its dedicated tests; migrate the two maintained mechanisms and every maintained teaching
+  occurrence to explicit mechanism-specific bounds; add reversed-endpoint application coverage;
+  and rerun the focused mechanism, staged-builder, mapping-domain, documentation, full TeamCode,
+  compilation, Javadoc, static-search, and diff checks. No production, test, or documentation edit
+  for this revision is authorized until the user approves this revised Gate 1 design. The prior
+  publication authorization stop remains in force; nothing is staged or committed.
+- **Revised Gate 1 approval and Gate 2 restart (2026-09-03):** **In progress.** The user selected
+  normalized mechanism position as the maintained teaching path—normally `0.0` for closed or
+  retracted and `1.0` for open or extended, with meaningful intermediate fractions—and explicitly
+  approved revised SIMPLICITY-02. This authorizes removing `nativePosition()`, migrating the two
+  maintained servo mechanisms and narrative examples to
+  `position().nonPeriodic().bounded(0.0, 1.0).rangeMapsToNative(backedOffEndpointA,
+  backedOffEndpointB)`, synchronizing tests/Javadocs/guides, and verification on the existing
+  `codex/simplicity-02-concise-actuator-recipes` branch. The configured native endpoints remain
+  robot-owned calibration facts requiring physical review; the normalized Plant bounds do not
+  claim that the full native Servo `[0, 1]` range is safe. This approval does not authorize staging,
+  committing, pushing, opening or merging a pull request, VISION-03, or another tracker item.
+- **Revised Gate 2 implementation result (2026-09-03):** **Verifying.** The zero-argument
+  `nativePosition()` preset is absent. Basic Claw and Reference Launcher now expose normalized
+  non-periodic Plant coordinates from `0.0` to `1.0` and map them to separately configured native
+  endpoints with `rangeMapsToNative(...)`; reversed endpoint mappings remain supported. Their
+  configuration fields now name the FTC domain explicitly, such as `closedNativePosition`, while
+  Basic Claw status names its normalized Plant fact `appliedCoordinate`. Raw-native mechanisms
+  retain only the deliberate expanded path
+  `position().nonPeriodic().bounded(safeNativeMin, safeNativeMax).nativeUnits()`. The approved
+  exhaustive enum mapper, literal `targetExactlyFrom(command)` answer, and fresh Basic Claw Task
+  factory remain, and maintained enum callers, Auto routines, diagnostics, Javadocs, guides, and
+  examples are synchronized. The ordinary wrist architecture example now uses the same semantic
+  owner instead of teaching a hand-rolled parallel request pair.
+- **Revised deterministic verification evidence (2026-09-03):** using Android Studio's JBR, the
+  final combined
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run
+  completed successfully: 246 suites, 2,265 tests, zero failures, errors, or skips. Focused FTC
+  staged-grammar, documentation, Basic Claw, Reference Launcher, semantic Task, and legacy builder
+  diagnostic suites also passed during repair. All 26 maintained complete source copies and 52
+  provenance-marked Java fences match source truth. Exhaustive searches find no maintained
+  `nativePosition()` call, old ambiguous endpoint/status name, fixed-enum `create(...)` production
+  caller, or duplicated Basic Auto claw lambda. `git diff --check`, final-newline checks, and the
+  untracked-file check are clean; only Git's informational LF-to-CRLF notices and the repository's
+  existing JDK-21/source-8 deprecation warnings appeared.
+- **Revised adversarial review and residual boundary (2026-09-03):** independent core/API and
+  application/documentation reviews report no remaining blocker. Review findings drove explicit
+  native endpoint field names, truthful applied-coordinate vocabulary, complete staged-builder
+  diagnostics, safety-focused mapping Javadocs, the canonical semantic wrist example, and precise
+  immediate-Task wording. Software verification cannot prove endpoint clearance, servo direction,
+  physical interpolation, lift reference-switch behavior, motor direction, mechanism travel, or
+  feedback settling; those remain adopting-robot hardware checks. In particular, normalized
+  `0.5` means halfway through the configured command interval, not proof of halfway physical
+  motion or servo feedback.
+- **Revised Android Studio review and publication stop (2026-09-03):** the complete 40-path
+  SIMPLICITY-02 diff remains unstaged and uncommitted on
+  `codex/simplicity-02-concise-actuator-recipes`. HEAD, its merge base, and `origin/master` remain
+  `92611a14a8b7f36083526062ee822550cc91ddf3`. The resolved push remote is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` and the intended target branch is `master`.
+  Review the complete unstaged diff in Android Studio. No commit, push, pull request, merge, or next
+  tracker item is authorized until the exact combined Gate 3 publication approval is supplied.
+- **Revised Gate 3 manual review and publication authorization (2026-09-03):** **Done.** The user
+  completed the Android Studio review and supplied the exact combined authorization to commit the
+  reviewed 40-path SIMPLICITY-02 diff on
+  `codex/simplicity-02-concise-actuator-recipes`, push that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. This authorizes only those publication steps; it does not authorize starting VISION-03
+  or another tracker item.
 
 ### VISION-03 - Reusable color-blob pipeline
 

@@ -41,22 +41,17 @@ public final class BasicRobotAutoRoutines {
 
         return Tasks.sequence(
                 requiredLift.home(),
-                // The lift deadline preserves its exact outcome; CLOSED starts concurrently and
-                // persists after its one-cycle Task completes.
+                // The lift deadline preserves its exact outcome; CLOSED publishes concurrently
+                // and remains held after its immediate Task succeeds.
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.HIGH),
-                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                        requiredClaw.setStateTask(BasicClaw.State.CLOSED)),
                 DriveTasks.driveExclusivelyForSeconds(
                         requiredDrive,
                         new DriveSignal(FORWARD_REQUEST, 0.0, 0.0),
                         FORWARD_DURATION_SEC),
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
-    }
-
-    /** Creates a fresh one-cycle semantic command Task. */
-    private static Task requestClaw(BasicClaw claw, BasicClaw.State state) {
-        return Tasks.runOnce(() -> claw.setState(state));
+                        requiredClaw.setStateTask(BasicClaw.State.OPEN)));
     }
 }

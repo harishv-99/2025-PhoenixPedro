@@ -207,18 +207,12 @@ focused Controls owners, and `BasicHardwareOwnership.java`. Compile after each f
     Status status();
 ```
 
-`Height` is the semantic name. `setHeight(...)` persists it without waiting; `moveTo(...)` returns a
-fresh single-use feedback Task. Configuration and its mapper own numeric inches—do not
-add `NamedPosition` or `toHigh` aliases.
+`setHeight(...)` persists; `moveTo(...)` waits for feedback.
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java -->
 ```java
-// docs: The claw exposes named state and truthful command status, not raw positions.
-    /** Replaces the persistent semantic request. */
-    void setState(State state);
-
-    /** Returns the semantic request and cached applied command without polling hardware. */
-    Status status();
+// docs: Auto selects the same named state through a fresh Task; no fake arrival wait is added.
+    Task setStateTask(State state);
 ```
 
 ### Implement the foundation before testing
@@ -350,7 +344,13 @@ public interface BasicLift {
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
 ```java
-// docs: Resolve the active-low reference input, then privately build one bounded position Plant.
+// docs: Define every enum point once, then give the exact semantic source to the Plant.
+        heightCommand = SemanticScalarCommand.forEnum(Height.STOWED)
+                .map(Height.STOWED, c.stowedHeightIn)
+                .map(Height.LOW, c.lowHeightIn)
+                .map(Height.HIGH, c.highHeightIn)
+                .build();
+
         bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
                 .debouncedOnOff(0.02, 0.02);
         lift = FtcActuators.plant(map)
@@ -363,7 +363,7 @@ public interface BasicLift {
                 .needsReference("basic lift has not been homed")
                 .positionTolerance(c.toleranceIn)
                 .outputPowerLimitedTo(c.maximumPower)
-                .targetFromResolver(PlantTargets.exact(heightCommand))
+                .targetExactlyFrom(heightCommand)
                 .build();
 ```
 
@@ -402,7 +402,6 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
-import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
@@ -490,9 +489,6 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
 
     private final PositionPlant lift;
     private final BooleanSource bottomSwitch;
-    private final double stowedHeightIn;
-    private final double lowHeightIn;
-    private final double highHeightIn;
     private final double homingPower;
     private final double homingTimeoutSec;
     private final double moveTimeoutSec;
@@ -508,13 +504,14 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
         Config c = copyAndValidate(config);
 
-        stowedHeightIn = c.stowedHeightIn;
-        lowHeightIn = c.lowHeightIn;
-        highHeightIn = c.highHeightIn;
         homingPower = c.homingPower;
         homingTimeoutSec = c.homingTimeoutSec;
         moveTimeoutSec = c.moveTimeoutSec;
-        heightCommand = SemanticScalarCommand.create(Height.STOWED, this::positionFor);
+        heightCommand = SemanticScalarCommand.forEnum(Height.STOWED)
+                .map(Height.STOWED, c.stowedHeightIn)
+                .map(Height.LOW, c.lowHeightIn)
+                .map(Height.HIGH, c.highHeightIn)
+                .build();
 
         bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
                 .debouncedOnOff(0.02, 0.02);
@@ -528,7 +525,7 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
                 .needsReference("basic lift has not been homed")
                 .positionTolerance(c.toleranceIn)
                 .outputPowerLimitedTo(c.maximumPower)
-                .targetFromResolver(PlantTargets.exact(heightCommand))
+                .targetExactlyFrom(heightCommand)
                 .build();
     }
 
@@ -575,19 +572,6 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
     @Override
     public void stop() {
         lift.stop();
-    }
-
-    private double positionFor(Height height) {
-        switch (height) {
-            case HIGH:
-                return highHeightIn;
-            case LOW:
-                return lowHeightIn;
-            case STOWED:
-                return stowedHeightIn;
-            default:
-                throw new IllegalStateException("Unhandled BasicLift.Height: " + height);
-        }
     }
 
     private static Config copyAndValidate(Config source) {
@@ -656,6 +640,8 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
 ```java
 package edu.ftcsushi.robots.examples.basicmechanisms;
 
+import edu.ftcsushi.fw.task.Task;
+
 /** Semantic open/closed claw capability shared by TeleOp and Auto. */
 public interface BasicClaw {
 
@@ -666,32 +652,51 @@ public interface BasicClaw {
     }
 
     /**
-     * Immutable command snapshot.
+     * Immutable request/application snapshot.
      *
-     * <p>A standard servo has no position feedback here, so {@code appliedPosition} is the Plant's
-     * final submitted target after bounds, not proof that the claw physically arrived.</p>
+     * <p>A standard servo has no position feedback here, so {@code appliedCoordinate} is the
+     * Plant's final normalized target after bounds: {@code 0.0} is closed and {@code 1.0} is open.
+     * It is not the configured native FTC Servo endpoint or proof that the claw physically
+     * arrived.</p>
      */
     final class Status {
-        /** Most recent semantic request, updated synchronously by {@link #setState(State)}. */
+        /**
+         * Most recent semantic request, updated synchronously by {@link #setState(State)} or when
+         * the Task returned by {@link #setStateTask(State)} starts.
+         */
         public final State requestedState;
 
         /**
-         * Last position successfully submitted by an output heartbeat, in native FTC Servo units
-         * {@code [0.0, 1.0]}, or {@link Double#NaN} before the first successful heartbeat.
-         * This is command evidence, not physical-position feedback.
+         * Last normalized Plant position successfully applied by an output heartbeat, where
+         * {@code 0.0} means {@link State#CLOSED} and {@code 1.0} means {@link State#OPEN}, or
+         * {@link Double#NaN} before the first successful heartbeat. This is applied-target
+         * evidence, not the mapped native Servo endpoint or physical-position feedback.
          */
-        public final double appliedPosition;
+        public final double appliedCoordinate;
 
-        public Status(State requestedState, double appliedPosition) {
+        public Status(State requestedState, double appliedCoordinate) {
             this.requestedState = requestedState;
-            this.appliedPosition = appliedPosition;
+            this.appliedCoordinate = appliedCoordinate;
         }
     }
 
-    /** Replaces the persistent semantic request. */
+    /** Immediately replaces the persistent semantic request; a later output heartbeat applies it. */
     void setState(State state);
 
-    /** Returns the semantic request and cached applied command without polling hardware. */
+    /**
+     * Builds a fresh single-use Task that selects one persistent semantic state when started.
+     *
+     * <p>Building the Task validates the state without publishing it. Starting the Task publishes
+     * the request once and completes immediately; the mechanism's normal downstream output
+     * heartbeat applies it. A standard servo supplies no arrival feedback, so this Task does not
+     * wait for or claim physical completion.</p>
+     *
+     * @param state non-null semantic state
+     * @return fresh single-use request Task
+     */
+    Task setStateTask(State state);
+
+    /** Returns the semantic request and cached normalized applied target without polling hardware. */
     Status status();
 }
 ```
@@ -702,16 +707,22 @@ public interface BasicClaw {
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.java -->
 ```java
-// docs: The claw owns one bounded standard-servo Plant initialized from a named semantic state.
+// docs: Named states use a normalized mechanism coordinate; reviewed native endpoints stay config.
+        stateCommand = SemanticScalarCommand.forEnum(c.initialState)
+                .map(State.CLOSED, CLOSED_TARGET)
+                .map(State.OPEN, OPEN_TARGET)
+                .build();
         claw = FtcActuators.plant(map)
                 .servo(c.servoName, c.direction)
                 .position()
                 .nonPeriodic()
-                .bounded(0.0, 1.0)
-                .nativeUnits()
-                .targetFromResolver(PlantTargets.exact(stateCommand))
+                .bounded(CLOSED_TARGET, OPEN_TARGET)
+                .rangeMapsToNative(c.closedNativePosition, c.openNativePosition)
+                .targetExactlyFrom(stateCommand)
                 .build();
 ```
+
+Coordinates are normalized; native endpoints need hardware review. Interpolation is not feedback.
 
 <!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.java -->
 ```java
@@ -722,17 +733,18 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
-import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
+import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.ftc.FtcActuators;
 import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.fw.task.Task;
 
 /** Owns the claw's semantic request, final resolver, standard-servo Plant, update, and stop. */
 public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output {
 
-    /** Data-only standard-servo wiring and named-state positions. */
+    /** Data-only standard-servo wiring and native endpoints for the named states. */
     public static final class Config {
         /** Nonblank FTC Robot Configuration name for the standard positional Servo. */
         public String servoName;
@@ -740,16 +752,25 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         /** Logical FTC Servo direction applied once during hardware construction. */
         public Direction direction;
 
-        /** Native Servo command for {@link State#CLOSED}, in inclusive range {@code [0, 1]}. */
-        public double closedPosition;
+        /**
+         * Native FTC Servo endpoint mapped from normalized Plant target {@code 0.0}
+         * ({@link State#CLOSED}), in inclusive range {@code [0, 1]}. This fact must be backed off
+         * from unsafe travel and reviewed on the assembled mechanism.
+         */
+        public double closedNativePosition;
 
-        /** Native Servo command for {@link State#OPEN}, in inclusive range {@code [0, 1]}. */
-        public double openPosition;
+        /**
+         * Native FTC Servo endpoint mapped from normalized Plant target {@code 1.0}
+         * ({@link State#OPEN}), in inclusive range {@code [0, 1]}. This fact must be backed off
+         * from unsafe travel and reviewed on the assembled mechanism.
+         */
+        public double openNativePosition;
 
         /**
          * Semantic request held from construction until a caller selects another state. With the
-         * default {@link State#CLOSED} value, the first successful output heartbeat submits
-         * {@link #closedPosition}; that initial Servo motion must be reviewed physically.
+         * default {@link State#CLOSED} value, the first successful output heartbeat maps target
+         * {@code 0.0} to {@link #closedNativePosition}; that initial Servo motion must be reviewed
+         * physically.
          */
         public State initialState;
 
@@ -762,18 +783,19 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
             Config config = new Config();
             config.servoName = "clawServo";
             config.direction = Direction.FORWARD;
-            config.closedPosition = 0.25;
-            config.openPosition = 0.70;
+            config.closedNativePosition = 0.25;
+            config.openNativePosition = 0.70;
             config.initialState = State.CLOSED;
             return config;
         }
     }
 
+    private static final double CLOSED_TARGET = 0.0;
+    private static final double OPEN_TARGET = 1.0;
+
     private final Plant claw;
-    private final double closedPosition;
-    private final double openPosition;
     private final SemanticScalarCommand<State> stateCommand;
-    private double lastAppliedPosition = Double.NaN;
+    private double lastAppliedCoordinate = Double.NaN;
     private boolean stopped;
 
     /**
@@ -786,16 +808,17 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
         Config c = copyAndValidate(config);
 
-        closedPosition = c.closedPosition;
-        openPosition = c.openPosition;
-        stateCommand = SemanticScalarCommand.create(c.initialState, this::positionFor);
+        stateCommand = SemanticScalarCommand.forEnum(c.initialState)
+                .map(State.CLOSED, CLOSED_TARGET)
+                .map(State.OPEN, OPEN_TARGET)
+                .build();
         claw = FtcActuators.plant(map)
                 .servo(c.servoName, c.direction)
                 .position()
                 .nonPeriodic()
-                .bounded(0.0, 1.0)
-                .nativeUnits()
-                .targetFromResolver(PlantTargets.exact(stateCommand))
+                .bounded(CLOSED_TARGET, OPEN_TARGET)
+                .rangeMapsToNative(c.closedNativePosition, c.openNativePosition)
+                .targetExactlyFrom(stateCommand)
                 .build();
     }
 
@@ -805,8 +828,14 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
     }
 
     @Override
+    public Task setStateTask(State state) {
+        return SemanticScalarTasks.set(stateCommand, Objects.requireNonNull(state, "state"))
+                .build();
+    }
+
+    @Override
     public Status status() {
-        return new Status(stateCommand.request().semantic(), lastAppliedPosition);
+        return new Status(stateCommand.request().semantic(), lastAppliedCoordinate);
     }
 
     /** Applies the held command through the one final Plant path. */
@@ -816,8 +845,8 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
             return;
         }
         claw.update(clock);
-        // Publish command evidence only after the complete Plant heartbeat succeeds.
-        lastAppliedPosition = claw.getAppliedTarget();
+        // Publish normalized target evidence only after the complete Plant heartbeat succeeds.
+        lastAppliedCoordinate = claw.getAppliedTarget();
     }
 
     /**
@@ -829,19 +858,8 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         try {
             claw.stop();
         } finally {
-            // A terminally stopped Plant cannot publish new applied-command evidence.
+            // A terminally stopped Plant cannot publish new applied-target evidence.
             stopped = true;
-        }
-    }
-
-    private double positionFor(State state) {
-        switch (state) {
-            case OPEN:
-                return openPosition;
-            case CLOSED:
-                return closedPosition;
-            default:
-                throw new IllegalStateException("Unhandled BasicClaw.State: " + state);
         }
     }
 
@@ -850,12 +868,13 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         Config c = new Config();
         c.servoName = hardwareName(s.servoName);
         c.direction = Objects.requireNonNull(s.direction, "direction is required");
-        c.closedPosition = servoPosition(s.closedPosition, "closedPosition");
-        c.openPosition = servoPosition(s.openPosition, "openPosition");
+        c.closedNativePosition = servoPosition(
+                s.closedNativePosition, "closedNativePosition");
+        c.openNativePosition = servoPosition(s.openNativePosition, "openNativePosition");
         c.initialState = Objects.requireNonNull(s.initialState, "initialState is required");
-        if (Double.compare(c.closedPosition, c.openPosition) == 0) {
+        if (Double.compare(c.closedNativePosition, c.openNativePosition) == 0) {
             throw new IllegalArgumentException(
-                    "closedPosition and openPosition must be distinct so the named states "
+                    "closedNativePosition and openNativePosition must be distinct so the named states "
                             + "produce different commands");
         }
         return c;
@@ -1891,15 +1910,22 @@ package edu.ftcsushi.robots.examples.basicmechanisms;
 
 import org.junit.Test;
 
+import edu.ftcsushi.fw.task.Task;
+import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Teaches semantic servo requests without pretending a standard servo has feedback. */
 public final class BasicClawMechanismTest {
+
+    private static final double EPSILON = 1.0e-12;
+    private static final double CLOSED_TARGET = 0.0;
+    private static final double OPEN_TARGET = 1.0;
 
     @Test
     public void firstHeartbeatAppliesTheConfiguredInitialClosedRequest() {
@@ -1911,13 +1937,13 @@ public final class BasicClawMechanismTest {
 
         f.claw.update(time.clock());
 
-        assertStatus(f.claw, BasicClaw.State.CLOSED, f.originalClosedPosition);
-        assertEquals(f.originalClosedPosition, f.servo.position(), 0.0);
+        assertStatus(f.claw, BasicClaw.State.CLOSED, CLOSED_TARGET);
+        assertEquals(f.originalClosedNativePosition, f.servo.position(), 0.0);
         assertEquals(1, f.servo.positionWrites());
     }
 
     @Test
-    public void requestIsImmediateButAppliedCommandWaitsForTheOutputHeartbeat() {
+    public void requestIsImmediateButAppliedTargetWaitsForTheOutputHeartbeat() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
 
@@ -1930,12 +1956,64 @@ public final class BasicClawMechanismTest {
 
         f.claw.update(time.clock());
 
-        assertStatus(f.claw, BasicClaw.State.OPEN, f.originalOpenPosition);
-        assertEquals(f.originalOpenPosition, f.servo.position(), 0.0);
+        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
+        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
     }
 
     @Test
-    public void stopBeforeFirstHeartbeatKeepsAppliedCommandUnknownAndWritesNothing() {
+    public void stateTasksAreFreshDeferredAndSingleUse() {
+        Fixture f = fixture();
+        ManualLoopClock time = new ManualLoopClock();
+
+        Task first = f.claw.setStateTask(BasicClaw.State.OPEN);
+        Task second = f.claw.setStateTask(BasicClaw.State.OPEN);
+
+        assertNotSame(first, second);
+        assertStatus(f.claw, BasicClaw.State.CLOSED, Double.NaN);
+        assertEquals(0, f.servo.positionWrites());
+
+        first.start(time.clock());
+
+        assertTrue(first.isComplete());
+        assertEquals(TaskOutcome.SUCCESS, first.getOutcome());
+        assertStatus(f.claw, BasicClaw.State.OPEN, Double.NaN);
+        assertEquals(0, f.servo.positionWrites());
+
+        f.claw.update(time.clock());
+        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
+        assertEquals(1, f.servo.positionWrites());
+
+        f.claw.setState(BasicClaw.State.CLOSED);
+        try {
+            first.start(time.clock());
+            fail("Expected one claw state Task instance to reject a second start");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("single-use"));
+        }
+        assertStatus(f.claw, BasicClaw.State.CLOSED, OPEN_TARGET);
+
+        second.start(time.clock());
+        assertEquals(TaskOutcome.SUCCESS, second.getOutcome());
+        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
+    }
+
+    @Test
+    public void stateTaskRejectsNullWithoutChangingTheRequest() {
+        Fixture f = fixture();
+
+        try {
+            f.claw.setStateTask(null);
+            fail("Expected null claw state Task request to fail");
+        } catch (NullPointerException expected) {
+            assertTrue(expected.getMessage().contains("state"));
+        }
+
+        assertStatus(f.claw, BasicClaw.State.CLOSED, Double.NaN);
+        assertEquals(0, f.servo.positionWrites());
+    }
+
+    @Test
+    public void stopBeforeFirstHeartbeatKeepsAppliedTargetUnknownAndWritesNothing() {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
 
@@ -1960,16 +2038,16 @@ public final class BasicClawMechanismTest {
         int writesBeforeStop = f.servo.positionWrites();
 
         f.claw.stop();
-        assertStatus(f.claw, BasicClaw.State.OPEN, f.originalOpenPosition);
-        assertEquals(f.originalOpenPosition, f.servo.position(), 0.0);
+        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
+        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
         int writesAfterStop = f.servo.positionWrites();
         assertTrue(writesAfterStop >= writesBeforeStop);
 
         f.claw.setState(BasicClaw.State.CLOSED);
         f.claw.update(time.nextCycle(0.02));
-        assertStatus(f.claw, BasicClaw.State.CLOSED, f.originalOpenPosition);
+        assertStatus(f.claw, BasicClaw.State.CLOSED, OPEN_TARGET);
         assertEquals(writesAfterStop, f.servo.positionWrites());
-        assertEquals(f.originalOpenPosition, f.servo.position(), 0.0);
+        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
     }
 
     @Test
@@ -1977,15 +2055,35 @@ public final class BasicClawMechanismTest {
         Fixture f = fixture();
         ManualLoopClock time = new ManualLoopClock();
 
-        f.config.openPosition = 0.95;
-        f.config.closedPosition = 0.05;
+        f.config.openNativePosition = 0.95;
+        f.config.closedNativePosition = 0.05;
         f.config.servoName = "replacementServo";
 
         f.claw.setState(BasicClaw.State.OPEN);
         f.claw.update(time.clock());
 
-        assertStatus(f.claw, BasicClaw.State.OPEN, f.originalOpenPosition);
-        assertEquals(f.originalOpenPosition, f.servo.position(), 0.0);
+        assertStatus(f.claw, BasicClaw.State.OPEN, OPEN_TARGET);
+        assertEquals(f.originalOpenNativePosition, f.servo.position(), 0.0);
+    }
+
+    @Test
+    public void reversedNativeEndpointsKeepTheSemanticPlantCoordinateNormalized() {
+        BasicClawMechanism.Config config = config();
+        config.closedNativePosition = 0.85;
+        config.openNativePosition = 0.15;
+        FtcTestHardware hardware = new FtcTestHardware();
+        FtcTestHardware.ServoProbe servo = hardware.addServo(config.servoName);
+        BasicClawMechanism claw = new BasicClawMechanism(hardware, config);
+        ManualLoopClock time = new ManualLoopClock();
+
+        claw.update(time.clock());
+        assertStatus(claw, BasicClaw.State.CLOSED, CLOSED_TARGET);
+        assertEquals(config.closedNativePosition, servo.position(), EPSILON);
+
+        claw.setState(BasicClaw.State.OPEN);
+        claw.update(time.nextCycle(0.02));
+        assertStatus(claw, BasicClaw.State.OPEN, OPEN_TARGET);
+        assertEquals(config.openNativePosition, servo.position(), EPSILON);
     }
 
     @Test
@@ -1995,11 +2093,11 @@ public final class BasicClawMechanismTest {
         assertConfigFailureBeforeLookup(unnamed, "servoName");
 
         BasicClawMechanism.Config nonFinite = config();
-        nonFinite.openPosition = Double.NaN;
-        assertConfigFailureBeforeLookup(nonFinite, "openPosition");
+        nonFinite.openNativePosition = Double.NaN;
+        assertConfigFailureBeforeLookup(nonFinite, "openNativePosition");
 
         BasicClawMechanism.Config indistinguishable = config();
-        indistinguishable.openPosition = indistinguishable.closedPosition;
+        indistinguishable.openNativePosition = indistinguishable.closedNativePosition;
         assertConfigFailureBeforeLookup(indistinguishable, "must be distinct");
     }
 
@@ -2013,17 +2111,17 @@ public final class BasicClawMechanismTest {
     private static BasicClawMechanism.Config config() {
         BasicClawMechanism.Config config = BasicClawMechanism.Config.defaults();
         config.servoName = "claw";
-        config.closedPosition = 0.20;
-        config.openPosition = 0.80;
+        config.closedNativePosition = 0.20;
+        config.openNativePosition = 0.80;
         return config;
     }
 
     private static void assertStatus(BasicClaw claw,
                                      BasicClaw.State expectedState,
-                                     double expectedAppliedPosition) {
+                                     double expectedAppliedCoordinate) {
         BasicClaw.Status status = claw.status();
         assertEquals(expectedState, status.requestedState);
-        assertEquals(expectedAppliedPosition, status.appliedPosition, 0.0);
+        assertEquals(expectedAppliedCoordinate, status.appliedCoordinate, 0.0);
     }
 
     private static void assertConfigFailureBeforeLookup(
@@ -2041,8 +2139,8 @@ public final class BasicClawMechanismTest {
 
     private static final class Fixture {
         private final BasicClawMechanism.Config config;
-        private final double originalClosedPosition;
-        private final double originalOpenPosition;
+        private final double originalClosedNativePosition;
+        private final double originalOpenNativePosition;
         private final FtcTestHardware.ServoProbe servo;
         private final BasicClawMechanism claw;
 
@@ -2050,8 +2148,8 @@ public final class BasicClawMechanismTest {
                         FtcTestHardware.ServoProbe servo,
                         BasicClawMechanism claw) {
             this.config = config;
-            this.originalClosedPosition = config.closedPosition;
-            this.originalOpenPosition = config.openPosition;
+            this.originalClosedNativePosition = config.closedNativePosition;
+            this.originalOpenNativePosition = config.openNativePosition;
             this.servo = servo;
             this.claw = claw;
         }
@@ -2074,6 +2172,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import edu.ftcsushi.fw.ftc.input.GamepadDevice;
 import edu.ftcsushi.fw.input.binding.Bindings;
@@ -2284,6 +2383,12 @@ public final class BasicTeleOpControlsTest {
         }
 
         @Override
+        public Task setStateTask(State state) {
+            State requiredState = Objects.requireNonNull(state, "state");
+            return Tasks.runOnce(() -> setState(requiredState));
+        }
+
+        @Override
         public Status status() {
             return new Status(State.CLOSED, 0.0);
         }
@@ -2441,8 +2546,8 @@ public final class BasicClawTeleOp extends FtcRobotOpMode {
         program.presenter((clock, telemetry) -> {
             BasicClaw.Status status = claw.status();
             telemetry.addData("claw.request", status.requestedState);
-            telemetry.addData("claw.appliedCommand", "%.2f", status.appliedPosition);
-            telemetry.addLine("claw position is a command, not servo feedback");
+            telemetry.addData("claw.appliedCoordinate", "%.2f", status.appliedCoordinate);
+            telemetry.addLine("claw coordinate is a normalized target, not servo feedback");
         });
     }
 }
@@ -2464,8 +2569,7 @@ neutral, and test secured at low power with STOP staffed.
 
 - Lift host: D-pad selects heights, X starts a fresh homing Task, and request/reference/arrival
   telemetry changes only with the corresponding evidence.
-- Claw host: A/B select closed/open and telemetry reports a submitted command, never measured
-  arrival.
+- Claw host: A/B select closed/open; telemetry shows the normalized target, not arrival.
 
 **Software checkpoint:** `BUILD SUCCESSFUL`; both hosts remain absent from the Driver Station while
 the repository copies retain `@Disabled`.
@@ -2479,7 +2583,7 @@ clearance, and STOP before enabling the other host.
 
 - `program.output(...)` registers the sole mechanism update/stop owner.
 - Each host rejects motion before hardware lookup until its gates are true.
-- Servo applied position is a submitted command, not measured arrival.
+- Claw status reports a normalized target, not native output or arrival.
 
 **Key APIs**
 
@@ -2632,8 +2736,8 @@ public final class BasicRobotTeleOp extends FtcRobotOpMode {
                     liftStatus.requestedPositionIn(),
                     liftStatus.referenced(),
                     liftStatus.atTarget());
-            telemetry.addData("claw", "%s command=%.2f",
-                    clawStatus.requestedState, clawStatus.appliedPosition);
+            telemetry.addData("claw", "%s coordinate=%.2f",
+                    clawStatus.requestedState, clawStatus.appliedCoordinate);
         });
     }
 }
@@ -2695,15 +2799,15 @@ physical readiness before full Auto.
         return Tasks.sequence(
                 requiredLift.home(),
                 requiredLift.moveTo(BasicLift.Height.HIGH),
-                // The lift is the deadline, while the one-cycle claw request starts concurrently
-                // and persists through the mechanism after that companion Task completes.
+                // The lift is the deadline, while the write-once claw request starts concurrently
+                // and remains held by the mechanism after that companion Task succeeds.
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.LOW),
-                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                        requiredClaw.setStateTask(BasicClaw.State.CLOSED)),
                 Tasks.waitForSeconds(GUIDE_HOLD_SEC),
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
+                        requiredClaw.setStateTask(BasicClaw.State.OPEN)));
 ```
 
 <!-- annotated-source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicDriveAuto.java -->
@@ -2761,20 +2865,15 @@ public final class BasicAutoRoutines {
         return Tasks.sequence(
                 requiredLift.home(),
                 requiredLift.moveTo(BasicLift.Height.HIGH),
-                // The lift is the deadline, while the one-cycle claw request starts concurrently
-                // and persists through the mechanism after that companion Task completes.
+                // The lift is the deadline, while the write-once claw request starts concurrently
+                // and remains held by the mechanism after that companion Task succeeds.
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.LOW),
-                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                        requiredClaw.setStateTask(BasicClaw.State.CLOSED)),
                 Tasks.waitForSeconds(GUIDE_HOLD_SEC),
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
-    }
-
-    /** Creates a fresh one-cycle semantic command Task. */
-    private static Task requestClaw(BasicClaw claw, BasicClaw.State state) {
-        return Tasks.runOnce(() -> claw.setState(state));
+                        requiredClaw.setStateTask(BasicClaw.State.OPEN)));
     }
 
 }
@@ -2824,8 +2923,8 @@ public final class BasicMechanismsAuto extends FtcRobotOpMode {
                     liftStatus.requestedPositionIn(),
                     liftStatus.referenced(),
                     liftStatus.atTarget());
-            telemetry.addData("claw", "%s command=%.2f",
-                    clawStatus.requestedState, clawStatus.appliedPosition);
+            telemetry.addData("claw", "%s coordinate=%.2f",
+                    clawStatus.requestedState, clawStatus.appliedCoordinate);
             telemetry.addData("auto.complete", auto.isComplete());
             telemetry.addData("auto.outcome", auto.getOutcome());
         });
@@ -2982,12 +3081,14 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.drive.DriveCommandSink;
 import edu.ftcsushi.fw.drive.DriveSignal;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
+import edu.ftcsushi.fw.task.Tasks;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -3356,6 +3457,12 @@ public final class BasicAutoRoutinesTest {
         }
 
         @Override
+        public Task setStateTask(State state) {
+            State requiredState = Objects.requireNonNull(state, "state");
+            return Tasks.runOnce(() -> setState(requiredState));
+        }
+
+        @Override
         public Status status() {
             State state = states.isEmpty() ? State.CLOSED : states.get(states.size() - 1);
             return new Status(state, 0.0);
@@ -3483,7 +3590,8 @@ the sink's software STOP boundary; it does not prove physical zero.
 
 - Fixed child Tasks are constructed eagerly, but `Tasks.sequence(...)` starts each later child only
   after the prior child reports exact `SUCCESS`.
-- `parallelDeadline(...)` makes the lift outcome authoritative while one-cycle claw intent persists.
+- `parallelDeadline(...)` keeps the lift outcome authoritative while the write-once claw request
+  remains held.
 - The stop-only owner never competes with the active drive Task.
 - Fixed-time drive teaches exclusive ownership and stop, not a field path.
 
@@ -3537,18 +3645,18 @@ terminal cleanup and no hidden cancellation continuation.
 // docs: Side-effect-free capability Task factories build eagerly; exact success starts later motion.
         return Tasks.sequence(
                 requiredLift.home(),
-                // The lift deadline preserves its exact outcome; CLOSED starts concurrently and
-                // persists after its one-cycle Task completes.
+                // The lift deadline preserves its exact outcome; CLOSED publishes concurrently
+                // and remains held after its immediate Task succeeds.
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.HIGH),
-                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                        requiredClaw.setStateTask(BasicClaw.State.CLOSED)),
                 DriveTasks.driveExclusivelyForSeconds(
                         requiredDrive,
                         new DriveSignal(FORWARD_REQUEST, 0.0, 0.0),
                         FORWARD_DURATION_SEC),
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
+                        requiredClaw.setStateTask(BasicClaw.State.OPEN)));
 ```
 
 <!-- source-file: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicRobotAutoRoutines.java -->
@@ -3596,23 +3704,18 @@ public final class BasicRobotAutoRoutines {
 
         return Tasks.sequence(
                 requiredLift.home(),
-                // The lift deadline preserves its exact outcome; CLOSED starts concurrently and
-                // persists after its one-cycle Task completes.
+                // The lift deadline preserves its exact outcome; CLOSED publishes concurrently
+                // and remains held after its immediate Task succeeds.
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.HIGH),
-                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                        requiredClaw.setStateTask(BasicClaw.State.CLOSED)),
                 DriveTasks.driveExclusivelyForSeconds(
                         requiredDrive,
                         new DriveSignal(FORWARD_REQUEST, 0.0, 0.0),
                         FORWARD_DURATION_SEC),
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
-    }
-
-    /** Creates a fresh one-cycle semantic command Task. */
-    private static Task requestClaw(BasicClaw claw, BasicClaw.State state) {
-        return Tasks.runOnce(() -> claw.setState(state));
+                        requiredClaw.setStateTask(BasicClaw.State.OPEN)));
     }
 }
 ```
@@ -3673,8 +3776,8 @@ public final class BasicRobotAuto extends FtcRobotOpMode {
                         liftStatus.requestedPositionIn(),
                         liftStatus.referenced(),
                         liftStatus.atTarget());
-                telemetry.addData("claw", "%s command=%.2f",
-                        clawStatus.requestedState, clawStatus.appliedPosition);
+                telemetry.addData("claw", "%s coordinate=%.2f",
+                        clawStatus.requestedState, clawStatus.appliedCoordinate);
                 telemetry.addData("auto.complete", auto.isComplete());
                 telemetry.addData("auto.outcome", auto.getOutcome());
             });
@@ -3752,10 +3855,10 @@ public final class BasicRobotScenarioTest {
 
         firstDrive.drive.wiring.frontLeftName = "changed";
         firstLift.lift.lowHeightIn = 9.0;
-        firstClaw.claw.openPosition = 0.95;
+        firstClaw.claw.openNativePosition = 0.95;
         assertEquals("frontLeftMotor", secondDrive.drive.wiring.frontLeftName);
         assertEquals(4.0, secondLift.lift.lowHeightIn, 0.0);
-        assertEquals(0.70, secondClaw.claw.openPosition, 0.0);
+        assertEquals(0.70, secondClaw.claw.openNativePosition, 0.0);
     }
 
     @Test
@@ -3873,7 +3976,7 @@ public final class BasicRobotScenarioTest {
 
         assertEquals(TaskOutcome.SUCCESS, root.getOutcome());
         assertAllDriveMotorsStopped(f);
-        assertEquals(f.clawProfile.claw.openPosition, f.clawServo.position(), 0.0);
+        assertEquals(f.clawProfile.claw.openNativePosition, f.clawServo.position(), 0.0);
     }
 
     @Test

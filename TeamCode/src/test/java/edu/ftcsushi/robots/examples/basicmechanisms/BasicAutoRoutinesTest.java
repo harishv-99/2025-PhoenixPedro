@@ -5,12 +5,14 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.drive.DriveCommandSink;
 import edu.ftcsushi.fw.drive.DriveSignal;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
+import edu.ftcsushi.fw.task.Tasks;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -376,6 +378,12 @@ public final class BasicAutoRoutinesTest {
         @Override
         public void setState(State state) {
             states.add(state);
+        }
+
+        @Override
+        public Task setStateTask(State state) {
+            State requiredState = Objects.requireNonNull(state, "state");
+            return Tasks.runOnce(() -> setState(requiredState));
         }
 
         @Override

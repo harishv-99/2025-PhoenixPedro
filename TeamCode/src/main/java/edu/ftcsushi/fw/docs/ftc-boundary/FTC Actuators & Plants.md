@@ -52,11 +52,15 @@ this.pusher = FtcActuators.plant(hardwareMap)
         .servo("pusher", Direction.FORWARD)
         .position()
         .nonPeriodic()
-        .bounded(0.0, 1.0)
-        .nativeUnits()
+        .bounded(0.0, 1.0) // normalized RETRACTED-to-EXTENDED mechanism coordinate
+        .rangeMapsToNative(backedOffNativeRetracted, backedOffNativeExtended)
         .targetFromNewCommand(0.0)
         .build();
 ```
+
+The `backedOffNative...` values above are copied, validated robot configuration established by
+hardware review. Although both domains use numbers between zero and one here, the Plant target is a
+normalized mechanism coordinate and the mapped values are FTC SDK servo commands.
 
 Use `Plants.fromOutputs()` only when a custom adapter, hardware-neutral test, or portable host
 already owns Sushi output ports and feedback sources:
@@ -105,7 +109,8 @@ For example, motor position wiring asks:
     `outputPowerLimitedTo(...)`
 11. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`,
     `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-12. Target binding: `targetFromNewCommand(initialValue)` for an ordinary exact command or
+12. Target binding: `targetFromNewCommand(initialValue)` for a numeric command,
+    `targetExactlyFrom(command)` for an exact semantic command, or
     `targetFromResolver(finalResolver)` for a caller-supplied final resolver, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
@@ -123,8 +128,8 @@ Motor velocity wiring asks a parallel but smaller set of questions:
    optional typed feedforward, and optional output-power policy
 8. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`,
    `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-9. Target binding: `targetFromNewCommand(initialValue)` or `targetFromResolver(finalResolver)`, then
-   `build()`
+9. Target binding: `targetFromNewCommand(initialValue)`, `targetExactlyFrom(command)`, or
+   `targetFromResolver(finalResolver)`, then `build()`
 
 The neutral gateway exposes the same control choices without FTC acquisition: `power(...)`,
 `commandedPosition(...)`, `deviceManagedPosition(...)`, `deviceManagedVelocity(...)`,
@@ -166,9 +171,12 @@ When the robot API names a semantic request such as `Height`, `Mode`, or `Pose`,
 [`SemanticScalarCommand<S>`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarCommand.html>)
 instead of exposing the numeric command. Its mapper validates and publishes one immutable
 semantic/numeric request, and every successful set receives a fresh request identity even when the
-name and number repeat. Bind it through
-`targetFromResolver(PlantTargets.exact(command))`; equivalent-position and overlay overloads retain
-the same private provenance. It intentionally provides no `ScalarTarget`, so direct numeric
+name and number repeat. Use `forEnum(initial).map(...).build()` when a fixed enum table should fail
+fast on incomplete coverage; keep `create(initial, mapper)` for computed mappings and non-enum
+types. Bind an exact command through `targetExactlyFrom(command)`. If periodic positions are
+interchangeable, use `targetFromResolver(PlantTargets.equivalentPositionsOf(command))` explicitly;
+equivalent-position and overlay resolvers retain the same private provenance. The command
+intentionally provides no `ScalarTarget`, so direct numeric
 `ScalarTasks` cannot bypass the owner. Build immediate, timed, and feedback-aware named Tasks with
 [`SemanticScalarTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>)
 through that same command.
@@ -397,7 +405,8 @@ Public position and velocity APIs use **plant units** unless the method name exp
 
 As a rule of thumb:
 
-* `bounded(...)`, `unbounded()`, `periodic(...)`, `targetFromNewCommand(...)`, `targetFromResolver(...)`, `getRequestedTarget()`,
+* `bounded(...)`, `unbounded()`, `periodic(...)`, `targetFromNewCommand(...)`,
+  `targetExactlyFrom(...)`, `targetFromResolver(...)`, `getRequestedTarget()`,
   `getAppliedTarget()`, `getMeasurement()`, `positionTolerance(...)`, and `velocityTolerance(...)` all speak in
   **plant units**.
 * Methods that cross the plant/native boundary say so explicitly in the name or docs, for example
@@ -1139,7 +1148,7 @@ program a nominal 270-degree response and then map only the mechanically safe 18
 into Plant degrees. Changing the FTC servo type/PWM configuration, `Direction`, servo programming,
 horn geometry, or linkage invalidates previously measured physical endpoint evidence.
 
-Raw servo units:
+Normalized two-state mechanism coordinate mapped to reviewed native endpoints:
 
 ```java
 this.wrist = FtcActuators.plant(hardwareMap)
@@ -1147,12 +1156,12 @@ this.wrist = FtcActuators.plant(hardwareMap)
         .position()
         .nonPeriodic()
         .bounded(0.0, 1.0)
-        .nativeUnits()
+        .rangeMapsToNative(backedOffNativeClosed, backedOffNativeOpen)
         .targetFromNewCommand(0.0)
         .build();
 ```
 
-Logical units mapped to raw endpoints:
+Physical/logical units mapped to reviewed native endpoints:
 
 ```java
 this.wrist = FtcActuators.plant(hardwareMap)
@@ -1160,26 +1169,32 @@ this.wrist = FtcActuators.plant(hardwareMap)
         .position()
         .nonPeriodic()
         .bounded(-45.0, 90.0)
-        .rangeMapsToNative(0.22, 0.76)
+        .rangeMapsToNative(backedOffNativeMinus45Deg, backedOffNativePlus90Deg)
         .targetFromNewCommand(0.0)
         .build();
 ```
 
-Robot code can now command degrees, while the servo receives raw fractions. In both examples,
-`bounded(...)` is stated first and always names the public Plant coordinate. `nativeUnits()` makes
-those public units raw servo fractions; `rangeMapsToNative(...)` instead maps the public range's
-two endpoints to raw servo fractions. Neither mapping choice decides periodicity or promises a
-linear physical linkage. For example,
-`.nonPeriodic().bounded(0.20, 0.80).nativeUnits()` expresses software-limited travel directly in raw
-servo fractions; no Servo-only shortcut changes what any of those three answers means.
+In the first example, robot code commands `0.0` for closed and `1.0` for open. Those are normalized
+mechanism coordinates, not aliases for the servo's full native domain. `rangeMapsToNative(...)`
+maps them to the mechanism's separately reviewed, backed-off FTC commands; reversed endpoints are
+valid. A target of `0.5` is halfway through that configured command interval, not evidence that the
+shaft or linkage moved halfway and not servo feedback.
+
+In the second example, robot code commands degrees while the servo still receives raw fractions.
+In both cases, `bounded(...)` names the public Plant coordinate and
+`rangeMapsToNative(...)` maps that range's endpoints to raw servo fractions. Neither mapping
+promises a linear physical linkage. A mechanism that deliberately exposes raw native units must
+instead state its reviewed safe subrange explicitly with
+`.position().nonPeriodic().bounded(safeNativeMin, safeNativeMax).nativeUnits()`; the SDK's full
+`[0.0, 1.0]` envelope is not itself that safety review.
 
 Before hardware lookup, the completed Servo recipe maps both Plant bounds through the shared map
 and every configured child transform. Every final raw endpoint must be finite and inside inclusive
 `[0.0, 1.0]`. Thus `.bounded(-1.0, 1.0).nativeUnits()` and
 `.rangeMapsToNative(-0.01, 1.01)` are configuration errors, while reversed endpoints and a valid
-mirror such as child scale `-1.0`, bias `1.0` remain legal. This software-domain proof says nothing
-about horn geometry, linkage linearity, collision, or safe physical travel; those remain mechanism
-calibration facts.
+mirror such as child scale `-1.0`, bias `1.0` remain legal. Teams must review every endpoint after
+choosing the servo type, direction, horn, linkage, and intended load. This software-domain proof
+says nothing about horn geometry, linkage linearity, collision, feedback, or safe physical travel.
 
 ---
 

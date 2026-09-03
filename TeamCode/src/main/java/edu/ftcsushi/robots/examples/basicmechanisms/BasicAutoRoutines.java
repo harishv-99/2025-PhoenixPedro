@@ -31,20 +31,15 @@ public final class BasicAutoRoutines {
         return Tasks.sequence(
                 requiredLift.home(),
                 requiredLift.moveTo(BasicLift.Height.HIGH),
-                // The lift is the deadline, while the one-cycle claw request starts concurrently
-                // and persists through the mechanism after that companion Task completes.
+                // The lift is the deadline, while the write-once claw request starts concurrently
+                // and remains held by the mechanism after that companion Task succeeds.
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.LOW),
-                        requestClaw(requiredClaw, BasicClaw.State.CLOSED)),
+                        requiredClaw.setStateTask(BasicClaw.State.CLOSED)),
                 Tasks.waitForSeconds(GUIDE_HOLD_SEC),
                 Tasks.parallelDeadline(
                         requiredLift.moveTo(BasicLift.Height.STOWED),
-                        requestClaw(requiredClaw, BasicClaw.State.OPEN)));
-    }
-
-    /** Creates a fresh one-cycle semantic command Task. */
-    private static Task requestClaw(BasicClaw claw, BasicClaw.State state) {
-        return Tasks.runOnce(() -> claw.setState(state));
+                        requiredClaw.setStateTask(BasicClaw.State.OPEN)));
     }
 
 }

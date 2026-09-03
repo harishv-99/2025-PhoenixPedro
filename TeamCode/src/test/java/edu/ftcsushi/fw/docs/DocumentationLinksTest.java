@@ -816,6 +816,7 @@ public final class DocumentationLinksTest {
                         && interfaceStage.contains("Task moveTo(Height height);")
                         && interfaceStage.contains("Task home();")
                         && interfaceStage.contains("void setState(State state);")
+                        && interfaceStage.contains("Task setStateTask(State state);")
                         && interfaceStage.contains("public Height requestedHeight()")
                         && interfaceStage.contains("public double requestedPositionIn()")
                         && interfaceStage.contains("public double appliedPositionIn()")
@@ -863,6 +864,29 @@ public final class DocumentationLinksTest {
                         && interfaceStage.contains("[`FtcActuators.plant(...)`](<")
                         && interfaceStage.contains("[`PositionCalibrationTasks.search(...)`](<")
                         && interfaceStage.contains("[`SemanticScalarTasks.set(...)`](<")
+                        && interfaceStage.contains(
+                                "SemanticScalarCommand.forEnum(Height.STOWED)")
+                        && interfaceStage.contains(".map(Height.STOWED, c.stowedHeightIn)")
+                        && interfaceStage.contains(".map(Height.LOW, c.lowHeightIn)")
+                        && interfaceStage.contains(".map(Height.HIGH, c.highHeightIn)")
+                        && interfaceStage.contains(
+                                "SemanticScalarCommand.forEnum(c.initialState)")
+                        && interfaceStage.contains(
+                                "private static final double CLOSED_TARGET = 0.0;")
+                        && interfaceStage.contains(
+                                "private static final double OPEN_TARGET = 1.0;")
+                        && interfaceStage.contains(".map(State.CLOSED, CLOSED_TARGET)")
+                        && interfaceStage.contains(".map(State.OPEN, OPEN_TARGET)")
+                        && interfaceStage.contains(".position()")
+                        && interfaceStage.contains(".nonPeriodic()")
+                        && interfaceStage.contains(".bounded(CLOSED_TARGET, OPEN_TARGET)")
+                        && interfaceStage.contains(
+                                ".rangeMapsToNative(c.closedNativePosition, c.openNativePosition)")
+                        && interfaceStage.contains(".targetExactlyFrom(heightCommand)")
+                        && interfaceStage.contains(".targetExactlyFrom(stateCommand)")
+                        && interfaceStage.contains(
+                                "SemanticScalarTasks.set(stateCommand, "
+                                        + "Objects.requireNonNull(state, \"state\"))")
                         && interfaceStage.contains(".needsReference(")
                         && interfaceStage.contains(
                                 "SemanticScalarTasks.set(heightCommand, "
@@ -873,7 +897,10 @@ public final class DocumentationLinksTest {
                         && interfaceStage.contains(".failAfterSec(homingTimeoutSec)")
                         && interfaceStage.contains(
                                 "SemanticScalarTasks.set(heightCommand, Height.STOWED).build()")
-                        && interfaceStage.contains("Tasks.sequence("));
+                        && interfaceStage.contains("Tasks.sequence(")
+                        && !interfaceStage.contains(
+                                ".targetFromResolver(PlantTargets.exact(")
+                        && !interfaceStage.contains(".nativePosition()"));
 
         int testStageStart = anchor.indexOf(requiredStageHeadings[1]);
         int testStageEnd = anchor.indexOf(requiredStageHeadings[2], testStageStart);
@@ -914,6 +941,11 @@ public final class DocumentationLinksTest {
                         && behaviorStage.contains("return Tasks.sequence(")
                         && behaviorStage.contains("DriveTasks.driveExclusivelyForSeconds(")
                         && behaviorStage.contains("Tasks.parallelDeadline(")
+                        && behaviorStage.contains(
+                                "requiredClaw.setStateTask(BasicClaw.State.CLOSED)")
+                        && behaviorStage.contains(
+                                "requiredClaw.setStateTask(BasicClaw.State.OPEN)")
+                        && !behaviorStage.contains("requestClaw(")
                         && behaviorStage.contains("constructed eagerly")
                         && behaviorStage.contains("program.output(driveStopOwner)")
                         && behaviorStage.contains("keep lift/claw absent")
@@ -930,6 +962,11 @@ public final class DocumentationLinksTest {
         assertTrue("Stage 7 must teach the retained root and its terminal telemetry",
                 completeStage.contains("BasicRobotAutoRoutines.complete(")
                         && completeStage.contains("return Tasks.sequence(")
+                        && completeStage.contains(
+                                "requiredClaw.setStateTask(BasicClaw.State.CLOSED)")
+                        && completeStage.contains(
+                                "requiredClaw.setStateTask(BasicClaw.State.OPEN)")
+                        && !completeStage.contains("requestClaw(")
                         && completeStage.contains("program.output(driveStopOwner)")
                         && completeStage.contains("auto.complete")
                         && completeStage.contains("auto.outcome")

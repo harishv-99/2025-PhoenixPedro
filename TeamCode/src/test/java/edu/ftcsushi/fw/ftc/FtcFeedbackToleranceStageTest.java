@@ -11,6 +11,7 @@ import edu.ftcsushi.fw.actuation.PlantTargetResolver;
 import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.Plants;
 import edu.ftcsushi.fw.actuation.PositionPlant;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.control.ScalarRegulator;
 import edu.ftcsushi.fw.core.source.BooleanSource;
@@ -51,13 +52,19 @@ public final class FtcFeedbackToleranceStageTest {
                 Plants.TargetStep.class);
         assertReturns(FtcActuators.ServoBoundedPositionMappingStep.class, "rangeMapsToNative",
                 Plants.TargetStep.class, double.class, double.class);
+        assertNoPublicMethod(FtcActuators.ServoSingleStep.class, "nativePosition");
+        assertNoPublicMethod(FtcActuators.ServoGroupAddedStep.class, "nativePosition");
+        assertNoPublicMethod(FtcActuators.MotorSingleStep.class, "nativePosition");
+        assertNoPublicMethod(FtcActuators.CrServoSingleStep.class, "nativePosition");
 
         assertReturns(Plants.TargetStep.class, "targetGuards", Plants.TargetGuardStep.class);
         assertReturns(Plants.TargetStep.class, "targetFromNewCommand",
                 Plants.BuildStep.class, double.class);
+        assertReturns(Plants.TargetStep.class, "targetExactlyFrom",
+                Plants.BuildStep.class, SemanticScalarCommand.class);
         assertReturns(Plants.TargetStep.class, "targetFromResolver",
                 Plants.BuildStep.class, PlantTargetResolver.class);
-        assertEquals(3, Plants.TargetStep.class.getDeclaredMethods().length);
+        assertEquals(4, Plants.TargetStep.class.getDeclaredMethods().length);
 
         for (Class<?> nested : FtcActuators.class.getDeclaredClasses()) {
             assertNotEquals("VelocityBuildStep", nested.getSimpleName());
@@ -105,6 +112,41 @@ public final class FtcFeedbackToleranceStageTest {
         assertTrue(positionTarget != null);
         assertIllegalState(() -> position.positionTolerance(1.0),
                 "positionTolerance(...) has already been answered");
+    }
+
+    @Test
+    public void semanticExactAnswerFlowsThroughNarrowFtcTargetFacades() {
+        HardwareMap hardwareMap = new HardwareMap(null, null);
+        SemanticScalarCommand<Boolean> velocityCommand =
+                SemanticScalarCommand.create(false, ignored -> 0.25);
+        Plants.TargetStep<Plant> velocityTarget = FtcActuators.plant(hardwareMap)
+                .motor("flywheel", Direction.FORWARD)
+                .velocity()
+                .deviceManaged()
+                .bounded(-1.0, 1.0)
+                .nativeUnits()
+                .velocityTolerance(0.0);
+        Plants.BuildStep<Plant> velocityBuild =
+                velocityTarget.targetExactlyFrom(velocityCommand);
+        assertIllegalState(() -> velocityTarget.targetFromNewCommand(0.0),
+                "target has already been selected", "motor velocity Plant",
+                "start a new builder");
+
+        SemanticScalarCommand<Boolean> positionCommand =
+                SemanticScalarCommand.create(false, ignored -> 0.5);
+        Plants.BuildStep<PositionPlant> positionBuild = FtcActuators.plant(hardwareMap)
+                .motor("lift", Direction.FORWARD)
+                .position()
+                .deviceManaged()
+                .nonPeriodic()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.0)
+                .targetExactlyFrom(positionCommand);
+
+        assertTrue(velocityBuild != null);
+        assertTrue(positionBuild != null);
     }
 
     @Test
@@ -247,6 +289,16 @@ public final class FtcFeedbackToleranceStageTest {
                                       Class<?>... parameterTypes) throws Exception {
         Method method = owner.getMethod(methodName, parameterTypes);
         assertEquals(returnType, method.getReturnType());
+    }
+
+    private static void assertNoPublicMethod(Class<?> owner, String methodName,
+                                             Class<?>... parameterTypes) {
+        try {
+            owner.getMethod(methodName, parameterTypes);
+            fail(owner.getSimpleName() + " must not expose " + methodName);
+        } catch (NoSuchMethodException expected) {
+            // Expected: position periodicity, bounds, and mapping remain explicit staged answers.
+        }
     }
 
     private static void assertIllegalArgument(Runnable action, String... fragments) {

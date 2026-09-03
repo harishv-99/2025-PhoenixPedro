@@ -321,8 +321,8 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         copy.spinUpTimeoutSec = source.spinUpTimeoutSec;
         copy.transferPower = source.transferPower;
         copy.transferDurationSec = source.transferDurationSec;
-        copy.releaseRetractedPosition = source.releaseRetractedPosition;
-        copy.releaseExtendedPosition = source.releaseExtendedPosition;
+        copy.releaseRetractedNativePosition = source.releaseRetractedNativePosition;
+        copy.releaseExtendedNativePosition = source.releaseExtendedNativePosition;
         copy.releaseDurationSec = source.releaseDurationSec;
         return copy;
     }

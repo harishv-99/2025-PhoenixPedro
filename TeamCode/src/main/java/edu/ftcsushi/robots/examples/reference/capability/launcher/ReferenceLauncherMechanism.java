@@ -44,8 +44,20 @@ public final class ReferenceLauncherMechanism
         public double spinUpTimeoutSec;
         public double transferPower;
         public double transferDurationSec;
-        public double releaseRetractedPosition;
-        public double releaseExtendedPosition;
+
+        /**
+         * Native FTC Servo endpoint mapped from the normalized release Plant's retracted target
+         * {@code 0.0}, in inclusive range {@code [0, 1]}. This fact must be backed off from unsafe
+         * travel and reviewed on the assembled mechanism.
+         */
+        public double releaseRetractedNativePosition;
+
+        /**
+         * Native FTC Servo endpoint mapped from the normalized release Plant's extended target
+         * {@code 1.0}, in inclusive range {@code [0, 1]}. This fact must be backed off from unsafe
+         * travel and reviewed on the assembled mechanism.
+         */
+        public double releaseExtendedNativePosition;
         public double releaseDurationSec;
 
         private Config() {
@@ -69,8 +81,8 @@ public final class ReferenceLauncherMechanism
             c.spinUpTimeoutSec = 2.0;
             c.transferPower = 0.25;
             c.transferDurationSec = 0.20;
-            c.releaseRetractedPosition = 0.25;
-            c.releaseExtendedPosition = 0.60;
+            c.releaseRetractedNativePosition = 0.25;
+            c.releaseExtendedNativePosition = 0.60;
             c.releaseDurationSec = 0.15;
             return c;
         }
@@ -78,6 +90,8 @@ public final class ReferenceLauncherMechanism
 
     private static final double IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC = 0.0;
     private static final double IDLE_TRANSFER_POWER = 0.0;
+    private static final double RELEASE_RETRACTED_TARGET = 0.0;
+    private static final double RELEASE_EXTENDED_TARGET = 1.0;
 
     private final Plant flywheel;
     private final Plant transfer;
@@ -93,8 +107,6 @@ public final class ReferenceLauncherMechanism
     private final double spinUpTimeoutSec;
     private final double transferPower;
     private final double transferDurationSec;
-    private final double releaseRetractedPosition;
-    private final double releaseExtendedPosition;
     private final double releaseDurationSec;
 
     private long launchGeneration;
@@ -142,9 +154,11 @@ public final class ReferenceLauncherMechanism
                     .servo(c.releaseServoName, c.releaseServoDirection)
                     .position()
                     .nonPeriodic()
-                    .bounded(0.0, 1.0)
-                    .nativeUnits()
-                    .targetFromNewCommand(c.releaseRetractedPosition)
+                    .bounded(RELEASE_RETRACTED_TARGET, RELEASE_EXTENDED_TARGET)
+                    .rangeMapsToNative(
+                            c.releaseRetractedNativePosition,
+                            c.releaseExtendedNativePosition)
+                    .targetFromNewCommand(RELEASE_RETRACTED_TARGET)
                     .build();
             builtInitialStatus = new Status(
                     builtFlywheel.snapshot(),
@@ -176,8 +190,6 @@ public final class ReferenceLauncherMechanism
         spinUpTimeoutSec = c.spinUpTimeoutSec;
         transferPower = c.transferPower;
         transferDurationSec = c.transferDurationSec;
-        releaseRetractedPosition = c.releaseRetractedPosition;
-        releaseExtendedPosition = c.releaseExtendedPosition;
         releaseDurationSec = c.releaseDurationSec;
         lastStatus = builtInitialStatus;
     }
@@ -312,7 +324,7 @@ public final class ReferenceLauncherMechanism
     private void requestActiveMatchIdle() {
         CleanupActions.attemptAll(
                 transferOverrides::cancelAndClear,
-                () -> release.commandTarget().set(releaseRetractedPosition),
+                () -> release.commandTarget().set(RELEASE_RETRACTED_TARGET),
                 () -> flywheel.commandTarget().set(
                         IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC));
     }
@@ -347,12 +359,12 @@ public final class ReferenceLauncherMechanism
                             spinUpTimeoutSec));
 
             Task feed = Tasks.sequence(
-                    ScalarTasks.set(release.commandTarget(), releaseExtendedPosition)
+                    ScalarTasks.set(release.commandTarget(), RELEASE_EXTENDED_TARGET)
                             .forSeconds(releaseDurationSec)
                             .leaveThere()
                             .build(),
                     Tasks.runOnce(() -> release.commandTarget().set(
-                            releaseRetractedPosition)),
+                            RELEASE_RETRACTED_TARGET)),
                     Tasks.runOnce(ReferenceLauncherMechanism.this::enqueueTransferPulse),
                     Tasks.waitForSeconds(transferDurationSec));
 
@@ -546,13 +558,17 @@ public final class ReferenceLauncherMechanism
         c.spinUpTimeoutSec = positive(s.spinUpTimeoutSec, "spinUpTimeoutSec");
         c.transferPower = normalizedNonzero(s.transferPower, "transferPower");
         c.transferDurationSec = positive(s.transferDurationSec, "transferDurationSec");
-        c.releaseRetractedPosition = unit(s.releaseRetractedPosition,
-                "releaseRetractedPosition");
-        c.releaseExtendedPosition = unit(s.releaseExtendedPosition,
-                "releaseExtendedPosition");
+        c.releaseRetractedNativePosition = unit(s.releaseRetractedNativePosition,
+                "releaseRetractedNativePosition");
+        c.releaseExtendedNativePosition = unit(s.releaseExtendedNativePosition,
+                "releaseExtendedNativePosition");
         c.releaseDurationSec = positive(s.releaseDurationSec, "releaseDurationSec");
-        if (Double.compare(c.releaseRetractedPosition, c.releaseExtendedPosition) == 0) {
-            throw new IllegalArgumentException("release positions must be different");
+        if (Double.compare(
+                c.releaseRetractedNativePosition,
+                c.releaseExtendedNativePosition) == 0) {
+            throw new IllegalArgumentException(
+                    "releaseRetractedNativePosition and releaseExtendedNativePosition "
+                            + "must be different");
         }
         return c;
     }

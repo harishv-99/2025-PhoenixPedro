@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.function.ToDoubleFunction;
 
 import edu.ftcsushi.fw.core.hal.PowerOutput;
 import edu.ftcsushi.fw.core.source.BooleanSource;
@@ -32,6 +33,31 @@ public final class SemanticScalarCommandTest {
         NAN,
         POSITIVE_INFINITY,
         NEGATIVE_INFINITY
+    }
+
+    private enum Preset {
+        STOWED,
+        LOW,
+        HIGH,
+        HIGH_ALIAS
+    }
+
+    private enum SpecializedPreset {
+        SPECIAL {
+            @Override
+            boolean isSpecialized() {
+                return true;
+            }
+        },
+        ORDINARY;
+
+        boolean isSpecialized() {
+            return false;
+        }
+    }
+
+    private enum UnrelatedPreset {
+        OTHER
     }
 
     @Test
@@ -115,6 +141,127 @@ public final class SemanticScalarCommandTest {
         expectIllegalArgument(
                 () -> SemanticScalarCommand.create(Mode.IDLE, ignored -> Double.NaN),
                 "finite target");
+    }
+
+    @Test
+    public void enumMappingBuildsAnOutOfOrderCompleteTableAndAllowsNumericAliases() {
+        SemanticScalarCommand<Preset> command = SemanticScalarCommand.forEnum(Preset.LOW)
+                .map(Preset.HIGH_ALIAS, 14.0)
+                .map(Preset.STOWED, -0.0)
+                .map(Preset.HIGH, 14.0)
+                .map(Preset.LOW, 4.0)
+                .build();
+
+        SemanticScalarCommand.Request<Preset> initial = command.request();
+        SemanticScalarCommand.Request<Preset> high = command.set(Preset.HIGH);
+        SemanticScalarCommand.Request<Preset> alias = command.set(Preset.HIGH_ALIAS);
+        SemanticScalarCommand.Request<Preset> stowed = command.set(Preset.STOWED);
+
+        assertEquals(Preset.LOW, initial.semantic());
+        assertEquals(4.0, initial.commandTarget(), EPSILON);
+        assertEquals(Preset.HIGH, high.semantic());
+        assertEquals(14.0, high.commandTarget(), EPSILON);
+        assertEquals(Preset.HIGH_ALIAS, alias.semantic());
+        assertEquals(14.0, alias.commandTarget(), EPSILON);
+        assertNotSame(high, alias);
+        assertEquals(Double.doubleToRawLongBits(-0.0),
+                Double.doubleToRawLongBits(stowed.commandTarget()));
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public void enumConstantSubclassAndWrongRawEnumPreserveTypeAndTransactionalRecovery() {
+        assertTrue(SpecializedPreset.SPECIAL.isSpecialized());
+        assertNotSame(SpecializedPreset.class, SpecializedPreset.SPECIAL.getClass());
+        assertSame(SpecializedPreset.class, SpecializedPreset.SPECIAL.getDeclaringClass());
+
+        SemanticScalarCommand.EnumMappingBuilder<SpecializedPreset> builder =
+                SemanticScalarCommand.forEnum(SpecializedPreset.SPECIAL)
+                        .map(SpecializedPreset.SPECIAL, 1.0);
+        SemanticScalarCommand.EnumMappingBuilder rawBuilder = builder;
+
+        try {
+            rawBuilder.map(UnrelatedPreset.OTHER, 99.0);
+            fail("Expected a different enum type to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("must be a SpecializedPreset value"));
+            assertTrue(expected.getMessage().contains("UnrelatedPreset.OTHER"));
+        }
+
+        SemanticScalarCommand<SpecializedPreset> command = builder
+                .map(SpecializedPreset.ORDINARY, 2.0)
+                .build();
+        assertSame(SpecializedPreset.SPECIAL, command.request().semantic());
+        assertEquals(1.0, command.request().commandTarget(), EPSILON);
+        assertEquals(2.0,
+                command.set(SpecializedPreset.ORDINARY).commandTarget(), EPSILON);
+    }
+
+    @Test
+    public void rejectedEnumMappingsAreTransactionalAndDuplicateDoesNotReplaceFirstTarget() {
+        Preset nullPreset = null;
+        NullPointerException nullInitial = expectNullPointer(
+                () -> SemanticScalarCommand.forEnum(nullPreset));
+        assertTrue(nullInitial.getMessage().contains("initialSemantic"));
+
+        SemanticScalarCommand.EnumMappingBuilder<Preset> builder =
+                SemanticScalarCommand.forEnum(Preset.STOWED)
+                        .map(Preset.STOWED, 0.0);
+
+        NullPointerException nullValue = expectNullPointer(() -> builder.map(null, 1.0));
+        assertTrue(nullValue.getMessage().contains("semantic"));
+
+        double[] invalidTargets = {
+                Double.NaN,
+                Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY
+        };
+        for (double invalidTarget : invalidTargets) {
+            expectIllegalArgument(
+                    () -> builder.map(Preset.LOW, invalidTarget),
+                    "commandTarget must be finite");
+        }
+        builder.map(Preset.LOW, 4.0);
+
+        IllegalStateException duplicate = expectIllegalState(
+                () -> builder.map(Preset.STOWED, 2.0));
+        assertTrue(duplicate.getMessage().contains("already maps semantic request STOWED"));
+        assertTrue(duplicate.getMessage().contains("may be mapped once"));
+
+        SemanticScalarCommand<Preset> command = builder
+                .map(Preset.HIGH, 14.0)
+                .map(Preset.HIGH_ALIAS, 14.0)
+                .build();
+        assertEquals(0.0, command.request().commandTarget(), EPSILON);
+        assertEquals(4.0, command.set(Preset.LOW).commandTarget(), EPSILON);
+    }
+
+    @Test
+    public void incompleteEnumBuildCanBeRepairedButSuccessfulBuildConsumesAndFreezesBuilder() {
+        SemanticScalarCommand.EnumMappingBuilder<Preset> builder =
+                SemanticScalarCommand.forEnum(Preset.STOWED)
+                        .map(Preset.LOW, 4.0);
+
+        IllegalStateException incomplete = expectIllegalState(builder::build);
+        assertTrue(incomplete.getMessage().contains("map every Preset value"));
+        assertTrue(incomplete.getMessage().contains(
+                "missing [STOWED, HIGH, HIGH_ALIAS]"));
+
+        SemanticScalarCommand<Preset> command = builder
+                .map(Preset.STOWED, 0.0)
+                .map(Preset.HIGH, 14.0)
+                .map(Preset.HIGH_ALIAS, 14.0)
+                .build();
+
+        IllegalStateException secondBuild = expectIllegalState(builder::build);
+        assertTrue(secondBuild.getMessage().contains("build() has already been attempted"));
+        assertTrue(secondBuild.getMessage().contains("start a new builder"));
+
+        IllegalStateException mapAfterBuild = expectIllegalState(
+                () -> builder.map(Preset.HIGH, 99.0));
+        assertTrue(mapAfterBuild.getMessage().contains("after build() has been attempted"));
+        assertTrue(mapAfterBuild.getMessage().contains("start a new builder"));
+        assertEquals(14.0, command.set(Preset.HIGH).commandTarget(), EPSILON);
     }
 
     @Test
@@ -232,19 +379,28 @@ public final class SemanticScalarCommandTest {
     }
 
     @Test
-    public void equivalentPositionPreservesSemanticIdentityButUnavailablePolicyDoesNotSatisfyIt() {
-        SemanticScalarCommand<Mode> command =
-                SemanticScalarCommand.create(Mode.ACTIVE, ignored -> 20.0);
+    public void enumMappingDoesNotChooseExactVersusEquivalentPositionRealization() {
+        SemanticScalarCommand<Preset> command = SemanticScalarCommand.forEnum(Preset.HIGH)
+                .map(Preset.STOWED, 0.0)
+                .map(Preset.LOW, 10.0)
+                .map(Preset.HIGH, 20.0)
+                .map(Preset.HIGH_ALIAS, 20.0)
+                .build();
+        PlantTargetContext periodicContext = PlantTargetContext.position(
+                true, 350.0, ScalarRange.bounded(0.0, 720.0),
+                PositionPlant.Periodicity.PERIODIC, 360.0,
+                Double.NaN, Double.NaN);
+        PlantTargetResolution exact = PlantTargets.exact(command).resolve(
+                periodicContext, new ManualLoopClock().clock());
         PlantTargetResolver equivalent = PlantTargets.equivalentPositionsOf(command)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
         PlantTargetResolution selected = equivalent.resolve(
-                PlantTargetContext.position(
-                        true, 350.0, ScalarRange.bounded(0.0, 720.0),
-                        PositionPlant.Periodicity.PERIODIC, 360.0,
-                        Double.NaN, Double.NaN),
+                periodicContext,
                 new ManualLoopClock().clock());
 
+        assertEquals(20.0, exact.target(), EPSILON);
+        assertTrue(exact.satisfiesSemanticCommand(command, command.request()));
         assertEquals(380.0, selected.target(), EPSILON);
         assertTrue(selected.satisfiesSemanticCommand(command, command.request()));
 
@@ -269,9 +425,30 @@ public final class SemanticScalarCommandTest {
         Method request = SemanticScalarCommand.class.getDeclaredMethod("request");
         Method snapshot = SemanticScalarCommand.class.getDeclaredMethod(
                 "snapshot", PlantSnapshot.class);
+        Method create = SemanticScalarCommand.class.getDeclaredMethod(
+                "create", Object.class, ToDoubleFunction.class);
+        Method forEnum = SemanticScalarCommand.class.getDeclaredMethod(
+                "forEnum", Enum.class);
         assertSame(SemanticScalarCommand.Request.class, set.getReturnType());
         assertSame(SemanticScalarCommand.Request.class, request.getReturnType());
         assertSame(SemanticScalarSnapshot.class, snapshot.getReturnType());
+        assertSame(SemanticScalarCommand.class, create.getReturnType());
+        assertSame(SemanticScalarCommand.EnumMappingBuilder.class, forEnum.getReturnType());
+
+        int enumBuilderModifiers = SemanticScalarCommand.EnumMappingBuilder.class.getModifiers();
+        assertTrue(Modifier.isPublic(enumBuilderModifiers));
+        assertTrue(Modifier.isStatic(enumBuilderModifiers));
+        assertTrue(Modifier.isFinal(enumBuilderModifiers));
+        assertSame(SemanticScalarCommand.EnumMappingBuilder.class,
+                SemanticScalarCommand.EnumMappingBuilder.class.getDeclaredMethod(
+                        "map", Enum.class, double.class).getReturnType());
+        assertSame(SemanticScalarCommand.class,
+                SemanticScalarCommand.EnumMappingBuilder.class.getDeclaredMethod(
+                        "build").getReturnType());
+        for (Constructor<?> constructor : SemanticScalarCommand.EnumMappingBuilder.class
+                .getDeclaredConstructors()) {
+            assertFalse(Modifier.isPublic(constructor.getModifiers()));
+        }
 
         for (Constructor<?> constructor : SemanticScalarCommand.Request.class
                 .getDeclaredConstructors()) {
@@ -303,6 +480,26 @@ public final class SemanticScalarCommandTest {
             fail("Expected IllegalArgumentException");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains(messageFragment));
+        }
+    }
+
+    private static IllegalStateException expectIllegalState(Runnable call) {
+        try {
+            call.run();
+            fail("Expected IllegalStateException");
+            return null;
+        } catch (IllegalStateException expected) {
+            return expected;
+        }
+    }
+
+    private static NullPointerException expectNullPointer(Runnable call) {
+        try {
+            call.run();
+            fail("Expected NullPointerException");
+            return null;
+        } catch (NullPointerException expected) {
+            return expected;
         }
     }
 
