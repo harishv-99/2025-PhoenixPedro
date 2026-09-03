@@ -58,10 +58,10 @@ public final class BasicRobotScenarioTest {
 
         firstDrive.drive.wiring.frontLeftName = "changed";
         firstLift.lift.lowHeightIn = 9.0;
-        firstClaw.claw.openPosition = 0.95;
+        firstClaw.claw.openNativePosition = 0.95;
         assertEquals("frontLeftMotor", secondDrive.drive.wiring.frontLeftName);
         assertEquals(4.0, secondLift.lift.lowHeightIn, 0.0);
-        assertEquals(0.70, secondClaw.claw.openPosition, 0.0);
+        assertEquals(0.70, secondClaw.claw.openNativePosition, 0.0);
     }
 
     @Test
@@ -179,7 +179,7 @@ public final class BasicRobotScenarioTest {
 
         assertEquals(TaskOutcome.SUCCESS, root.getOutcome());
         assertAllDriveMotorsStopped(f);
-        assertEquals(f.clawProfile.claw.openPosition, f.clawServo.position(), 0.0);
+        assertEquals(f.clawProfile.claw.openNativePosition, f.clawServo.position(), 0.0);
     }
 
     @Test

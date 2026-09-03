@@ -510,8 +510,9 @@ public final class SemanticScalarTasks {
         if (!actualPlant.carriesSemanticCommand(command)) {
             throw new IllegalArgumentException("SemanticScalarTasks.set(...).untilReachedBy(plant) "
                     + "requires a Plant whose final target graph carries this exact "
-                    + "SemanticScalarCommand. Bind it with PlantTargets.exact(command), use it "
-                    + "as the stable base of an overlay, or preserve it through "
+                    + "SemanticScalarCommand. Bind it directly with "
+                    + "targetExactlyFrom(command), use it as the stable base of an overlay, "
+                    + "or preserve it through "
                     + "equivalentPositionsOf(...).");
         }
         if (!actualPlant.hasFeedback()) {

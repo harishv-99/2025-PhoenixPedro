@@ -204,7 +204,7 @@ public final class SemanticScalarTasksApiTest {
                 SemanticScalarTasks.set(requested, Mode.ACTIVE);
 
         assertFailure(() -> set.untilReachedBy(new TestPlant(null, true)),
-                IllegalArgumentException.class, "carries this exact");
+                IllegalArgumentException.class, "targetExactlyFrom(command)");
         assertFailure(() -> set.untilReachedBy(new TestPlant(different, true)),
                 IllegalArgumentException.class, "carries this exact");
         assertFailure(() -> set.untilReachedBy(new TestPlant(requested, false)),

@@ -550,6 +550,9 @@ The wrist is just a local target problem. It does not need a controller loop or 
 public final class Wrist {
     public enum Pose { STOW, INTAKE, SCORE }
 
+    private static final double STOW_COORDINATE = 0.0;
+    private static final double SCORE_COORDINATE = 1.0;
+
     public static final class Status {
         private final SemanticScalarSnapshot<Pose, PositionPlantSnapshot> actuator;
 
@@ -561,11 +564,11 @@ public final class Wrist {
             return actuator.request().semantic();
         }
 
-        public double requestedPosition() {
+        public double requestedCoordinate() {
             return actuator.request().commandTarget();
         }
 
-        public double appliedPosition() {
+        public double appliedCoordinate() {
             return actuator.plant().appliedTarget();
         }
 
@@ -576,24 +579,23 @@ public final class Wrist {
 
     private final SemanticScalarCommand<Pose> poseCommand;
     private final PositionPlant plant;
-    private final double stowTarget;
-    private final double intakeTarget;
-    private final double scoreTarget;
 
     public Wrist(HardwareMap hardwareMap, WristConfig config) {
         WristConfig snapshot = Objects.requireNonNull(config, "config").copy();
-        stowTarget = snapshot.stowPosition;
-        intakeTarget = snapshot.intakePosition;
-        scoreTarget = snapshot.scorePosition;
-        poseCommand = SemanticScalarCommand.create(Pose.STOW, this::targetFor);
+        poseCommand = SemanticScalarCommand.forEnum(Pose.STOW)
+                .map(Pose.STOW, STOW_COORDINATE)
+                .map(Pose.INTAKE, snapshot.intakeCoordinate)
+                .map(Pose.SCORE, SCORE_COORDINATE)
+                .build();
 
         plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .servo(snapshot.servoName, snapshot.direction)
                 .position()
                 .nonPeriodic()
-                    .bounded(0.0, 1.0)
-                    .nativeUnits()
-                .targetFromResolver(PlantTargets.exact(poseCommand))
+                .bounded(STOW_COORDINATE, SCORE_COORDINATE)
+                .rangeMapsToNative(snapshot.backedOffNativeStow,
+                        snapshot.backedOffNativeScore)
+                .targetExactlyFrom(poseCommand)
                 .build();
     }
 
@@ -612,19 +614,6 @@ public final class Wrist {
     public void stop() {
         plant.stop();
     }
-
-    private double targetFor(Pose pose) {
-        switch (pose) {
-            case STOW:
-                return stowTarget;
-            case INTAKE:
-                return intakeTarget;
-            case SCORE:
-                return scoreTarget;
-            default:
-                throw new IllegalStateException("Unhandled Wrist.Pose: " + pose);
-        }
-    }
 }
 ```
 
@@ -636,14 +625,22 @@ wrist = new Wrist(hardwareMap, profile.wrist);
 
 The mechanism copies and validates that slice before its own hardware lookup, constructs the Plant,
 keeps it private, and composes `poseCommand.snapshot(plant.snapshot())` instead of rebuilding common
-Plant status fields. `SemanticScalarCommand` maps and validates before publishing one immutable
-semantic/numeric request. The one-field `Status` view gives ordinary clients wrist vocabulary while
+Plant status fields. `SemanticScalarCommand.forEnum(...)` verifies complete finite enum mapping at
+construction, then maps and validates before publishing one immutable semantic/numeric request.
+The one-field `Status` view gives ordinary clients wrist vocabulary while
 retaining `plantSnapshot()` for advanced diagnostics. After each `plant.update(clock)`, the backing
 Plant snapshot reflects the
 bounds and guards actually applied. A failed mapping cannot expose a pose whose matching command was
 never accepted, and direct calls and Tasks share that same setter. This open-loop servo can prove
 that the request selected its target, but not physical arrival; add authoritative feedback before
 using `currentRequestAtTarget()` as readiness.
+
+Here `0.0` through `1.0` is a normalized STOW-to-SCORE mechanism coordinate. The separately named
+native endpoints are backed off and approved on this robot, and the copied config validates the
+intermediate intake coordinate inside the Plant range. Even if `intakeCoordinate` is `0.5`, that
+means halfway through the configured servo command interval—not halfway through physical linkage
+travel and not measured shaft position. Re-review the endpoints after changing servo type,
+direction, horn, linkage, or load.
 
 ### TeleOp interaction
 
@@ -833,6 +830,9 @@ is an event/classification signal, not a continuous measured variable.
 
 ```java
 public final class Intake {
+    private static final double FEEDER_IDLE_COORDINATE = 0.0;
+    private static final double FEEDER_FEED_COORDINATE = 1.0;
+
     public static final class Status {
         private final boolean piecePresent;
         private final boolean feedActive;
@@ -860,9 +860,8 @@ public final class Intake {
     private final Plant intakePlant;
     private final Plant feederPlant;
     private final BooleanSource piecePresent;
-    private final OutputTaskRunner feedQueue = Tasks.outputQueue(0.0);
+    private final OutputTaskRunner feedQueue = Tasks.outputQueue(FEEDER_IDLE_COORDINATE);
     private final double collectPower;
-    private final double feedPosition;
     private final double feedDurationSec;
 
     private boolean lastPiecePresent = false;
@@ -871,7 +870,6 @@ public final class Intake {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
         IntakeConfig snapshot = Objects.requireNonNull(config, "config").copy();
         collectPower = snapshot.collectPower;
-        feedPosition = snapshot.feedPosition;
         feedDurationSec = snapshot.feedDurationSec;
 
         piecePresent = FtcSensors.digitalLow(hardwareMap, snapshot.beamBreakName);
@@ -883,15 +881,16 @@ public final class Intake {
                 .build();
 
         PlantTargetResolver finalFeederTarget =
-                PlantTargets.overlay(snapshot.feederIdlePosition)
+                PlantTargets.overlay(FEEDER_IDLE_COORDINATE)
                         .add("feedPulse", feedQueue.activeSource(), feedQueue)
                         .build();
         feederPlant = FtcActuators.plant(hardwareMap)
                 .servo(snapshot.feederServoName, snapshot.feederDirection)
                 .position()
                 .nonPeriodic()
-                    .bounded(0.0, 1.0)
-                    .nativeUnits()
+                .bounded(FEEDER_IDLE_COORDINATE, FEEDER_FEED_COORDINATE)
+                .rangeMapsToNative(snapshot.backedOffNativeFeederIdle,
+                        snapshot.backedOffNativeFeederFeed)
                 .targetFromResolver(finalFeederTarget)
                 .build();
     }
@@ -903,7 +902,7 @@ public final class Intake {
     public void requestFeedPulse() {
         feedQueue.enqueue(Tasks.outputForSeconds(
                 "feedOne",
-                feedPosition,
+                FEEDER_FEED_COORDINATE,
                 feedDurationSec));
     }
 
@@ -937,7 +936,10 @@ public final class Intake {
 
 The final feeder overlay is constructed once, in the mechanism constructor. Each loop only advances
 the queue and then the Plants. The queue, resolver, sensor source, and Plants remain private; callers
-see semantic requests and a small status snapshot.
+see semantic requests and a small status snapshot. The feeder queue proposes normalized mechanism
+coordinates; only the privately owned Plant maps them to the copied, hardware-reviewed native idle
+and feed commands. Those endpoints may be reversed. An intermediate normalized request would be an
+intermediate servo command, not proof of proportional linkage motion or feedback.
 
 This example deliberately treats holding either feeder-servo position at FTC STOP as mechanically
 safe. A standard-servo Plant's terminal `stop()` re-commands its last applied position, while the

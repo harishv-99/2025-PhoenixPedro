@@ -5,17 +5,18 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
-import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
+import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.ftc.FtcActuators;
 import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.fw.task.Task;
 
 /** Owns the claw's semantic request, final resolver, standard-servo Plant, update, and stop. */
 public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output {
 
-    /** Data-only standard-servo wiring and named-state positions. */
+    /** Data-only standard-servo wiring and native endpoints for the named states. */
     public static final class Config {
         /** Nonblank FTC Robot Configuration name for the standard positional Servo. */
         public String servoName;
@@ -23,16 +24,25 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         /** Logical FTC Servo direction applied once during hardware construction. */
         public Direction direction;
 
-        /** Native Servo command for {@link State#CLOSED}, in inclusive range {@code [0, 1]}. */
-        public double closedPosition;
+        /**
+         * Native FTC Servo endpoint mapped from normalized Plant target {@code 0.0}
+         * ({@link State#CLOSED}), in inclusive range {@code [0, 1]}. This fact must be backed off
+         * from unsafe travel and reviewed on the assembled mechanism.
+         */
+        public double closedNativePosition;
 
-        /** Native Servo command for {@link State#OPEN}, in inclusive range {@code [0, 1]}. */
-        public double openPosition;
+        /**
+         * Native FTC Servo endpoint mapped from normalized Plant target {@code 1.0}
+         * ({@link State#OPEN}), in inclusive range {@code [0, 1]}. This fact must be backed off
+         * from unsafe travel and reviewed on the assembled mechanism.
+         */
+        public double openNativePosition;
 
         /**
          * Semantic request held from construction until a caller selects another state. With the
-         * default {@link State#CLOSED} value, the first successful output heartbeat submits
-         * {@link #closedPosition}; that initial Servo motion must be reviewed physically.
+         * default {@link State#CLOSED} value, the first successful output heartbeat maps target
+         * {@code 0.0} to {@link #closedNativePosition}; that initial Servo motion must be reviewed
+         * physically.
          */
         public State initialState;
 
@@ -45,18 +55,19 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
             Config config = new Config();
             config.servoName = "clawServo";
             config.direction = Direction.FORWARD;
-            config.closedPosition = 0.25;
-            config.openPosition = 0.70;
+            config.closedNativePosition = 0.25;
+            config.openNativePosition = 0.70;
             config.initialState = State.CLOSED;
             return config;
         }
     }
 
+    private static final double CLOSED_TARGET = 0.0;
+    private static final double OPEN_TARGET = 1.0;
+
     private final Plant claw;
-    private final double closedPosition;
-    private final double openPosition;
     private final SemanticScalarCommand<State> stateCommand;
-    private double lastAppliedPosition = Double.NaN;
+    private double lastAppliedCoordinate = Double.NaN;
     private boolean stopped;
 
     /**
@@ -69,16 +80,17 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
         Config c = copyAndValidate(config);
 
-        closedPosition = c.closedPosition;
-        openPosition = c.openPosition;
-        stateCommand = SemanticScalarCommand.create(c.initialState, this::positionFor);
+        stateCommand = SemanticScalarCommand.forEnum(c.initialState)
+                .map(State.CLOSED, CLOSED_TARGET)
+                .map(State.OPEN, OPEN_TARGET)
+                .build();
         claw = FtcActuators.plant(map)
                 .servo(c.servoName, c.direction)
                 .position()
                 .nonPeriodic()
-                .bounded(0.0, 1.0)
-                .nativeUnits()
-                .targetFromResolver(PlantTargets.exact(stateCommand))
+                .bounded(CLOSED_TARGET, OPEN_TARGET)
+                .rangeMapsToNative(c.closedNativePosition, c.openNativePosition)
+                .targetExactlyFrom(stateCommand)
                 .build();
     }
 
@@ -88,8 +100,14 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
     }
 
     @Override
+    public Task setStateTask(State state) {
+        return SemanticScalarTasks.set(stateCommand, Objects.requireNonNull(state, "state"))
+                .build();
+    }
+
+    @Override
     public Status status() {
-        return new Status(stateCommand.request().semantic(), lastAppliedPosition);
+        return new Status(stateCommand.request().semantic(), lastAppliedCoordinate);
     }
 
     /** Applies the held command through the one final Plant path. */
@@ -99,8 +117,8 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
             return;
         }
         claw.update(clock);
-        // Publish command evidence only after the complete Plant heartbeat succeeds.
-        lastAppliedPosition = claw.getAppliedTarget();
+        // Publish normalized target evidence only after the complete Plant heartbeat succeeds.
+        lastAppliedCoordinate = claw.getAppliedTarget();
     }
 
     /**
@@ -112,19 +130,8 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         try {
             claw.stop();
         } finally {
-            // A terminally stopped Plant cannot publish new applied-command evidence.
+            // A terminally stopped Plant cannot publish new applied-target evidence.
             stopped = true;
-        }
-    }
-
-    private double positionFor(State state) {
-        switch (state) {
-            case OPEN:
-                return openPosition;
-            case CLOSED:
-                return closedPosition;
-            default:
-                throw new IllegalStateException("Unhandled BasicClaw.State: " + state);
         }
     }
 
@@ -133,12 +140,13 @@ public final class BasicClawMechanism implements BasicClaw, RobotProgram.Output 
         Config c = new Config();
         c.servoName = hardwareName(s.servoName);
         c.direction = Objects.requireNonNull(s.direction, "direction is required");
-        c.closedPosition = servoPosition(s.closedPosition, "closedPosition");
-        c.openPosition = servoPosition(s.openPosition, "openPosition");
+        c.closedNativePosition = servoPosition(
+                s.closedNativePosition, "closedNativePosition");
+        c.openNativePosition = servoPosition(s.openNativePosition, "openNativePosition");
         c.initialState = Objects.requireNonNull(s.initialState, "initialState is required");
-        if (Double.compare(c.closedPosition, c.openPosition) == 0) {
+        if (Double.compare(c.closedNativePosition, c.openNativePosition) == 0) {
             throw new IllegalArgumentException(
-                    "closedPosition and openPosition must be distinct so the named states "
+                    "closedNativePosition and openNativePosition must be distinct so the named states "
                             + "produce different commands");
         }
         return c;

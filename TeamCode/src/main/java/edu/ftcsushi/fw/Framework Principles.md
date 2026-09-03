@@ -126,7 +126,11 @@ semantic pose, one mechanism owner maps that value forward to the numeric Plant 
 direct control and Task path publishes through that same command owner; no raw numeric Task may
 bypass it, and status must not reverse-infer the semantic value from a double. Use one
 `SemanticScalarCommand<S>` to validate and publish the named value with its mapped finite scalar,
-and bind that owner through `PlantTargets.exact(...)` or `equivalentPositionsOf(...)`. Its composed
+using `forEnum(initial).map(...).build()` when a fixed enum table should fail fast on incomplete
+coverage and `create(initial, mapper)` when the mapping is computed or the semantic type is not an
+enum. Bind an exact owner directly with the Plant builder's `targetExactlyFrom(command)` answer;
+use `PlantTargets.equivalentPositionsOf(command)` explicitly when a periodic position should select
+an interchangeable physical representative. Its composed
 semantic/Plant snapshot invalidates prior arrival evidence synchronously, including when a new
 request repeats the same name and scalar. The semantic owner deliberately exposes no
 `ScalarTarget`; use `ScalarTasks` directly only when the scalar is the complete capability request
@@ -295,6 +299,15 @@ command or planned intent
   collapse those distinct facts into a vague `target` or `power` claim.
 - Direct-power Plants own the normalized target range `[-1, +1]`. A static guard fallback and every
   final guarded target must be finite and inside the declared Plant range.
+- The FTC standard-servo native `[0, 1]` SDK envelope is an adapter command domain, not evidence
+  that a mechanism may safely travel through that entire interval. An ordinary named-position
+  servo mechanism uses a normalized mechanism coordinate such as `CLOSED = 0.0` and `OPEN = 1.0`
+  (or meaningful physical units), then explicitly maps its Plant bounds to human-reviewed,
+  backed-off native endpoints. Plant snapshots report that mechanism coordinate; native endpoint
+  facts remain configuration. A normalized `0.5` is halfway through the configured command
+  interval, not proof of halfway physical linkage travel or shaft feedback. Raw-native Plant units
+  require their own mechanism-specific safe bounds; neither the SDK envelope nor `defaults()`
+  supplies that review.
 - A Task changes a request; the mechanism's ordinary output phase updates the Plant. A calibration
   Task may stage a temporary command-preserving calibration mode, and an output queue may propose
   an overlay value, but the mechanism remains the one Plant heartbeat and final writer. Any

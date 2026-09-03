@@ -33,8 +33,8 @@ public final class BasicClawTeleOp extends FtcRobotOpMode {
         program.presenter((clock, telemetry) -> {
             BasicClaw.Status status = claw.status();
             telemetry.addData("claw.request", status.requestedState);
-            telemetry.addData("claw.appliedCommand", "%.2f", status.appliedPosition);
-            telemetry.addLine("claw position is a command, not servo feedback");
+            telemetry.addData("claw.appliedCoordinate", "%.2f", status.appliedCoordinate);
+            telemetry.addLine("claw coordinate is a normalized target, not servo feedback");
         });
     }
 }

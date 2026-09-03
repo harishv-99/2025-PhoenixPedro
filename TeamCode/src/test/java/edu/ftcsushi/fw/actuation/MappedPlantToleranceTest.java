@@ -24,6 +24,10 @@ public final class MappedPlantToleranceTest {
 
     private static final double EPSILON = 1.0e-12;
 
+    private enum SemanticPosition {
+        TWENTY_DEGREES
+    }
+
     @Test
     public void fromOutputsIsTheOnlyPublicNeutralStartAndExposesSixBranches() throws Exception {
         Method fromOutputs = Plants.class.getDeclaredMethod("fromOutputs");
@@ -63,12 +67,15 @@ public final class MappedPlantToleranceTest {
     }
 
     @Test
-    public void sharedTailHasOneCommandAnswerOneResolverAnswerAndInlineGuards() throws Exception {
-        assertEquals(3, Plants.TargetStep.class.getDeclaredMethods().length);
+    public void sharedTailHasCommandSemanticExactResolverAnswersAndInlineGuards() throws Exception {
+        assertEquals(4, Plants.TargetStep.class.getDeclaredMethods().length);
         assertSame(Plants.TargetGuardStep.class, Plants.TargetStep.class
                 .getDeclaredMethod("targetGuards").getReturnType());
         assertSame(Plants.BuildStep.class, Plants.TargetStep.class
                 .getDeclaredMethod("targetFromNewCommand", double.class).getReturnType());
+        assertSame(Plants.BuildStep.class, Plants.TargetStep.class
+                .getDeclaredMethod("targetExactlyFrom", SemanticScalarCommand.class)
+                .getReturnType());
         assertSame(Plants.BuildStep.class, Plants.TargetStep.class
                 .getDeclaredMethod("targetFromResolver", PlantTargetResolver.class).getReturnType());
         assertNoDeclaredMethod(Plants.TargetStep.class, "targetFromResolver", ScalarTarget.class);
@@ -258,6 +265,40 @@ public final class MappedPlantToleranceTest {
     }
 
     @Test
+    public void semanticExactShortcutPreservesIdentityAndDoesNotChooseAnEquivalentPosition() {
+        SemanticScalarCommand<SemanticPosition> command = SemanticScalarCommand.create(
+                SemanticPosition.TWENTY_DEGREES,
+                ignored -> 20.0);
+        RecordingPositionOutput output = new RecordingPositionOutput();
+        Plants.TargetStep<PositionPlant> target = Plants.fromOutputs()
+                .deviceManagedPosition(output, clock -> 380.0)
+                .periodic(360.0)
+                .bounded(0.0, 720.0)
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.5);
+
+        assertNullPointerContains(() -> target.targetExactlyFrom(null), "command");
+        SemanticScalarCommand.Request<SemanticPosition> request = command.request();
+        PositionPlant plant = target.targetExactlyFrom(command).build();
+
+        assertTrue(plant.carriesSemanticCommand(command));
+        assertFalse(plant.hasCommandTarget());
+        assertSame(request, command.snapshot(plant.snapshot()).request());
+
+        plant.update(new ManualLoopClock().clock());
+
+        assertEquals(PositionPlant.Periodicity.PERIODIC, plant.periodicity());
+        assertEquals(20.0, plant.getRequestedTarget(), EPSILON);
+        assertEquals(20.0, plant.getAppliedTarget(), EPSILON);
+        assertEquals(20.0, output.commandedPosition, EPSILON);
+        SemanticScalarSnapshot<SemanticPosition, PositionPlantSnapshot> snapshot =
+                command.snapshot(plant.snapshot());
+        assertSame(request, snapshot.request());
+        assertTrue(snapshot.currentRequestSelected());
+    }
+
+    @Test
     public void invalidCommandAnswerDoesNotPoisonRecipe() {
         Plants.TargetStep<Plant> power = Plants.fromOutputs()
                 .power(new RecordingPowerOutput());
@@ -388,6 +429,17 @@ public final class MappedPlantToleranceTest {
             action.run();
             fail("Expected IllegalArgumentException");
         } catch (IllegalArgumentException expected) {
+            for (String fragment : fragments) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains(fragment));
+            }
+        }
+    }
+
+    private static void assertNullPointerContains(Runnable action, String... fragments) {
+        try {
+            action.run();
+            fail("Expected NullPointerException");
+        } catch (NullPointerException expected) {
             for (String fragment : fragments) {
                 assertTrue(expected.getMessage(), expected.getMessage().contains(fragment));
             }

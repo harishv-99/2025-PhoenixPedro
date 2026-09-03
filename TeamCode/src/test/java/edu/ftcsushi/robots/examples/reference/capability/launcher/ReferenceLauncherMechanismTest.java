@@ -13,6 +13,7 @@ import edu.ftcsushi.fw.actuation.Plant;
 import edu.ftcsushi.fw.actuation.PlantSnapshot;
 import edu.ftcsushi.fw.actuation.PlantTargetResolution;
 import edu.ftcsushi.fw.actuation.PlantTargetStatus;
+import edu.ftcsushi.fw.actuation.PositionPlant;
 import edu.ftcsushi.fw.core.source.ScalarSource;
 import edu.ftcsushi.fw.core.source.ScalarTarget;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -41,6 +42,8 @@ import static org.junit.Assert.fail;
 public final class ReferenceLauncherMechanismTest {
 
     private static final double EPSILON = 1e-9;
+    private static final double RELEASE_RETRACTED_TARGET = 0.0;
+    private static final double RELEASE_EXTENDED_TARGET = 1.0;
 
     @Test
     public void publicSurfaceUsesExplicitTicksPerSecondVocabularyOnly() throws Exception {
@@ -531,12 +534,14 @@ public final class ReferenceLauncherMechanismTest {
         primeSpinUp(rig, launch);
         reachReleasePhase(rig, launch);
 
-        assertEquals(rig.config.releaseExtendedPosition, rig.release.position(), EPSILON);
+        assertEquals(RELEASE_EXTENDED_TARGET, releaseTarget(rig), 0.0);
+        assertEquals(rig.config.releaseExtendedNativePosition, rig.release.position(), EPSILON);
         assertFalse(launch.isComplete());
 
         launch.update(rig.time.nextCycle(0.11));
         rig.mechanism.update(rig.time.clock());
-        assertEquals(rig.config.releaseRetractedPosition, rig.release.position(), EPSILON);
+        assertEquals(RELEASE_RETRACTED_TARGET, releaseTarget(rig), 0.0);
+        assertEquals(rig.config.releaseRetractedNativePosition, rig.release.position(), EPSILON);
         assertEquals(rig.config.transferPower, rig.transfer.power(), EPSILON);
         assertTrue(rig.mechanism.status().transferPulseActive());
 
@@ -595,7 +600,8 @@ public final class ReferenceLauncherMechanismTest {
         Task release = releaseRig.mechanism.launchOne();
         primeSpinUp(releaseRig, release);
         reachReleasePhase(releaseRig, release);
-        assertEquals(releaseRig.config.releaseExtendedPosition,
+        assertEquals(RELEASE_EXTENDED_TARGET, releaseTarget(releaseRig), 0.0);
+        assertEquals(releaseRig.config.releaseExtendedNativePosition,
                 releaseRig.release.position(), EPSILON);
         release.cancel();
         assertEquals(TaskOutcome.CANCELLED, release.getOutcome());
@@ -667,7 +673,8 @@ public final class ReferenceLauncherMechanismTest {
         Task fresh = rig.mechanism.launchOne();
         primeSpinUp(rig, fresh);
         reachReleasePhase(rig, fresh);
-        assertEquals(rig.config.releaseExtendedPosition,
+        assertEquals(RELEASE_EXTENDED_TARGET, releaseTarget(rig), 0.0);
+        assertEquals(rig.config.releaseExtendedNativePosition,
                 rig.release.position(), EPSILON);
 
         staleUpdate.update(rig.time.clock());
@@ -679,9 +686,39 @@ public final class ReferenceLauncherMechanismTest {
         rig.mechanism.update(rig.time.nextCycle(0.02));
         assertEquals(rig.config.launchVelocityTicksPerSec,
                 rig.left.commandedVelocityTicksPerSec(), EPSILON);
-        assertEquals(rig.config.releaseExtendedPosition,
+        assertEquals(RELEASE_EXTENDED_TARGET, releaseTarget(rig), 0.0);
+        assertEquals(rig.config.releaseExtendedNativePosition,
                 rig.release.position(), EPSILON);
         fresh.cancel();
+    }
+
+    @Test
+    public void releaseUsesNormalizedTargetsWithReversedNativeEndpoints() {
+        ReferenceLauncherMechanism.Config config = testConfig();
+        config.releaseRetractedNativePosition = 0.85;
+        config.releaseExtendedNativePosition = 0.15;
+        Rig rig = new Rig(config);
+        PositionPlant releasePlant = releasePlant(rig.mechanism);
+
+        assertEquals(RELEASE_RETRACTED_TARGET, releasePlant.commandTarget().get(), 0.0);
+        assertEquals(RELEASE_RETRACTED_TARGET, releasePlant.targetRange().minValue, 0.0);
+        assertEquals(RELEASE_EXTENDED_TARGET, releasePlant.targetRange().maxValue, 0.0);
+
+        Task launch = rig.mechanism.launchOne();
+        primeSpinUp(rig, launch);
+        assertEquals(RELEASE_RETRACTED_TARGET, releasePlant.getAppliedTarget(), 0.0);
+        assertEquals(config.releaseRetractedNativePosition, rig.release.position(), EPSILON);
+
+        reachReleasePhase(rig, launch);
+        assertEquals(RELEASE_EXTENDED_TARGET, releasePlant.commandTarget().get(), 0.0);
+        assertEquals(RELEASE_EXTENDED_TARGET, releasePlant.getAppliedTarget(), 0.0);
+        assertEquals(config.releaseExtendedNativePosition, rig.release.position(), EPSILON);
+
+        launch.cancel();
+        assertEquals(RELEASE_RETRACTED_TARGET, releasePlant.commandTarget().get(), 0.0);
+        rig.mechanism.update(rig.time.nextCycle(0.02));
+        assertEquals(RELEASE_RETRACTED_TARGET, releasePlant.getAppliedTarget(), 0.0);
+        assertEquals(config.releaseRetractedNativePosition, rig.release.position(), EPSILON);
     }
 
     @Test
@@ -731,7 +768,8 @@ public final class ReferenceLauncherMechanismTest {
         assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(0.0, rig.transfer.power(), EPSILON);
-        assertEquals(rig.config.releaseRetractedPosition, rig.release.position(), EPSILON);
+        assertEquals(RELEASE_RETRACTED_TARGET, releaseTarget(rig), 0.0);
+        assertEquals(rig.config.releaseRetractedNativePosition, rig.release.position(), EPSILON);
     }
 
     private static double requestedTarget(Rig rig) {
@@ -744,6 +782,14 @@ public final class ReferenceLauncherMechanismTest {
 
     private static Plant flywheel(ReferenceLauncherMechanism mechanism) {
         return plant(mechanism, "flywheel");
+    }
+
+    private static double releaseTarget(Rig rig) {
+        return releasePlant(rig.mechanism).commandTarget().get();
+    }
+
+    private static PositionPlant releasePlant(ReferenceLauncherMechanism mechanism) {
+        return (PositionPlant) plant(mechanism, "release");
     }
 
     private static Plant plant(ReferenceLauncherMechanism mechanism, String fieldName) {
@@ -801,18 +847,29 @@ public final class ReferenceLauncherMechanismTest {
     }
 
     private static final class Rig {
-        private final ReferenceLauncherMechanism.Config config = testConfig();
-        private final FtcTestHardware hardware = new FtcTestHardware();
-        private final MotorProbe left = hardware.addMotor(config.leftFlywheelName);
-        private final MotorProbe right = hardware.addMotor(config.rightFlywheelName);
-        private final CrServoProbe transfer = hardware.addCrServo(config.transferName);
-        private final ServoProbe release = hardware.addServo(config.releaseServoName);
-        private final FtcTestHardware.DigitalProbe objectSensor =
-                hardware.addDigitalInput(config.objectSensorName);
-        private final ManualLoopClock time = new ManualLoopClock();
+        private final ReferenceLauncherMechanism.Config config;
+        private final FtcTestHardware hardware;
+        private final MotorProbe left;
+        private final MotorProbe right;
+        private final CrServoProbe transfer;
+        private final ServoProbe release;
+        private final FtcTestHardware.DigitalProbe objectSensor;
+        private final ManualLoopClock time;
         private final ReferenceLauncherMechanism mechanism;
 
         private Rig() {
+            this(testConfig());
+        }
+
+        private Rig(ReferenceLauncherMechanism.Config config) {
+            this.config = config;
+            hardware = new FtcTestHardware();
+            left = hardware.addMotor(config.leftFlywheelName);
+            right = hardware.addMotor(config.rightFlywheelName);
+            transfer = hardware.addCrServo(config.transferName);
+            release = hardware.addServo(config.releaseServoName);
+            objectSensor = hardware.addDigitalInput(config.objectSensorName);
+            time = new ManualLoopClock();
             mechanism = new ReferenceLauncherMechanism(hardware, config);
         }
     }

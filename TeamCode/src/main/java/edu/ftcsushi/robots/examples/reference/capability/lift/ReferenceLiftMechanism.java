@@ -6,7 +6,6 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PositionCalibrationTasks;
 import edu.ftcsushi.fw.actuation.PositionPlant;
-import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
@@ -61,9 +60,6 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
 
     private final PositionPlant lift;
     private final BooleanSource bottomSwitch;
-    private final double stowedHeightIn;
-    private final double lowHeightIn;
-    private final double highHeightIn;
     private final double homingPower;
     private final double homingTimeoutSec;
     private final double moveTimeoutSec;
@@ -73,13 +69,14 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     public ReferenceLiftMechanism(HardwareMap hardwareMap, Config config) {
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
         Config c = copyAndValidate(config);
-        stowedHeightIn = c.stowedHeightIn;
-        lowHeightIn = c.lowHeightIn;
-        highHeightIn = c.highHeightIn;
         homingPower = c.homingPower;
         homingTimeoutSec = c.homingTimeoutSec;
         moveTimeoutSec = c.moveTimeoutSec;
-        heightCommand = SemanticScalarCommand.create(Height.STOWED, this::positionFor);
+        heightCommand = SemanticScalarCommand.forEnum(Height.STOWED)
+                .map(Height.STOWED, c.stowedHeightIn)
+                .map(Height.LOW, c.lowHeightIn)
+                .map(Height.HIGH, c.highHeightIn)
+                .build();
 
         bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
                 .debouncedOnOff(0.02, 0.02);
@@ -93,7 +90,7 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
                 .needsReference("reference lift has not been homed")
                 .positionTolerance(c.toleranceIn)
                 .outputPowerLimitedTo(c.maximumPower)
-                .targetFromResolver(PlantTargets.exact(heightCommand))
+                .targetExactlyFrom(heightCommand)
                 .build();
     }
 
@@ -137,19 +134,6 @@ public final class ReferenceLiftMechanism implements ReferenceLift, RobotProgram
     @Override
     public void stop() {
         lift.stop();
-    }
-
-    private double positionFor(Height height) {
-        switch (height) {
-            case HIGH:
-                return highHeightIn;
-            case LOW:
-                return lowHeightIn;
-            case STOWED:
-                return stowedHeightIn;
-            default:
-                throw new IllegalStateException("Unhandled ReferenceLift.Height: " + height);
-        }
     }
 
     private static Config copyAndValidate(Config source) {

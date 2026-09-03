@@ -57,14 +57,14 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         assertFeedIdle(scenario);
 
         scenario.advance(CYCLE_SEC);
-        assertEquals(scenario.config.releaseExtendedPosition,
+        assertEquals(scenario.config.releaseExtendedNativePosition,
                 scenario.release.position(), EPSILON);
         assertEquals("release must be observable before transfer starts",
                 0.0, scenario.transfer.power(), EPSILON);
         assertFalse(scenario.launch.isComplete());
 
         scenario.advance(scenario.config.releaseDurationSec + CYCLE_SEC);
-        assertEquals(scenario.config.releaseRetractedPosition,
+        assertEquals(scenario.config.releaseRetractedNativePosition,
                 scenario.release.position(), EPSILON);
         assertEquals(scenario.config.transferPower,
                 scenario.transfer.power(), EPSILON);
@@ -127,7 +127,7 @@ public final class ReferenceLauncherSoftwareScenarioTest {
     private static void assertFeedIdle(Scenario scenario) {
         assertFalse(scenario.launcher.status().transferPulseActive());
         assertEquals(0.0, scenario.transfer.power(), EPSILON);
-        assertEquals(scenario.config.releaseRetractedPosition,
+        assertEquals(scenario.config.releaseRetractedNativePosition,
                 scenario.release.position(), EPSILON);
     }
 

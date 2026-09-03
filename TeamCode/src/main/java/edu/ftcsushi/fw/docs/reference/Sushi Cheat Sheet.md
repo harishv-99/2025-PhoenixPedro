@@ -160,7 +160,11 @@ PlantSnapshot scalarStatus = flywheel.snapshot();
 PositionPlantSnapshot positionStatus = lift.snapshot();
 
 SemanticScalarCommand<Height> height =
-        SemanticScalarCommand.create(Height.STOWED, this::heightInFor);
+        SemanticScalarCommand.forEnum(Height.STOWED)
+                .map(Height.STOWED, 0.0)
+                .map(Height.LOW, 4.0)
+                .map(Height.HIGH, 14.0)
+                .build();
 SemanticScalarSnapshot<Height, PositionPlantSnapshot> namedStatus =
         height.snapshot(lift.snapshot());
 
@@ -192,10 +196,13 @@ telemetry.addData("lift", "%s %.2f/%.2f",
         status.requestedPositionIn());
 ```
 
-The enum supplies the semantic name; configuration and one mechanism mapper own the numeric
-coordinates. Use the same shape for named velocity requests. A grouped Plant's `atTarget()` is
-aggregate evidence; publish per-wheel readiness separately in capability status when the robot
-needs it.
+The enum supplies the semantic name; configuration and one mechanism mapping table own the numeric
+coordinates. `forEnum(...)` verifies that every enum value has a finite mapping before the command
+is constructed. Keep `create(initial, mapper)` for computed or non-enum meanings. Bind an ordinary
+exact semantic command with `.targetExactlyFrom(command)`; periodic equivalent-position policy
+remains explicit through `PlantTargets.equivalentPositionsOf(command)`. Use the same shape for
+named velocity requests. A grouped Plant's `atTarget()` is aggregate evidence; publish per-wheel
+readiness separately in capability status when the robot needs it.
 
 Keep that richer backing flat for ordinary launcher code:
 
@@ -222,12 +229,26 @@ still chooses meaningful Plant units, bounds, mapping, reference, and production
 | Hardware goal | Builder branch |
 |---|---|
 | Motor or CR-servo power | `.power()` |
-| Standard-servo position | `.position()`; choose Plant units/bounds, then map into native servo commands `[0, 1]` |
+| Standard-servo position | `.position()`; choose periodicity and Plant bounds in mechanism coordinates, then map reviewed endpoints into native servo commands `[0, 1]` |
 | Motor velocity | `.velocity()` then choose device-managed or framework-regulated control |
 | Motor or CR-servo position | `.position()` then answer control, periodicity, bounds, units, reference, and feedback questions |
 
 Ordinary FTC mechanisms begin with `FtcActuators.plant(hardwareMap)`. `Plants.fromOutputs()` is the
 advanced hardware-neutral/custom-adapter gateway, not a second ordinary FTC recipe.
+
+For a named two-state servo, keep the ordinary coordinate explicit:
+
+```java
+.position()
+.nonPeriodic()
+.bounded(0.0, 1.0) // normalized CLOSED-to-OPEN mechanism coordinate
+.rangeMapsToNative(backedOffNativeClosed, backedOffNativeOpen)
+```
+
+The native endpoints are robot configuration proven through hardware review, not library defaults.
+Normalized `0.5` means halfway through that configured command interval; it is not proof of halfway
+physical linkage travel or standard-servo feedback. Exposing raw native units deliberately still
+requires an explicit, reviewed safe subrange.
 
 For FTC motor control:
 

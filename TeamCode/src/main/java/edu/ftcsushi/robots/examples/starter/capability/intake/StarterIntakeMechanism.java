@@ -5,7 +5,6 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
-import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.actuation.SemanticScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
@@ -53,11 +52,7 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
         }
     }
 
-    private static final double STOPPED_POWER = 0.0;
-
     private final Plant plant;
-    private final double collectPower;
-    private final double ejectPower;
     private final SemanticScalarCommand<Mode> modeCommand;
 
     /**
@@ -81,15 +76,17 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
         requireDirection(direction);
         requireActionPowers(copiedCollectPower, copiedEjectPower);
 
-        collectPower = copiedCollectPower;
-        ejectPower = copiedEjectPower;
-        modeCommand = SemanticScalarCommand.create(Mode.STOPPED, this::powerFor);
+        modeCommand = SemanticScalarCommand.forEnum(Mode.STOPPED)
+                .map(Mode.STOPPED, 0.0)
+                .map(Mode.COLLECT, copiedCollectPower)
+                .map(Mode.EJECT, copiedEjectPower)
+                .build();
         plant = FtcActuators.plant(
                         Objects.requireNonNull(hardwareMap, "hardwareMap is required")
                 )
                 .motor(motorName, direction)
                 .power()
-                .targetFromResolver(PlantTargets.exact(modeCommand))
+                .targetExactlyFrom(modeCommand)
                 .build();
     }
 
@@ -123,19 +120,6 @@ public final class StarterIntakeMechanism implements StarterIntake, RobotProgram
     @Override
     public void stop() {
         plant.stop();
-    }
-
-    private double powerFor(Mode mode) {
-        switch (mode) {
-            case COLLECT:
-                return collectPower;
-            case EJECT:
-                return ejectPower;
-            case STOPPED:
-                return STOPPED_POWER;
-            default:
-                throw new IllegalStateException("Unhandled StarterIntake.Mode: " + mode);
-        }
     }
 
     private static void requireHardwareName(String motorName) {

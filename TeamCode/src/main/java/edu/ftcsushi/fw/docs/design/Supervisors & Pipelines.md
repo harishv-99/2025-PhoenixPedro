@@ -124,44 +124,33 @@ is robot code, not a framework type):
 
 ```java
 final class WristSubsystem implements RobotProgram.Output {
-    private static final class PoseRequest {
-        private final WristPose pose;
-        private final double position;
-
-        private PoseRequest(WristPose pose, double position) {
-            this.pose = pose;
-            this.position = position;
-        }
-    }
+    private static final double STOWED_COORDINATE = 0.0;
+    private static final double SCORE_COORDINATE = 1.0;
 
     private final Plant wrist;
-    private final double stowedPosition;
-    private final double intakePosition;
-    private final double scorePosition;
-    private PoseRequest request;
+    private final SemanticScalarCommand<WristPose> poseCommand;
 
     WristSubsystem(HardwareMap hardwareMap, WristConfig config) {
         WristConfig snapshot = Objects.requireNonNull(config, "config").copy();
-        this.stowedPosition = snapshot.stowedPosition;
-        this.intakePosition = snapshot.intakePosition;
-        this.scorePosition = snapshot.scorePosition;
+        this.poseCommand = SemanticScalarCommand.forEnum(WristPose.STOW)
+                .map(WristPose.STOW, STOWED_COORDINATE)
+                .map(WristPose.INTAKE, snapshot.intakeCoordinate)
+                .map(WristPose.SCORE, SCORE_COORDINATE)
+                .build();
         this.wrist = FtcActuators.plant(
                         Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .servo(snapshot.servoName, snapshot.direction)
                 .position()
                 .nonPeriodic()
-                    .bounded(0.0, 1.0)
-                    .nativeUnits()
-                .targetFromNewCommand(snapshot.stowedPosition)
+                .bounded(STOWED_COORDINATE, SCORE_COORDINATE)
+                .rangeMapsToNative(snapshot.backedOffNativeStowed,
+                        snapshot.backedOffNativeScore)
+                .targetExactlyFrom(poseCommand)
                 .build();
-        this.request = new PoseRequest(WristPose.STOW, stowedPosition);
     }
 
     void selectPose(WristPose pose) {
-        WristPose selected = Objects.requireNonNull(pose, "pose");
-        PoseRequest next = new PoseRequest(selected, targetFor(selected));
-        wrist.commandTarget().set(next.position);
-        request = next;
+        poseCommand.set(Objects.requireNonNull(pose, "pose"));
     }
 
     @Override
@@ -173,25 +162,21 @@ final class WristSubsystem implements RobotProgram.Output {
     public void stop() {
         wrist.stop();
     }
-
-    private double targetFor(WristPose pose) {
-        switch (pose) {
-            case STOW:
-                return stowedPosition;
-            case INTAKE:
-                return intakePosition;
-            case SCORE:
-                return scorePosition;
-            default:
-                throw new AssertionError("Unhandled wrist pose: " + pose);
-        }
-    }
 }
 ```
 
-The setter maps first, writes the numeric command, then publishes the paired request. Any status
-method would read `request.pose` and `request.position` from that one snapshot; Tasks call the same
-setter instead of bypassing it with a raw scalar write.
+The enum table fails fast if any pose is missing or maps to a non-finite coordinate. The command
+owner maps first and then publishes one immutable semantic/numeric request, so those two facts
+cannot drift apart. Any status method can compose
+`poseCommand.snapshot(wrist.snapshot())`; it need not maintain another pose or numeric field, and it
+must not infer a pose back from a `double`. Direct calls use `poseCommand.set(...)`, while named
+Tasks use `SemanticScalarTasks` through that same owner.
+
+Here the command target and Plant coordinate run from normalized STOWED `0.0` to SCORE `1.0`; the
+copied config must validate the intake coordinate inside that range. The Plant alone maps those
+values to separately named, hardware-reviewed, backed-off native commands. A coordinate of `0.5`
+is halfway through that configured command interval, not proof of halfway physical linkage travel
+or standard-servo feedback.
 
 ---
 

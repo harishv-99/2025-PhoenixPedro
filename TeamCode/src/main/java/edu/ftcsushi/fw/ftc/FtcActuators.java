@@ -124,7 +124,8 @@ import edu.ftcsushi.fw.core.source.ScalarSource;
  *     .position()
  *     .nonPeriodic()
  *         .bounded(0.0, 1.0)
- *         .rangeMapsToNative(0.30, 0.80)
+ *         .rangeMapsToNative(cfg.clawClosedNativePosition,
+ *                 cfg.clawOpenNativePosition)
  *     .targetFromNewCommand(0.0)
  *     .build();
  *
@@ -592,6 +593,12 @@ public final class FtcActuators {
         /**
          * Use raw servo positions as plant units.
          *
+         * <p>The bounds already supplied to {@link ServoPositionBoundsStep#bounded(double, double)}
+         * must be the robot-reviewed safe native subrange. FTC's {@code [0.0, 1.0]} Servo envelope
+         * is an adapter limit, not a claim that the mechanism can safely traverse that full range.
+         * Builder validation proves only that submitted values fit the SDK domain; it cannot prove
+         * linkage clearance or physical safety.</p>
+         *
          * @throws IllegalStateException if either bounded Plant endpoint, after every child affine
          * mapping, is non-finite or outside raw Servo {@code [0.0, 1.0]}; the mapping answer remains
          * available for retry
@@ -606,6 +613,10 @@ public final class FtcActuators {
          * other words, if the declared plant range is {@code [min, max]}, then this method means
          * "plant {@code min} -> native {@code nativeAtPlantMin}" and
          * "plant {@code max} -> native {@code nativeAtPlantMax}".</p>
+         *
+         * <p>Use backed-off, hardware-reviewed endpoint facts from robot configuration. Validation
+         * proves only that the resulting finite commands fit the FTC Servo {@code [0.0, 1.0]}
+         * envelope; it cannot prove linkage clearance, safe travel, or physical position.</p>
          *
          * @throws IllegalArgumentException if either endpoint or the resulting shared affine scale
          * is not finite, or the scale is zero
@@ -766,7 +777,7 @@ public final class FtcActuators {
         void requireMutable(String operation) {
             if (frozen) {
                 throw new IllegalStateException(operation + " cannot change this Plant recipe after "
-                        + "targetFromNewCommand(...) or targetFromResolver(...); start a new "
+                        + "target selection; start a new "
                         + "FtcActuators.plant(...) recipe");
             }
         }
@@ -979,8 +990,8 @@ public final class FtcActuators {
             try {
                 if (targetProvenance == null) {
                     throw new IllegalStateException(plantName
-                            + " requires targetFromNewCommand(...) or targetFromResolver(...) before "
-                            + "build()");
+                            + " requires targetFromNewCommand(...), targetExactlyFrom(...), or "
+                            + "targetFromResolver(...) before build()");
                 }
                 requireGuardsClosed();
                 validateRecipe();
@@ -1082,10 +1093,8 @@ public final class FtcActuators {
 
         private void requireTargetUnanswered() {
             if (targetProvenance != null) {
-                String acceptedAnswer = targetProvenance == TargetProvenance.NEW_COMMAND
-                        ? "targetFromNewCommand(...)" : "targetFromResolver(...)";
-                throw new IllegalStateException(acceptedAnswer
-                        + " has already been answered for this " + plantName
+                throw new IllegalStateException("A target has already been selected for this "
+                        + plantName
                         + "; start a new builder from FtcActuators.plant(...)");
             }
             requireMutable("target selection");

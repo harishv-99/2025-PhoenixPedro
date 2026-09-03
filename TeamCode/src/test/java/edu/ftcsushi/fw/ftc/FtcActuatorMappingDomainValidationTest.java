@@ -22,6 +22,7 @@ import edu.ftcsushi.fw.actuation.Plant;
 import edu.ftcsushi.fw.actuation.PlantTargetStatus;
 import edu.ftcsushi.fw.actuation.Plants;
 import edu.ftcsushi.fw.actuation.PositionPlant;
+import edu.ftcsushi.fw.actuation.SemanticScalarCommand;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.hal.PowerOutput;
 import edu.ftcsushi.fw.core.hal.PositionOutput;
@@ -293,6 +294,34 @@ public final class FtcActuatorMappingDomainValidationTest {
     }
 
     @Test
+    public void expandedFullNativePositionRecipeBuildsOneServoInTheRawCoordinate() {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        ServoProbe servo = hardwareMap.addServo("wrist");
+        SemanticScalarCommand<Boolean> command =
+                SemanticScalarCommand.create(false, ignored -> 0.4);
+        PositionPlant plant = FtcActuators.plant(hardwareMap)
+                .servo("wrist", Direction.FORWARD)
+                .position()
+                .nonPeriodic()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
+                .targetExactlyFrom(command)
+                .build();
+
+        assertEquals(PositionPlant.Periodicity.NON_PERIODIC, plant.periodicity());
+        assertEquals(0.0, plant.targetRange().minValue, 0.0);
+        assertEquals(1.0, plant.targetRange().maxValue, 0.0);
+        assertTrue(plant.carriesSemanticCommand(command));
+        assertFalse(plant.hasCommandTarget());
+        assertEquals(0, servo.positionAttempts);
+
+        plant.update(new ManualLoopClock().clock());
+
+        assertEquals(1, servo.positionAttempts);
+        assertEquals(0.4, servo.lastPosition, EPSILON);
+    }
+
+    @Test
     public void servoMappingPreflightsComposedEndpointsBeforeLookupAndSupportsRetryAndMirrors() {
         TestHardwareMap singleMap = new TestHardwareMap();
         ServoProbe single = singleMap.addServo("servo");
@@ -335,6 +364,9 @@ public final class FtcActuatorMappingDomainValidationTest {
         PositionPlant mirrored = groupMapping.nativeUnits()
                 .targetFromNewCommand(0.25)
                 .build();
+        assertEquals(PositionPlant.Periodicity.NON_PERIODIC, mirrored.periodicity());
+        assertEquals(0.0, mirrored.targetRange().minValue, 0.0);
+        assertEquals(1.0, mirrored.targetRange().maxValue, 0.0);
         mirrored.update(new ManualLoopClock().clock());
         assertEquals(0.25, groupFirst.lastPosition, EPSILON);
         assertEquals(0.75, groupMirror.lastPosition, EPSILON);
