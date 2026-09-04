@@ -5,5 +5,6 @@ search:
 
 # The first Pedro Auto lesson moved
 
-Continue with [Follow one Pedro route](<../build/First Pedro Auto.md>). The focused lesson no longer
-introduces an unrelated intake merely to demonstrate route completion.
+Continue with
+[Inspect one Pedro route's software outcome](<../build/First Pedro Auto.md>). The focused lesson no
+longer introduces an unrelated intake merely to demonstrate route completion.

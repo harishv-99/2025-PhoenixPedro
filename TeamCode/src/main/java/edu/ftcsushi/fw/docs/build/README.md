@@ -3,12 +3,13 @@ tags:
   - Build
 ---
 
-# Build actuator knowledge one outcome at a time
+# Build one robot outcome at a time
 
-The actuator lessons are one cumulative path. Start with the intake even if your robot does not
-need one: it is the smallest complete example of a named capability, data-only configuration,
-private Plant, managed output, controls, software evidence, and an isolated hardware gate. Each
-later lesson assumes that vocabulary and teaches only the next hardware or evidence decision.
+The knowledge is cumulative; the hardware fixtures are intentionally independent. Start with the
+intake even if your robot does not need one: it is the smallest complete example of a named
+capability, data-only configuration, private Plant, managed output, controls, software evidence,
+and an isolated hardware gate. A later lesson may assume that vocabulary, but it does not make you
+carry unrelated motors and servos into its focused test.
 
 ## Before the actuator path
 
@@ -30,26 +31,44 @@ later lesson assumes that vocabulary and teaches only the next hardware or evide
    velocity itself is the complete capability request and observe controller feedback separately.
 
 Stop after the outcome your robot needs, but read the lessons in order so a later page can say
-“same owner and heartbeat as before” instead of introducing a second architecture.
+“same owner and heartbeat as before” instead of introducing a second architecture. When a page
+switches example packages, its **Put this focused fixture into your robot** section shows the
+profile, output, controls, presenter, and managed-host connections you must carry over.
 
-## Combine proven capabilities
+The Pedro route page is deliberately different: it is explicitly labeled a blocked
+software-boundary checkpoint, not a reconstruction-grade hardware recipe. Its current lesson ends
+at exact route-attempt classification because the first conservative physical gate cannot yet be
+authorized through the managed integration.
 
-After the relevant isolated software and hardware gates pass, [sequence capability Tasks in
-Auto](<First Autonomous.md>). Pedro Pathing is a separate integration path; add it when you are
-ready to [follow one route and inspect its result](<First Pedro Auto.md>).
+## Put the pieces together
 
-## Choose by the new decision
+After both focused slices pass their gates, [combine drive and intake in one TeleOp](<Combine Drive and Intake.md>).
+That lesson shows how one composition root shares a gamepad while preserving a continuous drive
+path and callback-driven mechanism intent.
 
-| Outcome | First page that teaches it | New evidence or mapping |
+For Auto, first [run one timed root Task](<Run One Timed Auto.md>). Then
+[sequence capability Tasks](<First Autonomous.md>) and let exact outcomes decide whether later work
+may start. Pedro Pathing is a separate integration path; add it when you are ready to
+[verify one fixed route's software outcome](<First Pedro Auto.md>).
+
+## Where each concept first appears
+
+| Concept you need | First Build lesson | What that lesson makes explicit |
 |---|---|---|
-| drivetrain power | [First drive](<First Drive.md>) | source-to-sink composition and configured limits |
-| continuous motor power | [Continuous intake](<Continuous Intake.md>) | named intent and heartbeat-applied output |
-| standard-servo positions | [Named claw](<Named Claw.md>) | bounded logical-to-native mapping without arrival feedback |
-| encoder zero from a switch | [Referenced lift](<Referenced Lift.md>) | reference validity from authored switch evidence |
-| bounded motor position | [Move a referenced lift](<Move a Referenced Lift.md>) | fresh position feedback and Task outcome |
-| one motor velocity | [Single flywheel velocity](<Single Flywheel Velocity.md>) | requested, applied, measured, and arrived velocity |
-| several proven capabilities | [First autonomous](<First Autonomous.md>) | Task sequencing and outcome gates |
-| route follower integration | [First Pedro Auto](<First Pedro Auto.md>) | route construction and terminal classification |
+| continuous gamepad axes | [First drive](<First Drive.md>) | `GamepadDevice` → `DriveSource` → one managed drive sink; no callback binding |
+| synchronous button meaning | [Continuous intake](<Continuous Intake.md>) | `CallbackBindings.onRise(...)` calls a capability setter |
+| capability, profile, Plant, status, presenter | [Continuous intake](<Continuous Intake.md>) | the complete ordinary actuator ownership chain |
+| bounded named servo positions | [Named claw](<Named Claw.md>) | logical `[0, 1]` mapped to configured native endpoint candidates; no arrival claim |
+| Boolean sensor, polarity, and debounce | [Referenced lift](<Referenced Lift.md>) | switch evidence establishes a reference through a fresh Task |
+| direct request versus wait-for-feedback Task | [Move a referenced lift](<Move a Referenced Lift.md>) | completion and cancellation policy use coherent semantic/numeric status |
+| numeric velocity feedback | [Single flywheel velocity](<Single Flywheel Velocity.md>) | requested, applied, measured, arrival, timeout, and cancel-to-stop |
+| several owners in one TeleOp | [Combine drive and intake](<Combine Drive and Intake.md>) | shared controls, declaration order, output/presenter ownership, collision checks, and STOP |
+| one behavior over time in Auto | [Run one timed Auto](<Run One Timed Auto.md>) | fresh root Task, START boundary, duration, and cancellation-safe persistent request |
+| Task composition and outcome gates | [First autonomous](<First Autonomous.md>) | sequence first; parallel work only after the basic outcome path is clear |
+
+Sensor-to-status observation without motion is a separate later Build slice. Prestart selection,
+services, field-relative drive, vision, Pedro internals, and experiments remain later outcomes rather
+than prerequisites hidden inside these lessons.
 
 Every recipe links exact generated API documentation and labels GitHub links as **Complete
 source**. Displayed Java is copied from those compiling authorities; the explanation tells you why

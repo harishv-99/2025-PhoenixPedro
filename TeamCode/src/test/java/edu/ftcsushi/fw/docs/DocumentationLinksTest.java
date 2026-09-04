@@ -54,6 +54,7 @@ public final class DocumentationLinksTest {
             "Reference");
 
     private static final List<String> BUILD_MARKDOWN_FILES = Arrays.asList(
+            "Combine Drive and Intake.md",
             "Continuous Intake.md",
             "First Autonomous.md",
             "First Drive.md",
@@ -62,6 +63,7 @@ public final class DocumentationLinksTest {
             "Named Claw.md",
             "README.md",
             "Referenced Lift.md",
+            "Run One Timed Auto.md",
             "Single Flywheel Velocity.md");
 
     private static final List<String> BUILD_RECIPE_FILES = Arrays.asList(
@@ -71,6 +73,8 @@ public final class DocumentationLinksTest {
             "Referenced Lift.md",
             "Move a Referenced Lift.md",
             "Single Flywheel Velocity.md",
+            "Combine Drive and Intake.md",
+            "Run One Timed Auto.md",
             "First Autonomous.md",
             "First Pedro Auto.md");
 
@@ -82,6 +86,8 @@ public final class DocumentationLinksTest {
             "docs/build/Referenced Lift.md",
             "docs/build/Move a Referenced Lift.md",
             "docs/build/Single Flywheel Velocity.md",
+            "docs/build/Combine Drive and Intake.md",
+            "docs/build/Run One Timed Auto.md",
             "docs/build/First Autonomous.md",
             "docs/build/First Pedro Auto.md");
 
@@ -454,7 +460,7 @@ public final class DocumentationLinksTest {
     }
 
     @Test
-    public void buildAreaHasOneCumulativeActuatorRouteAndIndependentDriveRoute()
+    public void buildAreaHasCumulativeKnowledgeAndFocusedIndependentFixtures()
             throws IOException {
         Path repositoryRoot = repositoryRoot();
         Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
@@ -478,13 +484,22 @@ public final class DocumentationLinksTest {
                 "(<Referenced Lift.md>)",
                 "(<Move a Referenced Lift.md>)",
                 "(<Single Flywheel Velocity.md>)");
-        assertTrue("Build index must expose the cumulative actuator route: " + routeFailures,
-                index.contains("cumulative path")
+        assertTrue("Build index must expose the cumulative actuator knowledge route: "
+                        + routeFailures,
+                index.contains("knowledge is cumulative")
+                        && index.contains("hardware fixtures are intentionally independent")
                         && index.contains("read the lessons in order")
                         && routeFailures.isEmpty());
         assertTrue("Drive must remain an independent outcome path",
                 index.contains("Drive is independent")
                         && index.contains("(<First Drive.md>)"));
+        assertTrue("Build must expose the first TeleOp and Auto integration steps",
+                index.contains("(<Combine Drive and Intake.md>)")
+                        && index.contains("(<Run One Timed Auto.md>)")
+                        && index.contains("## Where each concept first appears")
+                        && index.contains("continuous gamepad axes")
+                        && index.contains("synchronous button meaning")
+                        && index.contains("one behavior over time in Auto"));
 
         String setup = readUtf8(docsRoot.resolve("docs/getting-started/Build and Run.md"));
         String oldCourseRedirect = readUtf8(docsRoot.resolve(
@@ -494,10 +509,11 @@ public final class DocumentationLinksTest {
         String oldCourseProse = oldCourseRedirect.replaceAll("\\s+", " ");
         assertTrue("Every first-contact route must agree on progressive actuator order",
                 setupProse.contains("begin with continuous intake")
-                        && setupProse.contains("read the actuator lessons in order")
+                        && setupProse.contains("knowledge builds in order")
+                        && setupProse.contains("each hardware fixture stays focused")
                         && oldCourseProse.contains("actuator lessons now")
                         && oldCourseProse.contains("velocity in order")
-                        && drive.contains("cumulative path")
+                        && drive.contains("Continuous Intake.md")
                         && !setup.contains("select only the mechanism")
                         && !oldCourseRedirect.contains("independent Build recipes"));
     }
@@ -683,6 +699,210 @@ public final class DocumentationLinksTest {
                         && velocity.contains("Feedback-aware Tasks are exercised")
                         && velocity.contains("TeleOp button queue"));
         assertTrue("Progressive actuator lesson failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void firstDriveTeachesTheCompleteContinuousProductionPath() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path frameworkRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        String drive = readUtf8(frameworkRoot.resolve("docs/build/First Drive.md"));
+        String gamepad = readUtf8(frameworkRoot.resolve("ftc/input/GamepadDevice.java"));
+        List<String> failures = new ArrayList<String>();
+
+        requireOrdered(drive, "First Drive.md", failures,
+                "### 1. Adapt the FTC gamepad during INIT",
+                "### 2. Give the three axes robot-frame meanings",
+                "### 3. Review one complete mecanum configuration",
+                "### 4. Declare a continuously sampled drive path");
+        for (String required : Arrays.asList(
+                "new GamepadDevice(gamepad1)",
+                "requiredDriver.leftX()",
+                "requiredDriver.leftY()",
+                "requiredDriver.rightX()",
+                "frontLeftName",
+                "frontRightDirection",
+                "maxAxial = 0.25",
+                "maxLateral = 0.25",
+                "maxOmega = 0.20",
+                "program.drive(",
+                "CallbackBindings",
+                "TaskBindings",
+                "FirstDriveSoftwareScenarioTest",
+                "assertWheelPowers",
+                "mode.stop()")) {
+            if (!drive.contains(required)) {
+                failures.add("First Drive.md: missing reconstruction teaching for " + required);
+            }
+        }
+        assertTrue("First Drive must warn about construction-time neutral calibration",
+                drive.replaceAll("\\s+", " ").contains("before pressing INIT"));
+        assertTrue("Gamepad buttons must remain truthful held-level sources",
+                gamepad.contains("Buttons ({@link BooleanSource}) that report the current held state")
+                        && gamepad.contains("Button sources do not detect edges themselves")
+                        && gamepad.contains("CallbackBindings")
+                        && !gamepad.contains("a {@link BooleanSource} with edge detection"));
+        assertTrue("First Drive reconstruction failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void buildSpineTeachesManagedIntegrationBeforeTaskComposition() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path buildRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH).resolve("docs/build");
+        String teleOp = readUtf8(buildRoot.resolve("Combine Drive and Intake.md"));
+        String timedAuto = readUtf8(buildRoot.resolve("Run One Timed Auto.md"));
+        String composedAuto = readUtf8(buildRoot.resolve("First Autonomous.md"));
+        List<String> failures = new ArrayList<String>();
+
+        for (String required : Arrays.asList(
+                "new StarterRobot(hardwareMap).declareTeleOp(",
+                "requireDistinctMotorOwners(activeProfile)",
+                "controls.bind(program.callbackBindings(), intake)",
+                "program.drive(",
+                "scaledWhen(this.driver.rightBumper()",
+                "StarterTeleOpControls.SLOW_TRANSLATE_SCALE",
+                "StarterTeleOpControls.SLOW_OMEGA_SCALE",
+                "mode.advanceTo(0.08)",
+                "driver.right_bumper = false",
+                "Clock → Bindings → Tasks → intake output → drive output → Presenters",
+                "StarterDriveAndIntakeSoftwareScenarioTest",
+                "held-bumper drive continuously")) {
+            if (!teleOp.contains(required)) {
+                failures.add("Combine Drive and Intake.md: missing integration teaching for "
+                        + required);
+            }
+        }
+        assertTrue("The integration lesson must explain pre-lookup ownership rejection",
+                teleOp.replaceAll("\\s+", " ")
+                        .contains("rejects an exact duplicate before any hardware lookup"));
+        assertTrue("The integration lesson must explain total managed STOP",
+                teleOp.replaceAll("\\s+", " ")
+                        .contains("STOP immediately zeros all five motors"));
+
+        requireOrdered(timedAuto, "Run One Timed Auto.md", failures,
+                "program.rootTask(oneTimedCollect(intake))",
+                ".forSeconds(durationSec)",
+                ".then(Mode.STOPPED)",
+                "## Software checkpoint: time begins at START");
+        for (String required : Arrays.asList(
+                "StarterTimedAutoSoftwareScenarioTest",
+                "TaskOutcome.SUCCESS",
+                "observes `CANCELLED`",
+                "fresh single-use",
+                "10.75")) {
+            if (!timedAuto.contains(required)) {
+                failures.add("Run One Timed Auto.md: missing root-Task teaching for " + required);
+            }
+        }
+
+        requireOrdered(composedAuto, "First Autonomous.md", failures,
+                "(<Run One Timed Auto.md>)",
+                "BasicAutoRoutines.liftOnly(lift)",
+                "program.rootTask(auto)",
+                "### Optional capstone: add the proven claw");
+        for (String required : Arrays.asList(
+                "Tasks.sequence(",
+                "Tasks.parallelDeadline",
+                "leaveRequestOnCancel()",
+                "persistent request",
+                "TaskOutcome.TIMEOUT",
+                "TaskOutcome.CANCELLED",
+                "suppress")) {
+            if (!composedAuto.contains(required)) {
+                failures.add("First Autonomous.md: missing composition teaching for " + required);
+            }
+        }
+        assertTrue("Managed Build-spine failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void independentActuatorFixturesExposeTheirActiveProfilesAndManagedHosts()
+            throws IOException {
+        Path buildRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH).resolve("docs/build");
+        Map<String, List<String>> requiredByPage = new LinkedHashMap<String, List<String>>();
+        requiredByPage.put("Named Claw.md", Arrays.asList(
+                "### Put this focused fixture into your robot",
+                "BasicClawProfile.current()",
+                "closedNativePosition = 0.25",
+                "openNativePosition = 0.70",
+                "BasicClaw.Status",
+                "program.output(",
+                "program.callbackBindings()",
+                "program.presenter("));
+        requiredByPage.put("Referenced Lift.md", Arrays.asList(
+                "### Put this focused fixture into your robot",
+                "BasicLiftProfile.current()",
+                "ticksPerIn = 100.0",
+                "BasicLiftHomeControls",
+                "BasicLiftHomeTeleOp",
+                "program.taskBindings()",
+                "program.presenter(",
+                "Height.STOWED",
+                "TaskOutcome.TIMEOUT"));
+        requiredByPage.put("Move a Referenced Lift.md", Arrays.asList(
+                "### Put this focused fixture into your robot",
+                "BasicLiftTeleOp",
+                "program.callbackBindings()",
+                "program.taskBindings()",
+                "program.presenter(",
+                "requestedPositionIn()",
+                "measuredPositionIn()",
+                "TaskOutcome.CANCELLED",
+                "persistent request"));
+        requiredByPage.put("Single Flywheel Velocity.md", Arrays.asList(
+                "### Put this focused fixture into your robot",
+                "BasicFlywheelProfile.current()",
+                "candidateVelocityTicksPerSec = 250.0",
+                "allowFlywheelMotion = false",
+                "requireCandidateInConfiguredRange",
+                "BasicFlywheelTeleOp",
+                "program.presenter(",
+                "Control Tuning Workflow"));
+
+        List<String> failures = new ArrayList<String>();
+        for (Map.Entry<String, List<String>> entry : requiredByPage.entrySet()) {
+            String markdown = readUtf8(buildRoot.resolve(entry.getKey()));
+            for (String required : entry.getValue()) {
+                if (!markdown.contains(required)) {
+                    failures.add(entry.getKey() + ": missing focused-fixture teaching for "
+                            + required);
+                }
+            }
+        }
+        assertTrue("Focused actuator fixture failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void pedroBuildLessonReportsTheExactRetainedSoftwareAttempt() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path frameworkRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        String page = readUtf8(frameworkRoot.resolve("docs/build/First Pedro Auto.md"));
+        String source = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/"
+                        + "BasicPedroAuto.java"));
+        String integration = readUtf8(frameworkRoot.resolve("integrations/pedro/README.md"));
+        String design = readUtf8(frameworkRoot.resolve(
+                "docs/design/Recommended Robot Design.md"));
+
+        String pageProse = page.replaceAll("\\s+", " ");
+        assertTrue("Pedro outcome must stay software-only while physical motion is blocked",
+                pageProse.contains("verify its classified software outcome")
+                        && page.contains("blocked software-boundary checkpoint")
+                        && page.contains("advanced Pedro integration guide")
+                        && page.contains("## Isolated hardware gate — currently blocked")
+                        && pageProse.contains("no physical motion is authorized"));
+        assertTrue("Pedro telemetry must observe the exact retained RouteTask",
+                page.contains("routeTask.getRouteStatus()")
+                        && source.contains("routeTask.getRouteStatus()")
+                        && !source.contains("getLatestRouteStatus()"));
+        for (String explanation : Arrays.asList(page, integration, design, source)) {
+            String normalizedExplanation = explanation.replaceAll("\\s+", " ");
+            assertTrue("Pedro power-limit explanation must distinguish overwrite from reset",
+                    normalizedExplanation.contains("globalMaxPower")
+                            && normalizedExplanation.contains("does not reset")
+                            && normalizedExplanation.contains("overwrit")
+                            && !normalizedExplanation.contains("resets the Follower")
+                            && !normalizedExplanation.contains("restores the Follower"));
+        }
     }
 
     @Test
@@ -1428,6 +1648,7 @@ public final class DocumentationLinksTest {
         for (String token : required) {
             int found = markdown.indexOf(token);
             if (found < 0) {
+                failures.add(page + ": missing ordered teaching element " + token);
                 return;
             }
             if (found <= previous) {
@@ -1473,8 +1694,8 @@ public final class DocumentationLinksTest {
             String sourcePath = excerpts.group(1).trim();
             String snippet = normalizeExcerpt(excerpts.group(2));
             int lines = snippet.isEmpty() ? 0 : snippet.split("\\n", -1).length;
-            if (lines < 2 || lines > 12) {
-                failures.add(pageName + ": source excerpt must contain 2–12 lines, found "
+            if (lines < 3 || lines > 12) {
+                failures.add(pageName + ": source excerpt must contain 3–12 lines, found "
                         + lines + " for " + sourcePath);
             }
             Path source = repositoryRoot.resolve(sourcePath).toAbsolutePath().normalize();

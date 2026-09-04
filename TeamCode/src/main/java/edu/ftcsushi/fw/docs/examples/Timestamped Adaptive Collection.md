@@ -12,8 +12,9 @@ blank-file tutorial: use the verified excerpts to understand the boundaries, the
 maintained example and its tests as a unit.
 
 **Audience:** teams that already have a managed Pedro robot and need one vision-selected collection
-attempt. Start with [Follow one Pedro route](<../build/First Pedro Auto.md>) if route
-lifecycle and exact route outcomes are new.
+attempt. Start with
+[Inspect one Pedro route's software outcome](<../build/First Pedro Auto.md>) if route lifecycle and
+exact route outcomes are new.
 
 This optional case study teaches how to turn one delayed Limelight detector frame into one bounded,
 explainable collection attempt. Its adaptive vision, path, and attempt roles are robot-example code;
@@ -431,7 +432,7 @@ behavior in this one-attempt owner.
 
 ## Related reading
 
-- [Follow one Pedro route](<../build/First Pedro Auto.md>)
+- [Inspect one Pedro route's software outcome](<../build/First Pedro Auto.md>)
 - [Spatial queries and timestamp-aware frames](<../drive-vision/Spatial Queries.md>)
 - [Pedro integration contract](<../../integrations/pedro/README.md>)
 - [Tasks and Macros](<../design/Tasks & Macros Quickstart.md>)

@@ -2,6 +2,8 @@ package edu.ftcsushi.robots.examples.basicmechanisms;
 
 import java.util.Objects;
 
+import edu.ftcsushi.fw.core.hal.Direction;
+
 /** Data-only claw answers and the explicit motion permission used by each claw lesson. */
 public final class BasicClawProfile {
 
@@ -26,6 +28,11 @@ public final class BasicClawProfile {
     public static BasicClawProfile current() {
         BasicClawProfile profile = new BasicClawProfile();
         profile.claw = BasicClawMechanism.Config.defaults();
+        profile.claw.servoName = "clawServo";
+        profile.claw.direction = Direction.FORWARD;
+        profile.claw.closedNativePosition = 0.25;
+        profile.claw.openNativePosition = 0.70;
+        profile.claw.initialState = BasicClaw.State.CLOSED;
         profile.allowClawMotion = false;
         return profile;
     }

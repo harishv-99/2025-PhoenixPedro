@@ -21,8 +21,11 @@ software checkpoint, and cross the stated hardware gate before integrating it in
    [a feedback-aware lift move](<build/Move a Referenced Lift.md>), then
    [one motor's velocity](<build/Single Flywheel Velocity.md>).
 6. Cross each lesson's isolated **Test & Tune** gate before integrating its capability.
-7. [Sequence real capability Tasks](<build/First Autonomous.md>) in Auto after their individual
-   evidence gates pass.
+7. [Combine drive and intake](<build/Combine Drive and Intake.md>) to learn the first multi-owner
+   TeleOp composition.
+8. [Run one timed root Task](<build/Run One Timed Auto.md>), then
+   [sequence real capability Tasks](<build/First Autonomous.md>) after their individual evidence
+   gates pass.
 
 ## Choose by outcome
 
@@ -34,8 +37,10 @@ software checkpoint, and cross the stated hardware gate before integrating it in
 | establish encoder zero from a bottom switch | [Establish a lift reference](<build/Referenced Lift.md>) |
 | move a referenced lift and wait for fresh feedback | [Move a referenced lift](<build/Move a Referenced Lift.md>) |
 | command one motor's velocity and observe arrival | [Reach one flywheel velocity](<build/Single Flywheel Velocity.md>) |
-| combine mechanisms without blocking the loop | [Sequence an autonomous](<build/First Autonomous.md>) |
-| follow one Pedro route and inspect its truthful outcome | [Follow a Pedro route](<build/First Pedro Auto.md>) |
+| combine continuous drive and button-controlled intake | [Combine drive and intake](<build/Combine Drive and Intake.md>) |
+| run one fresh timed behavior when Auto starts | [Run one timed Auto](<build/Run One Timed Auto.md>) |
+| sequence feedback-aware lift Tasks without blocking the loop | [Sequence an autonomous](<build/First Autonomous.md>) |
+| compile one Pedro route and inspect its truthful software outcome | [Inspect Pedro route status](<build/First Pedro Auto.md>) |
 | understand where a piece of code belongs | [Choose a concept](<getting-started/Beginner's Guide.md>) |
 | design a useful software or hardware test | [How to test a Sushi component](<testing-calibration/How to test a Sushi component.md>) |
 | bring up an actuator without assuming its safe range | [Actuator bring-up](<testing-calibration/Actuator Bring-up.md>) |

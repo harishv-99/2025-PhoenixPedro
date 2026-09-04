@@ -284,8 +284,9 @@ Idle/not-busy is not proof that the intended endpoint completed. Before terminat
 continues, starts a selected fallback, or aborts.
 
 The adapter still needs one stable managed heartbeat throughout the active OpMode, including loops
-where no route Task is active. See [`Follow one Pedro route`](<../build/First Pedro Auto.md>)
-and [`Pedro integration contract`](<../../integrations/pedro/README.md>).
+where no route Task is active. See
+[`Inspect one Pedro route's software outcome`](<../build/First Pedro Auto.md>) and
+[`Pedro integration contract`](<../../integrations/pedro/README.md>).
 
 ## The problem is still unclear
 

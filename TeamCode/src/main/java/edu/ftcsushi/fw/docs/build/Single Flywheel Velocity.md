@@ -20,6 +20,37 @@ direct behavior writes the Plant-owned numeric command and deferred behavior use
 
 ## Critical production idea
 
+### Keep configuration, one fixture candidate, and permission together
+
+This lesson moves into the independent `basicflywheel` package. Its one active edit point is
+`BasicFlywheelProfile.current()`, which shows every production candidate, the A-button fixture
+request, and the fail-closed motion permission:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelProfile.java -->
+```java
+public static BasicFlywheelProfile current() {
+    BasicFlywheelProfile profile = new BasicFlywheelProfile();
+    profile.flywheel = BasicFlywheelMechanism.Config.defaults();
+    profile.flywheel.motorName = "flywheelMotor";
+    profile.flywheel.direction = Direction.FORWARD;
+    profile.flywheel.maximumVelocityTicksPerSec = 500.0;
+    profile.flywheel.velocityToleranceTicksPerSec = 25.0;
+    profile.flywheel.spinUpTimeoutSec = 2.0;
+    profile.candidateVelocityTicksPerSec = 250.0;
+    profile.allowFlywheelMotion = false;
+    return profile;
+}
+```
+
+`Config.defaults()` supplies a complete compiling baseline; these assignments deliberately expose
+the active candidates a team must review. `candidateVelocityTicksPerSec` is fixture policy, not a
+second mechanism limit. Before hardware construction the host requires it to be finite, greater
+than the configured tolerance, and no greater than the configured maximum. That prevents stopped
+feedback from satisfying the candidate's arrival band. Leave `allowFlywheelMotion` false through
+software validation and physical setup.
+
+### Build the velocity Plant
+
 The mechanism constructs one feedback-capable FTC velocity Plant:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelMechanism.java -->
@@ -52,9 +83,11 @@ Read the stages as questions:
 command is zero, and the mechanism's first normal `update(clock)` is what submits it. Ordinary
 `deviceManaged()` also leaves the FTC controller's existing PIDF coefficients unchanged. Software
 construction therefore proves neither that those coefficients are tuned nor that a numeric value
-is safe on a particular mechanism. The example rejects a tolerance equal to or larger than its
-maximum before hardware lookup, so a zero measurement is not inside the completion band at the
-maximum request.
+is safe on a particular mechanism. Use the separate
+[Control Tuning Workflow](<../testing-calibration/Control Tuning Workflow.md>) after direction,
+units, range, feedback sign, and physical stop behavior are established. The example rejects a
+tolerance equal to or larger than its maximum before hardware lookup, so a zero measurement is not
+inside the completion band at the maximum request.
 
 Immediate behavior retrieves the Plant's stable command where it is used:
 
@@ -63,6 +96,21 @@ Immediate behavior retrieves the Plant's stable command where it is used:
 public void setVelocityTicksPerSec(double velocityTicksPerSec) {
     requireVelocityInRange(velocityTicksPerSec);
     flywheel.commandTarget().set(velocityTicksPerSec);
+}
+```
+
+That validation is part of the mechanism rather than an assumption hidden in callers:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelMechanism.java -->
+```java
+private void requireVelocityInRange(double velocityTicksPerSec) {
+    if (!Double.isFinite(velocityTicksPerSec)
+            || velocityTicksPerSec < STOPPED_VELOCITY_TICKS_PER_SEC
+            || velocityTicksPerSec > maximumVelocityTicksPerSec) {
+        throw new IllegalArgumentException(
+                "velocityTicksPerSec must be finite and in [0, "
+                        + maximumVelocityTicksPerSec + "], got " + velocityTicksPerSec);
+    }
 }
 ```
 
@@ -95,6 +143,68 @@ public Status status() {
 keeps four different claims visible: current requested velocity, cached applied velocity, cached
 encoder measurement, and whether that captured request has command-correlated arrival evidence.
 
+### Give A and B direct fixture meanings
+
+The controls owner captures the profile's candidate once. A selects that persistent velocity; B
+selects persistent zero. Neither callback waits for arrival or writes the motor:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelControls.java -->
+```java
+requiredCallbacks.onRise(
+        operator.a(),
+        () -> requiredFlywheel.setVelocityTicksPerSec(candidateVelocityTicksPerSec));
+requiredCallbacks.onRise(
+        operator.b(),
+        () -> requiredFlywheel.setVelocityTicksPerSec(0.0));
+```
+
+Feedback-aware Tasks remain the Auto/coordinator path because their timeout and cancellation
+outcomes require an explicit caller policy; this focused TeleOp does not hide them in a button
+queue.
+
+### Put this focused fixture into your robot
+
+The disabled OpMode reads the active profile, checks its permission and candidate before hardware
+lookup, declares the mechanism as the managed output, and binds the controls:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelTeleOp.java -->
+```java
+BasicFlywheelProfile profile = BasicFlywheelProfile.current();
+BasicFlywheelProfile.requireMotionAllowed(profile, "Basic Flywheel TeleOp");
+BasicFlywheelProfile.requireCandidateInConfiguredRange(
+        profile.flywheel, profile.candidateVelocityTicksPerSec);
+
+BasicFlywheelMechanism flywheel = program.output(
+        new BasicFlywheelMechanism(hardwareMap, profile.flywheel));
+BasicFlywheelControls controls = new BasicFlywheelControls(
+        new GamepadDevice(gamepad1), profile.candidateVelocityTicksPerSec);
+controls.bind(program.callbackBindings(), flywheel);
+```
+
+The presenter names the four cached facts separately instead of collapsing them into “speed”:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelTeleOp.java -->
+```java
+program.presenter((clock, telemetry) -> {
+    BasicFlywheel.Status status = flywheel.status();
+    telemetry.addData("flywheel.requestedTicksPerSec",
+            status.requestedVelocityTicksPerSec());
+    telemetry.addData("flywheel.appliedTicksPerSec",
+            status.appliedVelocityTicksPerSec());
+    telemetry.addData("flywheel.measuredTicksPerSec",
+            status.measuredVelocityTicksPerSec());
+    telemetry.addData("flywheel.atRequestedVelocity",
+            status.atRequestedVelocity());
+    telemetry.addLine("A: request candidate | B: request zero");
+});
+```
+
+`program.output(...)` supplies the one normal `update` and terminal `stop` path. Callback bindings
+run before that output phase, so A or B changes the request and the same cycle's downstream
+heartbeat realizes it. `program.presenter(...)` reads requested, applied, measured, and arrival
+facts from one cached status snapshot, after output and before the host's one telemetry commit.
+Student code adds no loop.
+
 Notice:
 
 - [`Plant.commandTarget()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/Plant.html>)
@@ -112,6 +222,8 @@ Notice:
   [Complete source: `BasicFlywheel.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheel.java>)
 - [`BasicFlywheelMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelMechanism.html>) — configuration, Plant, Tasks, and lifecycle owner.
   [Complete source: `BasicFlywheelMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelMechanism.java>)
+- [`BasicFlywheelProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelProfile.html>) — active configuration, fixture candidate, and motion permission.
+  [Complete source: `BasicFlywheelProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelProfile.java>)
 - `BasicFlywheelControls` — A/B direct fixture meanings and one-time binding owner.
   [Complete source: `BasicFlywheelControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelControls.java>)
 - [`BasicFlywheelTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelTeleOp.html>) — disabled, fail-closed mechanism-only host.
@@ -121,6 +233,7 @@ Notice:
 
 - [Complete source: `BasicFlywheelSoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelSoftwareScenarioTest.java>)
 - [Complete source: `BasicFlywheelConfigurationContractTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelConfigurationContractTest.java>) — supplied maintainer boundary coverage.
+- [Complete source: `BasicFlywheelControlsTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelControlsTest.java>) — A/B rising-edge and one-shot-binding coverage.
 
 ## Software checkpoint: fresh feedback completes the selected request
 
@@ -168,6 +281,7 @@ Run:
 
 ```powershell
 .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelSoftwareScenarioTest
+.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelControlsTest
 ```
 
 **Read the causal chain:** 200 is first supported by matching cached feedback; the new Task publishes
@@ -183,23 +297,28 @@ command-correlated feedback success, timeout, and cancellation-to-zero semantics
 
 ## Isolated hardware gate
 
-The checked-in `BasicFlywheelTeleOp` has both `@Disabled` and `MOTION_REVIEWED = false`. Leave both
-locks in place while you review `Config.defaults()`: `flywheelMotor`, `FORWARD`, the `500` ticks/sec
-maximum, `25` ticks/sec tolerance, and two-second timeout are software-valid candidates, not
-reviewed facts for your motor.
+The checked-in `BasicFlywheelTeleOp` has `@Disabled`, and `BasicFlywheelProfile.current()` has
+`allowFlywheelMotion = false`. Leave both locks in place while you review `flywheelMotor`,
+`FORWARD`, the `500` ticks/sec maximum, `25` ticks/sec tolerance, two-second timeout, and `250`
+ticks/sec fixture candidate. They are software-valid candidates, not reviewed facts for your motor.
 
 Secure or remove the flywheel load, disconnect other motion owners, verify the motor name and
 positive direction, confirm the encoder's ticks-per-revolution and expected sign, choose a backed-
 off range for that exact assembly, and appoint an immediate STOP operator. Use
 [Actuator bring-up](<../testing-calibration/Actuator Bring-up.md>) before relying on the checked-in
-`250` ticks/sec test candidate. Only after that review should you set the gate true, remove
+fixture candidate. Only after that review should you set `allowFlywheelMotion = true`, remove
 `@Disabled`, and try A for the candidate request and B for a persistent zero request. The fixture
 validates that its candidate is above the zero measurement's tolerance band and no greater than the
-configured maximum before constructing hardware. Feedback-aware Tasks are exercised in the
-software scenario and belong in Auto or another coordinator with explicit abort policy, rather
-than in a TeleOp button queue. Measure actual coast-down; a submitted zero command is not proof
-that the mechanism has physically stopped.
+configured maximum before constructing hardware. When feedback is trustworthy, use the
+[Control Tuning Workflow](<../testing-calibration/Control Tuning Workflow.md>) to evaluate the
+device-managed PIDF candidate rather than treating arrival as proof of good control.
+Feedback-aware Tasks are exercised in the software scenario and belong in Auto or another coordinator with
+explicit abort policy, rather than in a TeleOp button queue. Measure actual coast-down; a submitted
+zero command is not proof that the mechanism has physically stopped.
 
-**Next gate:** after one motor has proven direction, range, feedback, and stop behavior, study the
-[advanced paired-flywheel example](<../advanced/Paired Flywheel Velocity.md>) only if two wheels
-share a command but require independent readiness evidence.
+If the actual robot has two wheels that share a command but require independent readiness evidence,
+the [advanced paired-flywheel example](<../advanced/Paired Flywheel Velocity.md>) is an optional
+branch rather than the next beginner prerequisite.
+
+**Next gate:** after the focused actuator vocabulary is clear, use the already-proven drive and
+intake slices to [combine drive and intake](<Combine Drive and Intake.md>) under one managed TeleOp.

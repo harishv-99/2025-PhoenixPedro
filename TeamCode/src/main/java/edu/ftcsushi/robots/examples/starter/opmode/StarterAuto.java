@@ -3,8 +3,11 @@ package edu.ftcsushi.robots.examples.starter.opmode;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 
+import java.util.Objects;
+
 import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
 import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
 import edu.ftcsushi.robots.examples.starter.robot.StarterProfile;
 import edu.ftcsushi.robots.examples.starter.robot.StarterRobot;
@@ -25,6 +28,18 @@ public final class StarterAuto extends FtcRobotOpMode {
     protected void configure(RobotProgram program) {
         StarterProfile profile = StarterProfile.current();
         StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
-        program.rootTask(intake.collectForSeconds(COLLECT_DURATION_SEC));
+        program.rootTask(oneTimedCollect(intake));
+    }
+
+    /**
+     * Builds the fresh single-use routine selected by this Auto.
+     *
+     * @param intake capability that creates the timed collection Task
+     * @return fresh Task that collects for the configured duration, then requests STOPPED
+     * @throws NullPointerException if {@code intake} is {@code null}
+     */
+    static Task oneTimedCollect(StarterIntake intake) {
+        return Objects.requireNonNull(intake, "intake")
+                .collectForSeconds(COLLECT_DURATION_SEC);
     }
 }

@@ -107,7 +107,7 @@ public final class BasicFlywheelSoftwareScenarioTest {
 
     private static final class Scenario {
         private final BasicFlywheelMechanism.Config config =
-                BasicFlywheelMechanism.Config.defaults();
+                BasicFlywheelProfile.current().flywheel;
         private final FtcTestHardware hardware = new FtcTestHardware();
         private final FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
         private final BasicFlywheelMechanism flywheel =

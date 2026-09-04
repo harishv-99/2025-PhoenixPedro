@@ -81,7 +81,7 @@ public final class BasicPedroAuto extends FtcRobotOpMode {
             );
             telemetry.addData(
                     "route.status",
-                    runtime.driveAdapter().getLatestRouteStatus()
+                    routeTask.getRouteStatus()
             );
             telemetry.addData("route.outcome", routeTask.getOutcome());
         });
@@ -106,9 +106,10 @@ public final class BasicPedroAuto extends FtcRobotOpMode {
     /**
      * Author one independent software baseline; these values are not physical evidence.
      *
-     * <p>Pedro restores its own following power when a path begins, so the {@code 0.25} initial
-     * drivetrain value below is not a durable route-speed limit. Motion remains blocked until the
-     * integration offers a reviewed persistent limit and every adopting-robot fact is validated.</p>
+     * <p>The Follower's separate {@code globalMaxPower} starts at {@code 1.0}; following applies
+     * its current value to drivetrain scaling and overwrites the {@code 0.25} Mecanum value below.
+     * Following does not reset that field, but Sushi does not yet expose its persistent setting.
+     * Motion remains blocked until that setting and every adopting-robot fact are reviewed.</p>
      */
     private static PedroPathingRuntime.Config exampleRuntimeConfig() {
         PedroPathingRuntime.Config config = PedroPathingRuntime.Config.defaults();

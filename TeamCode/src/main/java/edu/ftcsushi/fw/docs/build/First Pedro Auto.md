@@ -3,13 +3,18 @@ tags:
   - Build
 ---
 
-# Follow one Pedro route and inspect its outcome
+# Inspect one Pedro route's software outcome
 
-**Outcome:** author one fixed route, run it through Sushi's managed Pedro heartbeat, and keep the
-route status distinct from the Task outcome.
+**Outcome:** compile one fixed-route Auto, verify its classified software outcome, and keep the
+retained route attempt's status distinct from its Task outcome.
 
 **Prerequisites:** the project software checks pass; you understand fresh Tasks; no physical motion
 is authorized by this lesson.
+
+**Learning scope — blocked software-boundary checkpoint:** this page teaches fixed route creation
+and the exact retained attempt's software status. It is not yet a reconstruction-grade Pedro
+hardware recipe: use the [advanced Pedro integration guide](<../../integrations/pedro/README.md>)
+for runtime wiring, and keep motion blocked for the power-limit reason stated below.
 
 ## Critical production idea
 
@@ -23,6 +28,7 @@ PathChain route = runtime.pathBuilder()
         .setLinearHeadingInterpolation(HEADING_RAD, HEADING_RAD)
         .build();
 RouteTask<PathChain> routeTask = routeTask(runtime.driveAdapter(), route);
+program.rootTask(routeTask);
 ```
 
 Notice:
@@ -32,6 +38,18 @@ Notice:
 - [`RouteTask`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/drive/route/RouteTask.html>)
   owns one attempt and preserves its classified result.
 - The OpMode registers one stable Pedro service heartbeat outside the route Task.
+
+The presenter must also observe that retained Task. Reading an adapter-wide "latest" result could
+drift to a different attempt in a larger robot:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
+```java
+telemetry.addData(
+        "route.status",
+        routeTask.getRouteStatus()
+);
+telemetry.addData("route.outcome", routeTask.getOutcome());
+```
 
 ## Files in this checkpoint
 
@@ -80,14 +98,20 @@ to that retained execution; the next Task heartbeat classifies it as `COMPLETED`
 **Proves:** endpoint completion from the retained execution maps to exact `COMPLETED` route status
 and `SUCCESS` Task outcome for that start.
 
+Separate source inspection above shows that the production presenter reads both displayed facts
+from the retained `routeTask`; this focused boundary scenario does not instantiate that presenter
+or assert telemetry output.
+
 **Does not prove:** the robot can follow this geometry accurately or safely.
 
 ## Isolated hardware gate — currently blocked
 
-Keep the example `@Disabled` and `ROBOT_MOTION_REVIEWED` false. Pedro 2.1.2 resets its persistent
-`globalMaxPower` when following begins, and the ordinary managed Sushi route API does not yet expose
-route-time power control. The team therefore cannot authorize the “low-power run” this first
-physical gate would require. Do not bypass the managed boundary to obtain a raw Follower.
+Keep the example `@Disabled` and `ROBOT_MOTION_REVIEWED` false. Pedro 2.1.2 creates its Follower
+with a separate `globalMaxPower` default of `1.0`; when following begins, that current value
+overwrites the drivetrain scaling initialized from Mecanum `maxPower = 0.25`. The follow call does
+not reset `globalMaxPower`, but the ordinary managed Sushi route API does not yet expose its
+persistent setting. The team therefore cannot authorize the “low-power run” this first physical
+gate would require. Do not bypass the managed boundary to obtain a raw Follower.
 
 The software checkpoint remains useful: review motor names/directions, Pinpoint installation,
 follower tuning, start pose, route clearance, and the STOP plan without enabling motion. Physical
