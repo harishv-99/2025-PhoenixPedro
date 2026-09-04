@@ -58,15 +58,19 @@ public final class DocumentationLinksTest {
             "First Autonomous.md",
             "First Drive.md",
             "First Pedro Auto.md",
+            "Move a Referenced Lift.md",
             "Named Claw.md",
             "README.md",
-            "Referenced Lift.md");
+            "Referenced Lift.md",
+            "Single Flywheel Velocity.md");
 
     private static final List<String> BUILD_RECIPE_FILES = Arrays.asList(
             "First Drive.md",
             "Continuous Intake.md",
             "Named Claw.md",
             "Referenced Lift.md",
+            "Move a Referenced Lift.md",
+            "Single Flywheel Velocity.md",
             "First Autonomous.md",
             "First Pedro Auto.md");
 
@@ -76,6 +80,8 @@ public final class DocumentationLinksTest {
             "docs/build/Continuous Intake.md",
             "docs/build/Named Claw.md",
             "docs/build/Referenced Lift.md",
+            "docs/build/Move a Referenced Lift.md",
+            "docs/build/Single Flywheel Velocity.md",
             "docs/build/First Autonomous.md",
             "docs/build/First Pedro Auto.md");
 
@@ -205,6 +211,45 @@ public final class DocumentationLinksTest {
             assertTrue(guide + " still teaches removed holdAfterReference(...)",
                     !text.contains("holdAfterReference"));
         }
+    }
+
+    @Test
+    public void everyMarkedSourceExcerptIsExactContiguousJava() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        List<Path> pages = new ArrayList<Path>();
+        collectMarkdownFiles(docsRoot, pages);
+        List<String> failures = new ArrayList<String>();
+
+        for (Path page : pages) {
+            String markdown = readUtf8(page);
+            int markers = literalCount(markdown, "<!-- source-excerpt:");
+            Matcher excerpts = SOURCE_EXCERPT.matcher(markdown);
+            int matches = 0;
+            while (excerpts.find()) {
+                matches++;
+                String sourcePath = excerpts.group(1).trim();
+                String snippet = normalizeExcerpt(excerpts.group(2));
+                Path source = repositoryRoot.resolve(sourcePath).toAbsolutePath().normalize();
+                if (!source.startsWith(repositoryRoot.toAbsolutePath().normalize())
+                        || !Files.isRegularFile(source)
+                        || !source.getFileName().toString().endsWith(".java")) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + ": invalid source excerpt path " + sourcePath);
+                } else if (snippet.isEmpty()
+                        || !containsDedentedBlock(readUtf8(source), snippet)) {
+                    failures.add(repositoryRelativePath(repositoryRoot, page)
+                            + ": excerpt is not exact contiguous source from " + sourcePath);
+                }
+            }
+            if (matches != markers) {
+                failures.add(repositoryRelativePath(repositoryRoot, page)
+                        + ": every source-excerpt marker must immediately label one Java fence; "
+                        + "markers=" + markers + ", matches=" + matches);
+            }
+        }
+
+        assertTrue("Source excerpt provenance failures: " + failures, failures.isEmpty());
     }
 
     @Test
@@ -409,7 +454,8 @@ public final class DocumentationLinksTest {
     }
 
     @Test
-    public void buildAreaHasExactlySixIndependentRecipes() throws IOException {
+    public void buildAreaHasOneCumulativeActuatorRouteAndIndependentDriveRoute()
+            throws IOException {
         Path repositoryRoot = repositoryRoot();
         Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
         Path buildRoot = docsRoot.resolve("docs/build");
@@ -425,9 +471,35 @@ public final class DocumentationLinksTest {
             assertTrue("Build index does not link " + recipe,
                     index.contains("(<" + recipe + ">)"));
         }
-        assertTrue("Build index must keep mechanisms goal-selective",
-                index.contains("independent checkpoint")
-                        && index.contains("You do not need a lift to learn a claw"));
+        List<String> routeFailures = new ArrayList<String>();
+        requireOrdered(index, "Build README", routeFailures,
+                "(<Continuous Intake.md>)",
+                "(<Named Claw.md>)",
+                "(<Referenced Lift.md>)",
+                "(<Move a Referenced Lift.md>)",
+                "(<Single Flywheel Velocity.md>)");
+        assertTrue("Build index must expose the cumulative actuator route: " + routeFailures,
+                index.contains("cumulative path")
+                        && index.contains("read the lessons in order")
+                        && routeFailures.isEmpty());
+        assertTrue("Drive must remain an independent outcome path",
+                index.contains("Drive is independent")
+                        && index.contains("(<First Drive.md>)"));
+
+        String setup = readUtf8(docsRoot.resolve("docs/getting-started/Build and Run.md"));
+        String oldCourseRedirect = readUtf8(docsRoot.resolve(
+                "docs/getting-started/Basic Mechanisms Robot.md"));
+        String drive = readUtf8(buildRoot.resolve("First Drive.md"));
+        String setupProse = setup.replaceAll("\\s+", " ");
+        String oldCourseProse = oldCourseRedirect.replaceAll("\\s+", " ");
+        assertTrue("Every first-contact route must agree on progressive actuator order",
+                setupProse.contains("begin with continuous intake")
+                        && setupProse.contains("read the actuator lessons in order")
+                        && oldCourseProse.contains("actuator lessons now")
+                        && oldCourseProse.contains("velocity in order")
+                        && drive.contains("cumulative path")
+                        && !setup.contains("select only the mechanism")
+                        && !oldCourseRedirect.contains("independent Build recipes"));
     }
 
     @Test
@@ -515,6 +587,152 @@ public final class DocumentationLinksTest {
         }
 
         assertTrue("Build recipe contract failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void actuatorLessonsTeachTheCompleteFirstPathThenOnlyNewDecisions()
+            throws IOException {
+        Path buildRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH).resolve("docs/build");
+        String intake = readUtf8(buildRoot.resolve("Continuous Intake.md"));
+        List<String> failures = new ArrayList<String>();
+
+        requireExactlyOnce(intake, "**Start here:**", "Continuous Intake.md", failures);
+        requireOrdered(intake, "Continuous Intake.md", failures,
+                "### 1. Keep physical answers in data-only configuration",
+                "### 2. Map each name forward once",
+                "### 3. Build the one final hardware writer",
+                "### 4. Separate requests, cached status, update, and stop",
+                "### 5. Declare the output owner once",
+                "### 6. Give buttons semantic meaning",
+                "### 7. Put the complete slice under the managed host");
+        for (String required : Arrays.asList(
+                "enum Mode",
+                "profile.intake.motorName",
+                "profile.allowIntakeMotion = false",
+                "SemanticScalarCommand.forEnum",
+                "FtcActuators.plant(",
+                ".motor(motorName, direction)",
+                ".power()",
+                ".targetExactlyFrom(modeCommand)",
+                "modeCommand.set(",
+                "modeCommand.snapshot(plant.snapshot())",
+                "plant.update(clock)",
+                "plant.stop()",
+                "program.output(",
+                "program.callbackBindings()",
+                "FtcRobotOpMode",
+                "does **not** command motion")) {
+            if (!intake.contains(required)) {
+                failures.add("Continuous Intake.md: missing first-path teaching for " + required);
+            }
+        }
+
+        Map<String, String> cumulative = new LinkedHashMap<String, String>();
+        cumulative.put("Named Claw.md", "Continuous Intake.md");
+        cumulative.put("Referenced Lift.md", "Named Claw.md");
+        cumulative.put("Move a Referenced Lift.md", "Referenced Lift.md");
+        cumulative.put("Single Flywheel Velocity.md", "Move a Referenced Lift.md");
+        for (Map.Entry<String, String> lesson : cumulative.entrySet()) {
+            String markdown = readUtf8(buildRoot.resolve(lesson.getKey()));
+            requireExactlyOnce(markdown, "**Builds on:**", lesson.getKey(), failures);
+            requireExactlyOnce(markdown, "**New here:**", lesson.getKey(), failures);
+            if (!markdown.contains("(<" + lesson.getValue() + ">)")) {
+                failures.add(lesson.getKey() + ": missing immediate prerequisite link to "
+                        + lesson.getValue());
+            }
+        }
+
+        String reference = readUtf8(buildRoot.resolve("Referenced Lift.md"));
+        String move = readUtf8(buildRoot.resolve("Move a Referenced Lift.md"));
+        String claw = readUtf8(buildRoot.resolve("Named Claw.md"));
+        String referenceProse = reference.replaceAll("\\s+", " ");
+        assertTrue("Claw lesson must make the fixture button meanings explicit",
+                claw.contains("driver.a()")
+                        && claw.contains("BasicClaw.State.CLOSED")
+                        && claw.contains("driver.y()")
+                        && claw.contains("BasicClaw.State.HALF")
+                        && claw.contains("driver.b()")
+                        && claw.contains("BasicClaw.State.OPEN"));
+        assertTrue("Reference lesson must hand off to the separate move outcome",
+                reference.contains("(<Move a Referenced Lift.md>)")
+                        && reference.contains("FtcSensors.digitalLow(")
+                        && reference.contains(".debouncedOnOff(0.02, 0.02)")
+                        && reference.contains("BasicLift.Height.STOWED")
+                        && referenceProse.contains("press STOP, de-energize the robot")
+                        && referenceProse.contains(
+                                "The next OpMode run correctly starts unreferenced")
+                        && referenceProse.contains("never touch or reconnect the linkage"));
+        assertTrue("Move lesson must prove the advertised feedback-aware Task",
+                move.contains("BasicLiftMoveSoftwareScenarioTest.java")
+                        && move.contains(".untilReachedBy(lift)")
+                        && move.contains(".leaveRequestOnCancel()")
+                        && move.contains("TaskOutcome.SUCCESS")
+                        && move.contains("a new OpMode run starts unreferenced")
+                        && move.contains("driver.dpadLeft()")
+                        && move.contains("driver.x()"));
+
+        String velocity = readUtf8(buildRoot.resolve("Single Flywheel Velocity.md"));
+        assertTrue("Velocity lesson must teach the valid numeric-command exception",
+                velocity.contains("velocity itself is the public capability intent")
+                        && velocity.contains("flywheel.commandTarget()")
+                        && velocity.contains("ScalarTasks.set(")
+                        && velocity.contains(".cancelTo(STOPPED_VELOCITY_TICKS_PER_SEC)")
+                        && velocity.contains("assertFalse(reachVelocity.isComplete())")
+                        && velocity.contains("setMeasuredVelocityTicksPerSec(300.0)")
+                        && velocity.contains("assertEquals(TaskOutcome.SUCCESS")
+                        && velocity.contains("Feedback-aware Tasks are exercised")
+                        && velocity.contains("TeleOp button queue"));
+        assertTrue("Progressive actuator lesson failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void plantChooserRoutesOutcomesWithoutBecomingAnApiCatalog() throws IOException {
+        Path frameworkRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH);
+        String chooser = readUtf8(frameworkRoot.resolve(
+                "docs/getting-started/learn-sushi/Plants and Hardware.md"));
+
+        for (String destination : Arrays.asList(
+                "../../build/Continuous Intake.md",
+                "../../build/Named Claw.md",
+                "../../build/Referenced Lift.md",
+                "../../build/Move a Referenced Lift.md",
+                "../../build/Single Flywheel Velocity.md",
+                "../../advanced/Paired Flywheel Velocity.md",
+                "../../advanced/Periodic Turret Position.md")) {
+            assertTrue("Plant chooser is missing outcome route " + destination,
+                    chooser.contains("(<" + destination + ">)"));
+        }
+        assertTrue("Plant chooser must stay a decision guide rather than duplicate reference",
+                chooser.contains("this page is not a catalog")
+                        && chooser.contains("## Start with the outcome")
+                        && chooser.contains("## The contract shared by every row")
+                        && chooser.contains("## Choose semantic or numeric intent")
+                        && !chooser.contains("source-excerpt:")
+                        && !chooser.contains(FENCE + "java"));
+    }
+
+    @Test
+    public void currentLearningRoutesDoNotPointBackToTheSupersededBasicCourse()
+            throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path frameworkRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        assertTrue("Root README must route directly to the current Build area",
+                !readUtf8(repositoryRoot.resolve("README.md"))
+                        .contains("Basic Mechanisms Robot.md"));
+
+        List<Path> pages = new ArrayList<Path>();
+        collectMarkdownFiles(frameworkRoot, pages);
+        List<String> failures = new ArrayList<String>();
+        for (Path page : pages) {
+            if (page.getFileName().toString().equals("Basic Mechanisms Robot.md")) {
+                continue;
+            }
+            if (readUtf8(page).contains("Basic Mechanisms Robot.md")) {
+                failures.add(repositoryRelativePath(repositoryRoot, page));
+            }
+        }
+        assertTrue("Current guides still link the superseded Basic course: " + failures,
+                failures.isEmpty());
     }
 
     @Test
@@ -1255,8 +1473,8 @@ public final class DocumentationLinksTest {
             String sourcePath = excerpts.group(1).trim();
             String snippet = normalizeExcerpt(excerpts.group(2));
             int lines = snippet.isEmpty() ? 0 : snippet.split("\\n", -1).length;
-            if (lines < 3 || lines > 12) {
-                failures.add(pageName + ": source excerpt must contain 3–12 lines, found "
+            if (lines < 2 || lines > 12) {
+                failures.add(pageName + ": source excerpt must contain 2–12 lines, found "
                         + lines + " for " + sourcePath);
             }
             Path source = repositoryRoot.resolve(sourcePath).toAbsolutePath().normalize();
@@ -1277,8 +1495,8 @@ public final class DocumentationLinksTest {
         }
 
         int javaFences = matcherCount(JAVA_FENCE.matcher(markdown));
-        if (excerptCount != 2 || javaFences != excerptCount || !excerptsMain || !excerptsTest) {
-            failures.add(pageName + ": expected exactly one main and one test source excerpt; "
+        if (excerptCount < 2 || javaFences != excerptCount || !excerptsMain || !excerptsTest) {
+            failures.add(pageName + ": expected exact main and test source excerpts; "
                     + "excerpts=" + excerptCount + ", Java fences=" + javaFences);
         }
     }

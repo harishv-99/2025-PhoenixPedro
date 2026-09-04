@@ -19,10 +19,24 @@ PlantTargetResolver nearestEquivalent = PlantTargets
         .nearestToMeasurement()
         .whenUnavailable()
         .holdMeasuredTargetOnEntry(c.initialAngleRad);
+```
 
+The Plant then declares periodicity, legal physical bounds, measurement conversion, tolerance, and
+that resolver in one complete construction chain:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.java -->
+```java
 turret = FtcActuators.plant(map)
         .motor(c.motorName, c.direction)
         .position()
+        .deviceManaged()
+        .periodic(FULL_TURN_RAD)
+        .bounded(c.minimumAngleRad, c.maximumAngleRad)
+        .scaleToNative(c.ticksPerRad)
+        .alreadyReferenced()
+        .positionTolerance(c.positionToleranceRad)
+        .targetFromResolver(nearestEquivalent)
+        .build();
 ```
 
 Notice:

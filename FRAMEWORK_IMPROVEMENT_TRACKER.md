@@ -233,6 +233,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 124 | TASK-06 | Parallel numeric and semantic scalar Task lifetimes | Done | The reviewed parallel scalar Task API, maintained-caller migration, synchronized documentation, adversarial review, deterministic verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 125 | SIMPLICITY-02 | Concise actuator declaration and use | Done | Revised implementation reviewed and publication authorized for the recorded item branch, origin push URL, pull request, and `master` target. |
 | 126 | DOC-11 | Outcome-focused learning, examples, reference, and search | Done | The reviewed six-area learning site, concise explained scenarios, accessible global guide search, categorized API reference, evidence ladder, focused example cleanup, verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 127 | DOC-12 | Progressive actuator API learning path | Done | Make the first motor lesson self-contained, teach later Plant shapes through cumulative outcomes, add the missing single-motor velocity step, and keep exhaustive alternatives in reference documentation. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -26916,6 +26917,123 @@ implementation.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
   `master`. This authorizes only those publication steps; it does not authorize starting VISION-03
   or another tracker item.
+
+### DOC-12 - Progressive actuator API learning path
+
+- **Gate 1 status and implementation approval (2026-09-03):** **In progress** on
+  `codex/doc-12-progressive-actuator-learning`, created from merged `origin/master@23cac2a`. After
+  reviewing the DOC-11 result as a student, the user asked for the basic APIs to be taught in the
+  documents themselves, organized around outcomes that build on earlier knowledge. The user
+  reviewed the resulting DOC-12 plan and explicitly directed **“Implement the plan.”** This
+  authorizes the bounded documentation/example/test implementation below; it does not authorize
+  staging, commit, push, pull request, merge, framework API changes, production-robot changes, or
+  starting another tracker item.
+- **Confirmed gap and callers:** the current named-intake Build page shows semantic mapping but not
+  the Plant construction, setter, status composition, managed output declaration, or control
+  binding needed to reconstruct the complete path. The Learn page shows the Plant chain but uses
+  unexplained terms such as “final resolver.” The combined lift page advertises a feedback-aware
+  move while its displayed scenario proves only homing and a direct set. Velocity first appears in
+  the advanced paired-flywheel case, where independent member readiness obscures the ordinary
+  one-motor Plant. The affected callers are the maintained Starter intake, Basic claw/lift,
+  Reference flywheel/turret examples, their focused scenario tests, Build/Learn/reference guides,
+  `zensical.toml`, and `DocumentationLinksTest`; production robot code is not a caller.
+- **External comparison and alternatives:** the audited NextFTC v2 documentation presents small
+  visual areas, short language-specific snippets, explicit automatic-loop behavior, and common
+  mistakes well, but a Java student must combine installation, motor, mechanism/command, robot,
+  OpMode, trigger, and discovery pages into one operational motor path. Keeping Sushi unchanged
+  preserves concise pages but requires the same reverse engineering. Expanding only the exhaustive
+  FTC Plant reference would make first contact API-catalog shaped. Teaching raw numeric power first
+  shortens one snippet but makes an implementation number the public intake vocabulary. The chosen
+  hybrid keeps one fail-closed, self-contained named-motor golden path, then teaches only the new decision
+  in each subsequent outcome and retains exhaustive variants in Javadocs/reference.
+- **Chosen teaching contract:** expand Continuous Intake from desired capability use through
+  semantic mapping, staged Plant construction, setter/status/update/stop ownership, managed output
+  declaration, callback binding, software evidence, and isolated bring-up. Explain each builder
+  stage as a concrete question and state that `build()` does not move hardware and that the initial
+  zero request comes from `STOPPED`. Later pages declare **Builds on** and **New here**: named servo
+  position adds bounded logical-to-native mapping without arrival evidence; referenced lift splits
+  reference establishment from feedback-aware movement; single-motor velocity introduces a numeric
+  command only because velocity itself is the complete capability request. Advanced paired velocity
+  and periodic position remain later branches.
+- **Ownership, status, and safety decisions:** every ordinary mechanism receives `HardwareMap` plus
+  data-only configuration, defensively copies it, privately owns its Plant and one managed
+  update/stop path, and exposes capability intent/status rather than hardware. Semantic requests use
+  `SemanticScalarCommand` and `SemanticScalarTasks`; direct numeric velocity uses the Plant-owned
+  `commandTarget()` and `ScalarTasks`. Feedback Tasks explicitly choose active-cancellation behavior.
+  Status keeps requested, applied, measured, and arrived facts distinct. Servo teaching retains
+  normalized `bounded(0, 1).rangeMapsToNative(0.25, 0.70)` and calls all pre-bring-up defaults
+  software-valid candidates rather than reviewed safe values.
+- **Bounded implementation:** revise the actuator Build route and Plants Learn page; split the lift
+  teaching outcome while preserving the existing URL; add one independent single-motor velocity
+  capability/mechanism, disabled mechanism-only OpMode, focused software scenario, and Build page;
+  update only directly related navigation, stale removed-course links, source/API links, and the
+  incomplete periodic-turret excerpt. Relax the exactly-two-excerpts Build test while retaining
+  short exact-source provenance and rejecting full/invented sources. Add no reusable framework API
+  and do not reshape the advanced paired-flywheel implementation.
+- **Verification plan and evidence boundary:** add documentation contracts for the cumulative route,
+  introduced-before-used terms, exact excerpts, source/API links, Plant-shape chooser, global search,
+  and stale-route removal. Extend the lift scenario to prove feedback Task completion and add
+  velocity scenarios for request-before-heartbeat, requested/applied/measured status, fresh-feedback
+  success, timeout, and cancellation-to-zero. Run focused examples/docs, full TeamCode unit tests and
+  compilation, strict Javadocs, strict Zensical rendering and generated search/link checks, static
+  caller/residue checks, and `git diff --check`; inspect desktop/narrow rendering and perform a
+  docs-only student reconstruction review. Software cannot prove wiring, direction, endpoint
+  clearance, switch placement, encoder conversion, controller tuning, loaded velocity, or physical
+  STOP behavior, and the lessons must keep those claims behind isolated hardware gates.
+- **Gate 2 implementation result (2026-09-03):** **Verifying.** The unstaged 33-path diff expands
+  Continuous Intake into the complete first actuator path, makes the actuator Build sequence
+  cumulative while retaining drive and Pedro as independent paths, separates lift reference from
+  feedback-aware movement, replaces the Learn Plant catalog with an outcome chooser, and adds the
+  source-backed single-motor `BasicFlywheel` capability, mechanism, disabled fail-closed TeleOp,
+  thin `PlantSnapshot` status, and focused software/configuration scenarios. Navigation, redirects,
+  source/API links, hardware-free scenario routing, generated-site configuration, and the periodic
+  turret's formerly incomplete source excerpt are synchronized. No reusable framework or
+  production-robot API changed.
+- **Review-driven correctness result:** independent student-route, documentation/search, and
+  actuator-lifecycle audits report no remaining blocker. The final corrections show the claw's
+  exact A=`CLOSED`, Y=`HALF`, B=`OPEN` meanings; prove velocity completion from genuinely fresh
+  command-correlated feedback; reject unsafe candidate/tolerance relationships before hardware
+  lookup; keep feedback-aware Tasks out of a conflicting TeleOp queue; require nonoverlapping lift
+  named-height tolerance bands; and make the lift switch procedure explicitly STOP and de-energize
+  before reconnection and begin real homing in a fresh unreferenced OpMode run. `BasicLift.Status`
+  remains the approved STATUS-01 one-snapshot thin view with no mirrored switch fields.
+- **Deterministic verification (2026-09-03):** Android Studio JBR 21 completed
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`
+  successfully: **245 suites / 2,202 tests / 0 failures / 0 errors / 0 skips**. The focused
+  documentation/flywheel/lift/claw run is **46/46**, including `DocumentationLinksTest` **25/25**.
+  `python -m zensical build --clean --strict` reports **No issues found**; generated-guide search
+  verification finds **895 indexed sections across all six areas**; generated-link verification
+  resolves **155 API links and 61 maintained source links across 42 Markdown pages**. Static
+  inspection confirms the new Build pages and area tags in generated HTML/search output.
+  `git diff --check` is clean apart from informational LF-to-CRLF notices, untracked-path trailing
+  whitespace checks are clean, the index is empty, and the branch and `origin/master` both remain
+  at `23cac2a92abe101aa193a3432e2e4c1fb566d17d`.
+- **Rendered-browser boundary:** a local server successfully served the final generated site, but
+  the configured in-app browser runtime reported no available browser backend, so an interactive
+  desktop/narrow screenshot walkthrough could not be performed on this workstation. Strict render,
+  generated HTML, navigation, section, search-index, source-link, and API-link checks pass; no
+  interactive visual claim is made.
+- **Hardware evidence boundary:** software establishes configuration validation, semantic/numeric
+  request ownership, managed update order, immutable cached status, reference/feedback Task
+  outcomes, documentation provenance, and generated-site integrity. It cannot establish physical
+  motor/servo identity, direction, safe power or endpoints, switch placement/polarity, encoder
+  conversion, PIDF tuning, loaded response, coast-down, mechanical clearance, or physical STOP.
+  Every such claim remains behind the lesson's isolated, fail-closed hardware gate.
+- **Android Studio review stop (2026-09-03):** inspect the cumulative Build navigation, complete
+  Continuous Intake path, named-claw range mapping and explicit controls, split lift reference/move
+  pages and safety sequence, new one-motor velocity capability/tests/page, outcome-based Plant
+  chooser, source-excerpt validation, and generated search/API links. No file has been staged,
+  committed, pushed, opened as a pull request, or merged. If the diff is approved, use exactly:
+  **“DOC-12 looks good. Authorize committing the reviewed DOC-12 diff on
+  `codex/doc-12-progressive-actuator-learning`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`.”**
+- **Gate 3 manual review and publication authorization (2026-09-03):** **Done.** The user completed
+  the Android Studio review and supplied the exact combined authorization to commit the reviewed
+  DOC-12 diff on `codex/doc-12-progressive-actuator-learning`, push that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. This authorizes only those publication steps; it does not authorize starting
+  VISION-03 or another tracker item.
 
 ### VISION-03 - Reusable color-blob pipeline
 

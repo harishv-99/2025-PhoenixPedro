@@ -30,6 +30,7 @@ public final class BasicLiftTeleOp extends FtcRobotOpMode {
                     status.measuredPositionIn(), status.requestedPositionIn());
             telemetry.addData("lift.referenced", status.referenced());
             telemetry.addData("lift.atTarget", status.atTarget());
+            telemetry.addLine("X: home | D-pad down/left/up: STOWED/LOW/HIGH");
         });
     }
 }

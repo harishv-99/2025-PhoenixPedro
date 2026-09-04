@@ -13,16 +13,17 @@ Follow one source-based beginner path:
 
 1. Use [`Build and run Sushi`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>)
    for project setup and software verification.
-2. Follow [`Build the Basic Mechanisms robot`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Basic Mechanisms Robot.md>)
-   from first drive through a referenced lift, claw, TeleOp, and Auto.
+2. Follow [`Build actuator knowledge one outcome at a time`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/build/README.md>).
+   The cumulative actuator path runs from one named power motor through a claw, lift reference,
+   feedback-aware lift move, and single-motor velocity; first drive and Pedro remain independent.
 3. Open [`Sushi in one picture`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
    or [`choose a Sushi topic`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Beginner's Guide.md>)
    only when a checkpoint needs a deeper answer. Use the canonical
    [`Sushi documentation hub`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>)
    later as a searchable reference.
 
-The compiling [`Basic Mechanisms robot`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Basic Mechanisms Robot.md>)
-is the ordinary managed TeleOp-and-Auto course. Framework changes follow the
+Each Build lesson links the exact compiling mechanism, OpMode, and software scenario that proves
+its current contract. Framework changes follow the
 [`Framework Principles`](<TeamCode/src/main/java/edu/ftcsushi/fw/Framework Principles.md>).
 
 ### Later reference shortcuts

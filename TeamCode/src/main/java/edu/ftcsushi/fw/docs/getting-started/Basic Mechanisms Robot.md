@@ -3,9 +3,9 @@ search:
   exclude: true
 ---
 
-# The Basic Mechanisms course is now goal-selective
+# The Basic Mechanisms course has moved
 
-The former cumulative, source-complete course has been replaced by independent Build recipes. Start
-at [Choose one robot outcome to build](<../build/README.md>), then select the intake, claw, or lift
-that matches your robot. Each recipe now keeps its software checkpoint and hardware gate beside the
-specific mechanism instead of requiring unrelated files.
+Use the current [Build path](<../build/README.md>). Drive remains independent; actuator lessons now
+start with one complete intake and add claw mapping, lift reference, lift movement, and velocity in
+order. Stop after the outcome your robot needs. Each lesson keeps its software proof and isolated
+hardware gate beside that outcome.

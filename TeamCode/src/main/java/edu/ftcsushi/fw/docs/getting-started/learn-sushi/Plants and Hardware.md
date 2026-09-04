@@ -3,144 +3,77 @@ tags:
   - Learn
 ---
 
-# Plants and hardware
+# Choose a Plant from the outcome you need
 
-**Learning mode:** Architecture reference
+**Learning mode:** Decision guide
 
-This page traces the realization path. Use the
-hardware-free mechanism module for a complete compiling test of the maintained mechanism.
+**Question:** Which ordinary Plant shape matches this actuator and the evidence it can provide?
 
-**Question:** How does a semantic request become one final hardware command, and what can robot
-code truthfully report?
+A **Plant** is the mechanism-owned object that turns one held request into one final actuator
+command on the shared heartbeat. Start from the hardware outcome below, then follow the linked
+Build lesson. The lesson teaches the required builder stages in context; this page is not a catalog
+of every API branch.
 
-A **Plant** is the mechanism-owned object that resolves one requested actuator target and performs
-the final hardware write. The mechanism owns the complete path: capability intent, its private
-Plant, managed update, cached Plant facts, capability status, and terminal stop. This is a
-source-only lesson; no hardware motion is required.
+## Start with the outcome
 
-## Follow the Starter intake
+| I need to… | Start here | What is new in that shape |
+|---|---|---|
+| run one motor forward, reverse, or stopped | [Continuous intake](<../../build/Continuous Intake.md>) | normalized power plus named semantic intent |
+| move one standard servo among named positions | [Named claw](<../../build/Named Claw.md>) | bounded logical coordinate mapped to configured native endpoint candidates; no arrival feedback |
+| discover where a motor-position coordinate begins | [Establish a lift reference](<../../build/Referenced Lift.md>) | encoder scale, reference requirement, switch source, and non-blocking search |
+| move within a referenced motor-position coordinate | [Move a referenced lift](<../../build/Move a Referenced Lift.md>) | named target, cached measurement, tolerance, and feedback-aware Task |
+| request one motor speed and observe feedback | [Single flywheel velocity](<../../build/Single Flywheel Velocity.md>) | bounded numeric command, velocity feedback, and cancellation-to-zero choice |
+| drive two flywheels together but require both to be ready | [Paired flywheel velocity](<../../advanced/Paired Flywheel Velocity.md>) | grouped actuation plus independent member evidence |
+| choose the nearest legal full-turn position | [Periodic turret position](<../../advanced/Periodic Turret Position.md>) | explicit equivalent-position selection inside physical bounds |
 
-### Critical code
+Read the first five rows in order if Plants are new. Paired velocity and periodic position are
+Advanced branches for requirements that the ordinary single-actuator lessons do not have.
+
+## The contract shared by every row
 
 ```text
-setMode(COLLECT) -> remember Mode.COLLECT -> map it to configured power
-                 -> persistent Plant command target -> Plant.update(shared clock)
-                 -> resolve/cache applied target -> one actuator write path
+capability request -> one mechanism-owned target -> private Plant
+                   -> mechanism update(shared clock) -> one final actuator write
 ```
 
-There is no second writer for a button, Task, or emergency. Temporary and guarded intent must join
-the final target resolver; the Plant remains the only actuator writer.
+- An ordinary mechanism receives `HardwareMap` plus data-only configuration, copies what it keeps,
+  constructs its private Plant, and owns update and terminal stop.
+- Plant construction validates and connects the object graph. `build()` does not move hardware.
+- Controls and Tasks change requests. They do not become peer hardware writers or run private loops.
+- The managed output phase updates each declared mechanism. Status reads cached facts without
+  polling hardware again.
+- Software-valid defaults prove only that configuration is coherent. Direction, endpoints,
+  reference cues, conversion, tuning, load response, and physical STOP still need isolated checks.
 
-[`StarterIntakeMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.html>)
-receives `HardwareMap` plus data-only configuration, copies and validates that configuration, then
-constructs its private Plant:
+## Choose semantic or numeric intent
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
-```java
-plant = FtcActuators.plant(
-                Objects.requireNonNull(hardwareMap, "hardwareMap is required")
-        )
-        .motor(motorName, direction)
-        .power()
-        .targetExactlyFrom(modeCommand)
-        .build();
-```
+Use a semantic command when the robot request has a name such as `COLLECT`, `OPEN`, or `LOW`. One
+mechanism maps that name forward to its numeric Plant target, and status retains both facts.
 
-**What to notice**
+Use a numeric command when the scalar itself is the complete public request, such as flywheel
+velocity in ticks per second or turret angle in radians. Do not add names that hide relevant
+numeric meaning, and do not expose raw numbers when robot code actually means a named behavior.
 
-- The mechanism constructs and privately owns the complete Plant graph.
-- The builder names one motor and one semantic target source whose initial request is safe zero.
+## Keep evidence names honest
 
-**Key APIs:** `FtcActuators.plant(hardwareMap)` begins ordinary FTC construction;
-`targetExactlyFrom(...)` binds the mechanism-owned semantic command into the final resolver. The
-name is literal: a periodic mechanism that wants an interchangeable representative uses
-`PlantTargets.equivalentPositionsOf(...)` explicitly instead.
+| Fact | What it answers |
+|---|---|
+| semantic request | Which named behavior did a client request? |
+| requested target | Which number did the command source request? |
+| applied target | Which final target survived bounds and guards? |
+| measurement | Which sensor-backed value did the Plant cache? |
+| `atTarget` / ready | Does the configured controller evidence meet its criterion? |
+| physical result | Did the mechanism actually collect, clear, lift, or score? |
 
-The builder answers which FTC motor is owned, its logical direction, the public target kind, and
-where the final target comes from. A direct-power Plant owns normalized range `[-1, +1]` and begins
-with a zero command. Construction does not command motion; the managed output phase later calls
-`plant.update(clock)`.
+An applied target is not a measurement. Controller arrival is not proof of a successful game
+action. Open-loop motor power and standard-servo position provide submitted-command evidence, not
+physical arrival.
 
-`setMode(...)` keeps the named request and maps it forward to the configured power. It does not
-write hardware. Internally, the mechanism composes that retained request with cached Plant facts:
+## Go deeper only when the requirement needs it
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
-```java
-return new Status(modeCommand.snapshot(plant.snapshot()));
-```
-
-**What to notice:** semantic request and applied numeric target remain separate facts.
-
-**Key APIs:** `SemanticScalarCommand.snapshot(...)` pairs the named request with one immutable
-snapshot of cached Plant facts without polling hardware. `StarterIntake.status()` projects
-`mode()`, `requestedPower()`, `appliedPower()`, and the advanced `plantSnapshot()` escape hatch.
-
-The mechanism never infers a mode from power, so collect and eject values need not be unique. Both
-must still be finite, nonzero, inside `[-1, +1]`, and physically reviewed. `appliedPower()` is the
-cached resolved target, not motor readback or proof of movement.
-
-## Keep the evidence names honest
-
-| Evidence | Question answered | Example |
-| --- | --- | --- |
-| Semantic request | What behavior did a client request? | `Mode.COLLECT` |
-| Requested target | What number did the command source request? | requested power or lift inches |
-| Applied target | What final target survived resolution and guards? | `getAppliedTarget()` |
-| Measurement | What feedback did the Plant cache? | lift position or flywheel velocity |
-| Ready / `atTarget` | Does cached controller evidence meet tolerance? | both flywheels within tolerance |
-| Physical result | Did the game piece move or score? | operator observation or separate sensor evidence |
-
-Clients read capability status after update. It uses cached Plant facts without polling hardware;
-multi-source capabilities may publish them together. A requested or applied target is not a
-measurement, and controller readiness
-is not proof of a successful game action.
-
-## Active idle is not terminal stop
-
-During a match, an abort or idle command changes persistent targets—such as requesting zero
-flywheel velocity—so the same Plants remain reusable on later cycles. At total cleanup, the
-mechanism calls `Plant.stop()`. Stop is terminal for that Plant instance; a later OpMode constructs
-a fresh graph. `RobotProgram` performs declared output cleanup, not controls or presenters.
-
-At FTC STOP, do not assume a newly requested servo position will be realized: cancellation may
-change a request, but terminal cleanup follows and no later normal update is promised.
-
-## How the pattern scales
-
-The
-[`ReferencePeriodicTurretMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.html>)
-adds a bounded radian coordinate, encoder conversion, tolerance, and cached measurement. Its
-`equivalentPositionsOf(...)` resolver turns one logical periodic request into the nearest legal
-physical representative. Status keeps requested, selected, applied, measured, and arrived facts
-separate; selection alone is not physical arrival.
-
-The
-[`ReferenceFlywheelMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.html>)
-owns one grouped paired-velocity Plant. Each successful update publishes a
-[`ReferenceFlywheels.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.Status.html>)
-containing the grouped snapshot and two independent wheel measurements. Readiness needs a positive
-value selected and applied without fallback plus both wheels in tolerance; it cannot prove release
-or scoring. `ReferenceLauncherMechanism` delegates to that owner and composes its publication with
-object-sensor and transfer state instead of duplicating the Plant or flywheel status fields.
-
-## Check your understanding
-
-**`status().appliedPower()` reports `0.20`. Did the motor turn?** That cannot be concluded. Sushi
-knows the cached applied command, not physical motion. `status().plantSnapshot()` is available when
-an advanced diagnostic needs the full generic Plant capture.
-
-**Collect and eject use the same configured power. Can status still distinguish them?** Yes.
-`status().mode()` reports the retained semantic request, not a mode inferred from that number.
-
-**Where should maximum lift power live?** In lift configuration and Plant construction, not a
-button callback.
-
-**Can a temporary feed pulse write a transfer actuator beside its Plant?** No. Compose it into the
-one final resolver and keep the Plant as sole writer.
-
-## Go deeper when needed
-
-- [FTC Actuators and Plants](<../../ftc-boundary/FTC Actuators & Plants.md>) — complete construction and lifecycle grammar
-- [Mechanism target planning](<../../drive-vision/Mechanism Target Planning.md>) — overlays, guards, and plans
-- [Tasks and autonomous](<Tasks and Autonomous.md>) — time-based behavior changes requests
-- [Learn Sushi topic guide](<../Beginner's Guide.md>) — choose another topic
+- [FTC Actuators and Plants](<../../ftc-boundary/FTC Actuators & Plants.md>) — exhaustive staged
+  construction, lifecycle, and adapter contracts
+- [Mechanism target planning](<../../drive-vision/Mechanism Target Planning.md>) — overlays,
+  guards, equivalent positions, and advanced plans
+- [Tasks and autonomous](<Tasks and Autonomous.md>) — cooperative work over time
+- [Learn Sushi topic guide](<../Beginner's Guide.md>) — choose another concept

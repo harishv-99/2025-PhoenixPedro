@@ -40,7 +40,10 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
         /** Positive encoder conversion in native ticks per mechanism inch. */
         public double ticksPerIn;
 
-        /** Symmetric feedback completion tolerance in mechanism inches; finite and positive. */
+        /**
+         * Symmetric feedback completion tolerance in mechanism inches; finite, positive, and
+         * smaller than half the closest adjacent named-height gap.
+         */
         public double toleranceIn;
 
         /** Maximum device-managed motor-power magnitude in range {@code (0, 1]}. */
@@ -200,6 +203,17 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
                             + "<= maximumHeightIn, got " + c.stowedHeightIn + ", "
                             + c.lowHeightIn + ", " + c.highHeightIn + ", "
                             + c.maximumHeightIn);
+        }
+        double closestNamedHeightGap = Math.min(
+                c.lowHeightIn - c.stowedHeightIn,
+                c.highHeightIn - c.lowHeightIn);
+        double largestNonoverlappingTolerance = closestNamedHeightGap / 2.0;
+        if (c.toleranceIn >= largestNonoverlappingTolerance) {
+            throw new IllegalArgumentException(
+                    "toleranceIn must be strictly less than half the closest adjacent "
+                            + "named-height gap so their arrival bands cannot overlap; got "
+                            + "tolerance " + c.toleranceIn + " and half-gap "
+                            + largestNonoverlappingTolerance);
         }
         c.homingPower = s.homingPower;
         if (!Double.isFinite(c.homingPower) || c.homingPower < -1.0 || c.homingPower >= 0.0) {

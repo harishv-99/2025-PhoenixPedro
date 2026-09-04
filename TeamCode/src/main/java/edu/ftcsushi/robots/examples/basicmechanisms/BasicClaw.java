@@ -9,7 +9,7 @@ import edu.ftcsushi.fw.task.Task;
 /** Semantic closed/half/open claw capability shared by TeleOp and Auto. */
 public interface BasicClaw {
 
-    /** Named claw requests over one normalized safe range; callers never repeat raw positions. */
+    /** Named claw requests over one normalized mechanism range; callers never repeat raw positions. */
     enum State {
         CLOSED,
         HALF,

@@ -87,5 +87,6 @@ mechanism envelope, verify each motor name/direction, retain the low caps, and a
 stop the OpMode. Only then enable it for separate forward, left, and counter-clockwise checks. Lower
 the robot only after those wheels-up observations agree with the written expectations.
 
-**Next gate:** complete one independent mechanism's software checkpoint from the
-[Build map](<README.md>) before connecting that mechanism to the robot.
+**Next gate:** drive is independent of the actuator lessons. When you need an actuator, start the
+cumulative path with the [continuous intake](<Continuous Intake.md>) before connecting that
+mechanism to the robot.

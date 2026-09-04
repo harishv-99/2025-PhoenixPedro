@@ -27,8 +27,8 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [Build recipes](<../build/README.md>) — choose one independent robot outcome after this software
-  baseline passes.
+- [Build lessons](<../build/README.md>) — choose drive when needed, or begin the progressive
+  actuator path after this software baseline passes.
 
 **Safety:** Keep the course OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.
@@ -151,7 +151,8 @@ that separate work.
 
 ## Continue with robot code
 
-With the software baseline green, [choose one robot outcome to build](<../build/README.md>). Start
-with first drive, then select only the mechanism your robot needs.
+With the software baseline green, [choose the next Build outcome](<../build/README.md>). Drive is
+an independent path when your robot needs it. For an actuator, begin with continuous intake, read
+the actuator lessons in order, and stop after the outcome your robot needs.
 
 **Framework tour:** [`Sushi in one picture`](<Framework Overview.md>)

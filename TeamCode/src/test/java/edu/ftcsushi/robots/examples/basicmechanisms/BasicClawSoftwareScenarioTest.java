@@ -17,8 +17,8 @@ import static org.junit.Assert.assertEquals;
 public final class BasicClawSoftwareScenarioTest {
 
     @Test
-    public void closedHalfAndOpenMapAcrossOneSafeNativeRange() {
-        // ARRANGE: author only the two safe endpoints and register only the named Servo.
+    public void closedHalfAndOpenMapAcrossOneConfiguredNativeRange() {
+        // ARRANGE: author two software-valid endpoint candidates and register the named Servo.
         BasicClawMechanism.Config config = BasicClawMechanism.Config.defaults();
         config.closedNativePosition = 0.25;
         config.openNativePosition = 0.70;
@@ -27,7 +27,7 @@ public final class BasicClawSoftwareScenarioTest {
         BasicClawMechanism claw = new BasicClawMechanism(hardware, config);
         ManualLoopClock time = new ManualLoopClock();
 
-        // CLOSED: the default 0.0 request reaches the reviewed native lower endpoint.
+        // CLOSED: the default 0.0 request maps to the configured native lower endpoint.
         assertEquals(0, servo.positionWrites());
         claw.update(time.clock());
         assertEquals(BasicClaw.State.CLOSED, claw.status().requestedState());
@@ -45,7 +45,7 @@ public final class BasicClawSoftwareScenarioTest {
         assertEquals(0.475, servo.position(), 1e-12);
         assertEquals(2, servo.positionWrites());
 
-        // OPEN: the same mapping sends normalized 1.0 to the reviewed native upper endpoint.
+        // OPEN: the same mapping sends normalized 1.0 to the configured native upper endpoint.
         claw.setState(BasicClaw.State.OPEN);
         claw.update(time.nextCycle(0.02));
         assertEquals(1.0, claw.status().appliedCoordinate(), 0.0);

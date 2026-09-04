@@ -12,21 +12,28 @@ software checkpoint, and cross the stated hardware gate before integrating it in
 ## Your shortest path to a working robot
 
 1. [Set up and verify Sushi](<getting-started/Build and Run.md>).
-2. [Drive with a gamepad](<build/First Drive.md>).
+2. [Drive with a gamepad](<build/First Drive.md>) if your current outcome needs a drivetrain.
 3. Read [Sushi in one picture](<getting-started/Framework Overview.md>) to recognize the owners.
-4. [Choose one mechanism](<build/README.md>)—intake, claw, or lift—and prove it in software.
-5. Use its isolated **Test & Tune** gate on the robot.
-6. Integrate the proven capability into TeleOp, then
-   [sequence real capability Tasks](<build/First Autonomous.md>) in Auto.
+4. Start the cumulative actuator path with the self-contained
+   [continuous intake](<build/Continuous Intake.md>).
+5. Add only the next decision you need: [named servo positions](<build/Named Claw.md>),
+   [a lift reference](<build/Referenced Lift.md>),
+   [a feedback-aware lift move](<build/Move a Referenced Lift.md>), then
+   [one motor's velocity](<build/Single Flywheel Velocity.md>).
+6. Cross each lesson's isolated **Test & Tune** gate before integrating its capability.
+7. [Sequence real capability Tasks](<build/First Autonomous.md>) in Auto after their individual
+   evidence gates pass.
 
 ## Choose by outcome
 
 | I want to… | Go to… |
 |---|---|
-| make the first safe drivetrain command | [Drive with a gamepad](<build/First Drive.md>) |
+| make the first bounded drivetrain command | [Drive with a gamepad](<build/First Drive.md>) |
 | run a continuous motor with named intent | [Run a named intake](<build/Continuous Intake.md>) |
-| map OPEN, HALF, and CLOSED to reviewed servo endpoints | [Open and close a claw](<build/Named Claw.md>) |
-| reference a lift, move it, and wait for feedback | [Home and move a lift](<build/Referenced Lift.md>) |
+| map OPEN, HALF, and CLOSED to configured servo endpoint candidates | [Open and close a claw](<build/Named Claw.md>) |
+| establish encoder zero from a bottom switch | [Establish a lift reference](<build/Referenced Lift.md>) |
+| move a referenced lift and wait for fresh feedback | [Move a referenced lift](<build/Move a Referenced Lift.md>) |
+| command one motor's velocity and observe arrival | [Reach one flywheel velocity](<build/Single Flywheel Velocity.md>) |
 | combine mechanisms without blocking the loop | [Sequence an autonomous](<build/First Autonomous.md>) |
 | follow one Pedro route and inspect its truthful outcome | [Follow a Pedro route](<build/First Pedro Auto.md>) |
 | understand where a piece of code belongs | [Choose a concept](<getting-started/Beginner's Guide.md>) |
@@ -49,8 +56,8 @@ software checkpoint, and cross the stated hardware gate before integrating it in
 
 The site search is global, not limited to the selected tab. That is intentional: you should not
 need to know which area owns a term before searching for it. Filter results by the one area tag on
-each page. Search titles use both the framework term and the likely goal—for example, “referenced
-lift,” “home,” and “move.” For exact classes, members, signatures, or overloads, use
+each page. Search titles use both the framework term and the likely goal—for example, “lift
+reference,” “move,” and “flywheel velocity.” For exact classes, members, signatures, or overloads, use
 [Search API types and members](<https://harishv-99.github.io/2025-PhoenixPedro/api/>).
 
 The checked-in guides, compiling examples, Javadocs, and tests are one current documentation

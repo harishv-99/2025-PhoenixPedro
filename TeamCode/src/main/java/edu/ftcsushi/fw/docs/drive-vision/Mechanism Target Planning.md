@@ -31,8 +31,9 @@ semantic methods such as `collect()` or `aimAt(...)`.
 
 The short resolver and `FtcActuators` fragments in this guide are therefore construction-time
 excerpts from that owner unless a section explicitly labels a lower-level custom-adapter or test
-seam. Resolver graphs are built once, not rebuilt in `update(...)`. Start with the focused
-[named claw](<../build/Named Claw.md>) or [referenced lift](<../build/Referenced Lift.md>) recipe.
+seam. Resolver graphs are built once, not rebuilt in `update(...)`. Start with the cumulative
+[named claw](<../build/Named Claw.md>), [lift reference](<../build/Referenced Lift.md>), and
+[referenced lift move](<../build/Move a Referenced Lift.md>) lessons.
 
 ```text
 controller / service / autonomous policy
