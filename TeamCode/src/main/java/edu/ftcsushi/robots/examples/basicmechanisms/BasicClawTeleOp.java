@@ -8,7 +8,7 @@ import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.fw.ftc.input.GamepadDevice;
 
 /** Focused claw-only fixture that never claims unmeasured standard-servo arrival. */
-@TeleOp(name = "FW Basic 3: Claw", group = "FW Examples")
+@TeleOp(name = "FW Basic: Claw", group = "FW Examples")
 @Disabled
 public final class BasicClawTeleOp extends FtcRobotOpMode {
 

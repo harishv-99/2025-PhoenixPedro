@@ -23,7 +23,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Maintainer contract for the independent lift and claw control vocabularies. */
+/** Maintainer contract for the independent home, full-lift, and claw control vocabularies. */
 public final class BasicTeleOpControlsTest {
 
     @Test
@@ -66,7 +66,27 @@ public final class BasicTeleOpControlsTest {
     }
 
     @Test
-    public void everyXButtonRiseBuildsAndQueuesAFreshHomeTask() {
+    public void homeOnlyControlsBuildAndQueueAFreshTaskForEveryXButtonRise() {
+        Gamepad driver = new Gamepad();
+        RecordingLift lift = new RecordingLift();
+        RecordingCallbackBindings callbacks = new RecordingCallbackBindings();
+        TaskRunner runner = new TaskRunner();
+        BasicLiftHomeControls controls = new BasicLiftHomeControls(new GamepadDevice(driver));
+        controls.bind(TaskBindings.of(callbacks, runner), lift);
+        Bindings bindings = callbacks.root();
+        ManualLoopClock time = new ManualLoopClock();
+
+        bindings.update(time.clock());
+        pulse(driver, bindings, time, Button.X);
+        pulse(driver, bindings, time, Button.X);
+
+        assertEquals(2, lift.homeTasks.size());
+        assertNotSame(lift.homeTasks.get(0), lift.homeTasks.get(1));
+        assertEquals(2, runner.queuedCount());
+    }
+
+    @Test
+    public void fullLiftControlsAlsoBuildAFreshHomeTaskForEveryXButtonRise() {
         Gamepad driver = new Gamepad();
         RecordingLift lift = new RecordingLift();
         RecordingCallbackBindings callbacks = new RecordingCallbackBindings();
@@ -88,10 +108,26 @@ public final class BasicTeleOpControlsTest {
     @Test
     public void eachFocusedBindingValidatesFirstAndIsOneShot() {
         GamepadDevice driver = new GamepadDevice(new Gamepad());
+        BasicLiftHomeControls homeControls = new BasicLiftHomeControls(driver);
         BasicLiftControls liftControls = new BasicLiftControls(driver);
         BasicClawControls clawControls = new BasicClawControls(driver);
         RecordingLift lift = new RecordingLift();
         RecordingClaw claw = new RecordingClaw();
+
+        RecordingCallbackBindings homeCallbacks = new RecordingCallbackBindings();
+        TaskBindings homeTasks = TaskBindings.of(homeCallbacks, new TaskRunner());
+        expectNullPointer(() -> homeControls.bind(null, lift));
+        expectNullPointer(() -> homeControls.bind(homeTasks, null));
+        assertEquals(0, homeCallbacks.registrationAttempts());
+
+        homeControls.bind(homeTasks, lift);
+        assertEquals(1, homeCallbacks.successfulRegistrations());
+
+        RecordingCallbackBindings homeRetry = new RecordingCallbackBindings();
+        expectAlreadyBound(() -> homeControls.bind(
+                TaskBindings.of(homeRetry, new TaskRunner()), lift));
+        assertEquals(0, homeRetry.registrationAttempts());
+
         RecordingCallbackBindings liftCallbacks = new RecordingCallbackBindings();
         TaskBindings liftTasks = TaskBindings.of(liftCallbacks, new TaskRunner());
 

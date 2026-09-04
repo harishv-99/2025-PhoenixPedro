@@ -27,8 +27,8 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [Build lessons](<../build/README.md>) — choose drive when needed, or begin the progressive
-  actuator path after this software baseline passes.
+- [Build lessons](<../build/README.md>) — choose one focused fixture, then use the explicit TeleOp
+  and Auto integration lessons after its software and hardware gates pass.
 
 **Safety:** Keep the course OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.
@@ -152,7 +152,8 @@ that separate work.
 ## Continue with robot code
 
 With the software baseline green, [choose the next Build outcome](<../build/README.md>). Drive is
-an independent path when your robot needs it. For an actuator, begin with continuous intake, read
-the actuator lessons in order, and stop after the outcome your robot needs.
+an independent path when your robot needs it. For an actuator, begin with continuous intake. The
+knowledge builds in order, while each hardware fixture stays focused; stop after the outcome your
+robot needs, then use the integration lesson instead of merging examples by guesswork.
 
 **Framework tour:** [`Sushi in one picture`](<Framework Overview.md>)

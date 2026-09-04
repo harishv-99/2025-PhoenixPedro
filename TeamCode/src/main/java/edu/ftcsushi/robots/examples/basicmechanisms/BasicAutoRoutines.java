@@ -15,7 +15,25 @@ public final class BasicAutoRoutines {
     }
 
     /**
-     * Builds the course's mechanism-only command-group lesson.
+     * Builds the first lift-only autonomous sequence.
+     *
+     * <p>Homing must succeed before HIGH starts, and HIGH must succeed before STOWED starts. A
+     * child timeout or active cancellation remains visible and suppresses every later Task.</p>
+     *
+     * @param lift capability that creates the fresh homing and move Tasks
+     * @return fresh single-use lift-only root Task
+     * @throws NullPointerException if {@code lift} is {@code null}
+     */
+    public static Task liftOnly(BasicLift lift) {
+        BasicLift requiredLift = Objects.requireNonNull(lift, "lift");
+        return Tasks.sequence(
+                requiredLift.home(),
+                requiredLift.moveTo(BasicLift.Height.HIGH),
+                requiredLift.moveTo(BasicLift.Height.STOWED));
+    }
+
+    /**
+     * Builds the course's optional lift-and-claw command-group capstone.
      *
      * <p>The exact sequence is home, HIGH, LOW and CLOSED in parallel, hold for 0.5 seconds, then
      * OPEN and STOWED in parallel. The fixed graph calls these side-effect-free capability Task

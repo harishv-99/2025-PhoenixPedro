@@ -2,6 +2,8 @@ package edu.ftcsushi.robots.examples.basicmechanisms;
 
 import java.util.Objects;
 
+import edu.ftcsushi.fw.core.hal.Direction;
+
 /** Data-only lift answers and the explicit motion permission used by each lift lesson. */
 public final class BasicLiftProfile {
 
@@ -26,6 +28,19 @@ public final class BasicLiftProfile {
     public static BasicLiftProfile current() {
         BasicLiftProfile profile = new BasicLiftProfile();
         profile.lift = BasicLiftMechanism.Config.defaults();
+        profile.lift.motorName = "liftMotor";
+        profile.lift.direction = Direction.FORWARD;
+        profile.lift.bottomSwitchName = "liftBottom";
+        profile.lift.maximumHeightIn = 18.0;
+        profile.lift.ticksPerIn = 100.0;
+        profile.lift.toleranceIn = 0.20;
+        profile.lift.maximumPower = 0.30;
+        profile.lift.stowedHeightIn = 0.0;
+        profile.lift.lowHeightIn = 4.0;
+        profile.lift.highHeightIn = 14.0;
+        profile.lift.homingPower = -0.15;
+        profile.lift.homingTimeoutSec = 3.0;
+        profile.lift.moveTimeoutSec = 2.0;
         profile.allowLiftMotion = false;
         return profile;
     }

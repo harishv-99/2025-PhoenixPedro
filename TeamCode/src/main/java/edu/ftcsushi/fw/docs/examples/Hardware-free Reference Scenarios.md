@@ -18,24 +18,26 @@ if those boundaries are unfamiliar.
 |---|---|---|---|
 | Do stick axes keep Sushi's coordinate signs? | `GamepadDevice` + `GamepadDriveSource` | [First drive](<../build/First Drive.md#software-checkpoint-sticks-have-one-coordinate-meaning>) | motor direction and motion |
 | Does named intake intent reach one motor command? | `StarterIntakeMechanism` + Plant | [Continuous intake](<../build/Continuous Intake.md#software-checkpoint-request-first-apply-on-heartbeat>) | intake direction, load, and stop |
+| Can one managed TeleOp serve continuous drive and callback-driven intake? | `StarterRobot` + production controls/outputs | [Combine drive and intake](<../build/Combine Drive and Intake.md#software-checkpoint-one-managed-cycle-serves-both-outcomes>) | safe simultaneous motion and STOP |
 | Do named claw positions map through configured endpoint candidates? | `BasicClawMechanism` + servo Plant | [Named claw](<../build/Named Claw.md#software-checkpoint-normalized-half-derives-from-two-endpoints>) | linkage clearance and arrival |
 | Does debounced switch evidence establish encoder zero? | `BasicLiftMechanism` + calibration Task + Plant | [Lift reference](<../build/Referenced Lift.md#software-checkpoint-authored-switch-evidence-controls-homing>) | switch placement, scale, direction, and homing travel |
 | Does fresh encoder evidence complete one selected height request? | `BasicLiftMechanism` + semantic Task + Plant | [Referenced lift move](<../build/Move a Referenced Lift.md#software-checkpoint-fresh-encoder-evidence-completes-the-move>) | conversion, tuning, loaded stability, and safe travel |
 | Does cancelling one velocity Task request zero through the normal heartbeat? | `BasicFlywheelMechanism` + scalar Task + Plant | [Single flywheel velocity](<../build/Single Flywheel Velocity.md>) | direction, encoder scale, PIDF tuning, loaded speed, and coast-down |
-| Does successful prerequisite evidence admit Auto work in the authored order? | `BasicAutoRoutines` + Task graph | [First autonomous](<../build/First Autonomous.md#software-checkpoint-success-admits-the-next-work>) | combined timing and clearance |
+| Does one timed root begin at START and select safe intent on completion/cancel? | `StarterAuto` + production intake Task/Plant | [Run one timed Auto](<../build/Run One Timed Auto.md#software-checkpoint-time-begins-at-start>) | duration under load, direction, and physical stop |
+| Does successful prerequisite evidence admit Auto work in the authored order? | `BasicAutoRoutines` + Task graph | [First autonomous](<../build/First Autonomous.md#software-checkpoint-success-admits-the-next-work>) | homing/move timing, lift clearance, and STOP |
 | Must both flywheels be ready? | `ReferenceFlywheelMechanism` + grouped Plant | [Paired flywheel](<../advanced/Paired Flywheel Velocity.md>) | balance under load and tuning |
 | Which full-turn turret equivalent is legal and nearest? | `ReferencePeriodicTurretMechanism` + resolver | [Periodic turret](<../advanced/Periodic Turret Position.md>) | zero, cable bounds, and collision |
 | Is sensor-derived inventory published only after update? | `ReferenceInventoryStatusService` | [Complete source: `ReferenceInventorySoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventorySoftwareScenarioTest.java>) | sensor placement and game-piece detection |
 | Does one retained Pedro execution classify honestly? | `RouteTask` + route boundary | [First Pedro Auto](<../build/First Pedro Auto.md#software-checkpoint-completion-needs-endpoint-evidence>) | localization, route accuracy, and stop |
 
-The linked tests are small teaching scenarios. The First Autonomous scenario keeps the real routine
-and uses only framework-built recording Tasks to walk one successful causal path: home admits HIGH,
-HIGH admits LOW with CLOSED, and the final hold admits STOWED with OPEN. Its neighboring
+The linked tests are small teaching scenarios. The First Autonomous scenario keeps the real
+lift-only routine and uses only framework-built recording Tasks to show that home admits HIGH and
+HIGH admits STOWED only on exact success; its second method makes timeout and cancellation suppress
+that later request. Its neighboring
 [`BasicAutoRoutinesTest`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutinesTest.java>)
-is supplied maintainer evidence for timeout, cancellation, and fresh-Task behavior, not the first
-test a student must reverse-engineer. Other broader contract tests next to the teaching scenarios
-serve the same role: students may run them before they are ready to author their complete
-abnormal-outcome matrices.
+is supplied maintainer evidence for the optional lift-and-claw parallel capstone and broader
+fresh-Task behavior. Other broad contract tests beside teaching scenarios serve the same role:
+students may run them before they are ready to author complete abnormal-outcome matrices.
 
 ## Worked example: paired velocity needs paired evidence
 

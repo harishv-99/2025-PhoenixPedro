@@ -1,33 +1,35 @@
 package edu.ftcsushi.robots.examples.basicmechanisms;
 
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
 import edu.ftcsushi.fw.ftc.RobotProgram;
-import edu.ftcsushi.fw.task.Task;
+import edu.ftcsushi.fw.ftc.input.GamepadDevice;
 
-/** Lift-only Auto whose later moves start only after reference and feedback success. */
-@Autonomous(name = "FW Basic: Lift Auto", group = "FW Examples")
+/** Disabled lift-only host that exposes homing without exposing later named moves. */
+@TeleOp(name = "FW Basic: Lift home", group = "FW Examples")
 @Disabled
-public final class BasicLiftAuto extends FtcRobotOpMode {
+public final class BasicLiftHomeTeleOp extends FtcRobotOpMode {
 
     @Override
     protected void configure(RobotProgram program) {
         BasicLiftProfile profile = BasicLiftProfile.current();
-        BasicLiftProfile.requireMotionAllowed(profile, "Basic Lift Auto");
+        BasicLiftProfile.requireMotionAllowed(profile, "Basic Lift Home TeleOp");
 
         BasicLiftMechanism lift = program.output(
                 new BasicLiftMechanism(hardwareMap, profile.lift));
-        Task auto = BasicAutoRoutines.liftOnly(lift);
-        program.rootTask(auto);
+        BasicLiftHomeControls controls = new BasicLiftHomeControls(
+                new GamepadDevice(gamepad1));
+        controls.bind(program.taskBindings(), lift);
+
         program.presenter((clock, telemetry) -> {
             BasicLift.Status status = lift.status();
             telemetry.addData("lift.request", status.requestedHeight());
             telemetry.addData("lift.positionIn", "%.2f / %.2f",
                     status.measuredPositionIn(), status.requestedPositionIn());
             telemetry.addData("lift.referenced", status.referenced());
-            telemetry.addData("auto.outcome", auto.getOutcome());
+            telemetry.addLine("X: home");
         });
     }
 }

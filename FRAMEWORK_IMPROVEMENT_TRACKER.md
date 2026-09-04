@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -234,6 +234,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 125 | SIMPLICITY-02 | Concise actuator declaration and use | Done | Revised implementation reviewed and publication authorized for the recorded item branch, origin push URL, pull request, and `master` target. |
 | 126 | DOC-11 | Outcome-focused learning, examples, reference, and search | Done | The reviewed six-area learning site, concise explained scenarios, accessible global guide search, categorized API reference, evidence ladder, focused example cleanup, verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 127 | DOC-12 | Progressive actuator API learning path | Done | Make the first motor lesson self-contained, teach later Plant shapes through cumulative outcomes, add the missing single-motor velocity step, and keep exhaustive alternatives in reference documentation. |
+| 128 | DOC-13 | Reconstruction-grade beginner Build spine | Done | The reviewed reconstruction-grade Build route, focused integration outcomes, maintained fixtures, source-excerpt contracts, deterministic evidence, Android Studio approval, and destination-specific publication authorization are complete. |
+| 129 | DOC-14 | First sensor-to-status Build outcome | Proposed | Teach one no-motion digital sensor from FTC adapter through polarity, debounce, cached semantic status, presenter, focused software evidence, and an isolated physical gate without introducing a generic sensor framework. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -27034,6 +27036,125 @@ implementation.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
   `master`. This authorizes only those publication steps; it does not authorize starting
   VISION-03 or another tracker item.
+
+### DOC-13 - Reconstruction-grade beginner Build spine
+
+- **Gate 1 status and implementation approval (2026-09-04):** **Verifying** on
+  `codex/doc-13-reconstruction-grade-build-spine`, created from merged
+  `origin/master@32a3502`. The user asked for every important beginner concept to be taught through
+  an outcome example at the reconstruction standard established by Continuous Intake. After a
+  student-perspective audit of the complete Build route, the user reviewed the resulting bounded
+  plan and explicitly directed **“Implement the plan.”** This authorizes the implementation below;
+  it does not authorize staging, commit, push, pull request, merge, reusable framework API changes,
+  production-robot changes, or starting another tracker item.
+- **Confirmed gap and affected callers:** First Drive currently uses undeclared `controls` and
+  `drive`, and its scenario rebuilds a different source instead of proving production axes, caps,
+  final writes, and stop. Later actuator pages introduce package jumps without showing the active
+  profile and managed-host wiring required to integrate them. Referenced Lift's beginner host and
+  scenario leak the later named-move lesson; Move a Referenced Lift under-explains request,
+  feedback, and cancellation evidence; Single Flywheel Velocity keeps its active candidate,
+  permission, controls, and host in source only. First Autonomous begins with a multi-mechanism
+  capstone before teaching one root Task. The maintained callers are the independent First Drive,
+  Starter, Basic Mechanisms, Basic Flywheel, and Basic Pedro examples; their focused scenarios;
+  Build/navigation/search contracts; and exact API/source links. Production Phoenix code is not a
+  caller.
+- **Chosen teaching design:** treat Build knowledge as cumulative while keeping hardware fixtures
+  independent. First Drive locally teaches the continuously sampled gamepad-source-to-drive-sink
+  path and distinguishes it from callback and Task bindings. Continuous Intake remains the first
+  complete actuator/Plant lesson and teaches synchronous button callbacks. Named Claw adds bounded
+  logical servo positions without arrival evidence. Referenced Lift adds sensor polarity,
+  debouncing, semantic post-reference hold, and fresh homing Tasks. Move a Referenced Lift adds
+  direct versus feedback-waiting requests and explicit cancellation policy. Single Flywheel
+  Velocity adds numeric feedback, timeout, and motion permission. Two new focused lessons then
+  integrate drive plus intake in one TeleOp and run one timed root Task in Auto. First Autonomous
+  starts with a lift-only sequence and leaves `parallelDeadline` as a later capstone.
+- **Alternatives rejected:** one ever-growing example robot would make every later lesson carry
+  unrelated hardware and prevent goal-selective learning. Keeping the pages terse and sending
+  students to full source would preserve navigation but fail the reconstruction test. Adding a new
+  drive binding abstraction would duplicate the deliberately continuous `program.drive(...)`
+  path. Expanding this item into generic sensor/status or complete Pedro/vision teaching would mix
+  separate outcomes; the one-sensor status slice remains a later DOC-14 candidate, and Pedro gets
+  only bounded truth corrections here.
+- **Ownership and Framework Principles check:** maintained mechanisms continue to receive
+  `HardwareMap` plus data-only configuration, privately own their Plant graph, and expose one
+  managed output/stop path. One controls owner declares operator meaning; one composition root wires
+  bindings, outputs, drive, presenters, and root Tasks. Timed and feedback work remains cooperative,
+  fresh, single-use, and cancellation-explicit. No protected-core or public framework API changes.
+  Each lesson states which facts software proves and leaves wiring, direction, clearance, tuning,
+  load, and physical STOP behavior behind an isolated hardware gate.
+- **Bounded implementation and verification plan:** expand First Drive and its production-backed
+  scenario; correct held-button Javadocs; add explicit active profiles and complete host excerpts to
+  claw/lift/flywheel lessons; introduce a home-only lift host; strengthen lift move cancellation
+  evidence; add focused drive-plus-intake TeleOp and one-timed-Task Auto lessons/scenarios; revise
+  First Autonomous and its failure evidence; update the Build hub, site navigation, maintainer
+  recipe contract, and documentation regressions; and correct Basic Pedro telemetry to retain the
+  exact route Task while narrowing its software-only outcome. Run focused tests while iterating,
+  then full TeamCode tests/compile, strict Javadocs, strict Zensical rendering, generated search/link
+  checks, static source-excerpt/caller scans, whitespace checks, and `git diff --check`. Robot
+  hardware and interactive browser behavior remain separately unverified.
+- **Gate 2 implementation result (2026-09-04):** the 52-path unstaged diff implements the approved
+  no-new-framework-API design. First Drive now reconstructs its real axes, source, sink, caps,
+  lifecycle, and software proof. Claw, lift, move, and flywheel outcomes expose complete active
+  profiles, focused managed hosts, cached presenters, and causal tests. A home-only lift path keeps
+  named feedback moves out of the first lift lesson. New drive-plus-intake and one-timed-Task Auto
+  lessons prove the exact maintained compositions, while First Autonomous begins with the lift-only
+  sequence and leaves multi-mechanism composition as an optional capstone. Build navigation/search,
+  maintainer contracts, API/source links, and the Pedro software-boundary checkpoint are synchronized.
+- **Adversarial corrections:** independent curriculum and scope reviews found and closed bounded
+  truth gaps: FTC motor STOP was separated from persistent Plant request state; timed/cancelled lift
+  evidence now retains and asserts the exact child outcome; test-only managed-host/profile/runtime
+  seams are named; all focused actuator fixtures show their presenter declaration; combined TeleOp
+  evidence proves slow translation remains active while the bumper is held, release restores normal
+  output, and the separate omega scale applies; and Pedro guidance now explains that `followPath(...)`
+  applies the Follower's retained global power rather than claiming that route start resets or
+  restores it. Both final read-only audits report no remaining concrete blocker.
+- **Deterministic verification (2026-09-04):** Android Studio JBR 21 passed the final 52-test focused
+  documentation/example suite and the complete `:TeamCode:testDebugUnitTest` run: **248 suites,
+  2,216 tests, 0 failures, 0 errors, and 0 skipped**. `:TeamCode:compileDebugJavaWithJavac` and
+  `:TeamCode:sushiJavadocs` succeeded; the Java 8 target produced only the repository's known JDK 21
+  deprecation warnings. Strict Zensical rendering reported no issues. Generated checks verified the
+  open-ShadowRoot search enhancer and **918 indexed sections across all six guide areas**, plus
+  **162 API links and 73 maintained source links across 44 Markdown pages**. Exact source excerpts
+  are enforced by `DocumentationLinksTest`; `git diff --check` is clean apart from Git's line-ending
+  notices, all nine untracked text files have no trailing whitespace, the index is empty, and the
+  branch/remote/base remain the approved coordinates.
+- **Android Studio and publication stop (2026-09-04):** inspect the exact 52-path unstaged diff on
+  `codex/doc-13-reconstruction-grade-build-spine`, based on
+  `origin/master@32a3502bacf69c04e70fe55a340598a9705f5c55`, especially the cumulative Build order,
+  beginner reconstruction completeness, source-backed test explanations, persistent lift-request
+  wording, combined slow-mode proof, and bounded Pedro status/power claims. Robot hardware and
+  interactive browser behavior remain unverified and are not inferred from software. No staging,
+  commit, push, pull request, merge, or next tracker item has been performed. After review, the exact
+  combined authorization is: **“DOC-13 looks good. Authorize committing the reviewed DOC-13 diff on
+  codex/doc-13-reconstruction-grade-build-spine, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”**
+- **Manual verification and publication authorization (2026-09-04):** the user reviewed the exact
+  DOC-13 diff in Android Studio and supplied the combined authorization above. DOC-13 is **Done**.
+  This authorizes staging and committing only the reviewed 52-path diff, pushing
+  `codex/doc-13-reconstruction-grade-build-spine` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening its pull request, and merging that
+  pull request into `master`; it does not authorize starting DOC-14 or another tracker item.
+
+### DOC-14 - First sensor-to-status Build outcome
+
+- **Tracker-only intake status (2026-09-04):** **Proposed.** The DOC-13 curriculum audit found that
+  ordinary sensing currently appears only inside the referenced-lift outcome or advanced reference
+  material. The approved DOC-13 plan deliberately defers that distinct outcome rather than hiding
+  it inside an actuator, Auto, or integration lesson. No decision gate has started, and this record
+  authorizes no implementation, branch, public API, or hardware claim.
+- **Leading teaching hypothesis, not a design decision:** add one independent, no-motion Build
+  fixture in which a configured active-low digital input becomes one debounced semantic fact, one
+  managed owner caches immutable status, and a presenter reads that cached fact without resampling
+  hardware. Its focused scenario should keep the production owner and heartbeat, replace only the
+  FTC input, author HIGH/LOW observations explicitly, and distinguish software polarity/debounce
+  evidence from wiring, voltage, placement, and real-world detection.
+- **Decision gate required later:** inspect every maintained ordinary sensor owner, FTC adapter,
+  status wrapper, presenter, and software-device scenario; compare a documented robot-owned owner
+  against any truly recurring helper; and keep field facts, hardware ownership, and game policy
+  separate. Prefer no new abstraction unless at least two independent callers prove a stable shared
+  lifecycle. Do not start vision, inventory, multi-sensor policy, or production-robot cleanup under
+  this item.
 
 ### VISION-03 - Reusable color-blob pipeline
 

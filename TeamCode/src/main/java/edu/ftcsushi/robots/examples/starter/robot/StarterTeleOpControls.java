@@ -11,8 +11,8 @@ import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
 /** Owns every gamepad meaning used by the starter TeleOp. */
 final class StarterTeleOpControls {
 
-    private static final double SLOW_TRANSLATE_SCALE = 0.35;
-    private static final double SLOW_OMEGA_SCALE = 0.20;
+    static final double SLOW_TRANSLATE_SCALE = 0.35;
+    static final double SLOW_OMEGA_SCALE = 0.20;
 
     private final GamepadDevice driver;
     private final DriveSource driveSource;

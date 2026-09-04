@@ -120,7 +120,8 @@ public final class BasicLiftMechanism implements BasicLift, RobotProgram.Output 
                 .map(Height.HIGH, c.highHeightIn)
                 .build();
 
-        bottomSwitch = FtcSensors.digitalLow(map, c.bottomSwitchName)
+        bottomSwitch = FtcSensors.digitalLow(
+                map, c.bottomSwitchName)
                 .debouncedOnOff(0.02, 0.02);
         lift = FtcActuators.plant(map)
                 .motor(c.motorName, c.direction)

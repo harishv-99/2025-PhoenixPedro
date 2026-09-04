@@ -1266,12 +1266,14 @@ its own profile while leaving runtime construction and service registration at t
 root.
 
 The example's explicit Mecanum `maxPower = 0.25` is initial software data, not a durable route cap:
-Pedro 2.1.2 restores the Follower's separate `globalMaxPower` to `1.0` when `followPath(...)`
-starts, and ordinary managed Sushi route callers cannot currently set that persistent limit. The
-false `ROBOT_MOTION_REVIEWED` gate blocks route construction in the checked-in example;
-`@Disabled` separately hides its FTC entry. Physical route qualification remains blocked pending a
-focused integration improvement. After that control exists, every runtime, route, placement, and
-STOP fact still requires physical review before enabling.
+Pedro 2.1.2 creates its Follower with a separate `globalMaxPower` default of `1.0`, and
+`followPath(...)` applies the current Follower value to drivetrain scaling, overwriting the Mecanum
+configuration's initial value. The follow call does not reset that field, but ordinary managed
+Sushi route callers cannot currently set its persistent limit. The false
+`ROBOT_MOTION_REVIEWED` gate blocks route construction in the checked-in example; `@Disabled`
+separately hides its FTC entry. Physical route qualification remains blocked pending a focused
+integration improvement. After that control exists, every runtime, route, placement, and STOP fact
+still requires physical review before enabling.
 
 The registered service owns localization first and the recurring adapter heartbeat second. It owns
 `pedro.motionPredictor().update(clock)` followed by `pedro.driveAdapter().update(clock)` on every

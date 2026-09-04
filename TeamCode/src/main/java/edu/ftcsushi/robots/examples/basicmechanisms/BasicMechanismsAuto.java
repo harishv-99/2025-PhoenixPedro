@@ -8,7 +8,7 @@ import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.fw.task.Task;
 
 /** Mechanism-only Auto host used to learn sequencing, parallel work, and success gates. */
-@Autonomous(name = "FW Basic 4: Mechanisms Auto", group = "FW Examples")
+@Autonomous(name = "FW Basic: Mechanisms Auto", group = "FW Examples")
 @Disabled
 public final class BasicMechanismsAuto extends FtcRobotOpMode {
 

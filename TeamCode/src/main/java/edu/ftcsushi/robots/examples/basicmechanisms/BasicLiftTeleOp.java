@@ -8,7 +8,7 @@ import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.fw.ftc.input.GamepadDevice;
 
 /** Focused lift-only fixture with named controls and truthful feedback evidence. */
-@TeleOp(name = "FW Basic 2: Lift", group = "FW Examples")
+@TeleOp(name = "FW Basic: Lift move", group = "FW Examples")
 @Disabled
 public final class BasicLiftTeleOp extends FtcRobotOpMode {
 

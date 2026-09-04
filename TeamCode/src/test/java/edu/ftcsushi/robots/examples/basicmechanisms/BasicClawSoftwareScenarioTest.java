@@ -8,7 +8,7 @@ import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
 import static org.junit.Assert.assertEquals;
 
 /**
- * Beginner software proof for one named-position standard servo.
+ * Beginner software proof for one named-position standard servo and its terminal stop behavior.
  *
  * <p>The test separates the team's semantic request, Sushi's managed output heartbeat, and the
  * command recorded by a software Servo probe. The probe does not simulate linkage motion, so this
@@ -17,11 +17,9 @@ import static org.junit.Assert.assertEquals;
 public final class BasicClawSoftwareScenarioTest {
 
     @Test
-    public void closedHalfAndOpenMapAcrossOneConfiguredNativeRange() {
-        // ARRANGE: author two software-valid endpoint candidates and register the named Servo.
-        BasicClawMechanism.Config config = BasicClawMechanism.Config.defaults();
-        config.closedNativePosition = 0.25;
-        config.openNativePosition = 0.70;
+    public void namedPositionsMapAcrossOneRangeAndStopRetainsTheLastCommand() {
+        // ARRANGE: read the active software candidates and register only the named Servo.
+        BasicClawMechanism.Config config = BasicClawProfile.current().claw;
         FtcTestHardware hardware = new FtcTestHardware();
         FtcTestHardware.ServoProbe servo = hardware.addServo(config.servoName);
         BasicClawMechanism claw = new BasicClawMechanism(hardware, config);
@@ -51,6 +49,12 @@ public final class BasicClawSoftwareScenarioTest {
         assertEquals(1.0, claw.status().appliedCoordinate(), 0.0);
         assertEquals(0.70, servo.position(), 1e-12);
         assertEquals(3, servo.positionWrites());
+
+        // STOP: a standard servo has no zero-power command, so lifecycle stop reasserts OPEN.
+        int writesBeforeStop = servo.positionWrites();
+        claw.stop();
+        assertEquals(writesBeforeStop + 1, servo.positionWrites());
+        assertEquals(0.70, servo.position(), 1e-12);
 
         // These are recorded commands, not arrival evidence. Verify travel on the real mechanism.
     }

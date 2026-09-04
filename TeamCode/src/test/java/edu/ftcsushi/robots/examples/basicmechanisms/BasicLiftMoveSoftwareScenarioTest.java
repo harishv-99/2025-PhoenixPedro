@@ -33,6 +33,9 @@ public final class BasicLiftMoveSoftwareScenarioTest {
         scenario.task.start(scenario.time.clock());
         scenario.task.update(scenario.time.clock());
         assertEquals(BasicLift.Height.LOW, scenario.lift.status().requestedHeight());
+        assertEquals(scenario.config.lowHeightIn,
+                scenario.lift.status().requestedPositionIn(), 0.0);
+        assertFalse(scenario.lift.status().atTarget());
         assertEquals(targetWritesBeforeRequest, scenario.motor.targetPositionWrites());
 
         // HEARTBEAT: the output owner writes the mapped encoder target and samples old feedback.
@@ -40,6 +43,9 @@ public final class BasicLiftMoveSoftwareScenarioTest {
         int lowTicks = (int) Math.round(
                 scenario.config.lowHeightIn * scenario.config.ticksPerIn);
         assertEquals(lowTicks, scenario.motor.targetPositionTicks());
+        assertEquals(scenario.config.lowHeightIn,
+                scenario.lift.status().appliedPositionIn(), 0.0);
+        assertEquals(0.0, scenario.lift.status().measuredPositionIn(), 0.0);
         assertFalse(scenario.task.isComplete());
 
         // INJECT EVIDENCE: the fake motor moves only because this test supplies a new observation.
@@ -56,8 +62,39 @@ public final class BasicLiftMoveSoftwareScenarioTest {
         // PHYSICAL NEXT GATE: only the robot can prove direction, scale, tuning, and safe travel.
     }
 
+    @Test
+    public void activeCancellationLeavesTheSelectedPersistentRequest() {
+        Scenario scenario = new Scenario();
+        scenario.motor.setCurrentPositionTicks(0);
+        scenario.establishReferenceFromAuthoredSwitchEvidence();
+
+        // REQUEST + HEARTBEAT: select HIGH through the Task, then apply it through the Plant owner.
+        scenario.task = scenario.lift.moveTo(BasicLift.Height.HIGH);
+        scenario.task.start(scenario.time.nextCycle(0.02));
+        scenario.task.update(scenario.time.clock());
+        scenario.lift.update(scenario.time.clock());
+        int highTicks = (int) Math.round(
+                scenario.config.highHeightIn * scenario.config.ticksPerIn);
+        assertEquals(highTicks, scenario.motor.targetPositionTicks());
+
+        // CANCEL: the Task ends, but leaveRequestOnCancel preserves the selected semantic hold.
+        int writesBeforeCancel = scenario.motor.targetPositionWrites();
+        scenario.task.cancel();
+        assertEquals(TaskOutcome.CANCELLED, scenario.task.getOutcome());
+        assertEquals(BasicLift.Height.HIGH, scenario.lift.status().requestedHeight());
+        assertEquals(scenario.config.highHeightIn,
+                scenario.lift.status().requestedPositionIn(), 0.0);
+        assertEquals(writesBeforeCancel, scenario.motor.targetPositionWrites());
+
+        // NEXT OUTPUT: the unchanged request still travels through the normal Plant heartbeat.
+        scenario.lift.update(scenario.time.nextCycle(0.02));
+        assertEquals(highTicks, scenario.motor.targetPositionTicks());
+        assertEquals(writesBeforeCancel + 1, scenario.motor.targetPositionWrites());
+        assertFalse(scenario.lift.status().atTarget());
+    }
+
     private static final class Scenario {
-        private final BasicLiftMechanism.Config config = BasicLiftMechanism.Config.defaults();
+        private final BasicLiftMechanism.Config config = BasicLiftProfile.current().lift;
         private final FtcTestHardware hardware = new FtcTestHardware();
         private final FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
         private final FtcTestHardware.DigitalProbe bottomSwitch =

@@ -126,8 +126,10 @@ coherent, and representable by the pinned Pedro implementation. It does not prov
 identify the intended ports, directions match the chassis, Pinpoint pods are correctly placed or
 ready, follower tuning is stable, the field transform matches physical placement, constraints leave
 safe stopping distance, a route is clear, or STOP produces the expected physical result. Pedro
-2.1.2 also resets the Follower's persistent `globalMaxPower` when following starts, and the ordinary
-managed Sushi route API does not currently expose that control. Physical route qualification is
-therefore blocked pending a focused, separately approved integration improvement; do not bypass the
-managed boundary to obtain a raw Follower. After that control exists, verify the physical facts on
-the adopting robot with conservative limits, clear space, and an operator ready to stop it.
+2.1.2 creates its Follower with a separate `globalMaxPower` default of `1.0`; `followPath(...)`
+applies the current Follower value to drivetrain scaling, overwriting the value initialized from
+Mecanum configuration. The follow call does not reset that field, but the ordinary managed Sushi
+route API does not currently expose its persistent setting. Physical route qualification is
+therefore blocked pending a focused, separately approved integration improvement; do not bypass
+the managed boundary to obtain a raw Follower. After that control exists, verify the physical facts
+on the adopting robot with conservative limits, clear space, and an operator ready to stop it.

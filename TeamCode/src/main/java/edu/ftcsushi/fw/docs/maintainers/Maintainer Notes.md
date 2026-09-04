@@ -153,12 +153,27 @@ Use this authoring contract:
   excerpt, at most three observations, exact main/test file manifests, visibly labeled complete-
   source links, an explained software checkpoint, an isolated hardware gate, and one next action.
   Do not embed complete files in prose or require unrelated mechanisms to finish a recipe.
+- Hold Build pages to a reconstruction test: after reading the page and its declared prerequisites,
+  a student should be able to recreate the important production wiring without opening another
+  source file. Full source may fill in imports, package declarations, and small mechanical details;
+  it must not be the only place that constructs an owner, declares its managed heartbeat, or binds
+  the concept the page claims to teach.
+- A Build page explicitly labeled a **blocked software-boundary checkpoint** may stop before a
+  hardware graph that cannot yet pass its conservative managed gate. It must say which wiring it
+  does not teach, link the advanced integration authority, and make no physical-run claim.
+- When a lesson switches to an independent fixture or later combines focused fixtures, say so.
+  Show the active data-only profile and the small composition-root connections for outputs, drive,
+  controls, presenters, root Tasks, and STOP that are necessary for that outcome. Explain a concept
+  in plain domain language at first use before linking its exact Javadoc contract.
 - Link a named framework or example class to generated Javadocs. Use repository links only when
   visibly labeled **Complete source** so API lookup and source study remain distinct actions.
 - Before a displayed test, state **Question**, **Keep real**, **Replace**, **Observe**, and
   **Cannot conclude**. Make ARRANGE, REQUEST, BEFORE HEARTBEAT, HEARTBEAT, INJECT EVIDENCE, ASSERT,
   and NEXT GATE visible in Java where applicable. Follow with **Read the causal chain**,
   **Proves**, **Does not prove**, and **Next gate**.
+- Make a student-facing scenario instantiate the maintained production owner and configuration it
+  claims to prove. Do not duplicate axis mappings, target mappings, or safety values inside the test
+  merely to obtain a convenient expected result.
 - Keep one question per student-facing test method, at most two displayed methods per file, roughly
   35 executable lines per method, and about 100–120 physical lines including comments. Treat broad
   failure matrices, reflection, proxies, custom Task fixtures, and structural checks as supplied

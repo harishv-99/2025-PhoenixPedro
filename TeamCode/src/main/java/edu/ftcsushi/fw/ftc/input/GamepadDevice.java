@@ -13,8 +13,11 @@ import edu.ftcsushi.fw.core.source.ScalarSource;
  * Thin wrapper around an FTC {@link Gamepad} that exposes:
  * <ul>
  *     <li>Axes ({@link ScalarSource}) for sticks and triggers.</li>
- *     <li>Buttons ({@link BooleanSource}) for digital inputs.</li>
+ *     <li>Buttons ({@link BooleanSource}) that report the current held state.</li>
  * </ul>
+ * Button sources do not detect edges themselves. Use
+ * {@link edu.ftcsushi.fw.input.binding.CallbackBindings} methods such as
+ * {@code onRise(...)} when a control meaning should run only on an edge.
  *
  * <h2>ScalarSource conventions</h2>
  * Axes use a <b>human-friendly</b> convention:
@@ -377,7 +380,7 @@ public final class GamepadDevice {
     /**
      * The A button.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource a() {
         return a;
@@ -386,7 +389,7 @@ public final class GamepadDevice {
     /**
      * The B button.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource b() {
         return b;
@@ -395,7 +398,7 @@ public final class GamepadDevice {
     /**
      * The X button.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource x() {
         return x;
@@ -404,7 +407,7 @@ public final class GamepadDevice {
     /**
      * The Y button.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource y() {
         return y;
@@ -412,6 +415,8 @@ public final class GamepadDevice {
 
     /**
      * Left bumper.
+     *
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource leftBumper() {
         return leftBumper;
@@ -419,6 +424,8 @@ public final class GamepadDevice {
 
     /**
      * Right bumper.
+     *
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource rightBumper() {
         return rightBumper;
@@ -427,7 +434,7 @@ public final class GamepadDevice {
     /**
      * D-pad up.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the direction is held
      */
     public BooleanSource dpadUp() {
         return dpadUp;
@@ -436,7 +443,7 @@ public final class GamepadDevice {
     /**
      * D-pad down.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the direction is held
      */
     public BooleanSource dpadDown() {
         return dpadDown;
@@ -445,7 +452,7 @@ public final class GamepadDevice {
     /**
      * D-pad left.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the direction is held
      */
     public BooleanSource dpadLeft() {
         return dpadLeft;
@@ -454,7 +461,7 @@ public final class GamepadDevice {
     /**
      * D-pad right.
      *
-     * @return a {@link BooleanSource} with edge detection
+     * @return a {@link BooleanSource} that is true while the direction is held
      */
     public BooleanSource dpadRight() {
         return dpadRight;
@@ -462,6 +469,8 @@ public final class GamepadDevice {
 
     /**
      * Left stick button (press the left stick).
+     *
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource leftStickButton() {
         return leftStickButton;
@@ -469,6 +478,8 @@ public final class GamepadDevice {
 
     /**
      * Right stick button (press the right stick).
+     *
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource rightStickButton() {
         return rightStickButton;
@@ -477,6 +488,8 @@ public final class GamepadDevice {
     /**
      * Back / View / Share (controller dependent).
      * <p>On PlayStation-style mappings this typically corresponds to “Share”.</p>
+     *
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource back() {
         return back;
@@ -485,6 +498,8 @@ public final class GamepadDevice {
     /**
      * Start / Options (controller dependent).
      * <p>On PlayStation-style mappings this typically corresponds to “Options”.</p>
+     *
+     * @return a {@link BooleanSource} that is true while the button is held
      */
     public BooleanSource start() {
         return start;

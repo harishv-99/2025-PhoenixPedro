@@ -30,8 +30,10 @@ nav = [
     { "Establish a lift reference" = "docs/build/Referenced Lift.md" },
     { "Move a referenced lift" = "docs/build/Move a Referenced Lift.md" },
     { "Reach one motor velocity" = "docs/build/Single Flywheel Velocity.md" },
+    { "Combine drive and intake" = "docs/build/Combine Drive and Intake.md" },
+    { "Run one timed Auto" = "docs/build/Run One Timed Auto.md" },
     { "Sequence an autonomous" = "docs/build/First Autonomous.md" },
-    { "Follow a Pedro route" = "docs/build/First Pedro Auto.md" },
+    { "Inspect Pedro route status" = "docs/build/First Pedro Auto.md" },
   ] },
   { "Test & Tune" = [
     { "Test and tune home" = "docs/testing-calibration/README.md" },
