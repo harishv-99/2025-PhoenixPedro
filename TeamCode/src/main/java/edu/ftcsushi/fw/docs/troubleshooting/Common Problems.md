@@ -60,7 +60,7 @@ drive brake choice, clear-space plan, and operator-on-STOP plan have been review
 Auto deliberately leaves drive permission false. These booleans acknowledge human review but do not
 prove any physical fact. Then use the first enabled, supervised, unloaded test to verify physical
 directions, response, and immediate STOP behavior. Follow
-[`Build and run Sushi`](<../getting-started/Build and Run.md>).
+[`Set up and verify the Sushi project`](<../getting-started/Build and Run.md>).
 
 ## INIT reports a hardware name problem
 

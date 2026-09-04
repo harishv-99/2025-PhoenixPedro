@@ -6,7 +6,7 @@ tags:
 # Sushi Cheat Sheet
 
 This is a reminder, not a first lesson. Read
-[`Sushi in one picture`](<../getting-started/Framework Overview.md>) first.
+[`How Sushi runs your code`](<../getting-started/Framework Overview.md>) first.
 
 ## The ordinary program
 

@@ -3,41 +3,48 @@ tags:
   - Get Started
 ---
 
-# Build a robot with Sushi
+# Welcome to Sushi
 
-Sushi gives an FTC team one visible path from driver intent to hardware output, plus cooperative
-Tasks for work that continues across loops. Pick the outcome you need now; the other areas stay out
-of the way until you need them.
+If you have used `while (opModeIsActive())` or an FTC OpMode's `loop()` method, you already know
+the starting idea. During each trip around that loop, robot code reads controls, advances unfinished
+actions, updates hardware, and shows telemetry. Sushi runs that repeated checklist for you. You
+connect the pieces once, then write ordinary Java methods for what the robot should do.
+
+Complete the Get Started path before choosing a robot part to build. Begin with
+[How Sushi runs your code](<docs/getting-started/Framework Overview.md>); the next links lead through
+setup, the required software-only tour, and the Guide map. This path does not assume that you
+already know callbacks, lambdas, Tasks, or other Sushi vocabulary.
 
 <div class="grid cards" markdown>
 
 -   :material-rocket-launch: **Get Started**
 
-    Set up the project, run the checks, and see the whole framework in one picture.
+    Relate Sushi to the FTC loop, verify the project, and take a software-only tour.
 
-    [Start here](<docs/README.md>)
+    [Start with the FTC loop](<docs/getting-started/Framework Overview.md>)
 
 -   :material-school: **Learn**
 
-    Understand owners, controls, Plants, Tasks, and evidence one idea at a time.
+    Understand where robot decisions, hardware updates, longer actions, and tests belong.
 
     [Choose a concept](<docs/getting-started/Beginner's Guide.md>)
 
 -   :material-robot: **Build**
 
-    Make a drive, intake, claw, lift, Auto, or Pedro route from a focused compiling example.
+    After the first software tour, make a drive, intake, claw, lift, Auto, or Pedro route from a
+    focused compiling example.
 
     [Choose a build](<docs/build/README.md>)
 
 -   :material-test-tube: **Test & Tune**
 
-    Prove software decisions, then cross one isolated hardware gate at a time.
+    Check software decisions, then test one carefully limited hardware fact at a time.
 
     [Choose an evidence level](<docs/testing-calibration/README.md>)
 
 -   :material-compass-outline: **Advanced**
 
-    Add velocity groups, periodic mechanisms, vision, localization, and larger coordination graphs.
+    Add velocity groups, rotating mechanisms, vision, localization, and larger robot behaviors.
 
     [Explore advanced patterns](<docs/advanced/README.md>)
 
@@ -55,5 +62,5 @@ of the way until you need them.
 area tags. To find an exact class or method signature, use
 [API search](<https://harishv-99.github.io/2025-PhoenixPedro/api/>).
 
-The exhaustive, maintained map remains the [documentation hub](<docs/README.md>). Framework changes
+The exhaustive, maintained map is the [Guide map](<docs/README.md>). Framework changes
 must also follow the [Framework Principles](<Framework Principles.md>).

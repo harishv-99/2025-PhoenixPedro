@@ -3,29 +3,24 @@ tags:
   - Get Started
 ---
 
-# Sushi documentation
+# Guide map
 
-Sushi helps an FTC team turn intent into bounded hardware commands with one managed heartbeat. You
-do not need to read the framework from beginning to end. Choose the result you need, finish its
-software checkpoint, and cross the stated hardware gate before integrating it into the robot.
+This page is the complete map; it is not a reading assignment. First learn how Sushi relates to the
+FTC loop with software only. Then choose the robot outcome you need. A drive student does not need
+to build a lift, and a claw student does not need to finish the drive lesson.
 
-## Your shortest path to a working robot
+## New to Sushi? Follow these three pages
 
-1. [Set up and verify Sushi](<getting-started/Build and Run.md>).
-2. [Drive with a gamepad](<build/First Drive.md>) if your current outcome needs a drivetrain.
-3. Read [Sushi in one picture](<getting-started/Framework Overview.md>) to recognize the owners.
-4. Start the cumulative actuator path with the self-contained
-   [continuous intake](<build/Continuous Intake.md>).
-5. Add only the next decision you need: [named servo positions](<build/Named Claw.md>),
-   [a lift reference](<build/Referenced Lift.md>),
-   [a feedback-aware lift move](<build/Move a Referenced Lift.md>), then
-   [one motor's velocity](<build/Single Flywheel Velocity.md>).
-6. Cross each lesson's isolated **Test & Tune** gate before integrating its capability.
-7. [Combine drive and intake](<build/Combine Drive and Intake.md>) to learn the first multi-owner
-   TeleOp composition.
-8. [Run one timed root Task](<build/Run One Timed Auto.md>), then
-   [sequence real capability Tasks](<build/First Autonomous.md>) after their individual evidence
-   gates pass.
+1. [How Sushi runs your code](<getting-started/Framework Overview.md>) — connect the FTC loop you
+   know to code that runs now and code saved to run later.
+2. [Set up and verify the Sushi project](<getting-started/Build and Run.md>) — prove the project
+   builds before adding robot hardware.
+3. [Take the first software tour](<getting-started/First Software Tour.md>) — compare driving,
+   one button press, and one action that continues across loops.
+
+After that required software path, choose one Build recipe below. Each recipe separates a software
+checkpoint from an isolated hardware check. Within the actuator series, knowledge builds in order
+from intake to claw, lift, and velocity, but the hardware fixtures stay focused and independent.
 
 ## Choose by outcome
 
@@ -41,7 +36,7 @@ software checkpoint, and cross the stated hardware gate before integrating it in
 | run one fresh timed behavior when Auto starts | [Run one timed Auto](<build/Run One Timed Auto.md>) |
 | sequence feedback-aware lift Tasks without blocking the loop | [Sequence an autonomous](<build/First Autonomous.md>) |
 | compile one Pedro route and inspect its truthful software outcome | [Inspect Pedro route status](<build/First Pedro Auto.md>) |
-| understand where a piece of code belongs | [Choose a concept](<getting-started/Beginner's Guide.md>) |
+| understand where a piece of code belongs | [Choose a learning question](<getting-started/Beginner's Guide.md>) |
 | design a useful software or hardware test | [How to test a Sushi component](<testing-calibration/How to test a Sushi component.md>) |
 | bring up an actuator without assuming its safe range | [Actuator bring-up](<testing-calibration/Actuator Bring-up.md>) |
 | study a less-common composition | [Advanced patterns](<advanced/README.md>) |
@@ -50,7 +45,7 @@ software checkpoint, and cross the stated hardware gate before integrating it in
 
 ## What each area is for
 
-- **Get Started** establishes the project and the six-part mental map.
+- **Get Started** connects familiar FTC loops to Sushi and verifies the project without hardware.
 - **Learn** explains one framework idea without making you assemble a robot at the same time.
 - **Build** gives one focused, compiling authority per ordinary outcome.
 - **Test & Tune** separates software evidence from facts only hardware can establish.

@@ -763,7 +763,7 @@ Other additions that fit this model include:
 
 ## 6. Related docs
 
-- [`Framework Overview`](<../../fw/docs/getting-started/Framework Overview.md>)
+- [`How Sushi runs your code`](<../../fw/docs/getting-started/Framework Overview.md>)
 - [`AprilTag Localization & Fixed Layouts`](<../../fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`Framework Lanes & Robot Controls`](<../../fw/docs/design/Framework Lanes & Robot Controls.md>)
 - [`Robot Calibration Tutorials`](<../../fw/docs/testing-calibration/Robot Calibration Tutorials.md>)

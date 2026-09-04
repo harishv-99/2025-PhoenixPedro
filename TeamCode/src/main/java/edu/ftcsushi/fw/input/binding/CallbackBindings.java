@@ -7,7 +7,13 @@ import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.source.ScalarSource;
 
 /**
- * Registration-only view of Sushi input callbacks.
+ * Connects input events to short actions. Calling a registration method during setup only saves
+ * its callback; registration does not invoke the callback or create a thread. In ordinary
+ * {@link edu.ftcsushi.fw.ftc.RobotProgram} use, when the binding accepts an event during an FTC
+ * loop, it invokes the saved callback synchronously in that loop. A custom host gets the same
+ * synchronous behavior when it updates the owning bindings.
+ *
+ * <p>This is a registration-only view of Sushi input callbacks.</p>
  *
  * <p>Use this surface for short, non-blocking callbacks that run synchronously and finish during
  * the binding phase.

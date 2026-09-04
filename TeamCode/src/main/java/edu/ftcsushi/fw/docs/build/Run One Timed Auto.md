@@ -8,8 +8,55 @@ tags:
 **Outcome:** start collecting exactly at FTC START, keep the request active for 0.75 seconds, then
 request `STOPPED` without sleeping or writing a loop.
 
-**Prerequisites:** complete [Continuous Intake](<Continuous Intake.md>), including its isolated
-hardware gate before attempting physical motion. Drive is not part of this independent fixture.
+**Prerequisites:** for this first pass, complete the software-only intake stop in
+[Continuous Intake](<Continuous Intake.md>). No hardware gate is required to read this first pass.
+
+**Before the full build or physical motion:** complete that lesson's isolated intake hardware
+gate. Drive is not part of this independent fixture.
+
+## First pass: work that continues across loops
+
+A Sushi `Task` is a bookmark for unfinished work. The FTC loop advances it a little, keeps running
+the rest of the robot, and returns to the bookmark on the next loop. It is not a sleeping or blocked
+thread.
+
+The maintained Auto creates its intake and gives the program one top-level bookmark during INIT:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
+```java
+@Override
+protected void configure(RobotProgram program) {
+    StarterProfile profile = StarterProfile.current();
+    StarterIntake intake = new StarterRobot(hardwareMap).declareAuto(program, profile);
+    program.rootTask(oneTimedCollect(intake));
+}
+```
+
+Configuration builds and saves the work, but it does not start collecting. FTC START starts the
+saved Task. That START call requests `COLLECT` and then lets the intake output apply the request.
+Later loops check the elapsed time without `sleep()`; when 0.75 seconds have elapsed, the Task
+requests `STOPPED` and finishes. Other loop work remains responsive throughout.
+
+The small factory returns a new bookmark every time it is called:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
+```java
+static Task oneTimedCollect(StarterIntake intake) {
+    return Objects.requireNonNull(intake, "intake")
+            .collectForSeconds(COLLECT_DURATION_SEC);
+}
+```
+
+Each Task object is single-use. To run the behavior again, call the factory again instead of
+restarting an old Task. On an early FTC STOP, the program cancels the active Task first; its
+cancellation selects `STOPPED`, and cleanup then shuts down the intake output and commands zero.
+Sequences, parallel work, and outcome branches belong in the later
+[First Autonomous](<First Autonomous.md>) lesson.
+
+## Full build: reconstruct the production path
+
+Continue here after the first pass when you are ready to trace the complete production path and
+its software evidence. Keep the example disabled until the separate hardware gate says otherwise.
 
 ## Critical production idea
 
@@ -55,8 +102,8 @@ return SemanticScalarTasks.set(modeCommand, Mode.COLLECT)
 ```
 
 The Task changes a persistent request; the later mechanism output owns the motor write. FTC STOP
-first cancels active root work, which selects `STOPPED`, and then terminally stops the Plant so
-physical zero does not depend on another loop. A Task object may start only once. Repeating this
+first cancels active root work, which selects `STOPPED`, and then terminally stops the Plant so it
+submits zero immediately instead of waiting for another loop. A Task object may start only once. Repeating this
 behavior means calling the factory again, never restarting the old object.
 
 Notice:

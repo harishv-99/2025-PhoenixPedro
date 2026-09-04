@@ -1522,5 +1522,5 @@ one; do not make one example own another example's lifecycle.
 - [`Recommended Robot Design`](<Recommended Robot Design.md>)
 - [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>)
 - [`Tasks and Macros`](<Tasks & Macros Quickstart.md>)
-- [`Framework Overview`](<../getting-started/Framework Overview.md>)
+- [`How Sushi runs your code`](<../getting-started/Framework Overview.md>)
 - [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>)

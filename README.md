@@ -1,26 +1,24 @@
 # Sushi framework
 
-Sushi is a non-blocking FTC robot framework built into an FTC SDK project. Ordinary robot code
-declares mechanisms, controls, Tasks, drive, and telemetry once; the managed runtime owns FTC
-lifecycle and loop order.
-
-The FTC SDK remains the OpMode and device-access foundation; [Sushi adds value](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md#why-use-sushi>)
-when behavior must be coordinated, reused by TeleOp and Auto, and checked in software as a robot grows.
+Sushi is an FTC robot framework built into an FTC SDK project. It organizes the same repeated work
+you already know from `while (opModeIsActive())` or `loop()`: read controls, advance unfinished
+actions, update hardware, show telemetry, and clean up at STOP.
 
 ## Start here
 
 Follow one source-based beginner path:
 
-1. Use [`Build and run Sushi`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>)
+1. Read [`How Sushi runs your code`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
+   to connect Sushi to a familiar FTC loop and learn when saved functions run.
+2. Use [`Set up and verify the Sushi project`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>)
    for project setup and software verification.
-2. Follow [`Build actuator knowledge one outcome at a time`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/build/README.md>).
-   The cumulative actuator path runs from one named power motor through a claw, lift reference,
-   feedback-aware lift move, and single-motor velocity; first drive and Pedro remain independent.
-3. Open [`Sushi in one picture`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
-   or [`choose a Sushi topic`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Beginner's Guide.md>)
-   only when a checkpoint needs a deeper answer. Use the canonical
-   [`Sushi documentation hub`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>)
-   later as a searchable reference.
+3. Take the required [`First software tour`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Software Tour.md>)
+   without enabling hardware.
+4. Open the complete [`Guide map`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>) and choose
+   the robot outcome or deeper explanation you need.
+
+The map routes to the focused [`Build recipes`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/build/README.md>).
+Drive is independent; actuator knowledge builds from intake toward claw, lift, and velocity.
 
 Each Build lesson links the exact compiling mechanism, OpMode, and software scenario that proves
 its current contract. Framework changes follow the

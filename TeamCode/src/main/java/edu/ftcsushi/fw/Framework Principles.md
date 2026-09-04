@@ -430,8 +430,15 @@ with code completion, Javadocs, examples, exceptions, and tests.
 
 - [`docs/README.md`](<docs/README.md>) is the canonical documentation hub. Root and package READMEs
   orient readers and route them there instead of maintaining competing maps.
-- Teach by progressive disclosure: overview, one continuous starter project, goal-based how-to
-  guides, deeper concepts, examples, reference, then maintainer material.
+- Teach by progressive disclosure. First contact may assume basic Java, `if` statements, methods,
+  FTC gamepad fields, and either familiar FTC loop spelling; it must not assume lambdas, callback
+  registration, Tasks, or framework-specific nouns. Start with an FTC-loop bridge and a required
+  software-only tour, then offer goal-based Build recipes, deeper concepts, examples, reference,
+  and maintainer material.
+- Before the first API that saves code for later, contrast a method call that runs now with a
+  function registered during setup and explain exactly when that saved function runs. Introduce a
+  plain action description before its framework noun. First-contact diagrams use those plain
+  actions; a nearby explanation may then map them to exact API terms.
 - Markdown is the one authored source for narrative guides and any generated documentation site.
   Javadocs remain the exact method-level API contract. Generated HTML must consume those sources,
   not become another hand-maintained copy.
@@ -471,8 +478,8 @@ If an answer is unclear, simplify ownership or naming before introducing another
 
 | Topic | Detailed guide |
 | --- | --- |
-| Beginner system model and managed runtime | [`Framework Overview`](<docs/getting-started/Framework Overview.md>) |
-| Managed phases and custom-host exception | [`Loop Structure`](<docs/core-concepts/Loop Structure.md>) |
+| Beginner FTC-loop bridge | [`How Sushi runs your code`](<docs/getting-started/Framework Overview.md>) |
+| Exact managed phases and custom-host exception | [`Loop Structure`](<docs/core-concepts/Loop Structure.md>) |
 | Sources, caching, and signals | [`Sources and Signals`](<docs/core-concepts/Sources and Signals.md>) |
 | FTC construction and Plant grammar | [`FTC Actuators & Plants`](<docs/ftc-boundary/FTC Actuators & Plants.md>) |
 | Target resolution and guards | [`Mechanism Target Planning`](<docs/drive-vision/Mechanism Target Planning.md>) |

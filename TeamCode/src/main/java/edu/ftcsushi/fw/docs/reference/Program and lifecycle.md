@@ -22,4 +22,4 @@ telemetry commit. The managed host advances the one clock exactly once per cycle
 cleanup. A component must never sleep or run a competing robot loop.
 
 Read [Loop Structure](<../core-concepts/Loop Structure.md>) for exact phase and failure behavior or
-[Sushi in one picture](<../getting-started/Framework Overview.md>) for the short mental model.
+[How Sushi runs your code](<../getting-started/Framework Overview.md>) for the short mental model.

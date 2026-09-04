@@ -3,12 +3,24 @@ tags:
   - Get Started
 ---
 
-# Build and run Sushi
+# Set up and verify the Sushi project
 
 **Learning mode:** Operational runbook
 
 Complete these checks on the existing project; this page
 does not ask you to author a robot subsystem.
+
+**Before this page:** read [How Sushi runs your code](<Framework Overview.md>) so the later
+`FtcRobotOpMode` and `configure(...)` names connect to a familiar FTC loop.
+
+## Optional: new to FTC deployment?
+
+Start with FIRST's official guides for
+[`configuring the robot hardware`](https://ftc-docs.firstinspires.org/en/latest/hardware_and_software_configuration/configuring/getting_started/getting-started.html)
+and
+[`building, installing, and running an Android Studio OpMode`](https://ftc-docs.firstinspires.org/en/latest/programming_resources/tutorial_specific/android_studio/creating_op_modes/Creating-and-Running-an-Op-Mode-%28Android-Studio%29.html).
+Those guides are useful before a later hardware run. A Robot Controller, Driver Station, and
+deployed OpMode are not prerequisites for this software checkpoint or the first software tour.
 
 ## Goal
 
@@ -27,8 +39,8 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [Build lessons](<../build/README.md>) — choose one focused fixture, then use the explicit TeleOp
-  and Auto integration lessons after its software and hardware gates pass.
+- [First software tour](<First Software Tour.md>) — the next required route after this setup
+  checkpoint, with all teaching OpModes still disabled.
 
 **Safety:** Keep the course OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.
@@ -78,8 +90,10 @@ result and the first actual error if the build fails.
 .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest
 ```
 
-These tests exercise the managed runtime, example ownership, Tasks, Plants, and Pedro reference with
-software fakes. They do not move hardware.
+These tests use software or recording stand-ins in place of gamepads, motors, sensors, and
+telemetry. That lets the maintained production code run and lets a test inspect the commands it
+submitted without a robot. The stand-ins contain no physics model, so they do not prove wiring,
+direction, real motion, load, or stopping distance. The tests do not move hardware.
 
 ## 4. Find the learning sources
 
@@ -88,21 +102,22 @@ and [`RobotProgram`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftc
 from Android Studio or the generated API reference. Every Build recipe links one disabled, compiling
 OpMode and labels its GitHub link **Complete source**.
 
-The `@Disabled` annotation keeps a teaching OpMode off the Driver Station menu. Extending the
-managed host means the example declares its roles rather than recreating FTC lifecycle callbacks.
+The `@Disabled` annotation keeps a teaching OpMode off the Driver Station menu. An ordinary Sushi
+OpMode extends `FtcRobotOpMode` and overrides `configure(RobotProgram program)`. Sushi calls that
+method once during FTC INIT so the robot can connect its controls and robot parts; afterward,
+`FtcRobotOpMode` supplies the repeated FTC loop and STOP cleanup.
 
 Do not remove `@Disabled` merely to follow the source-based walkthrough. A later physical run must
-first review every hardware name, direction,
-mechanism power, drive scale, and drive brake choice required by that mode. The checked-in profile
-is software-valid so it compiles, but its motion permissions remain false. Those defaults are
+first review every hardware name, direction, mechanism power, drive scale, and drive brake choice
+required by that mode. The checked-in profile is software-valid so it compiles, but its motion
+permissions remain false. If a required permission is still false, the example refuses to create
+that motion-capable hardware owner and reports what must be reviewed. This is “fail closed”: when
+permission is missing, the program refuses motion instead of guessing that it is safe. Defaults are
 examples, not proof that the configuration or motion is correct for your robot.
 
-When the team later works with hardware, the ready-made tester suite is separate from the disabled
-course examples. It has exactly two entries:
-**FW: Testers (Driver Station)** for physical-gamepad input and **FW: Testers (Panels)** for
-Panels virtual-gamepad input. They run the same testers and controls and show the same telemetry on
-both consoles; choose one input owner for the whole run. Read the
-[`testing console guide`](<../testing-calibration/README.md>) before any supervised hardware work.
+Optional later step: the ready-made hardware tester consoles are separate from the disabled course
+examples. Read the [`testing console guide`](<../testing-calibration/README.md>) before any
+supervised hardware work.
 
 ## 5. Deploy without enabling the course examples
 
@@ -111,12 +126,6 @@ install the project. Confirm that the Driver Station connects and lists the team
 OpModes. The course examples remain absent because they are disabled.
 
 This separates project/deployment problems from hardware-configuration problems.
-
-If this is your first FTC setup, use FIRST's official guides for
-[`configuring the robot hardware`](https://ftc-docs.firstinspires.org/en/latest/hardware_and_software_configuration/configuring/getting_started/getting-started.html)
-and
-[`building, installing, and running an Android Studio OpMode`](https://ftc-docs.firstinspires.org/en/latest/programming_resources/tutorial_specific/android_studio/creating_op_modes/Creating-and-Running-an-Op-Mode-%28Android-Studio%29.html).
-Sushi begins after those FTC controller and deployment steps are working.
 
 ## Expected checkpoint
 
@@ -149,11 +158,10 @@ No. Tests cannot inspect the Robot Controller configuration, wiring, motor polar
 travel, or available floor space. Use the testing and calibration runbooks when the team begins
 that separate work.
 
-## Continue with robot code
+## Continue with the first software tour
 
-With the software baseline green, [choose the next Build outcome](<../build/README.md>). Drive is
-an independent path when your robot needs it. For an actuator, begin with continuous intake. The
-knowledge builds in order, while each hardware fixture stays focused; stop after the outcome your
-robot needs, then use the integration lesson instead of merging examples by guesswork.
-
-**Framework tour:** [`Sushi in one picture`](<Framework Overview.md>)
+With the software baseline green, follow the [First software tour](<First Software Tour.md>) while
+the teaching OpModes remain disabled. It introduces live drive values, one button press, and one
+timed Auto entirely through maintained software scenarios. After that tour, [choose the next Build
+outcome](<../build/README.md>) your robot needs and follow that lesson's separate hardware gate only
+when the matching hardware is ready.

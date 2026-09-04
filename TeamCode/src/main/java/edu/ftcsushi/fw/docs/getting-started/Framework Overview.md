@@ -3,164 +3,144 @@ tags:
   - Get Started
 ---
 
-# Sushi in one picture
+# How Sushi runs your code
 
-**Learning mode:** Architecture reference
+**Start here if:** you know basic Java and have written an FTC `LinearOpMode` or iterative
+`OpMode`, but saved functions and frameworks are new to you. This page needs no robot.
 
-Sushi lets students describe a robot once while the framework owns the FTC lifecycle and runs
-everything in a predictable order. This 15–20 minute, read-only tour uses the small Starter robot.
-It requires no matching hardware, build, or example edit.
+Sushi does not replace the FTC SDK. It supplies a consistent way to organize the setup, repeated
+work, and cleanup that every full robot needs.
 
-## Why use Sushi?
+## 1. Start with the FTC loops you know
 
-The FTC SDK is the foundation: it provides OpModes, `HardwareMap`, gamepads, devices, and telemetry,
-while each team chooses its robot-software structure. For a one-device diagnostic, direct SDK code
-may be simpler.
+In a `LinearOpMode`, your code usually sets up the robot, waits for START, and repeats a little work
+inside `while (opModeIsActive())`. In an iterative `OpMode`, FTC calls `init()`, `start()`, `loop()`,
+and `stop()` for you. Both styles contain the same three jobs:
 
-Sushi pays off as a robot grows:
+| Job | `LinearOpMode` | Iterative `OpMode` |
+| --- | --- | --- |
+| Create robot parts | Before the active `while` loop | `init()` |
+| Repeat small updates | Inside the active `while` loop | `loop()` |
+| Stop safely | When the active loop ends | `stop()` |
 
-- one predictable order for work in each loop and one managed cleanup path;
-- timed actions without sleeps or frozen driver control;
-- the same robot actions in TeleOp and Auto;
-- one clear owner for each final actuator command; and
-- software checks of the production mechanism without matching hardware.
+Sushi owns that repetition and cleanup while your code describes what belongs in them.
 
-The tradeoff is learning a small vocabulary and consistent structure. In return, students repeat
-less lifecycle and coordination code. The small Starter method below declares the robot once;
-Sushi runs it later.
+## 2. Separate a current value from a reusable reader
 
-## The student entry point
+Reading `gamepad1.a` gives the `boolean` value at that line. Saving it does not make the variable
+change on later loops. A **reusable reader** is a small object that gets the newest value whenever
+it is asked. Sushi calls this reader a **Source**; `BooleanSource` reads true/false and
+`ScalarSource` reads a number. The small adapter that turns FTC gamepad fields into these readers is
+`GamepadDevice`.
 
-### Critical code
-
-An ordinary Sushi OpMode overrides one method. This is the complete method from
-[`StarterTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java>):
-
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java -->
 ```java
-@Override
-protected void configure(RobotProgram program) {
-    StarterProfile profile = StarterProfile.current();
-    new StarterRobot(hardwareMap).declareTeleOp(program, profile, gamepad1);
-}
+boolean pressedNow = gamepad1.a;             // one current value
+GamepadDevice driver = new GamepadDevice(gamepad1);
+BooleanSource aEachLoop = driver.a();        // reusable reader
+ScalarSource forwardEachLoop = driver.leftY();
 ```
 
-**What to notice**
+`pressedNow` keeps one value. `aEachLoop`, returned by `driver.a()`, and `forwardEachLoop` can supply
+the current value on every active loop. Continuously moving or held drive sticks need this shape.
 
-- The OpMode chooses configuration and delegates composition once.
-- `RobotProgram` owns the loop and cleanup after `configure(...)` returns.
+## 3. Separate a call from a registered function
 
-**Key APIs:** `FtcRobotOpMode` is the managed FTC host; `RobotProgram` is the declaration and
-lifecycle surface.
+Calling a method runs it now.
 
-`StarterProfile` supplies checked-in configuration. `StarterRobot` performs code composition: it
-constructs the intake, controls, and drivetrain owners, registers the controls' bindings, and
-declares the managed output, drive, and presenter roles. `StarterTeleOpControls` owns the button
-meanings. `FtcRobotOpMode` calls `configure(...)` once and owns all later lifecycle calls.
+For example, reaching `intake.setMode(StarterIntake.Mode.COLLECT)` immediately changes the selected
+request. The motor still waits for the later output update. That direct call is a comparison, not a
+line to place above the button rule below.
 
-## What executes after composition
+A no-argument function saved for later can be written as a **lambda**. The `() ->` characters
+create the function; they do not run its body. Attaching a saved function to an event makes it a
+**callback**. Sushi stores callback rules together in `CallbackBindings`. This production button
+rule passes only the saved function:
+
+```java
+program.callbackBindings().onRise(
+        driver.a(),
+        () -> intake.setMode(StarterIntake.Mode.COLLECT)); // register for later
+```
+
+Registration saves the function; it does not run it.
+
+The `onRise(...)` rule means: when A changes from released to pressed, accept that event and call
+the function once. Holding A does not call it again. When a future active loop detects the rise,
+it invokes the callback synchronously during that loop; Sushi does not create a thread.
+
+## 4. Give unfinished work a bookmark
+
+A Task is a bookmark for unfinished work.
+
+Each active loop advances it a little, so the rest of the robot can still update. Use this shape for
+work such as collecting for 0.75 seconds, following a route, or waiting for a sensor. A Task is not
+a thread, `sleep`, or a busy `while` loop. Each Task object runs once; ask the robot action method
+for a fresh one when you need to repeat it.
+
+## 5. See the whole run
 
 ```mermaid
-flowchart TB
-  accTitle: Sushi managed execution after robot code composition
-  accDescr: The FTC INIT call performs code composition once. Managed INIT cycles do not run bindings, Tasks, outputs, or drive. At START, a ready program starts optional services and a root Task before one output and drive update; a blocked program keeps active owners inert. Every ready ACTIVE cycle advances the clock, optional services, bindings, Tasks, outputs and drive, presenters, and one telemetry commit. STOP or a caught RuntimeException cleans up Tasks, bindings, outputs, and services in order.
+flowchart LR
+  accTitle: What Sushi does from INIT to STOP
+  accDescr: During INIT student code creates robot parts, saves button rules, and declares repeated work. After FTC START, when setup succeeded, every active loop checks rules, advances ongoing actions, updates robot parts, and shows telemetry. At FTC STOP, Sushi cancels ongoing actions and stops hardware owners.
 
-  subgraph COMPOSE["CODE COMPOSITION — once during the first INIT call"]
-    direction TB
-    C1["configure(program)"] --> C2["Choose StarterProfile and create StarterRobot"]
-    C2 --> C3["Register button bindings<br/>declare intake output, drive, and presenter"]
-    C3 --> C4["RobotProgram freezes the declarations"]
-  end
+  I["INIT<br/>create robot parts<br/>save button rules<br/>declare repeated work"]
+  A["ACTIVE — each loop after successful setup<br/>check saved rules<br/>advance ongoing actions<br/>update robot parts<br/>show telemetry"]
+  S["STOP<br/>cancel ongoing actions<br/>stop hardware owners"]
 
-  subgraph RUN["MANAGED EXECUTION — framework owned"]
-    direction TB
-    I["INIT after composition<br/>optional Prestart check → Presenters<br/>one telemetry commit<br/>Later INIT loops first advance Clock<br/>active owners stay inert"]
-    S["START once<br/>freeze optional Prestart → reset Clock"]
-    D{"READY?"}
-    R["READY<br/>start optional Services and root Task<br/>run outputs and drive once<br/>no telemetry commit"]
-    B["BLOCKED<br/>active owners stay inert<br/>later loops: Clock → Presenters<br/>one telemetry commit"]
-    A1["ACTIVE: Clock"] --> A2["optional Services"]
-    A2 --> A3["Bindings"]
-    A3 --> A4["Tasks"]
-    A4 --> A5["Outputs and drive"]
-    A5 --> A6["Presenters"]
-    A6 --> A7["one telemetry commit"]
-    X["STOP or caught RuntimeException<br/>cancel/clear Tasks → clear bindings<br/>stop outputs, including drive, in order<br/>stop Services in reverse order"]
-  end
-
-  C4 --> I
-  I --> S
-  S --> D
-  D -- "yes" --> R
-  D -- "no" --> B
-  R --> A1
-  B -. "later blocked loop" .-> B
-  A7 -. "next active cycle" .-> A1
-  A7 -. "FTC STOP" .-> X
-  B -. "FTC STOP" .-> X
-  I -. "STOP or caught RuntimeException" .-> X
-  S -. "STOP or caught RuntimeException" .-> X
+  I -->|FTC START| A
+  A -->|next loop| A
+  A -->|FTC STOP| S
 ```
 **Text version:**
 
-1. During the first FTC INIT call, `configure(program)` selects the profile, creates the Starter
-   composition root, registers button bindings, and declares the intake output, drive, and a
-   presenter. It then freezes those declarations. This code composition happens once.
-2. After composition, the first INIT call runs an optional Prestart check, presents status, and
-   commits telemetry once. Each later INIT loop first advances the clock and then does the same.
-   Prestart means data-only work that may select the BLOCKED disposition and prevent active owners
-   from starting. Starter TeleOp has no Prestart, Service, or root Task; none is required. Bindings,
-   Tasks, managed outputs, and drive stay inert in INIT.
-3. At START, Sushi freezes Prestart and resets the same clock. If READY, it starts optional
-   Services and the optional root Task, then runs outputs and drive once without committing
-   telemetry. A Service is recurring background ownership such as localization; a root Task is an
-   Auto routine. If BLOCKED, active owners remain inert and later loops run only Clock → Presenters
-   → one telemetry commit.
-4. Each READY ACTIVE cycle runs Clock → optional Services → Bindings → Tasks → Outputs and drive →
-   Presenters → one telemetry commit, then repeats in the same order.
-5. At STOP, Sushi best-effort cancels and clears Tasks, clears bindings, stops outputs in
-   declaration order—including drive—and stops Services in reverse declaration order. A managed
-   phase that throws a `RuntimeException` enters the same cleanup path; Java `Error`s are not
-   caught.
+1. During INIT, student code creates robot parts, saves button rules, and declares repeated work.
+2. After FTC START, in an ordinary run whose setup succeeded, each active FTC loop checks the
+   rules, advances unfinished actions a little, updates the robot parts that own outputs, and shows
+   telemetry.
+3. At FTC STOP, Sushi cancels unfinished actions and stops the hardware owners. Nothing here needs
+   a background thread.
 
-The diagram shows both START dispositions but omits rarer failure details. See
-[Loop structure](<../core-concepts/Loop Structure.md>) when implementing Prestart or Services, or
-when diagnosing the managed phase order.
+## 6. Map the picture to the small Sushi entry point
 
-## Follow one button through the cycle
+The Sushi class that receives FTC's iterative calls is its managed host, `FtcRobotOpMode`. The
+object that remembers what the host must run is its checklist, `RobotProgram`. The maintained
+intake-only example shows the whole OpMode shape. The helper names inside `configure(...)` are
+explained in the later full Build lesson; for now, notice the class it extends and the one method
+it overrides:
 
-When the driver first presses A during an ACTIVE cycle:
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.java -->
+```java
+@TeleOp(name = "FW Starter: Intake only", group = "FW Examples")
+@Disabled
+public final class StarterIntakeTeleOp extends FtcRobotOpMode {
 
-`A is true` → its rising-edge binding runs → `setMode(COLLECT)` changes the intake's request → the
-later output phase updates the private Plant → the Plant performs the sole motor write → the
-presenter reads the requested mode and cached applied target → Sushi commits that telemetry frame.
+    @Override
+    protected void configure(RobotProgram program) {
+        StarterProfile profile = StarterProfile.current();
+        new StarterRobot(hardwareMap).declareIntakeTeleOp(program, profile, gamepad1);
+    }
+}
+```
 
-A **Plant** is the mechanism-owned object that resolves one actuator target and performs the final
-hardware write.
+[`StarterIntakeTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.java>)
+is the complete source. `configure(program)` runs once during INIT. `declareIntakeTeleOp(...)`
+connects pieces that Sushi will use later; it does not run the intake during configuration. Do not
+add another active loop.
 
-Three distinctions keep that trace truthful:
+## 7. Keep one final hardware writer
 
-- Drive sticks do not pass through callback bindings. The drive source samples them in the
-  Outputs/drive phase and the drive sink performs the final drivetrain write.
-- A Task changes a capability or Plant request; it does not write hardware directly. The owning
-  output performs that later phase.
-- An applied target reports what software resolved and submitted. It does not prove that a motor
-  moved or that a game piece was collected.
+In the intake path, the button function and Task request what the robot should do; neither writes
+the motor. A robot part that owns hardware is called a **mechanism**. The intake mechanism keeps a
+private final-output helper, called a **Plant**. That Plant owns the one final write path used by
+normal output updates and STOP cleanup.
 
-## Where students make changes
+For example: A rises → the callback requests `COLLECT` → the intake mechanism updates → its Plant
+submits the motor command → telemetry shows cached software facts.
 
-| If the team wants to change… | The usual owner |
-|---|---|
-| A motor name, direction, permission, limit, or `collectPower` value | [`StarterProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.html>) and its data-only configuration |
-| What A, B, X, a trigger, or a stick means | [`StarterTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>) |
-| The shared robot word `COLLECT` and its status | [`StarterIntake`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.html>) |
-| How a mode becomes a bounded Plant target and hardware update | [`StarterIntakeMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.html>) |
+A software test can prove that `COLLECT` selected and submitted the configured command. It cannot
+prove a motor is wired to the intended port, turned in the intended direction, moved a game piece,
+or stopped safely. Those are separate, supervised hardware checks.
 
-The composition root connects those owners. It should not become a control script. Mechanisms keep
-their Plants private so controls, Tasks, and Auto all use the same visible intent-to-hardware path.
-
-## Choose one next route
-
-1. Verify the software project with [Build and run Sushi](<Build and Run.md>).
-2. [Choose one robot outcome to build](<../build/README.md>) and finish its next visible checkpoint.
-3. Open [Choose a Sushi topic](<Beginner's Guide.md>) only for the deeper question in front of you.
+Next, [set up and verify the Sushi project](<Build and Run.md>), then complete the required
+[first software tour](<First Software Tour.md>).

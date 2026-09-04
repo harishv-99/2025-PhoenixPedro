@@ -378,7 +378,9 @@ public final class GamepadDevice {
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * The A button.
+     * Return a reusable reader of the A button's current state, not a one-time boolean snapshot.
+     *
+     * <p>Each sample of the returned source reports whether the button is held at that time.</p>
      *
      * @return a {@link BooleanSource} that is true while the button is held
      */
