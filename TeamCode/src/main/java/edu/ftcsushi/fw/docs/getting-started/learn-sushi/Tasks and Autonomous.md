@@ -14,9 +14,13 @@ the Starter and Pedro buildable modules supply complete executable slices.
 
 **Reading time:** about 8 minutes
 
-A Sushi `Task` is cooperative work advanced by the one managed loop. It never needs `sleep()` or
-a long-running `while` loop. Reading this page does not require editing code, enabling an example,
-or moving hardware.
+**Prerequisite:** the timed step in the [First software tour](<../First Software Tour.md>) introduces
+the loop-by-loop idea without composition details.
+
+Think of a bookmark in a multi-step robot action: each FTC loop does a little work, records where
+to continue, and returns so the rest of the robot can update. Sushi calls that bookmark a `Task`.
+It does not create a new thread and never needs `sleep()` or a long-running `while` loop. Reading
+this page does not require editing code, enabling an example, or moving hardware.
 
 ## Start with one timed intake
 

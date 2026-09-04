@@ -9,9 +9,10 @@ site_dir = "build/docs-site"
 nav = [
   { "Get Started" = [
     { "Welcome to Sushi" = "README.md" },
-    { "All guides" = "docs/README.md" },
+    { "How Sushi runs your code" = "docs/getting-started/Framework Overview.md" },
     { "Set up and verify" = "docs/getting-started/Build and Run.md" },
-    { "Sushi in one picture" = "docs/getting-started/Framework Overview.md" },
+    { "First software tour" = "docs/getting-started/First Software Tour.md" },
+    { "Guide map" = "docs/README.md" },
   ] },
   { "Learn" = [
     { "Choose a concept" = "docs/getting-started/Beginner's Guide.md" },

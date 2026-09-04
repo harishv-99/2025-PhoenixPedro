@@ -11,6 +11,53 @@ request `STOPPED`, while one managed mechanism owns every motor write.
 **Prerequisites:** the project software checks pass. No prior Plant, capability, binding, or Task
 knowledge is assumed. Keep the intake motor disconnected until the isolated hardware gate.
 
+## First pass: run a function once per press
+
+Start with the familiar event, before the motor internals. This exact production registration says,
+“when A changes from released to pressed, call `setMode(COLLECT)` once”:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java -->
+```java
+requiredCallbacks.onRise(
+        driver.a(),
+        () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
+```
+
+The second argument is a Java **lambda**. `()` means it needs no arguments, and `->` separates that
+empty argument list from the method call to run later. Passing the lambda to `onRise(...)` saves the
+call; registering it during INIT does **not** execute `setMode(...)`.
+
+After the first button sample establishes whether A started pressed or released, the important part
+is equivalent to this familiar loop code. This is a timing comparison, not a second robot-code
+architecture or production implementation:
+
+```text
+boolean aIsPressedNow = gamepad1.a;
+if (aIsPressedNow && !aWasPressedLastLoop) {
+    intake.setMode(StarterIntake.Mode.COLLECT);
+}
+aWasPressedLastLoop = aIsPressedNow;
+```
+
+During a later active FTC loop, an accepted released-to-pressed change invokes the saved lambda
+synchronously: the call finishes right there in the button-checking part of that same loop. It does
+not start a thread. The intake's output update comes afterward in the loop, so the new request can
+reach the motor command in that cycle.
+
+| Button history | What happens |
+| --- | --- |
+| First sample released | Establish the starting value; do not call the lambda. |
+| Press A | Call `setMode(COLLECT)` once. |
+| Hold A | Do not call it again; the `COLLECT` request remains selected. |
+| Release A | Do not call it; the `COLLECT` request still remains selected. |
+| Press A again | Accept a new rise and call it once again. |
+
+In the simple A/X trace, releasing A does not stop the intake: `COLLECT` persists until X selects
+`STOPPED`. The production B button can replace it with `EJECT`. The full build below shows how those
+named requests become one managed motor command and how STOP cleanup remains safe.
+
+## Full build: reconstruct the production path
+
 **Start here:** this is the complete first actuator lesson. It follows one request from the public
 robot meaning through configuration, Plant construction, managed update, status, controls, the
 OpMode host, a software test, and finally supervised hardware evidence.

@@ -3,7 +3,9 @@ package edu.ftcsushi.fw.ftc;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 /**
- * FTC iterative OpMode host for one declarative Sushi {@link RobotProgram}.
+ * Supplies the iterative FTC lifecycle for one Sushi {@link RobotProgram}. Robot code overrides
+ * {@link #configure(RobotProgram)} to build its checklist once during FTC INIT; this host then
+ * uses that checklist for the rest of the FTC lifecycle.
  *
  * <p>Ordinary robot code overrides only {@link #configure(RobotProgram)}. The final FTC callbacks
  * own the shared clock, optional prestart policy, exact START boundary, fixed active phase order,

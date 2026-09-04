@@ -24,8 +24,13 @@ import edu.ftcsushi.fw.task.TaskBindings;
 import edu.ftcsushi.fw.task.TaskRunner;
 
 /**
- * Declares one FTC robot program whose reusable lifecycle is owned by
- * {@link FtcRobotOpMode}.
+ * Collects the robot pieces that Sushi should run. An ordinary declaration saves a piece for
+ * later; it does not run that piece's later behavior. A declaration can still perform immediate
+ * setup work documented by that method, such as validation. After configuration, the framework
+ * invokes the saved pieces in lifecycle order.
+ *
+ * <p>This object declares one FTC robot program whose reusable lifecycle is owned by
+ * {@link FtcRobotOpMode}.</p>
  *
  * <p>Ordinary robot code receives this object only in
  * {@link FtcRobotOpMode#configure(RobotProgram)}. It constructs robot-specific owners and declares

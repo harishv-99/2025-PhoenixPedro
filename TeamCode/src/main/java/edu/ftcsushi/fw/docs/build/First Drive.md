@@ -9,9 +9,48 @@ tags:
 configuration, then prove robot-frame signs, capped motor commands, and managed stop in software
 before any wheel touches the floor.
 
-**Prerequisites:** [Build and run](<../getting-started/Build and Run.md>) succeeds. You do not need
+**Prerequisites:** [Set up and verify](<../getting-started/Build and Run.md>) succeeds. You do not need
 to know Sushi sources, bindings, or drive APIs yet. No robot is required until the isolated hardware
 gate below.
+
+## First pass: current values every loop
+
+If you have written an iterative FTC `OpMode`, think of `configure(...)` as the one-time place where
+you connect the parts that later loops will use. This exact production excerpt shows the class
+declaration and complete `configure(...)` method; its helper definitions continue in the full build:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java -->
+```java
+@TeleOp(name = "FW First Drive", group = "FW Examples")
+@Disabled
+public final class FirstDriveTeleOp extends FtcRobotOpMode {
+
+    @Override
+    protected void configure(RobotProgram program) {
+        FirstDriveControls controls = new FirstDriveControls(
+                new GamepadDevice(gamepad1));
+        FtcDrives.MecanumConfig drive = firstRunDriveConfig();
+
+        program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, drive));
+    }
+```
+
+Sushi calls `configure(...)` once during the first INIT. Read the body as: make one reusable gamepad
+reader, make one complete example drive configuration, and connect that reader to the drivetrain. The
+`program.drive(...)` line saves the connection; it does not capture one stick position or perform
+one drive event while configuration is running.
+
+At START and on every active FTC loop, the saved reader supplies the **current** forward, sideways,
+and turn values. Centered sticks produce a current zero request. Holding a stick keeps producing its
+current held value; moving or releasing it changes the next loop's value. Drive values are therefore
+sampled continuously, not treated as button press/release events.
+
+The `FtcRobotOpMode` base class owns those later loops and also sends zero during STOP cleanup. Keep
+`@Disabled` in place until the full build below has reconstructed and reviewed all four hardware
+names, directions, the BRAKE/FLOAT choice, and the cautious output caps. Software can prove which
+commands were submitted, not how real wheels will turn or stop.
+
+## Full build: reconstruct the production path
 
 **Start here:** this is the complete first-drive lesson. Follow the data from the FTC object through
 the input adapter, controls-owned meaning, drive configuration, managed program, software proof,
@@ -154,15 +193,10 @@ FTC gamepad -> GamepadDevice -> FirstDriveControls -> DriveSource -> DriveSignal
 FTC STOP or caught lifecycle failure -> RobotProgram cleanup -> sink.stop() -> four zero commands
 ```
 
-This distinction prevents a common wiring mistake:
-
-- `CallbackBindings` interprets a Boolean event or level and runs a short synchronous capability
-  callback during the bindings phase. It is appropriate for replacing persistent intent.
-- `TaskBindings` interprets an event and asks a supplier for a fresh, single-use `Task` whose work
-  continues cooperatively over later cycles.
-- Drive sticks already represent a complete value every cycle. They go directly through
-  `program.drive`; do not manufacture button edges, callbacks, or Tasks just to copy stick values
-  into a drivetrain.
+Drive sticks already represent a complete value every cycle. They go directly through
+`program.drive`; do not turn them into press/release events or copy them through a second loop.
+Button transitions and work that continues over time are separate ideas introduced by
+[Continuous Intake](<Continuous Intake.md>) and [Run One Timed Auto](<Run One Timed Auto.md>).
 
 On STOP, the managed host terminalizes, performs its one cleanup pass, and the drive sink submits
 zero to all four motors. Repeated STOP is inert. This is strong software evidence about submitted

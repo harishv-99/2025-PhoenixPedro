@@ -236,6 +236,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 127 | DOC-12 | Progressive actuator API learning path | Done | Make the first motor lesson self-contained, teach later Plant shapes through cumulative outcomes, add the missing single-motor velocity step, and keep exhaustive alternatives in reference documentation. |
 | 128 | DOC-13 | Reconstruction-grade beginner Build spine | Done | The reviewed reconstruction-grade Build route, focused integration outcomes, maintained fixtures, source-excerpt contracts, deterministic evidence, Android Studio approval, and destination-specific publication authorization are complete. |
 | 129 | DOC-14 | First sensor-to-status Build outcome | Proposed | Teach one no-motion digital sensor from FTC adapter through polarity, debounce, cached semantic status, presenter, focused software evidence, and an isolated physical gate without introducing a generic sensor framework. |
+| 130 | DOC-15 | FTC-loop-first Get Started path | Done | The reviewed FTC-loop-first introduction, required software-only tour, progressive Build first passes, synchronized guidance, verification, Android Studio review, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -27155,6 +27156,121 @@ implementation.
   separate. Prefer no new abstraction unless at least two independent callers prove a stable shared
   lifecycle. Do not start vision, inventory, multi-sensor policy, or production-robot cleanup under
   this item.
+
+### DOC-15 - FTC-loop-first Get Started path
+
+- **Gate 1 status and implementation approval (2026-09-04):** **Verifying** on
+  `codex/doc-15-ftc-loop-first-get-started`, created from merged
+  `origin/master@b87e624fc6c6b953aec8a8721dbee23cfe93801c`. The user asked for a first-contact explanation
+  aimed at students who know basic FTC coding, variables, `if` statements, and methods but do not
+  yet understand registered callbacks, deferred execution, or framework nouns. After reviewing the
+  decision-complete plan, the user explicitly directed **“Implement the plan.”** This authorizes
+  DOC-15 implementation only; it does not authorize staging, publication, DOC-14, public API
+  changes, or production-robot changes.
+- **Confirmed gap and affected documentation:** the Welcome and canonical hub begin with `intent`,
+  `bounded`, `heartbeat`, and `Task` before grounding those words. The current first-contact page is
+  labeled an architecture reference and diagrams Prestart, READY/BLOCKED, Services, bindings,
+  Tasks, outputs, presenters, exact cleanup, and failure behavior before explaining how one button
+  calls one function. Its `configure(...)` excerpt omits the `FtcRobotOpMode` class bridge, and the
+  site routes disagree about whether setup, the overview, Drive, or the concept router comes first.
+  First Drive unnecessarily introduces callback and Task binding internals while teaching held
+  sticks; Continuous Intake postpones recognizable button code until after Plant internals; the
+  timed Auto lesson assumes a Task mental model. Affected authorities are the Get Started pages and
+  navigation, those three Build lessons, their Learn cross-links, introductory Javadocs, Framework
+  Principles and maintainer teaching rules, documentation regression tests, and inbound framework-
+  link labels in Phoenix application documentation. The Phoenix synchronization changes
+  documentation labels only; no application Java, configuration, ownership, or behavior is in
+  scope.
+- **Chosen teaching design:** assume either introductory `LinearOpMode` or iterative `OpMode`
+  experience and first explain that Sushi supplies the repeated FTC work and STOP cleanup while
+  `configure(program)` builds its checklist once. Teach a current value, a reusable reader, a method
+  call, and a stored no-argument lambda before naming a callback binding. State that callbacks run
+  synchronously in a later FTC loop and that a Task is bookmarked work advanced a little per loop,
+  never a thread or sleep. Use a plain-language lifecycle picture before mapping phrases to Sushi
+  nouns. Give every student one dedicated software-only tour—continuous Drive input, one intake
+  button event, then one timed Auto—while the Build area remains goal-selective and all physical
+  gates remain optional for that learning tour.
+- **Alternatives rejected:** one long overview would recreate the current first-contact overload.
+  Putting the course inside the exhaustive guide map would mix progression with lookup. A purely
+  goal-selective router would still let a novice encounter deferred execution without preparation,
+  while one mandatory hardware course would reintroduce unrelated-mechanism requirements. New
+  callback, Task, drive, or Plant APIs are unnecessary; the supported APIs become understandable
+  once registration time, execution time, and loop ownership are taught explicitly.
+- **Ownership and Framework Principles check:** the change preserves the managed host, callback and
+  Task semantics, one Plant/drive realization path, truthful software-versus-hardware evidence, and
+  reconstruction-grade Build details. It changes explanatory order and introductory Javadocs only.
+  Exact READY/BLOCKED, phase, cancellation, cleanup, and failure contracts remain in Loop Structure
+  and API reference. Plain meaning comes first, the maintained example second, and the framework
+  name last. DOC-14 remains Proposed and untouched.
+- **Bounded implementation and verification plan:** reorder Get Started as Welcome → How Sushi runs
+  your code → Set up and verify → First software tour → Guide map; rewrite the overview around both
+  familiar FTC loop styles, code-now versus saved-for-later, one button timeline, a plain diagram,
+  and one-owner realization; add the dedicated tour; add five-minute first-pass layers to Drive,
+  Intake, and timed Auto; simplify setup and concept-router language; align the introductory
+  Javadocs for `FtcRobotOpMode`, `RobotProgram`, `GamepadDevice`, `CallbackBindings`, and
+  `TaskBindings`; encode the progressive-disclosure rule in Framework Principles and Maintainer
+  Notes; strengthen documentation tests; synchronize only stale inbound framework-page labels in
+  application documentation; then run focused and full TeamCode tests/compile, Javadocs, strict
+  Zensical rendering, generated search/link checks, static scans, whitespace checks, adversarial
+  reviews, and `git diff --check`. No hardware or usability study is claimed by software
+  verification.
+- **Gate 2 implementation result (2026-09-04):** the 32-path unstaged diff implements the approved
+  documentation-only design with no public API, signature, or runtime behavior change. Get Started
+  now has one canonical order—Welcome → How Sushi runs your code → Set up and verify → First
+  software tour → Guide map. The new first-contact page begins with familiar FTC loop shapes,
+  distinguishes current values from reusable readers and immediate calls from registered functions,
+  defines a Task as a bookmark, then maps plain actions to `FtcRobotOpMode`, `RobotProgram`, and one
+  final Plant writer. The required software tour links short source-backed Drive, button, and timed-
+  Auto first passes before students choose a goal-specific full Build or hardware gate. Setup,
+  Learn/reference links, site navigation, five introductory Javadocs, Framework Principles,
+  Maintainer Notes, and stale Phoenix inbound labels are synchronized. The five production Java
+  files contain Javadoc changes only; the sole executable Java change strengthens documentation
+  regression tests.
+- **Adversarial corrections:** three independent read-only reviews examined the diff as a novice,
+  against lifecycle/ownership principles, and for route/source/render integrity. Their findings
+  closed ambiguous registration-loop wording, an overbroad ready-run claim, custom-host timing and
+  Plant STOP wording, a tour/helper mismatch, duplicate generated anchors, predictions beyond test
+  evidence, software-versus-hardware prerequisite conflicts, an empty rendered section, stale
+  inbound titles, and whole-file rather than exact-attached-Javadoc assertions. Final reviewer
+  verdicts report no remaining actionable findings. The three first-pass slices remain bounded:
+  Drive is 220 prose words with one 12-line Java excerpt, intake is 297 words with one 3-line Java
+  excerpt, and timed Auto is 201 words with two excerpts totaling 10 lines.
+- **Deterministic verification (2026-09-04):** Android Studio JBR 21 passed the final focused
+  `DocumentationLinksTest` contract (**33 tests**) and the complete TeamCode compile/test run:
+  **248 suites, 2,220 tests, 0 failures, 0 errors, and 0 skipped**.
+  `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:sushiJavadocs` succeeded; the Java 8 target
+  produced only the repository's known JDK 21 deprecation warnings. Strict Zensical rendering
+  reported no issues. Generated checks verified the open-ShadowRoot search enhancer and **930
+  indexed sections across all six guide areas**, plus **159 API links and 75 maintained source links
+  across 45 Markdown pages**. Static scans found no stale introductory titles, leaked advanced terms
+  in the first-contact page, or duplicate manual first-pass IDs. `git diff --check` is clean apart
+  from Git's line-ending notices; the one new text file has no trailing whitespace and ends with a
+  newline. The index is empty, DOC-14 remains Proposed and untouched, and branch/base remain
+  `codex/doc-15-ftc-loop-first-get-started` at
+  `origin/master@b87e624fc6c6b953aec8a8721dbee23cfe93801c`.
+- **Unverified physical/interactive boundary:** no robot hardware or student usability study was
+  available. This work does not claim wiring, motor direction, physical motion, stopping behavior,
+  timing under real load, or that every novice will interpret the pages identically. Those limits
+  are stated in the lessons, and the isolated hardware gates remain separate from the required
+  software tour.
+- **Android Studio and publication stop (2026-09-04):** inspect the exact 32-path unstaged diff on
+  `codex/doc-15-ftc-loop-first-get-started`, based on
+  `origin/master@b87e624fc6c6b953aec8a8721dbee23cfe93801c`, especially the five-page Get Started order,
+  immediate-versus-deferred explanation, plain lifecycle diagram, three software-tour predictions,
+  first-pass/full-build boundaries, evidence wording, introductory Javadocs, and strengthened
+  documentation contracts. No file is staged, committed, pushed, opened as a pull request, or
+  merged, and no next tracker item has been started. After review, the exact combined authorization
+  is: **“DOC-15 looks good. Authorize committing the reviewed DOC-15 diff on
+  codex/doc-15-ftc-loop-first-get-started, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”**
+- **Gate 3 manual review and publication authorization (2026-09-04):** **Done.** The user reviewed
+  the exact DOC-15 diff in Android Studio and supplied the combined authorization above. This
+  authorizes staging and committing only the reviewed 32-path diff, pushing
+  `codex/doc-15-ftc-loop-first-get-started` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening its pull request, and merging that
+  pull request into `master`; it does not authorize starting DOC-14, VISION-03, or another tracker
+  item.
 
 ### VISION-03 - Reusable color-blob pipeline
 

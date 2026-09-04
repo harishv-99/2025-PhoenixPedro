@@ -53,6 +53,13 @@ public final class DocumentationLinksTest {
             "Advanced",
             "Reference");
 
+    private static final List<String> GET_STARTED_NAV_TARGETS = Arrays.asList(
+            "README.md",
+            "docs/getting-started/Framework Overview.md",
+            "docs/getting-started/Build and Run.md",
+            "docs/getting-started/First Software Tour.md",
+            "docs/README.md");
+
     private static final List<String> BUILD_MARKDOWN_FILES = Arrays.asList(
             "Combine Drive and Intake.md",
             "Continuous Intake.md",
@@ -296,6 +303,37 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void getStartedHasOneFtcLoopFirstSoftwareRoute() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        Path docsRoot = configuredDocsRoot(repositoryRoot, config);
+
+        assertEquals("Get Started navigation inventory or order changed",
+                GET_STARTED_NAV_TARGETS, navTargets(navAreaBlock(config, "Get Started")));
+
+        String welcome = readUtf8(docsRoot.resolve("README.md"));
+        String guideMap = readUtf8(docsRoot.resolve("docs/README.md"));
+        List<String> failures = new ArrayList<String>();
+        requireOrdered(welcome, "Welcome", failures,
+                "while (opModeIsActive())",
+                "loop()",
+                "Complete the Get Started path",
+                "(<docs/getting-started/Framework Overview.md>)",
+                "After the first software tour");
+        requireOrdered(guideMap, "Guide map", failures,
+                "(<getting-started/Framework Overview.md>)",
+                "(<getting-started/Build and Run.md>)",
+                "(<getting-started/First Software Tour.md>)",
+                "## Choose by outcome");
+        assertTrue("The Guide map must distinguish the required software path from optional "
+                        + "goal-selected hardware recipes",
+                guideMap.contains("required software path")
+                        && guideMap.contains("choose one Build recipe")
+                        && guideMap.contains("hardware fixtures stay focused and independent"));
+        assertTrue("Get Started route failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
     public void searchableMarkdownHasOneAllowedAreaTagAndRedirectsHaveNone()
             throws IOException {
         Path repositoryRoot = repositoryRoot();
@@ -507,10 +545,13 @@ public final class DocumentationLinksTest {
         String drive = readUtf8(buildRoot.resolve("First Drive.md"));
         String setupProse = setup.replaceAll("\\s+", " ");
         String oldCourseProse = oldCourseRedirect.replaceAll("\\s+", " ");
-        assertTrue("Every first-contact route must agree on progressive actuator order",
-                setupProse.contains("begin with continuous intake")
-                        && setupProse.contains("knowledge builds in order")
-                        && setupProse.contains("each hardware fixture stays focused")
+        int overviewLink = setup.indexOf("(<Framework Overview.md>)");
+        int tourLink = setup.indexOf("(<First Software Tour.md>)");
+        assertTrue("Setup must preserve the shared software route before hardware selection",
+                overviewLink >= 0
+                        && tourLink > overviewLink
+                        && setupProse.contains("teaching OpModes remain disabled")
+                        && setupProse.contains("choose the next Build outcome")
                         && oldCourseProse.contains("actuator lessons now")
                         && oldCourseProse.contains("velocity in order")
                         && drive.contains("Continuous Intake.md")
@@ -725,8 +766,6 @@ public final class DocumentationLinksTest {
                 "maxLateral = 0.25",
                 "maxOmega = 0.20",
                 "program.drive(",
-                "CallbackBindings",
-                "TaskBindings",
                 "FirstDriveSoftwareScenarioTest",
                 "assertWheelPowers",
                 "mode.stop()")) {
@@ -736,6 +775,14 @@ public final class DocumentationLinksTest {
         }
         assertTrue("First Drive must warn about construction-time neutral calibration",
                 drive.replaceAll("\\s+", " ").contains("before pressing INIT"));
+        String firstPass = sectionBetween(drive,
+                "## First pass: current values every loop",
+                "## Full build: reconstruct the production path");
+        assertTrue("First Drive first pass must teach current values without event machinery",
+                firstPass.contains("every active FTC loop")
+                        && firstPass.contains("sampled continuously")
+                        && !firstPass.contains("CallbackBindings")
+                        && !firstPass.contains("TaskBindings"));
         assertTrue("Gamepad buttons must remain truthful held-level sources",
                 gamepad.contains("Buttons ({@link BooleanSource}) that report the current held state")
                         && gamepad.contains("Button sources do not detect edges themselves")
@@ -1144,15 +1191,31 @@ public final class DocumentationLinksTest {
         String docsHome = readUtf8(frameworkRoot.resolve("docs/README.md"));
         String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
         String build = readUtf8(repositoryRoot.resolve("TeamCode/build.gradle"));
+        List<String> doorwayFailures = new ArrayList<String>();
 
         assertTrue("Root README must identify Sushi as the framework",
                 rootReadme.startsWith("# Sushi framework"));
         assertTrue("Namespace README must identify Sushi as the framework",
                 namespaceReadme.startsWith("# Sushi framework"));
         assertTrue("Framework doorway must identify Sushi",
-                frameworkHome.contains("# Build a robot with Sushi"));
+                frameworkHome.contains("# Welcome to Sushi"));
         assertTrue("Documentation hub must identify Sushi",
-                docsHome.contains("# Sushi documentation"));
+                docsHome.contains("# Guide map")
+                        && docsHome.contains("Sushi"));
+        requireOrdered(rootReadme, "Repository README", doorwayFailures,
+                "Framework Overview.md>)",
+                "Build and Run.md>)",
+                "First Software Tour.md>)",
+                "docs/README.md>)",
+                "docs/build/README.md>)");
+        requireOrdered(namespaceReadme, "Namespace README", doorwayFailures,
+                "Framework Overview.md>)",
+                "Build and Run.md>)",
+                "First Software Tour.md>)",
+                "fw/docs/README.md>)",
+                "fw/docs/build/README.md>)");
+        assertTrue("Repository doorways disagree with the Get Started route: "
+                + doorwayFailures, doorwayFailures.isEmpty());
         assertTrue("Documentation site must use the Sushi identity and framework docs root",
                 config.contains("site_name = \"Sushi Framework\"")
                         && configuredDocsRoot(repositoryRoot, config).equals(frameworkRoot)
@@ -1164,6 +1227,8 @@ public final class DocumentationLinksTest {
                         && !build.contains("phoenixJavadocs"));
         assertTrue("The six current area homes must exist",
                 Files.isRegularFile(frameworkRoot.resolve("docs/getting-started/Build and Run.md"))
+                        && Files.isRegularFile(frameworkRoot.resolve(
+                                "docs/getting-started/First Software Tour.md"))
                         && Files.isRegularFile(frameworkRoot.resolve(
                                 "docs/getting-started/Beginner's Guide.md"))
                         && Files.isRegularFile(frameworkRoot.resolve("docs/build/README.md"))
@@ -1283,6 +1348,78 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void firstContactDefinesLoopAndDeferredWorkBeforeThePicture() throws IOException {
+        Path frameworkRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH);
+        String overview = readUtf8(frameworkRoot.resolve(
+                "docs/getting-started/Framework Overview.md"));
+        String principles = readUtf8(frameworkRoot.resolve("Framework Principles.md"));
+        String maintainers = readUtf8(frameworkRoot.resolve(
+                "docs/maintainers/Maintainer Notes.md"));
+        String normalized = overview.replaceAll("\\s+", " ");
+        List<String> failures = new ArrayList<String>();
+
+        requireOrdered(overview, "Framework Overview.md", failures,
+                "while (opModeIsActive())",
+                "loop()",
+                "gamepad1.a",
+                "driver.a()",
+                "Calling a method runs it now.",
+                "Registration saves the function; it does not run it.",
+                "A Task is a bookmark for unfinished work.",
+                "```mermaid",
+                "`FtcRobotOpMode`",
+                "`RobotProgram`",
+                "configure(RobotProgram program)");
+        assertTrue("First contact must explain same-loop deferred execution without threads",
+                normalized.contains("When a future active loop detects the rise, it invokes the "
+                        + "callback synchronously during that loop; Sushi does not create a thread."));
+
+        String diagram = sectionBetween(overview, "```mermaid", "```");
+        String plainDiagram = diagram.toLowerCase(Locale.ROOT);
+        for (String action : Arrays.asList(
+                "create robot parts",
+                "save button rules",
+                "check saved rules",
+                "advance ongoing actions",
+                "update robot parts",
+                "show telemetry",
+                "cancel ongoing actions",
+                "stop hardware owners")) {
+            assertTrue("First-contact diagram is missing plain action " + action,
+                    plainDiagram.contains(action));
+        }
+        for (String unexplained : Arrays.asList(
+                "bindings", "tasks", "services", "presenters", "plants")) {
+            assertTrue("First-contact diagram leaks framework noun " + unexplained,
+                    !plainDiagram.contains(unexplained));
+        }
+
+        for (String advanced : Arrays.asList(
+                "Prestart",
+                "BLOCKED",
+                "Services",
+                "StartDisposition",
+                "RuntimeException",
+                "sequenceOnCompletion",
+                "parallelDeadline")) {
+            assertTrue("First contact leaks advanced lifecycle/composition term " + advanced,
+                    !overview.contains(advanced));
+        }
+        String principlesProse = principles.replaceAll("\\s+", " ");
+        assertTrue("Framework Principles must preserve the novice/deferred-execution contract",
+                principlesProse.contains("must not assume lambdas, callback registration")
+                        && principlesProse.contains(
+                                "Before the first API that saves code for later")
+                        && principlesProse.contains(
+                                "First-contact diagrams use those plain actions"));
+        assertTrue("Maintainer guidance must preserve the canonical Get Started teaching order",
+                maintainers.contains("Keep one canonical Get Started order")
+                        && maintainers.contains("registration does not run the function")
+                        && maintainers.contains("same-loop synchronous invocation"));
+        assertTrue("First-contact teaching-order failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
     public void firstContactDiagramIsExplicitlyConfiguredAndAccessible() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
@@ -1399,6 +1536,135 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void firstSoftwareTourKeepsThreeExecutionShapesSmallAndInOrder()
+            throws IOException {
+        Path docsRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH).resolve("docs");
+        String tour = readUtf8(docsRoot.resolve("getting-started/First Software Tour.md"));
+        String drive = readUtf8(docsRoot.resolve("build/First Drive.md"));
+        String intake = readUtf8(docsRoot.resolve("build/Continuous Intake.md"));
+        String timedAuto = readUtf8(docsRoot.resolve("build/Run One Timed Auto.md"));
+        List<String> failures = new ArrayList<String>();
+
+        assertTrue("First-pass headings must rely on one generated heading ID, not duplicate it",
+                !drive.contains("<a id=\"first-pass-")
+                        && !intake.contains("<a id=\"first-pass-")
+                        && !timedAuto.contains("<a id=\"first-pass-"));
+
+        requireOrdered(tour, "First Software Tour.md", failures,
+                "First Drive.md#first-pass-current-values-every-loop",
+                "Continuous Intake.md#first-pass-run-a-function-once-per-press",
+                "Run One Timed Auto.md#first-pass-work-that-continues-across-loops",
+                "## Completion check");
+        assertTrue("The first tour must remain software-only and preserve evidence limits",
+                tour.contains("entirely in software")
+                        && tour.contains("Hardware is optional for this tour")
+                        && tour.contains("Software success does not grant permission to enable motion")
+                        && tour.contains("(<../README.md>)")
+                        && proseWordCount(tour) <= 700);
+
+        Map<String, String> firstPasses = new LinkedHashMap<String, String>();
+        firstPasses.put("First Drive.md", sectionBetween(drive,
+                "## First pass: current values every loop",
+                "## Full build: reconstruct the production path"));
+        firstPasses.put("Continuous Intake.md", sectionBetween(intake,
+                "## First pass: run a function once per press",
+                "## Full build: reconstruct the production path"));
+        firstPasses.put("Run One Timed Auto.md", sectionBetween(timedAuto,
+                "## First pass: work that continues across loops",
+                "## Full build: reconstruct the production path"));
+        for (Map.Entry<String, String> entry : firstPasses.entrySet()) {
+            assertTrue(entry.getKey() + " first pass exceeds a five-minute prose budget",
+                    proseWordCount(entry.getValue()) <= 450);
+            assertTrue(entry.getKey() + " first pass exceeds two short Java excerpts",
+                    javaFenceCount(entry.getValue()) <= 2);
+            assertTrue(entry.getKey() + " first pass leaks advanced Task composition",
+                    !entry.getValue().contains("sequenceOnCompletion")
+                            && !entry.getValue().contains("parallelDeadline")
+                            && !entry.getValue().contains("branchOnOutcome"));
+        }
+
+        String driveFirst = firstPasses.get("First Drive.md");
+        String driveFirstProse = driveFirst.replaceAll("\\s+", " ");
+        assertTrue("Drive first pass must distinguish connection from continuous sampling",
+                driveFirstProse.contains("calls `configure(...)` once")
+                        && driveFirstProse.contains("every active FTC loop")
+                        && driveFirstProse.contains("sampled continuously")
+                        && !driveFirst.contains("CallbackBindings")
+                        && !driveFirst.contains("TaskBindings"));
+
+        String intakeFirst = firstPasses.get("Continuous Intake.md");
+        String intakeFirstProse = intakeFirst.replaceAll("\\s+", " ");
+        assertTrue("Intake first pass must explain registration, synchronous execution, and hold",
+                intakeFirst.contains("driver.a()")
+                        && intakeFirst.contains("() ->")
+                        && intakeFirst.contains("does **not** execute")
+                        && intakeFirstProse.contains("same loop")
+                        && intakeFirstProse.contains("does not start a thread")
+                        && intakeFirst.contains("Hold A")
+                        && intakeFirst.contains("Press A again")
+                        && intakeFirstProse.contains("`COLLECT` persists until X selects `STOPPED`"));
+
+        String timedFirst = firstPasses.get("Run One Timed Auto.md");
+        String timedFirstProse = timedFirst.replaceAll("\\s+", " ");
+        assertTrue("Timed Auto first pass must teach a fresh cancellable loop bookmark",
+                timedFirstProse.contains("bookmark for unfinished work")
+                        && timedFirstProse.contains("FTC START starts the saved Task")
+                        && timedFirstProse.contains("without `sleep()`")
+                        && timedFirstProse.contains("single-use")
+                        && timedFirstProse.contains("cancels the active Task first"));
+        assertTrue("First software tour ordering failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void introductoryApiDocsExplainSetupNowAndExecutionLater() throws IOException {
+        Path frameworkRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH);
+        String host = readUtf8(frameworkRoot.resolve("ftc/FtcRobotOpMode.java"));
+        String program = readUtf8(frameworkRoot.resolve("ftc/RobotProgram.java"));
+        String gamepad = readUtf8(frameworkRoot.resolve("ftc/input/GamepadDevice.java"));
+        String callbacks = readUtf8(
+                frameworkRoot.resolve("input/binding/CallbackBindings.java"));
+        String taskBindings = readUtf8(frameworkRoot.resolve("task/TaskBindings.java"));
+        String hostProse = javadocBefore(
+                host,
+                "public abstract class FtcRobotOpMode");
+        String programProse = javadocBefore(
+                program,
+                "public final class RobotProgram");
+        String gamepadProse = javadocBefore(
+                gamepad,
+                "public BooleanSource a()");
+        String callbackProse = javadocBefore(
+                callbacks,
+                "public interface CallbackBindings");
+        String taskBindingProse = javadocBefore(
+                taskBindings,
+                "public final class TaskBindings");
+
+        assertTrue("FtcRobotOpMode must explain the one-time beginner setup bridge",
+                hostProse.contains("build its checklist once during FTC INIT")
+                        && hostProse.contains(
+                                "uses that checklist for the rest of the FTC lifecycle"));
+        assertTrue("RobotProgram must distinguish declaration from execution",
+                programProse.contains("saves a piece for later; it does not run that piece's "
+                                + "later behavior")
+                        && programProse.contains("immediate setup work documented by that method")
+                        && programProse.contains("invokes the saved pieces in lifecycle order"));
+        assertTrue("GamepadDevice.a() must describe a reusable current-state reader",
+                gamepadProse.contains("reusable reader of the A button's current state")
+                        && gamepadProse.contains("not a one-time boolean snapshot"));
+        assertTrue("CallbackBindings must explain same-loop synchronous deferred execution",
+                callbackProse.contains("registration does not invoke the callback")
+                        && callbackProse.contains("or create a thread")
+                        && callbackProse.contains(
+                                "invokes the saved callback synchronously in that loop"));
+        assertTrue("TaskBindings must distinguish registration, construction, and execution",
+                taskBindingProse.contains("Registration only saves a Task factory")
+                        && taskBindingProse.contains("neither creates nor runs a Task")
+                        && taskBindingProse.contains("does not create a thread")
+                        && taskBindingProse.contains("fresh single-use Task"));
+    }
+
+    @Test
     public void validatesAuthoredBuildAreaWhileSkippingGeneratedBuildOutput()
             throws IOException {
         Path root = temporaryFolder.getRoot().toPath();
@@ -1502,6 +1768,29 @@ public final class DocumentationLinksTest {
 
     private static String readUtf8(Path path) throws IOException {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+    }
+
+    private static String javadocBefore(String javaSource, String declaration) {
+        int declarationStart = javaSource.indexOf(declaration);
+        if (declarationStart < 0) {
+            throw new AssertionError("Missing Java declaration: " + declaration);
+        }
+
+        int commentStart = javaSource.lastIndexOf("/**", declarationStart);
+        int commentEnd = commentStart < 0 ? -1 : javaSource.indexOf("*/", commentStart);
+        if (commentStart < 0 || commentEnd < 0 || commentEnd > declarationStart) {
+            throw new AssertionError("Missing Javadoc immediately before: " + declaration);
+        }
+
+        String between = javaSource.substring(commentEnd + 2, declarationStart).trim();
+        if (!between.isEmpty()) {
+            throw new AssertionError("Javadoc is not attached to: " + declaration);
+        }
+
+        return javaSource.substring(commentStart, commentEnd + 2)
+                .replaceAll("(?m)^\\s*/?\\*+/? ?", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private static void collectMarkdownFiles(Path root, final List<Path> files)
@@ -1657,6 +1946,14 @@ public final class DocumentationLinksTest {
             }
             previous = found;
         }
+    }
+
+    private static String sectionBetween(String markdown, String start, String end) {
+        int sectionStart = markdown.indexOf(start);
+        assertTrue("Missing section start " + start, sectionStart >= 0);
+        int sectionEnd = markdown.indexOf(end, sectionStart + start.length());
+        assertTrue("Missing section end " + end, sectionEnd > sectionStart);
+        return markdown.substring(sectionStart, sectionEnd);
     }
 
     private static void validateBuildSources(Path repositoryRoot,
@@ -1981,9 +2278,13 @@ public final class DocumentationLinksTest {
     }
 
     private static int proseWordCount(Path path) throws IOException {
+        return proseWordCount(readUtf8(path));
+    }
+
+    private static int proseWordCount(String markdown) {
         boolean insideFence = false;
         StringBuilder prose = new StringBuilder();
-        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+        for (String line : markdown.replace("\r\n", "\n").split("\n", -1)) {
             String trimmed = line.trim();
             if (trimmed.startsWith(FENCE) || trimmed.startsWith("~~~")) {
                 insideFence = !insideFence;
@@ -1996,8 +2297,12 @@ public final class DocumentationLinksTest {
     }
 
     private static int javaFenceCount(Path path) throws IOException {
+        return javaFenceCount(readUtf8(path));
+    }
+
+    private static int javaFenceCount(String markdown) {
         int count = 0;
-        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+        for (String line : markdown.replace("\r\n", "\n").split("\n", -1)) {
             if (line.trim().equals(FENCE + "java")) {
                 count++;
             }

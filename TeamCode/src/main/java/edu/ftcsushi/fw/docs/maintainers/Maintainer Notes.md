@@ -149,6 +149,18 @@ Use this authoring contract:
 - Give each page one outcome and one primary audience; state the prerequisites before code.
 - Keep the six guide areas stable: **Get Started**, **Learn**, **Build**, **Test & Tune**,
   **Advanced**, and **Reference**. Every searchable guide declares exactly one of those tags.
+- Assume a first-contact reader knows basic Java, `if` statements, methods, FTC gamepad fields, and
+  perhaps one FTC loop spelling. Do not require prior knowledge of lambdas, callback registration,
+  Tasks, or Sushi architecture vocabulary. Explain a plain robot action before naming the framework
+  abstraction that owns it.
+- Before showing registration, contrast a call that runs now with a function saved during setup.
+  State that registration does not run the function, identify the later loop condition that does,
+  and distinguish same-loop synchronous invocation from a new thread. First-contact diagrams use
+  plain action labels and map to precise framework nouns only in adjacent explanation.
+- Keep one canonical Get Started order: Welcome, the FTC-loop bridge, setup verification, the
+  required software-only tour, then the complete Guide map. The tour's first-pass Drive, button,
+  and timed-action slices come before each Build page's full reconstruction material; hardware
+  recipes remain goal-selective after that shared tour.
 - Structure a Build recipe as: outcome and prerequisites, a three-to-twelve-line exact source
   excerpt, at most three observations, exact main/test file manifests, visibly labeled complete-
   source links, an explained software checkpoint, an isolated hardware gate, and one next action.

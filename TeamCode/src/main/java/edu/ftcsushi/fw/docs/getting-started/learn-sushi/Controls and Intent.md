@@ -10,12 +10,16 @@ tags:
 This page explains controls ownership and APIs. The
 Starter buildable module supplies the complete controls file and focused test.
 
+**Prerequisite:** take the [First software tour](<../First Software Tour.md>) first if `() ->` or
+“run once when pressed” is new. It explains, with familiar `if` code, why setup can save a function
+without running it and when Sushi calls that function later.
+
 **Question:** How does a human action become robot intent without putting gamepad policy inside a
 mechanism?
 
-Controls own operator meanings. They turn stable input sources into capability calls or drive
-intent; they do not construct hardware or update Plants. You can follow this source-only lesson
-without a gamepad or robot.
+Controls are the code where a team decides what each stick or button means. Sushi calls this
+decision **intent**. Controls do not construct hardware or update motors. You can follow this
+source-only lesson without a gamepad or robot.
 
 ## A button becomes a capability request
 

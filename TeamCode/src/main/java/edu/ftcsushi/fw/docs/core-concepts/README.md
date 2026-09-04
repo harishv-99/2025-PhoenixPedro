@@ -5,7 +5,7 @@ tags:
 
 # Core concepts
 
-Use these guides after [Sushi in one picture](<../getting-started/Framework Overview.md>) when you
+Use these guides after [How Sushi runs your code](<../getting-started/Framework Overview.md>) when you
 need the contracts behind the ordinary API.
 
 - [`Loop Structure`](<Loop Structure.md>) — the managed lifecycle, one `LoopClock`, phase order,

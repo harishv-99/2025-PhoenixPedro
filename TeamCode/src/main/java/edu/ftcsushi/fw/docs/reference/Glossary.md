@@ -7,7 +7,7 @@ tags:
 
 These definitions describe the current framework. Terms are grouped by what a student encounters,
 not by Java package. Start with
-[`Sushi in one picture`](<../getting-started/Framework Overview.md>) if these terms are new rather
+[`How Sushi runs your code`](<../getting-started/Framework Overview.md>) if these terms are new rather
 than reading the glossary front to back.
 
 ## Program and loop

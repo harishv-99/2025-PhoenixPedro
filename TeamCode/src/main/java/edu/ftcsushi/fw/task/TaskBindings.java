@@ -10,7 +10,15 @@ import edu.ftcsushi.fw.input.binding.CallbackBindings;
 import edu.ftcsushi.fw.input.binding.Bindings;
 
 /**
- * Convenience wrapper that binds {@link BooleanSource} events to {@link TaskRunner} enqueues.
+ * Connects accepted input events to fresh Tasks that can continue across multiple FTC loops.
+ * Registration only saves a Task factory: it neither creates nor runs a Task, and it does not
+ * create a thread. When the callback surface later accepts the event, the factory creates one
+ * fresh single-use Task and the runner enqueues it. An ordinary
+ * {@link edu.ftcsushi.fw.ftc.RobotProgram} advances that work in its Task phase; a custom host
+ * controls when it updates the supplied bindings and runner.
+ *
+ * <p>This is a convenience wrapper that binds {@link BooleanSource} events to
+ * {@link TaskRunner} enqueues.</p>
  *
  * <p>This is a thin adapter around {@link CallbackBindings} and a {@link TaskRunner}. It exists
  * purely to make robot code more readable when most bindings just "enqueue a task". Passing a

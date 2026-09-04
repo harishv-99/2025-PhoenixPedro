@@ -6,7 +6,7 @@ tags:
 # Robot design and behavior
 
 These are intermediate and advanced guides. First read
-[`Sushi in one picture`](<../getting-started/Framework Overview.md>) and the
+[`How Sushi runs your code`](<../getting-started/Framework Overview.md>) and the
 [`Robot roles`](<../getting-started/learn-sushi/Robot Roles.md>) topic relevant to this ownership
 vocabulary.
 

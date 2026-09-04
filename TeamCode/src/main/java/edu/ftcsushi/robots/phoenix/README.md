@@ -2,12 +2,12 @@
 
 This package is the repository's complete production example of a robot built on the Sushi
 framework. It is useful after
-[Sushi in one picture](<../../fw/docs/getting-started/Framework Overview.md>) and the relevant
+[How Sushi runs your code](<../../fw/docs/getting-started/Framework Overview.md>) and the relevant
 [Sushi topic](<../../fw/docs/getting-started/Beginner's Guide.md>) because it shows how the same
 framework pieces fit together at competition scale.
 
 If you are building your first mechanism, start at the canonical
-[`Sushi framework documentation hub`](<../../fw/docs/README.md>). Framework and robot design
+[`Sushi Guide map`](<../../fw/docs/README.md>). Framework and robot design
 choices must follow the [`Framework Principles`](<../../fw/Framework Principles.md>).
 
 ## Read this package in order
