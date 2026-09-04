@@ -382,6 +382,14 @@ public final class BasicLiftMechanismTest {
         unordered.lowHeightIn = unordered.stowedHeightIn;
         assertConfigFailureBeforeLookup(unordered, "stowedHeightIn < lowHeightIn");
 
+        BasicLiftMechanism.Config overlappingNamedHeights = config();
+        overlappingNamedHeights.toleranceIn =
+                (overlappingNamedHeights.lowHeightIn
+                        - overlappingNamedHeights.stowedHeightIn) / 2.0;
+        assertConfigFailureBeforeLookup(
+                overlappingNamedHeights,
+                "toleranceIn must be strictly less than half the closest adjacent named-height gap");
+
         BasicLiftMechanism.Config unnamed = config();
         unnamed.motorName = "  ";
         assertConfigFailureBeforeLookup(unnamed, "motorName");

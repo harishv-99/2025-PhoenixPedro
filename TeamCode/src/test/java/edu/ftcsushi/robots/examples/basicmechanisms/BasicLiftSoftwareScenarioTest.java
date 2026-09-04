@@ -28,6 +28,10 @@ public final class BasicLiftSoftwareScenarioTest {
         scenario.motor.setCurrentPositionTicks(0);
         scenario.bottomSwitch.setHigh(true);
 
+        // ARRANGE: begin from a non-STOWED request so success-only post-home policy is observable.
+        scenario.lift.setHeight(BasicLift.Height.HIGH);
+        assertEquals(BasicLift.Height.HIGH, scenario.lift.status().requestedHeight());
+
         // REQUEST: start a cooperative home Task; it may command search power but cannot invent a hit.
         scenario.task = scenario.lift.home();
         scenario.task.start(scenario.time.clock());
@@ -43,6 +47,7 @@ public final class BasicLiftSoftwareScenarioTest {
         scenario.advance(0.01);
         assertEquals(TaskOutcome.SUCCESS, scenario.task.getOutcome());
         assertTrue(scenario.lift.status().referenced());
+        assertEquals(BasicLift.Height.STOWED, scenario.lift.status().requestedHeight());
 
         // REQUEST + HEARTBEAT: a semantic height becomes the mapped encoder target on output update.
         scenario.lift.setHeight(BasicLift.Height.LOW);

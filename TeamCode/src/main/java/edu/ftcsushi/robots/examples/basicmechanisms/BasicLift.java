@@ -60,7 +60,7 @@ public interface BasicLift {
             return snapshot.plant().isReferenced();
         }
 
-        /** Returns whether this exact semantic request is selected and physically at target. */
+        /** Returns whether this exact request is selected and cached feedback is within tolerance. */
         public boolean atTarget() {
             return snapshot.currentRequestAtTarget();
         }

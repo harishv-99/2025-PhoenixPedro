@@ -7,16 +7,17 @@ tags:
 
 **Learning mode:** Architecture reference
 
-Use this page to assign requirements to owners, then
-follow a linked buildable module to author the selected slice.
+Use this page to assign requirements to owners, then follow the cumulative
+[actuator Build path](<../../build/README.md>) to author the selected slice.
 
 **Question:** When the team identifies a robot need, which code owner should change?
 
 **Reading time:** about 9 minutes
 
 Begin with a sentence about robot behavior, not a framework class. First trace the smallest Starter
-need, then add roles only when a larger requirement demands them. You may follow this example only
-by reading; no worksheet, code edit, or hardware run is required.
+need in the self-contained [continuous-intake lesson](<../../build/Continuous Intake.md>), then add
+roles only when a larger requirement demands them. You may follow this example only by reading; no
+worksheet, code edit, or hardware run is required.
 
 ## Start with one Starter requirement
 
@@ -137,6 +138,5 @@ mode-neutral behavior.
 - Capability/client ownership: [Robot Capabilities and Mode Clients](<../../design/Robot Capabilities & Mode Clients.md>)
 - Focused paired-velocity capability: [`ReferenceFlywheels`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.html>)
 - Focused periodic-position realization: [`ReferencePeriodicTurretMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.html>)
-- Topic-specific routes: [Choose a Sushi topic](<../Beginner's Guide.md>)
-- [Choose another Sushi topic](<../Beginner's Guide.md>)
-- [Return to the Basic Mechanisms course](<../Basic Mechanisms Robot.md>)
+- Topic-specific explanations: [Choose another Sushi concept](<../Beginner's Guide.md>)
+- Cumulative implementation: [Build the first actuator, then add one decision at a time](<../../build/README.md>)
