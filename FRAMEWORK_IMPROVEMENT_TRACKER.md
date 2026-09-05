@@ -237,6 +237,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 128 | DOC-13 | Reconstruction-grade beginner Build spine | Done | The reviewed reconstruction-grade Build route, focused integration outcomes, maintained fixtures, source-excerpt contracts, deterministic evidence, Android Studio approval, and destination-specific publication authorization are complete. |
 | 129 | DOC-14 | First sensor-to-status Build outcome | Proposed | Teach one no-motion digital sensor from FTC adapter through polarity, debounce, cached semantic status, presenter, focused software evidence, and an isolated physical gate without introducing a generic sensor framework. |
 | 130 | DOC-15 | FTC-loop-first Get Started path | Done | The reviewed FTC-loop-first introduction, required software-only tour, progressive Build first passes, synchronized guidance, verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 131 | DOC-16 | Documentation quality criteria as design authority | Done | The reviewed applicability-qualified documentation rubric, focused structural contract, deterministic verification, Android Studio approval, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -27268,6 +27269,109 @@ implementation.
   the exact DOC-15 diff in Android Studio and supplied the combined authorization above. This
   authorizes staging and committing only the reviewed 32-path diff, pushing
   `codex/doc-15-ftc-loop-first-get-started` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening its pull request, and merging that
+  pull request into `master`; it does not authorize starting DOC-14, VISION-03, or another tracker
+  item.
+
+### DOC-16 - Documentation quality criteria as design authority
+
+- **Gate 1 decision and implementation approval (2026-09-04):** **Implemented; Verifying** on
+  `codex/doc-16-documentation-quality-criteria`, created from merged
+  `origin/master@cb2b7bbaa1781de139fb02b5c89f068f586bb0ee`. After DOC-15 publication, the user directed:
+  **“Update the principles document to capture the key criteria for documentation. That way future
+  docs can follow along.”** This is explicit approval for the bounded documentation-only change; it
+  does not authorize staging, publication, DOC-14, VISION-03, or another item.
+- **Confirmed gap and consumers:** Framework Principles already requires one current story,
+  progressive disclosure, compiling examples, synchronized Javadocs, and proportional verification.
+  The durable standards established through DOC-11–DOC-13 and DOC-15—one audience/outcome, declared learning
+  prerequisites, reconstruction-grade Build guidance, explained causal tests, explicit evidence
+  limits and physical gates, intent-oriented discovery, separate guide/API/source lookup, and
+  accessible text equivalents—remain mostly in Maintainer Notes, regression tests, or historical
+  tracker records. Future authors therefore cannot review a page against one concise primary-
+  authority rubric. Consumers are repository instructions and decision gates, Maintainer Notes,
+  guide authors/reviewers, the documentation hub/site, and `DocumentationLinksTest`; no production
+  Java, public API, robot behavior, example, Javadoc, or application architecture is involved.
+- **Chosen design:** keep **One current, proven story** as the sixth principle and add a compact
+  review-criteria table followed by durable implications. Require a clear audience, outcome,
+  prerequisites, completion evidence, and next choice; familiar action before framework noun;
+  simplifications that omit detail without contradicting or inventing an alternate production path;
+  cumulative knowledge without cumulative hardware; enough explained maintained source to
+  reconstruct important ownership/wiring/heartbeat/stop decisions; tests that expose their causal
+  question, retained production pieces, replacements, observation, limits, and next gate; truthful
+  software-versus-hardware boundaries; discoverable goal language with distinct narrative, API, and
+  complete-source lookup; accessible text for essential visual meaning; and one synchronized current
+  authority. Keep exact templates, headings, counts, budgets, tags, commands, renderer/CI mechanics,
+  and example-specific inventories in Maintainer Notes and tests.
+- **Alternatives rejected:** leaving policy distributed retains the confirmed gap. A tracker-only
+  note is historical rather than design authority. Copying the complete Maintainer Notes checklist
+  would make Principles an implementation manual and create parallel maintenance. A new guide would
+  add another authority. Editing current lessons, examples, Javadocs, navigation, or runtime code is
+  unnecessary because this item consolidates already-approved standards rather than redesigning
+  their implementations.
+- **Framework Principles and scope check:** the change strengthens the existing sixth principle; it
+  does not add a seventh principle, change framework architecture, or alter the meaning of any API.
+  Principle-level questions remain stable even if page templates or rendering tools evolve. The
+  bounded implementation touches this tracker, `Framework Principles.md`, and one focused
+  `DocumentationLinksTest` contract. DOC-14 remains Proposed and untouched.
+- **Verification plan:** require the new rubric and maintainer-detail boundary structurally in the
+  focused documentation test; run that test, the complete TeamCode compile/test suite, strict
+  Zensical rendering, generated guide-search and API/source-link checks, targeted scope searches,
+  whitespace/final-newline checks, and `git diff --check`; then obtain independent principles and
+  maintainability reviews. No robot-hardware validation or student-usability claim applies to this
+  authority-only change.
+- **Gate 2 implementation result (2026-09-05):** **Verifying.** Principle 6 remains **One current,
+  proven story** and now supplies a nine-part review rubric: audience/outcome, learning order,
+  reconstructability, explanation, evidence, truth/safety, discovery, accessibility, and current
+  authority. Applicability is explicit: hubs route, references define lookup scope, production Build
+  lessons reconstruct, displayed code and tests explain execution and ownership, and only
+  evidentiary checkpoints must state their claim and limits. Durable implications cover progressive
+  disclosure, truthful conceptual simplification, focused hardware fixtures, exact maintained
+  excerpts, causal tests, software-versus-hardware evidence, goal-oriented global search, distinct
+  guide/API/source lookup, and accessible text equivalents. Exact page templates, labels, budgets,
+  renderer configuration, commands, and CI mechanics remain owned by Maintainer Notes. The design
+  checklist now asks whether the intended reader can reconstruct and explain the supported path.
+- **Adversarial review and corrections:** independent principles/scope and test-maintainability
+  reviews found and closed three material ambiguities: Build-only reconstruction and evidence rules
+  initially appeared universal; ordinary completion checkpoints and hardware gates initially looked
+  subject to software-substitution requirements; and the first test draft could pass empty criterion
+  bodies or rules moved outside Principle 6. The final wording conditions each rule on the artifact
+  or feature it governs, distinguishes completion checks from evidentiary experiments, and requires
+  retained production behavior/replacements only when an outside boundary is substituted. The test
+  now bounds Principle 6, each table row, implications, the Maintainer Notes boundary, and the design
+  checklist separately. Tracker provenance was corrected to exclude still-Proposed DOC-14. Final
+  independent reviews report no remaining actionable findings.
+- **Deterministic verification (2026-09-05):** Android Studio JBR 21 passed the final focused
+  `DocumentationLinksTest` contract (**34 tests**) and the complete TeamCode compile/test run:
+  **248 suites, 2,221 tests, 0 failures, 0 errors, and 0 skipped**.
+  `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:sushiJavadocs` succeeded; the Java 8 target
+  produced only the repository's known JDK 21 deprecation warnings. Strict Zensical rendering
+  reported no issues. Generated checks verified the open-ShadowRoot search enhancer and **931
+  indexed sections across all six guide areas**, plus **159 API links and 75 maintained source links
+  across 45 Markdown pages**. Static checks confirm exactly three modified tracked paths, no staged
+  or untracked files, no production/runtime/example/application change, no trailing whitespace, and
+  final newlines in all changed files. `git diff --check` is clean apart from Git's line-ending
+  notices; DOC-14 remains Proposed and untouched; branch, `HEAD`, merge base, and `origin/master`
+  remain `codex/doc-16-documentation-quality-criteria` at
+  `cb2b7bbaa1781de139fb02b5c89f068f586bb0ee`.
+- **Unverified usability boundary:** no student usability study was available, so this change does
+  not claim that every novice will interpret the rubric or future pages identically. It changes no
+  robot behavior and makes no hardware claim. The focused test preserves the primary-authority
+  structure and concepts; it cannot prove that a future lesson satisfies them in practice, which
+  remains a review responsibility.
+- **Android Studio review and publication stop (2026-09-05):** inspect the exact three-path unstaged
+  diff on `codex/doc-16-documentation-quality-criteria`, based on
+  `origin/master@cb2b7bbaa1781de139fb02b5c89f068f586bb0ee`, especially the applicability boundary,
+  nine review criteria, principle-level implications, Maintainer Notes separation, proof checklist,
+  and bounded regression contract. No file is staged, committed, pushed, opened as a pull request,
+  or merged, and no next tracker item has been started. After review, the exact combined
+  authorization is: **“DOC-16 looks good. Authorize committing the reviewed DOC-16 diff on
+  codex/doc-16-documentation-quality-criteria, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”**
+- **Gate 3 manual review and publication authorization (2026-09-05):** **Done.** The user reviewed
+  the exact DOC-16 diff in Android Studio and supplied the combined authorization above. This
+  authorizes staging and committing only the reviewed three-path diff, pushing
+  `codex/doc-16-documentation-quality-criteria` to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening its pull request, and merging that
   pull request into `master`; it does not authorize starting DOC-14, VISION-03, or another tracker
   item.
