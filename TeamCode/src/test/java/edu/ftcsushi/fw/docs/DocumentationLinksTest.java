@@ -186,15 +186,29 @@ public final class DocumentationLinksTest {
             "ReferenceTeleOpControlsTest");
 
     private static final Pattern JAVA_FENCE = Pattern.compile(
-            "(?m)^\\x60\\x60\\x60java[ \\t]*$");
+            "(?m)^\\x60\\x60\\x60java(?:[ \\t]+hl_lines=\"[0-9]+(?: [0-9]+)*\")?"
+                    + "[ \\t]*$");
     private static final Pattern SOURCE_EXCERPT = Pattern.compile(
             "(?m)^<!-- source-excerpt: ([^>]+) -->\\r?\\n"
-                    + "\\x60\\x60\\x60java[ \\t]*\\r?\\n"
+                    + "\\x60\\x60\\x60java(?:[ \\t]+hl_lines=\"[0-9]+(?: [0-9]+)*\")?"
+                    + "[ \\t]*\\r?\\n"
                     + "([\\s\\S]*?)\\r?\\n\\x60\\x60\\x60[ \\t]*$");
     private static final Pattern COMPLETE_SOURCE = Pattern.compile(
             "\\[Complete source:[^]]+]\\(<"
                     + Pattern.quote(MAINTAINED_REPOSITORY_ROOT)
                     + "(?:blob|tree)/master/([^>]+)>\\)");
+    private static final Pattern CALLOUT_START = Pattern.compile(
+            "^!!![ \\t]+(info|warning|danger|success|tip)"
+                    + "[ \\t]+\"([^\"]+)\"[ \\t]*$");
+    private static final Pattern ANY_CALLOUT_START = Pattern.compile(
+            "^(!!!|\\?\\?\\?\\+?)[ \\t]+([^ \\t]+)"
+                    + "(?:[ \\t]+\"([^\"]*)\")?[ \\t]*$");
+    private static final Pattern HEADING_ATTRIBUTE_ID = Pattern.compile(
+            "(?:^|\\s)\\{[^}]*#([A-Za-z][A-Za-z0-9_-]*)[^}]*}[ \\t]*$");
+    private static final Pattern HIGHLIGHTED_JAVA_FENCE = Pattern.compile(
+            "^\\x60\\x60\\x60java[ \\t]+hl_lines=\"([0-9]+(?: [0-9]+)*)\"[ \\t]*$");
+    private static final Pattern CONCEPT_CALLOUT_START = Pattern.compile(
+            "(?m)^!!![ \\t]+info[ \\t]+\"New concept: [^\"]+\"[ \\t]*$");
 
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -757,9 +771,15 @@ public final class DocumentationLinksTest {
                 "### 4. Declare a continuously sampled drive path");
         for (String required : Arrays.asList(
                 "new GamepadDevice(gamepad1)",
+                "requiredDriver.setAxisDeadband(0.02)",
                 "requiredDriver.leftX()",
                 "requiredDriver.leftY()",
                 "requiredDriver.rightX()",
+                "driveSourceConfig.deadband = 0.05",
+                "driveSourceConfig.translateExpo = 1.5",
+                "driveSourceConfig.rotateExpo = 1.5",
+                "driveSourceConfig.translateScale = 1.0",
+                "driveSourceConfig.rotateScale = 1.0",
                 "frontLeftName",
                 "frontRightDirection",
                 "maxAxial = 0.25",
@@ -773,6 +793,18 @@ public final class DocumentationLinksTest {
                 failures.add("First Drive.md: missing reconstruction teaching for " + required);
             }
         }
+        requireOrdered(drive, "First Drive.md", failures,
+                "!!! info \"New concept: Stick shaping\"",
+                "A **deadband** is a small centered stick range",
+                "```java hl_lines=\"3 5 6 7 8 9 10\"",
+                "requiredDriver.setAxisDeadband(0.02)",
+                "driveSourceConfig.rotateScale = 1.0",
+                "| Stage | Exact values | Effect |",
+                "Controller correction",
+                "Driver shaping",
+                "Drive caps");
+        assertEquals("First Drive canonical concept count", 1,
+                matcherCount(CONCEPT_CALLOUT_START.matcher(drive)));
         assertTrue("First Drive must warn about construction-time neutral calibration",
                 drive.replaceAll("\\s+", " ").contains("before pressing INIT"));
         String firstPass = sectionBetween(drive,
@@ -1355,6 +1387,10 @@ public final class DocumentationLinksTest {
         String principles = readUtf8(frameworkRoot.resolve("Framework Principles.md"));
         String maintainers = readUtf8(frameworkRoot.resolve(
                 "docs/maintainers/Maintainer Notes.md"));
+        String controls = readUtf8(frameworkRoot.resolve(
+                "docs/getting-started/learn-sushi/Controls and Intent.md"));
+        String plants = readUtf8(frameworkRoot.resolve(
+                "docs/getting-started/learn-sushi/Plants and Hardware.md"));
         String normalized = overview.replaceAll("\\s+", " ");
         List<String> failures = new ArrayList<String>();
 
@@ -1370,6 +1406,28 @@ public final class DocumentationLinksTest {
                 "`FtcRobotOpMode`",
                 "`RobotProgram`",
                 "configure(RobotProgram program)");
+        assertContainsAll("Canonical first-use concept anchors", overview,
+                "{ #source }", "New concept: Source",
+                "{ #saved-callback }", "New concept: saved callback and lambda",
+                "{ #task }", "New concept: Task",
+                "learn-sushi/Plants and Hardware.md#plant");
+        assertContainsAll("Later lessons must link to the canonical first-use explanations",
+                controls,
+                "{ #intent }", "New concept: intent",
+                "Framework Overview.md#source",
+                "Framework Overview.md#saved-callback",
+                "Framework Overview.md#task");
+        assertContainsAll("The Plant chooser must define Plant once and reuse prior concepts",
+                plants,
+                "{ #plant }", "New concept: Plant",
+                "Controls and Intent.md#intent",
+                "Framework Overview.md#task");
+        assertEquals("Framework Overview canonical concept count", 3,
+                matcherCount(CONCEPT_CALLOUT_START.matcher(overview)));
+        assertEquals("Controls and Intent canonical concept count", 1,
+                matcherCount(CONCEPT_CALLOUT_START.matcher(controls)));
+        assertEquals("Plants and Hardware canonical concept count", 1,
+                matcherCount(CONCEPT_CALLOUT_START.matcher(plants)));
         assertTrue("First contact must explain same-loop deferred execution without threads",
                 normalized.contains("When a future active loop detects the rise, it invokes the "
                         + "callback synchronously during that loop; Sushi does not create a thread."));
@@ -1518,6 +1576,96 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void visualTeachingGrammarIsSparseSemanticAndAccessible() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path frameworkRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        String principles = readUtf8(frameworkRoot.resolve("Framework Principles.md"));
+        String maintainers = readUtf8(frameworkRoot.resolve(
+                "docs/maintainers/Maintainer Notes.md"));
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+
+        assertContainsAll("Point-of-use documentation principle", principles,
+                "plain robot language", "active code and values", "searching another section",
+                "infer them from `defaults()`", "first contact short", "later level");
+        assertContainsAll("Accessible visual-emphasis principle", principles,
+                "small, consistent visual vocabulary", "labels state why", "normal reading order",
+                "color", "interaction", "only carrier");
+        assertContainsAll("Maintainer visual vocabulary", maintainers,
+                "new concept: <term>", "warning: <problem>", "danger: <hazard>",
+                "checkpoint: <observation>", "tip: <shortcut>", "roughly 80 words",
+                "one in an h2 section", "at most three concept callouts", "one on a build page",
+                "summarizes or replaces", "hl_lines", "no more than ten", "supplemental");
+        assertTrue("The native renderer must keep admonitions and code highlighting enabled",
+                config.contains("admonition = {}")
+                        && config.contains("pymdownx.highlight.line_spans = \"__span\"")
+                        && config.contains("pymdownx.highlight.pygments_lang_class = true"));
+
+        List<Path> pages = new ArrayList<Path>();
+        collectMarkdownFiles(frameworkRoot, pages);
+        List<String> failures = new ArrayList<String>();
+        int calloutCount = 0;
+        int highlightedFenceCount = 0;
+        for (Path page : pages) {
+            PageMetadata metadata = pageMetadata(page);
+            String markdown = readUtf8(page);
+            calloutCount += validateVisualCallouts(
+                    repositoryRoot, page, markdown, metadata.tags, failures);
+            highlightedFenceCount += validateHighlightedJavaFences(
+                    repositoryRoot, page, markdown, failures);
+        }
+        assertTrue("The approved visual grammar must be exercised by canonical concept boxes",
+                calloutCount >= 6);
+        assertTrue("The point-of-use teaching grammar must exercise code-line highlighting",
+                highlightedFenceCount > 0);
+        assertTrue("Visual-teaching grammar failures: " + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void visualTeachingGrammarHonorsFencesAndValidatesHighlightLines() {
+        Path repositoryRoot = temporaryFolder.getRoot().toPath();
+        Path page = repositoryRoot.resolve("Guide.md");
+        String markdown = "````text\n"
+                + "!!! danger \"not rendered\"\n"
+                + "```\n"
+                + "````\n\n"
+                + "## Real section\n\n"
+                + "!!! info \"New concept: visible\"\n\n"
+                + "    This visible definition is short and textual.\n";
+        List<String> failures = new ArrayList<String>();
+
+        assertEquals(1, validateVisualCallouts(
+                repositoryRoot,
+                page,
+                markdown,
+                Collections.singletonList("Learn"),
+                failures));
+        assertTrue("Fence-aware callout failures: " + failures, failures.isEmpty());
+        assertEquals("A literal nested fence must not count as rendered highlighting", 0,
+                validateHighlightedJavaFences(repositoryRoot, page, markdown, failures));
+
+        String invalidHighlight = "```java hl_lines=\"0 2 2 4 999999999999999999999\"\n"
+                + "one\n"
+                + "two\n"
+                + "three\n"
+                + "```\n";
+        failures.clear();
+        assertEquals(1, validateHighlightedJavaFences(
+                repositoryRoot, page, invalidHighlight, failures));
+        assertFailureContains(failures, "highlighted line 0 is outside");
+        assertFailureContains(failures, "highlighted line 2 is duplicated");
+        assertFailureContains(failures, "highlighted line 4 is outside");
+        assertFailureContains(failures, "highlighted line number is too large");
+
+        failures.clear();
+        String emptyHighlight = "```java hl_lines=\"   \"\n"
+                + "one\n"
+                + "```\n";
+        assertEquals(0, validateHighlightedJavaFences(
+                repositoryRoot, page, emptyHighlight, failures));
+        assertFailureContains(failures, "hl_lines must be a space-separated list");
+    }
+
+    @Test
     public void firstContactDiagramIsExplicitlyConfiguredAndAccessible() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
@@ -1627,7 +1775,10 @@ public final class DocumentationLinksTest {
                 "Tasks and Autonomous.md",
                 "Evidence and Experiments.md",
                 "From Requirement to Robot.md")) {
-            topicWords += proseWordCount(topics.resolve(topic));
+            int words = proseWordCount(topics.resolve(topic));
+            assertTrue(topic + " exceeds the per-topic progressive-disclosure budget: " + words,
+                    words <= 1300);
+            topicWords += words;
         }
         assertTrue("Six Learn pages exceed 5,400 prose words: " + topicWords,
                 topicWords <= 5400);
@@ -1779,14 +1930,29 @@ public final class DocumentationLinksTest {
         write(root, "Docs/Guide File.md",
                 "# Hello, World!\n\n"
                         + "# Repeat\n\n# Repeat\n\n# Repeat-1\n\n"
+                        + "## Saved function { #saved-callback }\n\n"
                         + "Setext heading\n--------------\n");
         write(root, "README.md",
                 "[literal](<Docs/Guide File.md#hello-world>)\n"
                         + "[encoded](Docs/Guide%20File.md#repeat-1)\n"
                         + "[collision](<Docs/Guide File.md#repeat-1-1>)\n"
+                        + "[explicit](<Docs/Guide File.md#saved-callback>)\n"
                         + "[setext](<Docs/Guide File.md#setext-heading>)\n");
 
         assertNoFailures(MarkdownIntegrity.validateRepository(root));
+    }
+
+    @Test
+    public void rejectsDuplicateExplicitHeadingIds() throws IOException {
+        Path root = temporaryFolder.getRoot().toPath();
+        write(root, "Guide.md",
+                "# First { #stable }\n\n"
+                        + "## Second { #stable }\n");
+        write(root, "README.md", "[stable](Guide.md#stable)\n");
+
+        assertFailureContains(
+                MarkdownIntegrity.validateRepository(root),
+                "duplicate explicit heading id");
     }
 
     @Test
@@ -2071,6 +2237,221 @@ public final class DocumentationLinksTest {
             assertTrue(contract + " is missing " + token,
                     normalized.contains(token.toLowerCase(Locale.ROOT)));
         }
+    }
+
+    private static int validateVisualCallouts(Path repositoryRoot,
+                                              Path page,
+                                              String markdown,
+                                              List<String> areas,
+                                              List<String> failures) {
+        String relative = repositoryRelativePath(repositoryRoot, page);
+        String[] lines = markdown.replace("\r\n", "\n").replace('\r', '\n')
+                .split("\n", -1);
+        MarkdownIntegrity.Fence openFence = null;
+        int callouts = 0;
+        int conceptCallouts = 0;
+        int calloutsInSection = 0;
+
+        for (int index = 0; index < lines.length; index++) {
+            String line = lines[index];
+            String trimmed = line.trim();
+            if (openFence != null) {
+                if (MarkdownIntegrity.isFenceClose(line, openFence)) {
+                    openFence = null;
+                }
+                continue;
+            }
+            MarkdownIntegrity.Fence opening = MarkdownIntegrity.fenceOpening(line, index + 1);
+            if (opening != null) {
+                openFence = opening;
+                continue;
+            }
+            if (trimmed.startsWith("## ") && !trimmed.startsWith("### ")) {
+                calloutsInSection = 0;
+                continue;
+            }
+
+            Matcher any = ANY_CALLOUT_START.matcher(trimmed);
+            if (!any.matches()) {
+                continue;
+            }
+
+            callouts++;
+            calloutsInSection++;
+            if (calloutsInSection > 1) {
+                failures.add(relative + ":" + (index + 1)
+                        + ": more than one callout in one H2 section");
+            }
+
+            String marker = any.group(1);
+            String title = any.group(3);
+            if (marker.startsWith("???")) {
+                if (title == null || !title.startsWith("Optional: ")) {
+                    failures.add(relative + ":" + (index + 1)
+                            + ": collapsible material must be explicitly titled Optional");
+                }
+            } else {
+                Matcher approved = CALLOUT_START.matcher(trimmed);
+                if (!approved.matches()) {
+                    failures.add(relative + ":" + (index + 1)
+                            + ": callout must use one approved type and a visible semantic title");
+                } else {
+                    String type = approved.group(1);
+                    title = approved.group(2);
+                    String expectedPrefix;
+                    if ("info".equals(type)) {
+                        expectedPrefix = "New concept: ";
+                        conceptCallouts++;
+                    } else if ("warning".equals(type)) {
+                        expectedPrefix = "Warning: ";
+                    } else if ("danger".equals(type)) {
+                        expectedPrefix = "Danger: ";
+                    } else if ("success".equals(type)) {
+                        expectedPrefix = "Checkpoint: ";
+                    } else {
+                        expectedPrefix = "Tip: ";
+                    }
+                    if (!title.startsWith(expectedPrefix)
+                            || title.length() == expectedPrefix.length()) {
+                        failures.add(relative + ":" + (index + 1)
+                                + ": " + type + " callout title must start with "
+                                + expectedPrefix);
+                    }
+                }
+            }
+
+            int bodyEnd = index + 1;
+            StringBuilder body = new StringBuilder();
+            int paragraphs = 0;
+            boolean paragraphOpen = false;
+            while (bodyEnd < lines.length) {
+                String bodyLine = lines[bodyEnd];
+                if (bodyLine.trim().isEmpty()) {
+                    if (paragraphOpen) {
+                        paragraphs++;
+                        paragraphOpen = false;
+                    }
+                    body.append('\n');
+                    bodyEnd++;
+                    continue;
+                }
+                if (!(bodyLine.startsWith("    ") || bodyLine.startsWith("\t"))) {
+                    break;
+                }
+                paragraphOpen = true;
+                body.append(bodyLine.trim()).append('\n');
+                bodyEnd++;
+            }
+            if (paragraphOpen) {
+                paragraphs++;
+            }
+            if (body.toString().trim().isEmpty()) {
+                failures.add(relative + ":" + (index + 1) + ": callout body is empty");
+            }
+            if (proseWordCount(body.toString()) > 80) {
+                failures.add(relative + ":" + (index + 1)
+                        + ": callout exceeds 80 words");
+            }
+            if (paragraphs > 2) {
+                failures.add(relative + ":" + (index + 1)
+                        + ": callout exceeds two paragraphs");
+            }
+
+            int next = bodyEnd;
+            while (next < lines.length && lines[next].trim().isEmpty()) {
+                next++;
+            }
+            if (next < lines.length
+                    && ANY_CALLOUT_START.matcher(lines[next].trim()).matches()) {
+                failures.add(relative + ":" + (index + 1)
+                        + ": callouts must not be adjacent");
+            }
+            index = bodyEnd - 1;
+        }
+
+        if ((areas.contains("Get Started") || areas.contains("Learn"))
+                && conceptCallouts > 3) {
+            failures.add(relative + ": first-contact/Learn page has " + conceptCallouts
+                    + " concept callouts; maximum is 3");
+        } else if (areas.contains("Build") && conceptCallouts > 1) {
+            failures.add(relative + ": Build page has " + conceptCallouts
+                    + " concept callouts; maximum is 1");
+        }
+        return callouts;
+    }
+
+    private static int validateHighlightedJavaFences(Path repositoryRoot,
+                                                     Path page,
+                                                     String markdown,
+                                                     List<String> failures) {
+        String relative = repositoryRelativePath(repositoryRoot, page);
+        String[] lines = markdown.replace("\r\n", "\n").replace('\r', '\n')
+                .split("\n", -1);
+        int highlightedFences = 0;
+        MarkdownIntegrity.Fence enclosingFence = null;
+        for (int index = 0; index < lines.length; index++) {
+            String line = lines[index];
+            if (enclosingFence != null) {
+                if (MarkdownIntegrity.isFenceClose(line, enclosingFence)) {
+                    enclosingFence = null;
+                }
+                continue;
+            }
+
+            MarkdownIntegrity.Fence fenceOpening =
+                    MarkdownIntegrity.fenceOpening(line, index + 1);
+            if (fenceOpening == null) {
+                continue;
+            }
+            Matcher opening = HIGHLIGHTED_JAVA_FENCE.matcher(line.trim());
+            if (!opening.matches()) {
+                if (line.trim().startsWith(FENCE + "java")
+                        && line.contains("hl_lines=")) {
+                    failures.add(relative + ":" + (index + 1)
+                            + ": hl_lines must be a space-separated list of positive integers");
+                }
+                enclosingFence = fenceOpening;
+                continue;
+            }
+            highlightedFences++;
+            int closing = index + 1;
+            while (closing < lines.length
+                    && !MarkdownIntegrity.isFenceClose(lines[closing], fenceOpening)) {
+                closing++;
+            }
+            if (closing == lines.length) {
+                failures.add(relative + ":" + (index + 1)
+                        + ": highlighted Java fence is not closed");
+                continue;
+            }
+
+            int displayedLines = closing - index - 1;
+            Set<Integer> highlighted = new LinkedHashSet<Integer>();
+            for (String token : opening.group(1).trim().split(" +")) {
+                int lineNumber;
+                try {
+                    lineNumber = Integer.parseInt(token);
+                } catch (NumberFormatException invalidNumber) {
+                    failures.add(relative + ":" + (index + 1)
+                            + ": highlighted line number is too large: " + token);
+                    continue;
+                }
+                if (lineNumber < 1 || lineNumber > displayedLines) {
+                    failures.add(relative + ":" + (index + 1)
+                            + ": highlighted line " + lineNumber
+                            + " is outside this " + displayedLines + "-line excerpt");
+                } else if (!highlighted.add(lineNumber)) {
+                    failures.add(relative + ":" + (index + 1)
+                            + ": highlighted line " + lineNumber + " is duplicated");
+                }
+            }
+            if (highlighted.size() > 10) {
+                failures.add(relative + ":" + (index + 1)
+                        + ": highlight more than ten lines only by splitting the teaching excerpt");
+            }
+            index = closing;
+        }
+        return highlightedFences;
     }
 
     private static void validateBuildSources(Path repositoryRoot,
@@ -2418,13 +2799,7 @@ public final class DocumentationLinksTest {
     }
 
     private static int javaFenceCount(String markdown) {
-        int count = 0;
-        for (String line : markdown.replace("\r\n", "\n").split("\n", -1)) {
-            if (line.trim().equals(FENCE + "java")) {
-                count++;
-            }
-        }
-        return count;
+        return matcherCount(JAVA_FENCE.matcher(markdown));
     }
 
     private static int displayedJavaLineCount(Path path) throws IOException {
@@ -2439,7 +2814,7 @@ public final class DocumentationLinksTest {
                     && collapsedDetailsDepth > 0) {
                 collapsedDetailsDepth--;
             }
-            if (!insideJava && trimmed.equals(FENCE + "java")) {
+            if (!insideJava && JAVA_FENCE.matcher(trimmed).matches()) {
                 insideJava = true;
             } else if (insideJava && trimmed.equals(FENCE)) {
                 insideJava = false;
@@ -2815,7 +3190,16 @@ public final class DocumentationLinksTest {
 
                     String heading = atxHeading(line);
                     if (heading != null) {
-                        addUniqueAnchor(anchors, githubHeadingSlug(heading));
+                        Matcher explicitId = HEADING_ATTRIBUTE_ID.matcher(heading);
+                        if (explicitId.find()) {
+                            String id = explicitId.group(1);
+                            if (!anchors.add(id)) {
+                                addFailure(markdown, index + 1, "#" + id,
+                                        "duplicate explicit heading id");
+                            }
+                        } else {
+                            addUniqueAnchor(anchors, githubHeadingSlug(heading));
+                        }
                         setextCandidate = null;
                         continue;
                     }

@@ -3,7 +3,7 @@ tags:
   - Learn
 ---
 
-# Controls and intent
+# Controls and intent { #intent }
 
 **Learning mode:** Architecture reference
 
@@ -14,24 +14,29 @@ Starter buildable module supplies the complete controls file and focused test.
 “run once when pressed” is new. It explains, with familiar `if` code, why setup can save a function
 without running it and when Sushi calls that function later.
 
+!!! info "New concept: intent"
+
+    **Intent** names what the robot should do, such as `COLLECT` or `STOPPED`, without specifying
+    motor power. Controls choose it from input; the owning mechanism decides how it reaches hardware.
+
 **Question:** How does a human action become robot intent without putting gamepad policy inside a
 mechanism?
 
-Controls are the code where a team decides what each stick or button means. Sushi calls this
-decision **intent**. Controls do not construct hardware or update motors. You can follow this
-source-only lesson without a gamepad or robot.
+You can follow this source-only lesson without a gamepad or robot.
 
 ## A button becomes a capability request
 
 ### Critical code
 
-[`GamepadDevice`](<../../../ftc/input/GamepadDevice.java>) adapts the FTC gamepad to Sushi sources.
+[`GamepadDevice`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/input/GamepadDevice.html>) adapts the FTC gamepad to Sushi
+[Sources](<../Framework Overview.md#source>).
 `gamepad.a()` is a `BooleanSource` that is `true` while A is pressed. That meaning is not an
 electrical HIGH or LOW signal. A trigger is instead a `ScalarSource` from `0.0` to `1.0`; code can
 derive a Boolean meaning with, for example, `rightTrigger().above(0.2)`.
 
-The complete Starter intake mapping lives in
-[`StarterTeleOpControls`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>):
+The package-private controls owner is not a public API type. Its
+[Complete source: `StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>)
+contains the complete Starter intake mapping:
 
 Abbreviated shape (omissions shown):
 
@@ -85,8 +90,9 @@ requires an explicitly chosen field frame and is demonstrated only in the option
 
 ### Critical code
 
-Use a callback when an action completes synchronously by replacing intent. Use a Task binding when
-non-blocking behavior unfolds over several managed cycles:
+Use a [callback](<../Framework Overview.md#saved-callback>) when an action completes synchronously
+by replacing intent. Use a [Task](<../Framework Overview.md#task>) binding when non-blocking
+behavior unfolds over several managed cycles:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferenceFlywheelMechanismOpMode.java -->
 ```java

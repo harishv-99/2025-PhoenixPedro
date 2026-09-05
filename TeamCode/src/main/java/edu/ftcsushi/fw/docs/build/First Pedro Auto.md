@@ -18,6 +18,35 @@ for runtime wiring, and keep motion blocked for the power-limit reason stated be
 
 ## Critical production idea
 
+The maintained checkpoint authors one straight route and one Task-level time budget in named units:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
+```java
+private static final double ROUTE_TIMEOUT_SEC = 4.0;
+
+private static final double START_X_INCHES = 24.0;
+private static final double START_Y_INCHES = 24.0;
+private static final double END_X_INCHES = 36.0;
+private static final double END_Y_INCHES = 24.0;
+private static final double HEADING_RAD = 0.0;
+```
+
+These `Pose` values are in Pedro's field frame: start at `(24 in, 24 in, 0 rad)`, end at
+`(36 in, 24 in, 0 rad)`, and keep heading constant. That is a 12-inch change in Pedro `+X`.
+Do not silently paste Sushi-frame coordinates into this route. The runtime's configured
+`PedroFieldTransform` converts localization facts between Sushi's FTC field convention and Pedro;
+the advanced integration guide owns that runtime choice.
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
+```java
+Pose startPose = new Pose(START_X_INCHES, START_Y_INCHES, HEADING_RAD);
+
+// Register lifecycle ownership before later route construction can fail.
+registerServiceOrStop(program, new PedroHeartbeat(runtime, startPose));
+```
+
+The fixed route then uses that same authored start pose and the visible end coordinates:
+
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
 ```java
 PathChain route = runtime.pathBuilder()
@@ -29,6 +58,18 @@ PathChain route = runtime.pathBuilder()
         .build();
 RouteTask<PathChain> routeTask = routeTask(runtime.driveAdapter(), route);
 program.rootTask(routeTask);
+```
+
+The small factory attaches the exact four-second Task timeout to this eagerly built route:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
+```java
+return RouteTasks.follow(
+        "basicPedro.oneRoute",
+        Objects.requireNonNull(follower, "follower"),
+        Objects.requireNonNull(route, "route"),
+        ROUTE_TIMEOUT_SEC
+);
 ```
 
 Notice:
@@ -71,7 +112,35 @@ telemetry.addData("route.outcome", routeTask.getOutcome());
 - **Cannot conclude:** drivetrain motion, localization, path accuracy, clearance, or physical stop.
 
 The recording execution is a supplied boundary probe, not a drivetrain simulator. It publishes only
-the external completion fact this question needs.
+the external completion fact this question needs. Arrangement keeps the real `RouteTask` and
+replaces Pedro's external follower/execution boundary; the empty `PathChain` is only an identity
+token, so this checkpoint does not test the production geometry or runtime wiring:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroRouteSoftwareScenarioTest.java -->
+```java
+// ARRANGE: the follower records which route started; it invents no motion or completion.
+PathChain authoredRoute = new PathChain();
+RecordingExecution execution = new RecordingExecution();
+RecordingFollower follower = new RecordingFollower(execution);
+ManualLoopClock time = new ManualLoopClock();
+RouteTask<PathChain> routeTask = BasicPedroAuto.routeTask(follower, authoredRoute);
+```
+
+Starting is the route request. The immediate observations prove that the exact route was handed to
+the follower once and that no completion was invented:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroRouteSoftwareScenarioTest.java -->
+```java
+// REQUEST: starting the Task must start this exact, eagerly authored route once.
+routeTask.start(time.clock());
+assertSame(authoredRoute, follower.followedRoute);
+assertEquals(1, follower.followCount);
+assertEquals(RouteStatus.ACTIVE, routeTask.getRouteStatus());
+assertEquals(TaskOutcome.NOT_DONE, routeTask.getOutcome());
+```
+
+The test then injects one completion fact. Only the following Task heartbeat can make the retained
+status and outcome observations terminal:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroRouteSoftwareScenarioTest.java -->
 ```java
@@ -95,8 +164,38 @@ Run:
 **Read the causal chain:** the Task starts one authored route; the test supplies endpoint evidence
 to that retained execution; the next Task heartbeat classifies it as `COMPLETED` and `SUCCESS`.
 
+The second scenario arranges a fresh execution, follower, clock, and single-use route Task but
+supplies no endpoint evidence. Its heartbeat reaches the same factory's `4.0 s` limit:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroRouteSoftwareScenarioTest.java -->
+```java
+// ARRANGE: this execution stays ACTIVE unless the test supplies another fact.
+RecordingExecution execution = new RecordingExecution();
+RecordingFollower follower = new RecordingFollower(execution);
+ManualLoopClock time = new ManualLoopClock();
+RouteTask<PathChain> routeTask =
+        BasicPedroAuto.routeTask(follower, new PathChain());
+```
+
+That fresh Task starts once, receives no endpoint evidence, and times out on its own boundary:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroRouteSoftwareScenarioTest.java -->
+```java
+// REQUEST: begin one route attempt at this Task's own time boundary.
+routeTask.start(time.clock());
+
+// HEARTBEAT: no endpoint evidence arrives before the lesson's four-second Task limit.
+routeTask.update(time.nextCycle(4.0));
+
+// ASSERT: timeout remains distinct from success and cleans up this execution exactly once.
+assertEquals(RouteStatus.TASK_TIMEOUT, routeTask.getRouteStatus());
+assertEquals(TaskOutcome.TIMEOUT, routeTask.getOutcome());
+assertEquals(1, execution.cancelCount);
+```
+
 **Proves:** endpoint completion from the retained execution maps to exact `COMPLETED` route status
-and `SUCCESS` Task outcome for that start.
+and `SUCCESS` Task outcome for that start; missing completion reaches exact `TASK_TIMEOUT` /
+`TIMEOUT` and cancels that same retained execution once.
 
 Separate source inspection above shows that the production presenter reads both displayed facts
 from the retained `routeTask`; this focused boundary scenario does not instantiate that presenter

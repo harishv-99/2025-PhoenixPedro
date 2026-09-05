@@ -153,6 +153,10 @@ Use this authoring contract:
   perhaps one FTC loop spelling. Do not require prior knowledge of lambdas, callback registration,
   Tasks, or Sushi architecture vocabulary. Explain a plain robot action before naming the framework
   abstraction that owns it.
+- Keep first-contact pages deliberately small. Teach only the concepts needed to perform or predict
+  the next observable action. Move lifecycle edge cases, optional variants, exhaustive configuration,
+  and implementation mechanics to a directly linked Learn, Build, Advanced, or Reference section;
+  do not make the opening path complete by making it encyclopedic.
 - Before showing registration, contrast a call that runs now with a function saved during setup.
   State that registration does not run the function, identify the later loop condition that does,
   and distinguish same-loop synchronous invocation from a new thread. First-contact diagrams use
@@ -170,6 +174,31 @@ Use this authoring contract:
   source file. Full source may fill in imports, package declarations, and small mechanical details;
   it must not be the only place that constructs an owner, declares its managed heartbeat, or binds
   the concept the page claims to teach.
+- Define an unfamiliar term at the point where its first code or value needs it. Put every active
+  default that controls the demonstrated result beside that explanation and identify the exact
+  assignment a student changes. A distant glossary or later source link may deepen the explanation;
+  it may not supply the first meaning or hide a lesson-critical value.
+- Use the renderer's native visual vocabulary sparingly and consistently:
+  - `!!! info "New concept: <term>"` introduces one recurring idea in plain robot language;
+  - `!!! warning "Warning: <problem>"` marks an important configuration or operational mistake;
+  - `!!! danger "Danger: <hazard>"` is reserved for immediate injury, hardware-damage, or emergency-
+    STOP information;
+  - `!!! success "Checkpoint: <observation>"` records one observed result and what it does not
+    establish; and
+  - `!!! tip "Tip: <shortcut>"` contains optional convenience only.
+  Keep each callout to roughly 80 words and two short paragraphs, place no more than one in an H2
+  section, and never stack callouts. Use at most three concept callouts on a Get Started or Learn
+  page and one on a Build page. A box summarizes or replaces nearby explanation; it does not repeat
+  it merely to add color.
+- Keep required definitions, code, safety actions, and checkpoints expanded in normal reading order.
+  Use collapsible details only for explicitly optional depth, cards only for genuine navigation
+  choices, tabs only for mutually exclusive complete alternatives, ordinary tables for three or
+  more comparable facts, and numbered lists for procedures. Do not add a custom badge or stepper
+  when those forms already express the relationship.
+- A complete code excerpt may use `hl_lines` to draw attention to the few lines being discussed;
+  highlight no more than ten lines in one excerpt.
+  The adjacent text must also name those lines and values so highlighting is supplemental rather
+  than the only signal. Keep long code, tables, and test procedures outside callouts.
 - A Build page explicitly labeled a **blocked software-boundary checkpoint** may stop before a
   hardware graph that cannot yet pass its conservative managed gate. It must say which wiring it
   does not teach, link the advanced integration authority, and make no physical-run claim.

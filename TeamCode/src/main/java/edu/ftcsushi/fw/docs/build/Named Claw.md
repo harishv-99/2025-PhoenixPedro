@@ -69,6 +69,18 @@ stateCommand = SemanticScalarCommand.forEnum(c.initialState)
 `CLOSED_TARGET`, `HALF_TARGET`, and `OPEN_TARGET` are mechanism coordinates `0.0`, `0.5`, and `1.0`.
 They let callers and status keep stable names even if the configured native endpoints change.
 
+Keep the three coordinate facts separate:
+
+| Name | Requested/applied mechanism coordinate | Native command with this profile |
+|---|---:|---:|
+| `CLOSED` | bounded normalized `0.0` | configured endpoint `0.25` |
+| `HALF` | bounded normalized `0.5` | derived midpoint `0.475` |
+| `OPEN` | bounded normalized `1.0` | configured endpoint `0.70` |
+
+The mechanism coordinate is the stable public command domain. The Plant bounds it to `[0, 1]`.
+The native coordinate is only the final standard-servo adapter command derived from two
+configuration endpoints.
+
 ### Add logical bounds and one native range map
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.java -->
@@ -94,7 +106,10 @@ Read only the new stages:
 
 `HALF` therefore derives halfway between the two configured native endpoints; with candidates
 `0.25` and `0.70`, the submitted native command is `0.475`. It does not claim the linkage is
-physically halfway open. The existing `targetExactlyFrom(...)`, `build()`, mechanism
+physically halfway open. Construction requires both native endpoints to be finite, inside the
+servo's inclusive `[0, 1]` command envelope, and distinct. That envelope is not a safe linkage
+range; only the isolated gate can justify backed-off endpoints. The existing
+`targetExactlyFrom(...)`, `build()`, mechanism
 `update(clock)`, `program.output(...)`, and callback-binding roles mean exactly what they did in
 the intake lesson. `stop()` is still terminal lifecycle cleanup, but its hardware effect is
 different: a standard servo has no zero-power command. After a position has been submitted, the
@@ -249,6 +264,36 @@ Notice:
   command reasserted at stop.
 - **Cannot conclude:** endpoint clearance, linkage geometry, interpolation, or physical arrival.
 
+Arrangement reads the active endpoint candidates and constructs the production mechanism with
+only its FTC Servo replaced:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawSoftwareScenarioTest.java -->
+```java
+// ARRANGE: read the active software candidates and register only the named Servo.
+BasicClawMechanism.Config config = BasicClawProfile.current().claw;
+FtcTestHardware hardware = new FtcTestHardware();
+FtcTestHardware.ServoProbe servo = hardware.addServo(config.servoName);
+BasicClawMechanism claw = new BasicClawMechanism(hardware, config);
+ManualLoopClock time = new ManualLoopClock();
+```
+
+Before another request, the first output heartbeat applies the initial normalized `CLOSED`
+coordinate and the probe observes its configured native command:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawSoftwareScenarioTest.java -->
+```java
+// CLOSED: the default 0.0 request maps to the configured native lower endpoint.
+assertEquals(0, servo.positionWrites());
+claw.update(time.clock());
+assertEquals(BasicClaw.State.CLOSED, claw.status().requestedState());
+assertEquals(0.0, claw.status().appliedCoordinate(), 0.0);
+assertEquals(0.25, servo.position(), 0.0);
+assertEquals(1, servo.positionWrites());
+```
+
+The next request changes only semantic/normalized intent; its following heartbeat causes the
+derived native midpoint and the assertions observe both domains:
+
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawSoftwareScenarioTest.java -->
 ```java
 // HALF: semantic intent changes now; the normal heartbeat derives the native midpoint.
@@ -268,8 +313,10 @@ Run:
 .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicClawSoftwareScenarioTest
 ```
 
-**Read the causal chain:** `HALF` selects normalized `0.5`; the managed Plant heartbeat applies the
-bounded target; the range map derives the native midpoint; the software servo records that command.
+**Read the causal chain:** arrangement alone produces no write; the first heartbeat applies the
+initial `CLOSED` request. `HALF` then selects normalized `0.5` without writing; the next managed
+Plant heartbeat applies the bounded target, the range map derives `0.475`, and only then does the
+software Servo record that native command.
 
 The test then explicitly selects `OPEN` before making the different standard-servo stop effect
 visible:

@@ -102,6 +102,23 @@ point and keeps its fail-closed motion permission beside those candidates. None 
 proves the name, direction, power, or mechanism is safe on your robot. The mechanism constructor
 copies and validates every retained value before hardware lookup.
 
+`false` is an active lock, not a reminder. The focused host checks it before constructing the
+motor-owning mechanism:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
+```java
+requireMotionAllowed(
+        "focused intake TeleOp",
+        "StarterProfile.allowIntakeMotion",
+        activeProfile.allowIntakeMotion);
+
+StarterIntakeMechanism intake = declareIntake(program, activeProfile);
+```
+
+With the checked-in profile, INIT therefore stops with an actionable error before hardware lookup.
+Change only `profile.allowIntakeMotion` to `true` after the isolated gate at the end of this page;
+that permits the supervised check but still does not prove the candidate configuration safe.
+
 ### 2. Map each name forward once
 
 [`SemanticScalarCommand`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarCommand.html>)
@@ -304,6 +321,25 @@ Notice:
 - **Observe:** semantic status, cached applied power, and the recorded device write.
 - **Cannot conclude:** physical direction, safe ingestion, current draw, jamming, or stopping time.
 
+First arrange the production mechanism with its normal configuration and replace only the FTC
+motor boundary:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
+```java
+// ARRANGE: production configuration and mechanism with only the FTC motor replaced.
+StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+config.collectPower = 0.37;
+config.ejectPower = -0.22;
+
+FtcTestHardware hardware = new FtcTestHardware();
+FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
+StarterIntakeMechanism intake = new StarterIntakeMechanism(hardware, config);
+ManualLoopClock time = new ManualLoopClock();
+```
+
+The request is the cause. Its immediate observations prove that no output heartbeat has happened;
+the heartbeat then produces the applied status and recorded write:
+
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
 ```java
 // REQUEST: semantic intent changes immediately; hardware has not been updated yet.
@@ -325,7 +361,8 @@ Run:
 ```
 
 **Read the causal chain:** a button or test call changes one named request; the next normal output
-heartbeat resolves it; the software motor records the boundary write.
+heartbeat resolves it; only then do cached applied status and the software motor's recorded write
+change. Arrangement supplies no hidden motion or feedback.
 
 **Proves:** semantic mapping, update order, cached status, and the submitted software command.
 

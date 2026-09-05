@@ -73,8 +73,35 @@ protected void configure(RobotProgram program) {
 }
 ```
 
-The small robot-owned factory keeps the duration choice beside the Auto and constructs new work
-whenever it is called:
+The profile still starts with `allowIntakeMotion = false`. `declareAuto(...)` enforces that lock
+before it constructs the motion-capable intake owner:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
+```java
+StarterProfile activeProfile = Objects.requireNonNull(profile, "profile");
+requireMotionAllowed(
+        "Auto",
+        "StarterProfile.allowIntakeMotion",
+        activeProfile.allowIntakeMotion);
+
+return declareIntake(program, activeProfile);
+```
+
+Thus the checked-in Auto fails closed during INIT rather than looking up or commanding the motor.
+Only the test fixture and the supervised hardware gate make a fresh private profile copy and set
+that one permission true; neither substitution changes the production declaration or routine.
+
+The active duration is one named production value beside the Auto. Change this assignment when the
+reviewed routine needs a different collection interval:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
+```java
+public final class StarterAuto extends FtcRobotOpMode {
+
+    private static final double COLLECT_DURATION_SEC = 0.75;
+```
+
+The small robot-owned factory uses that value and constructs new work whenever it is called:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
 ```java
@@ -147,8 +174,54 @@ Notice:
   safe mechanism envelope.
 
 The managed test supplies deterministic FTC runtime values. A five-second INIT history is
-deliberately followed by START at ten seconds; the root still receives its complete 0.75-second
-interval:
+deliberately followed by START at ten seconds. Arrangement keeps the production declaration,
+routine factory, and lifecycle, while replacing only the outside devices, clock, telemetry, and
+that private profile copy:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
+```java
+// ARRANGE: keep production declaration/routine/lifecycle; replace devices, time, and gate.
+StarterProfile profile = enabledProfile();
+FtcTestHardware hardware = new FtcTestHardware();
+FtcTestHardware.MotorProbe motor = hardware.addMotor(profile.intake.motorName);
+ManagedAuto mode = prepare(
+        new ManagedAuto(profile),
+        hardware,
+        new StarterTestHardware.TelemetryProbe(),
+        new Gamepad());
+mode.advanceTo(5.0);
+mode.init();
+```
+
+INIT is the before-request observation. START is the request boundary and first managed output
+heartbeat:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
+```java
+// BEFORE START: configuration built the fresh Task but neither Task nor output has run.
+assertEquals(0, motor.powerWrites());
+assertEquals(StarterIntake.Mode.STOPPED, mode.intake.status().mode());
+
+// START: the host resets its clock, starts the root, then realizes COLLECT once.
+mode.advanceTo(10.0);
+mode.start();
+assertEquals(profile.intake.collectPower, motor.power(), 0.0);
+assertEquals(StarterIntake.Mode.COLLECT, mode.intake.status().mode());
+```
+
+The next heartbeat is still before the Task's own deadline, so the request remains active:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
+```java
+// HEARTBEAT: INIT time was not charged; the request remains active before 0.75 seconds.
+mode.advanceTo(10.74);
+mode.loop();
+assertFalse(mode.root.isComplete());
+assertEquals(profile.intake.collectPower, motor.power(), 0.0);
+```
+
+At 10.75 seconds, the observation changes only because another managed heartbeat reaches the
+duration boundary:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
 ```java
@@ -161,6 +234,64 @@ assertEquals(0.0, motor.power(), 0.0);
 mode.stop();
 ```
 
+The second method creates another managed host, stops while its root is active, and observes the
+exact cancellation request and motor command. It then constructs a second root through the same
+production factory and proves both fresh identity and rejection of reuse:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
+```java
+StarterProfile profile = enabledProfile();
+FtcTestHardware firstHardware = new FtcTestHardware();
+FtcTestHardware.MotorProbe firstMotor =
+        firstHardware.addMotor(profile.intake.motorName);
+ManagedAuto first = prepare(
+        new ManagedAuto(profile),
+        firstHardware,
+        new StarterTestHardware.TelemetryProbe(),
+        new Gamepad());
+first.init();
+first.start();
+```
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
+```java
+// STOP: managed cancellation publishes the safe request before the Plant is terminally zeroed.
+first.stop();
+assertEquals(TaskOutcome.CANCELLED, first.root.getOutcome());
+assertEquals(StarterIntake.Mode.STOPPED, first.intake.status().mode());
+assertEquals(0.0, firstMotor.power(), 0.0);
+```
+
+The same test then builds a second managed host. Its configuration invokes the production factory
+again, so the retained roots must be different objects:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
+```java
+// FRESHNESS: another configuration invokes the same production factory for a new Task.
+StarterProfile secondProfile = enabledProfile();
+FtcTestHardware secondHardware = new FtcTestHardware();
+secondHardware.addMotor(secondProfile.intake.motorName);
+ManagedAuto second = prepare(
+        new ManagedAuto(secondProfile),
+        secondHardware,
+        new StarterTestHardware.TelemetryProbe(),
+        new Gamepad());
+second.init();
+assertNotSame(first.root, second.root);
+```
+
+Attempting to start the already-used first root fails fast with the single-use explanation:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
+```java
+try {
+    first.root.start(new ManualLoopClock().clock());
+    fail("Expected a started Task to reject reuse");
+} catch (IllegalStateException expected) {
+    assertTrue(expected.getMessage().contains("single-use"));
+}
+```
+
 Run:
 
 ```powershell
@@ -169,8 +300,9 @@ Run:
 
 **Read the causal chain:** INIT builds but does not start the root; START publishes `COLLECT` and
 the same START call realizes it; pre-boundary loops retain the request; the exact duration boundary
-publishes and realizes `STOPPED`. The second scenario stops early, observes `CANCELLED` and zero,
-then proves another factory call returns a distinct Task while the started one rejects reuse.
+publishes and realizes `STOPPED`, which the final assertions observe. The second scenario stops
+early, observes `CANCELLED` and zero, then constructs a distinct root and proves the first rejects
+reuse.
 
 **Proves:** managed START timing, cooperative duration, same-cycle safe completion, active STOP
 cancellation, terminal output stop, and fresh single-use routine construction.

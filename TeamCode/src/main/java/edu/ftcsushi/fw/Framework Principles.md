@@ -437,13 +437,13 @@ and tests, and evidence applies when a page uses a checkpoint or experiment to s
 | Criterion | The documentation passes when... |
 | --- | --- |
 | **Audience and outcome** | It makes the primary reader and purpose clear. A lesson names one observable result or question, its prerequisites, completion evidence, and the next choice; a hub or reference page makes its choices or lookup scope clear. |
-| **Learning order** | Familiar robot actions and prior concepts explain each new framework term before the term is required; required, optional, and advanced paths are visibly different. |
-| **Reconstructability** | A lesson that asks the student to build a production path, together with its declared prerequisites, contains the important configuration, ownership, wiring, heartbeat, and stop decisions; complete source supplies only mechanical gaps. |
+| **Learning order** | Familiar robot actions and prior concepts explain each new framework term before the term is required; its first explanation sits beside the active code or value that uses it; required, optional, and advanced paths are visibly different. |
+| **Reconstructability** | A lesson that asks the student to build a production path, together with its declared prerequisites, contains the important active values, configuration, ownership, wiring, heartbeat, and stop decisions; complete source supplies only mechanical gaps. |
 | **Explanation** | Every displayed code fragment or test says what happens, when it happens, who owns it, and why it is present instead of asking the student to reverse-engineer the example. |
 | **Evidence** | An evidentiary checkpoint identifies its question, observation, supported and unsupported conclusions, and next gate. When it substitutes an outside boundary, it also identifies retained production behavior and each replacement. |
 | **Truth and safety** | Software claims stop at software evidence, physical claims require controlled hardware evidence, and an unavailable safe path is labeled blocked rather than guessed. |
 | **Discovery** | Goal-oriented headings and one canonical home make the page findable without knowing framework taxonomy; narrative, API, and complete-source lookup remain distinct. |
-| **Accessibility** | Essential meaning is available in text; a diagram or visual is labeled and has a nearby text equivalent rather than carrying the only explanation. |
+| **Accessibility** | Essential meaning is available in visible text; a diagram or visual is labeled and has a nearby text equivalent rather than carrying the only explanation, and required material is not available only through color or interaction. |
 | **Current authority** | Narrative, exact API contracts, maintained examples, tests, and reported limitations describe the same supported present state. |
 
 ### Implications
@@ -458,7 +458,14 @@ and tests, and evidence applies when a page uses a checkpoint or experiment to s
   FTC gamepad fields, and either familiar FTC loop spelling; it must not assume lambdas, callback
   registration, Tasks, or framework-specific nouns. Start with an FTC-loop bridge and a required
   software-only tour, then offer goal-based Build recipes, deeper concepts, examples, reference,
-  and maintainer material.
+  and maintainer material. Keep that first contact short: teach only the ideas needed for the next
+  observable action, then link optional mechanics, variants, and edge cases at the later level that
+  can use them.
+- Define a new term in plain robot language at the point where the reader first needs it. Put the
+  active code and values beside that definition so the reader can connect meaning to spelling
+  without searching another section or opening source. If a default materially controls the
+  lesson's result or is a likely tuning decision, make its effective values visible and identify
+  where the student changes them rather than asking the reader to infer them from `defaults()`.
 - Before the first API that saves code for later, contrast a method call that runs now with a
   function registered during setup. State that registration does not execute the function and that
   an accepted callback runs synchronously in its later FTC loop rather than on a new thread.
@@ -497,8 +504,10 @@ and tests, and evidence applies when a page uses a checkpoint or experiment to s
   explicitly labeled complete-source links serve source study. Reference pages group related
   framework families and lead with the ordinary entry point before advanced seams.
 - Visuals supplement the explanation. Give each diagram a meaningful accessible label and nearby
-  text equivalent, and never make color, position, animation, or interaction the only carrier of a
-  required fact or sequence.
+  text equivalent. Use a small, consistent visual vocabulary whose labels state why information is
+  emphasized; do not make every important paragraph compete for attention. Keep required concepts,
+  code, safety actions, and evidence visible in normal reading order, and never make color,
+  position, animation, or interaction the only carrier of a required fact or sequence.
 - Markdown is the one authored source for narrative guides and any generated documentation site.
   Javadocs remain the exact method-level API contract. Generated HTML must consume those sources,
   not become another hand-maintained copy.
