@@ -65,6 +65,21 @@ active candidates a team reviews. None proves the motor or switch identity, dire
 range, power, timeouts, or heights on a robot. Leave `allowLiftMotion` false through the software
 checkpoint and initial physical setup.
 
+The mechanism validates the complete shared lift coordinate before any hardware lookup, even
+though this page exercises only homing:
+
+| Active candidates | Relationship that must remain true |
+|---|---|
+| `maximumHeightIn = 18.0`, `ticksPerIn = 100.0` | The maximum and scale are finite and greater than zero. |
+| `STOWED = 0.0`, `LOW = 4.0`, `HIGH = 14.0` inches | `0 <= STOWED < LOW < HIGH <= maximumHeightIn`. |
+| `toleranceIn = 0.20` | It is positive and strictly less than half the closest named-height gap: `0.20 < 2.0` here. The next lesson uses this non-overlapping arrival rule. |
+| `maximumPower = 0.30`, `homingPower = -0.15` | Maximum power is in `(0, 1]`; search power is in `[-1, 0)` by this mechanism's convention. |
+| home `3.0 s`, move `2.0 s` | Both timeout budgets are finite and greater than zero. |
+
+Blank hardware names, a missing direction, non-finite values, or a broken relationship reject
+construction with an actionable error. This proves coherent software configuration, not that the
+numbers describe the physical lift.
+
 ### Declare the coordinate and its reference requirement
 
 `BasicLiftMechanism.Config` keeps the motor and active-low switch names, direction, maximum height
@@ -118,8 +133,9 @@ bottomSwitch = FtcSensors.digitalLow(
 ```
 
 `digitalLow(...)` performs the electrical LOW-to-pressed interpretation. `debouncedOnOff(...)`
-requires the interpreted value to remain stable in clock time before publishing either edge; it
-does not inspect where the switch is mounted.
+requires a pressed value to remain stable for `0.02 s` before publishing pressed and a released
+value to remain stable for `0.02 s` before publishing released. It rejects contact chatter; it does
+not inspect where the switch is mounted or prove that the lift reached bottom.
 
 ### Search cooperatively, then publish policy only on success
 
@@ -260,11 +276,28 @@ continuation actually replaced the earlier request:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftSoftwareScenarioTest.java -->
 ```java
+Scenario scenario = new Scenario();
+
+// ARRANGE: HIGH is the explicitly authored "not pressed" state of this active-low switch.
 scenario.motor.setCurrentPositionTicks(0);
 scenario.bottomSwitch.setHigh(true);
 scenario.lift.setHeight(BasicLift.Height.LOW);
 assertEquals(BasicLift.Height.LOW, scenario.lift.status().requestedHeight());
 assertEquals(0, scenario.motor.targetPositionWrites());
+```
+
+The request then starts and first-updates a fresh home Task before the normal output heartbeat
+applies search power. The assertions observe that no switch hit was invented:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftSoftwareScenarioTest.java -->
+```java
+// REQUEST: start a cooperative home Task; it may command search power but cannot invent a hit.
+scenario.task = scenario.lift.home();
+scenario.task.start(scenario.time.clock());
+scenario.task.update(scenario.time.clock());
+scenario.lift.update(scenario.time.clock());
+assertFalse(scenario.task.isComplete());
+assertEquals(scenario.config.homingPower, scenario.motor.power(), 0.0);
 ```
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftSoftwareScenarioTest.java -->
@@ -293,8 +326,23 @@ assertEquals((int) Math.round(
 assertEquals(targetWritesBeforeSuccess + 1, scenario.motor.targetPositionWrites());
 ```
 
-The second scenario supplies no pressed observation. The Task reports timeout, leaves the Plant
-unreferenced, and releases temporary search power:
+The second scenario arranges a released switch, starts the same request, and performs the same
+Task-then-output heartbeat without ever injecting a pressed observation:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftSoftwareScenarioTest.java -->
+```java
+Scenario scenario = new Scenario();
+scenario.bottomSwitch.setHigh(true); // The authored switch observation never becomes pressed.
+scenario.lift.setHeight(BasicLift.Height.LOW);
+assertEquals(BasicLift.Height.LOW, scenario.lift.status().requestedHeight());
+scenario.task = scenario.lift.home();
+scenario.task.start(scenario.time.clock());
+scenario.task.update(scenario.time.clock());
+scenario.lift.update(scenario.time.clock());
+```
+
+Advancing the configured time budget then lets the Task heartbeat observe timeout, leaves the
+Plant unreferenced, and releases temporary search power:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftSoftwareScenarioTest.java -->
 ```java
@@ -314,7 +362,8 @@ Run:
 ```
 
 **Read the causal chain:** the test explicitly supplies switch evidence across real clock cycles;
-the first observation is shorter than the debounce interval; the second observation lets the
+arrangement leaves it released, the request starts search, and the output heartbeat applies search
+power. The first pressed observation is shorter than the debounce interval; the second lets the
 production homing Task establish zero, select `STOWED`, and let the downstream output hold it. The
 separate missing-evidence scenario reaches the configured timeout without establishing reference
 and releases the temporary search output while preserving the `LOW` sentinel. That contrast proves

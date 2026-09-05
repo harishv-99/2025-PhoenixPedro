@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -238,6 +238,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 129 | DOC-14 | First sensor-to-status Build outcome | Proposed | Teach one no-motion digital sensor from FTC adapter through polarity, debounce, cached semantic status, presenter, focused software evidence, and an isolated physical gate without introducing a generic sensor framework. |
 | 130 | DOC-15 | FTC-loop-first Get Started path | Done | The reviewed FTC-loop-first introduction, required software-only tour, progressive Build first passes, synchronized guidance, verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 131 | DOC-16 | Documentation quality criteria as design authority | Done | The reviewed applicability-qualified documentation rubric, focused structural contract, deterministic verification, Android Studio approval, and destination-specific publication authorization are complete. |
+| 132 | DOC-17 | Source-optional lessons and visual teaching grammar | Done | The reviewed point-of-use explanations, bounded beginner first passes, restrained accessible visual grammar, reconstruction repairs, verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 133 | DOC-18 | Test & Tune operational onboarding cleanup | Proposed | Make Panels, tuner controls, operational defaults, executable beginner experiments, and robot-configured calibration verification self-contained after DOC-17. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -27375,6 +27377,141 @@ implementation.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening its pull request, and merging that
   pull request into `master`; it does not authorize starting DOC-14, VISION-03, or another tracker
   item.
+
+### DOC-17 - Source-optional lessons and visual teaching grammar
+
+- **Gate 1 decision and implementation approval (2026-09-05):** **In progress** on
+  `codex/doc-17-source-optional-visual-lessons`, created from merged
+  `origin/master@61963c87424847b62870aa81e40c0b8721e6162a`. After auditing the documentation as a
+  rookie reader, the user required first-use ideas such as deadband to be explained in plain
+  language beside the exact code and values that activate them, then approved the complete DOC-17
+  plan and directed **“Implement the plan.”** This authorizes the bounded documentation, maintained
+  teaching-example, and regression-test work below. It does not authorize staging, publication,
+  reusable framework API changes, production-robot changes, DOC-14, DOC-18 implementation, or
+  another tracker item.
+- **Confirmed gap and affected authorities:** the beginner path now has the right outcome order,
+  ownership, and evidence boundaries, but several pages still require source inspection to discover
+  an active default, complete composition slice, validation relationship, coordinate meaning, or
+  test cause. First Drive names a `0.02` device deadband, `0.05` shaping deadband, `1.5` exponents,
+  and `1.0` shaping scales after showing only `Config.defaults()`, so a literal reader cannot connect
+  those values to editable code. The site already enables native admonitions, details, tab sets,
+  cards, and code-line highlighting, but maintained lessons use no semantic callout grammar. The
+  affected authorities are Framework Principles, Maintainer Notes, the first-contact Learn pages,
+  beginner Build lessons and their maintained example excerpts, `FirstDriveTeleOp` and its focused
+  scenario, and `DocumentationLinksTest`; production application code is not a caller.
+- **External comparison and alternatives:** the current NextFTC v2 site uses cards for genuine
+  navigation choices, language tabs for mutually exclusive Java/Kotlin examples, and sparse labeled
+  danger/tip/note callouts while leaving ordinary explanation and short code in the normal flow.
+  Keeping Sushi unchanged preserves semantic correctness but leaves point-of-use reconstruction
+  gaps. Boxing every term would destroy hierarchy; custom badges, a stepper, or custom CSS would add
+  a second visual system; tabs or collapsed details would hide required beginner material. The
+  selected design reuses the renderer's native, accessible components with stricter instructional
+  meanings and keeps normal prose primary.
+- **Chosen visual grammar:** use titled native callouts only as `New concept: ...`, `Warning: ...`,
+  `Danger: ...`, `Checkpoint: ...`, or `Tip: ...`. A concept callout defines one recurring idea in
+  plain robot language immediately before first use; warning covers an important configuration or
+  operational mistake; danger is reserved for immediate injury, damage, or emergency-STOP facts;
+  checkpoint records one observed result plus what it does not prove; and tip is optional. Use at
+  most three concept callouts on a Get Started/Learn page, one on a Build page, one total callout per
+  section, never adjacent callouts, and roughly 80 words/two short paragraphs per box. Required
+  definitions, code, safety, and tests remain expanded. Cards mean choices, tabs mean complete
+  alternatives, tables compare three or more parallel facts, and ordered lists remain procedures.
+  Highlight only the few code lines under discussion and name the same lines/values in text so
+  color, icon, placement, or interaction never carries essential meaning.
+- **Chosen teaching repair:** canonically introduce Source, saved callback/lambda, Task, Plant, and
+  intent before their first required APIs, then link later occurrences to those exact anchors.
+  First Drive explicitly constructs the active gamepad and drive-source configurations and places
+  one stick-shaping concept box, highlighted code, and a three-stage controller-correction /
+  driver-feel / drivetrain-cap table together. The remaining Build repair makes fail-closed
+  permissions, complete Auto composition, lift validation and status vocabulary, servo coordinate
+  domains, Pedro route/frame/unit/timeout facts, field-relative composition, and causal test
+  heartbeat/observation paths available in their lessons rather than only in source.
+- **Public surface, ownership, and truth check:** no reusable framework API, signature, Plant,
+  Task, lifecycle, or robot behavior changes. The maintained First Drive example replaces hidden
+  defaults with the same explicit values and keeps one controls owner, one stable source, one
+  managed drive declaration, cautious output caps, and the same STOP path. Documentation remains
+  the authored authority; complete source supplies imports and mechanical details only. Visuals
+  supplement text, and software checkpoints retain their physical-evidence limits.
+- **Rejected and deferred scope:** do not add a custom design system, inline badge API, interactive
+  stepper, decorative tabs, callout around every heading/default, generic glossary engine, public
+  framework convenience API, production-application cleanup, or the proposed sensor lesson. Do not
+  collapse required material. Panels onboarding, tester controls/menu labels, tuning vocabulary and
+  defaults, executable beginner experiments, and robot-configured calibration verification are
+  recorded separately as DOC-18 rather than expanding this Build-focused item.
+- **Verification plan:** extend documentation regressions for the allowed visual vocabulary,
+  density, ordering, canonical concept anchors, exact active values, complete composition slices,
+  focused source-excerpt parity, direct prerequisite links, and plain-text accessibility. Prove the
+  explicit First Drive values preserve the prior source and wheel-command behavior. Run focused
+  documentation/example scenarios, all TeamCode unit tests and compilation, strict Javadocs, strict
+  Zensical rendering, generated guide-search and API/source-link checks, desktop/narrow and
+  light/dark representative inspection, source/caller scans, final-newline and whitespace checks,
+  and `git diff --check`; obtain independent student, principles/scope, and rendered-accessibility
+  reviews. No robot-hardware or student-usability claim follows from this work.
+- **Implementation result (2026-09-05):** **Verifying.** Framework Principles and Maintainer Notes
+  now require short first contact, point-of-use definitions and material values, explicit deferral,
+  and a restrained native callout/highlight grammar. The overview canonically introduces Source,
+  saved callback/lambda, and Task; the Learn pages introduce Plant and intent; later uses link back
+  to stable explicit anchors. First Drive now makes the unchanged `0.02` device deadband, `0.05`
+  shaping deadband, `1.5` exponents, `1.0` shaping scales, and cautious drive caps editable beside
+  the explanation, while its production-path scenario proves half-stick shaping as well as signs,
+  caps, and STOP. The affected intake, Auto, lift, claw, Pedro, and field-relative pages now show
+  their material configuration, owner wiring, causal test arrangement, heartbeat, observation, and
+  evidence boundary, or explicitly label the advanced page as an architecture reference when a
+  complete hardware profile remains source-owned.
+- **Beginner-size result (2026-09-05):** the user's implementation refinement keeps the opening path
+  deliberately bounded. The framework overview is 820 prose words with three Java excerpts; the
+  three required Build first passes are 220, 297, and 201 prose words with one, one, and two Java
+  excerpts respectively. New configuration and evidence detail lives only in the later full-build
+  or Advanced sections. A regression now caps each Learn topic as well as the aggregate Learn set.
+- **Automated and generated-artifact verification (2026-09-05):** focused documentation and First
+  Drive tests pass (`DocumentationLinksTest`: 37/37; `FirstDriveSoftwareScenarioTest`: 2/2). The
+  canonical compile-and-test command passes 2,224 tests across 248 suites with zero failures,
+  errors, or skips. Pinned Zensical `0.0.51` passes a clean strict build; guide-search verification
+  finds 933 indexed sections across all six areas; strict Javadocs pass; and generated-link
+  verification resolves 161 API links plus 76 maintained-source links across 45 Markdown pages.
+  The combined artifact contains every required file, no symbolic links, five canonical concept
+  anchors, six rendered native concept boxes, and seven highlighted First Drive lines. Expected
+  Java 8 source/target deprecation warnings under the Android Studio Java 21 runtime remain
+  unchanged.
+- **Adversarial review and honest limitation (2026-09-05):** independent rookie, framework-
+  principles/scope, and visual-parser reviews found and repaired hidden fixture construction, fresh
+  single-use Task arrangements, missing active constants, ambiguous reconstruction promises,
+  excerpt-size/indent errors, duplicate explicit IDs, fence parsing, malformed/overflowing
+  highlight indices, and non-adjacent value explanations. Their final passes report no remaining
+  actionable finding. Static generated-HTML inspection confirms the callout titles, anchors, and
+  highlighted spans, but this session exposes no interactive browser, so desktop/narrow and
+  light/dark visual inspection remains part of the human review rather than a claimed automated
+  result. No robot hardware was run and no physical-safety or student-usability claim is made.
+- **Android Studio review and publication stop (2026-09-05):** inspect the exact unstaged 18-path
+  diff on `codex/doc-17-source-optional-visual-lessons`, based on
+  `origin/master@61963c87424847b62870aa81e40c0b8721e6162a`, especially the beginner page lengths,
+  point-of-use definitions and values, visual density, source-exact checkpoint slices, First Drive
+  behavior-preserving explicit configuration, advanced field-relative promise, and regression
+  parser. No file is staged, committed, pushed, opened as a pull request, or merged, and DOC-18 has
+  not started. After review, the exact combined authorization is: **“DOC-17 looks good. Authorize
+  committing the reviewed DOC-17 diff on codex/doc-17-source-optional-visual-lessons, pushing that
+  branch to https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging
+  it into master.”**
+- **Manual verification and publication authorization (2026-09-05):** the user reviewed the exact
+  DOC-17 diff in Android Studio and supplied the combined authorization above. DOC-17 is now
+  **Done**; Gate 3 is authorized only for `codex/doc-17-source-optional-visual-lessons`, the push
+  destination `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. This does
+  not authorize starting DOC-18.
+
+### DOC-18 - Test & Tune operational onboarding cleanup
+
+- **Tracker-only intake status (2026-09-05):** **Proposed after DOC-17.** The DOC-17 rookie audit
+  found that Test & Tune still relies on source knowledge for parts of Panels startup, exact tester
+  controls and menu labels, tuning vocabulary/defaults, executable beginner experiments, and the
+  boundary between generic software evidence and robot-configured calibration verification. No
+  decision gate has started, and this record authorizes no implementation, branch, tooling change,
+  public API, production-robot change, physical run, or hardware claim.
+- **Decision gate required later:** inspect every maintained Test & Tune page, disabled host,
+  Panels/Driver Station path, calibration recipe, configuration owner, and focused scenario. Compare
+  documentation-only repair, focused maintained experiments, and any genuinely missing tool seam;
+  prefer no new API unless at least two independent workflows prove it removes recurring robot-code
+  complexity. Keep physical directions, endpoints, tuning quality, loads, and safety behind explicit
+  adopting-robot evidence.
 
 ### VISION-03 - Reusable color-blob pipeline
 

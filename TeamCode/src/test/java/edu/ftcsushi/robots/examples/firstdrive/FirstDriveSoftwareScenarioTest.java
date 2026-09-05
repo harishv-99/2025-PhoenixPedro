@@ -18,7 +18,7 @@ import static org.junit.Assert.assertEquals;
 public final class FirstDriveSoftwareScenarioTest {
 
     @Test
-    public void productionControlsPreserveRobotFrameAxisSigns() {
+    public void productionControlsPreserveRobotFrameAxisSignsAndExplicitShaping() {
         // ARRANGE: construct the exact production controls from a centered software gamepad.
         Gamepad gamepad = new Gamepad();
         FirstDriveTeleOp.FirstDriveControls controls =
@@ -28,6 +28,11 @@ public final class FirstDriveSoftwareScenarioTest {
 
         // ASSERT: the construction-time neutral reading produces no drive request.
         assertSignal(drive.get(time.clock()), 0.0, 0.0, 0.0);
+
+        // REQUEST + ASSERT: half stick is softened by the retained 0.05 deadband/1.5 exponent.
+        gamepad.left_stick_y = -0.5f;
+        double shapedHalf = shaped(0.5, 0.05, 1.5);
+        assertSignal(drive.get(time.nextCycle(0.02)), shapedHalf, 0.0, 0.0);
 
         // REQUEST + ASSERT: FTC stick up becomes positive robot-forward axial intent.
         gamepad.left_stick_y = -1.0f;
@@ -56,6 +61,14 @@ public final class FirstDriveSoftwareScenarioTest {
         // START: let the managed host own initialization, heartbeat, and cleanup.
         mode.init();
         mode.start();
+
+        // REQUEST + HEARTBEAT + ASSERT: production half-stick shaping reaches the capped mixer.
+        gamepad.left_stick_y = -0.5f;
+        mode.loop();
+        double shapedHalfPower = 0.25 * shaped(0.5, 0.05, 1.5);
+        assertWheelPowers(
+                hardware, config,
+                shapedHalfPower, shapedHalfPower, shapedHalfPower, shapedHalfPower);
 
         // REQUEST + HEARTBEAT + ASSERT: each isolated axis reaches the capped wheel mixer.
         gamepad.left_stick_y = -1.0f;
@@ -107,6 +120,10 @@ public final class FirstDriveSoftwareScenarioTest {
         assertEquals(axial, signal.axial, 1e-9);
         assertEquals(lateral, signal.lateral, 1e-9);
         assertEquals(omega, signal.omega, 1e-9);
+    }
+
+    private static double shaped(double value, double deadband, double exponent) {
+        return Math.pow((value - deadband) / (1.0 - deadband), exponent);
     }
 
     private static void assertWheelPowers(

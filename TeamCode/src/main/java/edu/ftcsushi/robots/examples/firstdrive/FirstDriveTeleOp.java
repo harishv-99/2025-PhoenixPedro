@@ -57,11 +57,20 @@ public final class FirstDriveTeleOp extends FtcRobotOpMode {
         /** Maps the selected driver axes into Sushi's robot-centric drive convention. */
         FirstDriveControls(GamepadDevice driver) {
             GamepadDevice requiredDriver = Objects.requireNonNull(driver, "driver");
+            requiredDriver.setAxisDeadband(0.02);
+
+            GamepadDriveSource.Config driveSourceConfig = GamepadDriveSource.Config.defaults();
+            driveSourceConfig.deadband = 0.05;
+            driveSourceConfig.translateExpo = 1.5;
+            driveSourceConfig.rotateExpo = 1.5;
+            driveSourceConfig.translateScale = 1.0;
+            driveSourceConfig.rotateScale = 1.0;
+
             driveSource = new GamepadDriveSource(
                     requiredDriver.leftX(),
                     requiredDriver.leftY(),
                     requiredDriver.rightX(),
-                    GamepadDriveSource.Config.defaults());
+                    driveSourceConfig);
         }
 
         /** Returns the stable drive source sampled by the managed program. */

@@ -25,13 +25,14 @@ and `stop()` for you. Both styles contain the same three jobs:
 
 Sushi owns that repetition and cleanup while your code describes what belongs in them.
 
-## 2. Separate a current value from a reusable reader
+## 2. Source: separate a current value from a reusable reader { #source }
 
-Reading `gamepad1.a` gives the `boolean` value at that line. Saving it does not make the variable
-change on later loops. A **reusable reader** is a small object that gets the newest value whenever
-it is asked. Sushi calls this reader a **Source**; `BooleanSource` reads true/false and
-`ScalarSource` reads a number. The small adapter that turns FTC gamepad fields into these readers is
-`GamepadDevice`.
+!!! info "New concept: Source"
+
+    A **Source** is a reusable reader, not a stored value. Save it once during setup; whenever the
+    managed loop asks later, it reports the current input.
+
+Reading `gamepad1.a` gives one `boolean` now. `GamepadDevice` turns FTC gamepad fields into Sources:
 
 ```java
 boolean pressedNow = gamepad1.a;             // one current value
@@ -40,21 +41,20 @@ BooleanSource aEachLoop = driver.a();        // reusable reader
 ScalarSource forwardEachLoop = driver.leftY();
 ```
 
-`pressedNow` keeps one value. `aEachLoop`, returned by `driver.a()`, and `forwardEachLoop` can supply
-the current value on every active loop. Continuously moving or held drive sticks need this shape.
+`pressedNow` keeps that one value. `aEachLoop` and `forwardEachLoop` read the current value whenever
+a later loop asks, which fits buttons and held drive sticks.
 
-## 3. Separate a call from a registered function
+## 3. Saved callback and lambda: separate a call from a registered function { #saved-callback }
 
-Calling a method runs it now.
+!!! info "New concept: saved callback and lambda"
 
-For example, reaching `intake.setMode(StarterIntake.Mode.COLLECT)` immediately changes the selected
-request. The motor still waits for the later output update. That direct call is a comparison, not a
-line to place above the button rule below.
+    Calling a method runs it now. A **lambda** such as `() -> intake.setMode(...)` packages code.
+    Registration saves the function; it does not run it. When a future active loop detects the
+    rise, it invokes the callback synchronously during that loop; Sushi does not create a thread.
 
-A no-argument function saved for later can be written as a **lambda**. The `() ->` characters
-create the function; they do not run its body. Attaching a saved function to an event makes it a
-**callback**. Sushi stores callback rules together in `CallbackBindings`. This production button
-rule passes only the saved function:
+For comparison, reaching `intake.setMode(StarterIntake.Mode.COLLECT)` immediately changes the
+selected request; the motor still waits for the later output update. This production button rule
+registers only the saved function:
 
 ```java
 program.callbackBindings().onRise(
@@ -62,20 +62,18 @@ program.callbackBindings().onRise(
         () -> intake.setMode(StarterIntake.Mode.COLLECT)); // register for later
 ```
 
-Registration saves the function; it does not run it.
+The `onRise(...)` rule accepts the event once when A changes from released to pressed. Holding A
+does not call the function again.
 
-The `onRise(...)` rule means: when A changes from released to pressed, accept that event and call
-the function once. Holding A does not call it again. When a future active loop detects the rise,
-it invokes the callback synchronously during that loop; Sushi does not create a thread.
+## 4. Task: give unfinished work a bookmark { #task }
 
-## 4. Give unfinished work a bookmark
+!!! info "New concept: Task"
 
-A Task is a bookmark for unfinished work.
+    A Task is a bookmark for unfinished work. The managed loop starts it once and advances it a
+    little each cycle so other parts still run. It is not a thread, `sleep`, or a busy `while` loop.
 
-Each active loop advances it a little, so the rest of the robot can still update. Use this shape for
-work such as collecting for 0.75 seconds, following a route, or waiting for a sensor. A Task is not
-a thread, `sleep`, or a busy `while` loop. Each Task object runs once; ask the robot action method
-for a fresh one when you need to repeat it.
+Use a Task for work such as collecting for 0.75 seconds, following a route, or waiting for a sensor.
+Each Task object runs once; ask the robot action method for a fresh one to repeat it.
 
 ## 5. See the whole run
 
@@ -123,8 +121,10 @@ public final class StarterIntakeTeleOp extends FtcRobotOpMode {
 }
 ```
 
-[`StarterIntakeTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.java>)
-is the complete source. `configure(program)` runs once during INIT. `declareIntakeTeleOp(...)`
+[`StarterIntakeTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.html>)
+is the generated API page; its
+[Complete source: `StarterIntakeTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.java>)
+supplies imports and package details. `configure(program)` runs once during INIT. `declareIntakeTeleOp(...)`
 connects pieces that Sushi will use later; it does not run the intake during configuration. Do not
 add another active loop.
 
@@ -132,8 +132,8 @@ add another active loop.
 
 In the intake path, the button function and Task request what the robot should do; neither writes
 the motor. A robot part that owns hardware is called a **mechanism**. The intake mechanism keeps a
-private final-output helper, called a **Plant**. That Plant owns the one final write path used by
-normal output updates and STOP cleanup.
+private final-output helper, called a [**Plant**](<learn-sushi/Plants and Hardware.md#plant>). That
+Plant owns the one final write path used by normal output updates and STOP cleanup.
 
 For example: A rises → the callback requests `COLLECT` → the intake mechanism updates → its Plant
 submits the motor command → telemetry shows cached software facts.

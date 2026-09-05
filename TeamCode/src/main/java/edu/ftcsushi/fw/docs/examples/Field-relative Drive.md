@@ -14,8 +14,11 @@ The example keeps the ordinary managed lifecycle: the OpMode only configures a `
 heading estimator is an upstream service, and the final drivetrain still consumes a robot-centric
 `DriveSignal`.
 
-**Buildable promise:** copy the complete files in the collapsed working slice after copying the
-Starter. The slice replaces only the host, profile, prestart, controls, and composition root.
+**Architecture-reference promise:** this page reconstructs the field-relative owner graph and
+managed lifecycle after the robot-relative Starter. It is not a copy-ready hardware profile: use
+the linked complete field-relative source for the active motor names, BRAKE/FLOAT choice, IMU
+hardware name and Hub orientation, and manual-drive shaping values, then review every one on the
+adopting robot.
 
 ## What “up” means
 
@@ -48,6 +51,108 @@ read its cached heading evidence.
 These are distinct lifecycle jobs, not decoration required by every robot. Robot-centric mecanum
 needs neither role. This focused example adds them because field-relative translation needs one
 INIT-only station decision and one actively updated heading owner.
+
+## Complete managed owner wiring
+
+The profile starts from the ordinary mecanum, IMU, and manual-drive configuration factories. The
+excerpt below shows its direction and cap overrides; it deliberately does not replace the complete
+profile as the authority for the other active hardware and shaping values:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleProfile.java -->
+```java
+profile.drive = FtcDrives.MecanumConfig.defaults();
+profile.drive.wiring.frontLeftDirection = Direction.FORWARD;
+profile.drive.wiring.frontRightDirection = Direction.REVERSE;
+profile.drive.wiring.backLeftDirection = Direction.FORWARD;
+profile.drive.wiring.backRightDirection = Direction.REVERSE;
+profile.drive.drivebase.maxAxial = 0.25;
+profile.drive.drivebase.maxLateral = 0.25;
+profile.drive.drivebase.maxOmega = 0.20;
+```
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleProfile.java -->
+```java
+profile.imu = FtcImuHeadingEstimator.Config.defaults();
+profile.manualDrive = GamepadDriveSource.Config.defaults();
+profile.stations = Collections.unmodifiableList(Arrays.asList(
+        new Station("PRACTICE_POS_X", "Practice +X up", 0.0, 0.0),
+        new Station("PRACTICE_POS_Y", "Practice +Y up", Math.PI / 2.0, Math.PI / 2.0),
+        new Station("PRACTICE_NEG_X", "Practice -X up", Math.PI, Math.PI),
+        new Station("PRACTICE_NEG_Y", "Practice -Y up", -Math.PI / 2.0, -Math.PI / 2.0)
+));
+profile.allowDriveMotion = false;
+```
+
+The checked-in directions, caps, IMU defaults, shaping defaults, and station table are software
+candidates, not robot facts. The composition root enforces the checked-in `false` before
+constructing the IMU or drivetrain:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleRobot.java -->
+```java
+if (!activeProfile.allowDriveMotion) {
+    throw new IllegalStateException(
+            "FieldRelativeExampleProfile.allowDriveMotion must be true only after reviewing "
+                    + "motor wiring, Hub orientation, station headings, low-power motion, and STOP."
+    );
+}
+```
+
+The maintained example leaves it false. An adopting robot changes it only after completing the
+[`First Drive` hardware gate](<../build/First Drive.md#isolated-hardware-gate>) and separately
+verifying Hub orientation plus the authored station headings.
+
+The composition root then declares each owner in dependency order. First it registers and retains
+the INIT selection and the upstream heading service:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleRobot.java -->
+```java
+FieldRelativeExamplePrestart prestart = program.prestart(
+        new FieldRelativeExamplePrestart(activeProfile.stations, requiredGamepad));
+FtcImuHeadingEstimator heading = program.service(new FtcImuHeadingEstimator(
+        hardwareMap,
+        activeProfile.imu,
+        prestart::frozenInitialRobotFieldHeadingRad));
+```
+
+Next it builds the controls around stable gamepad sources and those retained owners, then declares
+one final mecanum drive sink:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleRobot.java -->
+```java
+FieldRelativeExampleControls controls = new FieldRelativeExampleControls(
+        new GamepadDevice(requiredGamepad),
+        heading,
+        prestart,
+        activeProfile.manualDrive);
+DriveSource drive = controls.drive();
+program.drive(drive, FtcDrives.mecanum(hardwareMap, activeProfile.drive));
+```
+
+Finally it registers the presenter, which reads the selection and adds one explanation row after
+drive output; `RobotProgram` commits the frame once:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExampleRobot.java -->
+```java
+program.presenter((clock, telemetry) -> {
+    prestart.present(telemetry);
+    telemetry.addLine("Field-relative translation uses the frozen station up direction.");
+});
+```
+
+The OpMode itself only chooses this profile and composition root:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.java -->
+```java
+@Override
+protected void configure(RobotProgram program) {
+    new FieldRelativeExampleRobot(hardwareMap).declareTeleOp(
+            program, FieldRelativeExampleProfile.current(), gamepad1);
+}
+```
+
+At START, the selected station freezes, the one clock resets, and the heading service aligns the
+IMU estimate. Each active cycle then runs `heading service -> field-relative drive source -> one
+mecanum sink -> presenter`. STOP ends the drive and service through the same managed program.
 
 ## Heading backends
 
@@ -111,6 +216,71 @@ The station-authored direction stays fixed for the match. This baseline delibera
 re-zero and restore state: changing driver meaning mid-match is robot policy, not required
 field-relative conversion.
 
+## Software evidence and its cause
+
+The prestart test arranges two stations with deliberately independent headings, one gamepad, the
+real prestart owner, and one clock:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExamplePrestartTest.java -->
+```java
+Gamepad gamepad = new Gamepad();
+FieldRelativeExampleProfile.Station first =
+        new FieldRelativeExampleProfile.Station("A", "A", 0.1, 0.2);
+FieldRelativeExampleProfile.Station orthogonal =
+        new FieldRelativeExampleProfile.Station("B", "B", -0.7, Math.PI / 2.0);
+FieldRelativeExamplePrestart prestart = new FieldRelativeExamplePrestart(
+        Arrays.asList(first, orthogonal),
+        gamepad
+);
+LoopClock clock = new LoopClock();
+clock.reset(0.0);
+```
+
+A D-pad request is sampled on the next INIT heartbeat; `freezeForStart()` then freezes the selected
+value, and the assertions observe the authored `-0.7` initial heading and `pi/2` control-up heading:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/fieldrelative/robot/FieldRelativeExamplePrestartTest.java -->
+```java
+prestart.update(clock); // edge baseline
+gamepad.dpad_down = true;
+clock.update(0.02);
+prestart.update(clock);
+
+assertEquals(RobotProgram.StartDisposition.READY, prestart.freezeForStart());
+assertEquals(-0.7, prestart.frozenInitialRobotFieldHeadingRad(), 0.0);
+assertEquals(Math.PI / 2.0, prestart.frozenControlUpFieldHeadingRad(), 0.0);
+```
+
+The loss test separately arranges a one-second clock, a half-second-old heading, forward stick
+intent, and finite manual turn. Sampling the real `DriveSource` is the heartbeat for this focused
+unit; the observation is zero translation with omega preserved:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/fw/drive/source/GamepadDriveSourceFieldRelativeTest.java -->
+```java
+LoopClock clock = clockAt(1.0);
+MutableHeading heading = new MutableHeading();
+heading.estimate = new HeadingEstimate(
+        0.0, true, 1.0, clock.timestampSecondsAgo(0.5));
+GamepadDriveSource.Config config = GamepadDriveSource.Config.defaults();
+config.deadband = 0.0;
+DriveSource source = new GamepadDriveSource(
+        ScalarSource.constant(0.0), ScalarSource.constant(1.0),
+        ScalarSource.constant(0.4), config
+).fieldRelativeTo(heading, () -> 0.0, 0.1, 0.0);
+```
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/fw/drive/source/GamepadDriveSourceFieldRelativeTest.java -->
+```java
+DriveSignal signal = source.get(clock);
+
+assertEquals(0.0, signal.axial, EPS);
+assertEquals(0.0, signal.lateral, EPS);
+assertEquals(-Math.pow(0.4, 1.5), signal.omega, EPS);
+```
+
+These software checks prove selection/freeze causality and fail-closed command shaping for authored
+evidence. They do not prove Hub orientation, field headings, motor directions, or physical motion.
+
 ## Maintained files
 
 The compiling example keeps the FTC host, profile, frozen prestart facts, controls owner, and robot
@@ -120,6 +290,7 @@ adapting the pattern:
 - [`FieldRelativeDriveExample`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.html>)
 - [Complete source: field-relative example](<https://github.com/harishv-99/2025-PhoenixPedro/tree/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative>)
 - [Complete source: focused field-relative tests](<https://github.com/harishv-99/2025-PhoenixPedro/tree/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/fieldrelative>)
+- [Complete source: `GamepadDriveSourceFieldRelativeTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/drive/source/GamepadDriveSourceFieldRelativeTest.java>)
 
 ## Verify the slice
 

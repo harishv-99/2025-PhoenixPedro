@@ -3,25 +3,28 @@ tags:
   - Learn
 ---
 
-# Choose a Plant from the outcome you need
+# Choose a Plant from the outcome you need { #plant }
 
 **Learning mode:** Decision guide
 
 **Question:** Which ordinary Plant shape matches this actuator and the evidence it can provide?
 
-A **Plant** is the mechanism-owned object that turns one held request into one final actuator
-command on the shared heartbeat. Start from the hardware outcome below, then follow the linked
-Build lesson. The lesson teaches the required builder stages in context; this page is not a catalog
-of every API branch.
+!!! info "New concept: Plant"
+
+    A **Plant** is the mechanism-owned path that turns one held request into one final actuator
+    command. The mechanism updates it on the shared heartbeat and owns its shutdown.
+
+Choose the hardware outcome below, then follow its linked Build lesson. Each lesson teaches the
+required builder stages in context; this page is not a catalog of every API branch.
 
 ## Start with the outcome
 
 | I need to… | Start here | What is new in that shape |
 |---|---|---|
-| run one motor forward, reverse, or stopped | [Continuous intake](<../../build/Continuous Intake.md>) | normalized power plus named semantic intent |
+| run one motor forward, reverse, or stopped | [Continuous intake](<../../build/Continuous Intake.md>) | normalized power plus named semantic [intent](<Controls and Intent.md#intent>) |
 | move one standard servo among named positions | [Named claw](<../../build/Named Claw.md>) | bounded logical coordinate mapped to configured native endpoint candidates; no arrival feedback |
 | discover where a motor-position coordinate begins | [Establish a lift reference](<../../build/Referenced Lift.md>) | encoder scale, reference requirement, switch source, and non-blocking search |
-| move within a referenced motor-position coordinate | [Move a referenced lift](<../../build/Move a Referenced Lift.md>) | named target, cached measurement, tolerance, and feedback-aware Task |
+| move within a referenced motor-position coordinate | [Move a referenced lift](<../../build/Move a Referenced Lift.md>) | named target, cached measurement, tolerance, and feedback-aware [Task](<../Framework Overview.md#task>) |
 | request one motor speed and observe feedback | [Single flywheel velocity](<../../build/Single Flywheel Velocity.md>) | bounded numeric command, velocity feedback, and cancellation-to-zero choice |
 | drive two flywheels together but require both to be ready | [Paired flywheel velocity](<../../advanced/Paired Flywheel Velocity.md>) | grouped actuation plus independent member evidence |
 | choose the nearest legal full-turn position | [Periodic turret position](<../../advanced/Periodic Turret Position.md>) | explicit equivalent-position selection inside physical bounds |

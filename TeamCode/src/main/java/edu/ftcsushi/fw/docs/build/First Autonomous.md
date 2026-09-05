@@ -36,21 +36,43 @@ factory. The returned children do not start eagerly. At FTC START, only `home()`
 `SUCCESS` admits `HIGH`; exact `SUCCESS` from `HIGH` admits `STOWED`. `TIMEOUT`, `CANCELLED`, or
 `UNKNOWN` becomes the root outcome and suppresses every later child.
 
-The lift-only host registers the mechanism output first, builds one fresh graph, and declares that
+The lift-only host reads the one active profile, enforces its fail-closed motion permission before
+hardware construction, registers the mechanism output, builds one fresh graph, and declares that
 graph as the program's one root:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftAuto.java -->
 ```java
+BasicLiftProfile profile = BasicLiftProfile.current();
+BasicLiftProfile.requireMotionAllowed(profile, "Basic Lift Auto");
+
 BasicLiftMechanism lift = program.output(
         new BasicLiftMechanism(hardwareMap, profile.lift));
 Task auto = BasicAutoRoutines.liftOnly(lift);
 program.rootTask(auto);
 ```
 
+`BasicLiftProfile.current()` returns `allowLiftMotion = false`, so the checked-in Auto stops during
+INIT before motor or switch lookup. After the earlier isolated lift gates justify changing that
+permission, the same composition also declares the outcome and cached lift evidence students must
+watch:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftAuto.java -->
+```java
+program.presenter((clock, telemetry) -> {
+    BasicLift.Status status = lift.status();
+    telemetry.addData("lift.request", status.requestedHeight());
+    telemetry.addData("lift.positionIn", "%.2f / %.2f",
+            status.measuredPositionIn(), status.requestedPositionIn());
+    telemetry.addData("lift.referenced", status.referenced());
+    telemetry.addData("auto.outcome", auto.getOutcome());
+});
+```
+
 `program.rootTask(auto)` delegates START, per-cycle updates, active cancellation, and cleanup to the
 managed host. The sequence never sleeps and never calls the lift's output update. Its Tasks publish
 semantic requests or evaluate cached feedback; the later managed output phase advances the private
-Plant and writes hardware.
+Plant and writes hardware. The presenter then reads the already-cached lift snapshot and the exact
+root outcome; the host commits that telemetry frame once.
 
 Success is evidence, not elapsed time alone. The production `home()` succeeds only after its
 reference cue is established, and `moveTo(...)` succeeds only from the selected request's cached
@@ -106,10 +128,31 @@ Notice:
   or physical stopping distance.
 
 The successful path makes every admission decision visible. One test second stands in for each
-piece of successful lift evidence; it is not a mechanism model:
+piece of successful lift evidence; it is not a mechanism model. Arrangement keeps the production
+routine but substitutes a recording `BasicLift` because this checkpoint asks only which Task the
+routine admits:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
 ```java
+/** Beginner-facing evidence for the first lift-only autonomous sequence. */
+public final class BasicAutoSoftwareScenarioTest {
+    private static final double STEP_SEC = 1.0;
+```
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
+```java
+// ARRANGE: the real routine uses framework-built recording capability Tasks.
+List<String> events = new ArrayList<String>();
+Task auto = BasicAutoRoutines.liftOnly(new RecordingLift(events, null));
+ManualLoopClock time = new ManualLoopClock();
+```
+
+START is the first request boundary. Each later heartbeat supplies the next successful software
+fact and the event list observes which child that fact admitted:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
+```java
+// START: only the first prerequisite begins.
 auto.start(time.clock());
 assertEquals(Arrays.asList("home"), events);
 
@@ -121,7 +164,31 @@ assertEquals(Arrays.asList("home", "lift HIGH", "lift STOWED"), events);
 assertFalse(auto.isComplete());
 ```
 
-The second method first injects a timeout while `HIGH` is active and observes no `STOWED` event:
+One final heartbeat supplies the last child's success and the assertions observe the root result:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
+```java
+// ASSERT: final successful evidence becomes the exact root outcome.
+auto.update(time.nextCycle(STEP_SEC));
+assertTrue(auto.isComplete());
+assertEquals(TaskOutcome.SUCCESS, auto.getOutcome());
+// NEXT GATE: verify reference, feedback, and clearance on the isolated lift.
+```
+
+The second method arranges a fresh routine whose recording `HIGH` Task deliberately lacks success
+evidence:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
+```java
+// TIMEOUT: HIGH begins after home, then times out instead of admitting STOWED.
+List<String> timedEvents = new ArrayList<String>();
+RecordingLift timedLift = new RecordingLift(timedEvents, BasicLift.Height.HIGH);
+Task timed = BasicAutoRoutines.liftOnly(timedLift);
+ManualLoopClock timeoutTime = new ManualLoopClock();
+```
+
+The START and two heartbeats request `home`, admit `HIGH`, then observe its timeout without a
+`STOWED` event:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
 ```java
@@ -138,8 +205,20 @@ idempotence, and again observes no `STOWED` event:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
 ```java
+// CANCEL: active HIGH is terminally cancelled; repeated cancellation remains inert.
+List<String> cancelledEvents = new ArrayList<String>();
+RecordingLift cancelledLift = new RecordingLift(cancelledEvents, null);
+Task cancelled = BasicAutoRoutines.liftOnly(cancelledLift);
+assertNotSame(timed, cancelled);
+ManualLoopClock cancelTime = new ManualLoopClock();
 cancelled.start(cancelTime.clock());
 cancelled.update(cancelTime.nextCycle(STEP_SEC));
+```
+
+Only then does cancellation end both the root and active `HIGH` child without admitting `STOWED`:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
+```java
 cancelled.cancel();
 cancelled.cancel();
 assertEquals(TaskOutcome.CANCELLED, cancelled.getOutcome());

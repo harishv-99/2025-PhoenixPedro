@@ -81,29 +81,50 @@ current readings as neutral. Leave every stick centered and every trigger releas
 INIT. If an axis is held during construction, that held reading becomes its zero until recalibrated.
 
 The adapter then exposes live `ScalarSource` axes. It flips the FTC Y convention so stick up is
-positive, corrects the construction-time center, rescales the remaining travel, and applies its
-small device deadband. Its button sources report the current held level; edge behavior belongs to a
-binding or another derived source, not to `GamepadDevice`.
+positive, corrects the construction-time center, and rescales the remaining travel. Its button
+sources report the current held level; edge behavior belongs to a binding or another derived source,
+not to `GamepadDevice`. Controls choose the active device deadband and driver shaping next.
 
 ### 2. Give the three axes robot-frame meanings
 
 Controls own what operator inputs mean. This small owner retains one stable `DriveSource`; it does
 not set motors and does not rebuild a source every loop:
 
+!!! info "New concept: Stick shaping"
+
+    A **deadband** is a small centered stick range that produces zero, filtering drift and noise.
+    An **exponent** above `1.0` makes partial stick motion gentler near center while preserving full
+    stick at `1.0`. These are driver-feel choices, not drivetrain safety limits.
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java -->
+```java hl_lines="3 5 6 7 8 9 10"
+FirstDriveControls(GamepadDevice driver) {
+    GamepadDevice requiredDriver = Objects.requireNonNull(driver, "driver");
+    requiredDriver.setAxisDeadband(0.02);
+
+    GamepadDriveSource.Config driveSourceConfig = GamepadDriveSource.Config.defaults();
+    driveSourceConfig.deadband = 0.05;
+    driveSourceConfig.translateExpo = 1.5;
+    driveSourceConfig.rotateExpo = 1.5;
+    driveSourceConfig.translateScale = 1.0;
+    driveSourceConfig.rotateScale = 1.0;
+```
+
+The highlighted assignments are the driver-feel edit points: `0.02` is the device deadband;
+`0.05` is the shaping deadband; both translation and rotation use exponent `1.5`; and their `1.0`
+scales retain full-range intent.
+
+The local config draft is handed immediately to `GamepadDriveSource`, which validates and
+defensively snapshots it while constructing the one stable source:
+
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java -->
 ```java
-static final class FirstDriveControls {
-    private final DriveSource driveSource;
-
-    /** Maps the selected driver axes into Sushi's robot-centric drive convention. */
-    FirstDriveControls(GamepadDevice driver) {
-        GamepadDevice requiredDriver = Objects.requireNonNull(driver, "driver");
-        driveSource = new GamepadDriveSource(
-                requiredDriver.leftX(),
-                requiredDriver.leftY(),
-                requiredDriver.rightX(),
-                GamepadDriveSource.Config.defaults());
-    }
+    driveSource = new GamepadDriveSource(
+            requiredDriver.leftX(),
+            requiredDriver.leftY(),
+            requiredDriver.rightX(),
+            driveSourceConfig);
+}
 ```
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java -->
@@ -127,17 +148,17 @@ The two X signs change because the FTC stick convention is positive right/clockw
 robot frame is positive left/counter-clockwise. This is robot-relative driving: “forward” follows
 the robot's current heading, not the field.
 
-The two configuration layers solve different problems:
+Each stage has one job, and all active values are visible in the lesson:
 
-- `GamepadDevice` corrects controller center error and uses a `0.02` device deadband.
-- `GamepadDriveSource.Config.defaults()` shapes driver intent with a `0.05` deadband and `1.5`
-  translation/rotation exponents. The exponent softens motion near center while preserving the
-  full-scale endpoints; its translation and rotation scales remain `1.0` here.
-- The drivebase caps below limit the command presented to the wheel mixer. Keep these cautious
-  physical-output caps even though a source can also scale driver intent.
+| Stage | Exact values | Effect |
+| --- | --- | --- |
+| Controller correction | Construction-time center calibration; device deadband `0.02` | Corrects resting-center error and reports smaller corrected noise as zero. |
+| Driver shaping | Deadband `0.05`; translation exponent `1.5`; rotation exponent `1.5`; translation scale `1.0`; rotation scale `1.0` | Removes a wider driver-command center region and softens partial stick motion without reducing full-scale intent. |
+| Drive caps | `maxAxial = 0.25`; `maxLateral = 0.25`; `maxOmega = 0.20` | Limits the command presented to the mecanum wheel mixer for the first hardware run. |
 
-In short, shaping answers “how should the stick feel?”; the drive caps answer “how much command may
-this first hardware run reach?”
+`GamepadDriveSource` defensively snapshots the controls-owned draft during construction. Controls
+then retain only the stable source, with no mutable tuning draft left to edit. Shaping answers “how
+should the stick feel?”; the retained drive caps answer “how much command may this first run reach?”
 
 ### 3. Review one complete mecanum configuration
 
@@ -237,8 +258,8 @@ Notice:
 - **Cannot conclude:** physical wheel direction, robot motion, traction, current draw, braking
   distance, or whether the surrounding mechanism envelope is safe.
 
-The first test constructs the same nested production controls used by the OpMode. It starts with a
-neutral gamepad, which matters because the real adapter calibrates in its constructor:
+The first test constructs the exact production controls used by the OpMode. It starts with a neutral
+gamepad, which matters because the real adapter calibrates in its constructor:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveSoftwareScenarioTest.java -->
 ```java
@@ -253,7 +274,18 @@ ManualLoopClock time = new ManualLoopClock();
 assertSignal(drive.get(time.clock()), 0.0, 0.0, 0.0);
 ```
 
-Each later sample changes only one raw axis, so its sign has one visible cause:
+A half-stick sample distinguishes the active `0.05` deadband and `1.5` exponent from an identity
+shape before the later full-scale samples prove robot-frame signs:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveSoftwareScenarioTest.java -->
+```java
+// REQUEST + ASSERT: half stick is softened by the retained 0.05 deadband/1.5 exponent.
+gamepad.left_stick_y = -0.5f;
+double shapedHalf = shaped(0.5, 0.05, 1.5);
+assertSignal(drive.get(time.nextCycle(0.02)), shapedHalf, 0.0, 0.0);
+```
+
+Each full-scale sample changes only one raw axis, so its sign has one visible cause:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveSoftwareScenarioTest.java -->
 ```java
@@ -276,9 +308,8 @@ assertSignal(drive.get(time.nextCycle(0.02)), 0.0, 0.0, 1.0);
 // NEXT GATE: motor commands and terminal stop still need the managed-host scenario.
 ```
 
-Full-scale inputs are intentional: they prove the signs while preserving the production `0.05`
-deadband and `1.5` exponent, whose full-scale result remains exactly `1.0`. The test does not replace
-production shaping with a test-only identity configuration.
+Full-scale inputs prove the signs because shaping preserves `1.0`; the separate half-stick assertion
+proves that the test did not replace production shaping with an identity configuration.
 
 The second test instantiates the production configuration, the real FTC drive factory, and the
 managed OpMode host. Supplied recording hardware and silent-telemetry helpers hide boundary proxy
@@ -295,6 +326,20 @@ FirstDriveTeleOp mode = configuredMode(hardware, gamepad);
 // START: let the managed host own initialization, heartbeat, and cleanup.
 mode.init();
 mode.start();
+```
+
+The host scenario sends the same half-stick request through the production source and `0.25` axial
+cap before checking the full-scale coordinate signs:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveSoftwareScenarioTest.java -->
+```java
+// REQUEST + HEARTBEAT + ASSERT: production half-stick shaping reaches the capped mixer.
+gamepad.left_stick_y = -0.5f;
+mode.loop();
+double shapedHalfPower = 0.25 * shaped(0.5, 0.05, 1.5);
+assertWheelPowers(
+        hardware, config,
+        shapedHalfPower, shapedHalfPower, shapedHalfPower, shapedHalfPower);
 ```
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveSoftwareScenarioTest.java -->
@@ -343,8 +388,9 @@ production caps; FTC boundary doubles record four commands; managed STOP records
 terminalizes the host.
 
 **Proves:** neutral construction, the selected axis signs, `0.25` axial/lateral and `0.20` omega
-component caps, the expected isolated-axis mecanum mixes, four submitted zero commands on STOP, and
-idempotent managed termination all agree in the maintained production graph.
+component caps, the `0.05`/`1.5` shaping at half stick, the expected isolated-axis mecanum mixes,
+four submitted zero commands on STOP, and idempotent managed termination all agree in the maintained
+production graph.
 
 **Does not prove:** a configured physical motor is attached to the named wheel, any direction entry
 produces the expected physical rotation, the robot translates or turns correctly, or BRAKE stops it

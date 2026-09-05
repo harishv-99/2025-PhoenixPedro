@@ -29,7 +29,9 @@ bound it to the private Plant. Only the mechanism owns those positions in inches
 converts inches to ticks, writes the controller target, and refreshes cached feedback. A direct
 setter does not wait and does not claim arrival. Configuration validation also requires the
 position tolerance to be smaller than half the closest adjacent named-height gap, so the arrival
-bands for two names cannot overlap merely because the tolerance was too wide.
+bands for two names cannot overlap merely because the tolerance was too wide. In the active
+profile, the closest gap is `4.0 in`, so half is `2.0 in`; the configured `0.20 in` tolerance is
+inside that limit. It remains a software completion threshold to tune and verify physically.
 
 The direct capability path contains no hardware call:
 
@@ -147,6 +149,18 @@ keeps four distinct questions visible:
 `atTarget()` is controller evidence inside the configured tolerance. It cannot prove that the
 encoder scale, load response, physical height, or mechanism safety is correct.
 
+Keep the timing and vocabulary in this order:
+
+1. **Requested:** starting the Task publishes `LOW` and its mapped inches; no hardware write occurs.
+2. **Applied:** the downstream output heartbeat bounds that request, converts it to ticks, and writes
+   the controller target.
+3. **Measured:** that same output heartbeat caches the encoder observation available in that cycle.
+4. **Arrived:** after a later heartbeat caches an in-tolerance measurement for the still-current
+   semantic request, the following Task phase may report `SUCCESS`.
+
+An earlier measurement matching the same number is not enough: a new semantic request invalidates
+old arrival evidence immediately.
+
 Notice:
 
 - Direct TeleOp requests and feedback-aware Auto Tasks publish through one semantic command owner.
@@ -185,7 +199,17 @@ Notice:
   clearance, or safe travel.
 
 Starting the fresh Task changes the semantic and numeric request together but performs no hardware
-write:
+write. Arrangement first reuses the prior lesson's authored switch procedure to establish a
+reference in this same Plant lifetime:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMoveSoftwareScenarioTest.java -->
+```java
+Scenario scenario = new Scenario();
+scenario.motor.setCurrentPositionTicks(0);
+scenario.establishReferenceFromAuthoredSwitchEvidence();
+```
+
+The request is then started and observed before any output heartbeat:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMoveSoftwareScenarioTest.java -->
 ```java
@@ -235,7 +259,27 @@ assertEquals(TaskOutcome.SUCCESS, scenario.task.getOutcome());
 ```
 
 The second scenario proves the selected hold survives active cancellation without a direct motor
-write; the next ordinary output heartbeat continues to realize that same request:
+write. It creates a fresh mechanism lifetime, establishes its reference, then starts and applies a
+fresh `HIGH` request through the ordinary Task-before-output order:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMoveSoftwareScenarioTest.java -->
+```java
+Scenario scenario = new Scenario();
+scenario.motor.setCurrentPositionTicks(0);
+scenario.establishReferenceFromAuthoredSwitchEvidence();
+
+// REQUEST + HEARTBEAT: select HIGH through the Task, then apply it through the Plant owner.
+scenario.task = scenario.lift.moveTo(BasicLift.Height.HIGH);
+scenario.task.start(scenario.time.nextCycle(0.02));
+scenario.task.update(scenario.time.clock());
+scenario.lift.update(scenario.time.clock());
+int highTicks = (int) Math.round(
+        scenario.config.highHeightIn * scenario.config.ticksPerIn);
+assertEquals(highTicks, scenario.motor.targetPositionTicks());
+```
+
+Cancellation changes no persistent request and performs no direct motor write; the next ordinary
+output heartbeat continues to realize that same request:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMoveSoftwareScenarioTest.java -->
 ```java
@@ -267,10 +311,11 @@ Run:
 ```
 
 **Read the causal chain:** starting the Task publishes `LOW` without touching hardware; the next
-output heartbeat writes its mapped encoder target but sees old feedback; the test supplies a later
-encoder observation; the following Task phase observes that fresh cached arrival and reports exact
-success. In the second scenario, cancellation ends the Task but intentionally leaves `HIGH` held,
-so only the next normal output phase writes again.
+output heartbeat writes its mapped encoder target and caches the still-old measurement; the test
+supplies a later encoder observation; one output heartbeat caches `atTarget`, and the following
+Task phase observes that fresh arrival and reports exact success. In the second scenario,
+cancellation ends the Task but intentionally leaves `HIGH` held, so only the next normal output
+phase writes again.
 
 **Proves:** semantic request correlation, managed update order, requested/applied/measured
 separation, fresh-feedback completion, exact software success, and leave-request-on-cancel
