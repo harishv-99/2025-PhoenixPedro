@@ -30,6 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -97,6 +98,18 @@ public final class DocumentationLinksTest {
             "docs/build/Run One Timed Auto.md",
             "docs/build/First Autonomous.md",
             "docs/build/First Pedro Auto.md");
+
+    private static final List<String> TEST_AND_TUNE_NAV_TARGETS = Arrays.asList(
+            "docs/testing-calibration/README.md",
+            "docs/examples/Hardware-free Reference Scenarios.md",
+            "docs/testing-calibration/Using the Tester Console.md",
+            "docs/testing-calibration/Actuator Bring-up.md",
+            "docs/testing-calibration/Robot Calibration Tutorials.md",
+            "docs/testing-calibration/Control Tuning Workflow.md",
+            "docs/testing-calibration/How to test a Sushi component.md",
+            "docs/testing-calibration/Guided Calibration Walkthroughs.md",
+            "docs/troubleshooting/README.md",
+            "docs/troubleshooting/Common Problems.md");
 
     private static final List<String> REFERENCE_CATEGORY_FILES = Arrays.asList(
             "Actuation Plants and control.md",
@@ -1111,9 +1124,274 @@ public final class DocumentationLinksTest {
                         && testing.contains("bytecode or annotation checks")
                         && testing.contains("not a")
                         && testing.contains("template a beginner must reverse engineer"));
-        assertTrue("Test & Tune home must route to the testing philosophy first",
+        int firstExperiment = testingHome.indexOf(
+                "[Hardware-free Reference Scenarios](<../examples/Hardware-free Reference Scenarios.md>)");
+        int console = testingHome.indexOf(
+                "[Using the tester console](<Using the Tester Console.md>)");
+        assertTrue("Test & Tune home must route from software evidence to the console",
+                firstExperiment >= 0 && console > firstExperiment);
+        assertTrue("Test & Tune home must retain the deeper testing philosophy",
                 testingHome.contains(
-                        "[How to test a Sushi component](<How to test a Sushi component.md>)"));
+                        "[Testing philosophy](<How to test a Sushi component.md>)"));
+    }
+
+    @Test
+    public void testAndTuneHasOneExecutableSourceOptionalOperationalSpine()
+            throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path frameworkRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        Path docsRoot = frameworkRoot.resolve("docs");
+        Path testAndTune = docsRoot.resolve("testing-calibration");
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        String home = readUtf8(testAndTune.resolve("README.md"));
+        String console = readUtf8(testAndTune.resolve("Using the Tester Console.md"));
+        String scenarios = readUtf8(docsRoot.resolve(
+                "examples/Hardware-free Reference Scenarios.md"));
+        String actuator = readUtf8(testAndTune.resolve("Actuator Bring-up.md"));
+        String tuning = readUtf8(testAndTune.resolve("Control Tuning Workflow.md"));
+        String calibration = readUtf8(testAndTune.resolve("Robot Calibration Tutorials.md"));
+        String guided = readUtf8(testAndTune.resolve("Guided Calibration Walkthroughs.md"));
+        String actuatorSource = readUtf8(frameworkRoot.resolve(
+                "tools/tester/ActuatorBringUpTester.java"));
+        String velocityTunerSource = readUtf8(frameworkRoot.resolve(
+                "integrations/panels/FtcVelocityControlPanelsTester.java"));
+        String controlTuningAdaptersSource = readUtf8(frameworkRoot.resolve(
+                "integrations/panels/ControlTuningAdapters.java"));
+        String panelsHostSource = readUtf8(frameworkRoot.resolve(
+                "integrations/panels/FtcPanelsTeleOpTesterOpMode.java"));
+        String standardTestersSource = readUtf8(frameworkRoot.resolve(
+                "tools/tester/StandardTesters.java"));
+        String walkthroughBuilderSource = readUtf8(frameworkRoot.resolve(
+                "tools/tester/calibration/CalibrationWalkthroughBuilder.java"));
+        String referenceFlywheelSource = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/"
+                        + "flywheel/ReferenceFlywheelMechanism.java"));
+        String referenceTuningHostSource = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/"
+                        + "ReferencePanelsTuningOpMode.java"));
+
+        assertEquals("Test & Tune navigation inventory or order changed",
+                TEST_AND_TUNE_NAV_TARGETS,
+                navTargets(navAreaBlock(config, "Test & Tune")));
+        assertTrue("Test & Tune home must remain a short chooser",
+                proseWordCount(home) <= 450);
+        assertContainsAll("Test & Tune outcome order", home,
+                "start without hardware", "using the tester console",
+                "choose one physical question", "generic tester does not save",
+                "build and run", "ftc robot configuration");
+        assertContainsAll("Exact Test & Tune navigation labels", config,
+                "\"First software experiment\" = \"docs/examples/Hardware-free Reference Scenarios.md\"",
+                "\"Using the tester console\" = \"docs/testing-calibration/Using the Tester Console.md\"",
+                "\"Actuator bring-up\" = \"docs/testing-calibration/Actuator Bring-up.md\"",
+                "\"Robot calibration\" = \"docs/testing-calibration/Robot Calibration Tutorials.md\"",
+                "\"Control tuning\" = \"docs/testing-calibration/Control Tuning Workflow.md\"");
+
+        assertTrue("Tester-console first contact exceeds its operational budget",
+                proseWordCount(console) <= 850);
+        assertContainsAll("Fixed tester-console ownership", console,
+                "fw: testers (driver station)", "physical ftc gamepads only",
+                "fw: testers (panels)", "panels virtual gamepads only",
+                "fixed and mutually exclusive", "inputs are never merged",
+                "telemetry appears");
+        assertContainsAll("Panels connection and recovery", console,
+                "before pressing init", "192.168.49.1:8001", "192.168.43.1:8001",
+                "telemetry", "combined gamepad", "use exactly one panels client",
+                "last panels client disconnects", "another client remains connected",
+                "terminally fail-stops", "does not rearm", "fresh",
+                "driver station stop is the emergency stop");
+        assertContainsAll("Exact tester home", console,
+                "framework tester home", "hw: actuator bring-up",
+                "framework: calibration & localization",
+                "advanced: hardware diagnostics", "dpad up/down", "a", "back");
+        int actuatorMenu = console.indexOf("1. **HW: Actuator Bring-up**");
+        int calibrationMenu = console.indexOf(
+                "2. **Framework: Calibration & Localization**");
+        int advancedMenu = console.indexOf("3. **Advanced: Hardware Diagnostics**");
+        assertTrue("Tester-console menu labels must stay in implementation order",
+                actuatorMenu >= 0 && calibrationMenu > actuatorMenu
+                        && advancedMenu > calibrationMenu);
+        String[] panelMappings = {
+            "| Cross | A |", "| Circle | B |", "| Square | X |",
+            "| Triangle | Y |", "| Options | START |", "| Share | BACK |"
+        };
+        for (String mapping : panelMappings) {
+            assertTrue("Missing Panels-to-tester mapping " + mapping,
+                    console.contains(mapping));
+        }
+        assertContainsAll("Panels implementation mappings", panelsHostSource,
+                "gamepad.a = manager.getcross()", "gamepad.b = manager.getcircle()",
+                "gamepad.x = manager.getsquare()", "gamepad.y = manager.gettriangle()",
+                "gamepad.start = manager.getoptions()", "gamepad.back = manager.getshare()",
+                "this(inputsource, panelsclientrequirement.at_least_one)",
+                "connectedclientcount >= 1",
+                "panels tester input disconnected");
+        assertContainsAll("Standard tester implementation menu", standardTestersSource,
+                "framework tester home", "hw: actuator bring-up",
+                "framework: calibration & localization",
+                "advanced: hardware diagnostics");
+        int sourceActuatorMenu = standardTestersSource.indexOf("\"HW: Actuator Bring-up\"");
+        int sourceCalibrationMenu = standardTestersSource.indexOf(
+                "\"Framework: Calibration & Localization\"");
+        int sourceAdvancedMenu = standardTestersSource.indexOf(
+                "\"Advanced: Hardware Diagnostics\"");
+        assertTrue("Standard tester menu source order changed",
+                sourceActuatorMenu >= 0 && sourceCalibrationMenu > sourceActuatorMenu
+                        && sourceAdvancedMenu > sourceCalibrationMenu);
+
+        int starterStart = scenarios.indexOf(
+                "## Start here: ask for intake, then advance one heartbeat");
+        int scenarioChooser = scenarios.indexOf("## Choose the next scenario by question");
+        assertTrue("Starter experiment must precede the scenario chooser",
+                starterStart >= 0 && scenarioChooser > starterStart);
+        int starterPrerequisite = scenarios.indexOf(
+                "[Build and Run](<../getting-started/Build and Run.md>)");
+        assertTrue("Direct scenario navigation must retain its setup prerequisite",
+                starterPrerequisite >= 0 && starterPrerequisite < starterStart);
+        String starter = scenarios.substring(starterStart, scenarioChooser);
+        assertTrue("Starter experiment exceeds its first-use prose budget",
+                proseWordCount(starter) <= 650);
+        assertContainsAll("Executable Starter experiment", starter,
+                "startermechanismlessontest", "--tests",
+                "question:", "keep real:", "replace:", "observe:",
+                "cannot conclude:", "// arrange:", "// request:",
+                "// heartbeat:", "read the causal chain:", "proves:",
+                "does not prove:", "next gate:", "using the tester console");
+        assertContainsAll("Starter write evidence stays exact", starter,
+                "zero motor writes before the update",
+                "cached and recorded power after the update");
+
+        int actuatorFirstStart = actuator.indexOf("## Before starting the OpMode");
+        int actuatorMotorStart = actuator.indexOf("## DC motor: direction");
+        assertTrue("Actuator first contact exceeds its operational budget",
+                actuatorFirstStart >= 0 && actuatorMotorStart > actuatorFirstStart
+                        && proseWordCount(actuator.substring(
+                        actuatorFirstStart, actuatorMotorStart)) <= 700);
+        assertContainsAll("Actuator active defaults", actuator,
+                "within `0.05..0.30`", "in `0.05` steps",
+                "within `0.01..0.25`", "in `0.01` steps",
+                "at most `0.005`", "two fresh a presses", "logical command `0.5`",
+                "sushiactuatorbringup");
+        assertContainsAll("Actuator implementation defaults", actuatorSource,
+                "power_min = 0.05", "power_max = 0.30", "power_step = 0.05",
+                "servo_jog_rate_initial_per_sec = 0.05",
+                "servo_jog_rate_min_per_sec = 0.01",
+                "servo_jog_rate_max_per_sec = 0.25",
+                "servo_jog_rate_step_per_sec = 0.01",
+                "servo_max_step_per_cycle = 0.005",
+                "servo_bootstrap_command = 0.5",
+                "requirepreparedanddisarmed(\"change direction\")",
+                "requirepreparedanddisarmed(\"capture an endpoint\")");
+        assertContainsAll("Actuator preparation and cleanup boundary", actuator,
+                "after a has prepared the device and while disarmed",
+                "best-effort attempts zero", "physical state is uncertain",
+                "wait for the linkage to become visibly stationary",
+                "the captured number proves which command was submitted");
+
+        int tuningFirstStart = tuning.indexOf("## First experiment: one velocity segment");
+        int tuningArchitectureStart = tuning.indexOf(
+                "## Choose the workflow that matches production");
+        assertTrue("Velocity first experiment exceeds its operational budget",
+                tuningFirstStart >= 0 && tuningArchitectureStart > tuningFirstStart
+                        && proseWordCount(tuning.substring(
+                        tuningFirstStart, tuningArchitectureStart)) <= 800);
+        assertContainsAll("Velocity first experiment", tuning,
+                "first experiment: one velocity segment", "target", "measurement",
+                "error", "controller gains", "segment", "acceptance rule",
+                "flywheelleft", "flywheelright", "5000.0", "100.0",
+                "target `0`", "autostopaftersec = 5.0", "update all",
+                "own smaller reviewed session range",
+                "written run card", "does not display it before motion",
+                "fw reference: tuning (panels)", "@disabled",
+                "capturing", "cold start wait", "zero wait", "may appear",
+                "a wait can be skipped", "current segment",
+                "aggregate", "member.1.*", "member.2.*",
+                "divergent_initial_readbacks", "do not press a",
+                "individual pre-apply values are not shown",
+                "five seconds from accepted segment start",
+                "best-effort attempts plant stop", "b requests zero",
+                "driver station stop");
+        assertContainsAll("Velocity tuner active defaults", velocityTunerSource,
+                "default_auto_stop_after_sec = 5.0",
+                "initialtesttarget = this.testtargetrange.clamp(0.0)",
+                "field_target", "field_auto_stop_sec",
+                "capturing: waiting for the complete active draft",
+                "cold start wait: finite feedback and plant attarget(0.0) required");
+        assertContainsAll("Grouped velocity evidence stays visible", controlTuningAdaptersSource,
+                "divergent_initial_readbacks", "first_ordered_member_only",
+                "member.nativeMeasurement()", "member.nativeError()",
+                "member.nativeTolerance()", "member.withinMappedPlantTolerance()");
+        assertContainsAll("Reference velocity example defaults", referenceFlywheelSource,
+                "leftmotorname = \"flywheelleft\"",
+                "rightmotorname = \"flywheelright\"",
+                "maximumvelocitytickspersec = 5000.0",
+                "velocitytolerancetickspersec = 100.0");
+        assertContainsAll("Reference tuning host identity and input policy",
+                referenceTuningHostSource,
+                "@teleop(name = \"fw reference: tuning (panels)\"",
+                "@disabled", "panelsclientrequirement.exactly_one",
+                "scalarrange.bounded(0.0, flywheels.maximumvelocitytickspersec)");
+        assertContainsAll("Position tuning remains advanced", tuning,
+                "no maintained robot/example position-tuning opmode",
+                "advanced adaptation reference", "reference policy", "hold behavior");
+
+        int calibrationStart = calibration.indexOf("## Choose your stage");
+        int calibrationDetails = calibration.indexOf("## Before you start");
+        assertTrue("Calibration first contact must be a bounded stage chooser",
+                calibrationStart >= 0 && calibrationDetails > calibrationStart
+                        && proseWordCount(calibration.substring(
+                        calibrationStart, calibrationDetails)) <= 650);
+        assertContainsAll("Generic-versus-configured calibration boundary", calibration,
+                "probe and record", "rebuild and verify",
+                "source access is optional for stage 1 only", "independent fact probes",
+                "project supplies a fresh configured verifier",
+                "does not generate a robot-specific verifier",
+                "reconstructs a fresh tester `config` from framework defaults",
+                "identity camera mount", "do not persist or propagate results",
+                "cannot verify production configuration",
+                "record -> rebuild -> fresh robot-configured tester -> verify",
+                "menu help says “verify apriltag detections and the field pose solve.”",
+                "messages name missing prerequisites");
+        assertContainsAll("Exact standard calibration entries", calibration,
+                "calib: camera mount (webcam)", "calib: camera mount (limelight)",
+                "loc: apriltag localization (webcam)",
+                "loc: apriltag localization (limelight)",
+                "calib: pinpoint axis check", "calib: pinpoint pod offsets",
+                "loc: pinpoint + field corrections (webcam)",
+                "loc: pinpoint + field corrections (limelight)");
+        assertContainsAll("Advanced calibration routes stay optional", calibration,
+                "optional advanced route", "high-resolution external encoder velocity comparison",
+                "optional advanced: powered and vision-assisted pod offsets",
+                "optional ekf comparison", "does **not** register an ekf entry",
+                "optional advanced: guided suite construction");
+        assertContainsAll("Generic pod-offset solve is gated by its active defaults", calibration,
+                "can be the rookie manual path only when",
+                "`gobilda_4_bar_pod` resolution", "both `forward`",
+                "actively applies those reconstructed defaults",
+                "do not accept a generic offset solve",
+                "fresh robot-configured calibrator");
+        assertContainsAll("Generic calibration implementation boundary", standardTestersSource,
+                "calib: camera mount (webcam)", "calib: camera mount (limelight)",
+                "loc: apriltag localization (webcam)",
+                "loc: apriltag localization (limelight)",
+                "pinpointaxisdirectiontester.config cfg = pinpointaxisdirectiontester.config.defaults()",
+                "pinpointpodoffsetcalibrator.config cfg = pinpointpodoffsetcalibrator.config.defaults()",
+                "cfg.cameraMount = CameraMountConfig.identity()",
+                "GlobalEstimatorMode.FUSION");
+        assertFalse("The standard tester registry must not imply a generic EKF entry",
+                standardTestersSource.contains("GlobalEstimatorMode.EKF"));
+
+        assertContainsAll("Guided calibration stays an honest advanced mapping", guided,
+                "architecture reference", "does not save calibration results",
+                "not a complete robot registry", "supplier<teleoptester>",
+                "must return a new inactive apriltag-localization tester every time",
+                "not another mount calibrator", "ownership checklist",
+                "record the result, edit the profile, rebuild");
+        assertFalse("Guided calibration must not retain fictional RobotCalibration calls",
+                guided.contains("RobotCalibration::"));
+        assertContainsAll("Guided calibration example uses the real builder signature",
+                walkthroughBuilderSource, "public int addStep(String label",
+                "Supplier<CalibrationStatus> status",
+                "Supplier<TeleOpTester> testerFactory");
     }
 
     @Test

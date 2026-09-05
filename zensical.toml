@@ -38,11 +38,12 @@ nav = [
   ] },
   { "Test & Tune" = [
     { "Test and tune home" = "docs/testing-calibration/README.md" },
-    { "How to test a Sushi component" = "docs/testing-calibration/How to test a Sushi component.md" },
-    { "Software device scenarios" = "docs/examples/Hardware-free Reference Scenarios.md" },
+    { "First software experiment" = "docs/examples/Hardware-free Reference Scenarios.md" },
+    { "Using the tester console" = "docs/testing-calibration/Using the Tester Console.md" },
     { "Actuator bring-up" = "docs/testing-calibration/Actuator Bring-up.md" },
     { "Robot calibration" = "docs/testing-calibration/Robot Calibration Tutorials.md" },
     { "Control tuning" = "docs/testing-calibration/Control Tuning Workflow.md" },
+    { "Testing philosophy" = "docs/testing-calibration/How to test a Sushi component.md" },
     { "Guided calibration" = "docs/testing-calibration/Guided Calibration Walkthroughs.md" },
     { "Troubleshooting" = [
       { "Start from a symptom" = "docs/troubleshooting/README.md" },

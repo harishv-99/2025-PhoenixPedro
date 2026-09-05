@@ -239,7 +239,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 130 | DOC-15 | FTC-loop-first Get Started path | Done | The reviewed FTC-loop-first introduction, required software-only tour, progressive Build first passes, synchronized guidance, verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 131 | DOC-16 | Documentation quality criteria as design authority | Done | The reviewed applicability-qualified documentation rubric, focused structural contract, deterministic verification, Android Studio approval, and destination-specific publication authorization are complete. |
 | 132 | DOC-17 | Source-optional lessons and visual teaching grammar | Done | The reviewed point-of-use explanations, bounded beginner first passes, restrained accessible visual grammar, reconstruction repairs, verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 133 | DOC-18 | Test & Tune operational onboarding cleanup | Proposed | Make Panels, tuner controls, operational defaults, executable beginner experiments, and robot-configured calibration verification self-contained after DOC-17. |
+| 133 | DOC-18 | Test & Tune operational onboarding cleanup | Done | The reviewed source-optional Test & Tune spine, exact operational contracts, generic-versus-configured calibration boundary, verification, Android Studio approval, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -27500,6 +27500,166 @@ implementation.
 
 ### DOC-18 - Test & Tune operational onboarding cleanup
 
+- **Gate 1 start (2026-09-05):** **Researching** on
+  `codex/doc-18-test-tune-onboarding`, created from merged
+  `origin/master@ce270e5e3705c721050e290935cccf301ceaf82a`. The user directed **“start DOC-18.”**
+  This authorizes the bounded decision-gate audit and tracker record only. It does not authorize
+  documentation, example, tool, framework API, production-application, or hardware changes;
+  implementation still requires the completed design review below and explicit user approval.
+- **Gate 1 decision and approval stop (2026-09-05):** **Ready.** Select a documentation-first,
+  source-optional operational learning spine around the existing tester and calibration surfaces,
+  plus narrow documentation regressions. No framework or application Java behavior, public API,
+  production robot, tester control, hardware configuration, or generated artifact changes are
+  selected. The tracker-only diff remains unstaged; Gate 2 requires explicit approval of this
+  bounded design and does not authorize staging, commit, push, pull request, merge, DOC-14,
+  VISION-03, or another item.
+- **Complete audit and confirmed gap:** the maintained Test & Tune home, testing philosophy,
+  software-scenario index, actuator runbook, 638-line robot-calibration runbook, control-tuning
+  reference, guided-walkthrough reference, UI-helper guide, documentation map/navigation, both
+  ready tester OpModes, suite/child lifecycle, standard registry, UI tuner primitives, generic
+  actuator/vision/localization testers, Panels host, Reference experiment/tuning hosts, and the only
+  complete production-local calibration adopter were inspected together. The APIs are coherent,
+  but the learning path is not operationally complete: the actuator page promises a console entry
+  guide that does not exist; the software-scenario page's only runnable command and worked example
+  begin with the advanced paired-flywheel case; material controls/defaults remain in source; the
+  tuning page begins with an empty heading and architecture before a first experiment; and the
+  calibration pages use inaccurate generic menu labels while implying that one generic tool will
+  consume values found by the preceding generic tool.
+- **Existing tool truth to preserve:** `FW: Testers (Driver Station)` accepts only physical FTC
+  gamepads and `FW: Testers (Panels)` accepts only Panels virtual gamepads; both mirror the same
+  telemetry. The Panels path requires a connected client before tester initialization, terminally
+  fail-stops on lost/invalid input, and requires a fresh OpMode after reconnection. The standard
+  home is `Framework Tester Home`, ordered `HW: Actuator Bring-up`, `Framework: Calibration &
+  Localization`, then `Advanced: Hardware Diagnostics`; its menus use Dpad Up/Down, A, and BACK,
+  while each child owns its exact controls. `ScalarTuner` and `IntTuner` deliberately accept
+  caller-selected bindings, so there is no truthful universal tuning-control grammar to add.
+  The repository and current official Panels release both identify `1.0.12`; the new operational
+  page will link the official access instructions but will itself own the complete Sushi-specific
+  sequence, input mapping, failure behavior, and stop boundary so an external site is not a hidden
+  prerequisite.
+- **Chosen beginner path:** keep first contact short and make each next action executable. A student
+  first runs the existing `StarterMechanismLessonTest`, sees the complete request -> ordinary
+  heartbeat -> recorded command causal chain, states what that software evidence cannot prove, and
+  then chooses one console owner. The console lesson names the exact ready OpMode, connection and
+  INIT order, physical-versus-virtual button spelling, menu trail, START/BACK behavior, telemetry
+  location, disconnect response, and FTC emergency-STOP responsibility. Only then does the student
+  enter actuator bring-up, verify the same configured mechanism owner, advance to a bounded lab
+  card, tune one controller, or choose one calibration fact. The existing five-level testing
+  philosophy remains the conceptual authority rather than being duplicated in every procedure.
+- **Chosen documentation repair:** add one concise `Using the Tester Console` operational page and
+  expose it in the Test & Tune navigation and canonical documentation maps. Rework the Test & Tune
+  home into a goal chooser. Lead `Hardware-free Reference Scenarios` with the maintained Starter
+  mechanism lesson, its exact PowerShell command, explained arrangement/request/heartbeat/
+  observation, and physical next gate; retain the broader scenario table and move paired flywheel
+  to its appropriate advanced role. Complete `Actuator Bring-up` at point of use with the actual
+  motor/CR and servo starting values, step sizes, limits, bootstrap, controls, neutral/STOP
+  behavior, and result-copy location. Give `Control Tuning Workflow` a short first velocity
+  experiment before its retained architecture reference, colocating the Reference host's exact
+  names/range/tolerance, initial zero, five-second experiment boundary, Panels apply/arm/zero/
+  terminal-stop actions, and plain definitions of target, measurement, error, gain, response, and
+  acceptance criterion. Position tuning remains an API/reference path because there is no
+  maintained robot/example position-tuning host.
+- **Calibration truth repair:** turn the long calibration opening into a short staged chooser, use
+  the exact `(Webcam)`/`(Limelight)` standard labels and workflow-specific controls/defaults, and
+  move encoder-comparison, EKF, powered pod-assist, and suite-construction material behind explicit
+  optional/advanced routes. State plainly that standard generic tools recreate defaults (and, for
+  generic vision, an identity camera mount): they isolate one fact, do not save results, and do not
+  verify a production profile. After each physical result, the robot author records it in the
+  robot-owned profile, rebuilds, and creates a fresh robot-configured tester from that profile
+  before claiming downstream verification. `Guided Calibration Walkthroughs` will replace its
+  unexplained fictional method references with a clearly labeled, concrete one-fact mapping pattern
+  and ownership checklist, while remaining an advanced architecture reference rather than a
+  promised ready-to-run generic robot.
+- **Why this does not add another maintained example or API:** the existing Starter mechanism
+  scenario is already the right small executable software experiment, the locked Reference lab card
+  is the right bounded physical-experiment pattern, and the Reference Panels host is the maintained
+  velocity-tuning construction. Replacing them would create duplicate teaching authorities. Only
+  one application currently owns a complete configured camera -> Pinpoint -> fusion calibration
+  registry, and it is production code that shared docs may audit but must not teach from. A fake
+  generic robot registry would either invent physical configuration or recreate the already-
+  existing `TesterSuite`, `StandardTesters`, `CalibrationWalkthroughBuilder`, and tester Config
+  surfaces. Reconsider a compiling configured-calibration example only when a second independent
+  maintained adopter proves the same mapping, or when an approved lesson explicitly requires a
+  complete application-neutral registry outcome; until then, the honest shared contract is probe,
+  record, rebuild, and verify through the adopting robot.
+- **Rejected alternatives and scope limits:** do not make generic tools persist or silently share a
+  mutable profile, expose package-private actuator implementations, add per-device convenience
+  factories, impose one tuner control layout, merge Panels and Driver Station input, switch input
+  ownership at runtime, teach from Phoenix, add a custom visual system, or combine every procedure
+  into another giant page. Do not document every advanced diagnostic control on the beginner
+  console page; the relevant child page/screen owns it. No physical direction, clearance, endpoint,
+  camera transform, tag accuracy, Pinpoint sign/offset, fusion quality, controller response, loaded
+  stability, stopping distance, or emergency-stop effectiveness follows from documentation or
+  software tests.
+- **Expected files and verification:** the bounded implementation may add the console page and edit
+  only the Test & Tune home, software-scenario index, actuator, calibration, tuning, guided-
+  walkthrough, framework/documentation maps, `zensical.toml`, and
+  `DocumentationLinksTest`. Extend regressions for the exact ready OpMode/menu labels, fixed input
+  ownership, required operational route, active values, beginner experiment command and evidence
+  grammar, generic-versus-configured warning, optional/advanced placement, source/API links, and
+  initial-page size limits. Then run focused documentation and existing tester shape/lifecycle/
+  calibration/tuning tests, the full TeamCode unit suite and Java compile, strict Javadocs, strict
+  Zensical rendering, generated search/API/source-link checks, representative desktop/narrow and
+  light/dark inspection, final-newline/whitespace scans, and `git diff --check`. No robot hardware
+  or student-usability claim will be made.
+- **Requested Gate 2 wording:** **“Approve the DOC-18 Test & Tune operational onboarding design and
+  authorize Gate 2 implementation on `codex/doc-18-test-tune-onboarding`.”**
+- **Gate 2 authorization and start (2026-09-05):** **In progress.** The user supplied the exact
+  approval above. A fresh `git fetch origin master` confirms the item branch, `HEAD`, merge base,
+  and `origin/master` all remain `ce270e5e3705c721050e290935cccf301ceaf82a`. This authorizes only
+  the approved documentation-first learning spine, synchronized navigation, narrow documentation
+  regressions, and verification. It does not authorize a framework or application Java behavior
+  change, public API, production-robot change, hardware claim, staging, commit, push, pull request,
+  merge, DOC-14, VISION-03, or another tracker item.
+- **Gate 2 implementation result (2026-09-05):** **Verifying.** The exact eleven-path unstaged diff
+  adds `Using the Tester Console` and turns Test & Tune into one source-optional route from a small
+  software experiment through console ownership and isolated actuator work, then into explicitly
+  selected tuning or calibration work. The home, site navigation, framework documentation map,
+  hardware-free scenario, actuator runbook, control-tuning workflow, robot-calibration chooser, and
+  advanced guided-walkthrough page now colocate the active labels, values, controls, prerequisites,
+  observations, and evidence limits needed at each step. `DocumentationLinksTest` locks those
+  operational contracts and bounded first-pass sizes to the maintained tester source. No production
+  Java behavior, public API, application code, or generated artifact changed.
+- **Independent review and repair (2026-09-05):** three non-overlapping operational-truth, rookie-
+  reconstruction, and calibration-boundary reviews found and repaired the remaining in-scope gaps.
+  The Panels lesson now distinguishes loss of the last client from loss while another client remains
+  and names the exact widget/gamepad owner. The tuning lesson explains its asynchronous capture/
+  cold-start/zero states, requires a written allowed-range run card because the host does not display
+  that range before motion, rejects divergent grouped readback before apply, requires member-level
+  evidence, and states the exact experiment-timer boundary. Setup prerequisites, actuator arming and
+  best-effort cleanup, servo-arrival evidence, the Starter write observation, generic-calibration
+  defaults/non-persistence, configured-verifier ownership, pod-default gating, and guided verifier
+  identity are now explicit. Final rereads reported no remaining in-scope findings.
+- **Automated verification (2026-09-05):**
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` completed
+  successfully with **248 suites / 2,225 tests / 0 failures / 0 errors / 0 skipped**; only the
+  existing Java 8 source/target warnings under the Android Studio JBR 21 toolchain appeared. The
+  pinned Zensical 0.0.51 strict clean build completed successfully. Generated checks found **944**
+  indexed sections across all six guide areas and verified **161** API links plus **77** maintained
+  source links across **45** Markdown pages. Static generated-artifact/content checks, explicit
+  final-newline/trailing-whitespace scans, and `git diff --check` also pass. The final post-tracker
+  focused rerun passed **2 suites / 41 tests / 0 failures / 0 errors / 0 skipped** across
+  `DocumentationLinksTest` and `PhoenixApplicationBoundaryTest`.
+- **Evidence limits and review stop (2026-09-05):** no robot hardware was available, so no physical
+  direction, endpoint, clearance, response, localization, loaded-stability, disconnect, or emergency-
+  stop claim is made. The in-app browser runtime exposed no browser surface, so representative
+  desktop/narrow and light/dark visual inspection remains a required human review item rather than a
+  claimed automated result. A pre-existing `AprilTagLocalizationTester` Javadoc button-direction and
+  label mismatch was also observed; changing it is outside this approved documentation-only path set
+  and should be handled separately. Inspect the complete unstaged eleven-path diff in Android Studio,
+  including the new console page at representative viewport/theme combinations. Nothing is staged,
+  committed, pushed, opened as a pull request, or merged. If the diff is accepted, the exact combined
+  authorization is: **“DOC-18 looks good. Authorize committing the reviewed DOC-18 diff on
+  codex/doc-18-test-tune-onboarding, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”**
+- **Gate 3 review and publication authorization (2026-09-05):** **Done.** The user confirmed that
+  DOC-18 looks good and supplied the exact combined authorization above. This records manual review
+  of the complete DOC-18 diff and authorizes staging and committing only its eleven reviewed paths,
+  pushing `codex/doc-18-test-tune-onboarding` only to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it only
+  into `master`. It does not authorize DOC-14, VISION-03, another tracker item, a hardware claim, or
+  unrelated cleanup.
 - **Tracker-only intake status (2026-09-05):** **Proposed after DOC-17.** The DOC-17 rookie audit
   found that Test & Tune still relies on source knowledge for parts of Panels startup, exact tester
   controls and menu labels, tuning vocabulary/defaults, executable beginner experiments, and the

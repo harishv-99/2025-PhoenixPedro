@@ -7,15 +7,14 @@ tags:
 
 **Learning mode:** Architecture reference
 
-The tester framework separates:
+This is optional architecture for a team that already owns a checked-in robot profile and fresh
+robot-configured tester factories. The framework home works without it: use
+[`Robot Calibration Tutorials`](<Robot Calibration Tutorials.md>) to probe and record facts even
+when source is unavailable.
 
-- **one canonical generic tool per hardware fact**, such as `HW: Actuator Bring-up`; and
-- **robot-specific guided suites**, which order those facts with configured integration and
-  localization checks.
-
-The framework home is already a short start-here path: actuator bring-up, calibration/localization,
-and advanced diagnostics. A robot walkthrough is useful only when it adds that robot's checked-in
-configuration, status, and recommended order.
+A guided suite adds robot-specific order and status around existing testers. It is useful only when
+it reads that robot's checked-in configuration or adds a real configured-system check; it does not
+save calibration results or replace the canonical `HW: Actuator Bring-up` workflow.
 
 ## Design rules
 
@@ -32,7 +31,9 @@ controls, safety behavior, or evidence contract.
 
 ### Status belongs near the walkthrough step
 
-Students should not have to remember which calibration has already been completed. Walkthrough steps can show a small `OK` / `TODO` tag plus a one-line reason.
+Walkthrough steps can show a small `OK` / `TODO` tag plus a one-line reason. The builder evaluates
+that status while it builds the suite. Opening or completing a tester does not mutate the profile or
+refresh the tag: record the result, edit the profile, rebuild, and start a newly built suite.
 
 ### Robot code should stay thin
 
@@ -45,9 +46,9 @@ The framework should own the generic menu/status mechanics. Robot code should ma
 For a vision-backed step, map only the relevant robot facts into a fresh tester Config and pass the
 backend-neutral vision-factory builder separately. Capture the selected webcam/Limelight template
 when building that function; do not let a later picker callback reread a broad mutable robot profile.
-The suite stores a `Supplier<TeleOpTester>`, so each entry creates a fresh owner with one immutable
-Config/layout snapshot. A borrowed custom SDK tag library must remain stable for that owner's full
-lifetime and any clean retry.
+The suite stores a `Supplier<TeleOpTester>`, so every selection must create a fresh inactive owner
+with its own Config/layout snapshot. A borrowed custom SDK tag library must remain stable for that
+owner's full lifetime and any clean retry.
 
 For a motor-capable calibration step such as Pinpoint pod offsets, teach the lifecycle boundary too:
 successful ordinary INIT may configure hardware and collect evidence but does not command the drive;
@@ -87,42 +88,54 @@ A builder that produces a normal `TesterSuite`, but with a few calibration-speci
 - status tags are passed to the shared `SelectionMenu` item model instead of being embedded in labels
 - robot projects do not have to hand-roll the menu boilerplate
 
-## Typical pattern for a robot project
+## Map one checked-in fact
 
-A robot project should usually add two required kinds of entry, plus one optional kind, beside the
-framework's canonical actuator tool:
-
-1. a **guided calibration walkthrough**
-2. a **robot-specific calibration/localization category**
-3. optionally, a **robot-specific configured-system verification** when it proves something the raw
-   device wizard cannot
-
-Do not add a robot-specific wrapper that merely repeats the two generic `StandardTesters` entries.
-A custom walkthrough earns its place only when it adds checked-in robot configuration, truthful
-status, or a robot-specific ordering constraint that the canonical menu cannot express.
-
-### Critical code
-
-When a robot really has those extra facts, the registration has this shape:
-
-Abbreviated shape (omissions shown):
+The fragment below uses the real helper signatures for one fact. It is deliberately **not a complete
+robot registry**: the robot project must supply its own checked-in mount and a factory that creates
+an AprilTag-localization tester whose lane was built from that robot profile.
 
 <!-- teaching-shape -->
 ```java
-// ...inside the robot-specific tester registry...
-CalibrationWalkthroughBuilder guide = new CalibrationWalkthroughBuilder("Robot calibration");
-guide.addStep("Verify robot offsets", RobotCalibration::offsetStatus,
-        RobotCalibration::createOffsetVerifier);
-TesterSuite walkthrough = guide.build();
+static TesterSuite cameraMountWalkthrough(
+        CameraMountConfig checkedInCameraMount,
+        Supplier<TeleOpTester> freshConfiguredAprilTagLocalizationTester) {
+    CalibrationWalkthroughBuilder guide =
+            new CalibrationWalkthroughBuilder("Robot calibration");
+    guide.addStep(
+            "Verify configured camera mount",
+            "After rebuild, compare field pose through the robot-configured lane.",
+            () -> CalibrationChecks.cameraMount(checkedInCameraMount),
+            freshConfiguredAprilTagLocalizationTester);
+    return guide.build();
+}
 ```
 
-**What to notice**
+`CalibrationChecks.cameraMount(...)` supplies the real `CalibrationStatus` heuristic used for the
+menu tag. It notices an identity placeholder in the checked-in profile; it does not prove the
+camera's physical mount. `addStep(label, help, status, testerFactory)` stores the real
+`Supplier<TeleOpTester>`; the suite calls it only when the operator selects the step. That supplier
+must return a new inactive AprilTag-localization tester every time, not another mount calibrator, a
+retained tester, or the production camera owner.
 
-- The status supplier reports durable evidence; it does not claim completion because a menu opened.
-- The tester factory creates a fresh owner only after the student selects the step.
+The profile owner passes the stable, checked-in `CameraMountConfig`. The tester factory separately
+maps that same mount and the other current robot vision facts into a fresh tester Config and a
+backend-neutral lane factory. That is what makes the selected check capable of verifying the
+rebuilt profile. The walkthrough reads both; it owns neither profile mutation nor result
+persistence.
 
-**Key APIs:** `CalibrationWalkthroughBuilder.addStep(...)` adds ordered evidence and a fresh tester
-factory; `build()` produces the ordinary `TesterSuite` used by the host.
+### Ownership checklist
+
+- **Profile:** one robot-owned data profile is authoritative for the camera mount, Pinpoint config,
+  and explicit human acknowledgements.
+- **Status:** use `CalibrationChecks.cameraMount(...)`, `pinpointAxes(...)`, or
+  `pinpointOffsets(...)` only for the one fact they describe. A heuristic or boolean is not fresh
+  hardware evidence.
+- **Factory:** every `Supplier<TeleOpTester>` returns a fresh inactive tester whose Config is mapped
+  from the profile once. Do not cache a tester, lane, Plant, or drivetrain owner.
+- **Lifecycle:** the selected tester acquires hardware during its own init and remains the exclusive
+  heartbeat/cleanup owner until BACK or STOP. Production does not run beside it.
+- **Persistence:** the tester prints or displays evidence; a human records and reviews it, the
+  profile owner edits source, and the team rebuilds before a fresh configured verification run.
 
 ## Where robot-specific status should live
 

@@ -5,38 +5,37 @@ tags:
 
 # Test and tune one fact at a time
 
-Begin with [How to test a Sushi component](<How to test a Sushi component.md>). It explains how to
-choose the owner under test, preserve the production heartbeat, replace only the outside world, and
-avoid claiming evidence the test cannot provide.
+Start without hardware, then cross to one controlled robot question. A successful build or software
+test can prove a request, heartbeat, or recorded command; it cannot prove wiring, motion, clearance,
+safe travel, calibration, or tuning.
 
-## Choose the evidence you need
+**Before this path:** complete [Build and Run](<../getting-started/Build and Run.md>) so the repository
+builds from its root. Before opening a hardware tester, deploy the app and make the FTC Robot
+Configuration containing the intended device names active; an unconfigured device cannot appear in
+the picker.
+
+## Start here
+
+1. Run the maintained starter-mechanism experiment from
+   [Hardware-free Reference Scenarios](<../examples/Hardware-free Reference Scenarios.md>). Read its
+   request → ordinary heartbeat → recorded command chain and name the physical fact it cannot prove.
+2. Before any on-robot tool, learn the two ready OpModes, connection order, menu controls, and stop
+   boundary in [Using the tester console](<Using the Tester Console.md>).
+3. Choose one physical question below. Do not combine bring-up, calibration, and tuning into one
+   first run.
+
+## Choose the next question
 
 | Current question | Use | Stop when you know |
-|---|---|---|
-| Does a button request the intended meaning? | a small semantic-intent test | the callback or fresh Task request is correct |
-| Does a real mechanism owner produce the expected command? | a [software-device scenario](<../examples/Hardware-free Reference Scenarios.md>) | the request/evidence/heartbeat decision is correct |
-| Does the managed lifecycle call owners in the right order? | a supplied managed-slice test | the tested phase order and cleanup are correct |
-| Which direction and backed-off range are safe? | [Actuator bring-up](<Actuator Bring-up.md>) | recorded robot evidence supports the profile values |
-| Which robot facts must be established next? | [Robot calibration tutorials](<Robot Calibration Tutorials.md>) | each required fact has an owner and recorded result |
-| Do controller gains meet a stated criterion? | [Control tuning workflow](<Control Tuning Workflow.md>) | the bounded experiment meets the criterion |
-| How should a guided team procedure be assembled? | [Guided calibration walkthroughs](<Guided Calibration Walkthroughs.md>) | the steps expose one fact at a time |
+| --- | --- | --- |
+| Which direction and backed-off range are safe candidates? | [Actuator bring-up](<Actuator Bring-up.md>) | recorded robot evidence supports profile values to verify |
+| Which camera, odometry, or localization fact is missing? | [Robot calibration](<Robot Calibration Tutorials.md>) | one fact is recorded in the robot profile and rechecked by its configured owner |
+| Do controller gains meet a written criterion? | [Control tuning](<Control Tuning Workflow.md>) | one bounded experiment meets the criterion |
+| How do I design another focused test? | [Testing philosophy](<How to test a Sushi component.md>) | its owner, replacement, observation, limit, and next gate are explicit |
+| How should a team-specific procedure be assembled? | [Guided calibration](<Guided Calibration Walkthroughs.md>) | each stage exposes one fact and handoff |
 | Something is already failing | [Common problems](<../troubleshooting/Common Problems.md>) | the observed symptom has one evidence-backed cause |
 
-## The handoff from software to hardware
-
-Software tests may establish mappings, lifecycle, cached status, Task outcomes, and decisions made
-from explicitly injected measurements. They do not establish wiring, motor or servo direction,
-mechanism clearance, safe travel, switch placement, encoder scale, controller response, route
-accuracy, or tuning.
-
-Before running any mechanism OpMode:
-
-1. Keep motion examples `@Disabled` and every motion-permission flag false.
-2. Inspect the assembled mechanism and establish an immediate stop plan.
-3. Use conservative commands and the device-focused bring-up tool.
-4. Record the direction and backed-off endpoints or operating range in the robot profile.
-5. Run the mechanism-only TeleOp before connecting drivetrain or multi-mechanism behavior.
-6. Re-run the software suite after recording the reviewed configuration.
-
-Each Build recipe links its one next physical gate so a student does not have to infer which
-procedure applies.
+Before hardware motion, keep unrelated motion disabled, secure the mechanism, use conservative
+commands, and assign one person to FTC Driver Station STOP. Record each result in robot-owned
+configuration, rebuild, and verify it through the configured mechanism or subsystem; a generic
+tester does not save or adopt that result for you.
