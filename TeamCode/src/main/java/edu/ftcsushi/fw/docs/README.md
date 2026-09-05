@@ -37,8 +37,12 @@ from intake to claw, lift, and velocity, but the hardware fixtures stay focused 
 | sequence feedback-aware lift Tasks without blocking the loop | [Sequence an autonomous](<build/First Autonomous.md>) |
 | compile one Pedro route and inspect its truthful software outcome | [Inspect Pedro route status](<build/First Pedro Auto.md>) |
 | understand where a piece of code belongs | [Choose a learning question](<getting-started/Beginner's Guide.md>) |
-| design a useful software or hardware test | [How to test a Sushi component](<testing-calibration/How to test a Sushi component.md>) |
+| run the first Test & Tune software experiment | [Hardware-free Reference Scenarios](<examples/Hardware-free Reference Scenarios.md>) |
+| operate the ready Driver Station or Panels tester console | [Using the tester console](<testing-calibration/Using the Tester Console.md>) |
 | bring up an actuator without assuming its safe range | [Actuator bring-up](<testing-calibration/Actuator Bring-up.md>) |
+| establish one camera, odometry, or localization fact | [Robot calibration](<testing-calibration/Robot Calibration Tutorials.md>) |
+| tune one controller with a bounded experiment | [Control tuning](<testing-calibration/Control Tuning Workflow.md>) |
+| design another useful software or hardware test | [How to test a Sushi component](<testing-calibration/How to test a Sushi component.md>) |
 | study a less-common composition | [Advanced patterns](<advanced/README.md>) |
 | look up an exact framework family | [Reference](<reference/README.md>) |
 | recover from an observed problem | [Common problems](<troubleshooting/Common Problems.md>) |
@@ -48,7 +52,8 @@ from intake to claw, lift, and velocity, but the hardware fixtures stay focused 
 - **Get Started** connects familiar FTC loops to Sushi and verifies the project without hardware.
 - **Learn** explains one framework idea without making you assemble a robot at the same time.
 - **Build** gives one focused, compiling authority per ordinary outcome.
-- **Test & Tune** separates software evidence from facts only hardware can establish.
+- **Test & Tune** starts with one software experiment, then opens the console for one bounded
+  bring-up, calibration, or tuning question.
 - **Advanced** contains optional patterns with additional ownership or evidence requirements.
 - **Reference** organizes exact vocabulary and links every API name to generated Javadocs.
 

@@ -3,28 +3,138 @@ tags:
   - Test & Tune
 ---
 
-# Control Tuning Workflow
+# Tune one controller with a bounded experiment
 
-**Learning mode:** Architecture reference
+**Learning mode:** Operational first experiment, followed by an architecture reference
 
-Live control tuning while hardware moves is an experiment, not ordinary robot operation.
-Sushi therefore gives velocity and position tuning one framework-owned workflow:
+**Outcome:** run one deliberately limited velocity trial, explain the displayed response, and
+record a candidate without mistaking it for production configuration.
+
+**Before this page:** complete [Using the Tester Console](<Using the Tester Console.md>) and the
+relevant [actuator bring-up](<Actuator Bring-up.md>). Verify direction, feedback sign, units, a
+conservative target envelope, and immediate FTC STOP before changing gains.
+
+To operate the first experiment, you also need a team-reviewed velocity-tuning OpMode already built
+from that mechanism's fresh Plant. You do not need its source while operating it. If the team has
+not supplied one, complete **Build the tuning host** below and compile it before returning here; do
+not enable the Reference host unchanged on different hardware.
+
+Live tuning moves hardware. It is an experiment, not ordinary robot operation. Sushi therefore
+gives velocity and position tuning one framework-owned workflow:
 
 ```text
 one tester declaration
   -> one fresh Plant from the production recipe
   -> the controller topology discovered from that completed Plant
-  -> one explicit A press per immutable experiment segment
+  -> one accepted A capture produces each immutable experiment segment
 ```
 
 The workflow owns the Panels draft, complete-candidate validation, target changes, controller
-readback, response metrics, history, restoration, and terminal Plant cleanup. Robot code supplies
+readback, response metrics, history, restoration attempts, and terminal Plant cleanup. Robot code supplies
 only the experiment name, a finite allowed physical target range, and the canonical fresh-Plant
 factory. It does not repeat a motor name, controller type, gain schema, target object, or output.
 
+!!! danger "Danger: keep a physical stop plan"
+
+    Secure the robot and mechanism, clear people and loose objects, and keep one person at the FTC
+    Driver Station STOP control or robot power. A Panels browser control is not an emergency stop.
+    Support a gravity-loaded mechanism independently before opening a position tuner.
+
+## First experiment: one velocity segment
+
+The maintained Reference host demonstrates two coupled flywheels. It is checked in `@Disabled`, so
+it does not appear on the Driver Station until a robot author deliberately adapts and enables it.
+Its exact enabled label is **FW Reference: Tuning (Panels)**. The software defaults below make the
+example compile; they are not evidence about your motors or mechanism:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.java -->
+```java
+Config c = new Config();
+c.leftMotorName = "flywheelLeft";
+c.leftMotorDirection = Direction.FORWARD;
+c.rightMotorName = "flywheelRight";
+c.rightMotorDirection = Direction.REVERSE;
+c.maximumVelocityTicksPerSec = 5000.0;
+c.velocityToleranceTicksPerSec = 100.0;
+return c;
+```
+
+The checked-in host permits targets from `0` through `5000` encoder ticks per second because it uses
+the full declared production maximum. The first Panels draft starts at target `0` and
+`autoStopAfterSec = 5.0`. Do not treat either maximum as a safe recommendation. Before removing
+`@Disabled`, replace the names, directions, maximum, and tolerance with reviewed mechanism facts,
+and give the tuning host its own smaller reviewed session range when the full production range is
+unnecessary. **Build the tuning host** shows the exact range argument to change without weakening
+the Plant's production bound.
+
+!!! info "New concept: one measured response"
+
+    A **target** is the velocity requested for this trial. The encoder supplies the
+    **measurement**. Their difference is the **error**. **Controller gains** help decide how the
+    command reacts to that error; the mechanism, load, and voltage also shape the measured response.
+    One press of A requests one immutable candidate capture. Once accepted, its numbered
+    **segment** keeps the graph and metrics tied to that exact trial.
+
+For this two-wheel Plant, the main graph's measurement and error use the group's aggregate
+measurement. They can hide one slow wheel and one fast wheel. The controller evidence therefore
+also shows `member.1.*` and `member.2.*` names, measurements, errors, native tolerances, and
+`withinMappedTolerance`; both members must pass before the segment reports at target.
+
+Before the first A press, inspect **Controller topology**. If it ends in
+`DIVERGENT_INITIAL_READBACKS`, the two motors began with different PIDF tuples, but their individual
+pre-apply values are not shown on this screen. Do not press A: use BACK/STOP, have the robot owner
+review and reconcile the initial motor configurations, then start a fresh session. Otherwise the
+first accepted candidate may replace those different tuples before you have reviewed them.
+
+A **candidate** is the complete proposed set of gains and experiment values. Before motion, write a
+measurable acceptance rule, such as “both wheels settle (enter and remain within 100 ticks per
+second of the request) without exceeding the team's limit for overshoot (speed beyond the
+request).” That rule—not a graph that merely looks smooth—decides whether the candidate is worth
+recording.
+
+Run one segment:
+
+1. Confirm that the robot owner supplied the reviewed OpMode and a written run card containing the
+   exact allowed target range and acceptance rule. The tuner validates the allowed range but does
+   not display it before motion, so do not discover the limit by submitting guesses. If you are the
+   owner adapting the Reference pattern, complete **Build the tuning host** and its compile check
+   before returning to this step.
+2. Connect exactly one Panels client, select the team-supplied tuning OpMode on the Driver Station
+   (**FW Reference: Tuning (Panels)** for an intentionally enabled Reference copy), then press INIT
+   and START. The tuner initially requests zero.
+3. In the Panels **Configurables** editable table, enter one conservative
+   `experiment.targetVelocity`, leave
+   `experiment.autoStopAfterSec` at `5.0`, change at most the gain being tested, and select
+   **Update All**. This edits only a draft; it does not move hardware.
+4. Recheck every displayed value, then press A once on the Panels virtual gamepad. A begins an
+   asynchronous snapshot, so `CAPTURING` may appear. `COLD START WAIT` may appear while finite
+   feedback and zero-at-target evidence arrive; `ZERO WAIT` may appear while every grouped
+   controller proves mapped zero. A wait can be skipped when its evidence is already satisfied.
+   Motion begins only after **Current segment** shows the accepted segment ID. Do not press A
+   repeatedly to “apply harder.”
+5. Read the aggregate target/measurement/error graph, response metrics, controller readback (the
+   values the controller reports it accepted), segment ID, and every `member.1.*` / `member.2.*`
+   evidence row. The workflow requests zero five seconds from accepted segment start, after at least
+   one downstream Plant update has realized it; the timer is not five seconds from the first visible
+   measurement. B requests zero sooner.
+6. Record the segment ID, exact candidate, conditions, and whether the written criterion passed.
+   BACK terminally stops the tester and best-effort attempts Plant stop and controller restoration.
+   If cleanup reports failure, treat controller and physical state as uncertain. Use FTC Driver
+   Station STOP or robot power immediately for a physical hazard.
+
+**Checkpoint:** a retained segment and your written observation establish what this configured
+mechanism did in that bounded trial. They do not establish safety, performance at another speed or
+load, or production adoption. Copy values only after repeated reviewed trials, then verify a fresh
+production mechanism.
+
 ## Choose the workflow that matches production
 
-## Files you will create
+Use `velocityControl(...)` only when the production Plant controls velocity. Use
+`positionControl(...)` only when the production Plant controls position and the adopting mechanism
+has supplied its real reference and hold policy. The completed Plant—not a menu choice—determines
+which controller fields and evidence are available.
+
+## Build the tuning host
 
 - `ReferencePanelsTuningOpMode.java` — one disabled, exclusive Panels host for the tuning workflow.
 
@@ -32,6 +142,12 @@ The maintained Reference flywheel owner already supplies
 `ReferenceFlywheelMechanism.createPlantForTuning(...)`. Your own mechanism should expose the
 same narrowly named advanced seam and build its production and tuning Plants through one private
 canonical recipe. Do not share a live Plant between the match and tuner.
+
+Keep the Plant's real production maximum in its mechanism config. Independently choose the smaller
+maximum the supervised tuning session is allowed to type. In the excerpt below, the exact argument
+to replace is `flywheels.maximumVelocityTicksPerSec` inside `ScalarRange.bounded(...)`; substitute a
+robot-owned, reviewed tuning-limit value there. Do not lower the Plant maximum merely to constrain
+one experiment, and do not copy a numeric limit from this guide.
 
 ### Critical code
 
@@ -251,6 +367,11 @@ separate controller owners.
 
 ## What one position experiment does
 
+Sushi has no maintained robot/example position-tuning OpMode. The API exists because a referenced
+position Plant has a different, already-tested lifecycle, but adopting it requires a real
+mechanism's reference policy, legal envelope, hold behavior, gravity support, and Plant recipe.
+Treat this section as an advanced adaptation reference, not a second first-run tutorial.
+
 Position tuning uses two exact physical endpoints, not velocity's zero/spin cycle:
 
 1. During INIT the tester claims the completed PositionPlant but produces no normal control output.
@@ -413,6 +534,7 @@ current typed grammar and one Plant-derived tuning path.
 ## Related reading
 
 - [`Testing and calibration`](<README.md>)
+- [`Using the tester console`](<Using the Tester Console.md>)
 - [`Actuator bring-up`](<Actuator Bring-up.md>)
 - [`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md>)
 - [`FTC UI Helpers`](<../ftc-boundary/FTC UI Helpers.md>)

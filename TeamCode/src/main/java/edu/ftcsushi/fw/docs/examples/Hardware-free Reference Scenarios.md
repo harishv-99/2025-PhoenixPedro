@@ -9,10 +9,85 @@ A scenario is useful only when its boundary matches the question. Keep the produ
 that question, replace the external world it observes or commands, advance the normal heartbeat,
 and state what the resulting evidence cannot establish.
 
-Start with [How to test a Sushi component](<../testing-calibration/How to test a Sushi component.md>)
-if those boundaries are unfamiliar.
+**Before this page:** complete [Build and Run](<../getting-started/Build and Run.md>) so the repository
+builds and the Android Studio terminal is open at its root.
 
-## Scenario map
+This page explains those boundaries beside the first experiment. Read
+[How to test a Sushi component](<../testing-calibration/How to test a Sushi component.md>) afterward
+when you want to design another scenario.
+
+## Start here: ask for intake, then advance one heartbeat
+
+`StarterMechanismLessonTest` is the maintained first software experiment. It uses the real starter
+intake mechanism and its real Plant, but records the motor command in software instead of requiring
+a robot. Run it from the repository root:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterMechanismLessonTest
+```
+
+A passing test answers one deliberately small question:
+
+- **Question:** Does requesting `COLLECT` reach the configured motor power on the mechanism's next
+  normal output update, rather than writing hardware immediately?
+- **Keep real:** the production `StarterIntakeMechanism`, its configuration, named-mode mapping, and
+  Plant update path. These are the owners whose behavior the question asks about.
+- **Replace:** only the FTC motor with a recording `MotorProbe`; a manual clock supplies a
+  deterministic cycle. Neither replacement contains motor physics.
+- **Observe:** the requested mode, zero motor writes before the update, then cached and recorded
+  power after the update.
+- **Cannot conclude:** the real motor's direction, motion, clearance, current, behavior under load,
+  or stopping time.
+
+In the excerpt, **ARRANGE** constructs the production owner around the recorder, **REQUEST** changes
+the named intent, and **HEARTBEAT** runs the normal output update once. The `assertEquals(...)`
+lines are the **ASSERT** step: before the heartbeat they require zero applied power and zero writes;
+after it they require the configured `collectPower` at both software observations.
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
+```java
+// ARRANGE: production configuration and mechanism with only the FTC motor replaced.
+StarterIntakeMechanism.Config config = StarterIntakeMechanism.Config.defaults();
+config.collectPower = 0.37;
+config.ejectPower = -0.22;
+
+FtcTestHardware hardware = new FtcTestHardware();
+FtcTestHardware.MotorProbe motor = hardware.addMotor(config.motorName);
+StarterIntakeMechanism intake = new StarterIntakeMechanism(hardware, config);
+ManualLoopClock time = new ManualLoopClock();
+
+// REQUEST: semantic intent changes immediately; hardware has not been updated yet.
+intake.setMode(StarterIntake.Mode.COLLECT);
+assertEquals(StarterIntake.Mode.COLLECT, intake.status().mode());
+assertEquals(0.0, intake.status().appliedPower(), 0.0);
+assertEquals(0, motor.powerWrites());
+
+// HEARTBEAT: the same production update path maps the request and writes the motor.
+intake.update(time.clock());
+assertEquals(config.collectPower, intake.status().appliedPower(), 0.0);
+assertEquals(config.collectPower, motor.power(), 0.0);
+```
+
+**Read the causal chain:** `setMode(COLLECT)` changes the named request but produces no motor write;
+the one explicit `update(...)` then resolves that request and records `0.37` through the production
+Plant path.
+
+**Proves:** the configured semantic mapping, requested-versus-applied order, and submitted software
+command agree in this scenario.
+
+**Does not prove:** the physical motor moved, moved in the intended direction, or is safe.
+
+**Next gate:** learn how to choose one input owner and stop safely in
+[Using the tester console](<../testing-calibration/Using the Tester Console.md>), then use
+[actuator bring-up](<../testing-calibration/Actuator Bring-up.md>) for a supervised low-power
+direction check. Reading the
+[Complete source: `StarterMechanismLessonTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java>)
+is optional; the experiment, boundary, command, and evidence are all stated here.
+
+## Choose the next scenario by question
+
+The starter intake above is the beginner entry. The matrix keeps later choices together; entries
+marked **Advanced** assume the ordinary one-owner and one-heartbeat path is already familiar.
 
 | Question | Production owner kept real | Focused scenario | Physical gate still required |
 |---|---|---|---|
@@ -25,8 +100,8 @@ if those boundaries are unfamiliar.
 | Does cancelling one velocity Task request zero through the normal heartbeat? | `BasicFlywheelMechanism` + scalar Task + Plant | [Single flywheel velocity](<../build/Single Flywheel Velocity.md>) | direction, encoder scale, PIDF tuning, loaded speed, and coast-down |
 | Does one timed root begin at START and select safe intent on completion/cancel? | `StarterAuto` + production intake Task/Plant | [Run one timed Auto](<../build/Run One Timed Auto.md#software-checkpoint-time-begins-at-start>) | duration under load, direction, and physical stop |
 | Does successful prerequisite evidence admit Auto work in the authored order? | `BasicAutoRoutines` + Task graph | [First autonomous](<../build/First Autonomous.md#software-checkpoint-success-admits-the-next-work>) | homing/move timing, lift clearance, and STOP |
-| Must both flywheels be ready? | `ReferenceFlywheelMechanism` + grouped Plant | [Paired flywheel](<../advanced/Paired Flywheel Velocity.md>) | balance under load and tuning |
-| Which full-turn turret equivalent is legal and nearest? | `ReferencePeriodicTurretMechanism` + resolver | [Periodic turret](<../advanced/Periodic Turret Position.md>) | zero, cable bounds, and collision |
+| Must both flywheels be ready? | `ReferenceFlywheelMechanism` + grouped Plant | **Advanced:** [paired flywheel](<../advanced/Paired Flywheel Velocity.md>) | balance under load and tuning |
+| Which full-turn turret equivalent is legal and nearest? | `ReferencePeriodicTurretMechanism` + resolver | **Advanced:** [periodic turret](<../advanced/Periodic Turret Position.md>) | zero, cable bounds, and collision |
 | Is sensor-derived inventory published only after update? | `ReferenceInventoryStatusService` | [Complete source: `ReferenceInventorySoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventorySoftwareScenarioTest.java>) | sensor placement and game-piece detection |
 | Does one retained Pedro execution classify honestly? | `RouteTask` + route boundary | [First Pedro Auto](<../build/First Pedro Auto.md#software-checkpoint-completion-needs-endpoint-evidence>) | localization, route accuracy, and stop |
 
@@ -39,7 +114,10 @@ is supplied maintainer evidence for the optional lift-and-claw parallel capstone
 fresh-Task behavior. Other broad contract tests beside teaching scenarios serve the same role:
 students may run them before they are ready to author complete abnormal-outcome matrices.
 
-## Worked example: paired velocity needs paired evidence
+## Advanced worked example: paired velocity needs paired evidence
+
+This Reference example is useful after the starter experiment; it combines a grouped Plant with
+independent per-motor readiness evidence and is not the beginner starting point.
 
 - **Question:** Can an average velocity hide one slow wheel and one fast wheel?
 - **Keep real:** the production mechanism, grouped velocity Plant, status publication, Task, and
@@ -75,7 +153,7 @@ piece.
 **Next gate:** run the focused mechanism at a guarded low velocity, observe both real encoders under
 representative load, and tune only after directions and immediate STOP are established.
 
-## Running one scenario
+## Running another scenario
 
 Use the fully qualified test class shown by its page or source link:
 

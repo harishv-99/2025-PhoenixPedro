@@ -22,6 +22,8 @@ controller, edit a profile, or prove that a mechanism is safe under production l
 - Remove game pieces and support the robot so the selected device cannot drive it away.
 - Keep people, hair, tools, and wires outside every possible motion path.
 - Begin unloaded. Do not use the generic tool on an unsupported gravity-loaded arm or lift.
+- Make the FTC Robot Configuration containing the intended device name active before INIT; the
+  picker shows only configured hardware.
 - Decide what **positive** motion should mean before testing direction.
 - Know how to stop the selected tester entry and assign one person to do it. When using Panels,
   browser STOP is not a physical emergency stop; keep immediate access to robot power.
@@ -30,9 +32,11 @@ controller, edit a profile, or prove that a mechanism is safe under production l
 
 Run either **FW: Testers (Driver Station)** with physical gamepad input or
 **FW: Testers (Panels)** with Panels virtual-gamepad input, then open **HW: Actuator Bring-up**.
-Both entries use this same tester, controls, and telemetry. See the
-[`testing and calibration`](<README.md>) entry guide before using Panels. The picker lists configured
-hardware by type and name, for example:
+Choose one input source for the run: the Driver Station entry ignores Panels controls, and the
+Panels entry ignores physical gamepads; inputs are never merged. Both entries use this same tester
+and show the same telemetry on the Driver Station and Panels. For launch, connection, navigation,
+and restart instructions, see [Using the tester console](<Using the Tester Console.md>). The picker
+lists configured hardware by type and name, for example:
 
 ```text
 [DC motor] lift
@@ -47,23 +51,25 @@ start the OpMode and the controls have returned to neutral.
 
 | Control | Meaning |
 |---|---|
-| A | Arm after the OpMode starts and a neutral sample; a standard servo reporting unknown-state `NaN` uses the deliberate two-press bootstrap below |
+| A | Arm after the OpMode starts and a neutral sample; for a standard servo reporting unknown-state `NaN`, one fresh press acknowledges the warning, releasing A separates the presses, and a second fresh press submits `0.5` and arms |
 | B | Disarm; write motor/CR-servo power zero, or stop standard-servo jog updates and retain its last request |
-| X | While disarmed, test the other temporary FTC `Direction`; captures are cleared |
-| D-pad up/down | While disarmed, increase/decrease the conservative jog rate |
+| X | After A has prepared the device and while disarmed, test the other temporary FTC `Direction`; captures are cleared |
+| D-pad up/down | While disarmed, change motor/CR-servo power by `0.05` within `0.05..0.30`, or standard-servo jog rate by `0.01` native command units/second within `0.01..0.25`; both start at `0.05` |
 | Hold left bumper | Move in the negative direction while armed |
 | Hold right bumper | Move in the positive direction while armed |
-| D-pad left | While disarmed, capture `nativeAtPlantMin` |
-| D-pad right | While disarmed, capture `nativeAtPlantMax` |
+| D-pad left | After A has prepared the device and while disarmed, capture `nativeAtPlantMin` |
+| D-pad right | After A has prepared the device and while disarmed, capture `nativeAtPlantMax` |
 | gamepad START | While disarmed, clear both captures |
 | Y | While disarmed, finish and print one candidate result after a successful nonzero jog under the current `Direction` |
-| BACK | Return to the picker; restore temporary Direction/settings and command motor/CR-servo zero, while a standard servo retains its last request |
+| BACK | Return to the picker; attempt to restore temporary Direction/settings and command motor/CR-servo zero, while a standard servo retains its last request |
 
 Exactly one bumper must be held. Releasing both, holding both, pressing B, leaving the device,
-stopping the OpMode, or encountering a failure stops motor/CR-servo power immediately. For a
-standard servo, those actions stop new jog commands and retain the last request; the shaft may still
-be traveling toward it. After a selection or direction change, return every movement control to
-neutral before arming again.
+stopping the OpMode, or encountering a failure immediately requests or best-effort attempts zero
+motor/CR-servo power. A hardware-write or cleanup failure means physical state is uncertain: use
+FTC Driver Station STOP and robot power rather than trusting telemetry. For a standard servo, those
+actions stop new jog commands and retain the last request; the shaft may still be traveling toward
+it. After a selection or direction change, return every movement control to neutral before arming
+again.
 
 Endpoint names are semantic. `nativeAtPlantMin` means “the hardware fact that should represent the
 minimum of my chosen Plant coordinate”; it does not mean the numerically smaller value. Reversed
@@ -71,9 +77,10 @@ servo endpoints are valid and are never sorted.
 
 ## DC motor: direction and optional travel span
 
-The tester temporarily uses `RUN_WITHOUT_ENCODER`, starts at power `0.05`, and limits the generic
-test to `0.30`. It snapshots and later restores the motor's original mode, direction, and zero-power
-behavior. It never resets the encoder.
+The tester temporarily uses `RUN_WITHOUT_ENCODER`. Power magnitude starts at `0.05`; while
+disarmed, D-pad up/down changes it in `0.05` steps within the inclusive `0.05..0.30` range. It
+snapshots and later restores the motor's original mode, direction, and zero-power behavior. It
+never resets the encoder.
 
 For direction-only devices such as an intake or flywheel:
 
@@ -144,8 +151,9 @@ sensor, or deliberately chosen startup pose through the position-reference APIs 
 
 ## Continuous-rotation servo: direction only
 
-A CR servo accepts power but supplies no position feedback. The same low-power, dead-man direction
-test applies, but the generic tester cannot discover positional bounds.
+A CR servo accepts power but supplies no position feedback. Its dead-man power magnitude starts at
+`0.05`; while disarmed, D-pad up/down changes it in `0.05` steps within `0.05..0.30`. The generic
+tester cannot discover positional bounds.
 
 A rotating plate on a CR servo may be:
 
@@ -158,6 +166,11 @@ command.
 
 ## Standard servo: native endpoints without choosing Plant units
 
+The standard-servo jog rate starts at `0.05` logical native command units/second. While disarmed,
+D-pad up/down changes it in `0.01` steps within `0.01..0.25` units/second. During a jog, each loop
+may change the submitted logical command by at most `0.005`, even if the elapsed loop time would
+produce a larger step. These are command-space limits, not measured shaft speed or angle.
+
 The hardware servo programmer and the FTC SDK solve different problems:
 
 - A **hardware servo programmer** may set electronic limits inside the servo, such as a nominal
@@ -169,16 +182,22 @@ The hardware servo programmer and the FTC SDK solve different problems:
 
 If `Servo.getPosition()` reports a finite known command state, arming performs no servo write and the
 tester jogs gradually from that value. If it explicitly returns the Servo API's documented unknown-
-state `NaN`, the same wizard shows a first-use bootstrap: remove the horn/linkage, or prove every
-possible position under the current PWM mapping and servo programming is clear; press A once to
-acknowledge the warning; release A; then press A again to submit logical command `0.5` and arm.
-`0.5` is only a command-space midpoint, not a promise of a centered shaft angle. The API cannot
-prove that a finite reported value was physically delivered or that it reflects the shaft.
+state `NaN`, the conservative first-use bootstrap requires **two fresh A presses**: remove the
+horn/linkage, or prove every possible position under the current PWM mapping and servo programming
+is clear; press A once to acknowledge without writing; release A; then press A again to submit
+logical command `0.5` and arm. `0.5` is only a command-space midpoint, not a promise of a centered
+shaft angle. The API cannot prove that a finite reported value was physically delivered or that it
+reflects the shaft.
 
 Releasing the bumper or pressing B stops new jog updates and retains the last request; a standard
 servo has no power-zero position and may still be traveling toward the request.
 `Servo.getPosition()` is SDK command state, not shaft-angle feedback, so visual inspection and safe
 clearance are still required.
+
+Before capturing either servo endpoint, release the bumper, wait for the linkage to become visibly
+stationary, inspect clearance from the physical obstruction, then press B and capture the backed-off
+command while disarmed. The captured number proves which command was submitted; your observation is
+the evidence that the mechanism arrived and retained safe clearance.
 
 Suppose a 270-degree programmed servo is mechanically allowed to move a plate through only 180
 degrees. You capture native commands `0.17` and `0.83`, then choose degrees as Plant units:
@@ -248,9 +267,9 @@ load, flex, or linkage geometry stays inside the physical interval.
 
 ## What to copy, and what to verify next
 
-The final screen remains visible until BACK and logs one copy-ready candidate under
-`SushiActuatorBringUp`. Copy it deliberately into the data-only robot configuration or mechanism
-builder; the tool does not modify either one.
+The copy-ready candidate remains on the final Driver Station/Panels screen until BACK and is also
+written to Logcat under the `SushiActuatorBringUp` tag. Copy it from either location into the
+data-only robot configuration or mechanism builder; the tool does not modify either one.
 
 Then verify the production owner:
 

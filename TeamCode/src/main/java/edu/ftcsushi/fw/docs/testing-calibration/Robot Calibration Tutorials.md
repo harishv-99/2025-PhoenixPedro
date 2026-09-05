@@ -7,50 +7,72 @@ tags:
 
 **Learning mode:** Operational runbook
 
-This is the framework's start-to-finish path for the calibration steps most FTC robots need before
-mechanisms, localization, and driver assists are trustworthy.
+Use this runbook to establish one physical fact at a time, record it, and then prove that the
+production robot actually consumes the recorded configuration.
 
-Start new actuators through one ordinary device-first path:
+## Choose your stage
 
-- run either **FW: Testers (Driver Station) → HW: Actuator Bring-up** or **FW: Testers (Panels) →
-  HW: Actuator Bring-up**;
-- isolate one configured device;
-- establish its direction and, when appropriate, already-backed-off safe endpoint evidence;
-- copy those facts into robot configuration; and
-- verify them again through the real mechanism or drivetrain owner.
+| Stage | Use it when | Outcome |
+| --- | --- | --- |
+| **1. Probe and record** | You have the robot, even if you cannot edit its source. | Run the framework-only testers, isolate one fact, and record the exact observation or suggested value. |
+| **2. Rebuild and verify** | The robot profile owner can edit/deploy and the project supplies a fresh configured verifier for this fact. | Put the accepted fact in the canonical robot profile, rebuild, and verify it with that fresh robot-configured tester and then the production owner. |
+| **3. Investigate an advanced question** | The ordinary path is already credible and you have a specific reason to go deeper. | Compare encoder representations, enable powered/vision-assisted pod calibration, compare an EKF, or construct a guided suite. |
 
-Read [`Actuator bring-up`](<Actuator Bring-up.md>) before first motion. A robot-specific guided
-walkthrough may order later integration and localization checks, but it should reuse this hardware
-fact rather than invent another generic actuator workflow. Direct controller/encoder experiments
-live under **Advanced: Hardware Diagnostics**.
+The rookie first path is Stage 1 followed by a handoff to the Stage-2 owner. Source access is
+optional for Stage 1 only. If you cannot edit and rebuild—or the project does not yet supply the
+configured verifier—preserve the recorded evidence for the profile owner and stop before claiming
+production verification. This page does not generate a robot-specific verifier from generic
+defaults.
+
+## What the framework-only testers know
+
+Run either **FW: Testers (Driver Station)** or **FW: Testers (Panels)**. Under **Framework:
+Calibration & Localization**, the generic `StandardTesters` entries are independent fact probes:
+every selection reconstructs a fresh tester `Config` from framework defaults.
+
+- Generic vision entries use the selected webcam or Limelight name, the current-game fixed-tag
+  layout, and an identity camera mount. The camera-mount calibrator can still measure the mount
+  because that mount is its unknown, but the generic AprilTag and corrected-localization entries do
+  not receive a mount you measured in another screen.
+- Generic Pinpoint entries replace only `hardwareMapName` with the selected device name. They retain
+  the defaults: `0.0 / 0.0` pod offsets, both encoder directions `FORWARD`, the
+  `goBILDA_4_BAR_POD` resolution, factory yaw calibration (`yawScalar = null`), and quality `0.75`.
+  The generic pod-offset entry has no drive and no AprilTag-assist factory.
+- `StandardTesters` entries do not persist or propagate results: no generic entry writes a file,
+  changes the robot profile, sets an acknowledgement, or passes its result to the next entry. They
+  cannot verify production configuration.
+
+The required handoff is **record -> rebuild -> fresh robot-configured tester -> verify**:
+
+1. **Record** the exact displayed value, suggested assignment, device name, conditions, and the
+   observations that justified accepting it.
+2. **Rebuild** after the profile owner copies that fact into the canonical robot configuration.
+3. **Open a fresh robot-configured tester supplied by the robot project.** Its suite factory creates
+   a new owner and that owner snapshots its supplied configuration; an already-open tester cannot
+   reload a changed profile.
+4. **Verify** the rebuilt value through that configured tester, then through the real mechanism,
+   drivetrain, or localization owner. A repeatable generic probe alone is not this verification.
+
+Read [`Actuator bring-up`](<Actuator Bring-up.md>) before first motion. Direct controller/encoder
+experiments and custom suite construction are optional advanced work, not prerequisites for the
+ordinary calibration path.
 
 ## Before you start
 
 Use a robot that is mechanically assembled enough to roll freely, with the final odometry pods, camera, and drivetrain wiring already installed.
 
-For the best experience:
+Prepare an evidence sheet or, when source is available, the canonical robot profile. Also:
 
 - use a fully charged battery
 - put the robot on reasonably flat flooring
 - make sure the camera can see tags clearly
-- bring a laptop open to `RobotConfig` so you can paste values immediately
 - change one thing at a time, then rerun the relevant tester
+- keep one person at FTC STOP whenever a powered workflow is active
 
-Vision/calibration tools take one explicit data-only Config plus, when they use AprilTags, one
-backend-neutral lane-factory builder. The tool validates and snapshots its active data and fixed-tag
-layout before it uses its child context or opens hardware; the builder separately captures the
-webcam or Limelight recipe and must stay stable for the tool's lifetime and clean picker retries.
-Facts that depend on the returned lane—its actual subtype, mount/sensor accessors, and asynchronous
-readiness—can only be checked after `open()`. A null contract fact or a `RuntimeException` from those
-checks detaches the published lane and closes it exactly once when cleanup succeeds; `NOT_READY` is
-normal pending state, not a failure. An `Error` propagates immediately without promised cleanup. If
-the lane remains published and STOP is later invoked, that boundary closes the still-retained owner.
-
-The snapshotted layout display deliberately keeps the FTC game-policy summary plus captured IDs and
-poses, rather than retaining the mutable source layout for richer per-key debug rows. An empty layout
-is preserved as empty: raw detections can remain visible, but no fixed-layout calibration sample or
-AprilTag correction is invented. Software defaults establish a valid authoring grammar; they do not
-prove the selected camera, mount, printed tag size, field placement, Pinpoint geometry, or drivetrain.
+Each vision tester owns the selected camera until BACK or STOP closes it. Wait while readiness says
+`WAITING`; no visible tag is a different fact from camera readiness. If cleanup becomes uncertain,
+stop and restart the OpMode rather than selecting another owner. An empty fixed layout may still show
+raw detections, but it cannot produce a fixed-layout mount sample or field-pose correction.
 
 ## Actuator direction and safe endpoints
 
@@ -331,6 +353,10 @@ A student can answer, without hesitation, “yes, each wheel does the expected t
 
 ## High-resolution external encoder velocity comparison
 
+**Optional advanced route:** skip this section on the rookie calibration path and continue at
+**Camera mount**. Use it only when you need evidence about direct versus position-derived velocity
+from a high-count-rate external encoder.
+
 ### Why this is a separate hardware check
 
 A quadrature encoder fundamentally supplies position changes. FTC hardware and the SDK may also
@@ -426,10 +452,21 @@ and evaluate the recorded loop intervals because per-cycle Logcat output can its
 
 Every AprilTag field-pose solve depends on `robot -> camera` extrinsics. If the camera mount is still left at an identity placeholder, tag localization may appear to work while quietly producing the wrong pose.
 
-### Tester
+### Framework-only entries and active defaults
 
-- `Calib: Camera Mount`
-- robot-specific variant if your project preselects a vision backend or tag-localizer config
+- `Calib: Camera Mount (Webcam)`
+- `Calib: Camera Mount (Limelight)`
+
+Both entries use the current-game fixed layout and accept detections no older than `0.35 s`. The
+known `fieldToRobotPose` starts at `(0, 0, 0)`, the first fixed-layout tag ID is initially selected,
+and quick-edit mode starts with fine steps of `0.25 in` and `0.5°`; START switches to coarse steps of
+`1.0 in` and `2.0°`. The generic webcam lane uses `640 x 480`. The generic Limelight lane requests
+pipeline `0` at `100 Hz` and requires a result no older than `0.25 s` to confirm transport
+readiness. Those are software defaults, not proof that the installed camera or pipeline is correct.
+
+The generic lane's identity mount does not contaminate this solve: `robotToCameraPose` is the fact
+being measured, so the calibrator deliberately does not use the lane's configured mount as an
+input. It still does not write the measured answer anywhere.
 
 ### What you are solving
 
@@ -438,13 +475,18 @@ You tell the tester where the robot is on the field, the tester observes a known
 ### Procedure
 
 1. Place the robot in a pose you can describe confidently in the FTC field frame.
-2. Open `Calib: Camera Mount`.
-3. Choose the active vision device if a picker appears.
-4. Select the visible tag ID.
-5. Adjust the known robot pose until it matches the real robot position and heading.
-6. Hold the robot still and capture several samples.
-7. Paste the printed `CameraMountConfig.ofDegrees(...)` value into `RobotConfig`.
-8. Rerun the tester once after pasting to confirm the new config behaves the same way.
+2. Open the exact `(Webcam)` or `(Limelight)` entry for the installed backend. In the device picker,
+   Dpad Up/Down highlights, A chooses, and X refreshes. Wait for vision readiness.
+3. In quick mode, Y increments and X decrements the tag ID. Dpad Left/Right edits known robot X,
+   Dpad Up/Down edits known robot Y, LB adds yaw, and RB subtracts yaw. START selects the fine or
+   coarse increments listed above. Right-stick click optionally enters field-by-field edit mode.
+4. Match the displayed known robot pose and selected tag to the physical setup. Hold the robot still
+   and press A several times to capture samples; B clears a bad set.
+5. Record the printed `CameraMountConfig.ofDegrees(...)`, the selected device and tag, the physical
+   pose, sample count, sample-to-average spread, residual, and range comparison.
+6. Put the accepted mount in the canonical robot profile, rebuild, and open a fresh
+   robot-configured AprilTag-localization tester. Verify the field pose there. Reopening the generic
+   camera calibrator can check repeatability, but cannot prove that production consumed the value.
 
 ### What “good” looks like
 
@@ -452,6 +494,10 @@ You tell the tester where the robot is on the field, the tester observes a known
 - repeated samples cluster closely
 - `Sample vs avg mount` stays small when the robot is still
 - `Avg residual` and the range check look reasonable instead of exploding
+
+The tool defines no universal pass threshold for spread or residual. Its only large-mount warning is
+triggered when translation magnitude exceeds `36 in`; that warning is a setup diagnostic, not an
+acceptance limit. The team must compare the solve with measured geometry and repeatable samples.
 
 ### Common mistakes
 
@@ -463,7 +509,8 @@ You tell the tester where the robot is on the field, the tester observes a known
 
 ### Record this result in code
 
-Update the robot's camera mount config immediately. Do not leave a “paste later” sticky note for this step.
+Update the robot-owned camera mount profile when source is available. Otherwise preserve the exact
+record for that owner; do not mark the production camera calibrated from the generic screen alone.
 
 ## AprilTag-only localization check
 
@@ -471,31 +518,53 @@ Update the robot's camera mount config immediately. Do not leave a “paste late
 
 Do not jump straight to odometry fusion. First verify that tags alone are being detected and that the field pose solve is sane.
 
-### Tester
+### Framework-only entries and active defaults
 
-- `Loc: AprilTag Localization`
+- `Loc: AprilTag Localization (Webcam)`
+- `Loc: AprilTag Localization (Limelight)`
+
+The tester starts in `ANY` mode and accepts a detection frame up to `0.35 s` old. Its default
+fixed-tag solver prefers an SDK-provided robot pose only when it agrees with the explicit geometry
+solve within `8 in` and `12°`, and rejects multi-tag outliers beyond `18 in` or `25°`. These are
+diagnostic software defaults, not robot-specific acceptance criteria.
+
+The framework-only entries open a newly constructed identity-mount lane. They can prove that the
+selected backend produces fresh raw detections and that fixed-layout metadata is present. Their
+`fieldToRobot` answer cannot verify the mount you recorded or the production localization config.
+Judge field pose only in a fresh robot-configured tester after the rebuild handoff.
+
+The standard menu help says “Verify AprilTag detections and the field pose solve.” In this generic
+entry, **verify** means inspect the default diagnostic path; it does not mean verify a recorded
+mount or robot profile. Treat detection freshness and layout membership as the generic evidence.
 
 ### Procedure
 
-1. Run the tester after the camera mount has been pasted into config.
-2. Confirm the selected vision device is correct.
-3. Start in `ANY` mode to verify fresh detections exist.
-4. Switch to `SINGLE` mode when you want to inspect one tag at a time.
-5. Look at the solved `fieldToRobot` pose while the robot is still.
-6. Capture a few samples and inspect the mean and standard deviation.
+1. Open the exact `(Webcam)` or `(Limelight)` entry. In the picker, Dpad Up/Down highlights, A
+   chooses, and X refreshes; wait for readiness.
+2. Leave the initial `ANY` mode active to confirm fresh detections from fixed-layout tags. START
+   toggles between `ANY` and `SINGLE`.
+3. In `SINGLE`, Dpad Right or Y increments the tag ID; Dpad Left or X decrements it. Confirm the ID,
+   age, range, bearing, and layout membership match the setup.
+4. Press A several times while the robot is still to capture pose samples; B clears them. Inspect
+   mean and standard deviation. BACK closes this camera owner and returns to the picker.
+5. If this is the generic entry, record detection evidence and stop short of accepting field pose.
+   After recording the mount in source and rebuilding, repeat with a fresh robot-configured tester
+   and compare `fieldToRobot` with an independently known robot pose.
 
 ### What “good” looks like
 
 - fresh detections appear without long gaps
 - the selected tag matches what the camera is actually seeing
-- the pose estimate is roughly correct in both translation and heading
-- captured samples show low jitter while the robot is stationary
+- in the robot-configured pass, the pose estimate is correct in translation and heading within the
+  team's stated criterion
+- captured configured-pass samples satisfy the team's stated stationary-jitter criterion
 
 ### Do not move on if
 
 - detections are intermittent for no clear reason
 - the solved pose is mirrored, rotated, or offset by a large amount
-- the camera mount still looks like the identity placeholder
+- a robot-configured lane still reports the camera mount as the identity placeholder
+- the only apparently good field pose came from the framework-only identity-mount entry
 
 ## Pinpoint axis directions
 
@@ -507,14 +576,19 @@ Odometry sign mistakes poison every later localization step. Fix them before tun
 
 - `Calib: Pinpoint Axis Check`
 
+The sample controls are exact: A toggles forward, Y toggles left, B toggles CCW rotation, and X
+resets pose and clears every result. A translation sample must cover at least `6 in`; the rotation
+sample must cover at least `20°`. The tester also requires `READY` Pinpoint pose evidence from the
+current cycle before it accepts a sample.
+
 ### Procedure
 
-1. Keep the robot still until the tester reports Pinpoint `READY`, then zero the tester.
-2. Start the forward sample, push the robot forward by hand, then stop the sample.
-3. Start the left sample, push the robot left by hand, then stop the sample.
-4. Start the rotation sample, rotate the robot CCW by hand, then stop the sample.
-5. Apply the tester's suggested config fixes if any sign is wrong.
-6. Rerun until all three directions read correctly.
+1. Keep the robot still until the tester reports Pinpoint `READY`, then press X.
+2. Press A, push the robot forward by hand at least `6 in`, then press A again.
+3. Press Y, push the robot left by hand at least `6 in`, then press Y again.
+4. Press B, rotate the robot CCW by hand at least `20°`, then press B again.
+5. Record each delta and suggested config assignment. Put accepted changes in the robot Pinpoint
+   profile, rebuild, then repeat all three samples in a fresh robot-configured tester.
 
 ### What “good” looks like
 
@@ -524,7 +598,8 @@ Odometry sign mistakes poison every later localization step. Fix them before tun
 
 ### Record this result in code
 
-Set your robot-side explicit verification flag once the axes have been checked on real hardware. The walkthrough menu uses that acknowledgement to know this step was deliberately completed.
+Set a robot-owned verification acknowledgement only after the rebuilt, robot-configured pass has
+checked all three axes on real hardware. The generic tester neither sets nor persists that flag.
 
 ## Pinpoint pod offsets
 
@@ -536,26 +611,42 @@ Axis directions only fix signs. Pod offsets fix the geometry. Leaving offsets at
 
 - `Calib: Pinpoint Pod Offsets`
 
+The framework-only entry can be the rookie manual path only when the installed pods use the default
+`goBILDA_4_BAR_POD` resolution and the already-verified forward/lateral encoder directions are both
+`FORWARD`. It actively applies those reconstructed defaults, not the profile values found by the
+previous screen. If either fact differs, do not accept a generic offset solve; start with a fresh
+robot-configured calibrator built from the reviewed profile.
+
+The generic entry supplies neither a mecanum drive config nor a vision factory. The robot cannot
+power itself and AprilTag assist is off. X resets pose and clears results, A advances the manual
+sample, and B aborts; Y reports unavailable. The solve requires
+`4 * sin(deltaHeading / 2)^2 >= 0.5`, roughly `45°` away from a degenerate `0°`/`360°` result, while
+the tool recommends a turn near `180°`.
+
 ### Prerequisites
 
-Run this after:
-
-- camera mount is solved
-- AprilTag-only localization looks believable
-- Pinpoint axis directions are verified
+Run the manual path after Pinpoint axis directions and pod resolution are verified. Before using the
+generic entry, confirm they match its two `FORWARD` directions and `goBILDA_4_BAR_POD` resolution;
+otherwise use the robot-configured entry. The run requires current-cycle Pinpoint `READY` pose and
+velocity evidence, clear floor space, and an independent way to judge whether the robot returned to
+its starting position. A camera mount is not required unless a robot-specific advanced tester
+enables AprilTag assist.
 
 ### Procedure
 
-1. Start from a still robot.
-2. During successful ordinary INIT, confirm the tool configures and polls evidence without commanding
-   drive power. Failed-init rollback and an explicit STOP may still command physical zero.
-3. Press Driver Station START; this is the first ordinary drive-zero command boundary.
-4. Use a manual sample or an auto sample, depending on whether the project provides drivetrain wiring.
-5. Rotate roughly 180 degrees in place. Automatic motion requires exact current-cycle Pinpoint
-   `READY` pose and velocity evidence and fail-stops when that evidence disappears.
-6. Let the tester compute the recommended offsets.
-7. Paste the two printed offset field assignments into your Pinpoint config.
-8. Rerun the tester and confirm the recommendation stabilizes instead of wandering wildly.
+1. Confirm the selected generic-or-configured path satisfies the direction/resolution gate above.
+   During INIT, start from a still robot and wait for current-cycle Pinpoint `READY` pose and
+   velocity, then press X.
+2. Press Driver Station START, then A to start the sample. Rotate the unpowered robot by hand
+   roughly `180°` in place.
+3. Press A to finish rotation and enter the default recenter phase. Physically translate the robot
+   back to its starting point without adding rotation, then press A again to compute. Press B at
+   any time to abort.
+4. Record both recommended offset assignments and the observed heading change. Repeat the sample;
+   reject a result that does not stabilize or fails the solve gate.
+5. Put the accepted offsets in the canonical Pinpoint profile, rebuild, and run a fresh
+   robot-configured pod-offset tester. Confirm the current offsets shown there are the rebuilt
+   values and that a repeat sample produces only a small, stable recommendation.
 
 ### What “good” looks like
 
@@ -569,11 +660,12 @@ Run this after:
 - rotating too little
 - rotating almost exactly 360 degrees, which makes the solve ill-conditioned
 - treating real floor slip as an odometry-config problem
-- skipping the camera mount step and then expecting AprilTag assist to rescue the solve
+- accepting a recommendation without rebuilding and confirming the configured current offsets
 
 ### Record this result in code
 
-Paste the new offsets immediately and set your robot-side “offsets calibrated” acknowledgement flag when you are satisfied with the result.
+Set a robot-owned “offsets calibrated” acknowledgement only after the rebuilt configured pass is
+accepted. The generic tester prints assignments but persists neither the offsets nor the flag.
 
 ## Pinpoint plus field corrections
 
@@ -581,18 +673,43 @@ Paste the new offsets immediately and set your robot-side “offsets calibrated�
 
 This is the first true global-localization validation pass. At this point you are no longer asking whether each subsystem works in isolation. You are checking whether motion prediction and the chosen absolute correction source agree enough to trust the combined pose.
 
-### Tester
+### Framework-only entries and baseline
 
-- `Loc: Pinpoint + Field Corrections`
+- `Loc: Pinpoint + Field Corrections (Webcam)`
+- `Loc: Pinpoint + Field Corrections (Limelight)`
+
+`StandardTesters` selects raw AprilTag pose correction and the simpler `FUSION` estimator. The
+baseline accepts AprilTag detections up to `0.50 s` old, but fusion corrections only up to `0.25 s`
+old and quality at least `0.05`; position/heading gains are `0.25 / 0.35`, jump gates are `24 in` and
+`60°`, and latency compensation retains `1.0 s` of predictor history. Corrections begin enabled.
+These are software tuning defaults, not proof that they are appropriate for a robot.
+
+The framework-only entries still combine an identity camera mount with newly reconstructed
+Pinpoint defaults, changing only the selected device names. They are useful for inspecting the
+independent streams and controls, but they cannot perform this section's production validation.
+Use a fresh robot-configured tester after mount, directions, and offsets have been recorded and the
+project rebuilt.
+
+This screen may remind you to run **Calib: Camera Mount** or **Calib: Pinpoint Pod Offsets**. Those
+messages name missing prerequisites; returning to this same generic entry still reconstructs
+defaults and does not adopt the result. Rebuild and use the robot-configured tester for the final
+check.
 
 ### Procedure
 
-1. Start with the robot where tags are visible.
-2. Compare the predictor pose, the raw AprilTag pose, the active correction pose, and the corrected pose.
-3. Drive around while tags are visible and confirm the fused pose stays stable.
-4. Move closer to a target or rotate so tags disappear.
-5. Confirm the fused pose continues smoothly on odometry alone.
-6. Bring tags back into view and watch the fused estimator correct itself cleanly.
+1. In the fresh robot-configured tester, start still where fixed tags are visible and wait for
+   Pinpoint `READY` plus a plausible active correction.
+2. Compare predictor, raw AprilTag, active correction, and corrected pose. START toggles only the
+   raw preview between `ANY FIXED` and `SINGLE RAW PREVIEW`; Dpad Left/Right or Y/X changes its tag
+   ID.
+3. Press B to disable and re-enable correction while prediction continues. Watch accept/reject and
+   replay/projected counts; do not infer acceptance from a visually smooth number alone.
+4. When the independent physical pose is known, A snaps the corrected estimator to the current
+   active correction. RB instead rebases software pose to `(0,0,0)`; neither button claims that the
+   robot physically moved.
+5. Move the unpowered robot by hand along a controlled path with tags visible, temporarily hidden,
+   then visible again. Verify smooth odometry-only prediction through the gap and bounded correction
+   on reacquisition against the team's stated accuracy and jump criteria.
 
 ### What “good” looks like
 
@@ -607,15 +724,34 @@ This is the first true global-localization validation pass. At this point you ar
 - turning in place introduces obvious translation drift
 - the camera mount or Pinpoint offsets are still known-bad
 
+## Optional advanced: powered and vision-assisted pod offsets
+
+This is not supplied by the generic `StandardTesters` pod-offset entry. A robot-specific factory
+must deliberately provide a complete mecanum config; an AprilTag lane-factory builder is a second,
+independent option. Review motor names/directions and clear a large floor area before enabling it.
+
+When those branches are active, the tester defaults to right-stick manual rotation scale `0.60`,
+automatic omega `0.35`, a `180°` target, and left-stick recenter scale `0.60`. With drive and vision
+assist, start/end tag searches default on at omega `+0.25`, require `3` stable frames, and allow up
+to `4π` radians before the sample and `2π` afterward; automatic compute and post-turn recenter also
+default on. These commands and limits are active powered values, not reviewed safe values.
+
+Successful ordinary INIT may configure the drive and poll Pinpoint/vision, but does not call the
+ordinary drive command path. Driver Station START sends the first explicit zero. Y begins the
+configured automatic turn; A begins or advances a manual sample, RightStickX rotates during its
+powered rotation phase, LeftStick translates during recenter, and B aborts to zero. Every motion
+path requires current-cycle Pinpoint `READY` pose and velocity and aborts if that evidence
+disappears. Vision assist disables itself when the opened lane still reports an identity mount.
+
 ## Optional EKF comparison
 
 ### Why this is optional
 
 The covariance-aware EKF-style estimator is intentionally not the first thing teams should tune. It is easier to debug the simpler fusion estimator first, then compare the EKF once the hardware calibration is already credible.
 
-### Tester
-
-- `Loc: Pinpoint + Field Corrections EKF`
+`StandardTesters` does **not** register an EKF entry. A robot-specific suite must construct a
+corrected-localization tester with `GlobalEstimatorMode.EKF` and the robot's complete configured
+profile; its menu wording belongs to that suite. There is no generic EKF menu label.
 
 ### Procedure
 
@@ -629,6 +765,14 @@ The covariance-aware EKF-style estimator is intentionally not the first thing te
 - the EKF agrees with the simpler fusion path most of the time
 - innovations are reasonable instead of constantly huge
 - the estimated uncertainty behaves like a useful readiness signal, not noise
+
+## Optional advanced: guided suite construction
+
+The rookie path does not require a custom tester registry. Teams that already own checked-in robot
+profiles and fresh robot-configured tester factories can order those existing facts with
+[`Guided calibration walkthroughs`](<Guided Calibration Walkthroughs.md>). The walkthrough adds
+status and ordering; it does not persist results or replace the record → rebuild → fresh configured
+tester → verify handoff.
 
 ## How this maps to the tester menus
 
