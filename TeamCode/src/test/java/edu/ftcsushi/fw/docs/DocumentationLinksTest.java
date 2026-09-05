@@ -1420,6 +1420,104 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void frameworkPrinciplesDefineTheDocumentationQualityRubric() throws IOException {
+        Path frameworkRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH);
+        String principles = readUtf8(frameworkRoot.resolve("Framework Principles.md"));
+        String principle = sectionBetween(
+                principles,
+                "## 6. One current, proven story",
+                "## Design checklist");
+        String rubric = sectionBetween(
+                principle,
+                "### Documentation review criteria",
+                "### Implications");
+        String implications = sectionBetween(
+                principle,
+                "### Implications",
+                "[`Maintainer Notes`]");
+        String maintainerBoundary = sectionBetween(
+                principle,
+                "[`Maintainer Notes`]",
+                "Good documentation is an implication of simplicity");
+        String checklist = sectionBetween(
+                principles,
+                "## Design checklist",
+                "## Where exact contracts live");
+
+        assertContainsAll("Documentation-criteria applicability", rubric,
+                "apply each criterion to the artifact or feature it names",
+                "need not contain code, a checkpoint, production wiring, or a visual",
+                "unless its stated purpose requires one", "reconstruction applies to lessons",
+                "explanation applies to displayed code and tests",
+                "checkpoint or experiment to support a claim");
+        assertContainsAll("Audience and outcome criterion",
+                markdownTableRow(rubric, "Audience and outcome"),
+                "primary reader", "purpose", "observable result or question", "prerequisites",
+                "completion evidence", "next choice", "hub or reference page", "lookup scope");
+        assertContainsAll("Learning order criterion",
+                markdownTableRow(rubric, "Learning order"),
+                "familiar robot actions", "prior concepts", "before", "required", "optional",
+                "advanced");
+        assertContainsAll("Reconstructability criterion",
+                markdownTableRow(rubric, "Reconstructability"),
+                "lesson", "production path", "declared prerequisites", "configuration",
+                "ownership", "wiring", "heartbeat", "stop decisions", "mechanical gaps");
+        assertContainsAll("Explanation criterion",
+                markdownTableRow(rubric, "Explanation"),
+                "every displayed code fragment or test", "what happens", "when", "who owns", "why",
+                "reverse-engineer");
+        assertContainsAll("Evidence criterion",
+                markdownTableRow(rubric, "Evidence"),
+                "evidentiary checkpoint", "question", "observation",
+                "supported and unsupported conclusions", "next gate", "substitutes an outside boundary",
+                "retained production behavior", "each replacement");
+        assertContainsAll("Truth and safety criterion",
+                markdownTableRow(rubric, "Truth and safety"),
+                "software evidence", "physical claims", "controlled hardware evidence", "blocked");
+        assertContainsAll("Discovery criterion",
+                markdownTableRow(rubric, "Discovery"),
+                "goal-oriented headings", "canonical home", "framework taxonomy", "narrative",
+                "api", "complete-source lookup");
+        assertContainsAll("Accessibility criterion",
+                markdownTableRow(rubric, "Accessibility"),
+                "essential meaning", "text", "labeled", "text equivalent");
+        assertContainsAll("Current authority criterion",
+                markdownTableRow(rubric, "Current authority"),
+                "narrative", "api contracts", "maintained examples", "tests",
+                "reported limitations", "same supported present state");
+
+        assertContainsAll("Progressive-disclosure rule", implications,
+                "progressive disclosure", "must not assume lambdas", "plain action description");
+        assertContainsAll("Truthful-simplification rule", implications,
+                "conceptual comparison", "behaviorally truthful", "maintained production path",
+                "unsafe default", "competing architecture");
+        assertContainsAll("Focused-hardware rule", implications,
+                "knowledge may accumulate", "hardware fixtures remain focused",
+                "unrelated mechanism");
+        assertContainsAll("Reconstruction rule", implications,
+                "reconstruction test", "production configuration", "managed heartbeat",
+                "stop path", "small mechanical details");
+        assertContainsAll("Explained-test rule", implications,
+                "causal experiment", "reverse-engineer", "student-facing test",
+                "replaces only the outside world", "what it cannot prove", "next gate");
+        assertContainsAll("Evidence-boundary rule", implications,
+                "software and hardware evidence", "does not prove wiring",
+                "conservative supervised conditions", "explicit stop plan", "blocked");
+        assertContainsAll("Discovery rule", implications,
+                "reader's goal or question", "narrative search", "javadocs own exact type/member",
+                "complete-source links");
+        assertContainsAll("Accessible-visual rule", implications,
+                "visuals supplement", "accessible label", "text equivalent", "only carrier");
+
+        assertContainsAll("Maintainer-mechanics boundary", maintainerBoundary,
+                "(<docs/maintainers/maintainer notes.md>)", "mechanical authoring contract",
+                "details implement this rubric", "do not create a second set");
+        assertContainsAll("Design-checklist proof question", checklist,
+                "intended reader", "declared prerequisites", "reconstruct",
+                "evidence, its limits", "next gate", "tell that same story");
+    }
+
+    @Test
     public void firstContactDiagramIsExplicitlyConfiguredAndAccessible() throws IOException {
         Path repositoryRoot = MarkdownIntegrity.findRepositoryRoot(
                 Paths.get(System.getProperty("user.dir")));
@@ -1954,6 +2052,25 @@ public final class DocumentationLinksTest {
         int sectionEnd = markdown.indexOf(end, sectionStart + start.length());
         assertTrue("Missing section end " + end, sectionEnd > sectionStart);
         return markdown.substring(sectionStart, sectionEnd);
+    }
+
+    private static String markdownTableRow(String markdown, String criterion) {
+        String prefix = "| **" + criterion + "** |";
+        for (String line : markdown.split("\\R")) {
+            if (line.startsWith(prefix)) {
+                return line;
+            }
+        }
+        fail("Missing documentation-criteria row " + criterion);
+        return "";
+    }
+
+    private static void assertContainsAll(String contract, String source, String... required) {
+        String normalized = source.replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        for (String token : required) {
+            assertTrue(contract + " is missing " + token,
+                    normalized.contains(token.toLowerCase(Locale.ROOT)));
+        }
     }
 
     private static void validateBuildSources(Path repositoryRoot,

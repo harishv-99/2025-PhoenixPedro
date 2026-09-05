@@ -426,32 +426,94 @@ hardware checks can prove direction, motion, tuning, wiring, and mechanism safet
 Documentation is part of the API. A student should find one present-state explanation that agrees
 with code completion, Javadocs, examples, exceptions, and tests.
 
+### Documentation review criteria
+
+Apply each criterion to the artifact or feature it names. A page need not contain code, a checkpoint,
+production wiring, or a visual unless its stated purpose requires one. Audience and purpose,
+learning order, truth, discovery, accessibility, and current authority apply throughout;
+reconstruction applies to lessons that ask students to build, explanation applies to displayed code
+and tests, and evidence applies when a page uses a checkpoint or experiment to support a claim.
+
+| Criterion | The documentation passes when... |
+| --- | --- |
+| **Audience and outcome** | It makes the primary reader and purpose clear. A lesson names one observable result or question, its prerequisites, completion evidence, and the next choice; a hub or reference page makes its choices or lookup scope clear. |
+| **Learning order** | Familiar robot actions and prior concepts explain each new framework term before the term is required; required, optional, and advanced paths are visibly different. |
+| **Reconstructability** | A lesson that asks the student to build a production path, together with its declared prerequisites, contains the important configuration, ownership, wiring, heartbeat, and stop decisions; complete source supplies only mechanical gaps. |
+| **Explanation** | Every displayed code fragment or test says what happens, when it happens, who owns it, and why it is present instead of asking the student to reverse-engineer the example. |
+| **Evidence** | An evidentiary checkpoint identifies its question, observation, supported and unsupported conclusions, and next gate. When it substitutes an outside boundary, it also identifies retained production behavior and each replacement. |
+| **Truth and safety** | Software claims stop at software evidence, physical claims require controlled hardware evidence, and an unavailable safe path is labeled blocked rather than guessed. |
+| **Discovery** | Goal-oriented headings and one canonical home make the page findable without knowing framework taxonomy; narrative, API, and complete-source lookup remain distinct. |
+| **Accessibility** | Essential meaning is available in text; a diagram or visual is labeled and has a nearby text equivalent rather than carrying the only explanation. |
+| **Current authority** | Narrative, exact API contracts, maintained examples, tests, and reported limitations describe the same supported present state. |
+
 ### Implications
 
 - [`docs/README.md`](<docs/README.md>) is the canonical documentation hub. Root and package READMEs
   orient readers and route them there instead of maintaining competing maps.
+- Give each student-facing page one primary audience and a clear purpose. For an instructional
+  page, state one observable outcome or question, required prior knowledge, earlier lessons,
+  equipment, completion evidence, and the next choice before asking the reader to use code. A hub
+  helps that audience choose its next page rather than pretending to be one large lesson.
 - Teach by progressive disclosure. First contact may assume basic Java, `if` statements, methods,
   FTC gamepad fields, and either familiar FTC loop spelling; it must not assume lambdas, callback
   registration, Tasks, or framework-specific nouns. Start with an FTC-loop bridge and a required
   software-only tour, then offer goal-based Build recipes, deeper concepts, examples, reference,
   and maintainer material.
 - Before the first API that saves code for later, contrast a method call that runs now with a
-  function registered during setup and explain exactly when that saved function runs. Introduce a
-  plain action description before its framework noun. First-contact diagrams use those plain
-  actions; a nearby explanation may then map them to exact API terms.
+  function registered during setup. State that registration does not execute the function and that
+  an accepted callback runs synchronously in its later FTC loop rather than on a new thread.
+  Introduce a plain action description before its framework noun. First-contact diagrams use those
+  plain actions; a nearby explanation may then map them to exact API terms.
+- A conceptual comparison may omit production detail only when it is labeled as explanation,
+  remains behaviorally truthful, and leads to the maintained production path before the student is
+  asked to write that path. Do not make a first snippet shorter by teaching an unsafe default, a
+  competing architecture, or code that violates the documented ownership and lifecycle.
+- Knowledge may accumulate across lessons while hardware fixtures remain focused. A later lesson
+  identifies the earlier concepts it inherits and the one new decision it adds; it does not require
+  an unrelated mechanism merely because that mechanism appeared earlier in the learning path.
+- Compiling maintained examples demonstrate the supported path. Small exact excerpts isolate one
+  idea and link to the complete source rather than quietly inventing a second architecture. If the
+  existing code cannot teach the outcome clearly, create a focused maintained example or retire the
+  competing one instead of forcing unsuitable code into the lesson.
+- Hold a Build lesson to a reconstruction test: after reading it and its declared prerequisites, a
+  student can recreate the important production configuration, owners, bindings, managed
+  heartbeat, output/drive connection, presenter when relevant, and stop path without opening another
+  source file. Complete source may fill imports, packages, and small mechanical details; it may not
+  hide an architectural decision the page claims to teach.
+- Explain each displayed code fragment at the reader's current level, including when it runs, what
+  it retains, which owner it calls, and how its result reaches the next owner. Explain a displayed
+  test as a causal experiment before or within the code; do not make students reverse-engineer its
+  purpose from assertions, fakes, or framework machinery.
+- A student-facing test keeps the maintained production owner, configuration, lifecycle, and
+  heartbeat real and replaces only the outside world needed for one question. State what is
+  observed, what that evidence proves, what it cannot prove, and the next gate. Complex regression
+  suites may remain supplied maintainer evidence rather than beginner-authored code.
+- Keep software and hardware evidence visibly separate. A build, software test, default, requested
+  target, or submitted command does not prove wiring, direction, motion, clearance, tuning, load, or
+  safety. Hardware instructions isolate one fact, use conservative supervised conditions and an
+  explicit stop plan, and label a gate blocked when the supported path cannot authorize it.
+- Make discovery start from the reader's goal or question, not an assumed knowledge of framework
+  taxonomy. Narrative search spans the guide areas; generated Javadocs own exact type/member lookup;
+  explicitly labeled complete-source links serve source study. Reference pages group related
+  framework families and lead with the ordinary entry point before advanced seams.
+- Visuals supplement the explanation. Give each diagram a meaningful accessible label and nearby
+  text equivalent, and never make color, position, animation, or interaction the only carrier of a
+  required fact or sequence.
 - Markdown is the one authored source for narrative guides and any generated documentation site.
   Javadocs remain the exact method-level API contract. Generated HTML must consume those sources,
   not become another hand-maintained copy.
 - Describe the supported current state. Historical decisions, migration notes, rejected alternatives,
   and future backlogs do not belong in a beginner path or normative guide.
-- Compiling examples demonstrate the supported path. Small snippets explain one idea and link to the
-  complete source rather than quietly inventing a second architecture.
 - Every class and non-trivial method has useful Javadocs. Document units, frames, preconditions,
   side effects, lifecycle, failure behavior, and same-cycle semantics where relevant.
 - API and behavior changes update implementation, Javadocs, guides, examples, and callers in the same
   coherent change.
 - Verification is proportional to risk: targeted tests first, then the narrowest relevant clean
   compile/test suite. Report separately what cannot be verified without the robot.
+
+[`Maintainer Notes`](<docs/maintainers/Maintainer Notes.md>) owns the mechanical authoring contract:
+exact page anatomy, labels, size budgets, tags, commands, renderer configuration, and CI checks.
+Those details implement this rubric; they do not create a second set of documentation principles.
 
 Good documentation is an implication of simplicity: if the API cannot be explained with one
 consistent vocabulary and one ordinary example, the design probably still contains competing ideas.
@@ -470,7 +532,9 @@ Before adding or changing a framework concept, answer:
 4. **Realization:** Can every hardware effect be traced through one final source/Plant or drive path?
 5. **Truth:** Which boundary knows each range, unit, frame, timestamp, readiness, and completion fact?
    What happens when evidence is missing or invalid?
-6. **Proof:** Do present-state Javadocs, guides, examples, diagnostics, and tests tell the same story?
+6. **Proof:** Can the intended reader reach the stated outcome from the declared prerequisites,
+   reconstruct the important supported path, and explain the evidence, its limits, and the next
+   gate? Do present-state Javadocs, guides, examples, diagnostics, and tests tell that same story?
 
 If an answer is unclear, simplify ownership or naming before introducing another abstraction.
 
