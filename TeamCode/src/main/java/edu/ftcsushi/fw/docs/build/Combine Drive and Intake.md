@@ -188,9 +188,17 @@ assertEquals(fullTurnPower * StarterTeleOpControls.SLOW_OMEGA_SCALE,
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterDriveAndIntakeSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterDriveAndIntakeSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterDriveAndIntakeSoftwareScenarioTest
+    ```
 
 **Read the causal chain:** one A rise runs in Bindings and selects `COLLECT`; the intake output
 applies that request; the later drive output samples the still-held stick and writes its capped

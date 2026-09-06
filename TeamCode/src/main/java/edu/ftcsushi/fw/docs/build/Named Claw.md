@@ -309,9 +309,17 @@ assertEquals(2, servo.positionWrites());
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicClawSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicClawSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicClawSoftwareScenarioTest
+    ```
 
 **Read the causal chain:** arrangement alone produces no write; the first heartbeat applies the
 initial `CLOSED` request. `HALF` then selects normalized `0.5` without writing; the next managed

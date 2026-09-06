@@ -193,9 +193,17 @@ target range, and STOP plan; remove `@Disabled` only for the controlled tuning s
 
 Compile the exact file before enabling hardware motion:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:compileDebugJavaWithJavac
+    ```
 
 The checkpoint is `BUILD SUCCESSFUL`; it proves the host and API signatures compile, not that the
 flywheel wiring, direction, range, gains, or motion are safe.

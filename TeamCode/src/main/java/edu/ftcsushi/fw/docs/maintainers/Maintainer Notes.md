@@ -195,6 +195,12 @@ Use this authoring contract:
   choices, tabs only for mutually exclusive complete alternatives, ordinary tables for three or
   more comparable facts, and numbered lists for procedures. Do not add a custom badge or stepper
   when those forms already express the relationship.
+- Publish every shell command as a complete native tab pair in exact `Windows` then `macOS` order.
+  The Windows tab contains one four-space-indented `powershell` fence; the macOS tab contains one
+  four-space-indented `bash` fence, used for highlighting, whose commands must also run in macOS's
+  default zsh. Quote wildcard arguments such as Gradle `--tests` filters. Duplicate platform-neutral
+  commands in both tabs instead of substitution prose, and do not add a custom renderer. Linked
+  platform selection across tab sets is site behavior.
 - A complete code excerpt may use `hl_lines` to draw attention to the few lines being discussed;
   highlight no more than ten lines in one excerpt.
   The adjacent text must also name those lines and values so highlighting is supplemental rather
@@ -231,15 +237,21 @@ Use this authoring contract:
 ### 1.6 Automated framework verification
 
 Pure framework behavior is tested locally under `TeamCode/src/test/java`. These tests run on the
-development computer and do not require a Control Hub, phone, emulator, or connected robot.
+development computer and do not require a Control Hub, phone, emulator, or connected robot. Run
+the complete local software check from the repository root:
 
-On Windows, run the complete local software check from the repository root with:
+=== "Windows"
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest
-```
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest
+    ```
 
-On macOS or Linux, use `./gradlew` in the same command; the task names and order are unchanged.
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest
+    ```
+
 This is the local equivalent of the hosted **Verify Sushi framework** check: it compiles TeamCode
 and runs the complete unit suite, including the documentation-integrity and production-boundary
 tests.
@@ -274,9 +286,17 @@ those facts.
 
 Run the focused Markdown link and fence check from the repository root with:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.fw.docs.DocumentationLinksTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.fw.docs.DocumentationLinksTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.fw.docs.DocumentationLinksTest
+    ```
 
 The check validates inline links/images, exact-case local targets, heading fragments, and balanced
 fences in maintained Markdown without depending on network access. It skips generated/build trees
@@ -292,23 +312,41 @@ create a second authored documentation tree. Generated files belong only under t
 `build/docs-site` directory and must never be edited or committed.
 
 The renderer is optional maintainer tooling. Students editing or compiling robot code do not need
-Python. For a local narrative preview on Windows, use Python 3.12 from the repository root:
+Python. For a local narrative preview, use Python 3.12 from the repository root:
 
-```powershell
-python -m venv build/docs-venv
-.\build\docs-venv\Scripts\python.exe -m pip install --requirement requirements-docs.txt
-.\build\docs-venv\Scripts\python.exe -m zensical serve
-```
+=== "Windows"
 
-On macOS or Linux, activate or invoke the equivalent `build/docs-venv/bin` executables. The preview
-server rebuilds the narrative pages as their source files change. Stop it before creating the exact
-combined artifact, then run the strict narrative build before Javadocs so Zensical's clean step
-does not remove the generated API pages:
+    ```powershell
+    python -m venv build/docs-venv
+    .\build\docs-venv\Scripts\python.exe -m pip install --requirement requirements-docs.txt
+    .\build\docs-venv\Scripts\python.exe -m zensical serve
+    ```
 
-```powershell
-.\build\docs-venv\Scripts\python.exe -m zensical build --clean --strict
-.\gradlew.bat --console=plain :TeamCode:sushiJavadocs
-```
+=== "macOS"
+
+    ```bash
+    python3 -m venv build/docs-venv
+    ./build/docs-venv/bin/python -m pip install --requirement requirements-docs.txt
+    ./build/docs-venv/bin/python -m zensical serve
+    ```
+
+The preview server rebuilds the narrative pages as their source files change. Stop it before
+creating the exact combined artifact, then run the strict narrative build before Javadocs so
+Zensical's clean step does not remove the generated API pages:
+
+=== "Windows"
+
+    ```powershell
+    .\build\docs-venv\Scripts\python.exe -m zensical build --clean --strict
+    .\gradlew.bat --console=plain :TeamCode:sushiJavadocs
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./build/docs-venv/bin/python -m zensical build --clean --strict
+    ./gradlew --console=plain :TeamCode:sushiJavadocs
+    ```
 
 Serve `build/docs-site` with any local static-file server when reviewing the final combined guide
 and `/api/` tree. Check navigation and both searches on desktop and a narrow mobile viewport. A

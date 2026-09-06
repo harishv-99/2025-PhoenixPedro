@@ -240,6 +240,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 131 | DOC-16 | Documentation quality criteria as design authority | Done | The reviewed applicability-qualified documentation rubric, focused structural contract, deterministic verification, Android Studio approval, and destination-specific publication authorization are complete. |
 | 132 | DOC-17 | Source-optional lessons and visual teaching grammar | Done | The reviewed point-of-use explanations, bounded beginner first passes, restrained accessible visual grammar, reconstruction repairs, verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 133 | DOC-18 | Test & Tune operational onboarding cleanup | Done | The reviewed source-optional Test & Tune spine, exact operational contracts, generic-versus-configured calibration boundary, verification, Android Studio approval, and destination-specific publication authorization are complete. |
+| 134 | DOC-19 | Windows and macOS command tabs | Done | The reviewed 26-pair Windows/macOS migration, linked selection, maintainer contract, hardened regressions, verification, manual approval, and destination-specific publication authorization are complete. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -27672,6 +27673,101 @@ implementation.
   prefer no new API unless at least two independent workflows prove it removes recurring robot-code
   complexity. Keep physical directions, endpoints, tuning quality, loads, and safety behind explicit
   adopting-robot evidence.
+
+### DOC-19 - Windows and macOS command tabs
+
+- **Gate 1 audit and selected design (2026-09-05):** the generated guide currently has exactly
+  **26** `powershell` command fences across **18** maintained pages. Student setup, first-tour,
+  Build, Test & Tune, advanced-example, troubleshooting, and maintainer paths therefore either show
+  only Windows spelling or require prose elsewhere to explain a substitution. The pinned Zensical
+  0.0.51 stack already enables native `pymdownx.tabbed` rendering; a direct renderer probe produced
+  the expected accessible `tabbed-set` structure for `Windows` and `macOS`. The installed theme also
+  supports `content.tabs.link`, but this repository has not enabled it and currently authors no
+  content-tab sets.
+- **Approved student contract:** every published shell-command block becomes one native, complete,
+  mutually exclusive tab pair in exact `Windows` then `macOS` order. Windows uses a `powershell`
+  fence; macOS uses a `bash` fence containing commands valid in the default zsh shell. Each tab is
+  independently copyable: Gradle uses `.\\gradlew.bat` versus `./gradlew`, multiline continuations
+  use PowerShell backtick versus POSIX backslash, and the documentation virtual environment uses
+  `python`/`Scripts/python.exe` versus `python3`/`bin/python`. Platform-neutral commands such as
+  `git clone` remain complete in both tabs rather than referring the reader to the other tab.
+  Windows is the initial default, while `content.tabs.link` synchronizes and remembers an explicit
+  platform selection across command blocks and guide navigation. Only `Windows` and `macOS` are
+  named; Linux is deliberately omitted because the intended students are not expected to use Linux
+  laptops.
+- **Alternatives rejected:** do not retain a Windows-only block plus substitution prose, convert
+  only literal `Run:` checkpoints, leave maintainer commands inconsistent, or introduce a custom
+  Markdown preprocessor, generator, shortcode, JavaScript widget, or public framework API. Native
+  authored pairs keep both commands visible in raw Markdown and use the existing renderer's intended
+  complete-alternative tab grammar. Deterministic parity checks address duplicate-command drift
+  without creating another documentation language.
+- **Bounded scope and verification:** migrate all 26 current shell blocks across their 18 pages,
+  replace obsolete Windows/macOS/Linux substitution prose, add the exact authoring contract to
+  Maintainer Notes, enable only `content.tabs.link`, and extend `DocumentationLinksTest` with a
+  tab-aware parser and focused malformed-pair cases. The parser must require exact labels/order,
+  one matching fenced command per tab, no free-standing published shell fences, no cross-platform
+  token leakage, and normalized command parity. Run focused documentation tests, the full TeamCode
+  suite and compile, strict Javadocs and Zensical rendering, generated search/API/source/artifact
+  checks, final-newline/trailing-whitespace scans, and `git diff --check`. Inspect representative
+  desktop/narrow and light/dark output for keyboard selection, copyability, synchronized switching,
+  and remembered navigation. This is documentation presentation only and makes no robot-hardware
+  claim.
+- **Gate 2 authorization and start (2026-09-05):** after selecting **all commands**, exactly
+  **Windows and macOS**, and **remembered selection**, the user approved the decision-complete
+  DOC-19 plan with **“Implement the plan.”** A fresh `git fetch origin master` and branch creation
+  place `codex/doc-19-cross-platform-run-tabs`, its merge base, and `origin/master` exactly at
+  `18a74b3b1ef08c1c936f4cea34831b8acb643ea9`. This authorizes only the bounded documentation,
+  renderer-feature, regression, tracker, review, and verification work above. It does not authorize
+  staging, commit, push, pull request, merge, DOC-14, VISION-03, another item, a custom renderer, or
+  any runtime/hardware claim.
+- **Gate 2 implementation result (2026-09-05):** all 26 existing shell-command blocks on the 18
+  published pages now use complete native `Windows`/`macOS` tab pairs. Windows remains first;
+  macOS commands use `./gradlew`, POSIX continuations, `python3`, and `bin/python` where applicable.
+  Platform-neutral commands are deliberately repeated. `content.tabs.link` is the only renderer
+  feature added, and Maintainer Notes now records the exact source grammar, default-zsh validity,
+  wildcard quoting, and the no-substitution/no-custom-renderer boundary. No framework runtime,
+  robot application, or public API changed.
+- **Adversarial review and resolution (2026-09-05):** the first command review caught two unquoted
+  Gradle `--tests` wildcard filters that default zsh could reject before invoking Gradle; both
+  platform variants now quote those filters, and the maintainer contract makes that requirement
+  explicit. A separate test review then challenged container-nested shell fences, commented-out
+  feature configuration, comment-only command bodies, malformed continuations, total-only
+  inventory, selector-free Build commands, additional shell fence aliases, and an unclosed macOS
+  fence. The focused parser and fixtures were tightened at those boundaries rather than widening
+  production scope. Re-review then challenged line/block/quoted PowerShell comments, selectors
+  present only in inline comments, blockquote fence identity, and list-container escape. Each case
+  received a focused fixture and compact state-aware fix; the final independent targeted review
+  reported no remaining finding.
+- **Verification evidence (2026-09-05):** the final focused `DocumentationLinksTest` run passed all
+  **49** tests. The final full `:TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac` run passed **248 suites / 2,236 tests / 0 failures / 0 errors /
+  0 skipped**; `:TeamCode:sushiJavadocs` also completed successfully. The pinned documentation
+  environment completed `zensical build --clean --strict` with no issue. Generated checks verified
+  **944** indexed guide sections across all six areas, **161** API links, **77** maintained source
+  links across **45** Markdown pages, all six required artifact files and sentinel content, and no
+  generated filesystem links. The generated HTML contains exactly **26** native tab sets, 26 each
+  of the exact `Windows`/`macOS` labels and `powershell`/`bash` blocks, and 26 initially checked
+  Windows inputs; the linked-tab feature is present in generated configuration. Final changed-file
+  newline/trailing-whitespace scans and `git diff --check` pass. Existing Java-8-on-JBR-21 and FTC
+  SDK deprecation notices remain warnings, not failures.
+- **Visual and hardware boundary (2026-09-05):** the strict renderer and generated-HTML structure
+  were inspected, but this session exposed no usable in-app or Chrome browser after the prescribed
+  browser discovery and troubleshooting path. Live light/dark, desktop/narrow, keyboard, linked
+  switching, persistence, and manual copy checks therefore remain explicit human-review items; no
+  alternate browser controller was substituted. This presentation-only change needs no robot-
+  hardware validation and makes none.
+- **Gate 2 review coordinates (2026-09-05):** the review remains unstaged and uncommitted on
+  `codex/doc-19-cross-platform-run-tabs`, based exactly on `origin/master` at
+  `18a74b3b1ef08c1c936f4cea34831b8acb643ea9`. The resolved push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and the target branch is `master`.
+- **Gate 3 manual review and publication authorization (2026-09-05):** the user supplied the exact
+  combined approval: **“DOC-19 looks good. Authorize committing the reviewed DOC-19 diff on
+  codex/doc-19-cross-platform-run-tabs, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.”** This records manual acceptance of the disclosed browser-review limitation and
+  authorizes only the reviewed 21-file DOC-19 diff and the named publication coordinates. A fresh
+  fetch immediately before publication confirmed `HEAD`, `origin/master`, and their merge base all
+  remain exactly `18a74b3b1ef08c1c936f4cea34831b8acb643ea9`.
 
 ### VISION-03 - Reusable color-blob pipeline
 

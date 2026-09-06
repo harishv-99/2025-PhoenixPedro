@@ -357,9 +357,17 @@ assertEquals(0, scenario.motor.targetPositionWrites());
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftSoftwareScenarioTest
+    ```
 
 **Read the causal chain:** the test explicitly supplies switch evidence across real clock cycles;
 arrangement leaves it released, the request starts search, and the output heartbeat applies search

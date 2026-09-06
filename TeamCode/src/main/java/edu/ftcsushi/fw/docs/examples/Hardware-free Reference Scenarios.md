@@ -22,9 +22,17 @@ when you want to design another scenario.
 intake mechanism and its real Plant, but records the motor command in software instead of requiring
 a robot. Run it from the repository root:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterMechanismLessonTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterMechanismLessonTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterMechanismLessonTest
+    ```
 
 A passing test answers one deliberately small question:
 
@@ -157,9 +165,17 @@ representative load, and tune only after directions and immediate STOP are estab
 
 Use the fully qualified test class shown by its page or source link:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelSoftwareScenarioTest
+    ```
 
 Then write down the causal chain in one sentence and the physical fact that must be checked next.
 If either answer is unclear, narrow the test question before adding more fake behavior.

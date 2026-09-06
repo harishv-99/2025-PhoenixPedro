@@ -49,9 +49,17 @@ robot motion.
 
 If the project is not already on the computer, clone this Sushi repository:
 
-```powershell
-git clone https://github.com/harishv-99/2025-PhoenixPedro.git
-```
+=== "Windows"
+
+    ```powershell
+    git clone https://github.com/harishv-99/2025-PhoenixPedro.git
+    ```
+
+=== "macOS"
+
+    ```bash
+    git clone https://github.com/harishv-99/2025-PhoenixPedro.git
+    ```
 
 You may instead download a ZIP of that same Sushi repository and extract it. Do not substitute a
 clean `FIRST-Tech-Challenge/FtcRobotController` checkout; it contains the upstream FTC SDK but not
@@ -73,22 +81,37 @@ Framework code lives under `fw`. Robot-specific code and the course examples liv
 
 Open the Android Studio terminal at the repository root and run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac
-```
+=== "Windows"
 
-This page shows the Windows command used by this repository's team. On macOS or Linux, replace
-`.\gradlew.bat` with `./gradlew` and keep the remaining arguments unchanged. The same substitution
-applies to other repository commands.
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:compileDebugJavaWithJavac
+    ```
+
+Choose the tab for your computer; each tab contains a complete command. Use that same platform tab
+for other repository commands.
 
 Wait for `BUILD SUCCESSFUL`. Warnings are not the same as compilation failures; read the final
 result and the first actual error if the build fails.
 
 ## 3. Run the software tests
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest
+    ```
 
 These tests use software or recording stand-ins in place of gamepads, motors, sensors, and
 telemetry. That lets the maintained production code run and lets a test inspect the commands it

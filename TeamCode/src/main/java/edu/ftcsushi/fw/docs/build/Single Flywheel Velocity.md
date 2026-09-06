@@ -279,10 +279,19 @@ assertTrue(reached.atRequestedVelocity());
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelSoftwareScenarioTest
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelControlsTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelSoftwareScenarioTest
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelControlsTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelSoftwareScenarioTest
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelControlsTest
+    ```
 
 **Read the causal chain:** 200 is first supported by matching cached feedback; the new Task publishes
 300 but rejects that older success; a later output heartbeat caches the explicitly injected 300

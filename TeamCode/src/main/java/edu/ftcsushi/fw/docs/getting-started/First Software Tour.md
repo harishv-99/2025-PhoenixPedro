@@ -22,9 +22,17 @@ saved reader return its old number or the new reading?
 
 Run the maintained drive scenario:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.firstdrive.FirstDriveSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.firstdrive.FirstDriveSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.firstdrive.FirstDriveSoftwareScenarioTest
+    ```
 
 The test keeps the production reader, coordinate mapping, drive caps, loop host, and STOP cleanup.
 It replaces the controller and motors with software records. A pass proves the sampled drive
@@ -41,9 +49,17 @@ the saved A-button function run? Which named intake request should that accepted
 
 Run the controls-only scenario:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterFirstLessonTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterFirstLessonTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterFirstLessonTest
+    ```
 
 The test keeps the production gamepad adapter, controls, and saved rules, but replaces the intake
 with a recorder. A pass proves that a press calls the short function once, holding and releasing do
@@ -59,9 +75,17 @@ seconds, and at 0.75 seconds? If FTC STOP arrives early, should the routine keep
 
 Run the timed Auto scenario:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.opmode.StarterTimedAutoSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.opmode.StarterTimedAutoSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.opmode.StarterTimedAutoSoftwareScenarioTest
+    ```
 
 The test keeps the production routine factory, robot declaration, Task, intake mechanism, and
 managed loop while replacing hardware and time with deterministic software versions. A pass proves

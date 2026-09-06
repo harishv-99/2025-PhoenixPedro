@@ -157,9 +157,17 @@ assertEquals(TaskOutcome.SUCCESS, routeTask.getOutcome());
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.pedro.basic.BasicPedroRouteSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.pedro.basic.BasicPedroRouteSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.pedro.basic.BasicPedroRouteSoftwareScenarioTest
+    ```
 
 **Read the causal chain:** the Task starts one authored route; the test supplies endpoint evidence
 to that retained execution; the next Task heartbeat classifies it as `COMPLETED` and `SUCCESS`.
