@@ -22,6 +22,9 @@ If you have written an iterative FTC `OpMode`, think of `configure(...)` as the 
 you connect the parts that later loops will use. This exact production excerpt shows the class
 declaration and complete `configure(...)` method; its helper definitions continue in the full build:
 
+`extends FtcRobotOpMode` reuses Sushi's managed FTC loop. `@Override` identifies the setup method
+you supply. `@TeleOp` names the OpMode; `@Disabled` keeps it unselectable until hardware review.
+
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java -->
 ```java
 @TeleOp(name = "FW First Drive", group = "FW Examples")
@@ -67,6 +70,11 @@ it.
 The composition root constructs the FTC adapter, constructs the controls owner, creates one complete
 drive configuration, and declares one source-to-sink path:
 
+Here the **composition root** means setup code that connects objects. An **adapter** translates
+FTC gamepad fields into Sushi readers. A **source** supplies the current desired drive value; a
+**sink** accepts that value and owns the final motor writes. These are different jobs, not extra
+loops. `new` constructs an object now; `program.drive(...)` saves the connection for later updates.
+
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java -->
 ```java
 @Override
@@ -84,14 +92,16 @@ is the FTC boundary. Its constructor immediately calibrates all sticks and trigg
 current readings as neutral. Leave every stick centered and every trigger released before pressing
 INIT. If an axis is held during construction, that held reading becomes its zero until recalibrated.
 
-The adapter then exposes live `ScalarSource` axes. It flips the FTC Y convention so stick up is
+The adapter then exposes live `ScalarSource` axes: **scalar** means one number, here a stick reading.
+It flips the FTC Y convention so stick up is
 positive, corrects the construction-time center, and rescales the remaining travel. Its button
 sources report the current held level; edge behavior belongs to a binding or another derived source,
 not to `GamepadDevice`. Controls choose the active device deadband and driver shaping next.
 
 ### 2. Give the three axes robot-frame meanings
 
-Controls own what operator inputs mean. This small owner retains one stable `DriveSource`; it does
+Controls own what operator inputs mean. A **robot frame** describes directions relative to the
+robot: forward follows its front, even after the robot turns. This small owner retains one stable `DriveSource`; it does
 not set motors and does not rebuild a source every loop:
 
 !!! info "New concept: Stick shaping"
@@ -118,8 +128,9 @@ The highlighted assignments are the driver-feel edit points: `0.02` is the devic
 `0.05` is the shaping deadband; both translation and rotation use exponent `1.5`; and their `1.0`
 scales retain full-range intent.
 
-The local config draft is handed immediately to `GamepadDriveSource`, which validates and
-defensively snapshots it while constructing the one stable source:
+The local config draft is handed immediately to `GamepadDriveSource`, which validates and copies
+the values it retains. That defensive snapshot prevents later edits to the draft from secretly
+reconfiguring the running source:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveTeleOp.java -->
 ```java
@@ -139,8 +150,10 @@ DriveSource driveSource() {
 }
 ```
 
-`GamepadDriveSource` receives raw lateral, axial, and turn axes in that order. It publishes Sushi's
-robot-centric `DriveSignal` convention:
+`GamepadDriveSource` receives raw lateral, axial, and turn axes in that order. **Axial** means
+forward/back, **lateral** means sideways, and **omega** is the turn component. A `DriveSignal` holds
+those three normalized requests: zero means none and `1.0` is the positive full-scale request,
+not a measured speed. It uses Sushi's robot-centric convention:
 
 | Driver action | After `GamepadDevice` | Published component |
 |---|---:|---:|
@@ -203,6 +216,10 @@ their wheel mix would exceed the allowed motor range.
 `FtcDrives.mecanum(hardwareMap, drive)` validates and snapshots the configuration, resolves all four
 motors, and configures direction and zero-power behavior. Construction itself does not command
 power. The managed drive phase performs the coordinated raw-power preflight and wheel writes.
+
+**Mecanum mixing** calculates four wheel commands from the requested forward, sideways, and turn
+components. `BRAKE` resists rotation at zero command; `FLOAT` allows coasting. Neither guarantees
+a stopping distance, and neither turns the normalized request into a physical speed measurement.
 
 ### 4. Declare a continuously sampled drive path
 
@@ -267,6 +284,13 @@ below against the sign and shaping tables above; running them is optional.
 - **Cannot conclude:** physical wheel direction, robot motion, traction, current draw, braking
   distance, or whether the surrounding mechanism envelope is safe.
 
+### Optional: inspect the detailed software checks
+
+The expected observations above complete the reading experiment. These supplied checks additionally
+inspect shaping, each wheel command, and repeated STOP. `assertSignal(...)` compares forward,
+sideways, and turn in that order; `assertWheelPowers(...)` compares front-left, front-right,
+back-left, and back-right. An assertion fails when an actual value differs from the expected one.
+
 The first test constructs the exact production controls used by the OpMode. It starts with a neutral
 gamepad, which matters because the real adapter calibrates in its constructor:
 
@@ -284,7 +308,8 @@ assertSignal(drive.get(time.clock()), 0.0, 0.0, 0.0);
 ```
 
 A half-stick sample distinguishes the active `0.05` deadband and `1.5` exponent from an identity
-shape before the later full-scale samples prove robot-frame signs:
+shape before the later full-scale samples prove robot-frame signs. The `f` suffix in `-0.5f` is
+Java's spelling for a `float`, the number type used by FTC gamepad axes:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/firstdrive/FirstDriveSoftwareScenarioTest.java -->
 ```java
@@ -398,6 +423,8 @@ Optionally run the maintained scenario after [software setup](<../getting-starte
     ```bash
     ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.firstdrive.FirstDriveSoftwareScenarioTest
     ```
+
+### What the observations establish
 
 **Read the causal chain:** the software gamepad changes; the production adapter and controls publish
 one robot-centric request; the managed program samples it; the real mecanum mixer applies the

@@ -13,6 +13,10 @@ robot hardware.
 
 ## Start with the behavior the team needs
 
+Use [Robot roles](<Robot Roles.md>) for the ownership vocabulary and
+[Plants and hardware](<Plants and Hardware.md#plant>) for request, applied target, and measurement.
+These short references are knowledge prerequisites, not hardware assignments.
+
 “TeleOp and Auto must collect, eject, and stop the intake” names a shared capability.
 The [intake lesson](<../../build/Continuous Intake.md>) follows those names all the way to a private
 Plant. Button choices belong to controls, configured motor facts belong to data, and the mechanism

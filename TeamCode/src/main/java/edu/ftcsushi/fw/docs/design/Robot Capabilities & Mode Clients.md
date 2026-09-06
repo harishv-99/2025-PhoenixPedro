@@ -5,6 +5,10 @@ tags:
 
 # Robot Capabilities and Mode Clients
 
+**Before this reference:** understand [robot roles](<../getting-started/learn-sushi/Robot Roles.md>)
+and how [TeleOp and timed Auto](<../build/Run One Timed Auto.md>) share one intake capability.
+This page helps split a larger robot's public API; it does not add required layers to that intake.
+
 This document explains a robot-owned concept that will likely exist every year even though it does
 **not** belong in the common framework as a lane: **capability families**.
 
@@ -28,8 +32,10 @@ Useful companions:
 
 ## The one-sentence model
 
-A **capability family** is a robot-owned, mode-neutral façade that sits between the robot's
-internal owners and the mode clients that consume them.
+A **capability family** groups related robot requests and status, such as collect, eject, and stop.
+It is **mode-neutral** because neither its names nor its behavior depend on TeleOp button choices
+or an Auto sequence. This small public face (a **façade**) hides its owners' implementation details
+from those clients.
 
 In practice:
 
@@ -429,7 +435,7 @@ When you start a new season, expect to name and place these kinds of objects exp
 - supervisors for policy/orchestration
 - services for shared game-specific computation
 - presenters for human-facing output
-- one shared robot-owned `Capabilities` aggregate
+- a shared robot-owned `Capabilities` aggregate only when several cohesive families benefit from it
 - one TeleOp controls owner
 - one or more Auto plan/routine classes
 - the robot container / composition root

@@ -12,7 +12,7 @@ tags:
 !!! info "New concept: Plant"
 
     A **Plant** is the mechanism-owned path that turns one held request into one final actuator
-    command. The mechanism updates it on the shared heartbeat and owns its shutdown.
+    command for a motor or servo. The mechanism updates it once per managed loop and owns its shutdown.
 
 Choose the outcome below, then follow its linked Build explanation. This is an on-demand decision
 guide, not a required actuator tour; no installation, test run, or hardware is needed to read it.
@@ -25,11 +25,11 @@ exists to realize an actuator request, not merely to format sensor status.
 
 | I need to… | Start here | What is new in that shape |
 |---|---|---|
-| run one motor forward, reverse, or stopped | [Continuous intake](<../../build/Continuous Intake.md>) | normalized power plus named semantic [intent](<Controls and Intent.md#intent>) |
-| move one standard servo among named positions | [Named claw](<../../build/Named Claw.md>) | bounded logical coordinate mapped to configured native endpoint candidates; no arrival feedback |
-| discover where a motor-position coordinate begins | [Establish a lift reference](<../../build/Referenced Lift.md>) | encoder scale, reference requirement, switch source, and non-blocking search |
-| move within a referenced motor-position coordinate | [Move a referenced lift](<../../build/Move a Referenced Lift.md>) | named target, cached measurement, tolerance, and feedback-aware [Task](<../Framework Overview.md#task>) |
-| request one motor speed and observe feedback | [Single flywheel velocity](<../../build/Single Flywheel Velocity.md>) | bounded numeric command, velocity feedback, and cancellation-to-zero choice |
+| run one motor forward, reverse, or stopped | [Continuous intake](<../../build/Continuous Intake.md>) | power as a fraction of the command range, selected through named [intent](<Controls and Intent.md#intent>) |
+| move one standard servo among named positions | [Named claw](<../../build/Named Claw.md>) | translate the lesson's closed-to-open scale into reviewed servo commands; no measurement of arrival |
+| discover where a motor-position coordinate begins | [Establish a lift reference](<../../build/Referenced Lift.md>) | use a switch to give counted encoder movement a known zero |
+| move within a referenced motor-position coordinate | [Move a referenced lift](<../../build/Move a Referenced Lift.md>) | use a [Task](<../Framework Overview.md#task>) to wait until a new measurement is close enough to the request |
+| request one motor speed and observe feedback | [Single flywheel velocity](<../../build/Single Flywheel Velocity.md>) | compare requested speed with measured speed; choose the request on cancellation |
 | drive two flywheels together but require both to be ready | [Paired flywheel velocity](<../../advanced/Paired Flywheel Velocity.md>) | grouped actuation plus independent member evidence |
 | choose the nearest legal full-turn position | [Periodic turret position](<../../advanced/Periodic Turret Position.md>) | explicit equivalent-position selection inside physical bounds |
 
@@ -55,10 +55,10 @@ capability request -> one mechanism-owned target -> private Plant
 
 ## Choose semantic or numeric intent
 
-Use a semantic command when the robot request has a name such as `COLLECT`, `OPEN`, or `LOW`. One
+**Semantic** means carrying a robot meaning. Use a semantic command when the robot request has a name such as `COLLECT`, `OPEN`, or `LOW`. One
 mechanism maps that name forward to its numeric Plant target, and status retains both facts.
 
-Use a numeric command when the scalar itself is the complete public request, such as flywheel
+Use a numeric command when the scalar (one number) itself is the complete public request, such as flywheel
 velocity in ticks per second or turret angle in radians. Do not add names that hide relevant
 numeric meaning, and do not expose raw numbers when robot code actually means a named behavior.
 
@@ -76,6 +76,10 @@ numeric meaning, and do not expose raw numbers when robot code actually means a 
 An applied target is not a measurement. Controller arrival is not proof of a successful game
 action. Open-loop motor power and standard-servo position provide submitted-command evidence, not
 physical arrival.
+
+**Feedback** is a measurement returned from the mechanism. **Open-loop** means this command path
+does not use such a measurement to establish arrival. The optional feedback lessons explain
+controllers and acceptable error before asking you to configure them.
 
 ## Go deeper only when the requirement needs it
 

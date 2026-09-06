@@ -10,6 +10,10 @@ tags:
 Use this runbook to establish one physical fact at a time, record it, and then prove that the
 production robot actually consumes the recorded configuration.
 
+**Before reading:** use [the tester console guide](<Using the Tester Console.md>) for the menu and
+control vocabulary. Reading needs no hardware. Choose only the procedure for the fact you need;
+this is not a requirement to calibrate every device in order.
+
 ## Choose your stage
 
 | Stage | Use it when | Outcome |
@@ -25,6 +29,13 @@ production verification. This page does not generate a robot-specific verifier f
 defaults.
 
 ## What the framework-only testers know
+
+For camera/position procedures, a **pose** is position plus facing direction. A **frame** specifies
+the origin and axis directions used for those numbers; **yaw** is horizontal turning angle.
+**Localization** estimates the robot's pose. **Odometry** estimates movement from sensors such as
+encoder-equipped tracking wheels (pods); Pinpoint is the odometry computer used by these testers.
+An **AprilTag layout** records known field positions of the square visual markers. An **identity
+camera mount** assumes zero offset and rotation between robot and camera; it is not a measurement.
 
 Run either **FW: Testers (Driver Station)** or **FW: Testers (Panels)**. Under **Framework:
 Calibration & Localization**, the generic `StandardTesters` entries are independent fact probes:
@@ -59,7 +70,9 @@ ordinary calibration path.
 
 ## Before you start
 
-Use a robot that is mechanically assembled enough to roll freely, with the final odometry pods, camera, and drivetrain wiring already installed.
+For a physical procedure, install the final hardware that procedure measures. Drivetrain/odometry
+checks need a robot that rolls freely; camera checks need the installed camera and known tags.
+An actuator-only check does not require odometry pods or a camera.
 
 Prepare an evidence sheet or, when source is available, the canonical robot profile. Also:
 
@@ -158,144 +171,9 @@ There is no catch-all Plant reset. `Plant.stop()` ends that Plant instance and m
 physical zero. Homing, indexing, manual zeroing, and static endpoint scaling belong in the
 position-Plant reference/mapping layer and the robot mechanism service that decides when to run it.
 
-### Common initialization choices
-
-Use `alreadyReferenced()` when the selected native coordinate is already meaningful in the plant
-coordinate. Examples: a standard servo using raw `0..1`, an absolute/source measurement already in
-degrees, or a simulator source already in plant units.
-
-Use `plantPositionMapsToNative(plantPosition, nativePosition)` when the scale and one offset point are known in
-code. Example: arm degrees mapped to encoder ticks with a measured zero tick.
-
-Both values must be finite. Sushi rejects `NaN` and infinity immediately rather than clamping
-either coordinate. The plant position is a coordinate-map anchor, not a target request, so it need
-not lie inside the Plant's legal target range.
-
-Use `assumeCurrentPositionIs(value)` only when the robot is physically placed at a known pose before
-init. Its plant-unit answer must be finite. Example: the lift is manually collapsed before the
-match, so the first finite encoder sample becomes plant position `0.0`; a non-finite sample leaves
-the reference pending.
-
-Use `needsReference(reason)` when the mechanism must find a switch, index mark, hard stop, or custom
-sensor condition before position targets are safe.
-
-### Runtime homing/indexing task
-
-A reference search is a normal non-blocking `Task`:
-
-### Critical code
-
-Replace the demonstration mechanism, cue, power, reference, and timeout with reviewed robot facts.
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-// ...inside the mechanism's fresh homing-task factory...
-Task search = PositionCalibrationTasks.search(lift)
-        .withPower(-0.20)
-        .until(bottomSwitch)
-        .establishReferenceAt(0.0)
-        .failAfterSec(3.0)
-        .build();
-
-return Tasks.sequence(
-        search,
-        SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
-```
-
-`.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range. It
-rejects `NaN`, infinities, and overshoot immediately instead of clamping them into a different
-search. Passing that check does not make the recipe mechanically safe: verify the magnitude,
-direction, cue polarity/behavior, hard stops, and clearance on the actual robot.
-
-`establishReferenceAt(...)` also requires a finite plant-unit coordinate and rejects `NaN` or
-infinity at the recipe step, before search lifecycle effects. It is a reference anchor rather than
-a target, so it is not clamped to `targetRange()`.
-
-Build a fresh search Task for every homing attempt. A search Task that has begun is not restarted;
-the same builder recipe can create the next attempt.
-
-Advance that Task from the runner before the mechanism's normal update. The Task owns the temporary
-search lifecycle, cue, reference, timeout, and handoff, but it never calls `plant.update(clock)`.
-The mechanism remains the sole Plant heartbeat owner, so its one downstream update either submits
-the staged search command or returns through the normal target resolver after the Task releases the
-search.
-
-For an indexer or tray, the condition can be a color detector, magnet sensor, beam break, or custom
-BooleanSource:
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-// ...inside the mechanism's fresh indexing-task factory...
-Task indexTray = PositionCalibrationTasks.search(tray)
-        .withPower(0.12)
-        .until(paintedMarkSeen)
-        .establishReferenceAt(0.0)
-        .failAfterSec(5.0)
-        .build();
-```
-
-**What to notice**
-
-- Each attempt builds a fresh single-use `Task`; the mechanism remains the sole Plant heartbeat owner.
-- The search stages temporary raw output and always preserves the persistent target graph.
-- Success, timeout, and cancellation stop and release the search without changing its command.
-- A success-only semantic continuation publishes through the mechanism's command owner; timeout
-  and cancellation skip it and retain the latest coherent request.
-- Finite software validation does not prove switch polarity, physical zero, clearance, or safe power.
-
-**Key APIs**
-
-- `PositionCalibrationTasks.search(plant)` — starts the non-blocking reference-task recipe.
-- `until(BooleanSource)` — supplies the independently owned reference cue.
-- `establishReferenceAt(...)` — anchors the public coordinate at the cue sample.
-- `failAfterSec(...)` — gives the search a bounded lifetime.
-- `Tasks.sequence(...)` / `SemanticScalarTasks.set(...).build()` — adds mechanism-owned semantic
-  policy after exact success.
-
-The search preserves the Plant's persistent command and final target resolver on every terminal
-path. It requests a nonterminal stop of the temporary raw output and releases the search; it does
-not call terminal `Plant.stop()`. The downstream Plant phase immediately evaluates the unchanged
-graph. In the homing macro above, exact search success publishes the semantic request before that
-Plant phase. Timeout and active cancellation stop the sequence before the request and retain the
-prior—or any during-search superseding—semantic/numeric request. There is no need to preselect
-STOWED before search because temporary search ownership already suspends target realization.
-
-Every reference search must explicitly choose timeout behavior. Prefer `failAfterSec(...)`; use `neverTimeout()` only when a driver button, scheduler, or other safety interlock is guaranteed to cancel the task.
-
-For periodic Plants, the Task's clocked `establishReferenceAt(...)` uses the cue cycle's current
-native sample, treats the supplied value as a reference within the period, and preserves the nearest
-unwrapped equivalent from that sample. That makes repeated index marks useful for small drift
-corrections during a match. When the current plant estimate is finite, the Plant rejects a
-non-finite final nearest-equivalent result without committing that reference. Reference commit also
-requires every endpoint and derived measurement of the complete candidate bounded affine map to be
-finite. An FTC raw-domain check then runs before each realized command whose native offset depended
-on that runtime reference. An unbounded core Plant-to-native conversion is checked individually
-before applied state or output, while the later FTC child/domain layer checks all children before
-the first child write.
-
-### What “good” looks like
-
-- before reference, the Plant reports an invalid target range with a clear reason such as `lift not homed`
-- the homing/indexing task has timeout and cancellation behavior
-- the mechanism, not the calibration Task, remains the only owner of the Plant update heartbeat
-- after reference, the public measurement matches the physical mechanism coordinate
-- the finite software reference has been checked against an independent physical pose or cue; a
-  numeric validation result alone does not prove that correspondence
-- presets, command targets, Plant target requests, and telemetry all use plant units rather than raw
-  hardware surprises
-- one periodic command uses `PlantTargets.equivalentPositionsOf(...)`; multiple alternatives or
-  observation metadata use the advanced `PlantTargets.plan(request)` path
-
-### Do not move on if
-
-- the mechanism can command outside its safe travel range
-- raw encoder offsets leak into presets throughout robot code
-- a periodic mechanism resets its unwrapped position to zero every time an index mark appears
-- drivers need to remember raw servo endpoint values instead of logical mechanism positions
+For the complete first mechanism, read [Establish a lift reference](<../build/Referenced Lift.md>).
+The [optional implementation details](<#optional-reference-implementation-details>) below explain
+other reference strategies after the ordinary physical procedures.
 
 ## Drivetrain direction and integration
 
@@ -351,106 +229,16 @@ A student can answer, without hesitation, “yes, each wheel does the expected t
 - releasing the controls or FTC STOP does not produce the expected physical stop
 - your only explanation is “mecanum is confusing” rather than a config fix
 
-## High-resolution external encoder velocity comparison
-
-**Optional advanced route:** skip this section on the rookie calibration path and continue at
-**Camera mount**. Use it only when you need evidence about direct versus position-derived velocity
-from a high-count-rate external encoder.
-
-### Why this is a separate hardware check
-
-A quadrature encoder fundamentally supplies position changes. FTC hardware and the SDK may also
-report a device-timed velocity, but that representation can have a smaller numeric range than the
-position counter. A high-count-rate external encoder therefore needs evidence from the exact hub,
-firmware, port, SDK, and loop configuration before either reading becomes the production default.
-Motor configuration metadata is not proof of which physical encoder is connected.
-
-The advanced motor-power diagnostic includes a measurement-only comparison for this purpose. For safe open-loop
-power testing it temporarily selects `RUN_WITHOUT_ENCODER`, then restores the motor's prior mode
-after commanding zero when the tester stops or returns to the picker. It does not filter either
-reading, correct an apparent velocity wrap, or change any Plant feedback API.
-
-### Safety and setup
-
-- Mechanically fixture the mechanism, guard every rotating part, and begin at zero power.
-- Selecting a motor always resets the target and leaves output disarmed. The A press that chooses a
-  motor cannot also arm it; release A, inspect the selection, then press A again deliberately.
-- Use an independent tachometer with known accuracy; neither SDK reading is an independent truth.
-- Select the configured motor whose own encoder port carries the external encoder. This tester does
-  not compare a separately selected encoder-only port while driving a different motor.
-- For a high-rate quadrature encoder on a REV hub, use encoder port **0 or 3**. Those ports are
-  hardware-counted; FIRST warns that the software-counted ports 1 and 2 can miss counts from a
-  high-count-rate encoder. See the current
-  [FIRST Control and Expansion Hub guidance](https://ftc-docs.firstinspires.org/en/latest/tech_tips/tech-tips.html)
-  and record the exact port.
-- Record the SDK version, hub model and firmware, bulk-caching mode, encoder version and counts per
-  revolution, battery voltage, and tachometer model before the run.
-
-### Procedure
-
-1. Run either tester entry, open `Advanced: Hardware Diagnostics`, and select the motor
-   power/encoder evidence diagnostic.
-2. Choose the motor/encoder entry, then start the OpMode with the power target still at zero.
-   Output remains disarmed until you deliberately press A.
-3. In Android Studio Logcat, filter for the tag `SushiEncoderVelocity`.
-4. Press Y to start capture. The first position-derived value deliberately reports unavailable
-   until two positive-time samples exist. Confirm telemetry says the matched REV snapshot is
-   coherent and `Row eligible for tachometer comparison` says `YES`. This means the row has the
-   required measurement mechanics; only the independent tachometer comparison can establish
-   accuracy, so do not use an ineligible row or the label alone to decide production policy.
-5. Press A to arm, then increase power gradually. Hold each safe test point long enough to record
-   the tachometer, then capture acceleration, coast-down, reversal, and both rotation directions.
-   Include points below, near, and above any suspected direct-velocity representation boundary.
-6. Press right bumper once during a steady point to skip exactly one comparison sample. The OpMode
-   and motor command continue normally; the following accepted sample spans the longer interval.
-   Never create a long sample with `sleep(...)` or a blocked loop.
-7. Press B to command zero and keep capturing until the mechanism has stopped. Press Y again to end
-   the capture, then save the filtered Logcat output.
-
-Each capture begins with an `ENCODER_VELOCITY_META` row containing the selected connection, controller,
-port, matched REV module address/serial/firmware, original bulk-caching mode, motor run modes,
-direction, and configured motor-type values. Those configured motor-type values are labeled
-metadata, not physical encoder identification.
-
-On a matched REV module, each accepted loop explicitly requests one bulk snapshot and reads
-that motor port's position and direct velocity from the same packet. The tester applies the same
-configured-direction plus motor-type-orientation normalization as the FTC motor getters, so both
-values use the public motor coordinate. It observes but never changes the module's `OFF`, `MANUAL`,
-or `AUTO` caching mode. The explicit snapshot clears that module's current bulk cache before its
-transaction attempt; a normally returned real or fake response refills it. Use this isolated
-diagnostic as the only hub-cache owner in the OpMode. In particular, it is
-incompatible with `FtcBulkCaching.manual(hardwareMap)` and must not run beside that service or any
-other code that sets modes, clears caches, or calls `getBulkData()`. The tester runs through the
-separate `FtcTeleOpTesterOpMode` host, which has no `RobotProgram` service phase; do not install or
-simulate the manual-cache service there. Ordinary getters are consumers, not competing owners. Each
-data row records snapshot coherence and that the configured mode was preserved. See
-[`FTC manual bulk caching`](<../ftc-boundary/FTC Manual Bulk Caching.md>) for the exclusive managed
-owner contract. Here coherence means only that both decoded values came from one returned packet;
-it does not establish freshness, validity, or a physically simultaneous hardware observation.
-
-Each `ENCODER_VELOCITY_DATA` row records the session, motor name, loop cycle/time, enabled state,
-target power, the command held before measurement, the command issued afterward, position,
-rollover-aware position delta, accepted sample interval, both velocities, their difference,
-availability flags, snapshot/bulk-mode evidence, port eligibility, and status. An
-`ENCODER_VELOCITY_ERROR` row makes an unavailable cycle explicit, `ENCODER_VELOCITY_SKIPPED`
-identifies the deliberate one-sample gap, and `ENCODER_VELOCITY_END` closes a capture. Both
-velocities are in ticks per second. Convert the tachometer reading using:
-
-```text
-expected ticks/second = tachometer RPM * encoder counts/revolution / 60
-```
-
-Compare steady-state accuracy and sign as well as spin-up, spin-down, reversal, stop, ordinary loop
-intervals, and any observed long loop. Compile success and plausible-looking telemetry are not
-hardware validation. Preserve the raw log: filtering, smoothing, or a signed-velocity correction is
-a separate design decision that must not be inferred from one display value. Keep captures short
-and evaluate the recorded loop intervals because per-cycle Logcat output can itself affect timing.
 
 ## Camera mount
 
 ### Why this matters
 
-Every AprilTag field-pose solve depends on `robot -> camera` extrinsics. If the camera mount is still left at an identity placeholder, tag localization may appear to work while quietly producing the wrong pose.
+A camera usually sits away from the robot's chosen origin and faces its own direction.
+The **camera mount** describes that position and orientation relative to the robot; the exact term
+is `robot -> camera` **extrinsics**. The solver needs this relationship to convert what the camera
+sees into the robot's field pose. An unmeasured identity placeholder can produce a plausible but
+wrong answer. Correctness means matching the physical installation, not merely using nonzero values.
 
 ### Framework-only entries and active defaults
 
@@ -471,6 +259,11 @@ input. It still does not write the measured answer anywhere.
 ### What you are solving
 
 You tell the tester where the robot is on the field, the tester observes a known tag, and it solves for the camera pose relative to the robot.
+
+**Spread** describes how far repeated answers differ from one another. A **residual** is the
+remaining mismatch when a solved answer is checked against the observed geometry. **Range** is
+distance to the tag. Compare these with independently measured geometry and your team's criterion;
+a small spread alone can mean a repeatably wrong setup.
 
 ### Procedure
 
@@ -516,7 +309,9 @@ record for that owner; do not mark the production camera calibrated from the gen
 
 ### Why this matters
 
-Do not jump straight to odometry fusion. First verify that tags alone are being detected and that the field pose solve is sane.
+First verify the tag observations and robot field-pose estimate on their own. **Fusion** combines
+movement estimates with external position observations; it cannot repair a wrongly configured
+camera mount just by combining more data.
 
 ### Framework-only entries and active defaults
 
@@ -536,6 +331,11 @@ Judge field pose only in a fresh robot-configured tester after the rebuild hando
 The standard menu help says “Verify AprilTag detections and the field pose solve.” In this generic
 entry, **verify** means inspect the default diagnostic path; it does not mean verify a recorded
 mount or robot profile. Treat detection freshness and layout membership as the generic evidence.
+
+Read **age** as time since observation, **range** as distance, and **bearing** as direction toward
+the tag in the named frame. The **mean** is the average sampled pose; **standard deviation**
+summarizes how much samples vary around that average. These describe the recorded samples, not
+proof of absolute accuracy. Use the team's stated acceptance limits, not a universal number.
 
 ### Procedure
 
@@ -724,6 +524,248 @@ check.
 - turning in place introduces obvious translation drift
 - the camera mount or Pinpoint offsets are still known-bad
 
+## Optional reference implementation details
+
+This is source-level depth, not part of the rookie probe-and-record path. Read the
+[referenced lift](<../build/Referenced Lift.md>) first; its reference, encoder, and Task vocabulary
+is required here. Advanced periodic maps are detailed in
+[FTC Actuators and Plants](<../ftc-boundary/FTC Actuators & Plants.md>).
+
+### Common initialization choices
+
+Use `alreadyReferenced()` when the selected measured native coordinate is already meaningful in
+the plant coordinate. Examples: an absolute/source measurement already in degrees, or a modeled
+simulation source already in plant units. A standard servo has command mapping instead, not this
+measured-reference builder stage.
+
+Use `plantPositionMapsToNative(plantPosition, nativePosition)` when the scale and one offset point are known in
+code. Example: arm degrees mapped to encoder ticks with a measured zero tick.
+
+Both values must be finite. Sushi rejects `NaN` and infinity immediately rather than clamping
+either coordinate. The plant position is a coordinate-map anchor, not a target request, so it need
+not lie inside the Plant's legal target range.
+
+Use `assumeCurrentPositionIs(value)` only when the robot is physically placed at a known pose before
+init. Its plant-unit answer must be finite. Example: the lift is manually collapsed before the
+match, so the first finite encoder sample becomes plant position `0.0`; a non-finite sample leaves
+the reference pending.
+
+Use `needsReference(reason)` when the mechanism must find a switch, index mark, or reviewed custom
+sensor condition before position targets are safe.
+
+### Runtime homing/indexing task
+
+A reference search is a normal non-blocking `Task`:
+
+### Critical code
+
+Replace the demonstration mechanism, cue, power, reference, and timeout with reviewed robot facts.
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+// ...inside the mechanism's fresh homing-task factory...
+Task search = PositionCalibrationTasks.search(lift)
+        .withPower(-0.20)
+        .until(bottomSwitch)
+        .establishReferenceAt(0.0)
+        .failAfterSec(3.0)
+        .build();
+
+return Tasks.sequence(
+        search,
+        SemanticScalarTasks.set(heightCommand, Height.STOWED).build());
+```
+
+`.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range. It
+rejects `NaN`, infinities, and overshoot immediately instead of clamping them into a different
+search. Passing that check does not make the recipe mechanically safe: verify the magnitude,
+direction, cue polarity/behavior, hard stops, and clearance on the actual robot.
+
+`establishReferenceAt(...)` also requires a finite plant-unit coordinate and rejects `NaN` or
+infinity at the recipe step, before search lifecycle effects. It is a reference anchor rather than
+a target, so it is not clamped to `targetRange()`.
+
+Build a fresh search Task for every homing attempt. A search Task that has begun is not restarted;
+the same builder recipe can create the next attempt.
+
+Advance that Task from the runner before the mechanism's normal update. The Task owns the temporary
+search lifecycle, cue, reference, timeout, and handoff, but it never calls `plant.update(clock)`.
+The mechanism remains the sole Plant heartbeat owner, so its one downstream update either submits
+the staged search command or returns through the normal target resolver after the Task releases the
+search.
+
+For an indexer or tray, the condition can be a color detector, magnet sensor, beam break, or custom
+BooleanSource:
+
+Abbreviated shape (omissions shown):
+
+<!-- teaching-shape -->
+```java
+// ...inside the mechanism's fresh indexing-task factory...
+Task indexTray = PositionCalibrationTasks.search(tray)
+        .withPower(0.12)
+        .until(paintedMarkSeen)
+        .establishReferenceAt(0.0)
+        .failAfterSec(5.0)
+        .build();
+```
+
+**What to notice**
+
+- Each attempt builds a fresh single-use `Task`; the mechanism remains the sole Plant heartbeat owner.
+- The search stages temporary raw output and always preserves the persistent target graph.
+- Success, timeout, and cancellation stop and release the search without changing its command.
+- A success-only semantic continuation publishes through the mechanism's command owner; timeout
+  and cancellation skip it and retain the latest coherent request.
+- Finite software validation does not prove switch polarity, physical zero, clearance, or safe power.
+
+**Key APIs**
+
+- `PositionCalibrationTasks.search(plant)` — starts the non-blocking reference-task recipe.
+- `until(BooleanSource)` — supplies the independently owned reference cue.
+- `establishReferenceAt(...)` — anchors the public coordinate at the cue sample.
+- `failAfterSec(...)` — gives the search a bounded lifetime.
+- `Tasks.sequence(...)` / `SemanticScalarTasks.set(...).build()` — adds mechanism-owned semantic
+  policy after exact success.
+
+The search preserves the Plant's persistent command and final target resolver on every terminal
+path. It requests a nonterminal stop of the temporary raw output and releases the search; it does
+not call terminal `Plant.stop()`. The downstream Plant phase immediately evaluates the unchanged
+graph. In the homing macro above, exact search success publishes the semantic request before that
+Plant phase. Timeout and active cancellation stop the sequence before the request and retain the
+prior—or any during-search superseding—semantic/numeric request. There is no need to preselect
+STOWED before search because temporary search ownership already suspends target realization.
+
+Every reference search must explicitly choose timeout behavior. Prefer `failAfterSec(...)`; use `neverTimeout()` only when a driver button, scheduler, or other safety interlock is guaranteed to cancel the task.
+
+For periodic Plants, the Task's clocked `establishReferenceAt(...)` uses the cue cycle's current
+native sample, treats the supplied value as a reference within the period, and preserves the nearest
+unwrapped equivalent from that sample. That makes repeated index marks useful for small drift
+corrections during a match. When the current plant estimate is finite, the Plant rejects a
+non-finite final nearest-equivalent result without committing that reference. Reference commit also
+requires every endpoint and derived measurement of the complete candidate bounded affine map to be
+finite. An FTC raw-domain check then runs before each realized command whose native offset depended
+on that runtime reference. An unbounded core Plant-to-native conversion is checked individually
+before applied state or output, while the later FTC child/domain layer checks all children before
+the first child write.
+
+### What “good” looks like
+
+- before reference, the Plant reports an invalid target range with a clear reason such as `lift not homed`
+- the homing/indexing task has timeout and cancellation behavior
+- the mechanism, not the calibration Task, remains the only owner of the Plant update heartbeat
+- after reference, the public measurement matches the physical mechanism coordinate
+- the finite software reference has been checked against an independent physical pose or cue; a
+  numeric validation result alone does not prove that correspondence
+- presets, command targets, Plant target requests, and telemetry all use plant units rather than raw
+  hardware surprises
+- one periodic command uses `PlantTargets.equivalentPositionsOf(...)`; multiple alternatives or
+  observation metadata use the advanced `PlantTargets.plan(request)` path
+
+### Do not move on if
+
+- the mechanism can command outside its safe travel range
+- raw encoder offsets leak into presets throughout robot code
+- a periodic mechanism resets its unwrapped position to zero every time an index mark appears
+- drivers need to remember raw servo endpoint values instead of logical mechanism positions
+
+## High-resolution external encoder velocity comparison
+
+**Optional advanced route:** the ordinary calibration procedures above do not require this section.
+Use it only when you need evidence about direct versus position-derived velocity
+from a high-count-rate external encoder.
+
+### Why this is a separate hardware check
+
+A quadrature encoder fundamentally supplies position changes. FTC hardware and the SDK may also
+report a device-timed velocity, but that representation can have a smaller numeric range than the
+position counter. A high-count-rate external encoder therefore needs evidence from the exact hub,
+firmware, port, SDK, and loop configuration before either reading becomes the production default.
+Motor configuration metadata is not proof of which physical encoder is connected.
+
+The advanced motor-power diagnostic includes a measurement-only comparison for this purpose. For safe open-loop
+power testing it temporarily selects `RUN_WITHOUT_ENCODER`, then restores the motor's prior mode
+after commanding zero when the tester stops or returns to the picker. It does not filter either
+reading, correct an apparent velocity wrap, or change any Plant feedback API.
+
+### Safety and setup
+
+- Mechanically fixture the mechanism, guard every rotating part, and begin at zero power.
+- Selecting a motor always resets the target and leaves output disarmed. The A press that chooses a
+  motor cannot also arm it; release A, inspect the selection, then press A again deliberately.
+- Use an independent tachometer with known accuracy; neither SDK reading is an independent truth.
+- Select the configured motor whose own encoder port carries the external encoder. This tester does
+  not compare a separately selected encoder-only port while driving a different motor.
+- For a high-rate quadrature encoder on a REV hub, use encoder port **0 or 3**. Those ports are
+  hardware-counted; FIRST warns that the software-counted ports 1 and 2 can miss counts from a
+  high-count-rate encoder. See the current
+  [FIRST Control and Expansion Hub guidance](https://ftc-docs.firstinspires.org/en/latest/tech_tips/tech-tips.html)
+  and record the exact port.
+- Record the SDK version, hub model and firmware, bulk-caching mode, encoder version and counts per
+  revolution, battery voltage, and tachometer model before the run.
+
+### Procedure
+
+1. Run either tester entry, open `Advanced: Hardware Diagnostics`, and select the motor
+   power/encoder evidence diagnostic.
+2. Choose the motor/encoder entry, then start the OpMode with the power target still at zero.
+   Output remains disarmed until you deliberately press A.
+3. In Android Studio Logcat, filter for the tag `SushiEncoderVelocity`.
+4. Press Y to start capture. The first position-derived value deliberately reports unavailable
+   until two positive-time samples exist. Confirm telemetry says the matched REV snapshot is
+   coherent and `Row eligible for tachometer comparison` says `YES`. This means the row has the
+   required measurement mechanics; only the independent tachometer comparison can establish
+   accuracy, so do not use an ineligible row or the label alone to decide production policy.
+5. Press A to arm, then increase power gradually. Hold each safe test point long enough to record
+   the tachometer, then capture acceleration, coast-down, reversal, and both rotation directions.
+   Include points below, near, and above any suspected direct-velocity representation boundary.
+6. Press right bumper once during a steady point to skip exactly one comparison sample. The OpMode
+   and motor command continue normally; the following accepted sample spans the longer interval.
+   Never create a long sample with `sleep(...)` or a blocked loop.
+7. Press B to command zero and keep capturing until the mechanism has stopped. Press Y again to end
+   the capture, then save the filtered Logcat output.
+
+Each capture begins with an `ENCODER_VELOCITY_META` row containing the selected connection, controller,
+port, matched REV module address/serial/firmware, original bulk-caching mode, motor run modes,
+direction, and configured motor-type values. Those configured motor-type values are labeled
+metadata, not physical encoder identification.
+
+On a matched REV module, each accepted loop explicitly requests one bulk snapshot and reads
+that motor port's position and direct velocity from the same packet. The tester applies the same
+configured-direction plus motor-type-orientation normalization as the FTC motor getters, so both
+values use the public motor coordinate. It observes but never changes the module's `OFF`, `MANUAL`,
+or `AUTO` caching mode. The explicit snapshot clears that module's current bulk cache before its
+transaction attempt; a normally returned real or fake response refills it. Use this isolated
+diagnostic as the only hub-cache owner in the OpMode. In particular, it is
+incompatible with `FtcBulkCaching.manual(hardwareMap)` and must not run beside that service or any
+other code that sets modes, clears caches, or calls `getBulkData()`. The tester runs through the
+separate `FtcTeleOpTesterOpMode` host, which has no `RobotProgram` service phase; do not install or
+simulate the manual-cache service there. Ordinary getters are consumers, not competing owners. Each
+data row records snapshot coherence and that the configured mode was preserved. See
+[`FTC manual bulk caching`](<../ftc-boundary/FTC Manual Bulk Caching.md>) for the exclusive managed
+owner contract. Here coherence means only that both decoded values came from one returned packet;
+it does not establish freshness, validity, or a physically simultaneous hardware observation.
+
+Each `ENCODER_VELOCITY_DATA` row records the session, motor name, loop cycle/time, enabled state,
+target power, the command held before measurement, the command issued afterward, position,
+rollover-aware position delta, accepted sample interval, both velocities, their difference,
+availability flags, snapshot/bulk-mode evidence, port eligibility, and status. An
+`ENCODER_VELOCITY_ERROR` row makes an unavailable cycle explicit, `ENCODER_VELOCITY_SKIPPED`
+identifies the deliberate one-sample gap, and `ENCODER_VELOCITY_END` closes a capture. Both
+velocities are in ticks per second. Convert the tachometer reading using:
+
+```text
+expected ticks/second = tachometer RPM * encoder counts/revolution / 60
+```
+
+Compare steady-state accuracy and sign as well as spin-up, spin-down, reversal, stop, ordinary loop
+intervals, and any observed long loop. Compile success and plausible-looking telemetry are not
+hardware validation. Preserve the raw log: filtering, smoothing, or a signed-velocity correction is
+a separate design decision that must not be inferred from one display value. Keep captures short
+and evaluate the recorded loop intervals because per-cycle Logcat output can itself affect timing.
+
 ## Optional advanced: powered and vision-assisted pod offsets
 
 This is not supplied by the generic `StandardTesters` pod-offset entry. A robot-specific factory
@@ -747,7 +789,11 @@ disappears. Vision assist disables itself when the opened lane still reports an 
 
 ### Why this is optional
 
-The covariance-aware EKF-style estimator is intentionally not the first thing teams should tune. It is easier to debug the simpler fusion estimator first, then compare the EKF once the hardware calibration is already credible.
+An **EKF** (extended Kalman filter) combines estimates using a model of uncertainty. **Covariance**
+describes uncertainty and how errors vary together; an **innovation** is the difference between a
+new observation and its prediction. This comparison needs the optional
+[localization explanation](<../drive-vision/AprilTag Localization & Fixed Layouts.md>) and credible
+hardware calibration. Debug the simpler fusion estimator first; this is not an opening lesson.
 
 `StandardTesters` does **not** register an EKF entry. A robot-specific suite must construct a
 corrected-localization tester with `GlobalEstimatorMode.EKF` and the robot's complete configured

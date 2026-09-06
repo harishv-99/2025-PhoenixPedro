@@ -5,6 +5,12 @@ tags:
 
 # FTC Actuators & Plants
 
+**Before this reference:** understand [Plants and hardware](<../getting-started/learn-sushi/Plants and Hardware.md>)
+and one focused [Build recipe](<../build/README.md>). Use this page to look up the construction
+branch your mechanism needs, not to learn every actuator at once. Position/velocity feedback
+branches build on the optional lift and flywheel lessons; custom control, grouping, and tuning
+remain later choices.
+
 This page covers the FTC boundary for Sushi mechanism wiring:
 
 * `FtcActuators.plant(...)` and `Plants.fromOutputs()` — two gateways into one staged grammar
@@ -522,6 +528,23 @@ after `positionTolerance(...)`; no runtime type probe or unsupported power metho
 
 ### Device-managed position with FTC overrides
 
+This is an optional control-tuning branch. **Feedback** is a measurement returned to the controller;
+the **controller** repeatedly adjusts a command using that measurement. Its **setpoint** is the
+value being pursued this cycle, and **error** is setpoint minus measurement. A **gain** sets the
+strength of one correction:
+
+- **P** responds to current error.
+- **I** accumulates error over time to correct a persistent difference; its accumulation needs
+  explicit limits when the chosen controller supports them.
+- **D** responds to how quickly error changes and can help restrain an overshooting response.
+- **Feedforward** estimates required effort from intended motion or load instead of waiting for
+  error. FTC's **F** coefficient is the device's native feedforward setting, not Sushi's physical
+  motion model.
+
+Those names explain the settings; they are not safe gain recommendations. Establish direction,
+units, feedback, travel limits, and a stop plan before the
+[bounded tuning workflow](<../testing-calibration/Control Tuning Workflow.md>).
+
 Use `deviceManagedWithOverrides()` only when the recipe deliberately changes FTC controller
 configuration. The branch must accept at least one override before `doneOverrides()`; use ordinary
 `deviceManaged()` when there is nothing to override.
@@ -557,6 +580,10 @@ parallel with regulated Plants and leaves calibration-search power independent.
 
 ### Framework-regulated position: the standard control model
 
+This branch uses the same [controller vocabulary](<#device-managed-position-with-ftc-overrides>),
+but Sushi calculates the power rather than delegating that calculation to FTC motor firmware.
+The Plant remains the sole owner of that calculation and its hardware write.
+
 Use `regulated()` when Sushi should command normalized motor power from position feedback. After
 feedback, coordinate mapping, reference, and tolerance, choose one setpoint model and PID directly
 in the Plant recipe. A simple lift that applies its target immediately looks like this:
@@ -584,6 +611,9 @@ this.lift = FtcActuators.plant(hardwareMap)
 Feedforward is optional; omitting it means exact zero feedforward. There is no hidden PID gain,
 gravity term, profile limit, tolerance, or safe-power assumption.
 
+A **motion profile** moves the cycle's setpoint toward the final target under declared limits.
+Velocity is position change per second; acceleration is velocity change per second. A
+**trapezoidal** profile accelerates, may cruise, then decelerates (short moves may have no cruise).
 For controlled acceleration and complete motion evidence, use a trapezoidal position setpoint:
 
 ```java
@@ -617,6 +647,13 @@ An arm uses the same grammar but a position-dependent gravity model:
                     kS, kV, kA)
 .outputPowerLimitedTo(maximumPower)
 ```
+
+In the equations below, `kS` estimates effort needed to overcome static friction, `kV` the effort
+associated with speed, `kA` with acceleration, and `kG` with gravity. The arm's cosine term changes
+gravity support with angle; a radian is an angle unit with `2π` radians per full turn.
+`integral(...)` accumulates its term over time, `delta(error)` is the change in error, `dt` is the
+elapsed interval, and `sign(...)` selects negative, zero, or positive direction. These equations
+explain the selected models; they do not require a beginner to implement a controller.
 
 The standard controller evaluates one immutable setpoint snapshot per Plant cycle:
 
@@ -991,8 +1028,9 @@ claim that arbitrary SDK writes are transactional.
 
 ## 7. Reference policy and runtime calibration
 
-After `nativeUnits()` or `scaleToNative(...)`, the builder asks how the native/plant reference is
-known.
+On a feedback-capable position branch, after `nativeUnits()` or `scaleToNative(...)`, the builder
+asks how the native/plant reference is known. Standard-servo command-only branches do not have
+this step: their mapping describes commands, not a measured position needing a reference.
 
 ### `alreadyReferenced()`
 
@@ -1001,7 +1039,6 @@ chosen scaling.
 
 Good examples:
 
-* a standard servo using native raw `0..1` units,
 * an absolute/source feedback value already expressed in arm degrees,
 * a simulator source already expressed in plant units,
 * a motor encoder that robot code intentionally reset before building/using the Plant.

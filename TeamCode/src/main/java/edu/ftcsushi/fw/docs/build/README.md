@@ -5,8 +5,9 @@ tags:
 
 # Build one robot outcome at a time
 
-Read this course with basic Java and FTC experience; Sushi concepts and unfamiliar Java syntax are
-explained where they first become useful. Reading is a complete learning path: no installation,
+Read this course knowing basic Java values, methods, and `if`/loop flow plus FTC basics. Objects,
+interfaces, saved functions, and Sushi concepts are explained where they first become useful.
+Reading is a complete learning path: no installation,
 code changes, test run, or matching hardware is required. The short
 [first software tour](<../getting-started/First Software Tour.md>) previews a changing sensor fact,
 one button press, and one timed action before these pages explain their complete owners.
@@ -29,8 +30,8 @@ the page's complete hardware procedure.
 The knowledge is cumulative; the hardware fixtures are intentionally independent. Read the lessons
 in order to learn the ordinary ownership pattern without assembling an ever-growing example robot.
 
-1. [Read a switch and show its state](<Read a Switch.md>) — one digital input becomes an explicit,
-   debounced fact in cached status. No actuator is involved.
+1. [Read a switch and show its state](<Read a Switch.md>) — interpret pressed/released, filter brief
+   flicker, and save the reading for display. No motor or servo is involved.
 2. [Run a continuous intake by name](<Continuous Intake.md>) — one button changes a persistent
    request; the mechanism owns the private Plant and final motor write.
 3. [Move a claw through named positions](<Named Claw.md>) — reuse that ownership pattern while
@@ -51,14 +52,17 @@ reusable current-value reader; it does not require an intake, claw, lift, or fly
 3. [Run one timed root Task in Auto](<Run One Timed Auto.md>) — reuse the intake capability, start at
    FTC START, finish after the stated duration, and handle early STOP.
 
-At this point you can explain a complete managed TeleOp and a basic timed mechanism Auto. The Auto
+These sections are the focused foundation. At this point you can explain a complete managed TeleOp
+and a basic timed mechanism Auto. You can trace reading an input, changing a request, applying it,
+displaying saved facts, and ending work without blocking the FTC loop. The Auto
 does not drive a route. Route following and additional feedback mechanisms are separate choices,
 not prerequisites for reaching this checkpoint.
 
 ## Add feedback when your robot needs it
 
 These are optional continuation lessons. Each names the prior concepts it uses; read those
-explanations as needed without building the earlier hardware.
+explanations as needed without building the earlier hardware. Feedback means measuring what a
+mechanism actually did; these lessons teach that new idea before using it to complete a Task.
 
 1. [Establish a lift reference](<Referenced Lift.md>) — reuse switch polarity and debounce to
    establish encoder zero through cooperative homing.

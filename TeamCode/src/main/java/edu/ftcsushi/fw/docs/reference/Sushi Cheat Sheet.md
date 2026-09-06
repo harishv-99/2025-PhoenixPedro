@@ -160,36 +160,10 @@ for another lifecycle.
 
 ## Reuse actuator status
 
-```java
-PlantSnapshot scalarStatus = flywheel.snapshot();
-PositionPlantSnapshot positionStatus = lift.snapshot();
-
-SemanticScalarCommand<Height> height =
-        SemanticScalarCommand.forEnum(Height.STOWED)
-                .map(Height.STOWED, 0.0)
-                .map(Height.LOW, 4.0)
-                .map(Height.HIGH, 14.0)
-                .build();
-SemanticScalarSnapshot<Height, PositionPlantSnapshot> namedStatus =
-        height.snapshot(lift.snapshot());
-
-Task moveHigh = SemanticScalarTasks.set(height, Height.HIGH)
-        .untilReachedBy(lift)
-        .leaveRequestOnCancel()
-        .timeout(MOVE_TIMEOUT_SEC)
-        .build();
-```
-
-`PlantSnapshot` covers command/requested/applied targets, resolution/status, feedback,
-measurement/errors, and arrival for power, velocity, and position Plants. Position snapshots add
-range, periodicity, reference, and search capability. Named requests use one semantic/numeric
-command and compose the Plant snapshot; they do not infer an enum from a double or expose a raw
-numeric writer. Per-wheel balance, piece evidence, debounce, and other robot-specific readiness stay
-in a capability-owned status that composes these facts. Use
-[`SemanticScalarTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarTasks.html>)
-for immediate, timed, or feedback-aware Tasks through that same command owner.
-
-For an ordinary named position, keep the public story smaller than its backing snapshot:
+After [moving a referenced lift](<../build/Move a Referenced Lift.md>), use the capability's
+existing command and status methods. Here `lift` is the constructed
+[`BasicLift`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicmechanisms/BasicLift.html>)
+capability, not a raw Plant or a new command object:
 
 ```java
 lift.setHeight(BasicLift.Height.LOW);            // persistent request; does not wait
@@ -201,13 +175,16 @@ telemetry.addData("lift", "%s %.2f/%.2f",
         status.requestedPositionIn());
 ```
 
-The enum supplies the semantic name; configuration and one mechanism mapping table own the numeric
-coordinates. `forEnum(...)` verifies that every enum value has a finite mapping before the command
-is constructed. Keep `create(initial, mapper)` for computed or non-enum meanings. Bind an ordinary
-exact semantic command with `.targetExactlyFrom(command)`; periodic equivalent-position policy
-remains explicit through `PlantTargets.equivalentPositionsOf(command)`. Use the same shape for
-named velocity requests. A grouped Plant's `atTarget()` is aggregate evidence; publish per-wheel
-readiness separately in capability status when the robot needs it.
+`setHeight(...)` changes a request now; `moveTo(...)` constructs work that will publish its request
+when started. `status()` captures already-published evidence without moving or sampling the lift.
+The mechanism owns one mapping from each enum name to its numeric coordinate and one private Plant
+connected to that command. Creating another semantic command next to an existing Plant would not
+connect it to that Plant and cannot provide matching feedback evidence.
+
+For the backing construction, see [Mechanism Target Planning](<../drive-vision/Mechanism Target Planning.md>).
+`PlantSnapshot` provides cached numeric facts; the mechanism combines them with its named request
+and exposes a small capability-owned status. Per-wheel balance, piece evidence, and other
+robot-specific readiness stay in that status rather than being invented from generic arrival.
 
 Keep that richer backing flat for ordinary launcher code:
 
@@ -226,10 +203,11 @@ matter; reserve `flywheelSnapshot()` for advanced diagnostics.
 
 ## Choose a Plant recipe
 
-Before copying a new actuator into a mechanism, run
+Before enabling a new actuator on physical hardware, run
 [`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>) to establish its FTC
 direction and any human-approved safe native endpoints. The wizard reports evidence; the mechanism
 still chooses meaningful Plant units, bounds, mapping, reference, and production policy.
+Reading, software authoring, and software-device tests do not require this physical step.
 
 | Hardware goal | Builder branch |
 |---|---|
@@ -288,9 +266,14 @@ Task routine = Tasks.sequence(
 );
 
 Task together = Tasks.parallelAll(firstTask, secondTask);
-Task bounded = Tasks.withTimeout(operation, 2.0);
-Task repairAfterAnyNaturalEnding = Tasks.sequenceOnCompletion(operation, repairRequest);
+Task bounded = Tasks.withTimeout(createOperationTask(), 2.0);
+Task repairAfterAnyNaturalEnding = Tasks.sequenceOnCompletion(
+        createOperationTask(), createRepairRequestTask());
 ```
+
+These are separate composition choices. The illustrative `create...Task()` methods each construct
+a fresh Task; they do not return an object saved from another graph. They run during graph
+construction, while the resulting Tasks do their work later when started.
 
 - Every Task object is single-use. Call the factory again to repeat it.
 - `Tasks.sequence(...)` is the ordinary prerequisite chain: only exact `SUCCESS` starts the next

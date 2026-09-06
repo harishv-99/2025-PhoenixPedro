@@ -12,7 +12,7 @@ tags:
 [Continuous Intake](<Continuous Intake.md>) through their explained software observations.
 No installation, test run, or matching robot is required.
 
-**One idea:** composition connects already-understood owners without taking over their jobs.
+**One idea:** **composition** means connecting already-understood owners without taking over their jobs.
 Before a physical combined run, each owner must have passed its own isolated hardware gate.
 
 ## Critical production idea
@@ -46,7 +46,9 @@ program.drive(
         FtcDrives.mecanum(hardwareMap, activeProfile.drive));
 ```
 
-The production controls also keep one held-level precision-drive meaning in that same source:
+The production controls also keep one held-level precision-drive meaning in that same source.
+A **decorator** wraps an existing source and modifies its returned value; `scaledWhen(...)`
+multiplies the drive request while the bumper is held. It does not wait for a new button press:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java -->
 ```java
@@ -65,6 +67,11 @@ request only on a rising edge. The three stick sources form a `DriveSource` samp
 cycle. Holding a stick therefore keeps driving without manufacturing button events or Tasks.
 Holding the right bumper scales the current translation to `0.35` and turn to `0.20`; because this
 is continuous level-based intent, it belongs in the source decorator rather than a callback.
+
+The source's defaults retain the earlier `0.05` shaping deadband, `1.5` translation/rotation
+exponents, and `1.0` scales; slow mode multiplies those results, before the profile's `0.25`
+forward/sideways and `0.20` turn caps. Edit the slow constants in `StarterTeleOpControls`; edit
+wiring, direction, caps, and both motion permissions in `StarterProfile.current()`.
 
 `declareIntake(...)` adds the intake mechanism as the first output and adds its read-only
 presenter. `program.drive(...)` then adds the final source-driven drive output. Presenter
@@ -147,6 +154,8 @@ assertEquals(profile.drive.drivebase.maxAxial,
 assertEquals(StarterIntake.Mode.COLLECT, telemetry.dataValue("intake.mode"));
 ```
 
+### Optional: inspect every slow-mode assertion
+
 The same scenario then holds the bumper across two cycles, releases it, and separately checks turn.
 That proves the production source—not a test-only mapping—uses held-level intent and applies both
 documented scales. First it captures normal forward output and checks the first slow sample:
@@ -211,6 +220,8 @@ Optionally run the maintained scenario after [software setup](<../getting-starte
     ```bash
     ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.starter.robot.StarterDriveAndIntakeSoftwareScenarioTest
     ```
+
+### What the observations establish
 
 **Read the causal chain:** one A rise runs in Bindings and selects `COLLECT`; the intake output
 applies that request; the later drive output samples the still-held stick and writes its capped

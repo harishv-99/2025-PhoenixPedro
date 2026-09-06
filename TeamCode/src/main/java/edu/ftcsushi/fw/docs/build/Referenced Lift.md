@@ -22,9 +22,14 @@ semantic `STOWED` hold while the same mechanism remains the sole Plant heartbeat
 
 ## Critical production idea
 
-A motor encoder reports changes in ticks, not an absolute lift height after startup. The team must
-author the relationship between hardware and mechanism units, then establish one trustworthy
-coordinate reference before ordinary position requests can be realized.
+An **encoder** counts shaft movement in increments called **ticks**; the count alone does not tell
+you the lift's height after startup. A **coordinate reference** ties one count to a known height.
+**Homing** means moving carefully until a known cue, here the bottom switch, establishes that tie.
+The example calls that height zero; it does not secretly reset the motor's encoder.
+
+**Feedback** is a returned measurement. A position **controller** repeatedly compares the requested
+height with measured height and adjusts motor effort to reduce the difference, or **error**. Here
+the FTC controller does that work. Sushi chooses the request, limits, and completion rule.
 
 ### Put every active coordinate answer behind one motion lock
 
@@ -65,6 +70,11 @@ The same method keeps named positions, homing/move timing, and fail-closed permi
 active candidates a team reviews. None proves the motor or switch identity, direction, scale,
 range, power, timeouts, or heights on a robot. Leave `allowLiftMotion` false through the software
 checkpoint and initial physical setup.
+
+The example's `ticksPerIn = 100.0` means 100 encoder counts per inch; after reference, a four-inch
+request corresponds to 400 counts from zero. **Tolerance** is how close a measurement must be to
+the target for software completion; `0.20 in` allows an error of at most two tenths of an inch.
+Those are example choices to measure on a real lift, not universal conversions.
 
 The mechanism validates the complete shared lift coordinate before any hardware lookup, even
 though this page exercises only homing:
@@ -121,10 +131,10 @@ unavailable instead of treating the current encoder count as known height.
 
 ### Turn an electrical observation into stable evidence
 
-The switch source is explicitly active-low: electrical LOW means pressed. The mechanism decorates
-that source with 0.02 seconds of on/off debounce, so one brief sample does not establish the
-reference. Switch polarity and placement are authored configuration facts that only a physical
-check can validate.
+The switch source is explicitly active-low: electrical LOW means pressed. The mechanism wraps
+that source with 0.02 seconds of on/off debounce, reusing the sampled filtering taught in
+[Read a Switch](<Read a Switch.md#first-pass-observations-every-loop>). Switch polarity and placement
+are authored configuration facts that only a physical check can validate.
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
 ```java
@@ -134,9 +144,12 @@ bottomSwitch = FtcSensors.digitalLow(
 ```
 
 `digitalLow(...)` performs the electrical LOW-to-pressed interpretation. `debouncedOnOff(...)`
-requires a pressed value to remain stable for `0.02 s` before publishing pressed and a released
-value to remain stable for `0.02 s` before publishing released. It rejects contact chatter; it does
-not inspect where the switch is mounted or prove that the lift reached bottom.
+accumulates each differing sample's preceding loop interval toward the `0.02 s` delay; observing
+the already-accepted value clears that pending time. This applies to both press and release.
+It filters flicker visible in the samples, but one sample after a long loop can meet the delay.
+It cannot prove continuous physical stability, where the switch is mounted, or that the lift is
+at bottom. Unlike the switch-only service, this private source is sampled by the active home Task
+when it needs the reference cue.
 
 ### Search cooperatively, then publish policy only on success
 
@@ -156,6 +169,10 @@ heightCommand = SemanticScalarCommand.forEnum(Height.STOWED)
 [`PositionCalibrationTasks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/PositionCalibrationTasks.html>)
 owns the temporary search request, cue, reference value, timeout, and release. It never calls
 `lift.update(clock)`; the mechanism remains the one Plant heartbeat and final hardware writer:
+
+The search recipe means “apply this search power until the switch is accepted, establish zero,
+and fail if the time budget expires.” `Tasks.sequence(...)` saves two Tasks to run in order: only
+the first one's `SUCCESS` starts the second. Constructing the sequence does not start either Task.
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
 ```java
@@ -184,6 +201,12 @@ extra sensor poll or duplicate status publication.
 The reference checkpoint has a deliberately narrow controls owner. It maps only X to a fresh home
 Task, so a student cannot accidentally invoke the later named-move controls while establishing the
 first reference:
+
+`requiredLift::home` is a Java **method reference**, shorthand for `() -> requiredLift.home()`.
+It saves a factory call, not a Task object. Unlike a short callback setter, a **Task binding** builds
+and queues work: each accepted X press calls the factory, and the managed Task phase runs the new
+Task. A queue holds later work until the current Task finishes. `claimBind()` is this controls
+owner's helper for rejecting a second registration attempt.
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftHomeControls.java -->
 ```java

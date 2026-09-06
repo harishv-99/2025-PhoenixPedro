@@ -17,7 +17,9 @@ A [Task](<../Framework Overview.md#task>) is a bookmark for unfinished robot wor
 advances it a little and returns so the other owners can update. It is not a thread and does not
 need `sleep()` or a private long-running loop.
 
-A timed intake request illustrates the lifetime choice inside its mechanism:
+A **builder** is a sequence of settings calls ending in `build()`, which creates the configured
+object. Here `Mode` is an enum, a fixed set of request names. The chained calls prepare a timed
+intake Task without starting it:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
@@ -45,8 +47,9 @@ different questions: “request LOW” and “request LOW, then tell me when the
 holds.” Neither directly writes the motor.
 
 A `Task` is single-use. Call `collectForSeconds(...)`, `home()`, or `moveTo(...)` again to build
-new work for a new run. A Java method reference such as `lift::home` saves a factory invocation,
-not an old Task. Repeatable `TaskBindings.onRise(...)` therefore receives a factory.
+new work for a new run. A **factory** is a function that creates an object. A Java method reference
+such as `lift::home` means `() -> lift.home()` here: save that factory call, not an old Task.
+Repeatable `TaskBindings.onRise(...)` therefore receives a factory.
 
 ## Keep outcomes and continuation explicit
 
@@ -64,7 +67,8 @@ Fixed child Tasks are constructed eagerly but do not all start at once. The
 [lift-sequence lesson](<../../build/First Autonomous.md>) makes success and abnormal outcomes
 observable without adding route behavior.
 
-Cancellation before start has no effect. Active cancellation is terminal and idempotent; repeated
+Cancellation before start has no effect. Active cancellation is terminal (this Task cannot resume)
+and idempotent (repeating it adds no effect); repeated
 or terminal cancellation does nothing. Direct cancellation starts no later child. A mechanism must
 state what happens to its persistent request: the timed intake selects `STOPPED`, while the
 [feedback lift](<../../build/Move a Referenced Lift.md>) explicitly uses

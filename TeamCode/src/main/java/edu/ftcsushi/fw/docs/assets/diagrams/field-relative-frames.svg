@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 660" width="100%" role="img" aria-labelledby="title description">
+  <title id="title">One driver direction, two robot headings</title>
+  <desc id="description">Two stacked top-down views with field positive X to the right and positive Y up. Solid arrows label robot axes; bold dashed arrows show the same stick-up request. At zero-degree robot heading the request means robot forward. After a counter-clockwise quarter-turn to ninety degrees, it means robot right, or negative robot Y. Both dashed arrows point toward field positive X.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#172b4d"/></marker>
+  </defs>
+  <rect width="400" height="660" rx="12" fill="#ffffff"/>
+  <g fill="#172b4d" font-family="Arial, sans-serif" font-size="19">
+    <text x="24" y="32" font-size="22" font-weight="bold">Same request: field +X</text>
+    <text x="24" y="60" font-size="18">Illustrative; dashed arrows = stick up</text>
+    <rect x="20" y="80" width="360" height="230" rx="8" fill="#f1f5f9" stroke="#52657d"/>
+    <rect x="20" y="326" width="360" height="230" rx="8" fill="#f1f5f9" stroke="#52657d"/>
+    <text x="36" y="110" font-weight="bold">Heading 0° (0 rad)</text>
+    <text x="36" y="356" font-weight="bold">Heading 90° (π/2 rad)</text>
+    <rect x="86" y="164" width="134" height="80" rx="8" fill="#dce9f5" stroke="#172b4d" stroke-width="2"/>
+    <rect x="156" y="391" width="84" height="108" rx="8" fill="#dce9f5" stroke="#172b4d" stroke-width="2"/>
+    <path d="M150 204 H326" fill="none" stroke="#172b4d" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <path d="M150 204 V135" fill="none" stroke="#172b4d" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <path d="M198 452 V381" fill="none" stroke="#172b4d" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <path d="M198 452 H85" fill="none" stroke="#172b4d" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <path d="M198 452 H329" fill="none" stroke="#172b4d" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <circle cx="150" cy="204" r="5" fill="#172b4d"/>
+    <circle cx="198" cy="452" r="5" fill="#172b4d"/>
+    <text x="230" y="190">+X forward</text>
+    <text x="60" y="145">+Y left</text>
+    <text x="212" y="397">+X forward</text>
+    <text x="65" y="435">+Y left</text>
+    <text x="260" y="435">−Y right</text>
+    <path d="M65 265 H330" fill="none" stroke="#172b4d" stroke-width="4" stroke-dasharray="8 5" marker-end="url(#arrow)"/>
+    <path d="M65 514 H330" fill="none" stroke="#172b4d" stroke-width="4" stroke-dasharray="8 5" marker-end="url(#arrow)"/>
+    <text x="36" y="294">Request: robot forward</text>
+    <text x="36" y="542">Request: robot right</text>
+    <path d="M45 616 H141" fill="none" stroke="#172b4d" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <path d="M45 616 V582" fill="none" stroke="#172b4d" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <text x="158" y="622">Field +X</text>
+    <text x="58" y="594">Field +Y</text>
+    <text x="24" y="648" font-size="18">Robot axes turn; field direction stays.</text>
+  </g>
+</svg>

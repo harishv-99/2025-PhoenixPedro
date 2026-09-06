@@ -9,6 +9,13 @@ tags:
 command targets, queued pulses, behavior overlays, equivalent positions, and advanced alternative
 requests into one requested Plant target each loop.
 
+**Before this page:** understand requests, feedback, and arrival from
+[moving a referenced lift](<../build/Move a Referenced Lift.md>). This is an optional construction
+reference, not another beginner mechanism recipe. **Target resolution** means choosing which
+requested number the Plant will consider this loop. An **overlay** gives one requested behavior
+priority over another; a **fallback** states what to request when the selected behavior has no
+usable value. The sections below add those choices to the ordinary exact-command path.
+
 The Plant still owns low-level hardware/control work. Target planning answers:
 
 ```text
@@ -18,7 +25,7 @@ what target should this Plant request this loop?
 The Plant answers:
 
 ```text
-can this hardware safely apply that request, and is the mechanism at that target?
+what target do the configured bounds and guards allow, and what does available feedback show?
 ```
 
 ## How to read the construction examples
@@ -52,7 +59,7 @@ Plant target guards
     bounds, homing/reference state, interlocks, fallback targets, target rate limits
         ↓
 applied target
-    one safe target after bounds and guards, still in the Plant's public units
+    one target allowed by configured bounds and guards, still in the Plant's public units
         ↓
 actuator command
     the native position/velocity command or normalized regulated power sent to hardware
@@ -299,18 +306,21 @@ validate `hasCommandTarget()` only when the injected owner needs a writable comm
 
 Do not replace this rule with `Plant.set(...)`, a Plant-root Task facade, a command-to-Plant
 backlink, or a public binding wrapper. Those add a second command path or another noun. The one
-intentional place both objects remain explicit is a feedback-aware Task:
+intentional place both objects remain explicit is a feedback-aware Task. Use the feedback-capable
+`arm` and its graph-owned command from the earlier overlay construction, not the power-only intake:
 
 ```java
-ScalarTasks.set(intake.commandTarget(), GOAL)
-        .untilReachedBy(intake)
-        .cancelTo(IDLE)
+ScalarTasks.set(armCommand, ARM_RAISED_TICKS)
+        .untilReachedBy(arm)
+        .cancelTo(ARM_IDLE_TICKS)
         .build();
 ```
 
 Here the target identifies the persistent request being written, while the Plant selects the
 resolution provenance and physical feedback used for completion. A target may feed more than one
 Plant, so the observer cannot be inferred from the target.
+The power-only intake has no measured-arrival evidence; use a timed Task or an explicitly observed
+condition for it, never `.untilReachedBy(intake)`.
 
 This direct `ScalarTasks` path assumes the scalar is the complete capability request. If a public
 capability names `Height`, `Mode`, or another semantic value, use one

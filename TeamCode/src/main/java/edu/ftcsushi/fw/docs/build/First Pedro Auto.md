@@ -20,6 +20,13 @@ for runtime wiring, and keep motion blocked for the power-limit reason stated be
 
 ## Critical production idea
 
+A **route** describes where the robot should travel. Pedro's **follower** uses position estimates
+to produce drive commands along that route. **Localization** supplies those estimates; it is not
+proof that the robot is actually at the reported location.
+
+A **pose** contains position and facing direction, or **heading**. A **field frame** fixes the axes
+to the field instead of the robot; a **transform** converts coordinates between two named frames.
+Angles here use radians: a full turn is `2 * Math.PI`, and zero points along the frame's positive X.
 The maintained checkpoint authors one straight route and one Task-level time budget in named units:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
@@ -39,6 +46,10 @@ Do not silently paste Sushi-frame coordinates into this route. The runtime's con
 `PedroFieldTransform` converts localization facts between Sushi's FTC field convention and Pedro;
 the advanced integration guide owns that runtime choice.
 
+The setup helper `registerServiceOrStop(...)` makes sure the acquired Pedro heartbeat has a
+cleanup owner, or stops it if registration fails. That heartbeat remains active outside the route
+Task because the follower has lifecycle work of its own.
+
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
 ```java
 Pose startPose = new Pose(START_X_INCHES, START_Y_INCHES, HEADING_RAD);
@@ -47,7 +58,10 @@ Pose startPose = new Pose(START_X_INCHES, START_Y_INCHES, HEADING_RAD);
 registerServiceOrStop(program, new PedroHeartbeat(runtime, startPose));
 ```
 
-The fixed route then uses that same authored start pose and the visible end coordinates:
+The fixed route then uses that same authored start pose and the visible end coordinates.
+`BezierLine` is Pedro's straight-line path piece; equal heading-interpolation endpoints keep the
+heading constant. `PathChain` stores the built route. In `RouteTask<PathChain>`, the type inside
+angle brackets tells Java which route representation the Task uses:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
 ```java
@@ -223,7 +237,7 @@ why the two result vocabularies are distinct, and why both displayed facts must 
 same retained route attempt. Those answers complete this software-boundary lesson; the physical
 gate remains blocked even if you optionally run the supplied test successfully.
 
-## Isolated hardware gate — currently blocked
+## Isolated hardware gate — currently blocked { #isolated-hardware-gate-currently-blocked }
 
 Keep the example `@Disabled` and `ROBOT_MOTION_REVIEWED` false. Pedro 2.1.2 creates its Follower
 with a separate `globalMaxPower` default of `1.0`; when following begins, that current value

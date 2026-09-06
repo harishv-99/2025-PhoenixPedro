@@ -5,7 +5,11 @@ tags:
 
 # FTC Sensors
 
-Use this guide alongside [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) when deciding whether a sensor belongs in a local control loop, an event/classification supervisor, or a spatial-guidance stack.
+**Before this reference:** understand [one switch observation](<../build/Read a Switch.md>) and
+[Sources](<../getting-started/Framework Overview.md#source>). Choose the section for the sensor you
+need; encoder regulation, color classification, and observation-window memory are independent
+optional branches. [Robot design](<../design/Recommended Robot Design.md>) is a companion for
+ownership decisions, not required reading before using one sensor.
 
 This guide explains the recommended way to read FTC sensors in Sushi.
 
@@ -23,6 +27,10 @@ The output types are framework-native:
 The goal is to make sensor reads participate in Sushi's **one loop, one heartbeat** design:
 
 > Define sources once, sample them using the current `LoopClock`.
+
+A **sample** is one reading. A **memoized** source saves a successful sample so consumers in that
+loop reuse it; it does not prove that the hardware reading is fresh or valid. `NaN` (not a number)
+and infinity are non-finite values, not measurements a robot may silently treat as zero.
 
 ---
 
@@ -54,6 +62,12 @@ Notes:
 ---
 
 ## Motor and incremental-encoder measurements
+
+An **encoder** counts movement; each count is a **tick**. Position uses counts, while velocity
+uses how many counts change per second. Converting ticks to mechanism movement depends on the
+installed encoder and gearing. Before constructing the regulated Plant below, read the
+[velocity lesson](<../build/Single Flywheel Velocity.md>) and the
+[controller vocabulary](<FTC Actuators & Plants.md#device-managed-position-with-ftc-overrides>).
 
 FTC motor ports expose encoder position and direct velocity through different SDK paths:
 
@@ -158,6 +172,12 @@ timeout, recovery, derating, priority, and safety choice.
 
 Distance sensors are represented as a `ScalarSource` in your chosen unit.
 
+A distance near one threshold may fluctuate and repeatedly change a true/false decision.
+**Hysteresis** uses two thresholds: below, `6 cm` or less accepts near, `7 cm` or more accepts far,
+and the gap retains the previous answer. **Debounce** then delays accepting a changed Boolean;
+here differing samples must accumulate `0.05 s` of loop intervals. This filters observed changes,
+not unseen motion between samples. See the [sampled rule](<../core-concepts/Sources and Signals.md#debounce-and-hysteresis>).
+
 ```java
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import edu.ftcsushi.fw.core.source.BooleanSource;
@@ -172,7 +192,7 @@ ScalarSource gateDistanceCm = FtcSensors.distanceCm(gateSensor);
 // Ball present at gate: hysteresis + debounce.
 BooleanSource ballAtGate = gateDistanceCm
         .hysteresisBelow(6.0, 7.0)     // ON <= 6cm, OFF >= 7cm
-        .debouncedOnOff(0.05, 0.05);   // 50ms stability
+        .debouncedOnOff(0.05, 0.05);   // 50ms of differing sampled loop intervals
 ```
 
 Notes:
@@ -180,12 +200,17 @@ Notes:
 * `FtcSensors.distance*(...)` sources publish **one successful sample per loop**. Repeated reads
   reuse that result; a failed hardware read publishes no substitute and remains eligible for a
   same-cycle retry.
-* For stable boolean gates, prefer **hysteresis** (threshold-domain stability) and then
-  **debounce** (time-domain stability).
+* Combine hysteresis and debounce only when the robot needs both threshold memory and an
+  additional sampled-time delay; those are separate decisions, not automatic sensor requirements.
 
 ---
 
 ## Color sensors
+
+This optional branch turns color-channel readings into a robot-owned classification, such as
+GREEN or UNKNOWN. **RGBA** means red, green, blue, and the sensor's alpha/brightness channel.
+A **ratio** compares one channel with the total color signal, reducing dependence on overall
+brightness. It does not remove the need to check real lighting, distance, and material.
 
 Sushi supports two useful ways to read FTC color sensors:
 
@@ -220,6 +245,11 @@ report 0–255, but others report larger values. Sushi encourages **ratio-based*
 
 ### Normalized channels (recommended for classification)
 
+**Normalized** readings express channel strengths on a common scale. **Gain** amplifies the
+sensor response; it does not add evidence when the object is absent. **Chroma** describes the
+spread between strongest and weakest color channels, so a low value gives weak color-separation
+evidence. The thresholds and gain below are demonstration candidates to measure on your robot.
+
 ```java
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import edu.ftcsushi.fw.core.color.NormalizedRgba;
@@ -252,8 +282,9 @@ Notes:
   HSV-style helpers (`hueDeg()`, `saturation()`, `value()`).
 * For object classification, only trust the reading when the object is **close enough** or the
   brightness / alpha channel is strong enough.
-* Treat HSV as **secondary debug telemetry**, not the first thing you threshold on.
-  Hue gets noisy when chroma is low.
+* **HSV** describes hue (color angle), saturation (color strength relative to brightness), and
+  value (brightness). Treat it as **secondary debug telemetry**, not the first thing you threshold
+  on. Hue gets noisy when chroma is low.
 * If your sensor supports a built-in light or gain, set those during initialization; `FtcSensors`
   only adapts the reading into Sushi sources.
 * The framework hardware menu includes `HW: Color Sensor (Normalized)`, which prints
@@ -306,6 +337,10 @@ robot-specific.
 
 Touch / limit switches are a natural `BooleanSource`.
 
+Physical contacts can briefly flicker while settling. The debounce below filters those observed
+changes using `0.02 s` ON and OFF delays; it does not prove continuous physical stability.
+A **rising edge** is a one-loop true result when the accepted value changes from false to true.
+
 ```java
 import com.qualcomm.robotcore.hardware.TouchSensor;
 import edu.ftcsushi.fw.core.source.BooleanSource;
@@ -315,7 +350,7 @@ TouchSensor limit = hardwareMap.get(TouchSensor.class, "armLimit");
 
 // Memoized per loop by default.
 BooleanSource atLimit = FtcSensors.touchPressed(limit)
-        .debouncedOnOff(0.02, 0.02); // 20ms stability to ignore switch bounce
+        .debouncedOnOff(0.02, 0.02); // 20ms sampled ON/OFF delays
 
 BooleanSource justHitLimit = atLimit.risingEdge();
 ```
@@ -330,6 +365,11 @@ Notes:
 ## Digital inputs
 
 Digital sensors (beam breaks, hall sensors, endstops) are commonly wired as FTC `DigitalChannel` devices.
+
+HIGH and LOW are electrical levels. **Polarity** is the choice of which level means the robot
+fact is true; **active-low** means LOW is interpreted as asserted. Verify that interpretation from
+the actual circuit, not the variable name. The [switch lesson](<../build/Read a Switch.md>) teaches
+the complete observation and publication path.
 
 Sushi provides two explicit adapters:
 
@@ -378,4 +418,7 @@ BooleanSource atTop = armDeg
 Notes:
 
 * `ScalarSource` has built-in helpers like `clamped(...)`, `deadband(...)`, `hysteresisAbove(...)`, and `holdLastFinite(...)`.
-* Use `holdLastFinite(...)` when a sensor sometimes returns NaN/Inf (common in some vision pipelines).
+* `holdLastFinite(maxAgeSec, fallback)` can retain an earlier finite number through a brief missing
+  reading. For example, `potVolts.holdLastFinite(0.10, Double.NaN)` permits at most `0.10 s` of
+  retention before returning unavailable. Choose the interval and the behavior on fallback
+  explicitly; holding the number does not make it a fresh measurement or reset a sensor timestamp.

@@ -19,6 +19,11 @@ single-use Tasks.
 **New here:** velocity itself is the public capability intent. There is no named mode to map, so
 direct behavior writes the Plant-owned numeric command and deferred behavior uses `ScalarTasks`.
 
+Here **velocity** means encoder counts of movement per second, with the configured direction
+defining positive motion. A request of `250 ticks/sec` asks the controller to maintain that rate;
+it is not `0.25` power and not 250 revolutions per second. **Tolerance** is an allowed difference
+between measured and requested velocity: `25 ticks/sec` around 250 means 225 through 275.
+
 ## Critical production idea
 
 ### Keep configuration, one fixture candidate, and permission together
@@ -81,10 +86,13 @@ Read the stages as questions:
 | `build()` | Is the complete recipe ready to become one Plant? |
 
 `build()` resolves and configures the recipe; it does not submit a motion command. The initial
-command is zero, and the mechanism's first normal `update(clock)` is what submits it. Ordinary
-`deviceManaged()` also leaves the FTC controller's existing PIDF coefficients unchanged. Software
-construction therefore proves neither that those coefficients are tuned nor that a numeric value
-is safe on a particular mechanism. Use the separate
+command is zero, and the mechanism's first normal `update(clock)` is what submits it.
+
+**PIDF coefficients** are controller tuning numbers that determine how measured error and expected
+effort affect the motor command. They are not the velocity request or its completion tolerance.
+Ordinary `deviceManaged()` leaves the FTC controller's existing coefficients unchanged; construction
+does not prove they are tuned or safe. You need not understand the control equations to follow this
+software example. Use the separate
 [Control Tuning Workflow](<../testing-calibration/Control Tuning Workflow.md>) after direction,
 units, range, feedback sign, and physical stop behavior are established. The example rejects a
 tolerance equal to or larger than its maximum before hardware lookup, so a zero measurement is not
@@ -253,6 +261,24 @@ below whether or not you run the scenario.
   Task outcome.
 - **Cannot conclude:** physical direction, encoder scale, PIDF tuning, loaded speed, coast-down, or
   emergency-stop distance.
+
+First construct the supplied scenario and select the old `200` request. The test's software motor
+records commands; its reported measurement changes only when the test supplies one. The initial zero measurement
+therefore does not satisfy that request:
+
+<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelSoftwareScenarioTest.java -->
+```java
+// ARRANGE: the software motor begins with no command and an authored zero measurement.
+Scenario scenario = new Scenario();
+scenario.motor.setMeasuredVelocityTicksPerSec(0.0);
+
+// REQUEST: intent changes now; cached applied/measurement facts and hardware do not.
+scenario.flywheel.setVelocityTicksPerSec(200.0);
+```
+
+The scenario performs the first output heartbeat with that zero measurement. Only then does the
+following later `200` measurement establish old success. Changing a measured value does not select
+a command; the explicit setter above supplied that separate cause:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicflywheel/BasicFlywheelSoftwareScenarioTest.java -->
 ```java

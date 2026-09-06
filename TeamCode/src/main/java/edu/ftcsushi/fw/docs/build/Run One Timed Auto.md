@@ -38,7 +38,9 @@ saved Task. That START call requests `COLLECT` and then lets the intake output a
 Later loops check the elapsed time without `sleep()`; when 0.75 seconds have elapsed, the Task
 requests `STOPPED` and finishes. Other loop work remains responsive throughout.
 
-The small factory returns a new bookmark every time it is called:
+The small **factory method** returns a new bookmark every time it is called. `static` lets setup
+call this method without constructing another Auto object. `Objects.requireNonNull(...)` rejects
+a missing intake before asking it to build work:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.java -->
 ```java
@@ -51,6 +53,9 @@ static Task oneTimedCollect(StarterIntake intake) {
 Each Task object is single-use. To run the behavior again, call the factory again instead of
 restarting an old Task. On an early FTC STOP, the program cancels the active Task first; its
 cancellation selects `STOPPED`, and cleanup then shuts down the intake output and commands zero.
+A Task's **outcome** names how its work ended: this duration completes with `SUCCESS`, while
+early cancellation reports `CANCELLED`. Success here means the software interval finished, not
+that the intake collected an object.
 Sequences, parallel work, and outcome branches belong in the later
 [First Autonomous](<First Autonomous.md>) lesson.
 
@@ -120,8 +125,9 @@ program-owned runner, and then performs one downstream output update. That makes
 duration request observable immediately and starts the 0.75-second interval at its own START
 boundary—not during INIT and not from the previous loop's `dtSec()`.
 
-The mechanism's Task uses the same semantic command and final Plant as TeleOp. Its explicit ending
-publishes the safe request on both normal completion and active cancellation:
+The mechanism's Task uses the same semantic command and final Plant as TeleOp. Read this builder
+as “select COLLECT when started, keep it for this duration, then select STOPPED.” Its explicit
+ending publishes that request on both normal completion and active cancellation:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
@@ -242,24 +248,8 @@ assertEquals(0.0, motor.power(), 0.0);
 mode.stop();
 ```
 
-The second method creates another managed host, stops while its root is active, and observes the
-exact cancellation request and motor command. It then constructs a second root through the same
-production factory and proves both fresh identity and rejection of reuse:
-
-<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
-```java
-StarterProfile profile = enabledProfile();
-FtcTestHardware firstHardware = new FtcTestHardware();
-FtcTestHardware.MotorProbe firstMotor =
-        firstHardware.addMotor(profile.intake.motorName);
-ManagedAuto first = prepare(
-        new ManagedAuto(profile),
-        firstHardware,
-        new StarterTestHardware.TelemetryProbe(),
-        new Gamepad());
-first.init();
-first.start();
-```
+The second method supplies another managed host, `first`, with its own software motor, `firstMotor`,
+and the same production configuration/routine. It stops while the root is active:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
 ```java
@@ -270,35 +260,10 @@ assertEquals(StarterIntake.Mode.STOPPED, first.intake.status().mode());
 assertEquals(0.0, firstMotor.power(), 0.0);
 ```
 
-The same test then builds a second managed host. Its configuration invokes the production factory
-again, so the retained roots must be different objects:
-
-<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
-```java
-// FRESHNESS: another configuration invokes the same production factory for a new Task.
-StarterProfile secondProfile = enabledProfile();
-FtcTestHardware secondHardware = new FtcTestHardware();
-secondHardware.addMotor(secondProfile.intake.motorName);
-ManagedAuto second = prepare(
-        new ManagedAuto(secondProfile),
-        secondHardware,
-        new StarterTestHardware.TelemetryProbe(),
-        new Gamepad());
-second.init();
-assertNotSame(first.root, second.root);
-```
-
-Attempting to start the already-used first root fails fast with the single-use explanation:
-
-<!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java -->
-```java
-try {
-    first.root.start(new ManualLoopClock().clock());
-    fail("Expected a started Task to reject reuse");
-} catch (IllegalStateException expected) {
-    assertTrue(expected.getMessage().contains("single-use"));
-}
-```
+**Optional regression detail:** the complete test also builds a second managed host and checks that
+its root is a different object. Attempting to start the already-used first root fails fast with a
+single-use error. Those checks protect the factory contract; writing a second host or exception
+test is not required to understand this timed Auto.
 
 Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 

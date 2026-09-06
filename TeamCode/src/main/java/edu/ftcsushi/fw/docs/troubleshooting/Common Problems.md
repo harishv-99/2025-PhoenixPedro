@@ -166,7 +166,8 @@ Choose the binding by meaning:
 - `whileHigh(...)` / `whileLow(...)` — run a quick action on every eligible loop at that level;
 - `copyEachCycle(...)` — refresh one continuous scalar command each loop; or
 - `program.taskBindings().onRise(...)` — construct and enqueue one fresh Task per press; the shared
-  FIFO runner starts it when it reaches the queue head.
+  FIFO (first in, first out) runner starts it when it reaches the queue head: queued work starts
+  in arrival order.
 
 The first edge sample establishes a baseline, so starting the OpMode with a button already held does
 not invent a press. A control context may also require a neutral sample before it rearms.

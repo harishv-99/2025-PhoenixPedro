@@ -5,6 +5,12 @@ tags:
 
 # FTC manual bulk caching
 
+**Before this optional reference:** understand [managed loop order](<../core-concepts/Loop Structure.md>)
+and [source memoization](<../core-concepts/Sources and Signals.md#memoization>). A **bulk packet**
+contains several readings returned together by a REV hub. **Caching** saves that packet so later
+eligible reads can reuse it; **invalidation** discards the saved packet so a later read must obtain
+another. This changes which observations readers receive, not just how quickly they receive them.
+
 `FtcBulkCaching.manual(hardwareMap)` is an advanced, opt-in FTC-boundary owner for a robot that has
 already decided to use REV/Lynx `MANUAL` bulk caching. It owns module discovery, cache-mode changes,
 deduplicated Sushi-cycle invalidation attempts, and terminal cleanup inside the managed

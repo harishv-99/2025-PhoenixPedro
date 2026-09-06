@@ -13,6 +13,10 @@ Use this philosophy for a control meaning, mechanism, service, route, or Auto po
 A short test is useful when its causal chain is obvious. A long test that hides the request,
 heartbeat, or injected evidence can pass without teaching what happened.
 
+**Before authoring:** read the [first software experiment](<../examples/Hardware-free Reference Scenarios.md>)
+for assertions, a recording device probe, and a manual clock. Reading this guide needs no test run
+or hardware. An assertion checks expected against actual; a probe records software calls, not motion.
+
 ## The five evidence levels
 
 | Level | Question it answers | What it cannot establish |

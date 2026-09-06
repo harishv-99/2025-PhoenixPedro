@@ -10,29 +10,25 @@ tags:
 **Outcome:** run one deliberately limited velocity trial, explain the displayed response, and
 record a candidate without mistaking it for production configuration.
 
-**Before this page:** complete [Using the Tester Console](<Using the Tester Console.md>) and the
-relevant [actuator bring-up](<Actuator Bring-up.md>). Verify direction, feedback sign, units, a
-conservative target envelope, and immediate FTC STOP before changing gains.
+**Before reading:** understand the request/measurement distinction in
+[one flywheel velocity](<../build/Single Flywheel Velocity.md>) and read
+[Using the Tester Console](<Using the Tester Console.md>). No hardware is needed to read.
+**Before operating:** complete the relevant [actuator bring-up](<Actuator Bring-up.md>). Verify
+direction, feedback sign, units, a conservative target envelope, and immediate FTC STOP.
 
 To operate the first experiment, you also need a team-reviewed velocity-tuning OpMode already built
 from that mechanism's fresh Plant. You do not need its source while operating it. If the team has
 not supplied one, complete **Build the tuning host** below and compile it before returning here; do
 not enable the Reference host unchanged on different hardware.
 
-Live tuning moves hardware. It is an experiment, not ordinary robot operation. Sushi therefore
-gives velocity and position tuning one framework-owned workflow:
+An encoder counts movement in **ticks**; ticks per second measures how quickly that count changes.
+A **controller** compares requested and measured speed and adjusts the motor command. **Gains**
+are numbers controlling that adjustment. For your first trial, keep the reviewed gains unchanged
+and vary only the target; the optional control explanation below prepares later gain changes.
 
-```text
-one tester declaration
-  -> one fresh Plant from the production recipe
-  -> the controller topology discovered from that completed Plant
-  -> one accepted A capture produces each immutable experiment segment
-```
-
-The workflow owns the Panels draft, complete-candidate validation, target changes, controller
-readback, response metrics, history, restoration attempts, and terminal Plant cleanup. Robot code supplies
-only the experiment name, a finite allowed physical target range, and the canonical fresh-Plant
-factory. It does not repeat a motor name, controller type, gain schema, target object, or output.
+Live tuning moves hardware. The framework workflow checks proposed settings, applies accepted
+trials, records their response, and owns cleanup. **Tuning** means testing controller settings
+against a written criterion; it is not ordinary robot operation or an automatic search for gains.
 
 !!! danger "Danger: keep a physical stop plan"
 
@@ -80,11 +76,12 @@ measurement. They can hide one slow wheel and one fast wheel. The controller evi
 also shows `member.1.*` and `member.2.*` names, measurements, errors, native tolerances, and
 `withinMappedTolerance`; both members must pass before the segment reports at target.
 
-Before the first A press, inspect **Controller topology**. If it ends in
-`DIVERGENT_INITIAL_READBACKS`, the two motors began with different PIDF tuples, but their individual
+Before the first A press, inspect **Controller topology**, which identifies the controllers and
+their arrangement. If it ends in
+`DIVERGENT_INITIAL_READBACKS`, the two motors began with different stored controller settings, but their individual
 pre-apply values are not shown on this screen. Do not press A: use BACK/STOP, have the robot owner
 review and reconcile the initial motor configurations, then start a fresh session. Otherwise the
-first accepted candidate may replace those different tuples before you have reviewed them.
+first accepted candidate may replace those different settings before you have reviewed them.
 
 A **candidate** is the complete proposed set of gains and experiment values. Before motion, write a
 measurable acceptance rule, such as “both wheels settle (enter and remain within 100 ticks per
@@ -104,10 +101,10 @@ Run one segment:
    and START. The tuner initially requests zero.
 3. In the Panels **Configurables** editable table, enter one conservative
    `experiment.targetVelocity`, leave
-   `experiment.autoStopAfterSec` at `5.0`, change at most the gain being tested, and select
+   `experiment.autoStopAfterSec` at `5.0`, leave gains unchanged for this first trial, and select
    **Update All**. This edits only a draft; it does not move hardware.
-4. Recheck every displayed value, then press A once on the Panels virtual gamepad. A begins an
-   asynchronous snapshot, so `CAPTURING` may appear. `COLD START WAIT` may appear while finite
+4. Recheck every displayed value, then press A once on the Panels virtual gamepad. The workflow
+   collects and validates the edited values over later loops, so `CAPTURING` may appear. `COLD START WAIT` may appear while finite
    feedback and zero-at-target evidence arrive; `ZERO WAIT` may appear while every grouped
    controller proves mapped zero. A wait can be skipped when its evidence is already satisfied.
    Motion begins only after **Current segment** shows the accepted segment ID. Do not press A
@@ -128,6 +125,10 @@ load, or production adoption. Copy values only after repeated reviewed trials, t
 production mechanism.
 
 ## Choose the workflow that matches production
+
+The operational experiment is complete. The remaining sections are **optional depth** for
+constructing a tuning host, understanding controller choices, or planning a later experiment.
+They are not prerequisites for operating a supplied, reviewed host with unchanged gains.
 
 Use `velocityControl(...)` only when the production Plant controls velocity. Use
 `positionControl(...)` only when the production Plant controls position and the adopting mechanism
@@ -286,6 +287,13 @@ verified cold zero because sequential SDK writes briefly give members different 
 
 ### Why the PID is related to the chosen target
 
+**Optional control foundation:** a **setpoint** is the immediate goal supplied to the controller;
+it may move gradually toward the final target. **PID** combines correction from present error
+(proportional, P), accumulated error (integral, I), and changing error (derivative, D).
+Their gains set each contribution's strength. **Feedforward** predicts effort from a model of the
+mechanism instead of waiting for error. FTC **PIDF** includes the device controller's F term;
+it is not interchangeable with every Sushi feedforward model.
+
 The test range selects the reference conditions under which the controller is judged. It does not
 change the PID equation. During a segment, feedback still computes error from the current control
 setpoint and measured velocity:
@@ -301,6 +309,11 @@ reveals whether one checked-in candidate behaves well across the mechanism's int
 range; Sushi does not silently optimize the gains from those trials.
 
 ## Motion and lift feedforward in a velocity controller
+
+Here **acceleration** is the change in requested velocity per second. `sign(...)` selects the
+direction; `kS` scales effort associated with starting/maintaining movement against friction,
+`kV` scales velocity effort, `kA` scales acceleration effort, and `kG` supplies gravity support.
+These are model terms to validate on the mechanism, not universal motor constants.
 
 Motion feedforward models effort associated with moving:
 
@@ -329,6 +342,12 @@ SDK/firmware PIDF coefficient in native controller units; Sushi does not relabel
 `kV`, infer a gravity term, or claim a trajectory feedforward model that the device does not expose.
 
 ## Tune the physical model before residual feedback
+
+**Residual error** is the difference left after the model's contribution. **Damping** reduces
+oscillation; **output limits** cap the command. Integral control accumulates error, so its limits
+must prevent an accumulated correction from becoming excessive when the output cannot do more.
+Use the [regulated-control explanation](<../ftc-boundary/FTC Actuators & Plants.md>) before
+changing these models or gains; the following procedure is optional advanced physical work.
 
 This workflow records manual experiments; it does not choose coefficients. Use a supported
 mechanism, conservative output policy, physical stop access, and one reviewed change at a time:
@@ -457,9 +476,8 @@ not mean a ball entered a basket or an object stayed on a tray. Those are extern
 
 ## Recording distance and shot success
 
-TUNE-03 intentionally does not add an arbitrary metadata map, success button, file writer, or
-session database. Those features would mix robot-specific experiment meaning and Android storage
-policy into a controller tuner. Use a simple lab sheet or spreadsheet keyed by the displayed short
+The tuner records controller response, not robot-specific shot success or persistent lab records.
+Use a simple lab sheet or spreadsheet keyed by the displayed short
 session ID and segment ID:
 
 ```text
@@ -500,9 +518,7 @@ second validation loop. A live sensor range is runtime evidence, so gate on the 
 result before commanding hardware; an unavailable range must remain unavailable rather than
 select an endpoint.
 
-This keeps exact controller evidence correlated without pretending Sushi can infer success. If a
-future robot repeatedly proves that one typed piece of external evidence should be framework-owned,
-it can justify a separate bounded item; TUNE-03 does not introduce a string-keyed metadata registry.
+This keeps exact controller evidence correlated without pretending Sushi can infer success.
 
 ## Panels draft and apply semantics
 
@@ -535,9 +551,7 @@ That is coherent capture, not a claim that the browser transport provides an ato
 
 `controlFromCustomRegulator(...)` remains the advanced complete-law seam. Its owner must define a
 typed complete candidate, reset/reseed rules, evidence, hot-transition policy, and restoration.
-The obsolete peer `PidfRegulator`, `ScalarRegulators.pid(...)`, `pidf(...)`, and opaque
-`setpointFeedforward(...)` construction paths have been removed; standard Plant control has one
-current typed grammar and one Plant-derived tuning path.
+Standard Plant control has one current typed grammar and one Plant-derived tuning path.
 
 ## Related reading
 

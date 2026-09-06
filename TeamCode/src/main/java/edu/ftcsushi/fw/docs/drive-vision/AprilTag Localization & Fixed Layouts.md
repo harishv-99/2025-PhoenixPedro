@@ -5,6 +5,24 @@ tags:
 
 # AprilTag Localization & Fixed Layouts
 
+**Before this page:** read [field-relative drive](<../examples/Field-relative Drive.md>) for heading
+and frames, and [one switch](<../build/Read a Switch.md>) for observations and cached status. This
+optional reference adds **localization**: estimating the robot's position and facing direction
+(its **pose**) in field coordinates. An AprilTag is a printed identifier whose observed size and
+orientation help estimate its position relative to the camera. A trusted tag location and measured
+camera mount then let the software estimate the robot's field pose.
+
+For a first reading, follow [trusted fixed tags](<#1-detectable-tags-vs-trusted-field-fixed-tags>),
+[the three estimation roles](<#2-localization-roles-absolute-pose-vs-motion-prediction>),
+[camera ownership](<#3-vision-lane-ownership>), and
+[the webcam/raw-tag baseline](<#51-webcam-raw-apriltag-correction>). **Odometry** estimates movement
+from wheel/rotation measurements; **correction** uses an independent field observation to adjust
+that estimate. The named `FUSION` baseline adjusts the movement-based estimate using accepted
+independent pose corrections. History, direct Limelight field pose, and the uncertainty-modeling
+EKF alternative
+are optional depth, not extra prerequisites for understanding that baseline. No hardware is needed
+to read the model; physical calibration is a separate gate.
+
 This guide explains Sushi's AprilTag-localization policy, the difference between detector
 libraries and trusted field layouts, and the framework's three localization roles: **absolute pose
 estimators**, **motion predictors**, and **corrected/global estimators**.
@@ -18,8 +36,6 @@ The short version:
 - **`HeadingEstimator`** answers the narrower "which field direction is the robot facing?"
 - **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last accepted motion baseline?"
 - **`CorrectedPoseEstimator`** combines a motion predictor with one absolute correction source.
-- **`PoseTrajectoryEstimator`** is the continuity-aware capability shared by motion predictors and
-  corrected estimators; optional `PlanarPoseHistory` records one such authoritative stream.
 
 That split matters because a camera can be shared by localization, alignment, and other vision jobs while the localization stack remains free to choose whether it trusts a raw AprilTag solve, a direct smart-camera pose, or another absolute field-anchor signal.
 
@@ -143,79 +159,10 @@ A `CorrectedPoseEstimator` combines:
 Sushi currently ships two implementations:
 
 - `OdometryCorrectionFusionEstimator` — simpler gain-based corrected localizer
-- `OdometryCorrectionEkfEstimator` — optional covariance-aware corrected localizer
+- `OdometryCorrectionEkfEstimator` — optional corrected localizer that also tracks modeled
+  uncertainty, represented by covariance values
 
 Both expose the same high-level contract, so robot code and tools can swap between them intentionally.
-
-### 2.4 Trajectory continuity and optional planar history
-
-`MotionPredictor` and `CorrectedPoseEstimator` are both `PoseTrajectoryEstimator`s. In addition to
-their cached pose, they expose one opaque publisher-local `trajectorySegmentId()`. Equality is the
-only valid operation on that value. Physical motion and ordinary accepted corrections stay in the
-same corrected segment. A deliberate pose reset or coordinate rebase changes it. If Fusion or EKF
-pushes an accepted correction into its private predictor, the raw predictor changes segment while
-the final corrected trajectory does not. If a corrected estimator instead observes an unexpected
-predictor rebase, it clears replay state, changes its own segment, and establishes a fresh base from
-coherent current evidence rather than applying a motion interval across the reset.
-
-Sparse AprilTag and Limelight field-pose estimators remain plain `AbsolutePoseEstimator`s. Their
-delayed frames are measurements, not a continuous high-rate trajectory that can honestly be
-interpolated.
-
-When a robot needs its historical planar field pose, construct one optional `PlanarPoseHistory`
-over the authoritative final stream:
-
-```java
-PlanarPoseHistory.Config historyCfg = PlanarPoseHistory.Config.defaults();
-historyCfg.retentionSec = 0.50;
-historyCfg.maxSamples = 128;
-
-PlanarPoseHistory poseHistory =
-        new PlanarPoseHistory(localization.globalEstimator(), historyCfg);
-TimeAwareSource<PlanarPoseHistory.Lookup> poseAtTime = poseHistory.lookupSource();
-```
-
-For odometry-only Pedro code, bind `runtime.motionPredictor()` instead. Do not construct one history
-inside every localization implementation. If a robot deliberately records both raw odometry and a
-corrected global estimate, those are two different datasets and should have two explicitly owned
-history instances.
-
-The existing localization lifecycle owner retains the concrete history and makes order explicit:
-
-```java
-// START: after the shared clock reset
-poseHistory.reset();
-globalEstimator.setPose(startingPose);
-localization.update(clock);
-poseHistory.recordCurrent(clock);
-
-// LOOP
-localization.update(clock);
-poseHistory.recordCurrent(clock);   // before timestamped downstream consumers
-
-// STOP: after owned localization resources stop
-poseHistory.reset();
-```
-
-`recordCurrent(clock)` reads only the estimator's cached publication; it never advances or resets
-localization. The stable `lookupSource()` is a borrowed read-only projection, so calling `reset()`
-on that projection cannot clear the concrete owner's history. Only `poseHistory.reset()` clears it
-and releases its clock binding for another lifecycle.
-
-The default lookup horizon is 0.50 seconds with a hard bound of 128 samples; each successful record
-heartbeat also prunes samples beyond that horizon. Interpolation spans at most 0.10 seconds, 12
-inches of translation, and pi/2 radians of shortest-path yaw. Configuration is a mutable authoring
-draft that the owner validates and snapshots. A lookup preserves eligible exact samples;
-otherwise it linearly interpolates field x/y, interpolates yaw over the shortest wrapped path, and
-uses the lower of the two endpoint qualities. It never extrapolates, clamps, chooses a nearest
-sample, or falls
-back to current pose. Typed unavailable results distinguish an empty or evicted history, an invalid
-request time, before/after bounds, a continuity gap, and an excessive time, translation, or yaw
-bracket. A request timestamp from another `LoopClock` is a wiring error.
-
-This is as-published history, not retrospective smoothing. A later correction never rewrites an
-older entry. A large but accepted correction remains in the corrected estimator's segment, while
-the history's translation/yaw bounds reject only that interpolation bracket.
 
 ---
 
@@ -406,7 +353,7 @@ This is exactly why the framework does **not** need a new fusion class for every
 
 ## 5. Common usage patterns
 
-### 5.1 Webcam + raw AprilTag correction
+### 5.1 Webcam + raw AprilTag correction { #51-webcam-raw-apriltag-correction }
 
 This is the most common baseline.
 
@@ -529,6 +476,83 @@ That makes it easier to separate "camera rig / field map / mount is wrong" from 
 
 ---
 
+## Optional: trajectory continuity and planar history { #24-trajectory-continuity-and-optional-planar-history }
+
+Read this section only when a delayed observation needs an earlier robot pose. **Interpolation**
+estimates between two stored observations; it does not measure a missing pose. A **continuity
+segment** identifies published poses that may belong to one uninterrupted coordinate history,
+so a reset cannot silently join two different coordinate stories.
+
+`MotionPredictor` and `CorrectedPoseEstimator` are both `PoseTrajectoryEstimator`s. In addition to
+their cached pose, they expose one opaque publisher-local `trajectorySegmentId()`. Equality is the
+only valid operation on that value. Physical motion and ordinary accepted corrections stay in the
+same corrected segment. A deliberate pose reset or coordinate rebase changes it. If Fusion or EKF
+pushes an accepted correction into its private predictor, the raw predictor changes segment while
+the final corrected trajectory does not. If a corrected estimator instead observes an unexpected
+predictor rebase, it clears replay state, changes its own segment, and establishes a fresh base from
+coherent current evidence rather than applying a motion interval across the reset.
+
+Sparse AprilTag and Limelight field-pose estimators remain plain `AbsolutePoseEstimator`s. Their
+delayed frames are measurements, not a continuous high-rate trajectory that can honestly be
+interpolated.
+
+When a robot needs its historical planar field pose, construct one optional `PlanarPoseHistory`
+over the authoritative final stream:
+
+```java
+PlanarPoseHistory.Config historyCfg = PlanarPoseHistory.Config.defaults();
+historyCfg.retentionSec = 0.50;
+historyCfg.maxSamples = 128;
+
+PlanarPoseHistory poseHistory =
+        new PlanarPoseHistory(localization.globalEstimator(), historyCfg);
+TimeAwareSource<PlanarPoseHistory.Lookup> poseAtTime = poseHistory.lookupSource();
+```
+
+For odometry-only Pedro code, bind `runtime.motionPredictor()` instead. Do not construct one history
+inside every localization implementation. If a robot deliberately records both raw odometry and a
+corrected global estimate, those are two different datasets and should have two explicitly owned
+history instances.
+
+The existing localization lifecycle owner retains the concrete history and makes order explicit:
+
+```java
+// START: after the shared clock reset
+poseHistory.reset();
+globalEstimator.setPose(startingPose);
+localization.update(clock);
+poseHistory.recordCurrent(clock);
+
+// LOOP
+localization.update(clock);
+poseHistory.recordCurrent(clock);   // before timestamped downstream consumers
+
+// STOP: after owned localization resources stop
+poseHistory.reset();
+```
+
+`recordCurrent(clock)` reads only the estimator's cached publication; it never advances or resets
+localization. The stable `lookupSource()` is a borrowed read-only projection, so calling `reset()`
+on that projection cannot clear the concrete owner's history. Only `poseHistory.reset()` clears it
+and releases its clock binding for another lifecycle.
+
+The default lookup horizon is 0.50 seconds with a hard bound of 128 samples; each successful record
+heartbeat also prunes samples beyond that horizon. Interpolation spans at most 0.10 seconds, 12
+inches of translation, and pi/2 radians of shortest-path yaw. Configuration is a mutable authoring
+draft that the owner validates and snapshots. A lookup preserves eligible exact samples;
+otherwise it linearly interpolates field x/y, interpolates yaw over the shortest wrapped path, and
+uses the lower of the two endpoint qualities. It never extrapolates, clamps, chooses a nearest
+sample, or falls
+back to current pose. Typed unavailable results distinguish an empty or evicted history, an invalid
+request time, before/after bounds, a continuity gap, and an excessive time, translation, or yaw
+bracket. A request timestamp from another `LoopClock` is a wiring error.
+
+This is as-published history, not retrospective smoothing. A later correction never rewrites an
+older entry. A large but accepted correction remains in the corrected estimator's segment, while
+the history's translation/yaw bounds reject only that interpolation bracket.
+
+---
+
 ## 6. Raw AprilTag solving policy
 
 Sushi's shared AprilTag solver does this:
@@ -587,6 +611,28 @@ those software baselines are intended. Neither proves a physically calibrated ca
 
 ## 7. Corrected/global localization and latency compensation
 
+**Latency** is the delay between capturing an observation and using it. The robot may move during
+that delay, so a camera result should not be treated as a fresh measurement of its current pose.
+
+```mermaid
+sequenceDiagram
+    accTitle: A delayed camera observation keeps its capture time
+    accDescr: The camera captures a frame, odometry records intervening motion, and the frame arrives later. When usable history exists, localization corrects the estimate at capture time and replays motion toward the current loop.
+    participant Camera
+    participant Odometry
+    participant Localization
+    Camera->>Camera: Capture frame at t0
+    Odometry->>Localization: Record motion after t0
+    Camera->>Localization: Deliver frame at t1, retaining t0
+    Localization->>Localization: Correct at t0 when usable history exists
+    Localization->>Localization: Replay recorded motion toward t1
+```
+
+In words: the image describes capture time `t0`, even if it arrives at `t1`. With usable history,
+the estimator adjusts the earlier pose and reapplies the recorded intervening motion. The result
+is still an estimate, not proof of exact physical position. Missing or invalid history is handled
+by the selected estimator's explicit policy, not invented by the diagram.
+
 When you combine a `MotionPredictor` with an absolute correction source, Sushi's corrected estimators do two important reliability jobs:
 
 - deduplicate repeated absolute measurements by measurement timestamp
@@ -620,7 +666,10 @@ OdometryCorrectionFusionEstimator corrected =
         new OdometryCorrectionFusionEstimator(predictor, absoluteCorrection, fusionCfg);
 ```
 
-Typical EKF setup:
+Optional EKF setup: an **extended Kalman filter** tracks uncertainty as well as an estimate.
+Its covariance values describe that uncertainty; they are additional modeling/tuning decisions,
+not required knowledge for the ordinary Fusion baseline. Use this alternative only when your team
+can justify those assumptions and evaluate the resulting evidence:
 
 ```java
 OdometryCorrectionEkfEstimator.Config ekfCfg =
@@ -729,7 +778,7 @@ That is why the framework does **not** need a bespoke fusion class for every sen
 
 When AprilTag-based global localization feels wrong, work down this list:
 
-1. camera mount solved and non-identity
+1. camera mount matches measured installation; identity is valid only when it describes that installation
 2. predictor/pod offsets calibrated
 3. trusted `TagLayout` matches the field you are actually on
 4. raw selected-tag observations look sane in the tester

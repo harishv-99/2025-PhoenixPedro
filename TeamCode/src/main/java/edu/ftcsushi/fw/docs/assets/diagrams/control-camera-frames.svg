@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 430" width="100%" role="img" aria-labelledby="title description">
+  <title id="title">The controlled tool and the observing camera have different frames</title>
+  <desc id="description">Top-down robot view. Robot positive X is forward, drawn up, and positive Y is left. The shooter origin is eight inches forward and two inches left of robot origin. Its forward axis is rotated three degrees left of robot forward. A separately drawn camera frame has illustrative placement only: its actual transform comes from measured camera mount configuration.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#172b4d"/></marker>
+  </defs>
+  <rect width="640" height="430" rx="12" fill="#ffffff"/>
+  <g fill="#172b4d" font-family="Arial, sans-serif" font-size="19">
+    <text x="22" y="32" font-size="22" font-weight="bold">Which part should face the target?</text>
+    <text x="22" y="60">Top-down view; offsets in inches</text>
+    <rect x="88" y="104" width="237" height="253" rx="14" fill="#f1f5f9" stroke="#52657d" stroke-width="2"/>
+    <path d="M210 300 V84" fill="none" stroke="#172b4d" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M210 300 H36" fill="none" stroke="#172b4d" stroke-width="3" marker-end="url(#arrow)"/>
+    <circle cx="210" cy="300" r="5" fill="#172b4d"/>
+    <text x="222" y="321">Robot origin</text>
+    <text x="220" y="94">+X forward</text>
+    <text x="22" y="285">+Y left</text>
+    <path d="M170 140 H210 M170 140 V300" fill="none" stroke="#52657d" stroke-width="2" stroke-dasharray="5 5"/>
+    <rect x="151" y="130" width="38" height="22" rx="3" fill="#dce9f5" stroke="#172b4d" stroke-width="2"/>
+    <path d="M170 140 L167 82" fill="none" stroke="#172b4d" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="102" y="195">8 in</text>
+    <text x="174" y="164">2 in</text>
+    <path d="M190 138 H347" fill="none" stroke="#52657d" stroke-width="1.5"/>
+    <text x="355" y="133" font-weight="bold">Shooter / control frame</text>
+    <text x="355" y="161">8 in forward, 2 in left</text>
+    <text x="355" y="189">+X points 3° left</text>
+    <text x="355" y="217">of robot-forward.</text>
+    <rect x="258" y="245" width="27" height="24" fill="#ffffff" stroke="#172b4d" stroke-width="2"/>
+    <path d="M285 250 L300 244 V270 L285 263 Z" fill="#ffffff" stroke="#172b4d" stroke-width="2"/>
+    <path d="M302 258 H347" fill="none" stroke="#52657d" stroke-width="1.5"/>
+    <text x="355" y="266" font-weight="bold">Camera frame</text>
+    <text x="355" y="294">Where the observation</text>
+    <text x="355" y="322">came from.</text>
+    <text x="22" y="392">Camera placement is illustrative, not a configuration value.</text>
+    <text x="22" y="418">Use the measured camera mount; do not copy its drawn position.</text>
+  </g>
+</svg>

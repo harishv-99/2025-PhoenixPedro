@@ -18,8 +18,10 @@ requires the lift's separate home and move gates.
 
 ## Critical production idea
 
-The robot-owned routine factory composes the same capability Tasks already used in focused lift
-work:
+The robot-owned routine factory combines the same capability Tasks already used in focused lift
+work. A **sequence** runs its child Tasks one after another: “home, then move HIGH, then move
+STOWED.” Each child is one piece of the whole routine. This builder creates those pieces now but
+starts them later, admitting the next piece only when its predecessor reports `SUCCESS`:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutines.java -->
 ```java
@@ -33,8 +35,8 @@ public static Task liftOnly(BasicLift lift) {
 ```
 
 [`Tasks.sequence(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>)
-constructs the fixed child graph eagerly, so each capability method must be a side-effect-free
-factory. The returned children do not start eagerly. At FTC START, only `home()` starts. Exact
+constructs the fixed child graph eagerly—during this method call—so each capability method must
+build work without starting behavior. At FTC START, only `home()` starts. Exact
 `SUCCESS` admits `HIGH`; exact `SUCCESS` from `HIGH` admits `STOWED`. `TIMEOUT`, `CANCELLED`, or
 `UNKNOWN` becomes the root outcome and suppresses every later child.
 
@@ -140,6 +142,11 @@ piece of successful lift evidence; it is not a mechanism model. Arrangement keep
 routine but substitutes a recording `BasicLift` because this checkpoint asks only which Task the
 routine admits:
 
+`List<String>` is an ordered list of text values; the `<String>` type argument says what the list
+holds. `new ArrayList<String>()` creates an empty one. The supplied `RecordingLift` appends the
+name of each started action. `Arrays.asList(...)` constructs the expected list for an assertion,
+so the comparisons check both which actions ran and their order.
+
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoSoftwareScenarioTest.java -->
 ```java
 /** Beginner-facing evidence for the first lift-only autonomous sequence. */
@@ -183,6 +190,9 @@ assertEquals(TaskOutcome.SUCCESS, auto.getOutcome());
 // NEXT GATE: verify reference, feedback, and clearance on the isolated lift.
 ```
 
+### Optional: inspect timeout and repeated-cancellation assertions
+
+The expected failure path is simple: a timed-out or cancelled HIGH Task must never start STOWED.
 The second method arranges a fresh routine whose recording `HIGH` Task deliberately lacks success
 evidence:
 
@@ -247,6 +257,8 @@ Optionally run the maintained scenario after [software setup](<../getting-starte
     ```bash
     ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicAutoSoftwareScenarioTest
     ```
+
+### What the observations establish
 
 **Read the causal chain:** START admits only `home`; each successful child admits exactly one next
 move; final success becomes root `SUCCESS`. When `HIGH` instead times out or the root is actively

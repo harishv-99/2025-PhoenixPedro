@@ -5,6 +5,13 @@ tags:
 
 # FTC Auto-to-TeleOp handoff
 
+**Before this optional reference:** understand [managed START/STOP](<../core-concepts/Loop Structure.md>)
+and [cached status snapshots](<../getting-started/learn-sushi/Evidence and Experiments.md>).
+FTC creates a new OpMode for TeleOp, so Auto's ordinary objects are not its new robot. A **handoff**
+passes selected saved facts, such as a last estimated pose, to that new owner. **Process-local**
+means the facts disappear when the Robot Controller app restarts; **consume once** means only one
+accepted reader receives them. Neither transfer nor recent age proves the robot stayed still.
+
 `FtcAutoToTeleOpHandoff<T>` carries one immutable, short-lived robot-owned snapshot from a normally
 stopped match Auto to the next TeleOp. The transfer is best-effort, process-local,
 single-consumer, and freshness-bounded. It does not transfer hardware owners, Tasks, commands,

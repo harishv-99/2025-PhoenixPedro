@@ -5,6 +5,12 @@ tags:
 
 # Recommended Robot Design
 
+**Before this reference:** understand [robot roles](<../getting-started/learn-sushi/Robot Roles.md>)
+and one complete [Build recipe](<../build/README.md>). Select the example matching your next
+requirement; this is an optional architecture reference, not another course. The feedback example
+requires the [feedback foundation](<../build/Move a Referenced Lift.md>); spatial and route examples
+link their separate prerequisites where needed.
+
 ## Recommended top-level split
 
 For larger robots, use this ownership pattern:
@@ -167,7 +173,7 @@ not imply a generic framework-lane lifecycle.
 Use this quick decision rule:
 
 1. **Am I commanding a local actuator target directly?** Use a `Plant`.
-2. **Am I regulating one measured scalar toward a target?** Use a scalar controller source.
+2. **Am I regulating one measured number toward a target?** Use a regulated Plant.
 3. **Am I reacting to an event or classification?** Use `BooleanSource` / `Source<T>` with a
    supervisor or task.
 4. **Am I solving a 2D frame-to-target relation?** Use drive guidance or a similar spatial layer.
@@ -194,17 +200,12 @@ Examples:
 - arm angle from an analog sensor
 - local turret hold from an encoder
 
-This is still a **local scalar** problem. One measured variable is driven toward one target.
-Sushi's `ScalarControllers` helper packages the common pattern:
-
-```java
-ScalarSource liftPower = ScalarControllers.pid(desiredHeightIn, measuredHeightIn, pid);
-```
-
-The controller source stages target and measurement reads before invoking the stateful controller.
-Those value reads may be retried after failure. Once controller invocation begins, a thrown
-exception is retained and rethrown for that cycle rather than invoking potentially mutated
-controller state twice; a later cycle may try again.
+This is still a **local scalar** problem: one measured number is driven toward one target.
+The ordinary mechanism builds one regulated Plant that owns feedback, control calculations,
+output limits, and the final write. The [lift example](<#detailed-example-2-lift-with-external-height-sensor-pattern-2-scalar-regulation>)
+shows that path. A standalone `ScalarControllers` source is an advanced value-computation seam,
+not a second ordinary lift recipe; its exact sampling contract belongs in
+[Sources and Signals](<../core-concepts/Sources and Signals.md#memoization>).
 
 ### Pattern 3: event / classification supervision
 
@@ -808,7 +809,10 @@ Those are subsystem internals, not robot-level vocabulary.
 
 ## Detailed example 3: intake with beam break and feed pulses (pattern 3: event / classification supervision)
 
-This example shows the main reason Sushi separates subsystems from supervisors.
+This example illustrates a separate policy owner, not a required split for every intake. A sensor,
+pulse, or shared TeleOp/Auto action alone does not justify another class. Keep cohesive local
+policy in its mechanism; use the optional supervisor shape below only when feed admission must
+have a responsibility independent of that mechanism, such as coordination with other capabilities.
 
 ### The problem
 
@@ -822,6 +826,8 @@ The intake motor is a simple base output. The feeder pulse is a temporary overri
 is an event/classification signal, not a continuous measured variable.
 
 ### Recommended split
+
+When that independent coordination responsibility exists:
 
 - **Intake subsystem**
   - owns the motor plant, feeder plant, beam break source, and feed queue

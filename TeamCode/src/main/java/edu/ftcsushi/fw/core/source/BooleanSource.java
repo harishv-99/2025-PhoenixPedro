@@ -245,16 +245,18 @@ public interface BooleanSource extends Source<Boolean> {
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * Debounce this boolean: it turns ON only after being continuously true for {@code onDelaySec}
-     * seconds, and turns OFF immediately when it becomes false.
+     * Filter brief observed changes: accept ON after differing true samples accumulate
+     * {@code onDelaySec} seconds of loop intervals, and accept OFF immediately on a false sample.
+     * See {@link DebounceBoolean} for the sampled timing rule and its between-sample limits.
      */
     default BooleanSource debouncedOn(double onDelaySec) {
         return debounced(DebounceBoolean.onAfterOffImmediately(onDelaySec));
     }
 
     /**
-     * Debounce this boolean: it turns ON only after being continuously true for {@code onDelaySec}
-     * seconds, and turns OFF only after being continuously false for {@code offDelaySec} seconds.
+     * Filter brief observed changes with separate ON and OFF delays. Differing observations
+     * accumulate the current loop's {@code dtSec()}; an observation matching the accepted state
+     * clears the pending change. See {@link DebounceBoolean} for timing and between-sample limits.
      */
     default BooleanSource debouncedOnOff(double onDelaySec, double offDelaySec) {
         return debounced(DebounceBoolean.onAfterOffAfter(onDelaySec, offDelaySec));

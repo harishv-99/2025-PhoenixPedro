@@ -4,8 +4,8 @@ import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.time.LoopClock;
 
 /**
- * A small, reusable time-based latch ("debouncer") that turns a potentially chattery boolean
- * signal into a stable boolean.
+ * A small, reusable time-based latch ("debouncer") that filters brief observed changes in a
+ * boolean signal. For example, a physical switch can flicker while its contacts settle.
  *
  * <p>This is the <b>time-domain</b> analogue of {@link HysteresisBoolean}:</p>
  *
@@ -18,12 +18,11 @@ import edu.ftcsushi.fw.core.time.LoopClock;
  *
  * <h2>Common uses</h2>
  * <ul>
- *   <li><b>Shooter ready</b>: require {@code atTarget()} to be true continuously for
- *       0.10–0.20s before feeding a ring.</li>
- *   <li><b>Sensor validity</b>: require a vision target to be present for N frames/time before
- *       trusting it.</li>
- *   <li><b>Driver intent</b>: require a button/condition to be held for N seconds before it
- *       "counts".</li>
+ *   <li><b>Shooter ready</b>: delay accepting sampled {@code atTarget()} observations before
+ *       feeding a ring.</li>
+ *   <li><b>Sensor validity</b>: delay accepting a sampled validity change; this does not establish
+ *       freshness or physical visibility between samples.</li>
+ *   <li><b>Driver intent</b>: delay accepting a sampled button/condition change.</li>
  * </ul>
  *
  * <h2>Semantics</h2>
@@ -31,17 +30,22 @@ import edu.ftcsushi.fw.core.time.LoopClock;
  * <p>Given a raw boolean {@code value}:</p>
  *
  * <ul>
- *   <li>The latch transitions <b>OFF → ON</b> only after {@code value == true} continuously for
- *       {@code onDelaySec} seconds.</li>
- *   <li>The latch transitions <b>ON → OFF</b> only after {@code value == false} continuously for
- *       {@code offDelaySec} seconds.</li>
+ *   <li>On each new sampled cycle, a value different from the accepted state adds the nonnegative
+ *       {@link LoopClock#dtSec()} interval to the pending change.</li>
+ *   <li>The latch accepts that change when the accumulated intervals reach {@code onDelaySec}
+ *       for <b>OFF → ON</b>, or {@code offDelaySec} for <b>ON → OFF</b>.</li>
+ *   <li>A sample matching the accepted state clears the pending change.</li>
  * </ul>
+ *
+ * <p>The interval belongs to the current sample and may begin before the raw change was observed.
+ * This is sampled conditioning, not a timer beginning at the first changed sample or proof of
+ * continuous physical stability. Unobserved transitions between samples remain unknown.</p>
  *
  * <p>Setting either delay to {@code 0} makes that edge immediate.</p>
  *
  * <p>{@link #update(LoopClock, boolean)} is <b>idempotent by</b> {@link LoopClock#cycle()}.
- * If called twice in the same loop cycle, the second call is a no-op (it will not double-count
- * time).</p>
+ * If called twice in the same loop cycle, the accepted state and pending time do not advance
+ * again. The last-raw diagnostic may reflect the repeated call's argument.</p>
  */
 public final class DebounceBoolean {
 
@@ -50,7 +54,7 @@ public final class DebounceBoolean {
 
     private boolean state;
 
-    // How long the raw value has been continuously in the opposite state.
+    // Sum of loop intervals contributed by observations opposite the accepted state.
     private double pendingSec;
 
     // Debug: last raw value observed.
@@ -75,8 +79,8 @@ public final class DebounceBoolean {
     }
 
     /**
-     * Create a latch that turns ON only after {@code onDelaySec} seconds of continuous true,
-     * and turns OFF immediately when the raw input becomes false.
+     * Create a latch that accepts ON after differing true samples accumulate {@code onDelaySec}
+     * seconds of loop intervals, and accepts OFF immediately on a false sample.
      */
     public static DebounceBoolean onAfterOffImmediately(double onDelaySec) {
         return new DebounceBoolean(onDelaySec, 0.0, false);
