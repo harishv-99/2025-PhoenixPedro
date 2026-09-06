@@ -161,14 +161,25 @@ Use this authoring contract:
   State that registration does not run the function, identify the later loop condition that does,
   and distinguish same-loop synchronous invocation from a new thread. First-contact diagrams use
   plain action labels and map to precise framework nouns only in adjacent explanation.
-- Keep one canonical Get Started order: Welcome, the FTC-loop bridge, setup verification, the
-  required software-only tour, then the complete Guide map. The tour's first-pass Drive, button,
-  and timed-action slices come before each Build page's full reconstruction material; hardware
-  recipes remain goal-selective after that shared tour.
-- Structure a Build recipe as: outcome and prerequisites, a three-to-twelve-line exact source
+- Keep one canonical Get Started order: Welcome, the FTC-loop bridge, the short software-only
+  tour, optional setup verification, then the complete Guide map. The tour's first-pass sensor,
+  button, and timed-action slices come before each Build page's full reconstruction material.
+  Reading is complete without installation, editing, test execution, or hardware: give predictions
+  and visible expected results. Mark execution commands optional, and distinguish expected behavior
+  from evidence actually obtained by running a check. Hardware recipes remain goal-selective.
+- Group Build into observing/commanding one part, combining TeleOp and basic Auto, and optional
+  feedback. Keep Pedro, vision, and larger designs at the later level that needs them. Preserve six
+  areas and one central teaching point per document; do not create a second numbered course.
+- Centralize optional authoring instructions in Build home: use a student-owned package under
+  `edu.ftcsushi.robots` beside `examples` and other application packages, or a temporary practice robot there. Build
+  in small steps. A copied/adapted test must construct the student's owner or declaration and assert
+  that implementation's behavior; running the unchanged reference selector is reference evidence,
+  not evidence about the student's code. Keep supplied test infrastructure out of the first lesson.
+- Structure a Build recipe as: outcome and prerequisites, a one-to-twelve-line exact source
   excerpt, at most three observations, exact main/test file manifests, visibly labeled complete-
   source links, an explained software checkpoint, an isolated hardware gate, and one next action.
-  Do not embed complete files in prose or require unrelated mechanisms to finish a recipe.
+  Do not pad a complete one-line declaration or two-line connection with unrelated code to meet a
+  minimum size. Do not embed complete files in prose or require unrelated mechanisms to finish a recipe.
 - Hold Build pages to a reconstruction test: after reading the page and its declared prerequisites,
   a student should be able to recreate the important production wiring without opening another
   source file. Full source may fill in imports, package declarations, and small mechanical details;

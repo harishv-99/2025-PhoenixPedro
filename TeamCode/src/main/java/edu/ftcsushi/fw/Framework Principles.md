@@ -456,11 +456,18 @@ and tests, and evidence applies when a page uses a checkpoint or experiment to s
   helps that audience choose its next page rather than pretending to be one large lesson.
 - Teach by progressive disclosure. First contact may assume basic Java, `if` statements, methods,
   FTC gamepad fields, and either familiar FTC loop spelling; it must not assume lambdas, callback
-  registration, Tasks, or framework-specific nouns. Start with an FTC-loop bridge and a required
-  software-only tour, then offer goal-based Build recipes, deeper concepts, examples, reference,
+  registration, Tasks, or framework-specific nouns. Start with an FTC-loop bridge and a short
+  software-only tour that is complete by reading, then offer goal-based Build recipes, deeper concepts, examples, reference,
   and maintainer material. Keep that first contact short: teach only the ideas needed for the next
   observable action, then link optional mechanics, variants, and edge cases at the later level that
   can use them.
+- Keep reading, running, and authoring distinct. A beginner can understand the course from visible
+  explanations, predictions, and expected results without installing tools, executing tests, editing
+  code, or owning matching hardware. Optional software checks exercise real maintained behavior;
+  optional small-step authoring checks the student's implementation in their own robot package.
+  Neither a written prediction nor a passing reference test proves the student's code works. Keep
+  initial navigation compact, one central point per lesson, and advanced topics independently
+  consumable after the basic TeleOp and Auto path.
 - Define a new term in plain robot language at the point where the reader first needs it. Put the
   active code and values beside that definition so the reader can connect meaning to spelling
   without searching another section or opening source. If a default materially controls the

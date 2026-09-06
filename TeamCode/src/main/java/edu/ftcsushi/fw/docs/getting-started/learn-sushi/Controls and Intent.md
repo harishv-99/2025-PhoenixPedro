@@ -5,137 +5,84 @@ tags:
 
 # Controls and intent { #intent }
 
-**Learning mode:** Architecture reference
+**Question:** Which operator input requests which robot action?
 
-This page explains controls ownership and APIs. The
-Starter buildable module supplies the complete controls file and focused test.
-
-**Prerequisite:** take the [First software tour](<../First Software Tour.md>) first if `() ->` or
-“run once when pressed” is new. It explains, with familiar `if` code, why setup can save a function
-without running it and when Sushi calls that function later.
+This is a concept reference. The complete button path is taught in
+[Continuous Intake](<../../build/Continuous Intake.md>); continuous stick values are taught in
+[First Drive](<../../build/First Drive.md>). Reading either explanation requires no installation,
+code edit, test run, or hardware.
 
 !!! info "New concept: intent"
 
-    **Intent** names what the robot should do, such as `COLLECT` or `STOPPED`, without specifying
-    motor power. Controls choose it from input; the owning mechanism decides how it reaches hardware.
+    **Intent** is the action the robot is being asked to perform, such as collect or stop. Controls
+    translate operator input into that request. The mechanism decides how its hardware realizes it.
 
-**Question:** How does a human action become robot intent without putting gamepad policy inside a
-mechanism?
+## Give a button a robot meaning
 
-You can follow this source-only lesson without a gamepad or robot.
+`GamepadDevice` adapts the FTC gamepad into reusable
+[Sources](<../Framework Overview.md#source>). Its `a()` source means “A is pressed”; it is already
+a semantic Boolean, not an electrical HIGH/LOW pin. A trigger is a scalar from `0.0` released to
+`1.0` fully pressed. A comparison such as `rightTrigger().above(0.2)` derives a Boolean meaning
+from that number.
 
-## A button becomes a capability request
+The focused controls owner assigns the three intake buttons:
 
-### Critical code
-
-[`GamepadDevice`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/input/GamepadDevice.html>) adapts the FTC gamepad to Sushi
-[Sources](<../Framework Overview.md#source>).
-`gamepad.a()` is a `BooleanSource` that is `true` while A is pressed. That meaning is not an
-electrical HIGH or LOW signal. A trigger is instead a `ScalarSource` from `0.0` to `1.0`; code can
-derive a Boolean meaning with, for example, `rightTrigger().above(0.2)`.
-
-The package-private controls owner is not a public API type. Its
-[Complete source: `StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>)
-contains the complete Starter intake mapping:
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java -->
 ```java
-// ...
-requiredCallbacks.onRise(driver.a(),
+requiredCallbacks.onRise(
+        driver.a(),
         () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
-requiredCallbacks.onRise(driver.b(),
+requiredCallbacks.onRise(
+        driver.b(),
         () -> requiredIntake.setMode(StarterIntake.Mode.EJECT));
-requiredCallbacks.onRise(driver.x(),
+requiredCallbacks.onRise(
+        driver.x(),
         () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
-// ...
 ```
 
-**What to notice**
+Calling `setMode(...)` directly runs that setter now. The
+[no-argument lambda](<../Framework Overview.md#saved-callback>) `() -> ...` packages
+the call so `onRise(...)` can save it during configuration. It does not execute at registration.
+An accepted released-to-pressed transition invokes it synchronously during a later bindings phase;
+there is no background thread. Holding or releasing A does not repeat the callback, and the named
+`COLLECT` request persists until B selects `EJECT` or X selects `STOPPED`.
 
-- Buttons map to semantic modes, never directly to motor power.
-- The callback owner and capability dependency are explicit in each registration.
+The owner is package-private; its
+[Complete source: `StarterIntakeControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java>)
+contains its constructor and one-time bind check. The
+[intake Build lesson](<../../build/Continuous Intake.md>) shows construction, managed registration,
+and the output that realizes the request.
 
-**Key APIs:** `CallbackBindings.onRise(...)` declares an edge meaning; `BooleanSource` provides the
-cycle-aware input fact.
+## Choose the execution shape
 
-```text
-A pressed -> BooleanSource true -> rising edge -> setMode(COLLECT)
-          -> mechanism records a persistent semantic request
-```
+| Need | Ordinary shape | When it runs |
+| --- | --- | --- |
+| Read current drive sticks | controls-owned `DriveSource` connected with `program.drive(...)` | every active output/drive phase |
+| Replace a persistent request on a press | `program.callbackBindings().onRise(...)` | synchronously on an accepted rise |
+| Begin work that takes several loops | `program.taskBindings().onRise(...)` with a fresh-Task factory | admitted by the managed Task runner |
 
-The binding owns what A means. The
-[`StarterIntake`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.html>)
-capability names what the robot should do. Its mechanism owns how hardware realizes that request.
-Holding A for twenty cycles produces one rising edge; COLLECT persists because `setMode` replaced
-the held request.
+A method reference such as `lift::home` saves the call to `home()`; when invoked, that method
+must return a fresh Task. It does not save a reusable Task instance. The
+[Task reference](<Tasks and Autonomous.md>) explains lifetime and cancellation.
 
-## Drive follows a separate path
+Drive is sampled continuously rather than through callbacks on every cycle. The controls own axis
+meanings; a single sink owns the final drivetrain write. Holding a bumper to scale the current
+drive request also belongs in that continuously sampled source. See the complete
+[combined TeleOp](<../../build/Combine Drive and Intake.md>).
 
-The Starter controls also expose a robot-centric `DriveSource`. Stick and slow-mode sources are
-sampled when `RobotProgram` reaches the **output/drive phase**; they do not pass through a callback
-binding on every cycle.
+## Locate the change
 
-```text
-sticks + bumper -> controls-owned DriveSource -> DriveSignal
-                 -> program.drive(source, sink) -> one mecanum hardware write
-```
+Changing B from eject to collect changes the controls mapping. Changing collection power changes
+mechanism configuration. Changing hardware realization belongs to the mechanism. The same
+mode-neutral capability remains available to TeleOp and Auto.
 
-Controls never call motor setters. Robot-centric forward follows the robot. Field-relative “up”
-requires an explicitly chosen field frame and is demonstrated only in the optional
-[`Field-relative Drive`](<../../examples/Field-relative Drive.md>) example.
+**Key APIs:** [`GamepadDevice`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/input/GamepadDevice.html>)
+supplies current gamepad readers;
+[`CallbackBindings`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/input/binding/CallbackBindings.html>)
+registers synchronous meanings;
+[`TaskBindings`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/TaskBindings.html>)
+registers fresh work.
 
-## How the pattern scales: callback or Task?
-
-### Critical code
-
-Use a [callback](<../Framework Overview.md#saved-callback>) when an action completes synchronously
-by replacing intent. Use a [Task](<../Framework Overview.md#task>) binding when non-blocking
-behavior unfolds over several managed cycles:
-
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferenceFlywheelMechanismOpMode.java -->
-```java
-program.callbackBindings().onRise(
-        operator.a(),
-        () -> flywheels.setVelocityTicksPerSec(TEST_VELOCITY_TICKS_PER_SEC));
-program.taskBindings().onRise(
-        operator.y(),
-        () -> flywheels.setVelocityTask(
-                TEST_VELOCITY_TICKS_PER_SEC,
-                WAIT_TIMEOUT_SEC));
-```
-
-**What to notice**
-
-- A synchronous persistent velocity request is a callback; waiting for feedback is a Task.
-- The lambda calls `setVelocityTask(...)` on each eligible edge, so every run receives fresh work.
-
-**Key APIs:** `TaskBindings.onRise(...)` accepts a Task supplier; `CallbackBindings.onRise(...)`
-accepts an immediate semantic callback.
-
-`setVelocityTask(...)` is a factory method. Each eligible press returns a **fresh, single-use
-Task**; controls never run it in a private loop. The focused
-[`ReferenceFlywheelMechanismOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/opmode/ReferenceFlywheelMechanismOpMode.html>)
-shows the direct and deferred forms side by side; its
-[Complete source: `ReferenceFlywheelMechanismOpMode.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/opmode/ReferenceFlywheelMechanismOpMode.java>)
-is the compiling authority. Declaration order remains observable when multiple buttons rise in one
-cycle.
-
-## Check your understanding
-
-**B should request COLLECT instead of EJECT. What changes?** The controls mapping, not the
-capability or mechanism.
-
-**COLLECT should use a different reviewed motor power. What changes?** Intake configuration, never
-the button binding.
-
-**A fully pressed trigger is digital HIGH. True or false?** False. It is a scalar operator value;
-a threshold may derive a semantic Boolean, but not an electrical pin state.
-
-## Go deeper when needed
-
-- [Tasks and autonomous](<Tasks and Autonomous.md>) — Task lifetime, timing, and outcomes
-- [Sources and signals](<../../core-concepts/Sources and Signals.md>) — source caching and mapping
-- [Evidence and experiments](<Evidence and Experiments.md>) — electrical switch polarity and debounce
-- [Learn Sushi topic guide](<../Beginner's Guide.md>) — choose another topic
+For electrical polarity and debounce, read [one switch](<../../build/Read a Switch.md>).
+For detailed sampling contracts, use [Sources and signals](<../../core-concepts/Sources and Signals.md>).
+Return to [the concept index](<../Beginner's Guide.md>) for another question.

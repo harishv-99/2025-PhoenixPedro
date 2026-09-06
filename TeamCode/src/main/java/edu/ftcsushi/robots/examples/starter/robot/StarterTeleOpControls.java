@@ -8,25 +8,26 @@ import edu.ftcsushi.fw.ftc.input.GamepadDevice;
 import edu.ftcsushi.fw.input.binding.CallbackBindings;
 import edu.ftcsushi.robots.examples.starter.capability.intake.StarterIntake;
 
-/** Owns every gamepad meaning used by the starter TeleOp. */
+/** Combines the shared intake controls with the Starter TeleOp's drive meanings. */
 final class StarterTeleOpControls {
 
     static final double SLOW_TRANSLATE_SCALE = 0.35;
     static final double SLOW_OMEGA_SCALE = 0.20;
 
-    private final GamepadDevice driver;
+    private final StarterIntakeControls intakeControls;
     private final DriveSource driveSource;
-    private boolean bindAttempted;
 
+    /** Builds stable drive sources and the shared intake owner without registering callbacks. */
     StarterTeleOpControls(GamepadDevice driver) {
-        this.driver = Objects.requireNonNull(driver, "driver");
+        GamepadDevice requiredDriver = Objects.requireNonNull(driver, "driver");
+        intakeControls = new StarterIntakeControls(requiredDriver);
 
         driveSource = new GamepadDriveSource(
-                this.driver.leftX(),
-                this.driver.leftY(),
-                this.driver.rightX(),
+                requiredDriver.leftX(),
+                requiredDriver.leftY(),
+                requiredDriver.rightX(),
                 GamepadDriveSource.Config.defaults()
-        ).scaledWhen(this.driver.rightBumper(), SLOW_TRANSLATE_SCALE, SLOW_OMEGA_SCALE);
+        ).scaledWhen(requiredDriver.rightBumper(), SLOW_TRANSLATE_SCALE, SLOW_OMEGA_SCALE);
     }
 
     /**
@@ -40,34 +41,10 @@ final class StarterTeleOpControls {
      *                               registration failed partway through
      */
     void bind(CallbackBindings callbackBindings, StarterIntake intake) {
-        CallbackBindings requiredCallbacks = Objects.requireNonNull(
-                callbackBindings,
-                "callbackBindings"
-        );
-        StarterIntake requiredIntake = Objects.requireNonNull(intake, "intake");
-        claimBind();
-
-        requiredCallbacks.onRise(
-                driver.a(),
-                () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
-        requiredCallbacks.onRise(
-                driver.b(),
-                () -> requiredIntake.setMode(StarterIntake.Mode.EJECT));
-        requiredCallbacks.onRise(
-                driver.x(),
-                () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
+        intakeControls.bind(callbackBindings, intake);
     }
 
-    private void claimBind() {
-        if (bindAttempted) {
-            throw new IllegalStateException(
-                    "StarterTeleOpControls.bind(...) may be called only once; "
-                            + "create a fresh controls owner for another callback graph"
-            );
-        }
-        bindAttempted = true;
-    }
-
+    /** Returns the stable shaped drive source, including right-bumper slow mode. */
     DriveSource driveSource() {
         return driveSource;
     }

@@ -5,13 +5,16 @@ tags:
 
 # Drive slowly with one gamepad
 
-**Outcome:** wire one FTC gamepad through production controls into a complete mecanum drive
-configuration, then prove robot-frame signs, capped motor commands, and managed stop in software
-before any wheel touches the floor.
+**Outcome:** trace current gamepad values through one controls owner into a complete mecanum drive
+configuration, including robot-frame signs, capped commands, and managed stop.
 
-**Prerequisites:** [Set up and verify](<../getting-started/Build and Run.md>) succeeds. You do not need
-to know Sushi sources, bindings, or drive APIs yet. No robot is required until the isolated hardware
-gate below.
+**Knowledge before this page:** the changing-value reader in [read a switch](<Read a Switch.md>)
+or the [short tour](<../getting-started/First Software Tour.md>). The drive APIs are explained here.
+No installation, gamepad, test run, or drivetrain is needed to read this independent fixture.
+
+**One idea:** drive continuously samples current intent. It does not turn each held stick into a
+button event. Optional software execution and [authoring](<README.md#author-in-your-robot>) use the
+same maintained path; physical wheel checks are separate.
 
 ## First pass: current values every loop
 
@@ -52,9 +55,10 @@ commands were submitted, not how real wheels will turn or stop.
 
 ## Full build: reconstruct the production path
 
-**Start here:** this is the complete first-drive lesson. Follow the data from the FTC object through
-the input adapter, controls-owned meaning, drive configuration, managed program, software proof,
-and finally the wheels-up gate. Do not enable the example just because it compiles.
+Follow the data from the FTC object through the input adapter, controls-owned meaning, drive
+configuration, and managed program. The expected software observations below make this a complete
+reading lesson. The wheels-up gate is only for a later physical run; compiling does not authorize
+it.
 
 ## Critical production idea
 
@@ -245,6 +249,11 @@ Notice:
 
 ## Software checkpoint: sticks have one coordinate meaning
 
+**Expected observations:** neutral sticks produce four zero requests. With the authored full-scale
+isolated stick inputs, forward and sideways components are capped at `0.25`, and turn at `0.20`.
+Releasing a stick changes the next sample; STOP submits zero to every motor. Read the assertions
+below against the sign and shaping tables above; running them is optional.
+
 - **Question:** Do the maintained controls and complete drive configuration produce Sushi's three
   positive robot-frame directions, the intended capped four-wheel commands, and zero commands on
   managed STOP?
@@ -376,7 +385,7 @@ assertEquals(writesAfterStop, hardware.totalMotorPowerWrites());
 // NEXT GATE: only a supported wheels-up run can prove physical directions and braking.
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -404,7 +413,12 @@ production graph.
 produces the expected physical rotation, the robot translates or turns correctly, or BRAKE stops it
 within a safe distance.
 
+**Reading checkpoint:** explain when the source reads the sticks, why a held stick continues to
+drive, and why the configured axis sign does not establish a physical wheel's direction.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to operate the drivetrain.
 
 Keep `FirstDriveTeleOp` disabled while completing this review:
 
@@ -430,6 +444,6 @@ Keep the robot on blocks until all three isolated directions and STOP agree with
 expectations. Lower it only for a cleared, low-speed floor trial with the same caps and stop
 operator.
 
-**Next gate:** drive is independent of the actuator lessons. When you need an actuator, start the
-cumulative path with the [continuous intake](<Continuous Intake.md>) before connecting that
-mechanism to the robot.
+**Next gate:** if the named-intake path is familiar, [combine drive and intake](<Combine Drive and Intake.md>)
+in one TeleOp. Otherwise read [the intake lesson](<Continuous Intake.md>) first. These are knowledge
+prerequisites; the separate hardware gates apply when you operate the combined robot.

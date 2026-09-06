@@ -7,8 +7,10 @@ tags:
 
 **Learning mode:** Operational runbook
 
-Complete these checks on the existing project; this page
-does not ask you to author a robot subsystem.
+This page is optional for readers. Use it when you want to run the software scenarios or write your
+own robot code. Complete these checks on the existing project; this page does not ask you to author
+a robot subsystem. To learn without installing anything, continue with the
+[First software tour](<First Software Tour.md>).
 
 **Before this page:** read [How Sushi runs your code](<Framework Overview.md>) so the later
 `FtcRobotOpMode` and `configure(...)` names connect to a familiar FTC loop.
@@ -39,8 +41,8 @@ motion.
 
 - public repository [`README.md`](https://github.com/harishv-99/2025-PhoenixPedro#readme) — project
   and FTC SDK setup;
-- [First software tour](<First Software Tour.md>) — the next required route after this setup
-  checkpoint, with all teaching OpModes still disabled.
+- [First software tour](<First Software Tour.md>) — three reading stops with optional commands,
+  with all teaching OpModes still disabled.
 
 **Safety:** Keep the course OpModes `@Disabled` during this lesson. A software build requires no
 robot motion.
@@ -142,7 +144,7 @@ Optional later step: the ready-made hardware tester consoles are separate from t
 examples. Read the [`testing console guide`](<../testing-calibration/README.md>) before any
 supervised hardware work.
 
-## 5. Deploy without enabling the course examples
+## Optional later: deploy without enabling the course examples
 
 If a Robot Controller is available, use the team's normal Android Studio deployment process to
 install the project. Confirm that the Driver Station connects and lists the team's already-enabled
@@ -183,8 +185,8 @@ that separate work.
 
 ## Continue with the first software tour
 
-With the software baseline green, follow the [First software tour](<First Software Tour.md>) while
-the teaching OpModes remain disabled. It introduces live drive values, one button press, and one
-timed Auto entirely through maintained software scenarios. After that tour, [choose the next Build
+With the software baseline green, return to the [First software tour](<First Software Tour.md>) while
+the teaching OpModes remain disabled. It introduces sensor observations, one button press, and one
+timed Auto through explained software timelines and optional maintained scenarios. After that tour, [choose the next Build
 outcome](<../build/README.md>) your robot needs and follow that lesson's separate hardware gate only
 when the matching hardware is ready.

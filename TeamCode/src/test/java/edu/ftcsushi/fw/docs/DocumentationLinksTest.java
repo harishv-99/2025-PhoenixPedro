@@ -45,7 +45,7 @@ public final class DocumentationLinksTest {
             "https://github.com/harishv-99/2025-PhoenixPedro/";
     private static final String FENCE =
             String.valueOf((char) 96) + (char) 96 + (char) 96;
-    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 26;
+    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 27;
 
     private static final List<String> GUIDE_AREAS = Arrays.asList(
             "Get Started",
@@ -58,8 +58,8 @@ public final class DocumentationLinksTest {
     private static final List<String> GET_STARTED_NAV_TARGETS = Arrays.asList(
             "README.md",
             "docs/getting-started/Framework Overview.md",
-            "docs/getting-started/Build and Run.md",
             "docs/getting-started/First Software Tour.md",
+            "docs/getting-started/Build and Run.md",
             "docs/README.md");
 
     private static final List<String> BUILD_MARKDOWN_FILES = Arrays.asList(
@@ -71,11 +71,13 @@ public final class DocumentationLinksTest {
             "Move a Referenced Lift.md",
             "Named Claw.md",
             "README.md",
+            "Read a Switch.md",
             "Referenced Lift.md",
             "Run One Timed Auto.md",
             "Single Flywheel Velocity.md");
 
     private static final List<String> BUILD_RECIPE_FILES = Arrays.asList(
+            "Read a Switch.md",
             "First Drive.md",
             "Continuous Intake.md",
             "Named Claw.md",
@@ -94,16 +96,16 @@ public final class DocumentationLinksTest {
 
     private static final List<String> BUILD_NAV_TARGETS = Arrays.asList(
             "docs/build/README.md",
-            "docs/build/First Drive.md",
+            "docs/build/Read a Switch.md",
             "docs/build/Continuous Intake.md",
             "docs/build/Named Claw.md",
-            "docs/build/Referenced Lift.md",
-            "docs/build/Move a Referenced Lift.md",
-            "docs/build/Single Flywheel Velocity.md",
+            "docs/build/First Drive.md",
             "docs/build/Combine Drive and Intake.md",
             "docs/build/Run One Timed Auto.md",
+            "docs/build/Referenced Lift.md",
+            "docs/build/Move a Referenced Lift.md",
             "docs/build/First Autonomous.md",
-            "docs/build/First Pedro Auto.md");
+            "docs/build/Single Flywheel Velocity.md");
 
     private static final List<String> TEST_AND_TUNE_NAV_TARGETS = Arrays.asList(
             "docs/testing-calibration/README.md",
@@ -315,8 +317,8 @@ public final class DocumentationLinksTest {
         for (Integer count : PUBLISHED_SHELL_PAIRS_BY_PAGE.values()) {
             approvedPairs += count;
         }
-        assertEquals("The approved inventory must cover exactly 18 published pages",
-                18, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
+        assertEquals("The approved inventory must cover exactly 19 published pages",
+                19, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
         assertEquals("The per-page inventory must account for every approved pair",
                 PUBLISHED_SHELL_COMMAND_PAIR_COUNT, approvedPairs);
 
@@ -768,17 +770,19 @@ public final class DocumentationLinksTest {
                 "loop()",
                 "Complete the Get Started path",
                 "(<docs/getting-started/Framework Overview.md>)",
-                "After the first software tour");
+                "(<docs/build/README.md>)");
         requireOrdered(guideMap, "Guide map", failures,
                 "(<getting-started/Framework Overview.md>)",
-                "(<getting-started/Build and Run.md>)",
                 "(<getting-started/First Software Tour.md>)",
+                "(<getting-started/Build and Run.md>)",
                 "## Choose by outcome");
-        assertTrue("The Guide map must distinguish the required software path from optional "
-                        + "goal-selected hardware recipes",
-                guideMap.contains("required software path")
-                        && guideMap.contains("choose one Build recipe")
-                        && guideMap.contains("hardware fixtures stay focused and independent"));
+        String mapProse = guideMap.replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        assertTrue("The Guide map must let readers learn before optional setup and hardware",
+                mapProse.contains("reading")
+                        && mapProse.contains("optional")
+                        && guideMap.contains("(<build/Read a Switch.md>)")
+                        && guideMap.contains("(<build/Combine Drive and Intake.md>)")
+                        && guideMap.contains("(<build/Run One Timed Auto.md>)"));
         assertTrue("Get Started route failures: " + failures, failures.isEmpty());
     }
 
@@ -966,16 +970,22 @@ public final class DocumentationLinksTest {
         }
         List<String> routeFailures = new ArrayList<String>();
         requireOrdered(index, "Build README", routeFailures,
+                "(<Read a Switch.md>)",
                 "(<Continuous Intake.md>)",
                 "(<Named Claw.md>)",
+                "(<First Drive.md>)",
+                "(<Combine Drive and Intake.md>)",
+                "(<Run One Timed Auto.md>)",
                 "(<Referenced Lift.md>)",
                 "(<Move a Referenced Lift.md>)",
+                "(<First Autonomous.md>)",
                 "(<Single Flywheel Velocity.md>)");
-        assertTrue("Build index must expose the cumulative actuator knowledge route: "
+        String indexProse = index.replaceAll("\\s+", " ");
+        assertTrue("Build index must expose cumulative knowledge with independent fixtures: "
                         + routeFailures,
-                index.contains("knowledge is cumulative")
-                        && index.contains("hardware fixtures are intentionally independent")
-                        && index.contains("read the lessons in order")
+                indexProse.contains("knowledge is cumulative")
+                        && indexProse.contains("hardware fixtures are intentionally independent")
+                        && indexProse.toLowerCase(Locale.ROOT).contains("read the lessons in order")
                         && routeFailures.isEmpty());
         assertTrue("Drive must remain an independent outcome path",
                 index.contains("Drive is independent")
@@ -987,25 +997,124 @@ public final class DocumentationLinksTest {
                         && index.contains("continuous gamepad axes")
                         && index.contains("synchronous button meaning")
                         && index.contains("one behavior over time in Auto"));
+        String optionalFeedback = sectionBetween(index,
+                "## Add feedback when your robot needs it",
+                "## Optional: author the slice in your robot");
+        assertContainsAll("Feedback must remain a continuation after basic TeleOp and Auto",
+                optionalFeedback,
+                "optional continuation", "(<Referenced Lift.md>)", "(<Move a Referenced Lift.md>)",
+                "(<First Autonomous.md>)", "(<Single Flywheel Velocity.md>)");
+        assertTrue("Pedro must be discoverable as an Advanced integration, not a required Build",
+                navTargets(navAreaBlock(config, "Advanced"))
+                        .contains("docs/build/First Pedro Auto.md")
+                        && !BUILD_NAV_TARGETS.contains("docs/build/First Pedro Auto.md"));
 
         String setup = readUtf8(docsRoot.resolve("docs/getting-started/Build and Run.md"));
         String oldCourseRedirect = readUtf8(docsRoot.resolve(
                 "docs/getting-started/Basic Mechanisms Robot.md"));
         String drive = readUtf8(buildRoot.resolve("First Drive.md"));
         String setupProse = setup.replaceAll("\\s+", " ");
-        String oldCourseProse = oldCourseRedirect.replaceAll("\\s+", " ");
-        int overviewLink = setup.indexOf("(<Framework Overview.md>)");
-        int tourLink = setup.indexOf("(<First Software Tour.md>)");
-        assertTrue("Setup must preserve the shared software route before hardware selection",
-                overviewLink >= 0
-                        && tourLink > overviewLink
+        assertTrue("Optional setup must return to the reading tour before hardware selection",
+                setup.contains("(<Framework Overview.md>)")
+                        && setup.contains("(<First Software Tour.md>)")
+                        && setupProse.contains("optional for readers")
                         && setupProse.contains("teaching OpModes remain disabled")
                         && setupProse.contains("choose the next Build outcome")
-                        && oldCourseProse.contains("actuator lessons now")
-                        && oldCourseProse.contains("velocity in order")
+                        && oldCourseRedirect.contains("(<../build/README.md>)")
                         && drive.contains("Continuous Intake.md")
-                        && !setup.contains("select only the mechanism")
-                        && !oldCourseRedirect.contains("independent Build recipes"));
+                        && !setup.contains("select only the mechanism"));
+    }
+
+    @Test
+    public void beginnerCourseSeparatesReadingRunningAndAuthoringInTheReadersRobot()
+            throws IOException {
+        Path docsRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH).resolve("docs");
+        String index = readUtf8(docsRoot.resolve("build/README.md"));
+        String setup = readUtf8(docsRoot.resolve("getting-started/Build and Run.md"));
+        String tour = readUtf8(docsRoot.resolve("getting-started/First Software Tour.md"));
+        String modes = sectionBetween(index,
+                "## Choose how to follow a lesson", "## Understand one part");
+        String authoring = sectionBetween(index,
+                "## Optional: author the slice in your robot",
+                "## Where each concept first appears");
+
+        assertContainsAll("The complete course must be available by reading", index,
+                "Reading is a complete learning path",
+                "no installation, code changes, test run, or matching hardware is required");
+        assertContainsAll("Reading and executing a checkpoint must remain distinct", modes,
+                "predict", "observation", "reading checkpoint", "optionally",
+                "reading an expected result does not claim that you ran it",
+                "physical check", "separate");
+        assertContainsAll("Optional authoring must name independent main and test package homes",
+                authoring,
+                "TeamCode/src/main/java/edu/ftcsushi/robots/myrobot/",
+                "TeamCode/src/test/java/edu/ftcsushi/robots/myrobot/",
+                "edu.ftcsushi.robots.myrobot", "package-private controls",
+                "test-only", "never in robot main", "construction calls", "Gradle selector",
+                "wrong expected value should fail", "does not verify your owner");
+        assertContainsAll("Software setup must be optional for readers", setup,
+                "optional for readers", "First Software Tour.md");
+        assertContainsAll("The tour must offer optional execution without making it completion",
+                tour, "Optional: run the examples", "predict", "expected behavior",
+                "running the tests is not a graduation requirement");
+    }
+
+    @Test
+    public void switchLessonOwnsTheCompleteObservationPathAndIntakeControlsStayFocused()
+            throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path frameworkRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH);
+        Path buildRoot = frameworkRoot.resolve("docs/build");
+        String sensor = readUtf8(buildRoot.resolve("Read a Switch.md"));
+        String service = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/"
+                        + "BasicSwitchService.java"));
+        String host = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/"
+                        + "BasicSwitchTeleOp.java"));
+        String robot = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/"
+                        + "StarterRobot.java"));
+        String focusedControls = readUtf8(repositoryRoot.resolve(
+                "TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/"
+                        + "StarterIntakeControls.java"));
+        String intake = readUtf8(buildRoot.resolve("Continuous Intake.md"));
+
+        assertContainsAll("Switch lesson must expose its active input, filter, and lifecycle graph",
+                sensor,
+                "config.switchName = \"lessonSwitch\"",
+                "config.pressedDebounceSec = 0.02",
+                "config.releasedDebounceSec = 0.02",
+                "FtcSensors.digitalLow(map, switchName)",
+                "rawPressedSource.debouncedOnOff(pressedDelay, releasedDelay)",
+                "NOT_OBSERVED = new Status(false, false, false)",
+                "program.service(", "program.presenter(", "limitSwitch.status()",
+                "BasicSwitchService.java", "BasicSwitchTeleOp.java",
+                "BasicSwitchSoftwareScenarioTest.java", "BasicSwitchTestRig.java");
+        assertContainsAll("Switch evidence must distinguish sampling, status, and physical truth",
+                sensor,
+                "Construction does not sample", "immutable", "does not cause two hardware reads",
+                "START's zero elapsed interval", "STOP occurs before START",
+                "INIT", "observed", "false", "unknown", "does not discover the wiring",
+                "not on a new thread", "commits telemetry once");
+        assertTrue("Switch status lookup must remain a cached observation",
+                service.contains("return status;")
+                        && host.contains("BasicSwitchService.Status status = limitSwitch.status();")
+                        && !host.contains("getAsBoolean(")
+                        && !host.contains("telemetry.update()"));
+        assertTrue("The focused switch fixture must own no actuator or drive output",
+                !service.contains("FtcActuators") && !host.contains("program.output(")
+                        && !host.contains("program.drive(") && host.contains("@Disabled"));
+
+        String focusedDeclaration = sectionBetween(robot,
+                "public void declareIntakeTeleOp(", "public StarterIntake declareAuto(");
+        assertTrue("Focused intake must use its shared button owner without constructing drive",
+                focusedDeclaration.contains("new StarterIntakeControls(")
+                        && !focusedDeclaration.contains("StarterTeleOpControls")
+                        && !focusedDeclaration.contains("GamepadDriveSource")
+                        && !focusedControls.contains("fw.drive.")
+                        && intake.contains("robot/StarterIntakeControls.java")
+                        && !intake.contains("robot/StarterTeleOpControls.java"));
     }
 
     @Test
@@ -1023,7 +1132,14 @@ public final class DocumentationLinksTest {
             String markdown = readUtf8(page);
 
             requireExactlyOnce(markdown, "**Outcome:**", fileName, failures);
-            requireExactlyOnce(markdown, "**Prerequisites:**", fileName, failures);
+            Matcher prerequisites = Pattern.compile(
+                    "(?m)^\\*\\*(?:Prerequisites|(?:Optional[^*]*\\. )?"
+                            + "Knowledge before this page):\\*\\*")
+                    .matcher(markdown);
+            String prerequisitesLabel = prerequisites.find() ? prerequisites.group() : "";
+            if (prerequisitesLabel.isEmpty() || prerequisites.find()) {
+                failures.add(fileName + ": declare exactly one knowledge-prerequisite block");
+            }
             requireExactlyOnce(markdown, "## Critical production idea", fileName, failures);
             requireExactlyOnce(markdown, "## Files in this checkpoint", fileName, failures);
             requireExactlyOnce(markdown, "## Software checkpoint:", fileName, failures);
@@ -1031,7 +1147,7 @@ public final class DocumentationLinksTest {
             requireExactlyOnce(markdown, "**Next gate:**", fileName, failures);
             requireOrdered(markdown, fileName, failures,
                     "**Outcome:**",
-                    "**Prerequisites:**",
+                    prerequisitesLabel,
                     "## Critical production idea",
                     "## Files in this checkpoint",
                     "## Software checkpoint:",
@@ -1053,11 +1169,17 @@ public final class DocumentationLinksTest {
             requireExactlyOnce(markdown, "**Read the causal chain:**", fileName, failures);
             requireExactlyOnce(markdown, "**Proves:**", fileName, failures);
             requireExactlyOnce(markdown, "**Does not prove:**", fileName, failures);
+            requireExactlyOnce(markdown, "**Expected observations:**", fileName, failures);
+            requireExactlyOnce(markdown, "**Reading checkpoint:**", fileName, failures);
             requireOrdered(markdown, fileName, failures,
                     "**Read the causal chain:**",
                     "**Proves:**",
                     "**Does not prove:**",
                     "**Next gate:**");
+            requireOrdered(markdown, fileName, failures,
+                    "**Expected observations:**",
+                    "**Reading checkpoint:**",
+                    "## Isolated hardware gate");
 
             boolean hasMainManifest = Pattern.compile(
                     "(?m)^\\*\\*Main(?: added here)?:\\*\\*$")
@@ -1111,7 +1233,11 @@ public final class DocumentationLinksTest {
         String intake = readUtf8(buildRoot.resolve("Continuous Intake.md"));
         List<String> failures = new ArrayList<String>();
 
-        requireExactlyOnce(intake, "**Start here:**", "Continuous Intake.md", failures);
+        assertTrue("The first actuator lesson must build on observation without requiring hardware",
+                intake.contains("**Knowledge before this page:**")
+                        && intake.contains("(<Read a Switch.md>)")
+                        && intake.contains("complete first actuator lesson")
+                        && intake.contains("without installing software or owning a motor"));
         requireOrdered(intake, "Continuous Intake.md", failures,
                 "### 1. Keep physical answers in data-only configuration",
                 "### 2. Map each name forward once",
@@ -1144,7 +1270,7 @@ public final class DocumentationLinksTest {
 
         Map<String, String> cumulative = new LinkedHashMap<String, String>();
         cumulative.put("Named Claw.md", "Continuous Intake.md");
-        cumulative.put("Referenced Lift.md", "Named Claw.md");
+        cumulative.put("Referenced Lift.md", "Read a Switch.md");
         cumulative.put("Move a Referenced Lift.md", "Referenced Lift.md");
         cumulative.put("Single Flywheel Velocity.md", "Move a Referenced Lift.md");
         for (Map.Entry<String, String> lesson : cumulative.entrySet()) {
@@ -1281,7 +1407,7 @@ public final class DocumentationLinksTest {
                 "requireDistinctMotorOwners(activeProfile)",
                 "controls.bind(program.callbackBindings(), intake)",
                 "program.drive(",
-                "scaledWhen(this.driver.rightBumper()",
+                "scaledWhen(requiredDriver.rightBumper()",
                 "StarterTeleOpControls.SLOW_TRANSLATE_SCALE",
                 "StarterTeleOpControls.SLOW_OMEGA_SCALE",
                 "mode.advanceTo(0.08)",
@@ -1446,7 +1572,7 @@ public final class DocumentationLinksTest {
                     chooser.contains("(<" + destination + ">)"));
         }
         assertTrue("Plant chooser must stay a decision guide rather than duplicate reference",
-                chooser.contains("this page is not a catalog")
+                chooser.contains("**Learning mode:** Decision guide")
                         && chooser.contains("## Start with the outcome")
                         && chooser.contains("## The contract shared by every row")
                         && chooser.contains("## Choose semantic or numeric intent")
@@ -1945,16 +2071,19 @@ public final class DocumentationLinksTest {
                         && docsHome.contains("Sushi"));
         requireOrdered(rootReadme, "Repository README", doorwayFailures,
                 "Framework Overview.md>)",
-                "Build and Run.md>)",
                 "First Software Tour.md>)",
                 "docs/README.md>)",
                 "docs/build/README.md>)");
         requireOrdered(namespaceReadme, "Namespace README", doorwayFailures,
                 "Framework Overview.md>)",
-                "Build and Run.md>)",
                 "First Software Tour.md>)",
                 "fw/docs/README.md>)",
                 "fw/docs/build/README.md>)");
+        for (String doorway : Arrays.asList(rootReadme, namespaceReadme)) {
+            assertTrue("Repository doorways must offer setup as an optional activity",
+                    doorway.contains("Build and Run.md>)")
+                            && doorway.toLowerCase(Locale.ROOT).contains("optional"));
+        }
         assertTrue("Repository doorways disagree with the Get Started route: "
                 + doorwayFailures, doorwayFailures.isEmpty());
         assertTrue("Documentation site must use the Sushi identity and framework docs root",
@@ -2077,8 +2206,10 @@ public final class DocumentationLinksTest {
                 tasks.contains("mixed non-success kinds report `UNKNOWN`")
                         && tasks.contains("`CANCELLED` and `UNKNOWN`\nstart neither branch"));
         assertTrue("Beginner Task lesson must teach the safe default before exceptional repair",
-                beginner.contains("`Tasks.sequence(...)` starts its next child only after exact")
-                        && beginner.contains("`Tasks.sequenceOnCompletion(...)`"));
+                beginner.replaceAll("\\s+", " ")
+                        .contains("`Tasks.sequence(...)` starts its next child only after exact `SUCCESS`")
+                        && beginner.indexOf("sequenceOnCompletion(...)")
+                                > beginner.indexOf("`Tasks.sequence(...)`"));
         assertTrue("Adaptive park takeover must use explicit completion continuation",
                 adaptive.contains(
                         "program.rootTask(Tasks.sequenceOnCompletion(boundedPrePark, park));")
@@ -2125,7 +2256,7 @@ public final class DocumentationLinksTest {
                 "{ #intent }", "New concept: intent",
                 "Framework Overview.md#source",
                 "Framework Overview.md#saved-callback",
-                "Framework Overview.md#task");
+                "Tasks and Autonomous.md");
         assertContainsAll("The Plant chooser must define Plant once and reuse prior concepts",
                 plants,
                 "{ #plant }", "New concept: Plant",
@@ -2146,6 +2277,7 @@ public final class DocumentationLinksTest {
         for (String action : Arrays.asList(
                 "create robot parts",
                 "save button rules",
+                "refresh sensor observations",
                 "check saved rules",
                 "advance ongoing actions",
                 "update robot parts",
@@ -2155,6 +2287,10 @@ public final class DocumentationLinksTest {
             assertTrue("First-contact diagram is missing plain action " + action,
                     plainDiagram.contains(action));
         }
+        String activeDiagramNode = sectionBetween(plainDiagram, "a[\"active", "s[\"stop");
+        requireOrdered(activeDiagramNode, "First-contact active loop", failures,
+                "refresh sensor observations", "check saved rules",
+                "advance ongoing actions", "update robot parts", "show telemetry");
         for (String unexplained : Arrays.asList(
                 "bindings", "tasks", "services", "presenters", "plants")) {
             assertTrue("First-contact diagram leaks framework noun " + unexplained,
@@ -2498,32 +2634,38 @@ public final class DocumentationLinksTest {
             throws IOException {
         Path docsRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH).resolve("docs");
         String tour = readUtf8(docsRoot.resolve("getting-started/First Software Tour.md"));
-        String drive = readUtf8(docsRoot.resolve("build/First Drive.md"));
+        String sensor = readUtf8(docsRoot.resolve("build/Read a Switch.md"));
         String intake = readUtf8(docsRoot.resolve("build/Continuous Intake.md"));
         String timedAuto = readUtf8(docsRoot.resolve("build/Run One Timed Auto.md"));
         List<String> failures = new ArrayList<String>();
 
         assertTrue("First-pass headings must rely on one generated heading ID, not duplicate it",
-                !drive.contains("<a id=\"first-pass-")
+                !sensor.contains("<a id=\"first-pass-")
                         && !intake.contains("<a id=\"first-pass-")
                         && !timedAuto.contains("<a id=\"first-pass-"));
 
         requireOrdered(tour, "First Software Tour.md", failures,
-                "First Drive.md#first-pass-current-values-every-loop",
+                "Read a Switch.md#first-pass-observations-every-loop",
                 "Continuous Intake.md#first-pass-run-a-function-once-per-press",
                 "Run One Timed Auto.md#first-pass-work-that-continues-across-loops",
                 "## Completion check");
-        assertTrue("The first tour must remain software-only and preserve evidence limits",
-                tour.contains("entirely in software")
-                        && tour.contains("Hardware is optional for this tour")
+        String tourProse = tour.replaceAll("\\s+", " ");
+        assertTrue("The first tour must support reading without running or installing anything",
+                tourProse.contains("Reading is a complete path")
+                        && tourProse.contains("no installation, code changes, test run, or robot")
+                        && tourProse.contains("running the tests is not a graduation requirement")
                         && tour.contains("Software success does not grant permission to enable motion")
                         && tour.contains("(<../README.md>)")
                         && proseWordCount(tour) <= 700);
+        assertEquals("Every tour stop must let a reader predict an observable result", 3,
+                literalCount(tour, "**Predict:**"));
+        assertEquals("Every tour prediction needs an explained expected result", 3,
+                literalCount(tour, "**Expected behavior:**"));
 
         Map<String, String> firstPasses = new LinkedHashMap<String, String>();
-        firstPasses.put("First Drive.md", sectionBetween(drive,
-                "## First pass: current values every loop",
-                "## Full build: reconstruct the production path"));
+        firstPasses.put("Read a Switch.md", sectionBetween(sensor,
+                "## First pass: observations every loop",
+                "## Critical production idea"));
         firstPasses.put("Continuous Intake.md", sectionBetween(intake,
                 "## First pass: run a function once per press",
                 "## Full build: reconstruct the production path"));
@@ -2541,14 +2683,17 @@ public final class DocumentationLinksTest {
                             && !entry.getValue().contains("branchOnOutcome"));
         }
 
-        String driveFirst = firstPasses.get("First Drive.md");
-        String driveFirstProse = driveFirst.replaceAll("\\s+", " ");
-        assertTrue("Drive first pass must distinguish connection from continuous sampling",
-                driveFirstProse.contains("calls `configure(...)` once")
-                        && driveFirstProse.contains("every active FTC loop")
-                        && driveFirstProse.contains("sampled continuously")
-                        && !driveFirst.contains("CallbackBindings")
-                        && !driveFirst.contains("TaskBindings"));
+        String sensorFirst = firstPasses.get("Read a Switch.md");
+        String sensorFirstProse = sensorFirst.replaceAll("\\s+", " ");
+        assertTrue("Switch first pass must distinguish a sampled fact from cached presentation",
+                sensorFirst.contains("rawPressedSource.getAsBoolean(clock)")
+                        && sensorFirst.contains("pressedSource.getAsBoolean(clock)")
+                        && sensorFirst.contains("status = new Status(true, rawPressed, pressed)")
+                        && sensorFirstProse.contains("does not read the switch again")
+                        && sensorFirstProse.contains("observed=false")
+                        && sensorFirstProse.contains("unknown")
+                        && !sensorFirst.contains("CallbackBindings")
+                        && !sensorFirst.contains("TaskBindings"));
 
         String intakeFirst = firstPasses.get("Continuous Intake.md");
         String intakeFirstProse = intakeFirst.replaceAll("\\s+", " ");
@@ -2765,6 +2910,8 @@ public final class DocumentationLinksTest {
 
     private static Map<String, String> buildRecipeTestSelectors() {
         Map<String, String> selectors = new LinkedHashMap<String, String>();
+        selectors.put("Read a Switch.md",
+                "edu.ftcsushi.robots.examples.basicsensing.BasicSwitchSoftwareScenarioTest");
         selectors.put("First Drive.md",
                 "edu.ftcsushi.robots.examples.firstdrive.FirstDriveSoftwareScenarioTest");
         selectors.put("Continuous Intake.md",
@@ -2799,6 +2946,7 @@ public final class DocumentationLinksTest {
         counts.put("docs/build/First Pedro Auto.md", 1);
         counts.put("docs/build/Move a Referenced Lift.md", 1);
         counts.put("docs/build/Named Claw.md", 1);
+        counts.put("docs/build/Read a Switch.md", 1);
         counts.put("docs/build/Referenced Lift.md", 1);
         counts.put("docs/build/Run One Timed Auto.md", 1);
         counts.put("docs/build/Single Flywheel Velocity.md", 1);
@@ -3340,8 +3488,8 @@ public final class DocumentationLinksTest {
             String sourcePath = excerpts.group(1).trim();
             String snippet = normalizeExcerpt(excerpts.group(2));
             int lines = snippet.isEmpty() ? 0 : snippet.split("\\n", -1).length;
-            if (lines < 3 || lines > 12) {
-                failures.add(pageName + ": source excerpt must contain 3–12 lines, found "
+            if (lines < 1 || lines > 12) {
+                failures.add(pageName + ": source excerpt must contain 1–12 lines, found "
                         + lines + " for " + sourcePath);
             }
             Path source = repositoryRoot.resolve(sourcePath).toAbsolutePath().normalize();

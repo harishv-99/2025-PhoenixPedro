@@ -8,9 +8,10 @@ tags:
 **Outcome:** command one motor in encoder ticks per second, observe requested, applied, and measured
 velocity separately, and create a non-blocking Task that succeeds only from feedback.
 
-**Prerequisites:** complete the [continuous-intake lesson](<Continuous Intake.md>) for mechanism
-ownership and [move a referenced lift](<Move a Referenced Lift.md>) for feedback-aware Tasks. No
-robot is needed until the isolated hardware gate below.
+**Optional feedback lesson. Knowledge before this page:** understand
+[Continuous Intake](<Continuous Intake.md>) for mechanism ownership and
+[Move a Referenced Lift](<Move a Referenced Lift.md>) for request-correlated feedback Tasks.
+Reading their explanations is enough; no installation, test run, or robot is needed here.
 
 **Builds on:** one capability, one mechanism-owned Plant, one managed output heartbeat, and fresh
 single-use Tasks.
@@ -237,6 +238,12 @@ Notice:
 
 ## Software checkpoint: fresh feedback completes the selected request
 
+**Expected observations:** old success at `200` ticks/sec cannot complete a new `300` ticks/sec
+request. The new Task waits until an output update caches the supplied `300` measurement and its
+next Task phase observes that matching evidence. Timeout leaves the request unchanged; active
+cancellation requests zero, which the normal output heartbeat realizes. Read those distinctions
+below whether or not you run the scenario.
+
 - **Question:** Does a new 300-ticks/sec Task reject cached success for the older 200-ticks/sec
   request, then finish only after a later heartbeat publishes matching feedback?
 - **Keep real:** the numeric capability, production mechanism, staged Plant, `ScalarTasks` Task,
@@ -277,7 +284,7 @@ assertEquals(300.0, reached.measuredVelocityTicksPerSec(), EPSILON);
 assertTrue(reached.atRequestedVelocity());
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -304,7 +311,14 @@ command-correlated feedback success, timeout, and cancellation-to-zero semantics
 
 **Does not prove:** the candidate values produce safe, stable, or useful physical flywheel motion.
 
+**Reading checkpoint:** explain why velocity is itself the complete numeric request and why a
+previous successful measurement cannot prove arrival for a new command. Optional
+[authorship](<README.md#author-in-your-robot>) needs only this one-motor fixture, not the earlier
+lift or a pair of flywheels.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to operate a physical velocity mechanism.
 
 The checked-in `BasicFlywheelTeleOp` has `@Disabled`, and `BasicFlywheelProfile.current()` has
 `allowFlywheelMotion = false`. Leave both locks in place while you review `flywheelMotor`,
@@ -329,5 +343,7 @@ If the actual robot has two wheels that share a command but require independent 
 the [advanced paired-flywheel example](<../advanced/Paired Flywheel Velocity.md>) is an optional
 branch rather than the next beginner prerequisite.
 
-**Next gate:** after the focused actuator vocabulary is clear, use the already-proven drive and
-intake slices to [combine drive and intake](<Combine Drive and Intake.md>) under one managed TeleOp.
+**Next gate:** choose an [Advanced pattern](<../advanced/README.md>) only when it answers your
+next robot requirement, or use the [Plant chooser](<../getting-started/learn-sushi/Plants and Hardware.md>)
+to compare the actuator shapes you have learned. The basic TeleOp and timed Auto do not require
+this velocity extension.

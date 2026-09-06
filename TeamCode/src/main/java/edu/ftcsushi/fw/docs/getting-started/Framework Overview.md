@@ -6,7 +6,7 @@ tags:
 # How Sushi runs your code
 
 **Start here if:** you know basic Java and have written an FTC `LinearOpMode` or iterative
-`OpMode`, but saved functions and frameworks are new to you. This page needs no robot.
+`OpMode`, but saved functions and frameworks are new to you. This page needs no installation or robot.
 
 Sushi does not replace the FTC SDK. It supplies a consistent way to organize the setup, repeated
 work, and cleanup that every full robot needs.
@@ -30,7 +30,8 @@ Sushi owns that repetition and cleanup while your code describes what belongs in
 !!! info "New concept: Source"
 
     A **Source** is a reusable reader, not a stored value. Save it once during setup; whenever the
-    managed loop asks later, it reports the current input.
+    managed loop asks on a later cycle, it can report a new input. Some readers share one sampled
+    value within a cycle; saving a reader does not freeze its value for the whole run.
 
 Reading `gamepad1.a` gives one `boolean` now. `GamepadDevice` turns FTC gamepad fields into Sources:
 
@@ -80,10 +81,10 @@ Each Task object runs once; ask the robot action method for a fresh one to repea
 ```mermaid
 flowchart LR
   accTitle: What Sushi does from INIT to STOP
-  accDescr: During INIT student code creates robot parts, saves button rules, and declares repeated work. After FTC START, when setup succeeded, every active loop checks rules, advances ongoing actions, updates robot parts, and shows telemetry. At FTC STOP, Sushi cancels ongoing actions and stops hardware owners.
+  accDescr: During INIT student code creates robot parts, saves button rules, and declares repeated work. After FTC START, when setup succeeded, every active loop refreshes sensor observations, checks rules, advances ongoing actions, updates robot parts, and shows telemetry. At FTC STOP, Sushi cancels ongoing actions and stops hardware owners.
 
   I["INIT<br/>create robot parts<br/>save button rules<br/>declare repeated work"]
-  A["ACTIVE — each loop after successful setup<br/>check saved rules<br/>advance ongoing actions<br/>update robot parts<br/>show telemetry"]
+  A["ACTIVE — each loop after successful setup<br/>refresh sensor observations<br/>check saved rules<br/>advance ongoing actions<br/>update robot parts<br/>show telemetry"]
   S["STOP<br/>cancel ongoing actions<br/>stop hardware owners"]
 
   I -->|FTC START| A
@@ -93,40 +94,36 @@ flowchart LR
 **Text version:**
 
 1. During INIT, student code creates robot parts, saves button rules, and declares repeated work.
-2. After FTC START, in an ordinary run whose setup succeeded, each active FTC loop checks the
-   rules, advances unfinished actions a little, updates the robot parts that own outputs, and shows
-   telemetry.
+2. After FTC START, in an ordinary run whose setup succeeded, each active FTC loop refreshes sensor
+   observations, checks the rules, advances unfinished actions a little, updates the robot parts
+   that own outputs, and shows telemetry.
 3. At FTC STOP, Sushi cancels unfinished actions and stops the hardware owners. Nothing here needs
    a background thread.
 
 ## 6. Map the picture to the small Sushi entry point
 
 The Sushi class that receives FTC's iterative calls is its managed host, `FtcRobotOpMode`. The
-object that remembers what the host must run is its checklist, `RobotProgram`. The maintained
-intake-only example shows the whole OpMode shape. The helper names inside `configure(...)` are
-explained in the later full Build lesson; for now, notice the class it extends and the one method
-it overrides:
+object that remembers what the host must run is its checklist, `RobotProgram`. The switch example
+extends `FtcRobotOpMode`; the host calls its entry method once during INIT. Notice the two jobs:
+choose data settings, then connect the robot parts that will use them later.
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.java -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchTeleOp.java -->
 ```java
-@TeleOp(name = "FW Starter: Intake only", group = "FW Examples")
-@Disabled
-public final class StarterIntakeTeleOp extends FtcRobotOpMode {
-
-    @Override
-    protected void configure(RobotProgram program) {
-        StarterProfile profile = StarterProfile.current();
-        new StarterRobot(hardwareMap).declareIntakeTeleOp(program, profile, gamepad1);
-    }
+@Override
+protected void configure(RobotProgram program) {
+    BasicSwitchService.Config config = BasicSwitchService.Config.defaults();
+    declare(program, hardwareMap, config);
 }
 ```
 
-[`StarterIntakeTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.html>)
+[`BasicSwitchTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchTeleOp.html>)
 is the generated API page; its
-[Complete source: `StarterIntakeTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.java>)
-supplies imports and package details. `configure(program)` runs once during INIT. `declareIntakeTeleOp(...)`
-connects pieces that Sushi will use later; it does not run the intake during configuration. Do not
-add another active loop.
+[Complete source: `BasicSwitchTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchTeleOp.java>)
+supplies imports and package details. `Config.defaults()` supplies the channel name and filtering
+intervals. `declare(...)` connects one sensor reader and a telemetry display; it does not poll the
+switch during configuration. The [switch lesson](<../build/Read a Switch.md>) explains those
+settings and connections. Do not add another active loop. The example stays `@Disabled`, which
+keeps it off the Driver Station menu while you study it.
 
 ## 7. Keep one final hardware writer
 
@@ -142,5 +139,6 @@ A software test can prove that `COLLECT` selected and submitted the configured c
 prove a motor is wired to the intended port, turned in the intended direction, moved a game piece,
 or stopped safely. Those are separate, supervised hardware checks.
 
-Next, [set up and verify the Sushi project](<Build and Run.md>), then complete the required
-[first software tour](<First Software Tour.md>).
+Next, take the short [first software tour](<First Software Tour.md>) by reading its predictions and
+expected results. [Set up and verify the Sushi project](<Build and Run.md>) only if you also want to
+run the optional checks or write code.

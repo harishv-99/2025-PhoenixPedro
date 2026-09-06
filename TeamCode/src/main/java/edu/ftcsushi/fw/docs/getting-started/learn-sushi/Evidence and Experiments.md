@@ -5,75 +5,58 @@ tags:
 
 # Evidence and experiments
 
-**Learning mode:** Architecture reference
+**Question:** What does a sensor fact, status row, or experiment result actually establish?
 
-This page explains what each evidence level proves;
-the linked scenario and experiment modules contain the code-authoring work.
-
-**Question:** What does a boolean, status row, or experiment result actually prove?
-
-**Reading time:** about 8 minutes
-
-Sushi separates a request, an electrical observation, a measurement, and a physical conclusion.
-This page requires no sensor, code edit, or robot run.
+This is an on-demand evidence reference. Reading requires no sensor, code edit, installation, or
+robot run. For the complete first observation path, read
+[one switch without motion](<../../build/Read a Switch.md>). Its expected trace explains the
+software result; optionally running the supplied test produces an observation of your own run.
 
 ## Climb the canonical evidence ladder
 
-Use the lowest-cost level that can truthfully answer the current question, then widen the boundary
-only when the next fact requires it. This is the same five-level ladder defined in
+Choose the smallest boundary that answers the question. The five levels are defined in
 [How to test a Sushi component](<../../testing-calibration/How to test a Sushi component.md#the-five-evidence-levels>):
 
-```text
-1. semantic intent
-    -> 2. software-device scenario
-    -> 3. supplied managed slice
-    -> 4. maintainer regression
-    -> 5. physical bring-up, calibration, or experiment
-```
+| Level | What stays real | Limit |
+| --- | --- | --- |
+| 1. Semantic intent | control, Task, or policy decision; a recorder receives requests | no actuator or physical evidence |
+| 2. Software-device scenario | production mechanism and explicit device observations | commands do not simulate physical response |
+| 3. Supplied managed slice | production phase order and cleanup for the declared owners | no robot-specific response claim |
+| 4. Maintainer regression | edge cases and structural contracts | useful to run; not necessarily a beginner code template |
+| 5. Physical bring-up, calibration, or experiment | the actual assembly under recorded conditions | no claim beyond the observed conditions |
 
-1. **Semantic intent** keeps the control, Task, or policy decision real and replaces the capability
-   with a small recorder.
-2. A **software-device scenario** constructs the production mechanism and Plants with a test-only
-   `HardwareMap`, injects observations explicitly, and records actuator commands.
-3. A **supplied managed slice** keeps enough production lifecycle to establish phase order and
-   cleanup without claiming robot-specific response.
-4. A **maintainer regression** protects exhaustive edge cases or structural contracts that a
-   beginner may run without treating its fixtures as robot-code templates.
-5. **Physical bring-up, calibration, or experiment** observes the assembled robot under stated
-   conditions. Bring-up establishes one device fact; calibration records robot facts; an experiment
-   evaluates a written subsystem question and criterion.
+The ladder widens evidence scope, not permission. Reading an expected result is a learning
+checkpoint; it does not claim the test was run. A passing software test cannot establish wiring,
+motion, tuning, or physical safety.
 
-The arrow widens evidence scope; it is not permission to skip safety review. A green software level
-remains valuable, but it cannot make a physical claim.
+A reactive Java scenario, managed slice, or modeled simulation is a test shape within this ladder.
+A modeled simulation adds an authored dynamics model and must name its assumptions; it is still
+not physical evidence. Passive software probes should never copy a commanded power, velocity, or
+position automatically into feedback. Supply that external observation independently so a broken
+feedback path cannot pass by reading its own request.
 
-### Test shapes are not extra evidence levels
+## Electrical level, semantic fact, and policy differ
 
-A reactive Java scenario, modeled simulation, managed-lifecycle slice, or broad regression suite is
-a **test shape** chosen inside that ladder, not another ladder. An optional modeled simulation adds
-an authored dynamics model to a software question; state its assumptions and fidelity explicitly.
-It may support a level-2 mechanism scenario or a level-3 managed slice, but modeled motion never
-becomes level-5 physical evidence. Likewise, “managed slice” and “regression” describe scope and
-audience; neither word upgrades what the test actually observed.
+An FTC digital input reports HIGH or LOW. `FtcSensors.digitalHigh(...)` reads HIGH as true;
+`digitalLow(...)` reads LOW as true. The robot author chooses the interpretation from the circuit.
+For debounce, differing sampled values accumulate the configured elapsed loop intervals before
+changing the conditioned fact. A sample that agrees with the current conditioned value clears that
+pending change. Transitions between samples are unseen; this does not establish continuous
+physical stability, discover polarity, or supply physical meaning.
 
-In a software device scenario, commanded power, velocity, or position must never be copied
-automatically into encoder or velocity feedback. The test supplies each observation independently;
-otherwise a broken feedback loop can pass by reading back its own command. The checked-in
-[focused software checkpoints](<../../build/README.md>) and
-[software-device scenarios](<../../examples/Hardware-free Reference Scenarios.md>) show the boundary.
+The [switch Build lesson](<../../build/Read a Switch.md>) keeps raw and conditioned `pressed`
+facts separate, supplies the effective debounce values beside the code, and shows one managed
+owner publishing cached status. A presenter can display that evidence without choosing an action.
+Stopping an intake because a switch is pressed would be an additional robot-policy requirement.
 
-The probes are passive, but a typed Java scenario can still be reactive. Request an action, run its
-Task and output phases, and assert the command that production code actually issued. Only then name
-and inject the next external fact; advance the one shared clock once and inspect status or the Task
-outcome. This preserves causality without asking students to predict future commands in a per-cycle
-input file. A small fixture may own setup and the Task-before-output cycle helper, but the request,
-command assertion, and observation remain visible in the test. Plain Java is enough for that
-software question.
+**Key APIs:** [`FtcSensors`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcSensors.html>)
+adapts the electrical input;
+[`BooleanSource`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/core/source/BooleanSource.html>)
+composes its meaning and shared-clock conditioning.
 
-## Start with the Starter status
+## Read status without manufacturing evidence
 
-### Critical code
-
-The Starter presenter asks for one new capability-shaped capture of cached facts:
+The Starter intake presenter reads one capability-shaped capture of cached facts:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
@@ -82,112 +65,33 @@ telemetry.addData("intake.mode", status.mode());
 telemetry.addData("intake.appliedTargetPower", status.appliedPower());
 ```
 
-**What to notice**
+The presenter formats the requested mode and applied target; it does not update the mechanism or
+poll hardware. `appliedPower()` is the Plant's cached final target, not a measurement of motor
+motion. The [intake scenario](<../../build/Continuous Intake.md#software-checkpoint-request-first-apply-on-heartbeat>)
+shows why a request can change before the next output write.
 
-- The presenter formats one new capture of already-computed cached facts; it does not sample
-  hardware.
-- Requested mode and applied target are shown as different facts.
+The same distinction applies to feedback: a measured velocity can meet a controller's tolerance
+without proving balance, a successful launch, or a score. A telemetry row such as `objectPresent`
+does not automatically act as a feeding interlock.
 
-**Key APIs:** `status()` returns a new capability view over cached facts;
-`Telemetry.addData(...)` formats it without owning decisions. Generic command and Plant snapshots
-stay behind that boundary.
+## Extend the evidence only for the next question
 
-`mode()` names semantic intent. `appliedPower()` is the resolver's cached final target, not feedback
-or proof of motion.
+The optional
+[`ReferenceInventoryStatusService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.html>)
+conditions three active-low inputs into one immutable cached snapshot. Its occupied-position count
+counts asserted sensor positions, not proven physical objects; its order issue reports a pattern,
+not a diagnosis of a broken sensor. The
+[software-scenario index](<../../examples/Hardware-free Reference Scenarios.md>) links the maintained
+inventory publication scenario without making that multi-sensor policy part of the first lesson.
 
-## A semantic boolean is not an electrical level
+For a physical subsystem experiment, first write the question, safe range, criterion, procedure,
+stop conditions, and external observations in the
+[Subsystem Experiments](<../../examples/Subsystem Experiments.md>) card. Software reports facts it
+calculates, such as elapsed time and measured velocity. The operator records vibration, clearance,
+sound, and other visible or audible outcomes.
 
-### Critical code
-
-`gamepad.y()` is already semantic: it is `true` while Y is pressed. A gamepad trigger is different
-again—it is a `ScalarSource` from `0.0` released to `1.0` fully pressed.
-
-An FTC `DigitalChannel` reports an electrical level. Sushi makes the chosen polarity visible:
-
-- `FtcSensors.digitalHigh(...)` is true while the pin is HIGH.
-- `FtcSensors.digitalLow(...)` is true while the pin is LOW.
-
-The Reference inventory service deliberately selects and conditions three active-low inputs:
-
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.java -->
-```java
-firstOccupied = FtcSensors.digitalLow(firstChannel)
-        .debouncedOnOff(occupiedDelay, vacatedDelay);
-secondOccupied = FtcSensors.digitalLow(secondChannel)
-        .debouncedOnOff(occupiedDelay, vacatedDelay);
-thirdOccupied = FtcSensors.digitalLow(thirdChannel)
-        .debouncedOnOff(occupiedDelay, vacatedDelay);
-```
-
-**What to notice**
-
-- Electrical polarity is selected once at the mechanism boundary.
-- Debounce conditions the chosen meaning; it does not discover or invert that meaning.
-
-**Key APIs:** `FtcSensors.digitalLow(...)` adapts an active-low FTC channel;
-`BooleanSource.debouncedOnOff(...)` conditions the semantic fact over shared-clock time.
-
-For its reviewed wiring, an empty position is HIGH/false and an occupied position is LOW/true.
-`digitalLow` does not discover the circuit or physical object; the robot author chooses it because
-LOW means “position occupied” for that circuit. Debounce then requires the selected value to remain
-stable for the configured interval before changing. It neither inverts the value nor supplies its
-meaning.
-
-## Scale to measured readiness
-
-Each successful paired-flywheel update publishes one immutable
-[`ReferenceFlywheels.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.Status.html>):
-the grouped Plant snapshot plus two independent wheel measurements. Its requested/selected/applied
-methods avoid generic navigation. `ready()` requires one positive value selected and applied
-without fallback plus both wheels in tolerance; it does not prove a launch or score. The launcher
-composes this complete value as `status().flywheels()` rather than mirroring its fields.
-
-`objectPresent` is status-only in the Reference mechanism. `launchOne()` does not use it to permit
-feeding. A team that needs object-gated feeding must add that policy explicitly rather than treating
-a telemetry row as an interlock.
-
-The optional `ReferenceInventoryStatusService` shows the next step without adding inventory to the
-framework. Three separately debounced active-low inputs become one immutable cached snapshot. Its
-`conditionedOccupiedPositionCount` counts asserted sensor positions, not proven physical objects;
-`OrderIssue` describes an observation outside the example's ordered-fill pattern without diagnosing
-a broken sensor. A presenter reads the full snapshot once, while an Auto Task may observe the same
-cached `fullSource()`. The software scenario proves that derivation for authored levels, not the
-sensor placement, capacity, or collection result on a robot.
-
-## Print computed evidence; observe visible evidence
-
-The locked Reference flywheel experiment prints what software must calculate: trial number and
-state, target velocity, both measured velocities, and elapsed time. When a trial ends, one immutable
-terminal result freezes the flywheel Status, authored target, and elapsed time before requesting
-zero, so later coast-down cannot relabel the result. The operator records directly visible or
-audible facts—direction, vibration, sound, damage, clearance, and STOP response.
-
-The trial owns only the focused paired-flywheel mechanism; it has no transfer, release, or object
-sensor to move accidentally. A separate, team-authored loaded-launch experiment could record score
-or miss; this spin-up trial cannot.
-
-Checked-in criteria keep `reviewedForMotion` false. Their target and powered-run cap are placeholders,
-not physical permission or success criteria. The cap is a cooperative boundary checked once per
-active loop: zero is applied on the first observed loop at or after the limit, so the safety plan
-must allow for worst-case loop delay. `TARGET_REACHED` means only that the computed wheel condition
-was met; it is not an overall `PASS`.
-
-Before any supervised run, the team must author the complete question, safe range, success threshold,
-procedure, stop conditions, and external observations in the full experiment card.
-
-## Check your understanding
-
-**The trial reports `TARGET_REACHED`, but the operator observes unacceptable vibration. Did it pass?**
-
-No. Software may retain its computed timing result while the operator records the vibration and the
-team rejects the configuration. Neither observation should be converted silently into the other.
-
-## Go deeper when needed
-
-- Electrical conditioning: [`ReferenceInventoryStatusService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.html>)
-- All-or-nothing launcher publication: [`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
-- Robot-owned multi-sensor evidence: [`ReferenceInventoryStatusService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventoryStatusService.html>)
-- Hardware-free feedback cases: [Hardware-free Reference scenarios](<../../examples/Hardware-free Reference Scenarios.md>)
-- Safe experiment card and workflow: [Subsystem Experiments](<../../examples/Subsystem Experiments.md>)
-- Evidence vocabulary: [Glossary](<../../reference/Glossary.md#evidence>)
-- [Choose another Sushi topic](<../Beginner's Guide.md>)
+If software reports `TARGET_REACHED` while the operator sees unacceptable vibration, that timing
+condition was met but the physical configuration may still fail the team's criterion. Preserve
+both facts. The [paired-flywheel example](<../../advanced/Paired Flywheel Velocity.md>) explains its
+additional readiness evidence; the [Test & Tune path](<../../testing-calibration/README.md>)
+provides the optional operational procedures.

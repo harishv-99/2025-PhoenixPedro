@@ -12,14 +12,16 @@ connect the pieces once, then write ordinary Java methods for what the robot sho
 
 Complete the Get Started path before choosing a robot part to build. Begin with
 [How Sushi runs your code](<docs/getting-started/Framework Overview.md>); the next links lead through
-setup, the required software-only tour, and the Guide map. This path does not assume that you
-already know callbacks, lambdas, Tasks, or other Sushi vocabulary.
+the short software tour and the Guide map. Reading needs no installation, edits, test execution,
+or hardware. Optional setup enables software checks and small-step authoring in your own robot
+package. This path does not assume that you already know callbacks, lambdas, Tasks, or other Sushi
+vocabulary.
 
 <div class="grid cards" markdown>
 
 -   :material-rocket-launch: **Get Started**
 
-    Relate Sushi to the FTC loop, verify the project, and take a software-only tour.
+    Relate Sushi to the FTC loop and read three small software timelines; setup is optional.
 
     [Start with the FTC loop](<docs/getting-started/Framework Overview.md>)
 
@@ -31,8 +33,7 @@ already know callbacks, lambdas, Tasks, or other Sushi vocabulary.
 
 -   :material-robot: **Build**
 
-    After the first software tour, make a drive, intake, claw, lift, Auto, or Pedro route from a
-    focused compiling example.
+    Follow focused examples from one sensor to TeleOp and basic Auto. Add feedback when needed.
 
     [Choose a build](<docs/build/README.md>)
 

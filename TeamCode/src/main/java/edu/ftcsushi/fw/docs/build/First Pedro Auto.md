@@ -1,6 +1,6 @@
 ---
 tags:
-  - Build
+  - Advanced
 ---
 
 # Inspect one Pedro route's software outcome
@@ -8,8 +8,10 @@ tags:
 **Outcome:** compile one fixed-route Auto, verify its classified software outcome, and keep the
 retained route attempt's status distinct from its Task outcome.
 
-**Prerequisites:** the project software checks pass; you understand fresh Tasks; no physical motion
-is authorized by this lesson.
+**Optional integration lesson. Knowledge before this page:** understand fresh Tasks and exact
+outcomes from [the timed Auto](<Run One Timed Auto.md>) and
+[Task reference](<../getting-started/learn-sushi/Tasks and Autonomous.md>). No installation, test
+run, or hardware is needed to read the boundary below; no physical motion is authorized.
 
 **Learning scope — blocked software-boundary checkpoint:** this page teaches fixed route creation
 and the exact retained attempt's software status. It is not yet a reconstruction-grade Pedro
@@ -105,6 +107,11 @@ telemetry.addData("route.outcome", routeTask.getOutcome());
 
 ## Software checkpoint: completion needs endpoint evidence
 
+**Expected observations:** retained endpoint completion maps to route `COMPLETED` and Task
+`SUCCESS`. If that evidence does not arrive before the four-second Task limit, the result is
+`TASK_TIMEOUT` and `TIMEOUT`, with one cancellation of that same execution. These are software
+boundary expectations, not observations of a moving robot.
+
 - **Question:** Does endpoint evidence from the exact retained execution become Task success?
 - **Keep real:** `RouteTask` and its route-status mapping.
 - **Replace:** Pedro's external follower/execution boundary.
@@ -155,7 +162,7 @@ assertEquals(RouteStatus.COMPLETED, routeTask.getRouteStatus());
 assertEquals(TaskOutcome.SUCCESS, routeTask.getOutcome());
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -210,6 +217,11 @@ from the retained `routeTask`; this focused boundary scenario does not instantia
 or assert telemetry output.
 
 **Does not prove:** the robot can follow this geometry accurately or safely.
+
+**Reading checkpoint:** explain why an idle follower alone cannot establish endpoint completion,
+why the two result vocabularies are distinct, and why both displayed facts must belong to the
+same retained route attempt. Those answers complete this software-boundary lesson; the physical
+gate remains blocked even if you optionally run the supplied test successfully.
 
 ## Isolated hardware gate — currently blocked
 

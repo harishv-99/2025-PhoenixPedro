@@ -6,19 +6,19 @@ actions, update hardware, show telemetry, and clean up at STOP.
 
 ## Start here
 
-Follow one source-based beginner path:
+Follow one beginner path by reading; no installation, edits, tests, or robot are required:
 
 1. Read [`How Sushi runs your code`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Framework Overview.md>)
    to connect Sushi to a familiar FTC loop and learn when saved functions run.
-2. Use [`Set up and verify the Sushi project`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>)
-   for project setup and software verification.
-3. Take the required [`First software tour`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Software Tour.md>)
-   without enabling hardware.
-4. Open the complete [`Guide map`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>) and choose
+2. Take the short [`First software tour`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/First Software Tour.md>)
+   to compare sensor observations, button callbacks, and timed work.
+3. Open the complete [`Guide map`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/README.md>) and choose
    the robot outcome or deeper explanation you need.
 
 The map routes to the focused [`Build recipes`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/build/README.md>).
-Drive is independent; actuator knowledge builds from intake toward claw, lift, and velocity.
+Follow small steps from a switch to TeleOp and basic Auto; feedback and advanced integrations can
+wait. To run optional software checks or author your own robot, use
+[`Set up and verify the Sushi project`](<TeamCode/src/main/java/edu/ftcsushi/fw/docs/getting-started/Build and Run.md>).
 
 Each Build lesson links the exact compiling mechanism, OpMode, and software scenario that proves
 its current contract. Framework changes follow the

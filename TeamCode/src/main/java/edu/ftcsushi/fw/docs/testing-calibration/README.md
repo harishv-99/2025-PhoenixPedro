@@ -9,16 +9,18 @@ Start without hardware, then cross to one controlled robot question. A successfu
 test can prove a request, heartbeat, or recorded command; it cannot prove wiring, motion, clearance,
 safe travel, calibration, or tuning.
 
-**Before this path:** complete [Build and Run](<../getting-started/Build and Run.md>) so the repository
-builds from its root. Before opening a hardware tester, deploy the app and make the FTC Robot
+**Before running software checks:** complete [Build and Run](<../getting-started/Build and Run.md>) so
+the repository builds from its root. Reading the experiment and its expected results needs no setup.
+Before opening a hardware tester, deploy the app and make the FTC Robot
 Configuration containing the intended device names active; an unconfigured device cannot appear in
 the picker.
 
 ## Start here
 
-1. Run the maintained starter-mechanism experiment from
+1. Read the maintained starter-mechanism experiment from
    [Hardware-free Reference Scenarios](<../examples/Hardware-free Reference Scenarios.md>). Read its
    request → ordinary heartbeat → recorded command chain and name the physical fact it cannot prove.
+   Optionally run its software check after setup.
 2. Before any on-robot tool, learn the two ready OpModes, connection order, menu controls, and stop
    boundary in [Using the tester console](<Using the Tester Console.md>).
 3. Choose one physical question below. Do not combine bring-up, calibration, and tuning into one

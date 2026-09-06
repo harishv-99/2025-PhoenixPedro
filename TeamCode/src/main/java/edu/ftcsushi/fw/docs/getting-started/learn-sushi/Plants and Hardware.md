@@ -14,8 +14,12 @@ tags:
     A **Plant** is the mechanism-owned path that turns one held request into one final actuator
     command. The mechanism updates it on the shared heartbeat and owns its shutdown.
 
-Choose the hardware outcome below, then follow its linked Build lesson. Each lesson teaches the
-required builder stages in context; this page is not a catalog of every API branch.
+Choose the outcome below, then follow its linked Build explanation. This is an on-demand decision
+guide, not a required actuator tour; no installation, test run, or hardware is needed to read it.
+Each lesson teaches its builder stages in context, rather than cataloging every API branch.
+
+A read-only [switch observation](<../../build/Read a Switch.md>) does not need a Plant: a Plant
+exists to realize an actuator request, not merely to format sensor status.
 
 ## Start with the outcome
 
@@ -29,8 +33,9 @@ required builder stages in context; this page is not a catalog of every API bran
 | drive two flywheels together but require both to be ready | [Paired flywheel velocity](<../../advanced/Paired Flywheel Velocity.md>) | grouped actuation plus independent member evidence |
 | choose the nearest legal full-turn position | [Periodic turret position](<../../advanced/Periodic Turret Position.md>) | explicit equivalent-position selection inside physical bounds |
 
-Read the first five rows in order if Plants are new. Paired velocity and periodic position are
-Advanced branches for requirements that the ordinary single-actuator lessons do not have.
+Start with the intake row if Plants are new. Claw mapping adds one position decision; lift and
+velocity are optional feedback extensions whose pages name the knowledge they need. Paired
+velocity and periodic position are Advanced branches with additional evidence requirements.
 
 ## The contract shared by every row
 

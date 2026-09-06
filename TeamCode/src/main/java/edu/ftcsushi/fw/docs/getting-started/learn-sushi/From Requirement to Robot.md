@@ -5,138 +5,68 @@ tags:
 
 # From requirement to robot
 
-**Learning mode:** Architecture reference
+**Question:** A robot requirement changed; which owner should change?
 
-Use this page to assign requirements to owners, then follow the cumulative
-[actuator Build path](<../../build/README.md>) to author the selected slice.
+This is an on-demand design reference. Use the [Build course](<../../build/README.md>) for complete
+worked slices. Reading the following decisions requires no installation, code edit, test run, or
+robot hardware.
 
-**Question:** When the team identifies a robot need, which code owner should change?
+## Start with the behavior the team needs
 
-**Reading time:** about 9 minutes
+“TeleOp and Auto must collect, eject, and stop the intake” names a shared capability.
+The [intake lesson](<../../build/Continuous Intake.md>) follows those names all the way to a private
+Plant. Button choices belong to controls, configured motor facts belong to data, and the mechanism
+realizes the same capability for both modes.
 
-Begin with a sentence about robot behavior, not a framework class. First trace the smallest Starter
-need in the self-contained [continuous-intake lesson](<../../build/Continuous Intake.md>), then add
-roles only when a larger requirement demands them. You may follow this example only by reading; no
-worksheet, code edit, or hardware run is required.
+| Requirement changed | Owner to inspect | Question to preserve |
+| --- | --- | --- |
+| B should collect instead of eject | controls | Does one accepted press request the intended meaning? |
+| Collection needs a different reviewed power | mechanism configuration | Is the new finite command within the permitted range? |
+| Show whether the switch is pressed | observation owner and presenter | Is the displayed fact cached, and is its physical meaning stated? |
+| Wait for a requested position | mechanism's feedback Task | Does fresh evidence belong to that exact request? |
+| Abort or continue after a timeout | Auto routine or robot policy owner | Which outcome permits the next action? |
+| Add a second independent mechanism | composition root | Does each resource still have one owner and one managed update/stop path? |
 
-## Start with one Starter requirement
+Observation does not automatically become policy. A cached `pressed` or `objectPresent` field
+does not stop an intake or permit feeding by itself. The mechanism or an explicitly named robot
+policy owner must use that fact when the requirement calls for that behavior.
 
-> TeleOp and Auto must be able to collect, eject, and stop one intake.
+## Trace the first mismatch
 
-[`StarterIntake`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.html>) names
-those shared robot meanings. [`StarterProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.html>)
-owns the motor name, direction, powers, and motion permission.
-[`StarterIntakeMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.html>)
-privately owns the Plant that realizes them. Controls decide which buttons request them;
-[`StarterAuto`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterAuto.html>) composes a fresh timed
-Task through the same capability; status separates the semantic request from the cached applied
-target.
-
-That complete path needs no supervisor, Service, feedback controller, or capability bundle. Change
-a button in controls, a power or motor name in configuration, and hardware realization in the
-mechanism. Prove software contracts first and physical behavior separately.
-
-## Scale when the requirement needs feedback: a periodic turret
-
-### Critical code
-
-Suppose the team decides:
-
-> TeleOp and Auto must request a turret angle. Auto must be able to wait for arrival, and the
-> mechanism must choose the nearest legal full-turn equivalent inside reviewed cable bounds.
-
-Work from that meaning toward hardware:
-
-| Step | One owner | Turret answer |
-|---|---|---|
-| Requirement | Team design | Request a logical angle, choose a safe representative, and wait when needed. |
-| Capability | `ReferencePeriodicTurretMechanism` public methods | Expose the complete numeric request and cached status without exposing the Plant. |
-| Configuration | `ReferencePeriodicTurretMechanism.Config` | Hold the motor name, direction, radian scale, physical bounds, tolerance, and initial hold. |
-| Realization | `ReferencePeriodicTurretMechanism` | Privately own the command, equivalent-position resolver, Plant update, and stop. |
-| Mode clients | Controls and Auto routine | Give buttons meaning or compose fresh Tasks through the same mechanism API. |
-| Evidence | Cached `Status` and presenter | Distinguish logical request, selected representative, applied target, measurement, and arrival. |
-| Proof | Tests, then experiment | Prove software contracts separately from physical direction, clearance, and performance. |
-
-The mode-neutral vocabulary stays small:
-
-Abbreviated shape (omissions shown):
-
-<!-- teaching-shape -->
-```java
-// ...
-void setAngleRad(double angleRad);
-Task setAngleTask(double angleRad, double timeoutSec);
-Status status();
-// ...
-```
-
-**What to notice**
-
-- A numeric angle is the complete request here, so no extra semantic wrapper is needed.
-- TeleOp may replace the persistent request; Auto may create fresh work that waits for feedback.
-
-**Key APIs:** `Task` represents non-blocking work; capability `Status` is the shared read-only
-evidence vocabulary.
-
-[`ReferencePeriodicTurretMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.html>)
-does not expose its FTC motor or Plant. Hardware identity, encoder scaling, cable bounds, tolerance,
-and the already-referenced assumption remain explicit configuration and realization facts.
-
-Controls call `setAngleRad(...)` when replacing the persistent request is enough. Auto builds a
-fresh `setAngleTask(...)` when its next action must wait for command-correlated arrival. Neither
-client reaches into the Plant. If the cable bounds change, the mechanism can select a different
-physical representative while the logical angle request stays the same.
-
-## Prove only what each boundary knows
-
-Before motion, focused software tests can prove that:
-
-- invalid or colliding configuration fails before hardware lookup;
-- one input edge maps to the intended capability meaning once;
-- every repeatable macro returns a fresh, single-use Task;
-- success, timeout, active cancellation, and terminal cleanup preserve their contracts; and
-- status names keep requested, applied, measured, ready, and external facts distinct.
-
-Those checks cannot prove motor direction, safe bounds under load, tuning, clearance, or game-piece
-performance. A subsystem experiment should print facts software must calculate, such as measured
-position or time to reach a target. The operator records facts available by observation, such as a
-collision, jam, vibration, or successful score. Use the full
-[Subsystem Experiments](<../../examples/Subsystem Experiments.md>) card before supervised motion.
-
-When debugging, follow the same boundaries in order:
+Follow the facts in the direction they are produced:
 
 ```text
-input -> capability request -> requested Plant target -> applied target
-      -> measurement/readiness -> Task outcome and Auto policy
+input -> capability request -> requested target -> applied target
+      -> measurement/readiness -> Task outcome -> Auto decision
 ```
 
-Stop at the first mismatch. If requested and applied targets look correct but measurement does not,
-inspect hardware and evidence instead of rewriting Auto sequencing.
+If the button does not change the request, inspect input meaning and bindings. If the request is
+correct but the applied target differs, inspect bounds and guards. If a command is correct but
+feedback is absent, inspect the observation boundary before changing Auto sequencing. A displayed
+software command alone cannot establish physical movement.
 
-## Scale only when the requirement demands it
+Use the [ownership map](<Robot Roles.md>) when several objects appear responsible for the same
+fact. Add a role only when it owns a new responsibility; an extra forwarding class does not make
+a design clearer.
 
-The Reference launcher shows the same path applied to paired flywheels, a transfer overlay, a
-release Plant, and outcome-aware launch policy. Its public client still asks for `launchOne()` and
-reads status; the mechanism keeps the multi-device realization private. Study
-[`ReferenceLauncher`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.html>)
-only when that additional coordination helps your robot.
+## Reuse the smallest relevant example
 
-The [examples index](<../../examples/README.md>) routes concrete robot needs to maintained examples
-without claiming game rules, hardware design, or physical success criteria.
+For ordinary robot authorship, use the [package guidance](<../../build/README.md#author-in-your-robot>)
+and adapt only the focused capability your robot needs. Keep your robot's policy and hardware
+facts in its own package beside the maintained examples.
 
-## Check your understanding
+When a new requirement needs additional target or coordination policy, choose the corresponding
+reference individually:
 
-**A beam break appears in launcher status, and the team now requires it to prevent feeding. Is the
-status field enough?**
+- [Periodic turret position](<../../advanced/Periodic Turret Position.md>) explains an angle with
+  several legal full-turn representatives.
+- [Paired flywheel velocity](<../../advanced/Paired Flywheel Velocity.md>) separates a shared
+  command from two independent readiness measurements.
+- [Robot capabilities and mode clients](<../../design/Robot Capabilities & Mode Clients.md>) explains
+  larger capability families shared by TeleOp and Auto.
+- [Supervisors and pipelines](<../../design/Supervisors & Pipelines.md>) explains robot-specific
+  coordination beyond one mechanism.
+- [Subsystem experiments](<../../examples/Subsystem Experiments.md>) supplies the procedure for a
+  team-authored physical question.
 
-No. Status only publishes evidence. The launcher owner or a distinct robot supervisor must
-explicitly use that evidence in feed policy; controls and Auto should keep requesting the same
-mode-neutral behavior.
-
-## Go deeper when needed
-
-- Capability/client ownership: [Robot Capabilities and Mode Clients](<../../design/Robot Capabilities & Mode Clients.md>)
-- Focused paired-velocity capability: [`ReferenceFlywheels`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheels.html>)
-- Focused periodic-position realization: [`ReferencePeriodicTurretMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.html>)
-- Topic-specific explanations: [Choose another Sushi concept](<../Beginner's Guide.md>)
-- Cumulative implementation: [Build the first actuator, then add one decision at a time](<../../build/README.md>)
+Those topics extend an understood requirement. They do not form another mandatory learning path.
