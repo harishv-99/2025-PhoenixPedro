@@ -5,9 +5,14 @@ tags:
 
 # Advanced Sushi patterns
 
-Start here only when the ordinary Build recipes cannot express the evidence or ownership your robot
-needs. Each topic adds one specific idea; none replaces the managed program, one heartbeat, one
+Use this area when you need a deeper contract or behavior beyond the ordinary Build recipes.
+Each topic adds one specific idea; none replaces the managed program, one heartbeat, one
 final writer, or fresh single-use Tasks.
+
+The foundation ends with a simple TeleOp and [one timed Auto](<../build/Run One Timed Auto.md>).
+You do not need to finish this area in order. Choose a topic for your robot's next question; its
+opening names the earlier knowledge it uses. Feedback examples first inherit the optional feedback
+Build lessons, while geometry and vision introduce their own additional concepts here.
 
 ## Mechanisms with richer target choices
 

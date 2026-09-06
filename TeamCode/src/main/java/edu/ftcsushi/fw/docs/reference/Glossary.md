@@ -49,10 +49,40 @@ calling `telemetry.update()`.
 
 ## Values and controls
 
+### Scalar
+
+One numeric value, such as motor power or speed. A `ScalarSource` supplies a `double`.
+See [Sources and Signals](<../core-concepts/Sources and Signals.md>) for value readers and transforms.
+
 ### `Source<T>`
 
 A value sampled with the shared `LoopClock`. `ScalarSource` and `BooleanSource` are primitive
 specializations.
+
+### Callback and lambda
+
+A callback is an action saved for a later event. A Java lambda, such as `() -> intake.collect()`,
+is a short way to write that saved action; writing it does not call `collect()` yet. See
+[saved callbacks](<../getting-started/Framework Overview.md#saved-callback>) for when it runs.
+
+### Cache and memoization
+
+A cache retains a result for reuse. Source memoization keeps one successful observation for a loop
+cycle, so another read in that cycle gets the same result. It does not make the observation newer.
+See [Sources and Signals](<../core-concepts/Sources and Signals.md#memoization>).
+
+### Debounce
+
+Filtering brief true/false changes before accepting a changed state. Sushi uses sampled values
+and elapsed loop intervals, not continuous knowledge of the electrical switch. See
+[Read a switch](<../build/Read a Switch.md>) for the problem, active delays, and sample timeline.
+
+### Hysteresis
+
+Using different thresholds to enter and leave a state, keeping small measurement fluctuations near
+one threshold from repeatedly switching that state. See
+[Debounce and hysteresis](<../core-concepts/Sources and Signals.md#debounce-and-hysteresis>) for a
+numeric example and the difference from a time delay.
 
 ### Binding
 
@@ -154,6 +184,13 @@ Only APIs whose names say `Native` or a controller-native unit use them.
 A Plant with meaningful measurement and `atTarget` behavior. Feedback-aware `ScalarTasks` and
 `SemanticScalarTasks` require an explicit Plant carrying the exact command they publish.
 
+### Feedback, error, and tolerance
+
+Feedback is a measurement used to assess or adjust a command. Error is the difference from the
+target; tolerance is the allowed difference for an arrival check. See
+[Move a referenced lift](<../build/Move a Referenced Lift.md>). An arrival check is not proof that
+the mechanism is calibrated, safe, or ready for every robot action.
+
 ### Open-loop Plant
 
 A Plant without sensor-based completion, such as direct power or set-and-hold servo position. Use a
@@ -206,6 +243,17 @@ A bounded physical subsystem trial evaluated against team-authored success crite
 computed and operator-observed evidence.
 
 ## Drive and spatial data
+
+### Pose and heading
+
+A pose combines position and facing direction in a named coordinate frame. Heading is that facing
+direction alone. See [Field-relative drive](<../examples/Field-relative Drive.md#what-up-means>).
+
+### Radians
+
+An angle unit: `2π` radians is one full turn (`360°`). Java's `Math.toRadians(degrees)` converts
+degrees. See [Periodic turret position](<../advanced/Periodic Turret Position.md>) for equivalent
+directions that can require different physical travel.
 
 ### `DriveSignal`
 

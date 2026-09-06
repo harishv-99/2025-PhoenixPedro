@@ -5,6 +5,12 @@ tags:
 
 # AprilTag practice setups (outside a full game field)
 
+**Before this page:** read the opening model in
+[AprilTag localization](<AprilTag Localization & Fixed Layouts.md>) for pose, camera mount, and
+trusted field landmarks. This optional setup note answers one question: what data describes a
+printed practice tag? Its frame and size declarations can be understood without a camera; printing,
+measuring, and running a tester are separate physical steps.
+
 Sushi supports AprilTag-based localization in two ways:
 
 - **Current official game policy** via `FtcGameTagLayout.currentGameFieldFixed()`
@@ -69,6 +75,10 @@ position vector, or an orientation after owner construction therefore does not t
 camera. Construct a new owner to adopt a changed library. A selectable tester's
 `AprilTagVisionLaneFactories.webcam(visionCfg)` performs the same validation and capture when the
 factory is created, then gives every open a fresh private library snapshot.
+
+A **quaternion** is the SDK's four-number representation of orientation. Ordinary use of the named
+library helper does not require writing that representation; the following validation details
+matter when supplying custom SDK metadata.
 
 A custom library must be nonempty. Tag IDs must be unique and non-negative; sizes must be finite
 and positive; field positions must contain exactly three finite coordinates; and orientations

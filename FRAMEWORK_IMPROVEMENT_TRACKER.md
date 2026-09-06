@@ -241,6 +241,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 132 | DOC-17 | Source-optional lessons and visual teaching grammar | Done | The reviewed point-of-use explanations, bounded beginner first passes, restrained accessible visual grammar, reconstruction repairs, verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 133 | DOC-18 | Test & Tune operational onboarding cleanup | Done | The reviewed source-optional Test & Tune spine, exact operational contracts, generic-versus-configured calibration boundary, verification, Android Studio approval, and destination-specific publication authorization are complete. |
 | 134 | DOC-19 | Windows and macOS command tabs | Done | The reviewed 26-pair Windows/macOS migration, linked selection, maintainer contract, hardened regressions, verification, manual approval, and destination-specific publication authorization are complete. |
+| 135 | DOC-20 | Concept-first documentation and visual learning | Done | Concept-first repairs and six diagrams implemented; principles strengthened; 2,254 tests and strict docs/API checks pass. User approved the reviewed diff and exact branch/remote/master publication on 2026-09-06. |
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -28004,6 +28005,182 @@ implementation.
   teach the full blob-observation to field-point path and its calibration prerequisites without
   claiming physical accuracy. Real hardware remains required for intrinsics, distortion,
   camera-mount survey, clock/latency validation, floor assumptions, and field-position error.
+
+### DOC-20 - Concept-first documentation and visual learning
+
+- **Status:** Done. User approved the complete plan with "Implement the plan" on
+  2026-09-06 and additionally requested that Framework Principles preserve the agreed concepts.
+  DOC-14 remains Done; this is one new documentation-only follow-up, not another pending item.
+- **Gate 1: Researching -> Ready (2026-09-06).** A full narrative-guide review across all six
+  areas found first-use gaps (including debounce, Java syntax, feedback, and spatial vocabulary),
+  circular prerequisites, excessive required regression detail, and stale example/contract claims.
+  Relevant APIs were checked where needed: DebounceBoolean accumulates sampled dtSec intervals;
+  timed Tasks start at their own nowSec boundary; feedback Tasks require an authoritative observer
+  and exact graph-owned command; standard servo construction has no reference-policy stage.
+  Plant bounds do not certify physical safety, and presenters may not advance behavioral sources.
+- **Affected consumers:** the maintained independent switch, intake, claw, drive, lift, flywheel,
+  field-relative, adaptive-collection, and software-scenario teaching paths; their guide/API readers;
+  and the tester/calibration/tuning runbooks. Production applications, SDK samples, and vendor code
+  are outside scope. No public construction path, API layer, or runtime semantic is added or removed;
+  API-layer symmetry, staged-builder redesign, and caller migration are therefore not applicable.
+- **Alternatives and simplicity:** fixing only the word debounce leaves the same prerequisite
+  failure elsewhere. A large Java/glossary-first course or mandatory feedback/localization course
+  would burden the ordinary path. Rewriting the framework to fit inaccurate prose would introduce
+  unnecessary behavior and API changes. Chosen: repair the existing narrative and illustrative
+  snippets against maintained code, introduce meanings locally, and keep optional depth selectable.
+- **Approved curriculum:** the user selected a focused shared endpoint of simple TeleOp and timed
+  Auto. Teach observation, requests, ownership, continuous sources, callbacks, shared lifecycle,
+  and fresh non-blocking Tasks there. Feedback/reference/control and spatial/localization foundations
+  belong at the start of their optional branches. Explain Java beyond basic flows/FTC locally.
+- **Approved visuals:** sampled raw/accepted debounce timeline; request-to-output ownership flow;
+  request/measurement/completion phase timeline; optional field/robot/tool/camera frame sketches;
+  optional capture/delivery localization timeline. Use existing Mermaid or local accessible SVG,
+  no new renderer or interactive prerequisite, and retain visible textual equivalents and units.
+- **Durable principles:** strengthen Framework Principles and Maintainer Notes with problem-first
+  explanations, first-use syntax, acyclic explicit prerequisites, the focused foundation boundary,
+  selective truthful diagrams, and a novice walkthrough distinct from structural test success.
+- **Verification plan:** preserve six-area navigation and existing size/visual budgets; verify
+  links, exact maintained-source excerpts, complete Windows/macOS commands, chart/scenario agreement,
+  corrected illustrative call paths, and relevant regression scenarios. Run the focused docs tests,
+  full TeamCode compile/unit suite, strict narrative/Javadocs build, and generated artifact checks.
+  Review diagrams on wide/narrow layouts with text alternatives; report unavailable browser or
+  physical checks honestly. Hardware evidence remains a separate adopting-robot gate.
+- **Gate 2 branch:** fetched origin/master and created `codex/doc-20-concept-first-docs` from
+  `3566a1a` without modifying local master. Staging and publication remained unauthorized at this
+  gate. Automated and adversarial review preceded the Android Studio/site inspection handoff and
+  destination-specific publication approval required by the execution skill.
+- **Implementation completed (2026-09-06):** repaired first-use explanations and required/optional
+  boundaries across the six areas without adding opening tabs or changing the focused endpoint.
+  Added three accessible SVGs and three Mermaid diagrams, each with a visible text equivalent.
+  Corrected illustrative source/lifecycle, feedback-observer, servo-reference, queue-admission,
+  fake-measurement, calibration-ordering, and software-versus-physical evidence claims. Only comments
+  changed in production Java (`DebounceBoolean` and `BooleanSource`); no executable framework,
+  application, or maintained-example code and no public APIs changed. No legacy course or code
+  replacement was introduced, so there is no superseded example tree to remove.
+- **Regression coverage:** five new `DocumentationConceptsTest` tests protect the novice contract,
+  switch explanation-before-code, Mermaid accessibility metadata, self-contained accessible SVGs,
+  and the sampled table/chart against the real debouncer and proportional time-axis coordinates.
+  The existing link validator now recognizes leading-digit explicit IDs, with an added fixture;
+  this preserves the actual generated numbered-section anchor instead of accepting a broken link.
+- **Automated evidence (2026-09-06):** focused `edu.ftcsushi.fw.docs.*`: 56 tests pass. Full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`: 2,254 tests across 251 suites,
+  zero failures, errors, or skips. `pip check`, `zensical build --clean --strict`, and
+  `:TeamCode:sushiJavadocs` pass. Generated search verifies 953 sections across all six areas;
+  generated links verify 153 API links and 82 maintained-source links across 45 Markdown pages.
+  Required artifact files/content, absence of symlinks, and byte-identical copies of all three SVGs
+  pass. `git diff --check` and a trailing-whitespace scan including untracked files pass.
+  Existing Java 8 source/target and SDK deprecation warnings remain; no new build failure remains.
+- **Adversarial and visual review:** independent reviews checked beginner, technical, and advanced
+  boundaries, then cross-reviewed the final changes and test validity. Findings were resolved,
+  including explicit policy-Service lifecycle and exclusively held queue admission. Ledger inventory
+  independently matches all 80 pages one-to-one and all 22 unchanged dispositions. Direct SVG
+  rendering at native and 375-pixel widths caught and corrected small labels and missing arrowheads.
+  Generated HTML retains image alternatives and Mermaid descriptions. The in-app browser reported
+  no available browser: full-page layout, Mermaid rendering, mobile interaction, and light/dark
+  browser inspection are still unverified. Structural checks are not a student comprehension study.
+- **Gate 2 review handoff:** inspect the switch First pass and chart, ordinary-to-feedback transition,
+  relocated tuning/calibration detail, and Principles/maintainer authoring rules in Android Studio
+  and a site preview. Check wide/narrow and light/dark presentation before approval. Robot hardware
+  was not exercised; all existing adopting-robot safety and Pedro qualification gates remain intact.
+  Publication coordinates are branch `codex/doc-20-concept-first-docs`, exact origin push destination
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`. At this handoff nothing was
+  staged, committed, pushed, or opened as a PR; work stopped for combined approval.
+- **Gate 3 approval (2026-09-06):** the user accepted the reviewed DOC-20 diff with "DOC-20 looks
+  good" and explicitly authorized committing on `codex/doc-20-concept-first-docs`, pushing that
+  branch to `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging
+  into `master`. This records manual-review acceptance, not new automated browser or hardware
+  evidence. The stated verification limitations remain intact. Publish only these 66 reviewed files
+  plus this completion record; preserve local master and stop before the next tracker item.
+- **Concept coverage:** the following checklist covers all 80 framework Markdown pages (78
+  substantive pages and two compatibility pointers). Paths are relative to `edu.ftcsushi.fw`;
+  `docs/` and `.md` are omitted in the table except for framework-root/code-adjacent pages.
+  Each row records the primary audience, central outcome, knowledge prerequisite, point-of-use
+  explanation/check, and optional destination. "Unchanged" means reviewed and retained, not skipped.
+  Reviews used the basic-Java/FTC baseline; they are not interviews or observed student usability
+  tests. Generated API contracts were checked where relevant, not exhaustively re-audited.
+
+| Page | Audience / central outcome | Required knowledge | First explanation and use checked | Optional depth / disposition |
+|---|---|---|---|---|
+| `README.md` | newcomer / choose a route | FTC loop | repeated checklist before Sushi roles | six-area links; unchanged |
+| `Framework Principles.md` | maintainer / design authority | framework ownership | six principles before exact implications; novice/visual rubric explicit | exact-contract guide map |
+| `getting-started/Framework Overview` | newcomer / map FTC loop to Sushi | Java flows, FTC | object/Source, call versus saved lambda, enum, Task, inherited entry hook before use | focused Build explanations |
+| `getting-started/First Software Tour` | newcomer / distinguish three execution shapes | overview | linked independent First passes precede predictions; reading complete | full Build lessons; unchanged |
+| `getting-started/Build and Run` | optional operator / verify software setup | overview | project root, compile/test, probes versus physical proof | deployment and tester gates; unchanged |
+| `README` | newcomer / find an outcome | none beyond area purpose | goal-oriented map, not a reading assignment | six areas; unchanged |
+| `getting-started/Beginner's Guide` | learner / choose one concept | overview as needed | six plain questions, not another course | exact API and advanced lookup; unchanged |
+| `getting-started/learn-sushi/Robot Roles` | learner / locate ownership | overview | profile/composition root before construction; cached status and capability before table | lanes and larger design |
+| `getting-started/learn-sushi/Controls and Intent` | learner / map input to request | Source/callback bridge | scalar, enum and saved lambda before binding; method-reference equivalence | Task and drive recipes |
+| `getting-started/learn-sushi/Plants and Hardware` | learner / choose an actuator shape | request meaning | Plant before chooser; ordinary outcomes precede exact grammar | optional feedback and advanced builders |
+| `getting-started/learn-sushi/Tasks and Autonomous` | learner / understand work over time | overview | builder/enum before timed recipe; factory, cancellation and outcomes explained | parallel and recovery compositions |
+| `getting-started/learn-sushi/Evidence and Experiments` | learner / bound a claim | observations | switch flicker before sampled debounce; snapshot/cached/immutable before status | experiments and inventory |
+| `getting-started/learn-sushi/From Requirement to Robot` | learner / choose owner to change | roles and Plant facts | requirement-to-owner table before tracing outcomes | specialized examples |
+| `build/README` | learner / choose a focused build | overview/tour | cumulative knowledge, independent fixtures, own-robot authoring | feedback after TeleOp/timed Auto |
+| `build/Read a Switch` | beginner / observe and save one fact | overview | levels, polarity, bounce, shared clock before reads; sampled chart; object/service/status syntax locally | optional authored scenario and hardware gate |
+| `build/Continuous Intake` | beginner / button selects held request | switch | enum/lambda before binding; normalized command and private Plant; ownership diagram | supplied regression details |
+| `build/Named Claw` | beginner / map named positions | intake | closed/open coordinate versus native endpoints; no arrival claim | snapshot plumbing explicitly optional |
+| `build/First Drive` | beginner / continuous stick intent | Source | axes, source/sink/adapter and normalized command; complete drive declaration | shaping/sign regression detail optional |
+| `build/Combine Drive and Intake` | beginner / share one lifecycle | intake and drive | composition, wrapper and active scales explained | exhaustive slow-mode assertions optional |
+| `build/Run One Timed Auto` | beginner / non-blocking request lifetime | intake/Task | construction versus START, duration, fresh instance and STOP | host-reuse regression supplied, not dumped |
+| `build/Referenced Lift` | optional-feedback learner / establish zero | switch/intake/timed Task | encoder, reference, homing, feedback/controller, sequence and method reference | exact reference policies |
+| `build/Move a Referenced Lift` | optional-feedback learner / wait for fresh arrival | referenced lift | request/measurement/tolerance and cancellation; phase timeline | completion is not physical stop |
+| `build/First Autonomous` | optional-feedback learner / success-gated sequence | timed and feedback Tasks | child/factory/sequence before composition; Java collections explained | parallel capstone and failure regressions |
+| `build/Single Flywheel Velocity` | optional-feedback learner / request numeric speed | feedback | units/tolerance/PIDF purpose; explicit 200 request before injected measurement | tuning and paired readiness |
+| `build/First Pedro Auto` | advanced learner / inspect one route attempt | Tasks/outcomes | pose/frame/follower/route before API; retained attempt versus Task result | physical gate remains blocked |
+| `testing-calibration/README` | operator / choose one evidence question | software setup only if running | software versus physical boundary before menu choices | independent runbooks; unchanged |
+| `examples/Hardware-free Reference Scenarios` | learner / compare request and command | switch/intake concepts | expected/actual/allowedDifference and probe/clock before assertion excerpt | advanced scenario matrix |
+| `testing-calibration/Using the Tester Console` | operator / choose input and stop safely | read software experiment | Panels meaning before controls; reading is not required execution | one physical runbook |
+| `testing-calibration/Actuator Bring-up` | operator / direction and backed-off endpoints | console | bounded/native/endpoint meanings before controls; clamp versus physical safety | mapping and production verification |
+| `testing-calibration/Robot Calibration Tutorials` | operator / record and verify one fact | console, chosen hardware gate | pose/frame/identity/odometry locally; metrics before procedures | source-reference and external-encoder detail relocated after ordinary procedures |
+| `testing-calibration/Control Tuning Workflow` | operator / one bounded velocity trial | feedback/console; bring-up before motion | controller/gains before first trial; unchanged gains initially; capture translated | host construction, PID/feedforward and later physical experiments |
+| `testing-calibration/How to test a Sushi component` | student author / design one causal experiment | first software experiment | assertions/probes/clock prerequisite explicit; evidence ladder | broad maintainer regression |
+| `testing-calibration/Guided Calibration Walkthroughs` | advanced author / order configured checks | profiles/configured tester factories | optional architecture and non-persistence boundary explicit | exact workflow helpers; unchanged |
+| `troubleshooting/README` | troubleshooter / choose symptom | observed problem | symptom routing, not a lesson sequence | focused fixes; unchanged |
+| `troubleshooting/Common Problems` | troubleshooter / diagnose one symptom | relevant feature | symptom-local evidence; FIFO translated | owning contract links |
+| `advanced/README` | advanced learner / choose extra capability | focused foundation | selectable branches and prerequisites, not required course | specialized guides |
+| `advanced/Paired Flywheel Velocity` | feedback learner / distinguish mean and member readiness | single flywheel | grouped versus individual evidence before code | per-wheel tuning |
+| `advanced/Periodic Turret Position` | feedback learner / choose legal equivalent angle | referenced lift/arrival | periodicity, radians and full-turn equivalence before use | geometry/reference constraints |
+| `examples/README` | learner / locate maintained authority | chosen outcome | independent example purposes | focused guides; unchanged |
+| `examples/Field-relative Drive` | drive learner / preserve a field direction | first drive | frame/heading/radians before transform; stacked orientation diagram | heading-loss/software checks |
+| `examples/Subsystem Experiments` | operator / measure one physical question | evidence ladder and bring-up | bounded experiment card before operation; running optional | robot-owned evidence |
+| `examples/Timestamped Adaptive Collection` | advanced author / coordinate timestamped facts | Tasks, sources, route concepts | timestamp/history/projection bridge; no invented physics | Pedro physical blocker repeated at next gate |
+| `core-concepts/README` | learner / find exact core contracts | overview | purpose-only doorway | loop/sources; unchanged |
+| `core-concepts/Loop Structure` | advanced author / exact phase ownership | overview | shared heartbeat and nowSec Task boundaries; no presenter sampling | custom hosts, profiling and integration lifecycle |
+| `core-concepts/Sources and Signals` | advanced learner / compose observations | Source and switch | generic values, transforms, debounce/hysteresis before helper examples | accumulation/history/reset/failure |
+| `design/README` | advanced learner / choose design question | focused Build | goal-based routing | specialized ownership guides; unchanged |
+| `design/Tasks & Macros Quickstart` | advanced author / compose fresh work | Learn Tasks and Build | macro recipe versus Task identity; shooter ending policies beside recipe | parallel/recovery/output queues |
+| `design/Output Tasks & Queues` | advanced author / temporary output proposals | Plants and Tasks | queue and override before code; held queue excludes independent one-shots | bounded repetition and abort |
+| `design/Framework Lanes & Robot Controls` | advanced author / coordinate owners | roles and focused Build | conditional aggregate; explicit policy Service before drive; bounded held-feed policy | contexts, haptics and larger graphs |
+| `design/Robot Capabilities & Mode Clients` | advanced author / share intent across modes | roles/intake/TeleOp/Auto | family, mode-neutral and facade before use; aggregate only when justified | multi-family coordination and handoff |
+| `design/Recommended Robot Design` | advanced author / choose ordinary architecture | roles and focused Build | regulated Plant first for feedback; standalone source clearly advanced | specialized robot examples |
+| `design/Supervisors & Pipelines` | advanced author / add real coordination | roles/intake/Tasks | separate policy responsibility; no one-supervisor-per-mechanism rule | output queues are optional companion, not circular prerequisite |
+| `ftc-boundary/README` | author / locate FTC edge | chosen Build | edge purpose before API families | exact device guides; unchanged |
+| `ftc-boundary/FTC Actuators & Plants` | advanced author / exact construction choices | Plant/Build; feedback branch as needed | control vocabulary before formulas; servo command mapping distinct from measured reference | grouped/custom/tuning grammar |
+| `ftc-boundary/FTC Sensors` | advanced author / interpret device observations | Source and switch | samples/memoization/finite values/encoder/polarity locally; held value is not fresh evidence | classification/history/external encoders |
+| `ftc-boundary/FTC UI Helpers` | advanced author / build a menu | callbacks/roles | UI and typed selection before builders | operators route to supplied console |
+| `ftc-boundary/FTC Auto-to-TeleOp Handoff` | advanced author / transfer cached state | lifecycle and snapshots | handoff, process-local and consume-once before use | publication/fallback transaction |
+| `ftc-boundary/FTC Manual Bulk Caching` | advanced author / own opt-in packet reuse | loop/memoization | saved hub response and invalidation before lifecycle | no unmeasured performance/freshness guarantee |
+| `drive-vision/README` | advanced learner / find drive/spatial contract | drive basics | doorway by subsystem role | specialized guides; unchanged |
+| `drive-vision/Spatial Queries` | advanced learner / ask a frame-specific geometry question | field-relative drive | pose/query/solve lane/transform before API; tool/camera diagram | gates and selectors |
+| `drive-vision/Drive Guidance` | advanced learner / correct selected drive components | spatial queries | correction/overlay/omega/proportional response before use | exact guidance lifecycle |
+| `drive-vision/Mechanism Target Planning` | advanced author / resolve composed intent | Plants/feedback | resolver/overlay/fallback before code; feedback-capable observer in example | rich target plans |
+| `drive-vision/AprilTag Localization & Fixed Layouts` | advanced learner / estimate field pose | frames and observations | localization/odometry/correction first; ordinary baseline before history; capture/delivery timeline | uncertainty, history and alternate estimators |
+| `drive-vision/AprilTag Practice Setup` | advanced author / configure known tag geometry | localization | metadata and quaternion meaning before custom fields | exact fixed-layout API |
+| `integrations/pedro/README.md` | advanced integrator / preserve route lifecycle | Tasks, pose/localization | integration roles and retained route evidence | vendor lifecycle and blocked physical qualification |
+| `reference/README` | API user / choose exact family | owning concept/Build | lookup purpose; unfamiliar ideas link to teaching homes | exact Javadocs |
+| `reference/Program and lifecycle` | API user / find managed lifecycle | overview/loop | ordinary managed host first | explicit advanced host contracts; unchanged |
+| `reference/Values sources and bindings` | API user / find readers and rules | Source/callback concepts | family lookup, not first explanation | exact source/binding APIs; unchanged |
+| `reference/Actuation Plants and control` | API user / find actuator grammar | Plant and focused mechanism | ordinary FTC builder first, portable/custom seams labeled | exact construction/control APIs |
+| `reference/Tasks outcomes and coordination` | API user / find Task contracts | Task lifetime/composition | factories and outcomes grouped by purpose | exact lifecycle APIs; unchanged |
+| `reference/Drive geometry and spatial reasoning` | API user / find drive/spatial types | drive/frame concepts | categorized lookup scope | exact transforms/guidance; unchanged |
+| `reference/Sensing localization and vision` | API user / find sensing roles | chosen observation/localization path | family lookup without pretending to teach estimation | exact observation APIs; unchanged |
+| `reference/FTC adapters testing and tuning` | API user / find edge workflows | selected Build/runbook | ordinary Plant first, low-level channels labeled advanced | exact adapter/tuner APIs |
+| `reference/Integrations and extension seams` | API user / find explicit integration edges | owning integration guide | narrow seam purpose | exact adapters; unchanged |
+| `reference/Sushi Cheat Sheet` | returning author / recall supported ordinary usage | owning Build concepts | existing capability command graph; fresh Task factories; physical versus software gate | complete owner backing links |
+| `reference/Glossary` | lookup reader / recover a term's meaning | none for lookup | concise definitions linked to their teaching homes | never substitutes for first-use explanation |
+| `maintainers/README` | maintainer / choose design and verification authority | framework change intent | maintainer-only boundary | principles/notes; unchanged |
+| `maintainers/Maintainer Notes` | maintainer / apply authoring and verification contract | principles | concept checklist, sparse diagrams, assets/accessibility and novice walkthrough | exact tooling/CI |
+| `getting-started/Basic Mechanisms Robot` | returning URL / reach current lesson | none | search-excluded compatibility pointer | unchanged; not a parallel course |
+| `getting-started/First Pedro Auto` | returning URL / reach current route guide | none | search-excluded compatibility pointer | unchanged; not a second integration path |
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 

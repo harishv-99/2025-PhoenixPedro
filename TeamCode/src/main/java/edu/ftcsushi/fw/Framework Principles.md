@@ -473,6 +473,16 @@ and tests, and evidence applies when a page uses a checkpoint or experiment to s
   without searching another section or opening source. If a default materially controls the
   lesson's result or is a likely tuning decision, make its effective values visible and identify
   where the student changes them rather than asking the reader to infer them from `defaults()`.
+- Teach the robot problem before the term, then connect its meaning to a small example and an
+  expected result. Basic Java flows and FTC basics are the only assumed starting knowledge:
+  explain unfamiliar object/interface, enum, builder, generic, lambda, method-reference, and test
+  syntax when the displayed example first requires it. Naming a concept is not explaining it;
+  a later definition, glossary link, or full-source file cannot repair an unexplained first pass.
+- Keep the common foundation complete at simple TeleOp and timed Auto. Introduce feedback,
+  reference, controller, spatial, and localization foundations at the start of the optional path
+  that needs them, not as extra mandatory opening chapters. Independently selectable pages declare
+  acyclic learning prerequisites and briefly translate inherited terms where a reminder suffices;
+  distinguish required reading from optional companions. Advanced does not mean unexplained.
 - Before the first API that saves code for later, contrast a method call that runs now with a
   function registered during setup. State that registration does not execute the function and that
   an accepted callback runs synchronously in its later FTC loop rather than on a new thread.
@@ -515,6 +525,17 @@ and tests, and evidence applies when a page uses a checkpoint or experiment to s
   emphasized; do not make every important paragraph compete for attention. Keep required concepts,
   code, safety actions, and evidence visible in normal reading order, and never make color,
   position, animation, or interaction the only carrier of a required fact or sequence.
+- Choose a diagram when it clarifies a temporal, ownership, feedback, or spatial relationship more
+  directly than prose or a small table; do not require one per page. Explain one central question
+  per visual. Label times, units, coordinate frames, observations, and illustrative assumptions as
+  applicable. Sampled-signal charts distinguish recorded values from unobserved physical behavior;
+  software timelines do not invent continuous motion or guarantees between observations. Check the
+  picture against the same maintained example and evidence as the surrounding text.
+- Review the learning path as a novice, not only as an API maintainer. Check each page's audience,
+  central outcome, required concepts, first explanation, first required use, and optional depth,
+  including short-tour entry points. The reader must be able to explain the purpose, interpret the
+  displayed syntax, predict the result, and state its limits from declared prerequisites. Link,
+  excerpt, and structural tests support that review; passing them does not prove comprehension.
 - Markdown is the one authored source for narrative guides and any generated documentation site.
   Javadocs remain the exact method-level API contract. Generated HTML must consume those sources,
   not become another hand-maintained copy.

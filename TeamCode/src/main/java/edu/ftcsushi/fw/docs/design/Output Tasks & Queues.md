@@ -5,6 +5,11 @@ tags:
 
 # Output Tasks & Queues
 
+**Before this reference:** understand [persistent requests and Plants](<../getting-started/learn-sushi/Plants and Hardware.md>)
+and [Task lifetimes](<../getting-started/learn-sushi/Tasks and Autonomous.md>). This optional branch
+answers how temporary work can override a baseline request without gaining another hardware writer.
+A **queue** stores work to run in order; a **scalar output** is one proposed number, not a motor write.
+
 Sushi has two common ways to express mechanism behavior over time:
 
 1. **Tasks that change a persistent numeric or named scalar command** (`ScalarTasks` or
@@ -13,7 +18,8 @@ Sushi has two common ways to express mechanism behavior over time:
 
 This document is about the second pattern. Use it when a short behavior should temporarily influence a Plant target without becoming a second Plant writer.
 
-For the broader robot-design context, read [`Recommended Robot Design`](<Recommended Robot Design.md>) and [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>).
+For optional broader context, choose [`Recommended Robot Design`](<Recommended Robot Design.md>)
+or [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>); neither is a prerequisite for this page.
 
 ---
 
@@ -235,10 +241,6 @@ public void setContinuousFeedRequested(boolean requested) {
     continuousFeedRequested = requested;
 }
 
-public void requestSingleFeed() {
-    feederQueue.enqueue(feedOne.create());
-}
-
 // In the owning mechanism/supervisor update:
 feederQueue.whileHigh(
         clock,
@@ -255,6 +257,11 @@ Important separation:
 - The final `PlantTargets.overlay(...)` says how the active pulse affects the Plant target.
 
 When `requestShoot` goes low, `whileHigh(...)` cancels and clears the queue. This prevents old pulses from firing after the operator changed modes.
+
+This queue is exclusively for held-request repetition. Do not also enqueue independent one-shot
+work into it: the next low request would cancel that work too. A robot needing both forms must own
+an explicit mutually exclusive admission policy; separate queues also require one final target
+resolution policy, not competing writes.
 
 `whileLow(...)` is the exact signal-level mirror: maintain backlog while the signal is low, cancel and clear while it is high. Sushi uses `high`/`low` vocabulary consistently with input bindings (`onRise`, `onFall`, `whileHigh`, `whileLow`).
 
@@ -273,19 +280,16 @@ bindings.mirrorOnChange(
         scoring::setContinuousFeedRequested);
 ```
 
-Autonomous can request exactly one pulse through the same capability vocabulary:
-
-```java
-Task feedOneTask = Tasks.runOnce(scoring::requestSingleFeed);
-```
-
-Autonomous can also wait on the capability's status snapshot:
+The held-only owner above does not expose a one-shot request. To add one, first give the owner an
+explicit admission policy that keeps the low held signal from cancelling an accepted Auto pulse.
+That is an additional capability design, not a method to paste onto this queue. Both modes can
+already wait on the same capability's status snapshot:
 
 ```java
 Task waitForReady = Tasks.waitUntil(() -> scoring.status().canShoot(), 2.0);
 ```
 
-No duplicate sensor or queue logic is needed.
+The mode clients do not duplicate sensor or queue logic.
 
 ---
 

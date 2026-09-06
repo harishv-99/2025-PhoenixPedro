@@ -7,12 +7,18 @@ tags:
 
 **Learning mode:** Operational runbook
 
-Use **HW: Actuator Bring-up** before putting a new motor or servo into a mechanism OpMode. It is the
+Use **HW: Actuator Bring-up** before enabling a new motor or servo in a physical mechanism OpMode. Reading,
+software authoring, and software tests need no hardware. This is the
 one ordinary Sushi tool for answering two hardware questions:
 
 1. Which FTC `Direction` makes positive command mean what the mechanism owner expects?
-2. If the mechanism is bounded, which already-backed-off native commands or encoder readings are
-   safe candidates for its semantic minimum and maximum?
+2. If travel is limited, which commands or encoder readings correspond to points deliberately
+   short of the physical obstructions?
+
+**Bounded** means the mechanism has allowed lower and upper targets. **Native** means the numbers
+the FTC device API uses; the mechanism can give those numbers another meaning, such as inches above
+the bottom or `0 = closed`, `1 = open`. Its endpoints are those chosen minimum/maximum meanings,
+not automatically the numerically smallest/largest device reading.
 
 The tool establishes configuration evidence. It does not automatically find a hard stop, tune a
 controller, edit a profile, or prove that a mechanism is safe under production load.
@@ -248,7 +254,8 @@ Abbreviated shape (omissions shown):
 - `bounded(min, max)` — declares legal targets in the mechanism's public units.
 - `rangeMapsToNative(nativeAtMin, nativeAtMax)` — maps those two bounds to logical servo commands.
 
-`rangeMapsToNative(...)` performs an affine command-space mapping from the two Plant bounds to the
+`rangeMapsToNative(...)` performs an **affine mapping**, a straight-line conversion between two
+endpoint pairs, from the two Plant bounds to the
 two native endpoints. It does not reprogram the servo, measure angle, linearize a nonlinear
 linkage, or prove arrival.
 
@@ -262,7 +269,9 @@ linkage, or prove arrival.
 | Plant bounds | Legal targets expressed in the mechanism's chosen public units |
 | Mapping/reference | Conversion to native units, and the run-time anchor that establishes position zero |
 
-Plant bounds reject unsafe requested targets. They cannot prove that inertia, controller overshoot,
+Plant bounds limit command values, not physical safety. A finite request outside the range may be
+clamped to a bound and reported as `CLAMPED_TO_RANGE`; invalid configuration is rejected, and an
+unavailable/non-finite runtime target has its own status. Bounds cannot prove that inertia, controller overshoot,
 load, flex, or linkage geometry stays inside the physical interval.
 
 ## What to copy, and what to verify next

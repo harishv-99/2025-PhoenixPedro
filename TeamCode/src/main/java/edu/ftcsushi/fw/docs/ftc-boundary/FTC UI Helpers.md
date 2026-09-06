@@ -5,6 +5,12 @@ tags:
 
 # FTC UI Helpers
 
+**Before this optional construction reference:** understand
+[saved callbacks](<../getting-started/Framework Overview.md#saved-callback>) and
+[robot roles](<../getting-started/learn-sushi/Robot Roles.md>). To operate an existing tester,
+read [Using the tester console](<../testing-calibration/Using the Tester Console.md>) instead.
+Here **UI** means the menu and status screens a person sees; these helpers do not decide robot behavior.
+
 Sushi's FTC UI helpers are small telemetry-screen building blocks for places where an FTC
 telemetry console needs to show choices during `init_loop()` or a tester run.
 
@@ -56,7 +62,8 @@ edit/Update All/A contract, experiment history, and cleanup behavior.
 
 ## `SelectionMenu<T>`
 
-`SelectionMenu<T>` is a **single-screen list**. It owns:
+`SelectionMenu<T>` is a **single-screen list**. `T` names the kind of value returned when the
+operator selects a row, such as a strategy enum. The menu owns:
 
 - item rows
 - selected index

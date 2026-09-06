@@ -9,6 +9,11 @@ Use this focused example when two wheels share one velocity request but each whe
 that must be true before the mechanism is ready. A grouped mean alone can hide one fast wheel and
 one slow wheel.
 
+**Before this page:** read [one motor velocity](<../build/Single Flywheel Velocity.md>) for encoder
+speed, tolerance, and feedback-based Tasks. No paired hardware is needed to understand this example.
+The new idea is **readiness for a group**: an average can match the request even when neither wheel
+does. Here, both individual speeds must be close enough to the request before feeding is allowed.
+
 ## One command owner, two observations
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/flywheel/ReferenceFlywheelMechanism.java -->
@@ -61,6 +66,8 @@ assertFalse("independent member evidence prevents a false ready claim", unbalanc
 
 **Read the causal chain:** one request writes both motors; independent `800` and `1200` samples
 average to the `1000` request; grouped arrival is true, but per-wheel readiness stays false.
+
+**Reading checkpoint:** explain why the average `1000` cannot, by itself, authorize feeding.
 
 **Proves:** paired readiness does not substitute an aggregate mean for member evidence.
 

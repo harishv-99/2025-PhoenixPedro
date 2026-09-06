@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 460" role="img" aria-labelledby="title description">
+  <title id="title">Sampled switch readings and accepted pressed state over time</title>
+  <desc id="description">INIT has no observation. At seconds 0, 0.010, 0.015, 0.026, 0.037, 0.048, and 0.059 after START, rawPressed is false, true, false, true, true, false, false. At those same samples pressed is false, false, false, false, true, true, false. The shared horizontal axis shows those times in milliseconds. Circles and squares mark actual software samples. Connecting steps show saved software values only, not electrical levels between samples. Each debounce delay is 0.02 seconds of accumulated sampled loop intervals.</desc>
+  <rect width="480" height="460" fill="#fff"/>
+  <g font-family="sans-serif" fill="#17202a">
+    <text x="20" y="27" font-size="20" font-weight="700">Switch samples and accepted state</text>
+    <text x="20" y="52" font-size="18">INIT: unknown. START: 0 ms.</text>
+    <text x="20" y="80" font-size="20" font-weight="700">rawPressed — latest reading</text>
+    <text x="20" y="211" font-size="20" font-weight="700">pressed — accepted state</text>
+    <text x="14" y="112" font-size="18">true</text>
+    <text x="14" y="169" font-size="18">false</text>
+    <text x="14" y="243" font-size="18">true</text>
+    <text x="14" y="300" font-size="18">false</text>
+  </g>
+  <g stroke="#d0d5db" stroke-width="1">
+    <path d="M64 96V178 M128 96V178 M160 96V178 M230.4 96V178 M300.8 96V178 M371.2 96V178 M441.6 96V178 M64 227V312 M128 227V312 M160 227V312 M230.4 227V312 M300.8 227V312 M371.2 227V312 M441.6 227V312" stroke-dasharray="3 5"/>
+    <path d="M64 106H456 M64 163H456 M64 237H456 M64 294H456"/>
+  </g>
+  <path d="M64 163H128V106H160V163H230.4V106H371.2V163H456" fill="none" stroke="#15507b" stroke-width="3"/>
+  <g id="raw-pressed-samples" fill="#15507b" stroke="#fff" stroke-width="1.5">
+    <circle cx="64" cy="163" r="5" data-time-sec="0.000" data-value="false"/>
+    <circle cx="128" cy="106" r="5" data-time-sec="0.010" data-value="true"/>
+    <circle cx="160" cy="163" r="5" data-time-sec="0.015" data-value="false"/>
+    <circle cx="230.4" cy="106" r="5" data-time-sec="0.026" data-value="true"/>
+    <circle cx="300.8" cy="106" r="5" data-time-sec="0.037" data-value="true"/>
+    <circle cx="371.2" cy="163" r="5" data-time-sec="0.048" data-value="false"/>
+    <circle cx="441.6" cy="163" r="5" data-time-sec="0.059" data-value="false"/>
+  </g>
+  <path d="M64 294H300.8V237H441.6V294H456" fill="none" stroke="#713608" stroke-width="3" stroke-dasharray="8 4"/>
+  <g id="accepted-pressed-samples" fill="#713608" stroke="#fff" stroke-width="1.5">
+    <rect x="59" y="289" width="10" height="10" data-time-sec="0.000" data-value="false"/>
+    <rect x="123" y="289" width="10" height="10" data-time-sec="0.010" data-value="false"/>
+    <rect x="155" y="289" width="10" height="10" data-time-sec="0.015" data-value="false"/>
+    <rect x="225.4" y="289" width="10" height="10" data-time-sec="0.026" data-value="false"/>
+    <rect x="295.8" y="232" width="10" height="10" data-time-sec="0.037" data-value="true"/>
+    <rect x="366.2" y="232" width="10" height="10" data-time-sec="0.048" data-value="true"/>
+    <rect x="436.6" y="289" width="10" height="10" data-time-sec="0.059" data-value="false"/>
+  </g>
+  <path d="M64 312H456" stroke="#17202a" stroke-width="1.5"/>
+  <g font-family="sans-serif" font-size="20" fill="#17202a" text-anchor="middle">
+    <text x="64" y="337">0</text><text x="128" y="337">10</text>
+    <text x="160" y="337">15</text><text x="230.4" y="337">26</text>
+    <text x="300.8" y="337">37</text><text x="371.2" y="337">48</text>
+    <text x="441.6" y="337">59</text>
+    <text x="240" y="368" font-size="18">Time after START (milliseconds)</text>
+    <text x="240" y="394" font-size="18">20 ms = 0.02 seconds of sampled intervals.</text>
+    <text x="240" y="420" font-size="18">Markers = samples; steps = saved values.</text>
+    <text x="240" y="446" font-size="18">Unobserved physical transitions are not shown.</text>
+  </g>
+</svg>

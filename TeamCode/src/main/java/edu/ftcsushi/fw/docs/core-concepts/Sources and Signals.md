@@ -5,6 +5,11 @@ tags:
 
 # Sources & Signals
 
+**Before this reference:** understand a [Source](<../getting-started/Framework Overview.md#source>)
+and [one switch observation](<../build/Read a Switch.md>). Choose a section when you need to
+transform or remember readings; these helpers are not prerequisites for the first TeleOp or timed
+Auto. The [loop reference](<Loop Structure.md>) supplies optional exact lifecycle details.
+
 Sushi uses a *single loop heartbeat* (see [`Loop Structure`](<Loop Structure.md>)). A lot of robot logic is really
 just "read some signals, transform them, and drive plants".
 
@@ -38,6 +43,10 @@ and adds composition methods for drive intent.
 
 A `Source<T>` is the minimal interface:
 
+`T` is a placeholder for the kind of value, such as `TargetingStatus`; `Source<TargetingStatus>`
+therefore reads that kind of object. An interface names the operations a caller can use without
+requiring it to know the implementation that supplies them.
+
 * `T get(LoopClock clock)` — sample the value for the current loop
 * `reset()` — optional lifecycle hook for stateful sources (clear local memory and, for structural
   source decorators, reset the source/gate children that form that graph; it does not imply
@@ -56,10 +65,10 @@ Common uses:
 
 Common transforms:
 
-* `deadband(...)`
-* `scaled(...)`
-* `shaped(...)`
-* `clamped(...)`
+* `deadband(...)` — ignore small values around zero
+* `scaled(...)` — multiply the value by a chosen factor
+* `shaped(...)` — change how strongly output responds across the input range
+* `clamped(...)` — limit the result to an allowed numeric interval
 
 ### `BooleanSource`
 
@@ -143,6 +152,12 @@ Plants are "sinks" you command, but it is often useful to treat a plant's state 
 
 Sushi provides a tiny, obvious adapter class: `PlantSources`.
 
+Readiness may briefly flicker as measurements change. **Debounce** delays accepting a changed
+Boolean instead of accepting every brief observed change. Below, `debouncedOn(0.15)` requires
+differing true observations to accumulate `0.15` seconds of loop intervals; a false observation
+turns it off immediately. It does not prove what happened between samples. The
+[debounce section](<#debounce-and-hysteresis>) gives the complete sampled timing rule.
+
 ```java
 import edu.ftcsushi.fw.actuation.PlantSources;
 
@@ -170,6 +185,11 @@ sensor or derived value multiple times in one loop (especially when it is used i
 
 `Source.memoized()` (and the specialized `ScalarSource.memoized()` / `BooleanSource.memoized()`) solves
 that by caching a source's value **per loop cycle**:
+
+The distance example also uses **hysteresis**: two thresholds prevent a measurement near one
+boundary from repeatedly changing the answer. It accepts near at `6 cm` or below, accepts far at
+`7 cm` or above, and retains its previous answer between them. Debounce then delays an observed
+change by the configured sampled interval. Neither filter proves a physical object is present.
 
 ```java
 import edu.ftcsushi.fw.ftc.FtcSensors;
@@ -504,6 +524,10 @@ fresh state in the same loop.
 For value-object sources (like a color classification), it is common to get short bursts of
 invalid output. `holdLastValid(...)` keeps the last valid value for a time window.
 
+Holding a value does not capture a new observation or make the old one fresh. Choose the maximum
+hold and the fallback explicitly for the consuming behavior; a missing value must not silently
+authorize motion. A retained timestamp remains the original observation's timestamp.
+
 Example (ball color classification):
 
 ```java
@@ -529,11 +553,13 @@ Two extremely common forms of signal conditioning are provided as reusable, gene
 
 ### `DebounceBoolean`
 
-`DebounceBoolean` is a small state machine that takes a raw boolean and returns a debounced boolean.
+`DebounceBoolean` remembers an accepted Boolean and filters brief observed changes. A switch can
+flicker while its contacts settle; similarly, a calculated ready signal can alternate near a
+threshold. Debouncing delays accepting those changes instead of treating each flicker as a new event.
 
 Use it when:
 
-* you want a signal to become true only after it has stayed true for *N* seconds
+* you want true observations to accumulate a configured delay before accepting true
 * you want to avoid chatter around a threshold
 
 From `BooleanSource`, you can write:
@@ -542,9 +568,13 @@ From `BooleanSource`, you can write:
 BooleanSource readyStable = readyRaw.debouncedOn(0.15);
 ```
 
-This means: **turn ON after 0.15s continuously true; turn OFF immediately when false**.
+This means: **accept ON after differing true samples accumulate 0.15 seconds of loop intervals;
+accept OFF immediately on a false sample**. On each new sampled cycle, an observation different
+from the accepted state contributes that cycle's `dtSec()`. An observation matching the accepted
+state clears the pending change. The delay includes the interval before the current sample; it is
+not a timer starting at the first changed sample, and unsampled transitions remain unknown.
 
-If you want symmetric delays:
+For independently chosen ON and OFF delays:
 
 ```java
 BooleanSource stable = raw.debouncedOnOff(0.10, 0.05);
@@ -552,7 +582,8 @@ BooleanSource stable = raw.debouncedOnOff(0.10, 0.05);
 
 ### `HysteresisBoolean`
 
-`HysteresisBoolean` is a state machine that turns a noisy scalar measurement into a stable boolean.
+`HysteresisBoolean` remembers which side of a pair of thresholds was last accepted. The gap between
+them prevents repeated ON/OFF changes when one numeric measurement fluctuates near a boundary.
 
 From a `ScalarSource`, you can write:
 
@@ -564,6 +595,7 @@ That means:
 
 * **ON** when `mag <= 0.08`
 * **OFF** when `mag >= 0.12`
+* between those thresholds, retain the previous answer (initially OFF)
 
 This avoids the ON/OFF chatter that happens with a single threshold.
 

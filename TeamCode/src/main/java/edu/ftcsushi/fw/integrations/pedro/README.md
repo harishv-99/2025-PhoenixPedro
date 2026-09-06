@@ -5,6 +5,13 @@ tags:
 
 # Pedro Pathing integration
 
+**Before this page:** understand the managed service/output order and fresh Tasks from the
+[basic timed Auto](<../../docs/build/Run One Timed Auto.md>), then read
+[one route's software outcome](<../../docs/build/First Pedro Auto.md>). This is an advanced
+integration contract. A **route** describes planned field motion; a **follower** repeatedly compares
+the estimated robot pose with that route and requests drive commands. A **pose** is position plus
+facing direction. Pinpoint supplies movement observations; it is not the route or the follower.
+
 The Pedro integration is a narrow vendor boundary. Core Sushi Tasks and robot capabilities do
 not depend on Pedro types; the adapter owns conversion, follower lifecycle, route status, and the
 final drivetrain stop.

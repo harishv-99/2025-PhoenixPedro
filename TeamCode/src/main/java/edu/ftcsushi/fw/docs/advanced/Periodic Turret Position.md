@@ -9,6 +9,16 @@ Use periodic position when one logical angle has physically interchangeable full
 representatives. Do not use semantic names with hidden periodic behavior: the focused capability
 accepts numeric radians and makes the physical representative visible in status.
 
+**Before this page:** read [a referenced lift move](<../build/Move a Referenced Lift.md>) for measured
+position, reference, bounds, tolerance, and feedback-based Tasks. No turret hardware is needed to
+read the example.
+
+**Periodic** means that a direction repeats after a full turn: `20°` and `380°` face the same way,
+but reaching them may require different travel and cable clearance. A **radian** is another angle
+unit: one turn is `2π` radians, or `360°`; `Math.toRadians(degrees)` converts degrees. The new decision
+is which equivalent angle lies within the reviewed bounds and needs the least travel from the
+measured position. Equal facing does not make every full turn physically safe.
+
 ## Resolve before the Plant applies bounds
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferencePeriodicTurretMechanism.java -->
@@ -75,6 +85,9 @@ assertEquals(expectedPhysicalRad, moving.appliedAngleRad(), EPSILON);
 
 **Read the causal chain:** the numeric request stays `0.1π`; the current measurement makes `2.1π`
 the nearest legal equivalent; only a later injected encoder sample can establish arrival.
+
+**Reading checkpoint:** `0.1π`, `2.1π`, and `2.9π` are `18°`, `378°`, and `522°`. Explain why selecting
+`378°` is different from measuring arrival there.
 
 **Proves:** periodic selection stays distinct from final bounds and from feedback arrival.
 

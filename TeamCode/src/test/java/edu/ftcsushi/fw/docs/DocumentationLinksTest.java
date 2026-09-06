@@ -225,7 +225,7 @@ public final class DocumentationLinksTest {
             "^(!!!|\\?\\?\\?\\+?)[ \\t]+([^ \\t]+)"
                     + "(?:[ \\t]+\"([^\"]*)\")?[ \\t]*$");
     private static final Pattern HEADING_ATTRIBUTE_ID = Pattern.compile(
-            "(?:^|\\s)\\{[^}]*#([A-Za-z][A-Za-z0-9_-]*)[^}]*}[ \\t]*$");
+            "(?:^|\\s)\\{[^}]*#([A-Za-z0-9][A-Za-z0-9_-]*)[^}]*}[ \\t]*$");
     private static final Pattern HIGHLIGHTED_JAVA_FENCE = Pattern.compile(
             "^\\x60\\x60\\x60java[ \\t]+hl_lines=\"([0-9]+(?: [0-9]+)*)\"[ \\t]*$");
     private static final Pattern CONCEPT_CALLOUT_START = Pattern.compile(
@@ -2785,12 +2785,14 @@ public final class DocumentationLinksTest {
                 "# Hello, World!\n\n"
                         + "# Repeat\n\n# Repeat\n\n# Repeat-1\n\n"
                         + "## Saved function { #saved-callback }\n\n"
+                        + "## Numbered concept { #51-webcam-raw-apriltag-correction }\n\n"
                         + "Setext heading\n--------------\n");
         write(root, "README.md",
                 "[literal](<Docs/Guide File.md#hello-world>)\n"
                         + "[encoded](Docs/Guide%20File.md#repeat-1)\n"
                         + "[collision](<Docs/Guide File.md#repeat-1-1>)\n"
                         + "[explicit](<Docs/Guide File.md#saved-callback>)\n"
+                        + "[numbered](<Docs/Guide File.md#51-webcam-raw-apriltag-correction>)\n"
                         + "[setext](<Docs/Guide File.md#setext-heading>)\n");
 
         assertNoFailures(MarkdownIntegrity.validateRepository(root));

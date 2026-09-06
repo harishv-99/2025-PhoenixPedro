@@ -5,6 +5,12 @@ tags:
 
 # Drive Guidance
 
+**Before this page:** read [field-relative drive](<../examples/Field-relative Drive.md>) and
+[Spatial Queries](<Spatial Queries.md>) for heading, frames, and geometry evidence. This optional
+guide adds a **drive correction**: for example, let the sticks move the robot while the software
+turns it toward a target. An **overlay** replaces selected parts of the manual command, not its
+hardware writer. Here **omega** names the turn component, positive counter-clockwise.
+
 `DriveGuidance` is the drivetrain consumer of the shared spatial-query layer. It turns field/robot geometry into a `DriveSignal` overlay or autonomous task.
 
 Use Drive Guidance when the **drivetrain** should correct translation, heading/facing, or both. Use [`Spatial Queries.md`](<Spatial Queries.md>) directly when you only want raw geometry. Use [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>) when a **mechanism Plant** should move independently to a scalar target.
@@ -48,6 +54,16 @@ This example keeps driver translation from the sticks, but overrides omega while
 The season-independent [framework examples index](<../examples/README.md>) places this advanced
 policy after the managed drive and localization lessons; ordinary robot code keeps the guidance
 plan in a robot-owned service and leaves the managed host responsible for loop and cleanup.
+
+For this camera-assisted variant, first read the opening
+[AprilTag localization model](<AprilTag Localization & Fixed Layouts.md>). The adaptive strategy
+can use localization and camera evidence. Here, accepted localization is at most `0.50 s` old with
+quality at least `0.10`; camera evidence is at most `0.25 s` old. Quality is the producer's score,
+not a probability that a shot succeeds. The proportional gain `aimKp(2.5)` converts angle error in
+radians into a turn request; `aimDeadbandRad(...)` requests no correction within `1°`. Its unchanged
+default turn cap is `0.80` normalized magnitude; the `OMEGA_ONLY` mask leaves manual translation
+alone. The later tuning table explains the remaining settings. These are software example values,
+not reviewed physical settings.
 
 ```java
 Pose2d robotToShooterFrame = new Pose2d(
@@ -138,6 +154,11 @@ policies borrowed through the plan's reusable spatial spec. Those collaborators 
 the robot services that supplied them.
 
 ## Controller tuning
+
+A **controller** converts the difference between the desired and observed state into a command.
+The proportional gain `kP` multiplies that difference: a larger error asks for a larger correction,
+up to the command cap. A deadband asks for zero correction near the goal to avoid reacting to tiny
+errors. These terms describe this guidance controller; they do not establish safe physical tuning.
 
 `DriveGuidancePlan.Tuning` is an immutable, reusable description of how spatial error becomes a
 normalized drive command. Start from `Tuning.defaults()` when robot code stores or shares the

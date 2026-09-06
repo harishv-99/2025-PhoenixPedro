@@ -15,6 +15,9 @@ Tasks are used for:
 * TeleOp **macros** (e.g., shooting sequences).
 * **Autonomous routines** built out of reusable pieces.
 
+A **macro** is one named recipe for several robot actions. Reuse the recipe, not its Task object:
+each invocation creates fresh work for one run.
+
 We assume you already have an ordinary robot owner wired like one of the focused
 [Build recipes](<../build/README.md>):
 
@@ -32,7 +35,7 @@ stalls TeleOp. Spatial zones and heading predicates are a separate topic in
 
 Sushi Task behavior is built around three ideas:
 
-1. **Tasks** – small, reusable behaviors that run over time.
+1. **Tasks** – small behaviors that run over time; each built object is single-use.
 2. **Plants** – things that accept a numeric target (motors, servos, etc.).
 3. **TaskRunner** – drives a queue of tasks every loop; an ordinary `RobotProgram` owns it
    privately.
@@ -684,6 +687,13 @@ A typical TeleOp macro flows like this:
 
 ### 5.1 Wiring a simple shooter macro
 
+This optional composition example requires the feedback and timed-write sections above. Its
+flywheel request is persistent: finishing or cancelling a later feed step does not automatically
+erase the earlier velocity request. Read the ending-policy table before adopting this shape. For
+a maintained macro that owns coordinated terminal cleanup, use
+[`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
+and its `launchOne()` capability instead of assuming the final sequence child always runs.
+
 Inside the shooter mechanism, retain the two simple Plants as private fields:
 
 * `shooter` – a velocity command and feedback Plant for the flywheel.
@@ -722,6 +732,23 @@ public Task createShootOneDiscTask() {
     );
 }
 ```
+
+The sequence's outcome and its held requests are different facts:
+
+| Event in this example | Which ending runs? | Request left for the ordinary output phase |
+| --- | --- | --- |
+| All four steps succeed | `spinDown` | zero flywheel velocity; feed already selected zero |
+| Spin-up times out | no later child | the flywheel's persistent velocity request remains |
+| Cancel during spin-up | its `cancelTo(0.0)` | zero flywheel velocity |
+| Cancel during feed | feed's `then(0.0)` | zero transfer power; flywheel request remains |
+| Cancel during the hold | its `leaveThere()` | flywheel request remains |
+| FTC STOP | managed cancellation and output cleanup | each output executes its terminal stop path |
+
+Use this composition only when those persistent requests match the mechanism's declared policy.
+If a larger operation must stop every owned request on any ending, that operation needs a
+coordinated cancellation/cleanup owner like the maintained launcher. A later `spinDown` child is
+not cleanup, and changing to `sequenceOnCompletion(...)` alone still cannot make it run on direct
+cancellation. Physical coast-down and feed clearance remain separate hardware observations.
 
 Bind a button to enqueue this macro:
 

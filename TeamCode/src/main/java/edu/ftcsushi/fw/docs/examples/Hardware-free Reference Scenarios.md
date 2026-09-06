@@ -22,7 +22,7 @@ when you want to design another scenario.
 
 `StarterMechanismLessonTest` is the maintained first software experiment. It uses the real starter
 intake mechanism and its real Plant, but records the motor command in software instead of requiring
-a robot. Run it from the repository root:
+a robot. Optionally run it from the repository root:
 
 === "Windows"
 
@@ -53,6 +53,14 @@ In the excerpt, **ARRANGE** constructs the production owner around the recorder,
 the named intent, and **HEARTBEAT** runs the normal output update once. The `assertEquals(...)`
 lines are the **ASSERT** step: before the heartbeat they require zero applied power and zero writes;
 after it they require the configured `collectPower` at both software observations.
+
+An **assertion** fails the test if its expectation is not met. Read
+`assertEquals(expected, actual)` in that order. The numeric form
+`assertEquals(expected, actual, allowedDifference)` also states how far apart two numbers may be;
+the third `0.0` below allows no difference because this checks an exact recorded command, not a
+physical measurement. `assertTrue(...)` requires true and `assertFalse(...)` requires false.
+`new` constructs an object; here the **probe** records device calls, while the manual clock lets
+the test choose when the next loop occurs.
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
 ```java

@@ -18,8 +18,14 @@ same production path. Keep the intake motor disconnected until the isolated hard
 
 ## First pass: run a function once per press
 
-Start with the familiar event, before the motor internals. This exact production registration says,
-“when A changes from released to pressed, call `setMode(COLLECT)` once”:
+Start with the familiar event, before the motor internals. Calling `setMode(COLLECT)` directly runs
+that method now. To save the call for a later press, use a Java **lambda**: `()` means it needs no
+arguments, and `->` separates that argument list from the method call to run later. Passing the
+lambda to `onRise(...)` saves the call; registering it during INIT does **not** execute `setMode(...)`.
+
+`Mode.COLLECT` is one named choice, alongside `EJECT` and `STOPPED`; the full build introduces the
+Java `enum` that defines those choices. A **rising edge** is a change from released to pressed.
+This exact production registration says, “on that A-button change, call the saved function once”:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java -->
 ```java
@@ -27,10 +33,6 @@ requiredCallbacks.onRise(
         driver.a(),
         () -> requiredIntake.setMode(StarterIntake.Mode.COLLECT));
 ```
-
-The second argument is a Java **lambda**. `()` means it needs no arguments, and `->` separates that
-empty argument list from the method call to run later. Passing the lambda to `onRise(...)` saves the
-call; registering it during INIT does **not** execute `setMode(...)`.
 
 After the first button sample establishes whether A started pressed or released, the important part
 is equivalent to this familiar loop code. This is a timing comparison, not a second robot-code
@@ -84,7 +86,8 @@ enum Mode {
 ```
 
 `StarterIntake` also declares `setMode(...)`, `collectForSeconds(...)`, and `status()`. The
-interface says what the robot can do. It does not expose an FTC motor or a Plant.
+Java **interface** lists what callers may ask this object to do; an implementing class supplies
+the method bodies. It does not expose an FTC motor or a Plant.
 
 The **mechanism** is the private hardware realization behind that interface. It copies the robot's
 configuration, maps the named request, owns the Plant, and exposes only the capability to clients.
@@ -92,6 +95,10 @@ configuration, maps the named request, owns the Plant, and exposes only the capa
 ### 1. Keep physical answers in data-only configuration
 
 The mechanism configuration owns the FTC name, logical direction, and normalized action powers.
+**Normalized power** is a signed number in `[-1, +1]`: zero requests no drive power, the sign selects
+direction, and the magnitude selects a fraction of the command range—not a measured speed.
+`Direction.FORWARD` selects the motor's logical sign convention; wiring and mounting still
+determine which way the real intake moves. A **profile** groups this robot's configuration choices.
 In the maintained host, edit the active candidate values together in `StarterProfile.current()`:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java -->
@@ -129,8 +136,10 @@ that permits the supervised check but still does not prove the candidate configu
 ### 2. Map each name forward once
 
 [`SemanticScalarCommand`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/actuation/SemanticScalarCommand.html>)
-keeps the selected name and its numeric command together. `STOPPED` is the initial request and maps
-to software target zero:
+keeps the selected name and its numeric command together: **semantic** means the robot meaning,
+and **scalar** means one number. `STOPPED` is the initial request and maps to software target zero.
+A **builder** is a chain of setup calls: each call answers a question and returns the next setup
+stage; the final `build()` constructs the configured object:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
@@ -151,8 +160,9 @@ replaces it; student code does not resend it in a private loop.
 
 ### 3. Build the one final hardware writer
 
-A **Plant** is the mechanism-owned object that resolves one requested target, caches the resulting
-facts, and performs the final actuator write during its managed update. The
+A **Plant** is the mechanism-owned object that takes the desired numeric value (the **target**),
+applies its limits, caches the resulting facts, and performs the final actuator write during its
+managed update. An **actuator** is an output device such as this motor. The
 `Objects.requireNonNull(...)` call below rejects a missing hardware registry with the given message;
 it is input validation, not another owner or lifecycle phase:
 
@@ -224,7 +234,8 @@ public void stop() {
 
 ### 5. Declare the output owner once
 
-The composition root constructs the mechanism with `HardwareMap` plus its data-only config and
+The **composition root** is the setup code that constructs the parts and connects their owners;
+it does not take over their recurring work. It constructs the mechanism with `HardwareMap` plus its data-only config and
 declares the mechanism—not its private Plant—as the managed output:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
@@ -247,7 +258,8 @@ power into that frame.
 
 ### 6. Give buttons semantic meaning
 
-The composition root creates one controls owner around the FTC gamepad adapter, then connects it to
+An **adapter** translates an outside API into Sushi values; `GamepadDevice` turns FTC gamepad fields
+into reusable sources. The composition root creates one controls owner around that adapter, then connects it to
 the managed callback graph and the capability returned by the mechanism declaration:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
@@ -293,9 +305,21 @@ protected void configure(RobotProgram program) {
 After `configure(...)` returns, [`FtcRobotOpMode`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcRobotOpMode.html>)
 and `RobotProgram` own the one clock and recurring order. Student code does not add a loop:
 
-```text
-button source -> callback binding -> semantic request -> Plant update -> motor write -> presenter
+```mermaid
+flowchart TD
+    accTitle: One intake request reaches one motor writer and a read-only display
+    accDescr: An accepted button press invokes the saved callback, which changes the named request. The mechanism's downstream private Plant applies that request and writes the motor. A presenter reads the request and cached Plant status; it does not read or write the motor.
+    press["Button changes to pressed"] --> callback["Run the saved callback"]
+    callback --> request["Save the named request"]
+    request --> plant["Mechanism updates its private Plant"]
+    plant --> motor["Submit one motor command"]
+    request --> status["Read named request and cached Plant status"]
+    plant --> status
+    status --> presenter["Presenter adds telemetry rows"]
 ```
+
+In words: the callback changes the request, the later Plant update writes the motor, and the
+presenter reads saved request/output facts. There is no presenter-to-motor command path.
 
 At FTC STOP or a runtime failure, the managed host best-effort stops declared outputs. During an
 active match, request `STOPPED`; do not terminally stop a Plant that must be reused.

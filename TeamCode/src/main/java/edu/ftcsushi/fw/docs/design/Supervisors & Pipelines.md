@@ -5,27 +5,31 @@ tags:
 
 # Supervisors & Pipelines
 
+**Before this reference:** understand [robot roles](<../getting-started/learn-sushi/Robot Roles.md>),
+[persistent mechanism requests](<../build/Continuous Intake.md>), and
+[Tasks](<../getting-started/learn-sushi/Tasks and Autonomous.md>). Use this page only when one
+mechanism's ordinary request methods no longer express the coordination you need.
+
 Sushi is designed so student code can stay simple **and** scale to advanced
 automation without turning into "spaghetti".
 
 This document explains the implementation-side architecture for:
 
-- **Subsystems** (hardware + one place that writes plant targets)
+- **Subsystems** (hardware + one owner of final Plant target resolution and updates)
 - **Supervisors** (policy + orchestration, usually built from signals and tasks)
 - **Pipelines** (how to combine base targets and temporary overrides without violating the target-resolver ownership rule)
 
-If you're brand new, read these first:
+Optional companions for the specific internal pattern you select:
 
 - [`Loop Structure`](<../core-concepts/Loop Structure.md>)
 - [`Sources and Signals`](<../core-concepts/Sources and Signals.md>)
 - [`Recommended Robot Design`](<Recommended Robot Design.md>)
 - [`Output Tasks & Queues`](<Output Tasks & Queues.md>)
 
-A useful companion is [`Recommended Robot Design`](<Recommended Robot Design.md>). Before adding
-structure, decide which behavior pattern fits the problem:
+Before adding structure, decide which behavior pattern fits the problem:
 
 - local target (`Plant`)
-- scalar regulation (`ScalarSource` + controller + `Plant`)
+- scalar regulation (one measured number controlled by a regulated `Plant`)
 - event/classification supervision (`BooleanSource` / `Source<T>` + supervisor/task)
 - spatial guidance (`DriveGuidance` today)
 - external route integration (Road Runner / Pedro wrapped behind Sushi seams)
@@ -59,7 +63,7 @@ A robot container is a class that:
 - retains FTC resources and synchronously consumes the active robot-profile slices
 - checks robot-level permissions and relationships that cross owner boundaries
 - constructs subsystems with `HardwareMap` plus their data-only config, and creates supervisors
-- defines gamepad bindings
+- constructs controls and asks them to bind their gamepad meanings
 - immediately declares each lifecycle owner to the framework-created `RobotProgram`
 
 Many Sushi robots start with a single declaration-only `Robot` class used by TeleOp and Auto
@@ -84,7 +88,7 @@ A supervisor is responsible for:
 
 - owning small state: cooldowns, request counters, state machines
 - translating driver intent and sensor signals into actions
-- enqueueing `OutputTask`s to subsystem queues when appropriate
+- requesting actions through subsystem methods while the subsystem keeps its queue private
 - optionally exposing one small **status snapshot** for telemetry/debug, so callers do not need to understand several internal booleans and queue details
 
 A supervisor usually **does not write plant targets directly**.
@@ -386,12 +390,12 @@ Best practices:
 
 ### 4) Discrete pose selection (servo/motor positions)
 
-**Use:** a `desiredPose` state variable (enum).
+**Use:** a mechanism-owned named request (an enum selects the robot meaning).
 
 Best practices:
 
 - define poses in one place
-- map pose → target in a helper method
+- map pose → numeric target through one `SemanticScalarCommand`, used by both direct and Task paths
 - last request wins
 
 Optional: add an override queue for “pulse” behaviors.
@@ -506,10 +510,10 @@ Avoid running `OutputTask` in a plain `TaskRunner` unless you intentionally do n
 
 As the robot grows, you can introduce more structure without changing the basic rules.
 
-Common patterns:
+Add only the responsibilities the robot actually needs:
 
 - one subsystem per mechanism
-- one supervisor per mechanism
+- a supervisor only when policy genuinely crosses capability or mode-client boundaries
 - one higher-level supervisor that coordinates multiple mechanisms for scoring
 
 The architecture remains:

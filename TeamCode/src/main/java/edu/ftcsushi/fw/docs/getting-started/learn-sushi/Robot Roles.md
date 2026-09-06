@@ -14,7 +14,10 @@ No installation, code changes, test execution, or hardware is needed to read thi
 
 ## Separate construction from later work
 
-The ordinary OpMode chooses the profile and asks the robot composition root to connect its owners:
+Before the code, read the [FTC-loop bridge](<../Framework Overview.md>) for object construction and
+the managed entry method. A **profile** holds configuration choices. The **composition root** is
+the object that constructs robot parts and connects them; it does not decide their behavior.
+The ordinary OpMode chooses the profile and asks that object to connect its owners:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.java -->
 ```java
@@ -38,6 +41,9 @@ owns the declared phases and cleanup. The
 supplies package and imports.
 
 ## Who owns what?
+
+**Cached** means saved from the most recent update. A **snapshot** is a fixed record of those
+facts. A **capability** exposes the requests and status a robot part offers to both TeleOp and Auto.
 
 | Role | Owns | Does not own |
 | --- | --- | --- |

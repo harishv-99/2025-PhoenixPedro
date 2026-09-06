@@ -5,7 +5,17 @@ tags:
 
 # Spatial Queries
 
-`SpatialQuery` is the shared framework layer for **field/robot geometry**. It answers a task-space question:
+**Before this page:** understand [robot-relative drive](<../build/First Drive.md>) and the
+[field-relative frame distinction](<../examples/Field-relative Drive.md#what-up-means>). This optional
+reference answers a geometry question; it does not teach another motor-control path.
+
+A **pose** combines position and facing direction. A **coordinate frame** names the origin and axes
+used to express those numbers. A **spatial query** asks where a target is relative to the robot or
+one of its tools. A **solve lane** is one way to obtain that answer, such as an estimated field pose
+or a camera observation. These are alternative sources of evidence, not separate robot loops.
+
+`SpatialQuery` is the shared framework layer for **field/robot geometry**. It answers a position or
+facing question:
 
 > Given a target, a controlled robot frame, and one or more solve lanes, what translation or facing relationship can each lane solve this loop?
 
@@ -33,7 +43,7 @@ Do not use `SpatialQuery` when the target is already a plant-unit value. A lift 
 - `SpatialSolveLane`: one strategy for solving the relationship, such as absolute pose or live AprilTags.
 - `SpatialQueryResult`: ordered per-lane results from one loop.
 - `TranslationSolution`: solved target point in robot and controlled-frame coordinates, with the
-  epoch-safe timestamp of the underlying measurement.
+  capture timestamp retaining the underlying measurement's clock and reset identity.
 - `FacingSolution`: signed facing error in radians, with the same kind of measurement timestamp.
 
 The key naming rule is:
@@ -141,7 +151,17 @@ state.
 
 ## Control frame vs camera frame
 
-A control frame is the thing you are trying to move or face. A camera frame is the sensor pose used by an AprilTag lane.
+A **control frame** is attached to the part whose position or facing matters, such as a shooter's
+exit. A **camera frame** is attached to the sensor that observed the target. They need not have the
+same origin or direction. A frame transform states one frame's position and orientation relative
+to another; it does not move either object.
+
+![Top-down robot axes with a shooter frame 8 inches forward, 2 inches left, and 3 degrees left of robot-forward; a separate illustrative camera frame observes the target.](<../assets/diagrams/control-camera-frames.svg>)
+
+The robot origin is the reference for `robotToShooterFrame`: the shooter is `8 in` forward and
+`2 in` left, and its `+X` direction points `3°` left of robot-forward. The camera's drawn placement
+is illustrative only; its measured mount configuration answers where the observation came from.
+The shooter frame answers which part should face the target. Neither frame is an extra hardware owner.
 
 For a shooter:
 
@@ -218,7 +238,10 @@ camera mount: a moving turret or arm still needs its own timestamp-aware frame s
 
 ## Selecting lane results
 
-The base query returns every lane result. Use selectors when you want priority behavior:
+The base query returns every lane result. A **gate** accepts or rejects evidence using declared
+limits; here those limits are age (seconds since capture) and quality (the producer's confidence
+score, not a probability of success). A **selector** chooses among the accepted results in declared
+priority order. Use selectors when you want priority behavior:
 
 ```java
 SpatialSolutionGate gate = SpatialSolutionGate.builder()

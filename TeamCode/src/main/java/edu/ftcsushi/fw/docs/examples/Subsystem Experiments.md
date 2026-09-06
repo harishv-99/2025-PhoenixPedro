@@ -7,6 +7,11 @@ tags:
 
 **Learning mode:** Architecture reference
 
+**Before this page:** read [Evidence and experiments](<../getting-started/learn-sushi/Evidence and Experiments.md>)
+for what software and physical observations can establish. This optional reference adds a repeatable
+record for one physical decision. Reading the lab card needs no equipment; executing it requires
+the stated reviewed hardware conditions.
+
 An experiment is a robot-specific use of existing capabilities and tester infrastructure, not a
 new framework abstraction. Its purpose is to answer one decision before ordinary robot code relies
 on the answer. Software tests establish software behavior; a bounded experiment collects the
@@ -230,7 +235,7 @@ the bounded trial state machine and hardware lifecycle described above.
 
 ## Verify the slice
 
-Run:
+Optionally run the supplied software check after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 

@@ -46,7 +46,10 @@ public void setHeight(Height height) {
 
 ### Build fresh work when a caller must wait
 
-Auto can ask for a fresh single-use Task through the same semantic command:
+Auto can ask for a fresh single-use Task through the same semantic command. **Fresh feedback** here
+means a later Plant update has observed a measurement for this selected request—not a successful
+measurement left over from an earlier request. The Task waits cooperatively while the ordinary
+output phase continues driving the lift:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftMechanism.java -->
 ```java
@@ -65,9 +68,9 @@ Read each stage as a behavior decision:
 | Stage | Decision |
 |---|---|
 | `set(heightCommand, height)` | Publish the name and mapped inches together when this fresh Task starts. |
-| `untilReachedBy(lift)` | Use this Plant's command-correlated cached feedback as completion evidence. |
+| `untilReachedBy(lift)` | Wait for this Plant's cached measurement to support this exact selected request. |
 | `leaveRequestOnCancel()` | Active cancellation ends the Task but deliberately leaves the latest persistent height request unchanged. |
-| `timeout(moveTimeoutSec)` | Report `TIMEOUT` when arrival evidence is missing; do not pretend success or choose recovery. |
+| `timeout(moveTimeoutSec)` | End with `TIMEOUT` if arrival evidence is still missing after the configured time budget; do not choose recovery. |
 | `build()` | Return one fresh, single-use Task without publishing the request yet. |
 
 This cancellation choice suits a position mechanism that should continue holding its requested
@@ -78,6 +81,10 @@ Reference state belongs to the current Plant instance, so a new OpMode run start
 if an earlier run homed successfully. In `BasicLiftTeleOp`, press X to start a fresh home Task in
 that same run; wait until telemetry reports `lift.referenced = true`; then use D-pad down, left, or
 up for direct `STOWED`, `LOW`, or `HIGH` requests:
+
+The comment calls the home factory a **Supplier**: Java's name for a function returning a value.
+`Supplier<Task>` means it returns a Task. The method reference `requiredLift::home` saves that
+factory, equivalent to `() -> requiredLift.home()`, so each accepted X press gets new work.
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicLiftControls.java -->
 ```java
@@ -152,6 +159,18 @@ encoder scale, load response, physical height, or mechanism safety is correct.
 
 Keep the timing and vocabulary in this order:
 
+```mermaid
+flowchart TD
+    accTitle: A lift request is written before later feedback can finish its Task
+    accDescr: The Task first selects LOW without writing hardware. The output phase submits the mapped target and caches the encoder reading. A later output phase caches an in-tolerance measurement for that request. The next Task phase reports success. Success ends waiting, not the persistent position request or physical output.
+    request["Task phase: select LOW; no motor write"] --> output["Output phase: submit target and read encoder"]
+    output --> measured["Later output phase: cache matching measurement"]
+    measured --> complete["Next Task phase: report SUCCESS"]
+    complete --> hold["Normal outputs keep realizing the held request"]
+```
+
+This is a software-phase timeline, not a graph of real lift motion. Its text equivalent is:
+
 1. **Requested:** starting the Task publishes `LOW` and its mapped inches; no hardware write occurs.
 2. **Applied:** the downstream output heartbeat bounds that request, converts it to ticks, and writes
    the controller target.
@@ -160,7 +179,9 @@ Keep the timing and vocabulary in this order:
    semantic request, the following Task phase may report `SUCCESS`.
 
 An earlier measurement matching the same number is not enough: a new semantic request invalidates
-old arrival evidence immediately.
+old arrival evidence immediately. **Completion is not physical stop:** success ends this Task's
+wait but leaves the position request selected. Active Task cancellation follows the explicit
+leave-request policy above; FTC STOP separately ends the output and removes motor power.
 
 Notice:
 

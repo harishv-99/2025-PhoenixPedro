@@ -21,10 +21,15 @@ code edit, test run, or hardware.
 
 `GamepadDevice` adapts the FTC gamepad into reusable
 [Sources](<../Framework Overview.md#source>). Its `a()` source means “A is pressed”; it is already
-a semantic Boolean, not an electrical HIGH/LOW pin. A trigger is a scalar from `0.0` released to
+a true/false robot meaning, not an electrical pin level. A trigger is a **scalar**, one number, from `0.0` released to
 `1.0` fully pressed. A comparison such as `rightTrigger().above(0.2)` derives a Boolean meaning
 from that number.
 
+Calling `setMode(...)` directly runs that setter now. The
+[no-argument lambda](<../Framework Overview.md#saved-callback>) `() -> ...` packages
+the call so `onRise(...)` can save it during configuration. It does not execute at registration.
+An accepted released-to-pressed transition invokes it synchronously during a later bindings phase;
+there is no background thread. `Mode` is an enum: a fixed set of names for requests.
 The focused controls owner assigns the three intake buttons:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java -->
@@ -40,14 +45,10 @@ requiredCallbacks.onRise(
         () -> requiredIntake.setMode(StarterIntake.Mode.STOPPED));
 ```
 
-Calling `setMode(...)` directly runs that setter now. The
-[no-argument lambda](<../Framework Overview.md#saved-callback>) `() -> ...` packages
-the call so `onRise(...)` can save it during configuration. It does not execute at registration.
-An accepted released-to-pressed transition invokes it synchronously during a later bindings phase;
-there is no background thread. Holding or releasing A does not repeat the callback, and the named
+Holding or releasing A does not repeat the callback, and the named
 `COLLECT` request persists until B selects `EJECT` or X selects `STOPPED`.
 
-The owner is package-private; its
+The owner is **package-private**, so only code in its package can name it; its
 [Complete source: `StarterIntakeControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java>)
 contains its constructor and one-time bind check. The
 [intake Build lesson](<../../build/Continuous Intake.md>) shows construction, managed registration,
@@ -61,12 +62,13 @@ and the output that realizes the request.
 | Replace a persistent request on a press | `program.callbackBindings().onRise(...)` | synchronously on an accepted rise |
 | Begin work that takes several loops | `program.taskBindings().onRise(...)` with a fresh-Task factory | admitted by the managed Task runner |
 
-A method reference such as `lift::home` saves the call to `home()`; when invoked, that method
+A **method reference** such as `lift::home` is shorthand here for `() -> lift.home()`:
+it saves the call to `home()`; when invoked, that method
 must return a fresh Task. It does not save a reusable Task instance. The
 [Task reference](<Tasks and Autonomous.md>) explains lifetime and cancellation.
 
 Drive is sampled continuously rather than through callbacks on every cycle. The controls own axis
-meanings; a single sink owns the final drivetrain write. Holding a bumper to scale the current
+meanings; a single **sink**, the receiver of the drive request, owns the final drivetrain write. Holding a bumper to scale the current
 drive request also belongs in that continuously sampled source. See the complete
 [combined TeleOp](<../../build/Combine Drive and Intake.md>).
 

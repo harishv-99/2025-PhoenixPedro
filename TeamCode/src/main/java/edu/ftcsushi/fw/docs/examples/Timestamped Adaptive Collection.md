@@ -22,6 +22,19 @@ their timestamp alignment deliberately demonstrates the optional framework `Plan
 capability. The case study is not a new Sushi framework lane, a complete autonomous cycle, or a
 drop-in OpMode.
 
+**Physical gate remains blocked:** this example uses the same managed Pedro route boundary as
+[the first route checkpoint](<../build/First Pedro Auto.md#isolated-hardware-gate-currently-blocked>).
+Its software scenarios do not remove that boundary's unresolved reviewed-power-limit gate. Study
+and test the software without authorizing physical route motion or obtaining a raw Follower.
+
+A **timestamp** records when an observation was captured, not when a later loop reads it.
+**Pose history** stores earlier published robot positions and headings so a delayed image can use
+the appropriate earlier pose. **Projection** converts the image's viewing direction into an
+estimated point on an explicitly assumed surface, here the floor. This example combines those
+ideas; the [spatial frame explanation](<../drive-vision/Spatial Queries.md#control-frame-vs-camera-frame>)
+and [localization history reference](<../drive-vision/AprilTag Localization & Fixed Layouts.md>)
+supply the optional geometry and history detail.
+
 ## What the example proves
 
 The example follows one chain of evidence:
@@ -55,7 +68,7 @@ cancellation-safe.
 ### Critical code
 
 The existing Pedro/localization service remains the one heartbeat and lifecycle owner. Give it one
-[`PlanarPoseHistory`](<../../localization/PlanarPoseHistory.java>) over the authoritative high-rate
+[`PlanarPoseHistory`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/localization/PlanarPoseHistory.html>) over the authoritative high-rate
 trajectory estimator. At START it resets the history, applies the starting pose, updates
 localization, and records the resulting current sample. Each active LOOP updates localization and
 immediately records before downstream services. At STOP it stops its owned resources and resets the
@@ -425,8 +438,10 @@ cleanup, outcome retention, and conditional return. They do not establish:
 - physical drivetrain, intake, and camera cleanup on STOP; or
 - whether the selected takeover time and park route can physically finish before match end.
 
-Validate those facts on the adopting robot with conservative motion, clear space, and an operator
-ready to stop it. The outer Task graph above makes repetition, match-time bounds, and park takeover
+The managed Pedro physical gate remains blocked, so do not run those motion checks with this
+example. Physical qualification requires a supported reviewed power limit before conservative
+motion, clear-space, and STOP checks can be authorized. The outer Task graph above makes repetition,
+match-time bounds, and park takeover
 explicit; their values and physical success remain adopting-robot strategy rather than hidden
 behavior in this one-attempt owner.
 

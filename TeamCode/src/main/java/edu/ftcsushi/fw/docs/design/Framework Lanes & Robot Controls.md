@@ -956,9 +956,12 @@ fabricated periodic operation. A custom host may stop sinks directly. Either sto
 SDK request rather than confirmation that a controller stopped immediately.
 
 
-## Step 3.5: add one shared capability aggregate
+## Step 3.5: group capabilities only when several families need it
 
 Before you wire TeleOp or Auto, decide what shared robot-facing capability families exist this year.
+One focused mechanism already supplies a capability; it does not need an aggregate that only
+forwards to that one member. Add the aggregate below only when several families make the grouping
+useful to actual callers.
 
 A small example:
 
@@ -1011,100 +1014,36 @@ Bad example:
 That is not the composition root's job. The composition root should wire the service, not own the
 assist policy itself.
 
-```java
-public final class MyDriveAssistService {
+This is an advanced drive-policy branch. First understand
+[source conditioning](<../core-concepts/Sources and Signals.md#debounce-and-hysteresis>) and
+[drive guidance and overlays](<../drive-vision/Drive Guidance.md>). A brace asks the drivetrain to hold a pose
+while another mechanism acts; it therefore needs usable pose evidence and its own reviewed policy.
 
-    private final DriveSource driveSource;
-    private final ScalarSource manualTranslateMagnitude;
-    private final Source<SupervisorStatus> supervisorStatus;
-    private final BooleanSource assistRequested;
-    private final HysteresisBoolean braceLatch;
-    private DriveAssistStatus lastStatus = new DriveAssistStatus(false, false, false, 0.0);
+Keep the design contract small instead of copying another custom stateful source:
 
-    public MyDriveAssistService(MyRobotProfile.DriveAssistConfig cfg,
-                                DriveSource manualDrive,
-                                ScalarSource manualTranslateMagnitude,
-                                Source<SupervisorStatus> supervisorStatus,
-                                BooleanSource assistRequested,
-                                AbsolutePoseEstimator globalPose,
-                                DriveOverlay assistOverlay) {
-        this.manualTranslateMagnitude = manualTranslateMagnitude;
-        this.supervisorStatus = supervisorStatus;
-        this.assistRequested = assistRequested.memoized();
-        this.braceLatch = HysteresisBoolean.onWhenBelowOffWhenAbove(
-                cfg.shootBrace.enterTranslateMagnitude,
-                cfg.shootBrace.exitTranslateMagnitude
-        );
+| Responsibility | Owner and ordinary mechanism |
+| --- | --- |
+| Decide whether sticks count as idle | one controls/policy-owned `hysteresisBelow(enter, exit)` source, with reviewed thresholds |
+| Decide whether scoring permits a brace | robot policy reading an already-published capability status |
+| Combine the brace and manual/aim commands | one `DriveOverlayStack` with explicit activation sources and component masks |
+| Retain observations for telemetry | the policy owner publishes one complete status after its inputs succeed |
+| Reset or stop the owned graph | its one lifecycle owner; presenters never perform this work |
 
-        Source<DriveAssistStatus> statusSource =
-                Source.of(this::calculateStatus).memoized();
-        BooleanSource braceEnabled = statusSource
-                .mapToBoolean(status -> status.braceEnabled);
+**Hysteresis** uses separate enter/exit thresholds so small stick fluctuations do not repeatedly
+enable and disable the brace. Keep its memory in the framework source decorator. A memoized
+calculation is not a rollback wrapper for arbitrary latch mutation: read fallible inputs before
+publishing policy state, and do not mutate a separate latch inside a mapping callback.
 
-        DriveSource assistedDrive = DriveOverlayStack.on(manualDrive)
-                .add(
-                        "shootBrace",
-                        braceEnabled,
-                        DriveGuidance.poseLock(
-                                globalPose,
-                                DriveGuidancePlan.Tuning.defaults()
-                                        .withTranslateKp(cfg.shootBrace.translateKp)
-                                        .withMaxTranslateCmd(cfg.shootBrace.maxTranslateCmd)
-                        ),
-                        DriveOverlayMask.TRANSLATION_ONLY
-                )
-                .add("assist", this.assistRequested, assistOverlay, DriveOverlayMask.OMEGA_ONLY)
-                .build();
+The later composition example names `MyDriveAssistService` as an illustrative robot-owned role,
+not a supplied framework class or a complete buildable service. For the concrete drive construction
+and loss policy, use the linked drive guides; retain only the role that your robot actually needs.
 
-        this.driveSource = new DriveSource() {
-            @Override
-            public DriveSignal get(LoopClock clock) {
-                // Publish policy before the overlay stack samples its derived gates.
-                statusSource.get(clock);
-                return assistedDrive.get(clock);
-            }
-
-            @Override
-            public void reset() {
-                assistedDrive.reset();
-                braceLatch.reset(false);
-                lastStatus = new DriveAssistStatus(false, false, false, 0.0);
-            }
-        };
-    }
-
-    public DriveSource driveSource() {
-        return driveSource;
-    }
-
-    private DriveAssistStatus calculateStatus(LoopClock clock) {
-        SupervisorStatus supervisor = supervisorStatus.get(clock);
-        boolean braceEligible = supervisor != null && supervisor.actionActive();
-        double translateMag = manualTranslateMagnitude.getAsDouble(clock);
-
-        boolean braceEnabled;
-        if (!braceEligible) {
-            braceLatch.reset(false);
-            braceEnabled = false;
-        } else {
-            braceEnabled = braceLatch.update(translateMag);
-        }
-
-        DriveAssistStatus calculated = new DriveAssistStatus(
-                assistRequested.getAsBoolean(clock),
-                braceEligible,
-                braceEnabled,
-                translateMag
-        );
-        lastStatus = calculated;
-        return calculated;
-    }
-
-    public DriveAssistStatus status() {
-        return lastStatus;
-    }
-}
-```
+In this contract it implements `RobotProgram.Service` and is explicitly registered below. Its one
+Services-phase update reads the policy inputs and publishes status before the later drive phase.
+`driveSource()` combines that published policy with the ordinary manual/overlay sources; it does
+not advance the service again. Construct a fresh graph for each OpMode lifetime. The service owns
+initialization and clearing of its private policy memory; it must not reset borrowed controls or
+pose owners. The managed drive registration owns the sink's STOP, not an automatic source reset.
 
 Why this boundary works:
 
@@ -1112,7 +1051,7 @@ Why this boundary works:
 - the service owns how robot policy reshapes drive behavior
 - the subsystem and supervisor stay focused on the mechanism
 - the composition root stays boring
-- the final drive read computes and publishes policy once; there is no second imperative heartbeat
+- one declared policy owner publishes status; the final drive read consumes the composed sources
 
 When in doubt, ask:
 
@@ -1145,8 +1084,8 @@ public final class IntakeShooterSubsystem implements RobotProgram.Output {
         // update desired state
     }
 
-    public void requestSingleFeedPulse() {
-        // enqueue feed request
+    public void setContinuousFeedRequested(boolean requested) {
+        // Retain held intent; update uses the bounded queue helper described below.
     }
 
     @Override
@@ -1197,9 +1136,7 @@ public final class IntakeShooterSupervisor {
 
     public void update(LoopClock clock) {
         subsystem.setIntakeEnabled(intakeEnabled);
-        if (shootingRequested) {
-            subsystem.requestSingleFeedPulse();
-        }
+        subsystem.setContinuousFeedRequested(shootingRequested);
     }
 
     public SupervisorStatus status() {
@@ -1214,6 +1151,15 @@ consumers such as drive-assist services or telemetry should read a narrow status
 peeking into supervisor internals.
 
 A supervisor should usually not be the final Plant target owner.
+
+`setContinuousFeedRequested(...)` replaces held intent; it must not enqueue a new pulse on each
+call. The subsystem uses
+[`OutputTaskRunner.whileHigh(...)`](<Output Tasks & Queues.md#6-repeating-while-a-request-is-held>)
+with an explicit bounded backlog and fresh pulse factory in its one update. Releasing the request
+cancels and clears that queue. This sketch's queue owns only held-request repetition; it accepts
+no independent one-shot requests. If a robot needs both modes, its one admission policy must choose
+which mode owns the queue before admitting work. Repeated loop calls must never enqueue a pulse
+merely because the intent remains true.
 
 ## Step 6: put shared reasoning into a service
 
@@ -1319,14 +1265,14 @@ public final class MyRobot {
         MyTeleOpControls controls = new MyTeleOpControls(gamepads, profile.controls);
         controls.bind(program.callbackBindings(), capabilities);
 
-        MyDriveAssistService driveAssist = new MyDriveAssistService(
+        MyDriveAssistService driveAssist = program.service(new MyDriveAssistService(
                 profile.driveAssist,
                 controls.manualDriveSource(),
                 controls.manualTranslateMagnitudeSource(),
                 Source.of(ignoredClock -> scoring.status()),
                 controls.assistEnabledSource(),
                 sensing.globalEstimator(),
-                targeting.aimOverlay());
+                targeting.aimOverlay()));
 
         program.drive(driveAssist.driveSource(),
                 FtcDrives.mecanum(hardwareMap, profile.drive));

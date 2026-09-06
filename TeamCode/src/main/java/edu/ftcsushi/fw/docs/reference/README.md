@@ -8,6 +8,10 @@ tags:
 Use these pages after a Build recipe has introduced the concept. Each page starts with ordinary
 entry points, then routes to deeper guides and exact Javadocs.
 
+This is lookup, not a prerequisite course. If a term is new, follow its teaching guide before
+choosing an overload. Hardware-neutral assembly, custom hosts, and integration internals remain
+advanced exceptions; the ordinary FTC path still uses managed owners.
+
 <div class="grid cards" markdown>
 
 - **[Program & lifecycle](<Program and lifecycle.md>)** — managed OpModes, loop phases, time, stop

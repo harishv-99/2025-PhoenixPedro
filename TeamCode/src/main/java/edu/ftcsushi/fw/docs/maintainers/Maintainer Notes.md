@@ -189,6 +189,16 @@ Use this authoring contract:
   default that controls the demonstrated result beside that explanation and identify the exact
   assignment a student changes. A distant glossary or later source link may deepen the explanation;
   it may not supply the first meaning or hide a lesson-critical value.
+- Use this teaching order: robot problem, plain-language concept, small code example, expected
+  result, then explanation and limits. Explain Java beyond basic flows locally, including object
+  construction, interfaces, enums, builders, generics, method references, and assertion arguments
+  when needed. Do not add a separate required Java course or front-loaded glossary.
+- Record a page-by-page concept checklist in the change's tracker decision record: audience,
+  central outcome, required concepts, first explanation, first required use, and optional-depth
+  destination. Check linked First passes as independent entry points. Required prerequisites must
+  be acyclic; cross-links to optional companions are not prerequisites. Keep the common endpoint
+  at simple TeleOp and timed Auto; optional feedback and spatial branches introduce their own
+  foundations. Revisit this checklist whenever an example adds a concept or changes an entry route.
 - Use the renderer's native visual vocabulary sparingly and consistently:
   - `!!! info "New concept: <term>"` introduces one recurring idea in plain robot language;
   - `!!! warning "Warning: <problem>"` marks an important configuration or operational mistake;
@@ -206,6 +216,14 @@ Use this authoring contract:
   choices, tabs only for mutually exclusive complete alternatives, ordinary tables for three or
   more comparable facts, and numbered lists for procedures. Do not add a custom badge or stepper
   when those forms already express the relationship.
+- Add diagrams only for relationships they materially clarify: time, ownership, feedback, or
+  spatial frames. Prefer existing Mermaid for flows and repository-owned SVG for signal or spatial
+  drawings; add no renderer or interactive prerequisite. Mermaid diagrams declare `accTitle` and
+  `accDescr`; SVGs have a `viewBox`, accessible `title`/`desc`, and meaningful image alternative text.
+  Keep visible text equivalents beside both. Label units, frames, sample instants, and illustrative
+  assumptions where relevant; do not infer unobserved physical continuity from sampled evidence.
+  Use readable contrasting labels, not color alone, and inspect wide/narrow and light/dark views.
+  Keep artwork under `docs/assets/diagrams/`, with no generated or remote asset dependency.
 - Publish every shell command as a complete native tab pair in exact `Windows` then `macOS` order.
   The Windows tab contains one four-space-indented `powershell` fence; the macOS tab contains one
   four-space-indented `bash` fence, used for highlighting, whose commands must also run in macOS's
@@ -315,6 +333,11 @@ and the four copied FTC SDK/sample Markdown files. It does not claim that an ext
 reachable or that prose and code are semantically identical; those still require review alongside
 the compiled canonical examples. Use this focused command while iterating on documentation; the
 canonical full software command above already runs this test as part of the complete suite.
+
+Also walk the changed learning routes with only their stated prerequisites. Before each required
+new word or syntax, ask whether its purpose and meaning are available; then predict the next result
+and explain what it cannot prove. Verify diagrams against the actual scenario, not merely the prose.
+Automated presence/order checks cannot certify that a beginner understands the explanation.
 
 ### 1.8 Generated documentation site
 

@@ -5,6 +5,10 @@ tags:
 
 # Loop Structure
 
+**Before this reference:** read [How Sushi runs your code](<../getting-started/Framework Overview.md>).
+Use this page to inspect exact phase order or a lifecycle problem. The custom-host, localization,
+vendor-heartbeat, and profiling sections are optional branches, not additional setup for a basic robot.
+
 Sushi assumes that one OpMode loop is the “heartbeat” of the robot. In ordinary FTC robot code,
 `FtcRobotOpMode` and its framework-created `RobotProgram` own that heartbeat; robot code declares
 the owners that participate in it.
@@ -344,7 +348,8 @@ external effects produced before a failed traversal stopped.
 
 `TaskRunner.update(clock)` will not advance the current task twice in one loop cycle.
 
-This is critical because advancing tasks twice effectively doubles loop speed and breaks timeouts.
+This prevents one physical loop from advancing a Task's behavior twice. It does not make time run
+faster or slower: timed Tasks compare the shared clock with their own start boundary.
 
 ### 4.5 Stateful external followers need a persistent owner
 
@@ -399,7 +404,9 @@ follower heartbeat.
 Sushi is intentionally strict about time:
 
 * `LoopClock.update(getRuntime())` defines `dtSec()`.
-* Tasks and stateful source wrappers such as drive rate limiters use `dtSec()`.
+* A timed Task records `nowSec()` at its own start and compares later `nowSec()` values with it.
+* Rate limiters and sampled filters may use `dtSec()` for their documented per-cycle calculation.
+  A newly started Task must not consume the interval that elapsed before it started.
 
 Avoid these patterns:
 
@@ -594,7 +601,9 @@ Edge/toggle trackers like `risingEdge()` and `toggled()` only advance when they 
 
 If you create a `BooleanSource` edge/toggle and then <em>don’t read it every loop</em>, you can miss transitions that happened in between.
 
-Fix: make sure edge/toggle sources are sampled once per loop (e.g., by wiring them into `Bindings.update(clock)`, a drive pipeline, or telemetry that runs every loop).
+Fix: give the source a behavior owner that samples it once per loop, such as the managed bindings
+or an upstream observation service. A drive source can sample a drive-owned signal during its
+normal phase. Telemetry only displays already-published facts; it must not advance an edge or toggle.
 
 ### Mistake: double-running task updates
 

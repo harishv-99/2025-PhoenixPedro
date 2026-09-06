@@ -7,9 +7,10 @@ tags:
 
 **Learning mode:** Architecture reference
 
-**Source entry:** [`FieldRelativeDriveExample.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.java>)
+**Complete source:** [`FieldRelativeDriveExample.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/fieldrelative/opmode/FieldRelativeDriveExample.java>)
 
-Study this after the robot-relative [`StarterTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterTeleOp.html>).
+Study this after [driving with a gamepad](<../build/First Drive.md>) and
+[combining drive and intake](<../build/Combine Drive and Intake.md>).
 The example keeps the ordinary managed lifecycle: the OpMode only configures a `RobotProgram`, the
 heading estimator is an upstream service, and the final drivetrain still consumes a robot-centric
 `DriveSignal`.
@@ -21,6 +22,19 @@ hardware name and Hub orientation, and manual-drive shaping values, then review 
 adopting robot.
 
 ## What “up” means
+
+A **coordinate frame** gives numbers an origin and directions. Robot-relative driving uses the
+robot's forward and left directions; field-relative driving keeps the chosen field direction fixed
+even when the robot turns. **Heading** is the direction the robot faces. The IMU measures rotation;
+an upstream heading owner aligns that measurement to the field direction authored at START.
+Angles use radians: `Math.toRadians(90.0)` is a quarter-turn, or `π/2` radians.
+
+![The same stick-up field direction becomes robot-forward at zero heading and robot-right after a counter-clockwise quarter-turn.](<../assets/diagrams/field-relative-frames.svg>)
+
+In this illustrative top-down view, the driver selected field `+X` as up. At heading `0°`, stick up
+requests robot-forward motion. After the robot turns counter-clockwise to `90°`, the same stick input
+requests robot-right motion (`-Y` in the robot frame), still toward field `+X`. The numbers are
+directions, not a claim that a motor command produces an exact physical movement.
 
 Stick up means the finite `controlUpFieldHeadingRad` authored for the named driver station selected
 during INIT. It is not inferred from the robot's placement and it is not calculated by negating or
@@ -190,6 +204,11 @@ drive = new GamepadDriveSource(
 
 ## Loss behavior
 
+A heading is **stale** when it is older than the allowed age. Its **quality** is the estimator's
+score, not a guarantee of accuracy. If either fails the configured acceptance limit, the source
+cannot safely preserve the promised field direction from that evidence. It therefore requests
+zero translation instead of quietly changing what the sticks mean.
+
 ### Critical code
 
 The focused loss tests sample the declared `DriveSource`, supply unavailable heading evidence, and
@@ -217,6 +236,11 @@ re-zero and restore state: changing driver meaning mid-match is robot policy, no
 field-relative conversion.
 
 ## Software evidence and its cause
+
+**Question:** are the chosen driver direction and the unavailable-heading response kept explicit?
+**Keep real:** the prestart selection and field-relative source being tested. **Replace:** operator
+input and the heading estimator's outside-world observations. **Observe:** frozen headings and the
+resulting drive signal. **Cannot conclude:** correct installed IMU orientation or physical movement.
 
 The prestart test arranges two stations with deliberately independent headings, one gamepad, the
 real prestart owner, and one clock:
@@ -294,7 +318,7 @@ adapting the pattern:
 
 ## Verify the slice
 
-Run:
+Optionally run the supplied software check after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 

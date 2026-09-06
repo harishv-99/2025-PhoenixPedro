@@ -5,8 +5,8 @@ tags:
 
 # How Sushi runs your code
 
-**Start here if:** you know basic Java and have written an FTC `LinearOpMode` or iterative
-`OpMode`, but saved functions and frameworks are new to you. This page needs no installation or robot.
+**Start here if:** you know basic Java flows and an FTC OpMode loop. This page needs no installation
+or robot; saved functions and framework concepts are explained here.
 
 Sushi does not replace the FTC SDK. It supplies a consistent way to organize the setup, repeated
 work, and cleanup that every full robot needs.
@@ -33,7 +33,9 @@ Sushi owns that repetition and cleanup while your code describes what belongs in
     managed loop asks on a later cycle, it can report a new input. Some readers share one sampled
     value within a cycle; saving a reader does not freeze its value for the whole run.
 
-Reading `gamepad1.a` gives one `boolean` now. `GamepadDevice` turns FTC gamepad fields into Sources:
+Reading `gamepad1.a` gives one `boolean` now. A **class** describes a kind of object; `new` constructs
+one. `GamepadDevice` turns gamepad fields into readers: `BooleanSource` reads true/false and
+`ScalarSource` reads one number.
 
 ```java
 boolean pressedNow = gamepad1.a;             // one current value
@@ -42,10 +44,12 @@ BooleanSource aEachLoop = driver.a();        // reusable reader
 ScalarSource forwardEachLoop = driver.leftY();
 ```
 
-`pressedNow` keeps that one value. `aEachLoop` and `forwardEachLoop` read the current value whenever
-a later loop asks, which fits buttons and held drive sticks.
+`pressedNow` keeps one value; the saved readers can report later values.
 
 ## 3. Saved callback and lambda: separate a call from a registered function { #saved-callback }
+
+A **rise** means a button changed from released to pressed. A **callback** is a function another
+object calls when its rule is met.
 
 !!! info "New concept: saved callback and lambda"
 
@@ -53,9 +57,9 @@ a later loop asks, which fits buttons and held drive sticks.
     Registration saves the function; it does not run it. When a future active loop detects the
     rise, it invokes the callback synchronously during that loop; Sushi does not create a thread.
 
-For comparison, reaching `intake.setMode(StarterIntake.Mode.COLLECT)` immediately changes the
-selected request; the motor still waits for the later output update. This production button rule
-registers only the saved function:
+`Mode` is an **enum**, a fixed set of names including `COLLECT`. Calling
+`intake.setMode(StarterIntake.Mode.COLLECT)` changes the selected request now; the motor waits for
+the later output update. This rule saves the function instead:
 
 ```java
 program.callbackBindings().onRise(
@@ -63,8 +67,7 @@ program.callbackBindings().onRise(
         () -> intake.setMode(StarterIntake.Mode.COLLECT)); // register for later
 ```
 
-The `onRise(...)` rule accepts the event once when A changes from released to pressed. Holding A
-does not call the function again.
+`onRise(...)` runs it once for A's rise. Holding A does not call it again.
 
 ## 4. Task: give unfinished work a bookmark { #task }
 
@@ -102,10 +105,10 @@ flowchart LR
 
 ## 6. Map the picture to the small Sushi entry point
 
-The Sushi class that receives FTC's iterative calls is its managed host, `FtcRobotOpMode`. The
-object that remembers what the host must run is its checklist, `RobotProgram`. The switch example
-extends `FtcRobotOpMode`; the host calls its entry method once during INIT. Notice the two jobs:
-choose data settings, then connect the robot parts that will use them later.
+`FtcRobotOpMode` is the **managed host** receiving FTC calls; `RobotProgram` is its checklist.
+The switch example **extends** that host: it inherits the loop and supplies `configure(...)`.
+`@Override` checks that this method matches the inherited hook; `protected` lets the host call it.
+During INIT this method chooses settings and connects parts:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchTeleOp.java -->
 ```java
@@ -119,11 +122,10 @@ protected void configure(RobotProgram program) {
 [`BasicSwitchTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchTeleOp.html>)
 is the generated API page; its
 [Complete source: `BasicSwitchTeleOp.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchTeleOp.java>)
-supplies imports and package details. `Config.defaults()` supplies the channel name and filtering
-intervals. `declare(...)` connects one sensor reader and a telemetry display; it does not poll the
-switch during configuration. The [switch lesson](<../build/Read a Switch.md>) explains those
-settings and connections. Do not add another active loop. The example stays `@Disabled`, which
-keeps it off the Driver Station menu while you study it.
+supplies imports and package details. `Config.defaults()` creates settings; `declare(...)` connects
+the sensor reader and display without polling. The [switch lesson](<../build/Read a Switch.md>)
+explains their values. Do not add another active loop. `@Disabled` keeps the example off the Driver
+Station menu.
 
 ## 7. Keep one final hardware writer
 

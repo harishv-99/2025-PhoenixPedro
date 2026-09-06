@@ -29,7 +29,7 @@ The ladder widens evidence scope, not permission. Reading an expected result is 
 checkpoint; it does not claim the test was run. A passing software test cannot establish wiring,
 motion, tuning, or physical safety.
 
-A reactive Java scenario, managed slice, or modeled simulation is a test shape within this ladder.
+A software scenario or modeled simulation is a test shape within this ladder.
 A modeled simulation adds an authored dynamics model and must name its assumptions; it is still
 not physical evidence. Passive software probes should never copy a commanded power, velocity, or
 position automatically into feedback. Supply that external observation independently so a broken
@@ -37,10 +37,15 @@ feedback path cannot pass by reading its own request.
 
 ## Electrical level, semantic fact, and policy differ
 
-An FTC digital input reports HIGH or LOW. `FtcSensors.digitalHigh(...)` reads HIGH as true;
+An FTC digital input reports one of two electrical levels, HIGH or LOW. These levels do not decide
+what “pressed” means. `FtcSensors.digitalHigh(...)` reads HIGH as true;
 `digitalLow(...)` reads LOW as true. The robot author chooses the interpretation from the circuit.
-For debounce, differing sampled values accumulate the configured elapsed loop intervals before
-changing the conditioned fact. A sample that agrees with the current conditioned value clears that
+Switch contacts can briefly flicker between levels while changing state. **Debounce** filters brief
+changes so an accepted reading need not follow every raw reading. The switch lesson shows this in
+a [sampled signal chart](<../../build/Read a Switch.md#first-pass-observations-every-loop>).
+
+This debouncer adds elapsed loop intervals for sampled values that differ from its accepted state,
+changing that state when the configured delay is reached. A sample that agrees with the accepted state clears that
 pending change. Transitions between samples are unseen; this does not establish continuous
 physical stability, discover polarity, or supply physical meaning.
 
@@ -56,7 +61,9 @@ composes its meaning and shared-clock conditioning.
 
 ## Read status without manufacturing evidence
 
-The Starter intake presenter reads one capability-shaped capture of cached facts:
+**Cached** facts are saved from the most recent update. A **snapshot** is a fixed record of them;
+**immutable** means that record's contents cannot change. The Starter intake presenter reads such
+a record through names meaningful to the intake:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
@@ -71,6 +78,7 @@ motion. The [intake scenario](<../../build/Continuous Intake.md#software-checkpo
 shows why a request can change before the next output write.
 
 The same distinction applies to feedback: a measured velocity can meet a controller's tolerance
+(allowed difference from the request)
 without proving balance, a successful launch, or a score. A telemetry row such as `objectPresent`
 does not automatically act as a feeding interlock.
 

@@ -10,14 +10,18 @@ tags:
 **Outcome:** open the ready Sushi tester home, use exactly one control source, and know how to stop
 or recover before any hardware experiment. No Java source lookup or custom tester OpMode is needed.
 
-**Before this page:** run the first
+**Before this page:** read the first
 [hardware-free software experiment](<../examples/Hardware-free Reference Scenarios.md>). Before
 pressing START for a hardware tester, also read the runbook for that one experiment.
+Running the software experiment is optional; reading these instructions does not require hardware.
 
 ## Choose one input owner
 
 The Driver Station lists two ready OpModes. Their input ownership is fixed and mutually exclusive
 for the whole run:
+
+**Panels** is a browser dashboard with telemetry and virtual gamepad controls. Choose either those
+virtual controls or the physical FTC gamepads for this run.
 
 | Select on the FTC Driver Station | The tester accepts | Telemetry appears on |
 | --- | --- | --- |

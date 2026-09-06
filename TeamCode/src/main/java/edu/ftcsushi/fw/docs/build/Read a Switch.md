@@ -17,8 +17,18 @@ reviewed active-low digital switch; this fixture constructs no motors or servos.
 
 ## First pass: observations every loop
 
-Imagine asking “is the switch pressed?” once in each active FTC loop. The maintained owner does
-three things in that loop: read the chosen meaning, condition it, and save the resulting facts:
+A digital switch input reports one of two electrical levels, **HIGH** or **LOW**. This wiring uses
+LOW for pressed, called **active-low polarity**. LOW is not automatically Java `false`: our reader
+maps LOW to `rawPressed=true`.
+
+A physical switch's contacts can briefly flicker while being pressed or released. **Debouncing**
+filters those brief changes before accepting a new state. `rawPressed` is the latest interpreted
+reading; `pressed` is the filtered result.
+
+A **source** is a retained way to obtain a value when asked. These sources share one electrical
+observation. Each active loop reads both and saves their results in **status**:
+
+Here `clock` reports the shared loop's time and cycle; these readers never advance it.
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchService.java -->
 ```java
@@ -27,13 +37,10 @@ boolean pressed = pressedSource.getAsBoolean(clock);
 status = new Status(true, rawPressed, pressed);
 ```
 
-A **source** is a retained way to obtain a value when asked. These two sources share the same
-electrical observation: the first returns the LOW-as-pressed meaning, and the second applies
-**debounce**, which delays changes using the observations and elapsed loop intervals. `status`
-stores the last complete result so displaying it does not read the switch again.
+`new Status(...)` creates that saved result. Its first argument, `true`, sets `observed`: a reading
+has occurred. Saving the result is **caching**; displaying it does not read the switch again.
 
-Read this authored software timeline. Its `0.02`-second debounce delays are the actual lesson
-configuration, and its times are seconds after START:
+This software timeline uses the lesson's `0.02`-second press/release delays. Times are seconds after START:
 
 | When | Authored electrical input | `observed` | `rawPressed` | `pressed` |
 | --- | --- | --- | --- | --- |
@@ -46,24 +53,25 @@ configuration, and its times are seconds after START:
 | Loop, 0.048 | HIGH | true | false | true |
 | Loop, 0.059 | HIGH | true | false | false |
 
+![Raw pressed flickers at 0.010 seconds; accepted pressed changes only at 0.037 and 0.059.](<../assets/diagrams/debounce-samples.svg>)
+
+The chart connects saved **software values**, not unseen electrical transitions. The table supplies
+the same meaning in text.
+
 Notice:
 
 - A short observed LOW followed by HIGH does not become debounced `pressed`.
-- On the later LOW samples, two `0.011`-second loop intervals contribute `0.022` seconds; that
-  exceeds the configured `0.02` delay. Release uses the same sampled rule.
-- `observed=false` means there is no current observation. The two stored false values then mean
-  unknown, not proof that a physical switch is released.
+- Later LOW samples contribute two `0.011`-second loop intervals: `0.022` exceeds the `0.02` delay.
+  Release uses the same rule.
+- `observed=false` means no observation. The stored booleans then mean unknown, not physically released.
 
-Sushi observes the input at loop boundaries; it cannot see transitions between samples. This
-debouncer accumulates the elapsed intervals of samples that differ from its current state. The
-table describes the expected software interpretation of authored levels, not the real switch's voltage or
-continuous physical behavior. START has zero elapsed time, so it cannot spend the time from INIT
-on debounce.
+This debouncer counts each differing sample's preceding loop interval. One sample after a long
+interval can satisfy the delay; this does not prove continuous physical stability. START's zero
+elapsed interval cannot spend INIT time on debounce.
 
-**First-pass checkpoint:** at `0.048`, explain why `rawPressed` is false while `pressed` is still
-true. No code or test run is required. On the initial tour, continue to
+**First-pass checkpoint:** why is `rawPressed` false but `pressed` true at `0.048`? Continue the tour to
 [one function per button press](<Continuous Intake.md#first-pass-run-a-function-once-per-press>).
-Continue below to understand the complete switch program; writing it is optional.
+Read below for the complete program; writing or running it is optional.
 
 ## Critical production idea
 
@@ -78,15 +86,24 @@ and optional software experiments belong in `test`. Keep the class names below a
 use `package edu.ftcsushi.robots.myrobot.basicsensing;` in each file. Import Sushi's `fw` types;
 your robot must not import `edu.ftcsushi.robots.examples.*`.
 
+An **object** groups saved values and the methods that use them; a **class** defines that object's
+shape. `new BasicSwitchService(...)` constructs one object, running its constructor once. Keep that
+same object across loops so its saved readings survive between method calls.
+
 Start `BasicSwitchService` as a class implementing
 [`RobotProgram.Service`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.Service.html>).
 A service is an object Sushi calls near the start of each active loop to refresh observations.
-It owns this switch's source graph, status, and reset behavior. There is no actuator to command.
+The Java `interface` names the methods Sushi can call; `implements RobotProgram.Service` promises
+that this class supplies those methods. It owns the connected sources, status, and reset behavior.
+There is no actuator to command.
 
 ### Choose the input and its meaning
 
-Inside that class, `Config` holds only data: the FTC digital-channel name and two delays in
-seconds. Its constructor is private; `Config.defaults()` returns a fresh complete configuration.
+Inside that class, the nested class `Config` holds only data: the FTC digital-channel name and two
+delays in seconds. “Nested” means declared inside the owner class. Its constructor is `private`,
+so callers cannot construct an incomplete configuration. Instead, `Config.defaults()` is a
+**factory method**: it returns a fresh complete configuration. A `static` method belongs to the
+class and can be called without first constructing an object of that class.
 These are the assignments to edit in your copy:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchService.java -->
@@ -103,6 +120,9 @@ and finite, nonnegative delays into local values before hardware lookup. Editing
 configuration afterward does not reconfigure a running owner. Keep validation and these two
 retained source fields inside the owner; do not pass independently constructed sources from the
 OpMode:
+
+`private` keeps these fields inside the owner. `final` prevents assigning a different source to
+that field after construction; it does not prevent the source from returning changing readings.
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchService.java -->
 ```java
@@ -127,7 +147,8 @@ because this fixture explicitly assumes reviewed active-low switch wiring. It do
 the wiring. `rawPressed` is already a semantic boolean, not the FTC pin's HIGH value.
 
 [`BooleanSource.debouncedOnOff(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/core/source/BooleanSource.html>)
-wraps that same source with the two sampled delays. The adapter caches one successful read for the
+wraps that same source with the two sampled delays. Processing observations into a more useful
+value is called **signal conditioning**. The adapter caches one successful read for the
 shared loop cycle, so asking both sources in `update(clock)` does not cause two hardware reads.
 
 ### Save one complete result
@@ -148,7 +169,8 @@ three-line first-pass excerpt: it samples both sources before assigning the new 
 failure therefore cannot publish a partial result. `clock` is the shared loop's time and cycle
 identity; the owner reads it but never advances another clock.
 
-START resets the source graph and samples once. Add this body to `start(LoopClock clock)`:
+START resets the source graph and samples once. Add this body to `start(LoopClock clock)`.
+`Objects.requireNonNull(...)` rejects a missing clock with the displayed error message:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchService.java -->
 ```java
@@ -173,10 +195,13 @@ and prevents later loops from calling the service again.
 
 ## Wire the loop and save the display function
 
-Create `BasicSwitchTeleOp extends FtcRobotOpMode`, annotated `@TeleOp` and `@Disabled`. Its
+Create `BasicSwitchTeleOp extends FtcRobotOpMode`: `extends` reuses the framework's FTC lifecycle.
+The annotations `@TeleOp` and `@Disabled` identify the OpMode and keep it off the selectable list
+until a deliberate hardware review. `@Override` marks your implementation of an inherited method. Its
 `configure(RobotProgram program)` runs once at INIT. It reads the single config edit point and
 calls a package-private `declare(program, hardwareMap, config)` method containing the graph below.
-That small declaration method is also used by the supplied software experiment, so both hosts
+Package-private means no `public` or `private` modifier: other classes in this same package can call
+the declaration. That small declaration method is also used by the supplied software experiment, so both hosts
 exercise the same production wiring.
 
 First, register the owner:
@@ -251,7 +276,10 @@ the tests should exercise your owner and your `declare(...)`, not import the mai
 
 The supplied rig starts the real managed graph. After the earlier brief LOW/HIGH bounce, these
 two explicit input observations explain the transition; `observeAt(...)` sets the input and
-runtime, then calls the real managed `loop()` once:
+runtime, then calls the real managed `loop()` once. An **assertion** checks an expected observation:
+`assertFalse(...)` expects false, `assertTrue(...)` expects true, and `assertEquals(expected, actual)`
+compares two values. A mismatch fails the test. `rig.rows.get("switch.pressed")` retrieves the
+recorded telemetry row by its name:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicsensing/BasicSwitchSoftwareScenarioTest.java -->
 ```java

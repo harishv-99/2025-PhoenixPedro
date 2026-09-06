@@ -5,8 +5,8 @@ tags:
 
 # Move a claw through named positions
 
-**Outcome:** use `CLOSED`, `HALF`, and `OPEN` everywhere while one mechanism maps the normalized
-coordinates `0.0`, `0.5`, and `1.0` into configured native standard-servo endpoint candidates.
+**Outcome:** ask for `CLOSED`, `HALF`, or `OPEN` while one mechanism converts those names into the
+servo commands chosen for this claw.
 
 **Knowledge before this page:** understand the request-to-output path in
 [the continuous-intake lesson](<Continuous Intake.md>). Reading its explained scenario is enough;
@@ -15,9 +15,13 @@ no installation, test run, servo, or linkage is required to learn this page.
 **Builds on:** the intake's capability/configuration/mechanism split, semantic command, private
 Plant, managed output heartbeat, controls binding, cached status, and terminal stop.
 
-**New here:** a bounded logical position is mapped into a smaller native servo interval, and an
-applied position command is kept distinct from physical arrival because a standard servo supplies
-no position feedback.
+**New here:** the claw uses a simple **normalized coordinate**: `0.0` means closed, `1.0` means open,
+and `0.5` is halfway through the chosen command interval. **Native** means the number the FTC servo
+API receives. The two native **endpoints** are the configured commands for closed and open, not the
+servo's entire available range. Bounds keep requests inside the chosen interval.
+
+**Feedback** means a returned measurement of what the mechanism actually did. The standard-servo
+API supplies no physical-position measurement, so a submitted command cannot prove arrival.
 
 ## Critical production idea
 
@@ -78,9 +82,8 @@ Keep the three coordinate facts separate:
 | `HALF` | bounded normalized `0.5` | derived midpoint `0.475` |
 | `OPEN` | bounded normalized `1.0` | configured endpoint `0.70` |
 
-The mechanism coordinate is the stable public command domain. The Plant bounds it to `[0, 1]`.
-The native coordinate is only the final standard-servo adapter command derived from two
-configuration endpoints.
+The mechanism coordinate is the number callers use. The Plant bounds it to `[0, 1]`.
+The native coordinate is the final FTC servo command derived from the two configuration endpoints.
 
 ### Add logical bounds and one native range map
 
@@ -119,6 +122,10 @@ zero, `CLOSED`, `OPEN`, or a mechanical release.
 
 ### Name status by the evidence available
 
+Status exposes three questions: `requestedState()` returns the chosen name,
+`requestedCoordinate()` returns its paired normalized number, and `appliedCoordinate()` returns
+the Plant's last applied normalized target. All three read saved facts; none measures the linkage.
+
 The mechanism creates status from one coherent semantic/Plant snapshot:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClawMechanism.java -->
@@ -129,8 +136,15 @@ public Status status() {
 }
 ```
 
-The capability-shaped wrapper retains exactly that one delegate and reads the semantic request
-from it:
+The status object wraps that one saved result instead of copying it into a second independently
+changing cache. It does not expose `atTarget()` because there is no measurement to prove arrival.
+
+#### Optional: inspect the status implementation
+
+The next two excerpts show the Java implementation of that read-only wrapper. The field named
+`delegate` is the saved result it asks for answers. The two types inside
+`SemanticScalarSnapshot<State, PlantSnapshot>` say which named request and which kind of Plant
+facts this object contains; they are type choices, not values passed at runtime:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicClaw.java -->
 ```java
