@@ -117,6 +117,7 @@ nav = [
 variant = "modern"
 custom_dir = "overrides"
 features = [
+  "content.tabs.link",
   "navigation.tabs",
   "navigation.sections",
   "navigation.prune",

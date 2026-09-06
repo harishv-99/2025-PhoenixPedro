@@ -45,6 +45,7 @@ public final class DocumentationLinksTest {
             "https://github.com/harishv-99/2025-PhoenixPedro/";
     private static final String FENCE =
             String.valueOf((char) 96) + (char) 96 + (char) 96;
+    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 26;
 
     private static final List<String> GUIDE_AREAS = Arrays.asList(
             "Get Started",
@@ -85,6 +86,11 @@ public final class DocumentationLinksTest {
             "Run One Timed Auto.md",
             "First Autonomous.md",
             "First Pedro Auto.md");
+
+    private static final Map<String, String> BUILD_RECIPE_TEST_SELECTORS =
+            buildRecipeTestSelectors();
+    private static final Map<String, Integer> PUBLISHED_SHELL_PAIRS_BY_PAGE =
+            publishedShellPairsByPage();
 
     private static final List<String> BUILD_NAV_TARGETS = Arrays.asList(
             "docs/build/README.md",
@@ -232,6 +238,422 @@ public final class DocumentationLinksTest {
         Path repositoryRoot = repositoryRoot();
 
         assertNoFailures(MarkdownIntegrity.validateRepository(repositoryRoot));
+    }
+
+    @Test
+    public void everyPublishedShellCommandIsAnEquivalentWindowsMacOsTabPair()
+            throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        String config = readUtf8(repositoryRoot.resolve("zensical.toml"));
+        Path docsRoot = configuredDocsRoot(repositoryRoot, config);
+        String theme = sectionBetween(config, "[project.theme]", "[project.validation]");
+        List<Path> pages = new ArrayList<Path>();
+        collectMarkdownFiles(docsRoot, pages);
+        List<String> failures = new ArrayList<String>();
+        Set<String> visitedPages = new LinkedHashSet<String>();
+        int pairCount = 0;
+
+        assertEquals("content.tabs.link must be enabled exactly once",
+                1, Collections.frequency(
+                        activeTomlStringArrayEntries(theme, "features"),
+                        "content.tabs.link"));
+        assertEquals("content.tabs.link must appear only in the theme feature list",
+                1, literalCount(config, "\"content.tabs.link\""));
+        for (Path page : pages) {
+            String relative = repositoryRelativePath(docsRoot, page);
+            visitedPages.add(relative);
+            ShellCommandTabs.Validation validation =
+                    ShellCommandTabs.validate(relative, readUtf8(page));
+            pairCount += validation.pairs.size();
+            failures.addAll(validation.failures);
+            validatePublishedShellPairInventory(
+                    relative, validation.pairs.size(), failures);
+        }
+        for (String expectedPage : PUBLISHED_SHELL_PAIRS_BY_PAGE.keySet()) {
+            if (!visitedPages.contains(expectedPage)) {
+                failures.add(expectedPage
+                        + ": approved shell-command inventory page is missing");
+            }
+        }
+
+        assertEquals("Published shell-command tab-pair inventory changed",
+                PUBLISHED_SHELL_COMMAND_PAIR_COUNT, pairCount);
+        assertTrue("Published shell-command tab failures:\n" + joinLines(failures),
+                failures.isEmpty());
+    }
+
+    @Test
+    public void themeFeatureInventoryIgnoresCommentedSpoofs() {
+        String commentedOnly = "features = [\n"
+                + "  # \"content.tabs.link\",\n"
+                + "  \"navigation.tabs\",\n"
+                + "]\n";
+        assertFalse("A commented feature must not count as active",
+                activeTomlStringArrayEntries(commentedOnly, "features")
+                        .contains("content.tabs.link"));
+
+        String multilineSpoof = "features = [\n"
+                + "  \"\"\"\n"
+                + "  \"content.tabs.link\"\n"
+                + "  \"\"\"\n"
+                + "]\n";
+        assertFalse("String contents must not count as an active array entry",
+                activeTomlStringArrayEntries(multilineSpoof, "features")
+                        .contains("content.tabs.link"));
+
+        String active = "features = [\n"
+                + "  # \"content.tabs.link\",\n"
+                + "  \"content.tabs.link\", # synchronize platform tabs\n"
+                + "]\n";
+        assertEquals(Collections.singletonList("content.tabs.link"),
+                activeTomlStringArrayEntries(active, "features"));
+    }
+
+    @Test
+    public void publishedShellPairInventoryIsExactPerPage() {
+        int approvedPairs = 0;
+        for (Integer count : PUBLISHED_SHELL_PAIRS_BY_PAGE.values()) {
+            approvedPairs += count;
+        }
+        assertEquals("The approved inventory must cover exactly 18 published pages",
+                18, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
+        assertEquals("The per-page inventory must account for every approved pair",
+                PUBLISHED_SHELL_COMMAND_PAIR_COUNT, approvedPairs);
+
+        List<String> failures = new ArrayList<String>();
+        validatePublishedShellPairInventory(
+                "docs/build/First Drive.md", 0, failures);
+        validatePublishedShellPairInventory(
+                "docs/unexpected/New Commands.md", 1, failures);
+
+        assertFailureContains(failures,
+                "docs/build/First Drive.md: expected 1 shell-command pair, found 0");
+        assertFailureContains(failures,
+                "docs/unexpected/New Commands.md: unexpected shell-command pair");
+    }
+
+    @Test
+    public void shellCommandTabParserNormalizesOnlyPlatformSpellings() {
+        String markdown = "````markdown\n"
+                + "```powershell\nnot a published shell fence\n```\n"
+                + "````\n\n"
+                + "=== \"Windows\"\n\n"
+                + "    ```powershell\n"
+                + "    .\\gradlew.bat --console=plain `\n"
+                + "      :TeamCode:testDebugUnitTest --tests example.Scenario\n"
+                + "    python -m venv build/docs-venv\n"
+                + "    .\\build\\docs-venv\\Scripts\\python.exe -m zensical build --strict\n"
+                + "    ```\n\n"
+                + "=== \"macOS\"\n\n"
+                + "    ```bash\n"
+                + "    ./gradlew --console=plain " + '\\' + "\n"
+                + "      :TeamCode:testDebugUnitTest --tests example.Scenario\n"
+                + "    python3 -m venv build/docs-venv\n"
+                + "    ./build/docs-venv/bin/python -m zensical build --strict\n"
+                + "    ```\n";
+
+        ShellCommandTabs.Validation validation =
+                ShellCommandTabs.validate("Guide.md", markdown);
+
+        assertTrue("Valid shell tabs failed:\n" + joinLines(validation.failures),
+                validation.failures.isEmpty());
+        assertEquals(1, validation.pairs.size());
+        assertEquals("./gradlew --console=plain :TeamCode:testDebugUnitTest "
+                        + "--tests example.Scenario\n"
+                        + "python3 -m venv build/docs-venv\n"
+                        + "./build/docs-venv/bin/python -m zensical build --strict",
+                validation.pairs.get(0).normalizedWindows);
+        assertEquals("Platform normalization must retain argument order and spelling",
+                validation.pairs.get(0).normalizedWindows,
+                validation.pairs.get(0).normalizedMacOs);
+        assertTrue("The exact nonblank test selector must be discoverable in both tabs",
+                validation.hasEquivalentGradleTestSelector("example.Scenario"));
+        assertFalse("A different or blank selector must not satisfy a Build recipe",
+                validation.hasEquivalentGradleTestSelector(""));
+        assertFalse("A prefix of the real selector must not satisfy a Build recipe",
+                validation.hasEquivalentGradleTestSelector("example"));
+    }
+
+    @Test
+    public void shellCommandTabParserReportsMalformedStructureActionably() {
+        ShellCommandTabs.Validation standalone = ShellCommandTabs.validate(
+                "Standalone.md",
+                "```powershell\n.\\gradlew.bat help\n```\n");
+        assertFailureContains(standalone.failures, "standalone published shell fence");
+        assertFailureContains(standalone.failures,
+                "labels/order must be exactly Windows then macOS");
+
+        String wrongOrderAndFences = "=== \"macOS\"\n\n"
+                + "```powershell\n"
+                + ".\\gradlew.bat help\n"
+                + "```\n\n"
+                + "=== \"Windows\"\n\n"
+                + "    ```zsh\n"
+                + "    ./gradlew help\n"
+                + "    ```\n";
+        ShellCommandTabs.Validation malformed =
+                ShellCommandTabs.validate("Malformed.md", wrongOrderAndFences);
+        assertFailureContains(malformed.failures,
+                "expected exact tab label `=== \"Windows\"`");
+        assertFailureContains(malformed.failures,
+                "must open exactly as four spaces plus ```powershell");
+        assertFailureContains(malformed.failures,
+                "expected exact tab label `=== \"macOS\"`");
+        assertFailureContains(malformed.failures,
+                "must open exactly as four spaces plus ```bash");
+    }
+
+    @Test
+    public void shellCommandTabParserRejectsPlatformLeaksAndArgumentDrift() {
+        String leakedTokens = "=== \"Windows\"\n\n"
+                + "    ```powershell\n"
+                + "    ./gradlew verify " + '\\' + "\n"
+                + "      python3 ./build/docs-venv/bin/python\n"
+                + "    ```\n\n"
+                + "=== \"macOS\"\n\n"
+                + "    ```bash\n"
+                + "    .\\gradlew.bat verify `\n"
+                + "      python .\\build\\docs-venv\\Scripts\\python.exe\n"
+                + "    ```\n";
+        ShellCommandTabs.Validation leaked =
+                ShellCommandTabs.validate("Leaks.md", leakedTokens);
+        assertFailureContains(leaked.failures, "POSIX-only token `./gradlew`");
+        assertFailureContains(leaked.failures, "POSIX continuation `\\`");
+        assertFailureContains(leaked.failures, "POSIX-only token `python3`");
+        assertFailureContains(leaked.failures, "POSIX-only token `bin/python`");
+        assertFailureContains(leaked.failures, "Windows-only token `.\\gradlew.bat`");
+        assertFailureContains(leaked.failures, "PowerShell continuation ```");
+        assertFailureContains(leaked.failures, "Windows-only token `python`");
+        assertFailureContains(leaked.failures, "Windows-only token `Scripts/python.exe`");
+
+        String drift = "=== \"Windows\"\n\n"
+                + "    ```powershell\n"
+                + "    .\\gradlew.bat --console=plain verify --tests example.First\n"
+                + "    ```\n\n"
+                + "=== \"macOS\"\n\n"
+                + "    ```bash\n"
+                + "    ./gradlew --console=plain verify --tests example.Second\n"
+                + "    ```\n";
+        ShellCommandTabs.Validation drifted =
+                ShellCommandTabs.validate("Drift.md", drift);
+        assertFailureContains(drifted.failures, "normalized commands differ");
+        assertFailureContains(drifted.failures, "example.First");
+        assertFailureContains(drifted.failures, "example.Second");
+
+        String platformWordsAsArguments = "=== \"Windows\"\n\n"
+                + "    ```powershell\n"
+                + "    python -m example --literal python\n"
+                + "    ```\n\n"
+                + "=== \"macOS\"\n\n"
+                + "    ```bash\n"
+                + "    python3 -m example --literal python3\n"
+                + "    ```\n";
+        ShellCommandTabs.Validation preservedArguments =
+                ShellCommandTabs.validate("Arguments.md", platformWordsAsArguments);
+        assertFailureContains(preservedArguments.failures, "normalized commands differ");
+        assertFailureContains(preservedArguments.failures, "--literal python`");
+        assertFailureContains(preservedArguments.failures, "--literal python3`");
+    }
+
+    @Test
+    public void shellCommandTabParserFindsContainerAndAliasFreeFences() {
+        String markdown = "> ```bash\n"
+                + "> echo quoted\n"
+                + "> ```\n\n"
+                + "- ```shell-session\n"
+                + "  $ echo listed\n"
+                + "  ```\n\n"
+                + "1. ```fish\n"
+                + "   echo ordered\n"
+                + "   ```\n\n"
+                + "> ```{ .zsh }\n"
+                + "> echo attributed\n"
+                + "> ```\n";
+
+        ShellCommandTabs.Validation validation =
+                ShellCommandTabs.validate("Containers.md", markdown);
+
+        assertFailureContains(validation.failures,
+                "standalone published shell fence `bash`");
+        assertFailureContains(validation.failures,
+                "standalone published shell fence `shell-session`");
+        assertFailureContains(validation.failures,
+                "standalone published shell fence `fish`");
+        assertFailureContains(validation.failures,
+                "standalone published shell fence `zsh`");
+
+        ShellCommandTabs.Validation escapedContainer = ShellCommandTabs.validate(
+                "ContainerBoundary.md",
+                "> ```markdown\n"
+                        + "> the blockquoted fence is never closed\n\n"
+                        + "```bash\n"
+                        + "echo top-level command\n"
+                        + "```\n");
+        assertFailureContains(escapedContainer.failures,
+                "standalone published shell fence `bash`");
+
+        ShellCommandTabs.Validation escapedListContainer = ShellCommandTabs.validate(
+                "ListContainerBoundary.md",
+                "- ```markdown\n"
+                        + "  the list-contained fence is never closed\n\n"
+                        + "```bash\n"
+                        + "echo top-level command\n"
+                        + "```\n");
+        assertFailureContains(escapedListContainer.failures,
+                "standalone published shell fence `bash`");
+    }
+
+    @Test
+    public void shellCommandTabsRequireExecutableCommands() {
+        ShellCommandTabs.Validation validation = ShellCommandTabs.validate(
+                "Comments.md",
+                shellTabPair("# Windows explanation only", "# macOS explanation only"));
+
+        assertFailureContains(validation.failures,
+                "Windows shell fence must contain an executable command, not only comments");
+        assertFailureContains(validation.failures,
+                "macOS shell fence must contain an executable command, not only comments");
+        assertTrue("A comment-only tab set must not count as a complete pair",
+                validation.pairs.isEmpty());
+
+        ShellCommandTabs.Validation blockComment = ShellCommandTabs.validate(
+                "BlockComments.md",
+                shellTabPair("<# Windows explanation\ncontinued #>",
+                        "# macOS explanation only"));
+        assertFailureContains(blockComment.failures,
+                "Windows shell fence must contain an executable command, not only comments");
+
+        ShellCommandTabs.Validation lineComment = ShellCommandTabs.validate(
+                "LineComment.md",
+                shellTabPair(
+                        "# <# explanation\npython -c \"print('<# quoted #>')\"",
+                        "# <# explanation\npython3 -c \"print('<# quoted #>')\""));
+        assertTrue("A line-comment marker must not open a later block comment:\n"
+                        + joinLines(lineComment.failures),
+                lineComment.failures.isEmpty());
+    }
+
+    @Test
+    public void shellCommandTabsRejectMalformedContinuations() {
+        String trailingWhitespace = shellTabPair(
+                ".\\gradlew.bat verify `  \n  :TeamCode:testDebugUnitTest",
+                "./gradlew verify \\ \t\n  :TeamCode:testDebugUnitTest");
+        ShellCommandTabs.Validation trailing =
+                ShellCommandTabs.validate("Trailing.md", trailingWhitespace);
+        assertFailureContains(trailing.failures,
+                "Windows continuation marker must be the final character");
+        assertFailureContains(trailing.failures,
+                "macOS continuation marker must be the final character");
+
+        String blankGap = shellTabPair(
+                ".\\gradlew.bat verify `\n\n  :TeamCode:testDebugUnitTest",
+                "./gradlew verify \\\n\n  :TeamCode:testDebugUnitTest");
+        ShellCommandTabs.Validation gapped =
+                ShellCommandTabs.validate("Gap.md", blankGap);
+        assertFailureContains(gapped.failures,
+                "Windows continuation cannot skip a blank line");
+        assertFailureContains(gapped.failures,
+                "macOS continuation cannot skip a blank line");
+
+        ShellCommandTabs.Validation escapedBackticks = ShellCommandTabs.validate(
+                "EscapedBackticks.md",
+                shellTabPair("python example ``", "python3 example ``"));
+        assertTrue("An even backtick run is literal, not a continuation:\n"
+                        + joinLines(escapedBackticks.failures),
+                escapedBackticks.failures.isEmpty());
+
+        ShellCommandTabs.Validation escapedBackslashes = ShellCommandTabs.validate(
+                "EscapedBackslashes.md",
+                shellTabPair("python example \\\\", "python3 example \\\\"));
+        assertTrue("An even backslash run is literal, not a continuation:\n"
+                        + joinLines(escapedBackslashes.failures),
+                escapedBackslashes.failures.isEmpty());
+    }
+
+    @Test
+    public void shellCommandTabsReportAnUnclosedMacOsFenceDirectly() {
+        String markdown = "=== \"Windows\"\n\n"
+                + "    ```powershell\n"
+                + "    .\\gradlew.bat help\n"
+                + "    ```\n\n"
+                + "=== \"macOS\"\n\n"
+                + "    ```bash\n"
+                + "    ./gradlew help\n";
+
+        ShellCommandTabs.Validation validation =
+                ShellCommandTabs.validate("UnclosedMac.md", markdown);
+
+        assertFailureContains(validation.failures, "the macOS shell fence is unclosed");
+        assertTrue("An unclosed macOS block must not count as a complete pair",
+                validation.pairs.isEmpty());
+    }
+
+    @Test
+    public void shellCommandTabsRequireQuotedGradleWildcardSelectors() {
+        ShellCommandTabs.Validation quoted = ShellCommandTabs.validate(
+                "Quoted.md",
+                shellTabPair(
+                        ".\\gradlew.bat test --tests 'example.*'",
+                        "./gradlew test --tests 'example.*'"));
+        assertTrue("Quoted wildcard selectors must remain valid:\n"
+                        + joinLines(quoted.failures),
+                quoted.failures.isEmpty());
+
+        ShellCommandTabs.Validation unquoted = ShellCommandTabs.validate(
+                "Unquoted.md",
+                shellTabPair(
+                        ".\\gradlew.bat test --tests example.*",
+                        "./gradlew test --tests example.*"));
+        assertFailureContains(unquoted.failures,
+                "Windows Gradle --tests wildcard selector must be quoted");
+        assertFailureContains(unquoted.failures,
+                "macOS Gradle --tests wildcard selector must be quoted");
+
+        ShellCommandTabs.Validation bracketGlob = ShellCommandTabs.validate(
+                "BracketGlob.md",
+                shellTabPair(
+                        ".\\gradlew.bat test --tests example.[AB]",
+                        "./gradlew test --tests example.[AB]"));
+        assertFailureContains(bracketGlob.failures,
+                "Windows Gradle --tests wildcard selector must be quoted");
+        assertFailureContains(bracketGlob.failures,
+                "macOS Gradle --tests wildcard selector must be quoted");
+
+        ShellCommandTabs.Validation commentedExact = ShellCommandTabs.validate(
+                "CommentedExact.md",
+                shellTabPair(
+                        ".\\gradlew.bat test # --tests example.Scenario",
+                        "./gradlew test # --tests example.Scenario"));
+        assertFalse("A selector in an inline comment must not satisfy a Build recipe",
+                commentedExact.hasEquivalentGradleTestSelector("example.Scenario"));
+
+        ShellCommandTabs.Validation commentedWildcard = ShellCommandTabs.validate(
+                "CommentedWildcard.md",
+                shellTabPair(
+                        ".\\gradlew.bat test # --tests example.*",
+                        "./gradlew test # --tests example.*"));
+        assertTrue("A wildcard in an inline comment must not trigger validation:\n"
+                        + joinLines(commentedWildcard.failures),
+                commentedWildcard.failures.isEmpty());
+
+        ShellCommandTabs.Validation quotedHash = ShellCommandTabs.validate(
+                "QuotedHash.md",
+                shellTabPair(
+                        ".\\gradlew.bat test --tests 'example.#Scenario'",
+                        "./gradlew test --tests 'example.#Scenario'"));
+        assertTrue("A quoted hash remains part of the selector",
+                quotedHash.hasEquivalentGradleTestSelector("example.#Scenario"));
+
+        ShellCommandTabs.Validation missing = ShellCommandTabs.validate(
+                "MissingSelector.md",
+                shellTabPair(
+                        ".\\gradlew.bat test --tests",
+                        "./gradlew test --tests"));
+        assertFailureContains(missing.failures,
+                "Windows Gradle --tests must be followed by a nonblank selector");
+        assertFailureContains(missing.failures,
+                "macOS Gradle --tests must be followed by a nonblank selector");
+        assertFalse(missing.hasEquivalentGradleTestSelector("example.Scenario"));
     }
 
     @Test
@@ -592,6 +1014,10 @@ public final class DocumentationLinksTest {
         Path buildRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH).resolve("docs/build");
         List<String> failures = new ArrayList<String>();
 
+        assertEquals("Build recipe test-selector inventory changed",
+                new LinkedHashSet<String>(BUILD_RECIPE_FILES),
+                BUILD_RECIPE_TEST_SELECTORS.keySet());
+
         for (String fileName : BUILD_RECIPE_FILES) {
             Path page = buildRoot.resolve(fileName);
             String markdown = readUtf8(page);
@@ -641,9 +1067,14 @@ public final class DocumentationLinksTest {
             if (!hasMainManifest || !hasTestManifest) {
                 failures.add(fileName + ": missing exact Main/Test checkpoint manifest");
             }
-            if (!markdown.contains(".\\gradlew.bat --console=plain "
-                    + ":TeamCode:testDebugUnitTest --tests")) {
-                failures.add(fileName + ": missing focused Gradle scenario command");
+            ShellCommandTabs.Validation shellTabs =
+                    ShellCommandTabs.validate(fileName, markdown);
+            String expectedSelector = BUILD_RECIPE_TEST_SELECTORS.get(fileName);
+            if (expectedSelector == null
+                    || !shellTabs.hasEquivalentGradleTestSelector(expectedSelector)) {
+                failures.add(fileName + ": missing equivalent Windows/macOS focused Gradle "
+                        + "scenario command pair with exact nonblank --tests selector "
+                        + expectedSelector);
             }
             if (!markdown.contains(PUBLISHED_API_ROOT)) {
                 failures.add(fileName + ": missing generated API link");
@@ -2312,6 +2743,148 @@ public final class DocumentationLinksTest {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
 
+    private static String shellTabPair(String windowsCommands, String macOsCommands) {
+        return "=== \"Windows\"\n\n"
+                + "    ```powershell\n"
+                + indentShellTabBody(windowsCommands)
+                + "    ```\n\n"
+                + "=== \"macOS\"\n\n"
+                + "    ```bash\n"
+                + indentShellTabBody(macOsCommands)
+                + "    ```\n";
+    }
+
+    private static String indentShellTabBody(String commands) {
+        StringBuilder indented = new StringBuilder();
+        String normalized = commands.replace("\r\n", "\n").replace('\r', '\n');
+        for (String line : normalized.split("\n", -1)) {
+            indented.append("    ").append(line).append('\n');
+        }
+        return indented.toString();
+    }
+
+    private static Map<String, String> buildRecipeTestSelectors() {
+        Map<String, String> selectors = new LinkedHashMap<String, String>();
+        selectors.put("First Drive.md",
+                "edu.ftcsushi.robots.examples.firstdrive.FirstDriveSoftwareScenarioTest");
+        selectors.put("Continuous Intake.md",
+                "edu.ftcsushi.robots.examples.starter.robot.StarterMechanismLessonTest");
+        selectors.put("Named Claw.md",
+                "edu.ftcsushi.robots.examples.basicmechanisms.BasicClawSoftwareScenarioTest");
+        selectors.put("Referenced Lift.md",
+                "edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftSoftwareScenarioTest");
+        selectors.put("Move a Referenced Lift.md",
+                "edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftMoveSoftwareScenarioTest");
+        selectors.put("Single Flywheel Velocity.md",
+                "edu.ftcsushi.robots.examples.basicflywheel.BasicFlywheelSoftwareScenarioTest");
+        selectors.put("Combine Drive and Intake.md",
+                "edu.ftcsushi.robots.examples.starter.robot."
+                        + "StarterDriveAndIntakeSoftwareScenarioTest");
+        selectors.put("Run One Timed Auto.md",
+                "edu.ftcsushi.robots.examples.starter.opmode."
+                        + "StarterTimedAutoSoftwareScenarioTest");
+        selectors.put("First Autonomous.md",
+                "edu.ftcsushi.robots.examples.basicmechanisms.BasicAutoSoftwareScenarioTest");
+        selectors.put("First Pedro Auto.md",
+                "edu.ftcsushi.robots.examples.pedro.basic.BasicPedroRouteSoftwareScenarioTest");
+        return Collections.unmodifiableMap(selectors);
+    }
+
+    private static Map<String, Integer> publishedShellPairsByPage() {
+        Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
+        counts.put("docs/build/Combine Drive and Intake.md", 1);
+        counts.put("docs/build/Continuous Intake.md", 1);
+        counts.put("docs/build/First Autonomous.md", 1);
+        counts.put("docs/build/First Drive.md", 1);
+        counts.put("docs/build/First Pedro Auto.md", 1);
+        counts.put("docs/build/Move a Referenced Lift.md", 1);
+        counts.put("docs/build/Named Claw.md", 1);
+        counts.put("docs/build/Referenced Lift.md", 1);
+        counts.put("docs/build/Run One Timed Auto.md", 1);
+        counts.put("docs/build/Single Flywheel Velocity.md", 1);
+        counts.put("docs/examples/Field-relative Drive.md", 1);
+        counts.put("docs/examples/Hardware-free Reference Scenarios.md", 2);
+        counts.put("docs/examples/Subsystem Experiments.md", 1);
+        counts.put("docs/getting-started/Build and Run.md", 3);
+        counts.put("docs/getting-started/First Software Tour.md", 3);
+        counts.put("docs/maintainers/Maintainer Notes.md", 4);
+        counts.put("docs/testing-calibration/Control Tuning Workflow.md", 1);
+        counts.put("docs/troubleshooting/Common Problems.md", 1);
+        return Collections.unmodifiableMap(counts);
+    }
+
+    private static void validatePublishedShellPairInventory(String page,
+                                                            int found,
+                                                            List<String> failures) {
+        Integer expected = PUBLISHED_SHELL_PAIRS_BY_PAGE.get(page);
+        if (expected == null) {
+            if (found > 0) {
+                failures.add(page + ": unexpected shell-command pair count " + found
+                        + "; add no new published command page without updating the approved "
+                        + "inventory");
+            }
+            return;
+        }
+        if (found != expected) {
+            failures.add(page + ": expected " + expected + " shell-command "
+                    + (expected == 1 ? "pair" : "pairs") + ", found " + found);
+        }
+    }
+
+    private static List<String> activeTomlStringArrayEntries(String section, String key) {
+        String[] lines = section.replace("\r\n", "\n").replace('\r', '\n')
+                .split("\n", -1);
+        Pattern assignment = Pattern.compile(
+                "^" + Pattern.quote(key) + "[ \\t]*=[ \\t]*\\[[ \\t]*$");
+        Pattern entry = Pattern.compile("^\"([^\"]+)\"[ \\t]*,?[ \\t]*$");
+        List<String> entries = new ArrayList<String>();
+        boolean insideArray = false;
+        for (String line : lines) {
+            String active = stripTomlComment(line).trim();
+            if (!insideArray) {
+                if (assignment.matcher(active).matches()) {
+                    insideArray = true;
+                }
+                continue;
+            }
+            if ("]".equals(active)) {
+                return entries;
+            }
+            if (active.isEmpty()) {
+                continue;
+            }
+            Matcher item = entry.matcher(active);
+            if (item.matches()) {
+                entries.add(item.group(1));
+            } else {
+                return Collections.emptyList();
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private static String stripTomlComment(String line) {
+        boolean insideSingleQuote = false;
+        boolean insideDoubleQuote = false;
+        boolean escaped = false;
+        for (int index = 0; index < line.length(); index++) {
+            char character = line.charAt(index);
+            if (insideDoubleQuote && character == '\\' && !escaped) {
+                escaped = true;
+                continue;
+            }
+            if (character == '"' && !insideSingleQuote && !escaped) {
+                insideDoubleQuote = !insideDoubleQuote;
+            } else if (character == '\'' && !insideDoubleQuote) {
+                insideSingleQuote = !insideSingleQuote;
+            } else if (character == '#' && !insideSingleQuote && !insideDoubleQuote) {
+                return line.substring(0, index);
+            }
+            escaped = false;
+        }
+        return line;
+    }
+
     private static String javadocBefore(String javaSource, String declaration) {
         int declarationStart = javaSource.indexOf(declaration);
         if (declarationStart < 0) {
@@ -3136,6 +3709,823 @@ public final class DocumentationLinksTest {
             joined.append(line);
         }
         return joined.toString();
+    }
+
+    private static final class ShellCommandTabs {
+        private static final String WINDOWS_LABEL = "=== \"Windows\"";
+        private static final String MAC_OS_LABEL = "=== \"macOS\"";
+        private static final String WINDOWS_FENCE = "    ```powershell";
+        private static final String MAC_OS_FENCE = "    ```bash";
+        private static final String TAB_FENCE_CLOSE = "    ```";
+
+        private static final Set<String> SHELL_LANGUAGES = new HashSet<String>(Arrays.asList(
+                "bash",
+                "bat",
+                "batch",
+                "cmd",
+                "console",
+                "fish",
+                "powershell",
+                "ps1",
+                "pwsh",
+                "sh",
+                "shell",
+                "shell-session",
+                "zsh"));
+
+        private static final Pattern WINDOWS_GRADLE = Pattern.compile(
+                "(?i)(?<!\\S)\\.\\\\gradlew\\.bat(?=\\s|$)");
+        private static final Pattern MAC_OS_GRADLE = Pattern.compile(
+                "(?<!\\S)\\./gradlew(?=\\s|$)");
+        private static final Pattern WINDOWS_VENV_PYTHON = Pattern.compile(
+                "(?i)(?<!\\S)(\\S*?)[\\\\/]Scripts[\\\\/]python\\.exe(?=\\s|$)");
+        private static final Pattern MAC_OS_VENV_PYTHON = Pattern.compile(
+                "(?<!\\S)\\S*/bin/python(?=\\s|$)");
+        private static final Pattern WINDOWS_PYTHON = Pattern.compile(
+                "(?<!\\S)python(?=\\s|$)");
+        private static final Pattern MAC_OS_PYTHON = Pattern.compile(
+                "(?<!\\S)python3(?=\\s|$)");
+        private static final Pattern GRADLE_TESTS_OPTION = Pattern.compile(
+                "(?<!\\S)--tests(?=\\s|=|$)");
+
+        private ShellCommandTabs() {
+        }
+
+        private static Validation validate(String page, String markdown) {
+            String[] lines = markdown.replace("\r\n", "\n").replace('\r', '\n')
+                    .split("\n", -1);
+            List<FenceBlock> blocks = fenceBlocks(lines);
+            Map<Integer, FenceBlock> blockByOpeningLine =
+                    new HashMap<Integer, FenceBlock>();
+            for (FenceBlock block : blocks) {
+                blockByOpeningLine.put(block.openingLine, block);
+            }
+
+            List<String> failures = new ArrayList<String>();
+            List<Pair> pairs = new ArrayList<Pair>();
+            Set<FenceBlock> claimed = new HashSet<FenceBlock>();
+            for (FenceBlock windowsBlock : blocks) {
+                if (claimed.contains(windowsBlock)
+                        || !("powershell".equals(windowsBlock.language)
+                        || lineEquals(lines, windowsBlock.openingLine - 2, WINDOWS_LABEL))) {
+                    continue;
+                }
+                claimed.add(windowsBlock);
+                boolean exactPair = true;
+
+                if (!lineEquals(lines, windowsBlock.openingLine - 2, WINDOWS_LABEL)) {
+                    failures.add(location(page, windowsBlock.openingLine)
+                            + "standalone published shell fence: labels/order must be exactly "
+                            + "Windows then macOS; expected exact tab label `" + WINDOWS_LABEL
+                            + "` two lines before the PowerShell fence");
+                    exactPair = false;
+                }
+                if (!lineEquals(lines, windowsBlock.openingLine - 1, "")) {
+                    failures.add(location(page, windowsBlock.openingLine)
+                            + "the Windows label must be followed by one blank line before its "
+                            + "fence");
+                    exactPair = false;
+                }
+                if (!WINDOWS_FENCE.equals(lines[windowsBlock.openingLine])) {
+                    failures.add(location(page, windowsBlock.openingLine)
+                            + "the Windows tab must open exactly as four spaces plus "
+                            + "```powershell; found `"
+                            + visibleLine(lines[windowsBlock.openingLine]) + "`");
+                    exactPair = false;
+                }
+                exactPair &= validateBlock(
+                        page, lines, windowsBlock, "Windows", failures);
+
+                if (windowsBlock.closingLine < 0) {
+                    failures.add(location(page, windowsBlock.openingLine)
+                            + "the Windows shell fence is unclosed, so the macOS companion "
+                            + "cannot be parsed");
+                    continue;
+                }
+                if (!lineEquals(lines, windowsBlock.closingLine + 1, "")) {
+                    failures.add(location(page, windowsBlock.closingLine)
+                            + "the Windows fence must be followed by one blank line before the "
+                            + "macOS label");
+                    exactPair = false;
+                }
+                if (!lineEquals(lines, windowsBlock.closingLine + 2, MAC_OS_LABEL)) {
+                    failures.add(location(page, windowsBlock.closingLine + 2)
+                            + "labels/order must be exactly Windows then macOS; expected exact "
+                            + "tab label `" + MAC_OS_LABEL + "`, found `"
+                            + visibleLine(lineAt(lines, windowsBlock.closingLine + 2)) + "`");
+                    exactPair = false;
+                }
+                if (!lineEquals(lines, windowsBlock.closingLine + 3, "")) {
+                    failures.add(location(page, windowsBlock.closingLine + 3)
+                            + "the macOS label must be followed by one blank line before its "
+                            + "fence");
+                    exactPair = false;
+                }
+
+                int expectedMacOsOpening = windowsBlock.closingLine + 4;
+                FenceBlock macOsBlock = blockByOpeningLine.get(expectedMacOsOpening);
+                if (macOsBlock == null) {
+                    failures.add(location(page, expectedMacOsOpening)
+                            + "the macOS tab must contain exactly one four-space-indented "
+                            + "```bash fence immediately after its label");
+                    continue;
+                }
+                claimed.add(macOsBlock);
+                if (!MAC_OS_FENCE.equals(lines[macOsBlock.openingLine])) {
+                    failures.add(location(page, macOsBlock.openingLine)
+                            + "the macOS tab must open exactly as four spaces plus ```bash; "
+                            + "found `" + visibleLine(lines[macOsBlock.openingLine]) + "`");
+                    exactPair = false;
+                }
+                exactPair &= validateBlock(
+                        page, lines, macOsBlock, "macOS", failures);
+                if (macOsBlock.closingLine < 0) {
+                    failures.add(location(page, macOsBlock.openingLine)
+                            + "the macOS shell fence is unclosed; close it with four spaces "
+                            + "plus ```");
+                    continue;
+                }
+
+                if (!exactPair) {
+                    continue;
+                }
+                List<String> windowsBody = bodyLines(lines, windowsBlock);
+                List<String> macOsBody = bodyLines(lines, macOsBlock);
+                validateContinuations(
+                        page, windowsBlock.openingLine, windowsBody, true, failures);
+                validateContinuations(
+                        page, macOsBlock.openingLine, macOsBody, false, failures);
+                validatePlatformTokens(
+                        page, windowsBlock.openingLine, windowsBody, true, failures);
+                validatePlatformTokens(
+                        page, macOsBlock.openingLine, macOsBody, false, failures);
+                String normalizedWindows = normalizeCommands(
+                        page, windowsBlock.openingLine, windowsBody, true, failures);
+                String normalizedMacOs = normalizeCommands(
+                        page, macOsBlock.openingLine, macOsBody, false, failures);
+                validateGradleTestSelectors(
+                        page, windowsBlock.openingLine, normalizedWindows, "Windows", failures);
+                validateGradleTestSelectors(
+                        page, macOsBlock.openingLine, normalizedMacOs, "macOS", failures);
+                Pair pair = new Pair(normalizedWindows, normalizedMacOs);
+                pairs.add(pair);
+                if (!normalizedWindows.equals(normalizedMacOs)) {
+                    failures.add(location(page, windowsBlock.openingLine)
+                            + "normalized commands differ; Windows=`"
+                            + oneLine(normalizedWindows) + "`, macOS=`"
+                            + oneLine(normalizedMacOs) + "`. Keep every other argument and "
+                            + "command in the same order");
+                }
+            }
+
+            for (FenceBlock block : blocks) {
+                if (SHELL_LANGUAGES.contains(block.language) && !claimed.contains(block)) {
+                    failures.add(location(page, block.openingLine)
+                            + "standalone published shell fence `" + block.language
+                            + "`; wrap every command in one exact Windows then macOS tab pair");
+                }
+            }
+            return new Validation(pairs, failures);
+        }
+
+        private static boolean validateBlock(String page,
+                                             String[] lines,
+                                             FenceBlock block,
+                                             String platform,
+                                             List<String> failures) {
+            boolean valid = true;
+            if (block.closingLine < 0) {
+                return false;
+            }
+            if (!TAB_FENCE_CLOSE.equals(lines[block.closingLine])) {
+                failures.add(location(page, block.closingLine)
+                        + "the " + platform + " tab fence must close as four spaces plus ```; "
+                        + "found `" + visibleLine(lines[block.closingLine]) + "`");
+                valid = false;
+            }
+            boolean hasExecutableCommand = false;
+            boolean[] insidePowerShellBlockComment = new boolean[1];
+            for (int line = block.openingLine + 1; line < block.closingLine; line++) {
+                if (lines[line].isEmpty()) {
+                    continue;
+                }
+                if (!lines[line].startsWith("    ")) {
+                    failures.add(location(page, line)
+                            + "every " + platform + " command line must remain indented by at "
+                            + "least four spaces inside its tab");
+                    valid = false;
+                } else {
+                    String command = lines[line].substring(4).trim();
+                    if ("Windows".equals(platform)) {
+                        command = powerShellExecutableText(
+                                command, insidePowerShellBlockComment).trim();
+                    }
+                    if (!command.isEmpty() && !command.startsWith("#")) {
+                        hasExecutableCommand = true;
+                    }
+                }
+            }
+            if (!hasExecutableCommand) {
+                failures.add(location(page, block.openingLine)
+                        + "the " + platform + " shell fence must contain an executable "
+                        + "command, not only comments");
+                valid = false;
+            }
+            return valid;
+        }
+
+        private static String powerShellExecutableText(String line,
+                                                       boolean[] insideBlockComment) {
+            StringBuilder executable = new StringBuilder();
+            int index = 0;
+            char quote = 0;
+            while (index < line.length()) {
+                if (insideBlockComment[0]) {
+                    int commentEnd = line.indexOf("#>", index);
+                    if (commentEnd < 0) {
+                        break;
+                    }
+                    insideBlockComment[0] = false;
+                    index = commentEnd + 2;
+                    continue;
+                }
+
+                char character = line.charAt(index);
+                if (character == '`' && quote != '\'') {
+                    executable.append(character);
+                    if (index + 1 < line.length()) {
+                        executable.append(line.charAt(index + 1));
+                        index += 2;
+                    } else {
+                        index++;
+                    }
+                } else if (quote != 0) {
+                    executable.append(character);
+                    if (character == quote) {
+                        if (index + 1 < line.length()
+                                && line.charAt(index + 1) == quote) {
+                            executable.append(quote);
+                            index++;
+                        } else {
+                            quote = 0;
+                        }
+                    }
+                    index++;
+                } else if (character == '\'' || character == '"') {
+                    quote = character;
+                    executable.append(character);
+                    index++;
+                } else if (character == '#') {
+                    break;
+                } else if (character == '<' && index + 1 < line.length()
+                        && line.charAt(index + 1) == '#') {
+                    insideBlockComment[0] = true;
+                    index += 2;
+                } else {
+                    executable.append(character);
+                    index++;
+                }
+            }
+            return executable.toString();
+        }
+
+        private static void validatePlatformTokens(String page,
+                                                   int openingLine,
+                                                   List<String> body,
+                                                   boolean windows,
+                                                   List<String> failures) {
+            for (int index = 0; index < body.size(); index++) {
+                String line = body.get(index).trim();
+                int sourceLine = openingLine + index + 1;
+                if (windows) {
+                    rejectToken(page, sourceLine, line, MAC_OS_GRADLE,
+                            "POSIX-only token `./gradlew`", failures);
+                    rejectToken(page, sourceLine, line, MAC_OS_PYTHON,
+                            "POSIX-only token `python3`", failures);
+                    rejectToken(page, sourceLine, line, MAC_OS_VENV_PYTHON,
+                            "POSIX-only token `bin/python`", failures);
+                    if (continuationMarkerIndex(line, '\\') >= 0) {
+                        failures.add(location(page, sourceLine)
+                                + "Windows command contains POSIX continuation `\\`; use the "
+                                + "PowerShell backtick continuation");
+                    }
+                } else {
+                    rejectToken(page, sourceLine, line, WINDOWS_GRADLE,
+                            "Windows-only token `.\\gradlew.bat`", failures);
+                    rejectToken(page, sourceLine, line, WINDOWS_PYTHON,
+                            "Windows-only token `python`", failures);
+                    rejectToken(page, sourceLine, line, WINDOWS_VENV_PYTHON,
+                            "Windows-only token `Scripts/python.exe`", failures);
+                    if (continuationMarkerIndex(line, '`') >= 0) {
+                        failures.add(location(page, sourceLine)
+                                + "macOS command contains Windows-only PowerShell continuation "
+                                + "```; use the POSIX `\\` continuation");
+                    }
+                }
+            }
+        }
+
+        private static void validateContinuations(String page,
+                                                  int openingLine,
+                                                  List<String> body,
+                                                  boolean windows,
+                                                  List<String> failures) {
+            char continuation = windows ? '`' : '\\';
+            String platform = windows ? "Windows" : "macOS";
+            for (int index = 0; index < body.size(); index++) {
+                String line = body.get(index);
+                int marker = continuationMarkerIndex(line, continuation);
+                if (marker < 0) {
+                    continue;
+                }
+                int sourceLine = openingLine + index + 1;
+                if (marker != line.length() - 1) {
+                    failures.add(location(page, sourceLine)
+                            + platform + " continuation marker must be the final character; "
+                            + "remove trailing whitespace");
+                }
+                if (index + 1 < body.size() && body.get(index + 1).trim().isEmpty()) {
+                    failures.add(location(page, sourceLine)
+                            + platform + " continuation cannot skip a blank line");
+                }
+            }
+        }
+
+        private static int continuationMarkerIndex(String line, char marker) {
+            int end = line.length() - 1;
+            while (end >= 0 && Character.isWhitespace(line.charAt(end))) {
+                end--;
+            }
+            if (end < 0 || line.charAt(end) != marker) {
+                return -1;
+            }
+            int start = end;
+            while (start > 0 && line.charAt(start - 1) == marker) {
+                start--;
+            }
+            return (end - start + 1) % 2 == 1 ? end : -1;
+        }
+
+        private static void rejectToken(String page,
+                                        int lineNumber,
+                                        String line,
+                                        Pattern pattern,
+                                        String description,
+                                        List<String> failures) {
+            if (pattern.matcher(line).find()) {
+                failures.add(location(page, lineNumber)
+                        + (description.startsWith("Windows") ? "macOS" : "Windows")
+                        + " command contains " + description);
+            }
+        }
+
+        private static String normalizeCommands(String page,
+                                                int openingLine,
+                                                List<String> body,
+                                                boolean windows,
+                                                List<String> failures) {
+            char continuation = windows ? '`' : '\\';
+            List<String> commands = new ArrayList<String>();
+            StringBuilder command = new StringBuilder();
+            boolean awaitingContinuation = false;
+            for (String physicalLine : body) {
+                String line = physicalLine.trim();
+                if (line.isEmpty()) {
+                    continue;
+                }
+                int marker = continuationMarkerIndex(line, continuation);
+                boolean continues = marker >= 0;
+                if (continues) {
+                    line = line.substring(0, marker).trim();
+                }
+                if (command.length() > 0 && !line.isEmpty()) {
+                    command.append(' ');
+                }
+                command.append(line);
+                awaitingContinuation = continues;
+                if (!continues) {
+                    commands.add(normalizePlatformTokens(command.toString()));
+                    command.setLength(0);
+                }
+            }
+            if (command.length() > 0) {
+                commands.add(normalizePlatformTokens(command.toString()));
+            }
+            if (awaitingContinuation) {
+                failures.add(location(page, openingLine)
+                        + (windows ? "Windows" : "macOS")
+                        + " command ends with a continuation but has no following command line");
+            }
+            return joinLines(commands);
+        }
+
+        private static String normalizePlatformTokens(String command) {
+            int executableEnd = 0;
+            while (executableEnd < command.length()
+                    && !Character.isWhitespace(command.charAt(executableEnd))) {
+                executableEnd++;
+            }
+            String executable = command.substring(0, executableEnd);
+            String normalizedExecutable = executable;
+            if (WINDOWS_GRADLE.matcher(executable).matches()) {
+                normalizedExecutable = "./gradlew";
+            } else if (WINDOWS_PYTHON.matcher(executable).matches()) {
+                normalizedExecutable = "python3";
+            } else if (WINDOWS_VENV_PYTHON.matcher(executable).matches()) {
+                normalizedExecutable = canonicalizeWindowsVenvPython(executable);
+            }
+            return normalizedExecutable + command.substring(executableEnd);
+        }
+
+        private static void validateGradleTestSelectors(String page,
+                                                        int openingLine,
+                                                        String commands,
+                                                        String platform,
+                                                        List<String> failures) {
+            for (String command : commands.split("\\n", -1)) {
+                for (GradleTestSelector selector : gradleTestSelectors(
+                        command, "Windows".equals(platform))) {
+                    if (selector.value == null || selector.value.trim().isEmpty()) {
+                        failures.add(location(page, openingLine)
+                                + platform + " Gradle --tests must be followed by a nonblank "
+                                + "selector");
+                    } else if (containsWildcard(selector.value) && !selector.quoted) {
+                        failures.add(location(page, openingLine)
+                                + platform + " Gradle --tests wildcard selector must be quoted; "
+                                + "wrap it in single quotes so zsh does not expand it");
+                    }
+                }
+            }
+        }
+
+        private static List<GradleTestSelector> gradleTestSelectors(String command,
+                                                                    boolean windows) {
+            List<GradleTestSelector> selectors = new ArrayList<GradleTestSelector>();
+            command = shellCodeBeforeInlineComment(command, windows);
+            if (!(command.equals("./gradlew") || command.startsWith("./gradlew "))) {
+                return selectors;
+            }
+            Matcher option = GRADLE_TESTS_OPTION.matcher(command);
+            while (option.find()) {
+                int start = option.end();
+                if (start < command.length() && command.charAt(start) == '=') {
+                    start++;
+                } else {
+                    while (start < command.length()
+                            && Character.isWhitespace(command.charAt(start))) {
+                        start++;
+                    }
+                }
+                if (start >= command.length() || command.charAt(start) == '-') {
+                    selectors.add(new GradleTestSelector(null, false));
+                    continue;
+                }
+
+                int end = start;
+                char quote = 0;
+                while (end < command.length()) {
+                    char character = command.charAt(end);
+                    if (quote == 0 && Character.isWhitespace(character)) {
+                        break;
+                    }
+                    if (character == '\'' || character == '"') {
+                        if (quote == 0) {
+                            quote = character;
+                        } else if (quote == character) {
+                            quote = 0;
+                        }
+                    }
+                    end++;
+                }
+                String token = command.substring(start, end);
+                boolean quoted = token.length() >= 2
+                        && ((token.charAt(0) == '\''
+                        && token.charAt(token.length() - 1) == '\'')
+                        || (token.charAt(0) == '"'
+                        && token.charAt(token.length() - 1) == '"'));
+                String value = quoted
+                        ? token.substring(1, token.length() - 1)
+                        : token;
+                selectors.add(new GradleTestSelector(value, quoted));
+            }
+            return selectors;
+        }
+
+        private static String shellCodeBeforeInlineComment(String command,
+                                                           boolean windows) {
+            char quote = 0;
+            char escape = windows ? '`' : '\\';
+            for (int index = 0; index < command.length(); index++) {
+                char character = command.charAt(index);
+                if (character == escape && quote != '\'') {
+                    index++;
+                } else if (quote != 0) {
+                    if (character == quote) {
+                        if (index + 1 < command.length()
+                                && command.charAt(index + 1) == quote) {
+                            index++;
+                        } else {
+                            quote = 0;
+                        }
+                    }
+                } else if (character == '\'' || character == '"') {
+                    quote = character;
+                } else if (character == '#') {
+                    return command.substring(0, index).trim();
+                }
+            }
+            return command;
+        }
+
+        private static boolean containsWildcard(String value) {
+            return value.indexOf('*') >= 0
+                    || value.indexOf('?') >= 0
+                    || value.indexOf('[') >= 0;
+        }
+
+        private static String canonicalizeWindowsVenvPython(String command) {
+            Matcher matcher = WINDOWS_VENV_PYTHON.matcher(command);
+            StringBuffer normalized = new StringBuffer();
+            while (matcher.find()) {
+                String prefix = matcher.group(1).replace('\\', '/');
+                matcher.appendReplacement(normalized,
+                        Matcher.quoteReplacement(prefix + "/bin/python"));
+            }
+            matcher.appendTail(normalized);
+            return normalized.toString();
+        }
+
+        private static List<String> bodyLines(String[] lines, FenceBlock block) {
+            List<String> body = new ArrayList<String>();
+            for (int line = block.openingLine + 1; line < block.closingLine; line++) {
+                body.add(lines[line].isEmpty() ? "" : lines[line].substring(4));
+            }
+            return body;
+        }
+
+        private static List<FenceBlock> fenceBlocks(String[] lines) {
+            List<FenceBlock> blocks = new ArrayList<FenceBlock>();
+            for (int line = 0; line < lines.length; line++) {
+                FenceBlock opening = fenceOpening(lines[line], line);
+                if (opening == null) {
+                    continue;
+                }
+                int closing = line + 1;
+                boolean lowerContainerFence = false;
+                while (closing < lines.length
+                        && !isFenceClose(lines[closing], opening)) {
+                    FenceBlock laterOpening = fenceOpening(lines[closing], closing);
+                    if (laterOpening != null
+                            && (laterOpening.blockquoteDepth < opening.blockquoteDepth
+                            || (laterOpening.blockquoteDepth == opening.blockquoteDepth
+                            && opening.listContentIndent >= 0
+                            && laterOpening.markerIndent < opening.listContentIndent))) {
+                        lowerContainerFence = true;
+                        break;
+                    }
+                    closing++;
+                }
+                opening.closingLine = closing < lines.length && !lowerContainerFence
+                        ? closing
+                        : -1;
+                blocks.add(opening);
+                if (opening.closingLine < 0) {
+                    if (lowerContainerFence) {
+                        line = closing - 1;
+                        continue;
+                    }
+                    break;
+                }
+                line = opening.closingLine;
+            }
+            return blocks;
+        }
+
+        private static FenceBlock fenceOpening(String line, int lineNumber) {
+            FencePrefix prefix = fencePrefix(line);
+            int start = prefix.markerStart;
+            if (start < 0) {
+                return null;
+            }
+            char marker = line.charAt(start);
+            if (marker != '`' && marker != '~') {
+                return null;
+            }
+            int markerLength = markerRunLength(line, start, marker);
+            if (markerLength < 3) {
+                return null;
+            }
+            String info = line.substring(start + markerLength).trim();
+            return new FenceBlock(
+                    lineNumber, marker, markerLength, fenceLanguage(info),
+                    prefix.blockquoteDepth, prefix.markerStart,
+                    prefix.hasListMarker ? prefix.markerStart : -1);
+        }
+
+        private static boolean isFenceClose(String line, FenceBlock opening) {
+            FencePrefix prefix = fencePrefix(line);
+            int start = prefix.markerStart;
+            if (start < 0 || prefix.blockquoteDepth != opening.blockquoteDepth
+                    || (opening.listContentIndent >= 0
+                    && start < opening.listContentIndent)
+                    || line.charAt(start) != opening.marker) {
+                return false;
+            }
+            int length = markerRunLength(line, start, opening.marker);
+            return length >= opening.markerLength
+                    && line.substring(start + length).trim().isEmpty();
+        }
+
+        private static int markerRunLength(String line, int start, char marker) {
+            int end = start;
+            while (end < line.length() && line.charAt(end) == marker) {
+                end++;
+            }
+            return end - start;
+        }
+
+        private static FencePrefix fencePrefix(String value) {
+            int index = skipWhitespace(value, 0);
+            int blockquoteDepth = 0;
+            boolean hasListMarker = false;
+            boolean foundContainer = true;
+            while (index < value.length() && foundContainer) {
+                foundContainer = false;
+                if (value.charAt(index) == '>') {
+                    blockquoteDepth++;
+                    index = skipWhitespace(value, index + 1);
+                    foundContainer = true;
+                    continue;
+                }
+                int listEnd = listMarkerEnd(value, index);
+                if (listEnd >= 0) {
+                    hasListMarker = true;
+                    index = skipWhitespace(value, listEnd);
+                    foundContainer = true;
+                }
+            }
+            return new FencePrefix(
+                    index < value.length() ? index : -1,
+                    blockquoteDepth, hasListMarker);
+        }
+
+        private static int listMarkerEnd(String value, int start) {
+            char first = value.charAt(start);
+            if ((first == '-' || first == '+' || first == '*')
+                    && start + 1 < value.length()
+                    && Character.isWhitespace(value.charAt(start + 1))) {
+                return start + 1;
+            }
+            int end = start;
+            while (end < value.length() && Character.isDigit(value.charAt(end))) {
+                end++;
+            }
+            if (end == start || end + 1 >= value.length()
+                    || (value.charAt(end) != '.' && value.charAt(end) != ')')
+                    || !Character.isWhitespace(value.charAt(end + 1))) {
+                return -1;
+            }
+            return end + 1;
+        }
+
+        private static int skipWhitespace(String value, int start) {
+            int index = start;
+            while (index < value.length()
+                    && (value.charAt(index) == ' ' || value.charAt(index) == '\t')) {
+                index++;
+            }
+            return index;
+        }
+
+        private static String fenceLanguage(String info) {
+            if (info.isEmpty()) {
+                return "";
+            }
+            String attribute = info;
+            if (attribute.startsWith("{") && attribute.endsWith("}")) {
+                attribute = attribute.substring(1, attribute.length() - 1).trim();
+            }
+            String token = attribute.split("[ \\t]", 2)[0].toLowerCase(Locale.ROOT);
+            if (token.startsWith(".")) {
+                token = token.substring(1);
+            }
+            if (token.endsWith("}")) {
+                token = token.substring(0, token.length() - 1);
+            }
+            return token;
+        }
+
+        private static boolean lineEquals(String[] lines, int index, String expected) {
+            return index >= 0 && index < lines.length && expected.equals(lines[index]);
+        }
+
+        private static String lineAt(String[] lines, int index) {
+            return index >= 0 && index < lines.length ? lines[index] : "<end of file>";
+        }
+
+        private static String visibleLine(String line) {
+            return line.isEmpty() ? "<blank>" : line.replace("\t", "\\t");
+        }
+
+        private static String location(String page, int zeroBasedLine) {
+            return page + ":" + Math.max(1, zeroBasedLine + 1) + ": ";
+        }
+
+        private static String oneLine(String commands) {
+            return commands.replace("\n", " | ");
+        }
+
+        private static final class Validation {
+            private final List<Pair> pairs;
+            private final List<String> failures;
+
+            private Validation(List<Pair> pairs, List<String> failures) {
+                this.pairs = pairs;
+                this.failures = failures;
+            }
+
+            private boolean hasEquivalentGradleTestSelector(String expectedSelector) {
+                if (!failures.isEmpty() || expectedSelector == null
+                        || expectedSelector.trim().isEmpty()) {
+                    return false;
+                }
+                for (Pair pair : pairs) {
+                    if (!pair.normalizedWindows.equals(pair.normalizedMacOs)) {
+                        continue;
+                    }
+                    for (String command : pair.normalizedWindows.split("\\n", -1)) {
+                        for (GradleTestSelector selector : gradleTestSelectors(command, true)) {
+                            if (expectedSelector.equals(selector.value)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+        }
+
+        private static final class GradleTestSelector {
+            private final String value;
+            private final boolean quoted;
+
+            private GradleTestSelector(String value, boolean quoted) {
+                this.value = value;
+                this.quoted = quoted;
+            }
+        }
+
+        private static final class Pair {
+            private final String normalizedWindows;
+            private final String normalizedMacOs;
+
+            private Pair(String normalizedWindows, String normalizedMacOs) {
+                this.normalizedWindows = normalizedWindows;
+                this.normalizedMacOs = normalizedMacOs;
+            }
+        }
+
+        private static final class FenceBlock {
+            private final int openingLine;
+            private final char marker;
+            private final int markerLength;
+            private final String language;
+            private final int blockquoteDepth;
+            private final int markerIndent;
+            private final int listContentIndent;
+            private int closingLine;
+
+            private FenceBlock(int openingLine,
+                               char marker,
+                               int markerLength,
+                               String language,
+                               int blockquoteDepth,
+                               int markerIndent,
+                               int listContentIndent) {
+                this.openingLine = openingLine;
+                this.marker = marker;
+                this.markerLength = markerLength;
+                this.language = language;
+                this.blockquoteDepth = blockquoteDepth;
+                this.markerIndent = markerIndent;
+                this.listContentIndent = listContentIndent;
+                this.closingLine = -1;
+            }
+        }
+
+        private static final class FencePrefix {
+            private final int markerStart;
+            private final int blockquoteDepth;
+            private final boolean hasListMarker;
+
+            private FencePrefix(int markerStart,
+                                int blockquoteDepth,
+                                boolean hasListMarker) {
+                this.markerStart = markerStart;
+                this.blockquoteDepth = blockquoteDepth;
+                this.hasListMarker = hasListMarker;
+            }
+        }
     }
 
     private static final class PageMetadata {

@@ -306,9 +306,17 @@ assertFalse(scenario.lift.status().atTarget());
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftMoveSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftMoveSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicLiftMoveSoftwareScenarioTest
+    ```
 
 **Read the causal chain:** starting the Task publishes `LOW` without touching hardware; the next
 output heartbeat writes its mapped encoder target and caches the still-old measurement; the test

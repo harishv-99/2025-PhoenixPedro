@@ -296,10 +296,19 @@ adapting the pattern:
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
-  :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.fieldrelative.*
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
+      :TeamCode:testDebugUnitTest --tests 'edu.ftcsushi.robots.examples.fieldrelative.*'
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:compileDebugJavaWithJavac \
+      :TeamCode:testDebugUnitTest --tests 'edu.ftcsushi.robots.examples.fieldrelative.*'
+    ```
 
 Expected checkpoint: compilation and the field-relative focused tests pass. Translation still
 fails closed when heading evidence is unavailable; no software check proves Hub orientation or

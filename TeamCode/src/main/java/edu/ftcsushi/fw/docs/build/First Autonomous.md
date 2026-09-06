@@ -228,9 +228,17 @@ assertEquals(Arrays.asList("home", "lift HIGH"), cancelledEvents);
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicAutoSoftwareScenarioTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicAutoSoftwareScenarioTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.basicmechanisms.BasicAutoSoftwareScenarioTest
+    ```
 
 **Read the causal chain:** START admits only `home`; each successful child admits exactly one next
 move; final success becomes root `SUCCESS`. When `HIGH` instead times out or the root is actively

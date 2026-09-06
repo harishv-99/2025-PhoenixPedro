@@ -232,10 +232,19 @@ the bounded trial state machine and hardware lifecycle described above.
 
 Run:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
-  :TeamCode:testDebugUnitTest --tests edu.ftcsushi.robots.examples.reference.tester.*
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac `
+      :TeamCode:testDebugUnitTest --tests 'edu.ftcsushi.robots.examples.reference.tester.*'
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:compileDebugJavaWithJavac \
+      :TeamCode:testDebugUnitTest --tests 'edu.ftcsushi.robots.examples.reference.tester.*'
+    ```
 
 Expected checkpoint: the experiment compiles, lifecycle tests pass, and the checked-in menu reports
 `LOCKED`. Hardware success still requires the reviewed lab card and supervised trials.

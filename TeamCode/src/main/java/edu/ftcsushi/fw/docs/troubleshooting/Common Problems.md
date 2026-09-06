@@ -40,9 +40,17 @@ message first: it normally names the invalid value, expected domain, or owner th
 5. If the failure is a broken documentation link or fence, run the focused documentation test from
    the repository root:
 
-```powershell
-.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.fw.docs.DocumentationLinksTest
-```
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.fw.docs.DocumentationLinksTest
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcsushi.fw.docs.DocumentationLinksTest
+    ```
 
 ## The OpMode does not appear on Driver Station
 
