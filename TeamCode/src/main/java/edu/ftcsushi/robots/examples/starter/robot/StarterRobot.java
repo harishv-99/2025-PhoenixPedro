@@ -83,7 +83,7 @@ public final class StarterRobot {
                 activeProfile.allowIntakeMotion);
 
         StarterIntakeMechanism intake = declareIntake(program, activeProfile);
-        StarterTeleOpControls controls = new StarterTeleOpControls(
+        StarterIntakeControls controls = new StarterIntakeControls(
                 new GamepadDevice(requiredGamepad));
         controls.bind(program.callbackBindings(), intake);
     }

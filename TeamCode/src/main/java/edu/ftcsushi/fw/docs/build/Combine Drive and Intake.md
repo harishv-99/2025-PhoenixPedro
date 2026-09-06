@@ -8,9 +8,12 @@ tags:
 **Outcome:** drive continuously with the sticks while A/B/X independently request intake
 `COLLECT`/`EJECT`/`STOPPED`, under one managed heartbeat and one terminal STOP path.
 
-**Prerequisites:** complete the software checkpoints in [First Drive](<First Drive.md>) and
-[Continuous Intake](<Continuous Intake.md>). Before a physical combined run, each owner must also
-have passed its own isolated hardware gate.
+**Knowledge before this page:** read [First Drive](<First Drive.md>) and
+[Continuous Intake](<Continuous Intake.md>) through their explained software observations.
+No installation, test run, or matching robot is required.
+
+**One idea:** composition connects already-understood owners without taking over their jobs.
+Before a physical combined run, each owner must have passed its own isolated hardware gate.
 
 ## Critical production idea
 
@@ -48,16 +51,17 @@ The production controls also keep one held-level precision-drive meaning in that
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java -->
 ```java
 driveSource = new GamepadDriveSource(
-        this.driver.leftX(),
-        this.driver.leftY(),
-        this.driver.rightX(),
+        requiredDriver.leftX(),
+        requiredDriver.leftY(),
+        requiredDriver.rightX(),
         GamepadDriveSource.Config.defaults()
-).scaledWhen(this.driver.rightBumper(), SLOW_TRANSLATE_SCALE, SLOW_OMEGA_SCALE);
+).scaledWhen(requiredDriver.rightBumper(), SLOW_TRANSLATE_SCALE, SLOW_OMEGA_SCALE);
 ```
 
-`StarterTeleOpControls` gives the shared `GamepadDevice` two different jobs. Its A/B/X sources
-register short synchronous callbacks that replace the intake's persistent semantic request only on
-a rising edge. Its three stick sources form a `DriveSource` that is sampled every active output
+`StarterTeleOpControls` gives the shared `GamepadDevice` two different jobs. It constructs the same
+`StarterIntakeControls` taught in the intake lesson and delegates `bind(...)` to that owner. Its
+A/B/X sources register short synchronous callbacks that replace the intake's persistent semantic
+request only on a rising edge. The three stick sources form a `DriveSource` sampled every active output
 cycle. Holding a stick therefore keeps driving without manufacturing button events or Tasks.
 Holding the right bumper scales the current translation to `0.35` and turn to `0.20`; because this
 is continuous level-based intent, it belongs in the source decorator rather than a callback.
@@ -94,6 +98,8 @@ Notice:
   [Complete source: `StarterRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java>)
 - `StarterTeleOpControls` — shared gamepad meanings for drive and intake.
   [Complete source: `StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>)
+- `StarterIntakeControls` — the intake button owner reused from the prerequisite lesson.
+  [Complete source: `StarterIntakeControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java>)
 - [`StarterProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.html>) — active names, directions, limits, and motion permissions.
   [Complete source: `StarterProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>)
 
@@ -102,6 +108,12 @@ Notice:
 - [Complete source: `StarterDriveAndIntakeSoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterDriveAndIntakeSoftwareScenarioTest.java>)
 
 ## Software checkpoint: one managed cycle serves both outcomes
+
+**Expected observations:** an accepted A press selects `COLLECT`; the intake output applies it;
+the drive output still samples the held stick; the presenter sees the cached intake result. A held
+right bumper scales translation to `0.35` and turn to `0.20` of their unscaled commands. STOP
+submits zero to all five motors. These are software expectations to explain before optionally
+running the scenario.
 
 - **Question:** Does one gamepad produce edge-triggered intake intent, normal/slow continuous drive
   output in the documented managed order, collision rejection, and total STOP?
@@ -186,7 +198,7 @@ assertEquals(fullTurnPower * StarterTeleOpControls.SLOW_OMEGA_SCALE,
         hardware.motor(profile.drive.wiring.frontLeftName).power(), 1e-9);
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -213,7 +225,14 @@ cross-owner name collision, and stops every output through the managed lifecycle
 
 **Does not prove:** either mechanism is wired correctly or that operating both together is safe.
 
+**Reading checkpoint:** trace one cycle from A and a held stick to the two outputs and telemetry.
+Explain why a presenter declared beside the intake still runs after drive output. Optional
+[authorship](<README.md#author-in-your-robot>) connects only the owners your robot needs; a claw or
+sensor owner need not be added just because you read its earlier lesson.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to operate both mechanisms together.
 
 Keep `StarterTeleOp` disabled and both motion permissions false while reviewing the combined
 profile. Confirm all five FTC names are unique, retain the low drive caps, put the drivetrain on
@@ -222,4 +241,5 @@ isolated check first. Only then enable this OpMode and both permissions for a su
 begins with centered sticks and `STOPPED`, checks one control at a time, and ends by verifying that
 FTC STOP zeros both owners.
 
-**Next gate:** reuse the proven intake capability in [one timed Auto](<Run One Timed Auto.md>).
+**Next gate:** reuse the same intake capability in [one timed Auto](<Run One Timed Auto.md>).
+Continue by reading even if you have not run the combined TeleOp.

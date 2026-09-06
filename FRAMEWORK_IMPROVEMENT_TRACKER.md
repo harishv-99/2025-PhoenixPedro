@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -235,7 +235,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 126 | DOC-11 | Outcome-focused learning, examples, reference, and search | Done | The reviewed six-area learning site, concise explained scenarios, accessible global guide search, categorized API reference, evidence ladder, focused example cleanup, verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 127 | DOC-12 | Progressive actuator API learning path | Done | Make the first motor lesson self-contained, teach later Plant shapes through cumulative outcomes, add the missing single-motor velocity step, and keep exhaustive alternatives in reference documentation. |
 | 128 | DOC-13 | Reconstruction-grade beginner Build spine | Done | The reviewed reconstruction-grade Build route, focused integration outcomes, maintained fixtures, source-excerpt contracts, deterministic evidence, Android Studio approval, and destination-specific publication authorization are complete. |
-| 129 | DOC-14 | First sensor-to-status Build outcome | Proposed | Teach one no-motion digital sensor from FTC adapter through polarity, debounce, cached semantic status, presenter, focused software evidence, and an isolated physical gate without introducing a generic sensor framework. |
+| 129 | DOC-14 | Beginner course and first sensor-to-status outcome | Done | Implemented the compact read-first course, no-motion sensor fixture, optional own-robot authoring, and focused controls cleanup. All 2,249 tests and generated documentation checks pass; the user approved Android Studio review and authorized publication to origin/master. |
 | 130 | DOC-15 | FTC-loop-first Get Started path | Done | The reviewed FTC-loop-first introduction, required software-only tour, progressive Build first passes, synchronized guidance, verification, Android Studio review, and destination-specific publication authorization are complete. |
 | 131 | DOC-16 | Documentation quality criteria as design authority | Done | The reviewed applicability-qualified documentation rubric, focused structural contract, deterministic verification, Android Studio approval, and destination-specific publication authorization are complete. |
 | 132 | DOC-17 | Source-optional lessons and visual teaching grammar | Done | The reviewed point-of-use explanations, bounded beginner first passes, restrained accessible visual grammar, reconstruction repairs, verification, Android Studio review, and destination-specific publication authorization are complete. |
@@ -27141,7 +27141,166 @@ implementation.
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening its pull request, and merging that
   pull request into `master`; it does not authorize starting DOC-14 or another tracker item.
 
-### DOC-14 - First sensor-to-status Build outcome
+### DOC-14 - Beginner course and first sensor-to-status outcome
+
+- **Gate 3 manual review and publication authorization (2026-09-06): Done.** The user supplied the
+  combined review-and-publication reply recorded below, accepting the reviewed DOC-14 diff and
+  authorizing its commit on `codex/doc-14-beginner-course`, push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, pull request, and merge into `master`.
+  The authorized scope is the reviewed 47-file change plus this final tracker approval record.
+  The previously disclosed interactive-browser and physical-hardware limitations remain unchanged;
+  approval does not claim those checks occurred. Publication does not authorize another tracker item.
+- **Gate 2 implementation complete (2026-09-06): Verifying.** The approved diff is on
+  `codex/doc-14-beginner-course`, based on `origin/master` at `d4b7598` (DOC-19 merge). Nothing is
+  staged, committed, pushed, or published. Publication destination is the resolved origin push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; target branch is `master`.
+- **Delivered course:** retained all six areas and the compact three-stop tour, now switch
+  observations, button callbacks, and timed work. Setup is optional for readers; every full Build
+  lesson states expected observations, a reading checkpoint, optional software execution, and a
+  separate physical gate. Build groups one-part observation/commands, combined TeleOp/basic Auto,
+  then optional feedback. Pedro is discoverable under Advanced without breaking its existing URL.
+  Learn's six pages now answer on-demand concept questions; duplicated walkthroughs and advanced
+  repair/coordination details point to their canonical Build or advanced authority. Root/namespace
+  doorways, the short compatibility pointer, Test & Tune links, and affected architecture maps agree.
+- **Delivered example and cleanup:** `BasicSwitchService` owns one configured active-low input,
+  existing sampled on/off debounce, and immutable observed/rawPressed/pressed status;
+  `BasicSwitchTeleOp` declares the same service/presenter graph used by its tests. INIT is unobserved,
+  START samples at zero elapsed time, Services precede presentation, and STOP/failure clears status
+  while the host suppresses later loops. `StarterIntakeControls` is the sole A/B/X mapping owner;
+  the focused intake host no longer constructs a drive source, and the combined controls delegate
+  those mappings while preserving drive shaping and slow-mode scales. No protected-core behavior,
+  production robot, legacy sample, or vendor code changed. Independent drive, home-only lift,
+  feedback lift, velocity, and advanced inventory examples remain because they teach distinct work.
+- **Adversarial review and construction-layer audit:** separate agents implemented non-overlapping
+  slices, and root reviewed their shared diff. Review corrected the overview's missing sensor phase,
+  sampled-debounce wording that could imply continuous physical observation, stale prerequisite and
+  source-owner links, and two opening-page size overruns. The overview is 895 prose words against
+  its unchanged 900-word limit; the tour is 686 against 700. New source excerpts may be 1–12 exact
+  lines: complete one-line declarations/two-line connections are not padded with unrelated code;
+  the maximum, source matching, visible explanation, and reconstruction checks remain enforced.
+  The only new public ordinary construction path is `BasicSwitchService(HardwareMap, Config)` with
+  one `Config.defaults()` entry. Status construction and shared declaration seams remain private or
+  package-private. There is no duplicate sensor facade, ready-built-source constructor, Plant,
+  framework capability, or redundant public layer.
+- **Learner reconstruction evidence:** created an ignored temporary `doc14practice.basicsensing`
+  robot namespace with the switch owner and OpMode reconstructed from the lesson, then adapted only
+  the supplied small scenarios and test support into its matching test package. No example-class
+  imports remained. Both tests passed through the learner-owned declaration. Changing the expected
+  `switch.pressed` telemetry row from true to false failed exactly at the intended assertion
+  (2 tests, 1 expected failure); restoring it passed both tests again. Removed all five temporary
+  source/init-script files afterward. They were verification artifacts, not retained robot examples.
+- **Exact automated evidence (2026-09-06):** with Android Studio's JBR via
+  `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`, the final command
+  `.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`
+  passed. XML totals: **250 suites, 2,249 tests, 0 failures, 0 errors, 0 skips**. This includes
+  9 new sensor regression tests, 2 small sensor scenarios, 51 documentation-integrity tests, and
+  preserved Starter/managed/feedback coverage. Earlier focused sensor/Starter and temporary learner
+  runs also passed. Existing Java-8-on-JDK-21 and FTC SDK deprecation warnings remain; no new
+  compilation or Javadoc failure occurred. Gradle used the approved existing external cache after
+  the sandbox correctly rejected its initial lock-file write.
+- **Generated artifact and hygiene:** the existing Python 3.12 `build/docs-venv-win` environment
+  uses Zensical 0.0.51; `python -m pip check` reported no broken requirements.
+  `python -m zensical build --clean --strict` passed before the final Javadocs task.
+  `.github/verify_generated_api_links.py` verified **152 generated API links and 82 maintained
+  source links across 45 Markdown pages**; `.github/verify_generated_guide_search.py` verified
+  **937 indexed sections across all six areas** and the existing search enhancement. Exact-source,
+  accessibility, command-platform parity (27 Windows/macOS pairs), navigation, and API/source-link
+  checks passed. `git diff --check`, a changed-file trailing-whitespace scan including untracked
+  files, stale-route/control-owner searches, and temporary-file cleanup checks passed.
+- **Unverified/manual boundary:** browser runtime discovery returned no available browser; its
+  supported troubleshooting offers no available connection. No desktop/narrow interactive layout,
+  rendered diagram, or live search interaction review is claimed. The generated artifact is ready
+  for that review. No hardware run was performed; software does not establish wiring, polarity on
+  a physical assembly, real bounce, game-piece detection, physical timing, motion, or safety.
+  Android Studio review should start at the tour and Build home, read the complete switch lesson,
+  inspect the new service/host and two teaching scenarios, and confirm focused versus combined
+  intake ownership and the optional authoring path. All teaching OpModes remain disabled.
+- **Required review/publication reply:**
+  **“DOC-14 looks good. Authorize committing the reviewed DOC-14 diff on codex/doc-14-beginner-course,
+  pushing that branch to https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request,
+  and merging it into master.”**
+
+- **Gate 1 decision and implementation authorization (2026-09-06):** **In progress** on
+  `codex/doc-14-beginner-course`, created from freshly fetched `origin/master`. The user requested
+  a current-state relevance audit, chose a full beginner-course redesign, and then explicitly
+  approved the resulting plan with **"Implement the plan."** This expands DOC-14's original
+  single-lesson scope to the connected beginner explanations, maintained examples, navigation,
+  authoring guidance, and verification below. It authorizes implementation, not publication or
+  another tracker item. The final user clarification preserves compact initial tabs, one central
+  point per document, and individually consumable advanced topics at the end.
+- **Confirmed current behavior and callers:** the Build hub explicitly leaves sensor-to-status
+  observation for later. Evidence and Experiments and FTC Sensors already explain polarity,
+  debounce, cached status, and evidence limits. BasicLift exposes sensing through motor homing;
+  ReferenceInventoryStatusService combines three inputs and ordered-fill policy, and its only
+  construction callers are tests. Neither is a complete single-sensor managed teaching fixture.
+  The required three-stop tour currently teaches drive/button/timed work and assumes execution;
+  some later software-learning prerequisites incorrectly require physical gates. The maintained
+  callers are the firstdrive, starter, basicmechanisms, basicflywheel, and Reference example
+  families, their focused and managed tests, the beginner and Test & Tune routes, framework/root
+  doorways, navigation/search, and DocumentationLinksTest. Production Phoenix is not a teaching
+  source or implementation caller. No application-only or reusable framework behavior is changed.
+- **Locked audience and learning modes:** assume basic Java and FTC, but no Sushi concepts or
+  prior knowledge of saved functions. Students may learn entirely by reading the explanation and
+  labeled expected observations. Optional software execution needs no matching hardware. Optional
+  authorship belongs in their own main robot package beside `examples` and `phoenix`, or in an
+  independent scratch-robot package; tests must exercise that implementation rather than import
+  the supplied answer. Setup is required for execution/authoring, not reading.
+- **Preserved decision history:** retain DOC-04's no-hardware, self-guided access; DOC-07/08's
+  source-backed and reconstructable teaching; DOC-11's six small navigation areas, independent
+  fixtures, evidence ladder, concise examples, and global search; DOC-12/13's cumulative knowledge
+  without cumulative hardware and truthful complete wiring; DOC-15's FTC-loop bridge and three
+  distinct execution ideas; DOC-16/17's point-of-use definitions, active values, accessible visual
+  grammar, and source-optional reading; DOC-18's operational Test & Tune discipline; and DOC-19's
+  complete Windows/macOS commands. Replace required execution and misplaced physical prerequisites
+  with knowledge prerequisites and optional checks. Do not restore the retired monolithic course,
+  complete-source dumps, duplicate robot implementations, or a second architecture.
+- **Chosen course design:** retain Get Started, Learn, Build, Test & Tune, Advanced, and Reference.
+  Keep the compact tour: sensor observations replace drive as its first changing-value example;
+  intake callbacks and timed intake Auto remain its second and third ideas. Drive remains a
+  complete independent Build lesson. Group Build choices as one-part outcomes, composition, and
+  optional feedback; timed Auto precedes feedback-dependent sequences. Learn remains on-demand
+  concept explanation, with repeated walkthroughs folded into their canonical Build destinations
+  and advanced policy kept in later references. Each page has one outcome, a small explained
+  progression, exact code placement, expected observations, an optional software check, a separate
+  physical boundary, and a clear next choice.
+- **New example and public construction audit:** add one example-owned BasicSwitchService with
+  an ordinary `(HardwareMap, Config)` constructor. `Config.defaults()` is its sole configuration
+  entry; mutable data is validated and snapshotted before lookup. Immutable `Status` reports
+  observed/raw-interpreted/conditioned switch facts, and `status()` only reads the cache. A disabled
+  BasicSwitchTeleOp owns the one managed declaration. Existing FtcSensors.digitalLow and
+  BooleanSource.debouncedOnOff remain the complete supported acquisition/conditioning grammar;
+  use explicit 0.02-second press/release candidates. No new sensor facade, capability interface,
+  framework builder, Plant, or generic snapshot is justified. The exact underlying sampled-dt
+  debounce contract is preserved. INIT does not poll; START resets and samples; Services publish
+  before presenters; STOP clears observation and the host prevents later polling. Package-private
+  declaration seams support the same managed graph in tests without creating another ordinary host.
+- **Alternatives and student simplicity:** retaining only references leaves the complete first
+  sensor outcome missing. Teaching through lift requires motor/reference/Task concepts; teaching
+  through inventory requires three devices and robot policy. A generic sensor manager adds public
+  concepts without a repeated capability. A separate linear all-components course would recreate
+  clutter and unrelated prerequisites; deleting the short tour would discard the intentionally
+  small first pass. The chosen sensor owner supplies one real lifecycle and one published fact;
+  the existing tour and focused recipes reuse it without adding a parallel course. Extract
+  intake-only controls from combined Starter controls so the first actuator has no unused drive
+  graph, preserving current mappings and combined-drive behavior.
+- **NextFTC comparison:** current v2 introductions and reference pages demonstrate concrete robot
+  examples, local code explanations, lifecycle/event tables, package trees, and contextual deeper
+  links. Adopt those presentation practices with Java-first Sushi examples. Pin the inspected
+  official documentation source to `NextFTC/NextFTC-Docs@15a6c9e40df9c2771991afac4de903ccde305f4e`;
+  its `your-first-robot/index.mdx` is still a placeholder, so it is not evidence of a complete
+  beginner curriculum. Do not import NextFTC's scheduler, discovery, command requirements,
+  hardware ownership, or units. Interactive browser review was unavailable during planning;
+  source/text inspection does not claim rendered interaction evidence.
+- **Verification plan and completion boundary:** test the new sensor's INIT/START/active/STOP,
+  sampled debounce, caching, immutable snapshots, validation, and failure cleanup with the real
+  managed declaration and passive digital probes. Preserve relevant controls, actuator, and Auto
+  regressions. Independently review reading-only completion and reconstruct the sensor in a
+  temporary personal robot namespace from its lesson, proving tests target that copy. Run focused
+  tests while iterating, then TeamCode tests/compile, strict Javadocs and narrative builds,
+  generated link/search checks, stale-caller scans, whitespace checks, and desktop/narrow rendered
+  review when the browser is available. Record unavailable interactive or physical checks honestly.
+  Software completion does not prove wiring, motion, detection quality, timing on hardware, or
+  physical safety. The item stops at Android Studio review before destination-specific publication.
 
 - **Tracker-only intake status (2026-09-04):** **Proposed.** The DOC-13 curriculum audit found that
   ordinary sensing currently appears only inside the referenced-lift outcome or advanced reference

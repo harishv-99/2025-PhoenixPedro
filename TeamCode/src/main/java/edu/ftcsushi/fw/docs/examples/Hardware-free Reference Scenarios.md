@@ -9,8 +9,10 @@ A scenario is useful only when its boundary matches the question. Keep the produ
 that question, replace the external world it observes or commands, advance the normal heartbeat,
 and state what the resulting evidence cannot establish.
 
-**Before this page:** complete [Build and Run](<../getting-started/Build and Run.md>) so the repository
-builds and the Android Studio terminal is open at its root.
+**Before running:** complete [Build and Run](<../getting-started/Build and Run.md>) so the repository
+builds and the Android Studio terminal is open at its root. Reading the experiment needs no setup.
+New to reusable readers? First [read one switch](<../build/Read a Switch.md>); this page moves on to
+the separate question of a requested versus submitted motor command.
 
 This page explains those boundaries beside the first experiment. Read
 [How to test a Sushi component](<../testing-calibration/How to test a Sushi component.md>) afterward
@@ -99,6 +101,7 @@ marked **Advanced** assume the ordinary one-owner and one-heartbeat path is alre
 
 | Question | Production owner kept real | Focused scenario | Physical gate still required |
 |---|---|---|---|
+| Does one switch observation reach cached telemetry without extra reads? | `BasicSwitchService` + source graph + managed declaration | [Read a switch](<../build/Read a Switch.md#software-checkpoint-author-the-outside-world>) | wiring, polarity, placement, and physical switch behavior |
 | Do stick axes keep Sushi's coordinate signs? | `GamepadDevice` + `GamepadDriveSource` | [First drive](<../build/First Drive.md#software-checkpoint-sticks-have-one-coordinate-meaning>) | motor direction and motion |
 | Does named intake intent reach one motor command? | `StarterIntakeMechanism` + Plant | [Continuous intake](<../build/Continuous Intake.md#software-checkpoint-request-first-apply-on-heartbeat>) | intake direction, load, and stop |
 | Can one managed TeleOp serve continuous drive and callback-driven intake? | `StarterRobot` + production controls/outputs | [Combine drive and intake](<../build/Combine Drive and Intake.md#software-checkpoint-one-managed-cycle-serves-both-outcomes>) | safe simultaneous motion and STOP |
@@ -111,7 +114,7 @@ marked **Advanced** assume the ordinary one-owner and one-heartbeat path is alre
 | Must both flywheels be ready? | `ReferenceFlywheelMechanism` + grouped Plant | **Advanced:** [paired flywheel](<../advanced/Paired Flywheel Velocity.md>) | balance under load and tuning |
 | Which full-turn turret equivalent is legal and nearest? | `ReferencePeriodicTurretMechanism` + resolver | **Advanced:** [periodic turret](<../advanced/Periodic Turret Position.md>) | zero, cable bounds, and collision |
 | Is sensor-derived inventory published only after update? | `ReferenceInventoryStatusService` | [Complete source: `ReferenceInventorySoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/reference/capability/inventory/ReferenceInventorySoftwareScenarioTest.java>) | sensor placement and game-piece detection |
-| Does one retained Pedro execution classify honestly? | `RouteTask` + route boundary | [First Pedro Auto](<../build/First Pedro Auto.md#software-checkpoint-completion-needs-endpoint-evidence>) | localization, route accuracy, and stop |
+| Does one retained Pedro execution classify honestly? | `RouteTask` + route boundary | **Advanced:** [First Pedro Auto](<../build/First Pedro Auto.md#software-checkpoint-completion-needs-endpoint-evidence>) | localization, route accuracy, and stop |
 
 The linked tests are small teaching scenarios. The First Autonomous scenario keeps the real
 lift-only routine and uses only framework-built recording Tasks to show that home admits HIGH and

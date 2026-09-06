@@ -1497,14 +1497,16 @@ Instead, presenters should consume snapshots already computed by the rest of the
 The examples demonstrate the roles independently instead of presenting one season robot as the
 framework template:
 
-- Starter controls owner: `StarterTeleOpControls`
+- Starter intake controls owner: `StarterIntakeControls`, composed by `StarterTeleOpControls`
+  for combined drive and intake
 - Starter capability and mechanism owner: `StarterIntake` / `StarterIntakeMechanism`
 - Starter composition root and profile: `StarterRobot` / `StarterProfile`
 - focused paired-velocity capability and mechanism: `ReferenceFlywheels` /
   `ReferenceFlywheelMechanism`
 - focused delegated launcher policy: `ReferenceLauncher` / `ReferenceLauncherMechanism`
 - focused periodic-position mechanism: `ReferencePeriodicTurretMechanism`
-- focused sensing service: `ReferenceInventoryStatusService`
+- first single-input sensing service: `BasicSwitchService`
+- multi-input sensing service: `ReferenceInventoryStatusService`
 - focused coordination service: `ReferenceCoordinatedShotService`
 - framework vision lanes: `AprilTagVisionLane` with a concrete FTC backend, independently of robot
   field facts and strategy

@@ -8,8 +8,9 @@ tags:
 **Outcome:** use `CLOSED`, `HALF`, and `OPEN` everywhere while one mechanism maps the normalized
 coordinates `0.0`, `0.5`, and `1.0` into configured native standard-servo endpoint candidates.
 
-**Prerequisites:** complete [the continuous-intake lesson](<Continuous Intake.md>) through its
-software checkpoint. No servo or linkage is required before this page's isolated hardware gate.
+**Knowledge before this page:** understand the request-to-output path in
+[the continuous-intake lesson](<Continuous Intake.md>). Reading its explained scenario is enough;
+no installation, test run, servo, or linkage is required to learn this page.
 
 **Builds on:** the intake's capability/configuration/mechanism split, semantic command, private
 Plant, managed output heartbeat, controls binding, cached status, and terminal stop.
@@ -264,6 +265,11 @@ Notice:
   command reasserted at stop.
 - **Cannot conclude:** endpoint clearance, linkage geometry, interpolation, or physical arrival.
 
+**Expected observations:** construction writes nothing; the first heartbeat submits native `0.25`
+for `CLOSED`. Requesting `HALF` changes the logical request to `0.5` immediately and submits `0.475`
+only on the following heartbeat. `OPEN` submits `0.70`, and terminal stop reasserts that last
+command. These are the values to explain whether or not you run the scenario.
+
 Arrangement reads the active endpoint candidates and constructs the production mechanism with
 only its FTC Servo replaced:
 
@@ -307,7 +313,7 @@ assertEquals(0.475, servo.position(), 1e-12);
 assertEquals(2, servo.positionWrites());
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -351,7 +357,13 @@ power or another semantic state.
 
 **Does not prove:** the claw is halfway open, reached the command, or avoided a mechanical stop.
 
+**Reading checkpoint:** derive `0.475` from the two native endpoints and explain why it proves
+neither halfway linkage travel nor arrival. If you choose to author the slice, follow the
+[robot-package guidance](<README.md#author-in-your-robot>) with only this claw's owners.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to operate a real servo and linkage.
 
 Keep `BasicClawTeleOp` disabled and `allowClawMotion` false while reviewing configuration. Confirm
 that the horn is removable or the linkage can be tested without entering a pinch or hard-stop
@@ -363,6 +375,7 @@ while watching clearance and pinch zones. Pressing OpMode STOP terminally ends m
 reasserts the last standard-servo position command; it is not an open, zero-power, or release
 action. De-energize the robot before touching the horn or linkage.
 
-**Next gate:** after recording the isolated endpoint run, continue to
-[establishing a lift reference](<Referenced Lift.md>). It keeps the same ownership path and adds
-encoder units, an explicit reference requirement, and switch evidence.
+**Next gate:** learn the continuous input path in [drive with a gamepad](<First Drive.md>), then
+compose a TeleOp. If your robot instead needs feedback now, the optional
+[lift-reference lesson](<Referenced Lift.md>) reuses the switch and mechanism concepts. Neither
+reading choice requires a physical claw run.

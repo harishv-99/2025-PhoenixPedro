@@ -8,9 +8,10 @@ tags:
 **Outcome:** use a bottom switch to establish where encoder position zero means, without blocking
 the loop or pretending that a software-valid coordinate is already physically known.
 
-**Prerequisites:** complete [the named-claw lesson](<Named Claw.md>) through its software
-checkpoint. No lift, switch, or encoder is required before this page's isolated hardware gate, and
-passing software tests does not authorize motion.
+**Optional feedback lesson. Knowledge before this page:** understand the owner/Plant path in
+[Continuous Intake](<Continuous Intake.md>), polarity and debounce in [Read a Switch](<Read a Switch.md>),
+and cooperative work in [Run One Timed Auto](<Run One Timed Auto.md>). Reading those explanations is
+enough. No installation, test run, lift, switch, or encoder is required to learn this page.
 
 **Builds on:** one mechanism-owned Plant, data-only configuration, a managed output heartbeat,
 capability status, controls, and the separation between a command and physical evidence.
@@ -262,6 +263,13 @@ Notice:
 
 ## Software checkpoint: authored switch evidence controls homing
 
+**Expected observations:** HIGH leaves the active-low switch released and the lift unreferenced.
+After search starts, LOW samples accumulating the configured `0.02` seconds of loop intervals
+establish zero, end the home Task with `SUCCESS`, and select `STOWED`. If LOW never arrives, the
+configured timeout ends search
+with `TIMEOUT` and zero search power while the prior named request remains unchanged. Read the
+causal example below; running it is optional.
+
 - **Question:** Does the authored active-low switch observation establish reference only after its
   debounce interval and apply the configured `STOWED` hold, while missing evidence times out safely?
 - **Keep real:** the production lift, homing Task, switch interpretation, Plant, and loop order.
@@ -355,7 +363,7 @@ assertEquals(0.0, scenario.motor.power(), 0.0);
 assertEquals(0, scenario.motor.targetPositionWrites());
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -385,7 +393,14 @@ authored observations.
 **Does not prove:** the real switch changes safely, the lift travels toward it, or the encoder scale
 and power limit are correct.
 
+**Reading checkpoint:** explain why `referenced` is initially false, why a brief LOW does not
+finish homing, and why timeout cannot establish zero. This optional fixture adds a motor and a
+reference Task to familiar switch evidence; it does not require constructing the earlier claw.
+Use the [robot-package guidance](<README.md#author-in-your-robot>) if you choose to author it.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to operate a real lift.
 
 Keep `BasicLiftHomeTeleOp` disabled and `allowLiftMotion` false while reviewing configuration.
 Write the switch-polarity, motor-direction, travel-envelope, and emergency-stop check plan first.
@@ -406,6 +421,6 @@ clear, press X for real low-power homing while an immediate STOP operator watche
 Record repeatable activation and reference status; do not try a named-height move yet, and never
 touch or reconnect the linkage while the OpMode or controller is active.
 
-**Next gate:** after repeatable low-power homing is established, continue to
-[moving the referenced lift](<Move a Referenced Lift.md>). That page adds direct named moves,
-fresh position feedback, and the explicit success/timeout/cancellation contract.
+**Next gate:** read [moving the referenced lift](<Move a Referenced Lift.md>) to add direct named
+moves and fresh arrival evidence. A physical move requires repeatable low-power homing first;
+reading the next explanation does not.

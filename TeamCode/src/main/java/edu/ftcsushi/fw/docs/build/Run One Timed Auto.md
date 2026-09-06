@@ -5,14 +5,15 @@ tags:
 
 # Run one timed intake Task in Auto
 
-**Outcome:** start collecting exactly at FTC START, keep the request active for 0.75 seconds, then
-request `STOPPED` without sleeping or writing a loop.
+**Outcome:** start a collection request at FTC START and end it on the first loop that observes
+0.75 seconds have elapsed, without sleeping or writing a private loop.
 
-**Prerequisites:** for this first pass, complete the software-only intake stop in
-[Continuous Intake](<Continuous Intake.md>). No hardware gate is required to read this first pass.
+**Knowledge before this page:** understand the persistent named request in
+[Continuous Intake](<Continuous Intake.md>). Its explained observations are enough. No installation,
+code edit, test run, hardware gate, or drive knowledge is required to read the whole lesson.
 
-**Before the full build or physical motion:** complete that lesson's isolated intake hardware
-gate. Drive is not part of this independent fixture.
+**One idea:** a Task gives an existing capability request a lifetime. Only an optional physical
+run requires the intake's isolated hardware gate; drive is not part of this fixture.
 
 ## First pass: work that continues across loops
 
@@ -55,8 +56,10 @@ Sequences, parallel work, and outcome branches belong in the later
 
 ## Full build: reconstruct the production path
 
-Continue here after the first pass when you are ready to trace the complete production path and
-its software evidence. Keep the example disabled until the separate hardware gate says otherwise.
+Continue here to trace the complete production path and its expected software observations.
+Reading completes the lesson; running the supplied scenario or
+[authoring this slice](<README.md#author-in-your-robot>) is optional. Keep the example disabled until
+the separate hardware gate says otherwise.
 
 ## Critical production idea
 
@@ -159,6 +162,11 @@ Notice:
 - [Complete source: `StarterTimedAutoSoftwareScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/opmode/StarterTimedAutoSoftwareScenarioTest.java>)
 
 ## Software checkpoint: time begins at START
+
+**Expected observations:** INIT creates work but writes no power. START selects `COLLECT`. At
+`0.74` seconds after START it is still active; the loop at `0.75` seconds selects `STOPPED` and
+reports `SUCCESS`. Early STOP instead reports `CANCELLED` and submits motor zero. The supplied
+clock values below expose those boundaries without requiring a real motor or clock experiment.
 
 - **Question:** Does the exact Starter routine start on the managed START boundary, remain active
   for its duration, select `STOPPED` on completion or FTC STOP, and create fresh single-use work?
@@ -292,7 +300,7 @@ try {
 }
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -317,7 +325,14 @@ cancellation, terminal output stop, and fresh single-use routine construction.
 
 **Does not prove:** 0.75 seconds is physically sufficient or safe for a real intake.
 
+**Reading checkpoint:** explain why five seconds spent in INIT do not shorten collection, why a
+loop must observe the duration boundary, and why repeating the routine needs a new Task. Together
+with the combined TeleOp lesson, this completes the basic managed-program learning path. It is a
+timed mechanism Auto, not a drive route.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to operate the real intake in Auto.
 
 Keep `StarterAuto` disabled and `allowIntakeMotion` false while reviewing the motor name, direction,
 power, duration, and clear mechanism envelope. Re-run the intake's dead-man direction check,
@@ -325,4 +340,7 @@ restrain loose material, and appoint an immediate STOP operator. Only then enabl
 Auto and its intake permission for one supervised run. Observe that motion begins only at START,
 ends near the reviewed duration, and FTC STOP zeros the motor during an early-abort check.
 
-**Next gate:** compose feedback-aware prerequisite steps in [First Autonomous](<First Autonomous.md>).
+**Next gate:** choose an optional extension from the [Build course](<README.md#add-feedback-when-your-robot-needs-it>).
+For feedback-aware Auto, first understand [lift reference](<Referenced Lift.md>) and
+[lift movement](<Move a Referenced Lift.md>), then [sequence those Tasks](<First Autonomous.md>).
+You do not need those mechanisms to understand or author this timed Auto.

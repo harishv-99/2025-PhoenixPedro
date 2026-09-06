@@ -8,15 +8,20 @@ tags:
 **Outcome:** press one button to request `COLLECT`, another to request `EJECT`, and a third to
 request `STOPPED`, while one managed mechanism owns every motor write.
 
-**Prerequisites:** the project software checks pass. No prior Plant, capability, binding, or Task
-knowledge is assumed. Keep the intake motor disconnected until the isolated hardware gate.
+**Knowledge before this page:** [read a switch](<Read a Switch.md>) for a current-value reader,
+managed updates, and cached status. No prior Plant, capability, binding, or Task knowledge is
+assumed. You can read every section without installing software or owning a motor.
+
+**One idea:** controls request a named action; one mechanism realizes that request. Optional
+[authoring in your robot](<README.md#author-in-your-robot>) and the supplied software test use this
+same production path. Keep the intake motor disconnected until the isolated hardware gate.
 
 ## First pass: run a function once per press
 
 Start with the familiar event, before the motor internals. This exact production registration says,
 “when A changes from released to pressed, call `setMode(COLLECT)` once”:
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java -->
 ```java
 requiredCallbacks.onRise(
         driver.a(),
@@ -58,14 +63,16 @@ named requests become one managed motor command and how STOP cleanup remains saf
 
 ## Full build: reconstruct the production path
 
-**Start here:** this is the complete first actuator lesson. It follows one request from the public
-robot meaning through configuration, Plant construction, managed update, status, controls, the
-OpMode host, a software test, and finally supervised hardware evidence.
+This is the complete first actuator lesson. Follow the same request through its owners; each
+section answers one necessary question about that single path. Reading the software scenario and
+its expected observations is sufficient for this lesson. Running it or authoring the slice is
+optional; supervised hardware work has its own gate below.
 
 ## Critical production idea
 
 A **capability** is the small vocabulary TeleOp and Auto share. For this mechanism, callers ask for
-a named `Mode`; they never repeat motor-power numbers:
+a named `Mode`; they never repeat motor-power numbers. Java's `enum` declares a fixed set of named
+values, so `Mode.COLLECT` selects one of the three answers below:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntake.java -->
 ```java
@@ -135,7 +142,9 @@ modeCommand = SemanticScalarCommand.forEnum(Mode.STOPPED)
 ```
 
 The mechanism maps from meaning to power. It never tries to infer a meaning from a number, so two
-modes could even have the same configured power without corrupting status.
+modes could even have the same configured power without corrupting status. The type parameter in
+`SemanticScalarCommand<Mode>` means this command accepts those `Mode` values and keeps each name
+paired with its numeric power.
 
 “Persistent” means the selected request stays in effect across loop cycles until a setter or Task
 replaces it; student code does not resend it in a private loop.
@@ -143,7 +152,9 @@ replaces it; student code does not resend it in a private loop.
 ### 3. Build the one final hardware writer
 
 A **Plant** is the mechanism-owned object that resolves one requested target, caches the resulting
-facts, and performs the final actuator write during its managed update:
+facts, and performs the final actuator write during its managed update. The
+`Objects.requireNonNull(...)` call below rejects a missing hardware registry with the given message;
+it is input validation, not another owner or lifecycle phase:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
@@ -183,8 +194,9 @@ public void setMode(Mode mode) {
 }
 ```
 
-Status combines that named request with one immutable snapshot of already-cached Plant facts. It
-does not poll hardware:
+Status combines that named request with one immutable snapshot of already-cached Plant facts. A
+snapshot is a value you can read after capture without changing its contents. It does not poll
+hardware:
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java -->
 ```java
@@ -228,7 +240,10 @@ private StarterIntakeMechanism declareIntake(RobotProgram program,
 
 [`RobotProgram.output(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/RobotProgram.html>)
 registers the owner's update and cleanup. The presenter reads cached capability status after the
-output phase; it does not decide behavior or commit a separate telemetry frame.
+output phase; it does not decide behavior or commit a separate telemetry frame. Its two-argument
+lambda `(clock, telemetry) -> ...` is saved now and receives the current clock and shared telemetry
+when the presentation phase calls it later. `presentIntake(...)` formats the cached mode and applied
+power into that frame.
 
 ### 6. Give buttons semantic meaning
 
@@ -238,7 +253,7 @@ the managed callback graph and the capability returned by the mechanism declarat
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java -->
 ```java
 StarterIntakeMechanism intake = declareIntake(program, activeProfile);
-StarterTeleOpControls controls = new StarterTeleOpControls(
+StarterIntakeControls controls = new StarterIntakeControls(
         new GamepadDevice(requiredGamepad));
 controls.bind(program.callbackBindings(), intake);
 ```
@@ -246,7 +261,7 @@ controls.bind(program.callbackBindings(), intake);
 Inside that owner, controls give each rising edge a semantic meaning. They call the capability and
 never reach into hardware:
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java -->
 ```java
 requiredCallbacks.onRise(
         driver.a(),
@@ -301,8 +316,8 @@ Notice:
   [Complete source: `StarterIntakeMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/capability/intake/StarterIntakeMechanism.java>)
 - [`StarterProfile`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.html>) — configuration and motion gate.
   [Complete source: `StarterProfile.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterProfile.java>)
-- `StarterTeleOpControls` — A/B/X button meanings.
-  [Complete source: `StarterTeleOpControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterTeleOpControls.java>)
+- `StarterIntakeControls` — A/B/X button meanings.
+  [Complete source: `StarterIntakeControls.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterIntakeControls.java>)
 - [`StarterRobot`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.html>) — composition and managed declarations.
   [Complete source: `StarterRobot.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/starter/robot/StarterRobot.java>)
 - [`StarterIntakeTeleOp`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/starter/opmode/StarterIntakeTeleOp.html>) — mechanism-only host.
@@ -321,8 +336,14 @@ Notice:
 - **Observe:** semantic status, cached applied power, and the recorded device write.
 - **Cannot conclude:** physical direction, safe ingestion, current draw, jamming, or stopping time.
 
-First arrange the production mechanism with its normal configuration and replace only the FTC
-motor boundary:
+**Expected observations:** selecting `COLLECT` immediately changes the named request, while the
+recorded motor-write count stays zero. The next output update submits `0.37` power. That test value
+is deliberately different from the profile's `0.20` candidate so the scenario proves that the
+mechanism uses its supplied configuration. `assertEquals(expected, actual, tolerance)` compares
+those software facts; a failing comparison fails the test.
+
+Read this as an experiment you may optionally run. First arrange the production mechanism with its
+normal configuration and replace only the FTC motor boundary:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/starter/robot/StarterMechanismLessonTest.java -->
 ```java
@@ -354,7 +375,7 @@ assertEquals(config.collectPower, intake.status().appliedPower(), 0.0);
 assertEquals(config.collectPower, motor.power(), 0.0);
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -376,7 +397,13 @@ change. Arrangement supplies no hidden motion or feedback.
 
 **Does not prove:** the mechanism collects, ejects, or stops safely on the physical robot.
 
+**Reading checkpoint:** explain why releasing A keeps collecting, why the motor-write count is
+zero before the output update, and which owner changes a configured power. Those answers complete
+the learning checkpoint without a test run or hardware.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to operate the real intake.
 
 Keep `StarterIntakeTeleOp` disabled and `allowIntakeMotion` false while reviewing configuration.
 Restrain loose material, disconnect other motion owners, verify the motor name and direction, and
@@ -385,6 +412,6 @@ for a low-power dead-man direction check before copying the observed direction i
 `StarterProfile.current()`. Only then enable the focused OpMode and set the gate true for a
 supervised low-power run that begins from `STOPPED`.
 
-**Next gate:** after isolated direction and stop behavior are established, continue to
-[named claw positions](<Named Claw.md>). It reuses this complete owner/heartbeat path and teaches
-only bounded standard-servo position mapping.
+**Next gate:** continue learning with [named claw positions](<Named Claw.md>). It reuses this
+owner/heartbeat path and adds bounded standard-servo position mapping. Reading that lesson does
+not require completing the physical intake procedure.

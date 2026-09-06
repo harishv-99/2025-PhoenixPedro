@@ -8,9 +8,10 @@ tags:
 **Outcome:** request a named lift height and let a cooperative Task finish only after fresh encoder
 evidence says that exact request reached its target.
 
-**Prerequisites:** complete [the lift-reference lesson](<Referenced Lift.md>) through its software
-checkpoint. On hardware, establish the reference safely and repeatably before attempting this
-page's first low-height move.
+**Optional feedback lesson. Knowledge before this page:** understand the
+[lift-reference lesson](<Referenced Lift.md>) and its expected observations. No installation, test
+run, or lift is needed for reading. On hardware, establish the reference safely and repeatably
+before attempting this page's first low-height move.
 
 **Builds on:** the lift's bounded inch coordinate, ticks-per-inch conversion, active-low switch,
 non-blocking home Task, private position Plant, and managed `Tasks -> Outputs` order.
@@ -188,6 +189,12 @@ Notice:
 
 ## Software checkpoint: fresh encoder evidence completes the move
 
+**Expected observations:** starting a `LOW` move changes the request before any new motor write.
+The output phase submits its target and caches the supplied encoder value. Only after later
+matching feedback is cached can the next Task phase report `SUCCESS`. Cancelling a `HIGH` move
+ends that Task but leaves the persistent `HIGH` request selected. Those distinct boundaries are
+the reading checkpoint; the scenario can also be run optionally.
+
 - **Question:** Does a started `moveTo(LOW)` separate request, output, and fresh-feedback success,
   and does active cancellation leave its selected persistent request intact?
 - **Keep real:** the production semantic command, feedback-aware Task, referenced Plant, and managed
@@ -304,7 +311,7 @@ assertEquals(writesBeforeCancel + 1, scenario.motor.targetPositionWrites());
 assertFalse(scenario.lift.status().atTarget());
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -332,7 +339,14 @@ behavior for authored encoder evidence.
 **Does not prove:** the physical lift moved to LOW, held it safely, or can repeat the motion under
 load.
 
+**Reading checkpoint:** identify which phase writes the target and which later phase can report
+arrival. Explain why cancellation leaves a hold request but FTC STOP still ends output. Optional
+[authorship](<README.md#author-in-your-robot>) keeps the same mechanism and adds only this feedback
+Task path.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to move the real lift.
 
 Repeat the prior lesson's bottom-reference procedure in this same OpMode run; its recorded result
 qualifies the procedure, not reference state in a future Plant. Mechanically support the lift, keep
@@ -340,6 +354,7 @@ a clear travel envelope and immediate STOP operator, and request only the lowest
 at conservative power. Compare measured inches with independent physical measurement before
 trusting ticks per inch, tolerance, higher presets, timeout, or holding behavior.
 
-**Next gate:** after one repeatable low-height move and physical STOP are established, continue to
-[single-flywheel velocity](<Single Flywheel Velocity.md>). It keeps one motor and one Plant but
-uses a numeric command because velocity itself is the complete capability request.
+**Next gate:** [sequence these lift Tasks in Auto](<First Autonomous.md>) when later work must
+wait for successful arrival. The separate [single-motor velocity lesson](<Single Flywheel Velocity.md>)
+explains numeric feedback intent if that is your next question. Neither reading choice requires a
+physical lift run.

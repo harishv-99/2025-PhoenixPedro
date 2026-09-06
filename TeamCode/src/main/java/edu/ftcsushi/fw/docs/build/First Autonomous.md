@@ -8,11 +8,13 @@ tags:
 **Outcome:** run a fresh lift-only Auto in which `home`, `HIGH`, and `STOWED` begin in order only
 after the preceding feedback-aware Task succeeds.
 
-**Prerequisites:** first complete [one timed Auto](<Run One Timed Auto.md>) so the managed root Task
-and START lifecycle are familiar. Then complete [reference a lift](<Referenced Lift.md>) and
-[move a referenced lift](<Move a Referenced Lift.md>), including their software checkpoints and
-isolated hardware gates; those two fixtures supply the capability evidence needed by this sequence.
-No claw is required.
+**Optional feedback lesson. Knowledge before this page:** read [one timed Auto](<Run One Timed Auto.md>),
+[lift reference](<Referenced Lift.md>), and [lift movement](<Move a Referenced Lift.md>) through their
+expected software observations. No installation, test run, or hardware gate is required to read
+this sequence; no claw is required at all.
+
+**One idea:** each successful prerequisite admits the next action. A physical run additionally
+requires the lift's separate home and move gates.
 
 ## Critical production idea
 
@@ -115,6 +117,12 @@ Notice:
 - [Complete source: `BasicAutoRoutinesTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/robots/examples/basicmechanisms/BasicAutoRoutinesTest.java>) — supplied maintainer coverage for the optional parallel capstone.
 
 ## Software checkpoint: success admits the next work
+
+**Expected observations:** `home` starts first; only its `SUCCESS` starts `HIGH`, and only that
+success starts `STOWED`. A `HIGH` timeout or active cancellation suppresses `STOWED` and retains
+the exact non-success outcome. The held height request remains `HIGH` because the mechanism chose
+leave-request-on-cancel behavior. The supplied scenario makes each outcome explicit; executing it
+is optional.
 
 - **Question:** Does the maintained lift-only routine start only the admitted work, retain exact
   success/timeout/cancel outcomes, and suppress later Task starts after non-success?
@@ -226,7 +234,7 @@ assertEquals(TaskOutcome.CANCELLED, cancelledLift.highTask.getOutcome());
 assertEquals(Arrays.asList("home", "lift HIGH"), cancelledEvents);
 ```
 
-Run:
+Optionally run the maintained scenario after [software setup](<../getting-started/Build and Run.md>):
 
 === "Windows"
 
@@ -253,7 +261,14 @@ propagates active cancellation to its current child, and is fresh for each reque
 
 **Does not prove:** the real lift produces correct evidence, reaches either height, or stops safely.
 
+**Reading checkpoint:** trace both a successful run and a `HIGH` timeout. State which child
+starts next, the root outcome, and the request that remains held. These answers establish your
+understanding; only an executed test supplies new software evidence. Follow the
+[robot-package guidance](<README.md#author-in-your-robot>) for optional authorship.
+
 ## Isolated hardware gate
+
+This separate procedure applies only if you choose to run the physical lift sequence.
 
 Keep `BasicLiftAuto` disabled and its motion permission false. Draw the three-step timeline and
 write down the reference cue, arrival evidence, timeout, and STOP response expected at each step.
@@ -263,5 +278,7 @@ and permission for one supervised run. Treat any timeout as a failed run; do not
 into the next step without diagnosing the missing evidence, and use FTC STOP immediately because
 the last selected height request remains persistent.
 
-**Next gate:** after the lift-only sequence is proven, add one already-proven claw through the
-optional `guide(...)` capstone and repeat the same software outcome review before physical motion.
+**Next gate:** choose the [single-motor velocity lesson](<Single Flywheel Velocity.md>) if your
+robot needs that feedback quantity, or select another [Advanced pattern](<../advanced/README.md>).
+The `guide(...)` claw capstone is optional; review its software outcomes and each mechanism's
+physical gates before any combined hardware run.

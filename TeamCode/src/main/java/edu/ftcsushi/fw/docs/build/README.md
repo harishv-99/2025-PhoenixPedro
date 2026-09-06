@@ -5,71 +5,132 @@ tags:
 
 # Build one robot outcome at a time
 
-The knowledge is cumulative; the hardware fixtures are intentionally independent. Start with the
-intake even if your robot does not need one: it is the smallest complete example of a named
-capability, data-only configuration, private Plant, managed output, controls, software evidence,
-and an isolated hardware gate. A later lesson may assume that vocabulary, but it does not make you
-carry unrelated motors and servos into its focused test.
+Read this course with basic Java and FTC experience; Sushi concepts and unfamiliar Java syntax are
+explained where they first become useful. Reading is a complete learning path: no installation,
+code changes, test run, or matching hardware is required. The short
+[first software tour](<../getting-started/First Software Tour.md>) previews a changing sensor fact,
+one button press, and one timed action before these pages explain their complete owners.
 
-## Before the actuator path
+## Choose how to follow a lesson
 
-1. [Set up and verify Sushi](<../getting-started/Build and Run.md>).
-2. [Drive with a gamepad](<First Drive.md>) if you need the drivetrain path. Drive is independent
-   of the actuator sequence below.
+Each page states its knowledge prerequisites, the production idea, and the expected observations
+from a maintained software scenario. Read the code and predict those observations, then compare
+your reasoning with the explanation on the page. You have finished the reading checkpoint when you
+can explain which owner changes each fact and why the next loop or action changes it again.
 
-## Cumulative actuator path
+Optionally [set up and verify the project](<../getting-started/Build and Run.md>) to run the supplied
+scenario. A passing test supplies software evidence for its stated question; reading an expected
+result does not claim that you ran it. You may also author the focused slice in your own robot
+package using the guidance below. A physical check is a separate, optional activity that requires
+the page's complete hardware procedure.
 
-1. [Run a continuous intake by name](<Continuous Intake.md>) — build the complete first actuator
-   slice around normalized motor power.
-2. [Move a claw through named positions](<Named Claw.md>) — add a bounded logical coordinate and
-   map it to configured standard-servo endpoint candidates.
-3. [Establish a lift reference](<Referenced Lift.md>) — add encoder units, an active-low switch,
-   and a non-blocking reference search.
-4. [Move the referenced lift and wait for feedback](<Move a Referenced Lift.md>) — add named
-   positions and a feedback-aware Task whose outcome depends on fresh evidence.
-5. [Command one flywheel velocity](<Single Flywheel Velocity.md>) — use a numeric command because
-   velocity itself is the complete capability request and observe controller feedback separately.
+## Understand one part
 
-Stop after the outcome your robot needs, but read the lessons in order so a later page can say
-“same owner and heartbeat as before” instead of introducing a second architecture. When a page
-switches example packages, its **Put this focused fixture into your robot** section shows the
-profile, output, controls, presenter, and managed-host connections you must carry over.
+The knowledge is cumulative; the hardware fixtures are intentionally independent. Read the lessons
+in order to learn the ordinary ownership pattern without assembling an ever-growing example robot.
 
-The Pedro route page is deliberately different: it is explicitly labeled a blocked
-software-boundary checkpoint, not a reconstruction-grade hardware recipe. Its current lesson ends
-at exact route-attempt classification because the first conservative physical gate cannot yet be
-authorized through the managed integration.
+1. [Read a switch and show its state](<Read a Switch.md>) — one digital input becomes an explicit,
+   debounced fact in cached status. No actuator is involved.
+2. [Run a continuous intake by name](<Continuous Intake.md>) — one button changes a persistent
+   request; the mechanism owns the private Plant and final motor write.
+3. [Move a claw through named positions](<Named Claw.md>) — reuse that ownership pattern while
+   mapping logical positions into configured servo endpoints, without claiming arrival feedback.
 
-## Put the pieces together
+The intake is the complete first actuator lesson. It adds a command and hardware output to the
+earlier observation vocabulary. The claw keeps that path and adds one position-mapping decision.
 
-After both focused slices pass their gates, [combine drive and intake in one TeleOp](<Combine Drive and Intake.md>).
-That lesson shows how one composition root shares a gamepad while preserving a continuous drive
-path and callback-driven mechanism intent.
+## Compose a TeleOp and a basic Auto
 
-For Auto, first [run one timed root Task](<Run One Timed Auto.md>). Then
-[sequence capability Tasks](<First Autonomous.md>) and let exact outcomes decide whether later work
-may start. Pedro Pathing is a separate integration path; add it when you are ready to
-[verify one fixed route's software outcome](<First Pedro Auto.md>).
+Drive is independent of the actuator fixtures. Its knowledge prerequisite is understanding a
+reusable current-value reader; it does not require an intake, claw, lift, or flywheel.
+
+1. [Drive with a gamepad](<First Drive.md>) — current stick values reach one managed drivetrain sink
+   continuously, rather than through button callbacks.
+2. [Combine drive and intake in one TeleOp](<Combine Drive and Intake.md>) — two already-explained
+   owners share a gamepad and one managed lifecycle.
+3. [Run one timed root Task in Auto](<Run One Timed Auto.md>) — reuse the intake capability, start at
+   FTC START, finish after the stated duration, and handle early STOP.
+
+At this point you can explain a complete managed TeleOp and a basic timed mechanism Auto. The Auto
+does not drive a route. Route following and additional feedback mechanisms are separate choices,
+not prerequisites for reaching this checkpoint.
+
+## Add feedback when your robot needs it
+
+These are optional continuation lessons. Each names the prior concepts it uses; read those
+explanations as needed without building the earlier hardware.
+
+1. [Establish a lift reference](<Referenced Lift.md>) — reuse switch polarity and debounce to
+   establish encoder zero through cooperative homing.
+2. [Move the referenced lift and wait for feedback](<Move a Referenced Lift.md>) — distinguish a
+   persistent request from a Task that waits for fresh arrival evidence.
+3. [Sequence capability Tasks in Auto](<First Autonomous.md>) — admit the next lift action only
+   after exact success; retain abnormal outcomes and cancellation.
+4. [Command one flywheel velocity](<Single Flywheel Velocity.md>) — use a numeric request because
+   velocity itself is the complete intent, with controller feedback and explicit cancellation.
+
+Pedro is an optional integration branch:
+[inspect one fixed route's software outcome](<First Pedro Auto.md>). That page is explicitly a
+blocked software-boundary checkpoint. It does not authorize physical route motion or supply a
+complete hardware recipe while the managed route power-limit boundary remains unresolved.
+Choose other [Advanced patterns](<../advanced/README.md>) individually when a robot requirement
+needs them.
+
+## Optional: author the slice in your robot { #author-in-your-robot }
+
+The main code for your robot belongs under
+`TeamCode/src/main/java/edu/ftcsushi/robots/myrobot/`, with package
+`edu.ftcsushi.robots.myrobot`. Replace `myrobot` with your team's robot name. This is a sibling of
+`examples` and other robot application packages, not a subpackage of them. A separate scratch robot can use another
+sibling such as `edu.ftcsushi.robots.practicebot`; creating one is optional.
+
+Keep that robot's configuration, controls, capability owners, presenters, and OpModes together.
+Begin with the one slice you understand. Its maintained **Main** manifest identifies the pieces to
+adapt, while the displayed construction, registration, and status code explains how they connect.
+Use your robot's package and imports throughout; a package-private controls owner must remain in
+the package of the clients that use it. Keep the examples as the compiling reference rather than
+making your robot depend on example classes or another robot application's code.
+
+Make one small change at a time; stop after any step and compare your code with the explained path:
+
+1. Add the data-only configuration and the one owner for this outcome. State the hardware facts
+   that owner retains and validate them before lookup.
+2. Add the source or named request and its cached status. Predict which fields can change before
+   the next managed update and which require that update.
+3. Connect that owner to the managed program, then add only the required controls and presenter.
+   Keep its update and stop responsibilities visible; do not add another FTC loop.
+4. Adapt the matching software scenario so it constructs your owner and, when the question covers
+   integration, your declaration path. Change one of your configuration values and its expected
+   observation together to check that the scenario actually exercises your code.
+
+Your tests belong under `TeamCode/src/test/java/edu/ftcsushi/robots/myrobot/`, using the matching
+robot package. Test-only clocks and hardware probes stay in test sources, never in robot main
+code. The supplied **Test** manifests and commands run the maintained examples, not your new robot.
+Update the test's package, owner imports, construction calls, and Gradle selector. If it uses
+package-private scenario support, adapt that support into the matching test package as well; do not
+make example internals public simply to borrow them. Reuse the shared test-only clock and device
+probes. Merely renaming a selector or running an unchanged reference test does not verify your
+owner. A deliberate temporary wrong expected value should fail the matching assertion; restore the
+correct expectation before retaining the test.
+
+Keep each physical motion permission false and teaching OpModes disabled while authoring. Merely
+copying a reviewed software shape does not review your wiring, power, travel, or stop behavior.
+Complete only the isolated hardware gate for the mechanism you actually intend to operate.
 
 ## Where each concept first appears
 
 | Concept you need | First Build lesson | What that lesson makes explicit |
 |---|---|---|
-| continuous gamepad axes | [First drive](<First Drive.md>) | `GamepadDevice` → `DriveSource` → one managed drive sink; no callback binding |
-| synchronous button meaning | [Continuous intake](<Continuous Intake.md>) | `CallbackBindings.onRise(...)` calls a capability setter |
-| capability, profile, Plant, status, presenter | [Continuous intake](<Continuous Intake.md>) | the complete ordinary actuator ownership chain |
-| bounded named servo positions | [Named claw](<Named Claw.md>) | logical `[0, 1]` mapped to configured native endpoint candidates; no arrival claim |
-| Boolean sensor, polarity, and debounce | [Referenced lift](<Referenced Lift.md>) | switch evidence establishes a reference through a fresh Task |
-| direct request versus wait-for-feedback Task | [Move a referenced lift](<Move a Referenced Lift.md>) | completion and cancellation policy use coherent semantic/numeric status |
-| numeric velocity feedback | [Single flywheel velocity](<Single Flywheel Velocity.md>) | requested, applied, measured, arrival, timeout, and cancel-to-stop |
-| several owners in one TeleOp | [Combine drive and intake](<Combine Drive and Intake.md>) | shared controls, declaration order, output/presenter ownership, collision checks, and STOP |
-| one behavior over time in Auto | [Run one timed Auto](<Run One Timed Auto.md>) | fresh root Task, START boundary, duration, and cancellation-safe persistent request |
-| Task composition and outcome gates | [First autonomous](<First Autonomous.md>) | sequence first; parallel work only after the basic outcome path is clear |
+| sensor value, polarity, and debounce | [Read a switch](<Read a Switch.md>) | one sampled fact, cached status, and a presenter that does not resample |
+| synchronous button meaning | [Continuous intake](<Continuous Intake.md>) | a saved callback calls a capability setter on one rise |
+| capability, profile, Plant, and output | [Continuous intake](<Continuous Intake.md>) | a named request reaches one private final writer |
+| bounded named servo positions | [Named claw](<Named Claw.md>) | logical coordinate and native endpoints; no arrival claim |
+| continuous gamepad axes | [First drive](<First Drive.md>) | a controls-owned source reaches one managed drive sink |
+| several owners in one TeleOp | [Combine drive and intake](<Combine Drive and Intake.md>) | shared inputs, explicit output order, cached presentation, and STOP |
+| one behavior over time in Auto | [Run one timed Auto](<Run One Timed Auto.md>) | fresh root Task, START boundary, duration, and cancellation |
+| direct request versus feedback Task | [Move a referenced lift](<Move a Referenced Lift.md>) | coherent request/arrival evidence and an explicit cancellation choice |
 
-Sensor-to-status observation without motion is a separate later Build slice. Prestart selection,
-services, field-relative drive, vision, Pedro internals, and experiments remain later outcomes rather
-than prerequisites hidden inside these lessons.
-
-Every recipe links exact generated API documentation and labels GitHub links as **Complete
-source**. Displayed Java is copied from those compiling authorities; the explanation tells you why
-each piece exists.
+Use [Learn](<../getting-started/Beginner's Guide.md>) for an on-demand concept explanation and
+[Reference](<../reference/README.md>) for exact API lookup. Complete-source links supply package,
+import, and other mechanical details; the important ownership, active values, and heartbeat
+connections remain explained in each lesson.

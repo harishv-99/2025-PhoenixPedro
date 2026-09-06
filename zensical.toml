@@ -10,8 +10,8 @@ nav = [
   { "Get Started" = [
     { "Welcome to Sushi" = "README.md" },
     { "How Sushi runs your code" = "docs/getting-started/Framework Overview.md" },
-    { "Set up and verify" = "docs/getting-started/Build and Run.md" },
     { "First software tour" = "docs/getting-started/First Software Tour.md" },
+    { "Optional: set up and verify" = "docs/getting-started/Build and Run.md" },
     { "Guide map" = "docs/README.md" },
   ] },
   { "Learn" = [
@@ -25,16 +25,22 @@ nav = [
   ] },
   { "Build" = [
     { "Choose a build" = "docs/build/README.md" },
-    { "Drive with a gamepad" = "docs/build/First Drive.md" },
+    { "Observe and command" = [
+    { "Read a switch" = "docs/build/Read a Switch.md" },
     { "Run a named intake" = "docs/build/Continuous Intake.md" },
     { "Open and close a claw" = "docs/build/Named Claw.md" },
-    { "Establish a lift reference" = "docs/build/Referenced Lift.md" },
-    { "Move a referenced lift" = "docs/build/Move a Referenced Lift.md" },
-    { "Reach one motor velocity" = "docs/build/Single Flywheel Velocity.md" },
+    ] },
+    { "Combine behavior" = [
+    { "Drive with a gamepad" = "docs/build/First Drive.md" },
     { "Combine drive and intake" = "docs/build/Combine Drive and Intake.md" },
     { "Run one timed Auto" = "docs/build/Run One Timed Auto.md" },
+    ] },
+    { "Optional: feedback" = [
+    { "Establish a lift reference" = "docs/build/Referenced Lift.md" },
+    { "Move a referenced lift" = "docs/build/Move a Referenced Lift.md" },
     { "Sequence an autonomous" = "docs/build/First Autonomous.md" },
-    { "Inspect Pedro route status" = "docs/build/First Pedro Auto.md" },
+    { "Reach one motor velocity" = "docs/build/Single Flywheel Velocity.md" },
+    ] },
   ] },
   { "Test & Tune" = [
     { "Test and tune home" = "docs/testing-calibration/README.md" },
@@ -91,6 +97,7 @@ nav = [
       { "AprilTag practice setup" = "docs/drive-vision/AprilTag Practice Setup.md" },
     ] },
     { "Pedro integration" = "integrations/pedro/README.md" },
+    { "Inspect Pedro route status" = "docs/build/First Pedro Auto.md" },
     { "Maintainers" = [
       { "Maintainers home" = "docs/maintainers/README.md" },
       { "Framework Principles" = "Framework Principles.md" },

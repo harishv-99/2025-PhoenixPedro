@@ -33,6 +33,8 @@ final writer, or fresh single-use Tasks.
 - [Drive, spatial reasoning, and vision](<../drive-vision/README.md>)
 - [Timestamped adaptive collection](<../examples/Timestamped Adaptive Collection.md>)
 - [Pedro Pathing integration contract](<../../integrations/pedro/README.md>)
+- [Inspect one Pedro route's software outcome](<../build/First Pedro Auto.md>) — a blocked
+  software-boundary checkpoint, not a physical route recipe.
 
 Framework maintainers should also read the [Framework Principles](<../../Framework Principles.md>)
 and [Maintainer Notes](<../maintainers/Maintainer Notes.md>).

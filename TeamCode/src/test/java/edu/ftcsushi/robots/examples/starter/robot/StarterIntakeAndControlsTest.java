@@ -87,8 +87,8 @@ public final class StarterIntakeAndControlsTest {
         Gamepad driver = new Gamepad();
         RecordingIntake intake = new RecordingIntake();
         RecordingCallbackBindings callbackBindings = new RecordingCallbackBindings();
-        StarterTeleOpControls controls =
-                new StarterTeleOpControls(new GamepadDevice(driver));
+        StarterIntakeControls controls =
+                new StarterIntakeControls(new GamepadDevice(driver));
         controls.bind(callbackBindings, intake);
         Bindings bindings = callbackBindings.root();
         ManualLoopClock time = new ManualLoopClock();

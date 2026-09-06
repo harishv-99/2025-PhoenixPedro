@@ -6,26 +6,28 @@ tags:
 # Guide map
 
 This page is the complete map; it is not a reading assignment. First learn how Sushi relates to the
-FTC loop with software only. Then choose the robot outcome you need. A drive student does not need
+FTC loop by reading. Then choose the robot outcome you need. A drive student does not need
 to build a lift, and a claw student does not need to finish the drive lesson.
 
-## New to Sushi? Follow these three pages
+## New to Sushi? Start small
 
 1. [How Sushi runs your code](<getting-started/Framework Overview.md>) — connect the FTC loop you
    know to code that runs now and code saved to run later.
-2. [Set up and verify the Sushi project](<getting-started/Build and Run.md>) — prove the project
-   builds before adding robot hardware.
-3. [Take the first software tour](<getting-started/First Software Tour.md>) — compare driving,
-   one button press, and one action that continues across loops.
+2. [Take the first software tour](<getting-started/First Software Tour.md>) — compare a sensor
+   observation, one button press, and one action that continues across loops.
+3. [Choose a build](<build/README.md>) — follow the small steps to TeleOp and basic Auto, or choose
+   the independent outcome you need. Feedback, Pedro, and vision are optional later topics.
 
-After that required software path, choose one Build recipe below. Each recipe separates a software
-checkpoint from an isolated hardware check. Within the actuator series, knowledge builds in order
-from intake to claw, lift, and velocity, but the hardware fixtures stay focused and independent.
+Reading needs no setup and includes expected results. If you want to run software checks or author
+your own robot, [set up and verify](<getting-started/Build and Run.md>) first. The Build home explains
+how to work in your own package and check your implementation, not just the maintained answer.
+Hardware is a separate supervised path; no lesson requires an unrelated mechanism.
 
 ## Choose by outcome
 
 | I want to… | Go to… |
 |---|---|
+| turn one switch reading into cached telemetry | [Read a switch](<build/Read a Switch.md>) |
 | make the first bounded drivetrain command | [Drive with a gamepad](<build/First Drive.md>) |
 | run a continuous motor with named intent | [Run a named intake](<build/Continuous Intake.md>) |
 | map OPEN, HALF, and CLOSED to configured servo endpoint candidates | [Open and close a claw](<build/Named Claw.md>) |
@@ -49,7 +51,7 @@ from intake to claw, lift, and velocity, but the hardware fixtures stay focused 
 
 ## What each area is for
 
-- **Get Started** connects familiar FTC loops to Sushi and verifies the project without hardware.
+- **Get Started** connects familiar FTC loops to Sushi with a short readable tour and optional setup.
 - **Learn** explains one framework idea without making you assemble a robot at the same time.
 - **Build** gives one focused, compiling authority per ordinary outcome.
 - **Test & Tune** starts with one software experiment, then opens the console for one bounded

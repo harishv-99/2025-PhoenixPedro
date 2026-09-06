@@ -34,8 +34,8 @@ public final class StarterFirstLessonTest {
         Gamepad driver = new Gamepad();
         RecordingIntake intake = new RecordingIntake();
         RecordingCallbackBindings callbacks = new RecordingCallbackBindings();
-        StarterTeleOpControls controls =
-                new StarterTeleOpControls(new GamepadDevice(driver));
+        StarterIntakeControls controls =
+                new StarterIntakeControls(new GamepadDevice(driver));
         controls.bind(callbacks, intake);
         assertEquals(3, callbacks.successfulRegistrations());
 
