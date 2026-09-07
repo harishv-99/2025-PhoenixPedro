@@ -220,14 +220,21 @@ SpatialSolveSet solveSet = SpatialSolveSet.builder()
 
 The query controls the turret tool frame. The AprilTag lane uses the dynamic camera frame to understand what the camera saw.
 
+This is an advanced supplied-history seam, not a complete turret-camera feature. The application
+must provide `turretCameraMountHistory`; Sushi does not supply a camera-mount history owner here.
+The shared [floor-object camera path](<Vision Targets.md>) currently accepts only a fixed mount.
+Supplying historical mounts to this AprilTag query does not make that object path, or a camera's
+vendor-computed robot pose, aware of turret motion.
+
 ## Timestamp-aware frames
 
 Fast moving mechanisms need more than “current pose.” A camera frame may be old by the time the loop reads it. If a turret moved during that delay, the AprilTag lane should interpret the tag using the turret camera mount from the frame timestamp.
 
 Sushi therefore supports `TimeAwareSource<T>` for dynamic frames and camera mounts. Its
 historical lookup receives one `LoopTimestamp`, not a raw timestamp plus a reset epoch. Fixed frames
-use `RobotFrames.rigid(...)` or `TimeAwareSources.fixed(...)`. Current-only dynamic frames can use
-`RobotFrames.currentOnly(...)`, but moving sensors should eventually use a history-backed source.
+use `RobotFrames.rigid(...)` or `TimeAwareSources.fixed(...)`. Current-loop dynamic frames can use
+`RobotFrames.currentOnly(...)`; interpreting delayed observations from a moving camera requires
+a history-backed source for its mount.
 
 Fixed-frame factories validate their authored pose immediately. A live `Source` or
 `TimeAwareSource` is runtime evidence and is not sampled during construction. Its owner must publish
@@ -258,9 +265,14 @@ double ageSec = facing.timestamp().ageSec(clock);
 boolean stillFresh = facing.timestamp().isFresh(clock, 0.20);
 ```
 
+For a moving camera, a current-only source is not capture-time evidence. This advanced seam has
+no typed "mount history unavailable" result: the application must prevent a solve when the
+required history is missing rather than substitute its current mount or pass null. Robot-pose
+history and camera-mount history answer different questions and must refer to the same exposure.
+
 Rule of thumb:
 
-> Anything derived from a delayed sensor frame should carry or derive a timestamp. Any moving frame used to interpret that sensor should be sampled at that timestamp when possible.
+> Preserve the original capture timestamp when interpreting a delayed sensor frame. Any moving frame used to interpret that observation requires evidence for that timestamp, not a substitution of its current pose.
 
 The optional [Timestamped adaptive collection](<../examples/Timestamped Adaptive Collection.md>)
 case study uses `PlanarPoseHistory.lookupSource()` to query the authoritative field-to-robot pose at

@@ -6,11 +6,18 @@ import org.firstinspires.ftc.robotcore.internal.camera.calibration.VendorProduct
 import org.junit.Test;
 
 import edu.ftcsushi.fw.core.geometry.Vec3;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
+import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+import edu.ftcsushi.fw.sensing.vision.FloorTargetModel;
+import edu.ftcsushi.fw.sensing.vision.FloorTargetProjection;
+import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /** Production calibration math with authored synthetic metadata; no physical calibration claim. */
@@ -31,6 +38,39 @@ public final class WebcamColorCalibrationTest {
         Vec3 leftUp = calibration.rayForPixel(220, 200);
         assertEquals(0.2, leftUp.y, 1e-12);
         assertEquals(0.1, leftUp.z, 1e-12);
+    }
+
+    @Test
+    public void calibratedImageCenterAndFourCornersProjectThroughTranslatedDownwardMount() {
+        WebcamColorCalibration calibration = WebcamColorCalibration.of(
+                640, 480, 500, 400, 320, 240, new double[8]);
+        CameraMountConfig mount = CameraMountConfig.of(3, -2, 12, 0, Math.PI / 2, 0);
+        FloorTargetModel model = FloorTargetModel.atHeightInches(2);
+        LoopTimestamp captured = new ManualLoopClock(2.0).clock().nowTimestamp();
+
+        // Independent pinhole geometry: camera ray = (1, (320-u)/500, (240-v)/400).
+        // Pitch +pi/2 maps it to ((240-v)/400, (320-u)/500, -1). The plane is
+        // 10 inches below the lens, so multiply by 10, then add the lens's (3,-2) offset.
+        // The last valid pixel centers are 639 and 479, not the out-of-image 640 and 480.
+        double[][] cases = {
+                {320, 240, 3.0, -2.0},
+                {0, 0, 9.0, 4.4},
+                {639, 0, 9.0, -8.38},
+                {0, 479, -2.975, 4.4},
+                {639, 479, -2.975, -8.38}
+        };
+        for (double[] sample : cases) {
+            String pixel = "pixel (" + sample[0] + ", " + sample[1] + ")";
+            Vec3 cameraRay = calibration.rayForPixel(sample[0], sample[1]);
+            assertNotNull(pixel, cameraRay);
+            FloorTargetProjection.Result result = FloorTargetProjection.projectRay(
+                    cameraRay, mount, model, captured);
+            assertTrue(pixel + ": " + result.reason(), result.isAvailable());
+            TargetObservation2d point = result.observation();
+            assertEquals(pixel + " forward inches", sample[2], point.forwardInches, 1e-9);
+            assertEquals(pixel + " left inches", sample[3], point.leftInches, 1e-9);
+            assertSame(captured, point.timestamp);
+        }
     }
 
     @Test
