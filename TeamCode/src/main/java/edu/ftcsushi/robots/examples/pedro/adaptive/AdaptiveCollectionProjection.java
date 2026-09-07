@@ -5,13 +5,16 @@ import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-import edu.ftcsushi.fw.core.geometry.Mat3;
-import edu.ftcsushi.fw.core.geometry.Pose3d;
-import edu.ftcsushi.fw.core.geometry.Vec3;
+import edu.ftcsushi.fw.localization.PlanarPoseHistory;
+import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+import edu.ftcsushi.fw.sensing.vision.FloorTargetModel;
+import edu.ftcsushi.fw.sensing.vision.FloorTargetProjection;
 
-/** Pure package-private floor projection and deterministic fixed-width band ranking. */
+/** Robot-owned band ranking over the shared core's capture-time floor projection. */
 final class AdaptiveCollectionProjection {
-    private static final double PARALLEL_RAY_EPSILON = 1.0e-9;
+    /** This example explicitly intersects the floor, not a physical object's center. */
+    private static final FloorTargetModel FLOOR = FloorTargetModel.atHeightInches(0.0);
 
     static final class Result {
         final int projectablePointCount;
@@ -34,28 +37,23 @@ final class AdaptiveCollectionProjection {
     }
 
     static Result select(List<AdaptiveCollectionVisionService.DetectorAngles> detections,
-                         Pose3d fieldToRobotPose, Pose3d robotToCameraPose,
+                         PlanarPoseHistory.Lookup fieldPoseLookup, CameraMountConfig cameraMount,
                          double minX, double maxX, double minY, double maxY, double bandWidth) {
-        Pose3d fieldToCamera = fieldToRobotPose.then(robotToCameraPose);
-        Vec3 origin = fieldToCamera.translation();
-        if (!finite(origin)) return new Result(0, 0, Double.NaN, Double.NaN, 0);
-        Mat3 cameraToFieldRotation = fieldToCamera.rotation();
         ArrayList<Double> inBoxY = new ArrayList<Double>();
         int projectable = 0;
 
         for (AdaptiveCollectionVisionService.DetectorAngles detection : detections) {
-            Vec3 cameraRay = cameraRay(detection);
-            if (cameraRay == null) continue;
-            Vec3 fieldRay = cameraToFieldRotation.mul(cameraRay);
-            if (!finite(fieldRay) || fieldRay.z >= -PARALLEL_RAY_EPSILON) continue;
-
-            double distance = -origin.z / fieldRay.z;
-            if (!Double.isFinite(distance) || distance <= 0.0) continue;
-            Vec3 point = origin.add(fieldRay.scale(distance));
-            if (!finite(point)) continue;
+            FloorTargetProjection.Result projection = FloorTargetProjection.projectAngles(
+                    -Math.toRadians(detection.horizontalRightDeg),
+                    Math.toRadians(detection.verticalUpDeg),
+                    cameraMount, FLOOR, fieldPoseLookup.timestamp());
+            if (!projection.isAvailable()) continue;
+            TargetObservation2d point = projection.observation().withFieldPoseLookup(fieldPoseLookup);
+            if (!point.hasFieldPosition()) continue;
             projectable++;
-            if (point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY) {
-                inBoxY.add(point.y);
+            if (point.fieldXInches >= minX && point.fieldXInches <= maxX
+                    && point.fieldYInches >= minY && point.fieldYInches <= maxY) {
+                inBoxY.add(point.fieldYInches);
             }
         }
         if (inBoxY.isEmpty()) {
@@ -81,14 +79,6 @@ final class AdaptiveCollectionProjection {
                 bestStart + bandWidth, bestCount);
     }
 
-    private static Vec3 cameraRay(AdaptiveCollectionVisionService.DetectorAngles detection) {
-        if (!Double.isFinite(detection.horizontalRightDeg)
-                || !Double.isFinite(detection.verticalDownDeg)) return null;
-        double left = -Math.tan(Math.toRadians(detection.horizontalRightDeg));
-        double up = -Math.tan(Math.toRadians(detection.verticalDownDeg));
-        return Double.isFinite(left) && Double.isFinite(up) ? new Vec3(1.0, left, up) : null;
-    }
-
     private static int count(List<Double> values, double start, double end) {
         int count = 0;
         for (double value : values) if (value >= start && value <= end) count++;
@@ -99,7 +89,4 @@ final class AdaptiveCollectionProjection {
         return Math.max(min, Math.min(max, value));
     }
 
-    private static boolean finite(Vec3 vector) {
-        return Double.isFinite(vector.x) && Double.isFinite(vector.y) && Double.isFinite(vector.z);
-    }
 }

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 330" role="img" aria-labelledby="title desc">
+  <title id="title">Estimate a floor target from a calibrated ray and assumed height</title>
+  <desc id="desc">Illustrative side view, not to scale. A camera at ten inches high sees down to a point on an assumed two-inch-high plane. The intersection is an estimated aim point, not proof of the physical center of a ball.</desc>
+  <rect width="460" height="330" rx="8" fill="#f8fafc"/>
+  <g font-family="sans-serif" font-size="20" fill="#172554" stroke-width="3">
+    <text x="18" y="28">Side view · illustrative · not to scale</text>
+    <path d="M70 281H438" stroke="#334155"/>
+    <text x="213" y="314">Floor: Z = 0 in</text>
+    <path d="M70 242H438" stroke="#7c3aed" stroke-dasharray="8 6"/>
+    <text x="80" y="201">Assumed height</text>
+    <text x="80" y="225">plane: 2 in</text>
+    <path d="M103 77L330 242" stroke="#0369a1"/>
+    <circle cx="103" cy="77" r="9" fill="#0369a1"/>
+    <circle cx="330" cy="242" r="7" fill="#7c3aed"/>
+    <path d="M64 77V281M57 77H71M57 281H71" stroke="#334155"/>
+    <text x="5" y="173">10 in</text>
+    <text x="126" y="77">Camera lens</text>
+    <text x="250" y="118">Calibrated</text>
+    <text x="250" y="142">viewing ray</text>
+    <text x="265" y="266">Estimated point</text>
+  </g>
+</svg>

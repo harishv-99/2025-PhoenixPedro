@@ -20,25 +20,54 @@ public final class FacingSolution {
     public final double facingErrorRad;
 
     /**
-     * Simple confidence score in [0, 1], interpreted by the lane that produced the result.
+     * Lane-specific score in [0, 1], or NaN when none is supplied; not pickup probability.
      */
     public final double quality;
 
-    /** Epoch-safe timestamp of the underlying measurement/result. */
+    /** Oldest required live evidence; a committed goal does not pretend to be a new sighting. */
     public final LoopTimestamp timestamp;
+    /** Pose evidence used for a field solve; unavailable for direct observed-point feedback. */
+    public final LoopTimestamp robotPoseTimestamp;
+    /** Original target sighting, or unavailable for an authored fixed target. */
+    public final LoopTimestamp targetObservationTimestamp;
+    /** Whether target observation age, rather than a bounded commitment, remains a live constraint. */
+    public final boolean liveTarget;
 
     /**
      * Creates a facing solution.
      *
      * @param facingErrorRad signed heading error in radians; positive is CCW / left
-     * @param quality        lane-specific confidence score in [0, 1]
+     * @param quality        lane-specific score in [0, 1], or NaN when unknown
      * @param timestamp      epoch-safe measurement/result timestamp; use
      *                       {@link LoopTimestamp#unavailable()} only when no truthful time exists
      */
     public FacingSolution(double facingErrorRad, double quality, LoopTimestamp timestamp) {
+        this(facingErrorRad, quality, timestamp, timestamp, LoopTimestamp.unavailable(), false);
+    }
+
+    private FacingSolution(double facingErrorRad, double quality, LoopTimestamp timestamp,
+                           LoopTimestamp robotPoseTimestamp, LoopTimestamp targetObservationTimestamp,
+                           boolean liveTarget) {
         this.facingErrorRad = facingErrorRad;
         this.quality = quality;
         this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
+        this.robotPoseTimestamp = robotPoseTimestamp;
+        this.targetObservationTimestamp = targetObservationTimestamp;
+        this.liveTarget = liveTarget;
+    }
+
+    /** Preserves target provenance and uses the older live evidence for ordinary age gates. */
+    FacingSolution withTargetEvidence(LoopTimestamp observation, boolean live) {
+        LoopTimestamp effective = timestamp;
+        double difference = timestamp.secondsSince(observation);
+        if (live && Double.isFinite(difference) && difference > 0.0) effective = observation;
+        return new FacingSolution(facingErrorRad, quality, effective, robotPoseTimestamp, observation, live);
+    }
+
+    /** A direct observation solves in its capture frame without a field-pose estimate. */
+    FacingSolution withDirectObservationEvidence(LoopTimestamp observation) {
+        return new FacingSolution(facingErrorRad, quality, observation,
+                LoopTimestamp.unavailable(), observation, true);
     }
 
     @Override

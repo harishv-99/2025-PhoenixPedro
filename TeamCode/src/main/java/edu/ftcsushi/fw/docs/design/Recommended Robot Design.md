@@ -18,9 +18,10 @@ For larger robots, use this ownership pattern:
 - **direct framework owners** when one object already owns the complete runtime capability
   - example: `MecanumDrivebase`, created at the FTC boundary by `FtcDrives.mecanum(...)`
 - **framework lanes** for stable FTC-side systems that recur year to year
-  - example: `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` (behind the `AprilTagVisionLane` seam)
-  - example: `FtcWebcamVisionPortalLane` or `FtcLimelightVisionLane` behind a robot-owned typed
-    vision interface when the season needs multiple semantic modes
+  - example: `FtcWebcamVisionLane` or `FtcLimelightVisionLane` owns one physical camera;
+    consumers borrow its non-closeable `AprilTagVision` or located floor-object source
+  - robot-owned vision policy chooses processor enablement or explicit Limelight activity changes;
+    the camera owner does not decide game strategy
   - example: `FtcOdometryAprilTagLocalizationLane`
 - **shared field facts** for layouts and landmarks used by several systems
   - example: `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`

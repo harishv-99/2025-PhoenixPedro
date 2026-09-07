@@ -38,6 +38,7 @@ Hardware is a separate supervised path; no lesson requires an unrelated mechanis
 | run one fresh timed behavior when Auto starts | [Run one timed Auto](<build/Run One Timed Auto.md>) |
 | sequence feedback-aware lift Tasks without blocking the loop | [Sequence an autonomous](<build/First Autonomous.md>) |
 | compile one Pedro route and inspect its truthful software outcome | [Inspect Pedro route status](<build/First Pedro Auto.md>) |
+| locate and choose a camera-observed target | [Locate a vision target](<drive-vision/Vision Targets.md>) |
 | understand where a piece of code belongs | [Choose a learning question](<getting-started/Beginner's Guide.md>) |
 | run the first Test & Tune software experiment | [Hardware-free Reference Scenarios](<examples/Hardware-free Reference Scenarios.md>) |
 | operate the ready Driver Station or Panels tester console | [Using the tester console](<testing-calibration/Using the Tester Console.md>) |

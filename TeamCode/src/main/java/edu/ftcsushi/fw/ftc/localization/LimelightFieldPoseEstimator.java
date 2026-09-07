@@ -16,7 +16,7 @@ import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.math.MathUtil;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
-import edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVision;
 import edu.ftcsushi.fw.ftc.vision.FtcLimelightVisionLane;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.MotionDelta;
@@ -178,7 +178,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         }
     }
 
-    private final FtcLimelightAprilTagVisionLane lane;
+    private final FtcLimelightAprilTagVision lane;
     private final MotionPredictor predictor;
     private final Config cfg;
 
@@ -199,13 +199,13 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      * <p>{@code config} is required and is defensively validated and copied. Pass
      * {@link Config#defaults()} explicitly to select the framework baseline.</p>
      *
-     * @param lane      owned Limelight vision lane; this estimator borrows the device owned by that lane
+     * @param lane      borrowed Limelight tag capability; camera lifetime stays with its physical owner
      * @param predictor optional motion predictor used for MegaTag 2 yaw input and motion-aware gating
      * @param config    non-null estimator policy draft
      * @throws NullPointerException if {@code lane} is null
      * @throws IllegalArgumentException if {@code config} is null or invalid
      */
-    public LimelightFieldPoseEstimator(FtcLimelightAprilTagVisionLane lane,
+    public LimelightFieldPoseEstimator(FtcLimelightAprilTagVision lane,
                                        MotionPredictor predictor,
                                        Config config) {
         this.lane = Objects.requireNonNull(lane, "lane");

@@ -20,8 +20,8 @@ import edu.ftcsushi.fw.ftc.FtcGameTagLayout;
 import edu.ftcsushi.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcsushi.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
@@ -134,13 +134,13 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private final String preferredVisionDeviceName;
     private final Class<? extends HardwareDevice> visionDeviceType;
     private final String visionPickerTitle;
-    private final Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder;
+    private final Function<String, AprilTagCameraFactory> visionLaneFactoryBuilder;
     private final TagLayout layout;
     private final String layoutPolicySummary;
     private final AprilTagLocalizationConfig aprilTags;
 
     /** Factory captured for the initial preferred-name attempt; picker attempts replace it. */
-    private AprilTagVisionLaneFactory pendingVisionLaneFactory;
+    private AprilTagCameraFactory pendingVisionLaneFactory;
 
     private HardwareNamePicker cameraPicker;
     private String selectedCameraName = null;
@@ -154,7 +154,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private String activeVisionDescription = null;
     private VisionReadiness visionReadiness = VisionReadiness.notReady("No vision device is open");
 
-    private AprilTagVisionLane visionLane;
+    private OwnedAprilTagCamera visionLane;
     private AprilTagSensor tagSensor;
     private CameraMountConfig cameraMount;
     private TagSelectionSource selection;
@@ -194,7 +194,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      */
     public AprilTagLocalizationTester(
             Config config,
-            Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder
+            Function<String, AprilTagCameraFactory> visionLaneFactoryBuilder
     ) {
         Config source = Objects.requireNonNull(
                 config,
@@ -275,8 +275,8 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 : null;
     }
 
-    private static AprilTagVisionLaneFactory requireVisionFactory(
-            AprilTagVisionLaneFactory factory,
+    private static AprilTagCameraFactory requireVisionFactory(
+            AprilTagCameraFactory factory,
             String selectedName
     ) {
         if (factory == null) {
@@ -466,7 +466,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                     "AprilTagLocalizationTester selected vision device name"
             );
             selectedCameraName = normalized;
-            AprilTagVisionLaneFactory selectedFactory = requireVisionFactory(
+            AprilTagCameraFactory selectedFactory = requireVisionFactory(
                     visionLaneFactoryBuilder.apply(normalized),
                     normalized
             );
@@ -487,7 +487,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         }
         if (visionClosingOrTerminal) return;
         if (visionCleanupFailed) return;
-        AprilTagVisionLaneFactory factory = pendingVisionLaneFactory;
+        AprilTagCameraFactory factory = pendingVisionLaneFactory;
         if (factory == null) return;
         pendingVisionLaneFactory = null;
 
@@ -496,7 +496,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         boolean ownerPublished = false;
         try {
-            AprilTagVisionLane openedLane = factory.open(ctx.hw);
+            OwnedAprilTagCamera openedLane = factory.open(ctx.hw);
             if (openedLane == null) {
                 throw new IllegalStateException(
                         "vision lane factory returned null for " + selectedCameraName);
@@ -504,11 +504,11 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             visionLane = openedLane;
             ownerPublished = true;
             tagSensor = Objects.requireNonNull(
-                    visionLane.tagSensor(),
+                    visionLane.aprilTags().tagSensor(),
                     "AprilTag vision lane returned a null tag sensor"
             );
             cameraMount = Objects.requireNonNull(
-                    visionLane.cameraMountConfig(),
+                    visionLane.aprilTags().cameraMountConfig(),
                     "AprilTag vision lane returned a null camera mount"
             );
             activeVisionDescription = factory.description();
@@ -546,7 +546,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
     /** Refreshes asynchronous component readiness without opening a second camera owner. */
     private void refreshVisionReadiness() {
-        AprilTagVisionLane lane = visionLane;
+        OwnedAprilTagCamera lane = visionLane;
         if (lane == null || visionClosingOrTerminal || visionCleanupFailed) {
             visionReady = false;
             return;
@@ -554,7 +554,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         boolean wasReady = visionReady;
         try {
-            VisionReadiness current = lane.readiness(clock);
+            VisionReadiness current = lane.aprilTags().readiness(clock);
             if (current == null) {
                 throw new IllegalStateException(
                         "AprilTag vision lane returned a null readiness result"
@@ -626,7 +626,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      */
     private RuntimeException closeVisionLaneOnce() {
         visionClosingOrTerminal = true;
-        AprilTagVisionLane lane = visionLane;
+        OwnedAprilTagCamera lane = visionLane;
         visionLane = null;
         if (lane == null) {
             return null;

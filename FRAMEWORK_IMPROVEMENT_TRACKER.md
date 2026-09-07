@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -52,11 +52,16 @@ select a production design or claim completion.
 - `PERF-03` and `CHECK-01` remain **Deferred** under their current completion contracts because
   selecting their production behavior still requires controller/watchdog, assembled-robot, or
   representative-hardware evidence.
-- `SOURCE-03` is **Proposed** again after the user explicitly prioritized a general measurement-
-  filter library. Its decision gate may research the smallest reusable contract, but it may not
-  select or claim a production filtering algorithm, window/time semantics, or acceptable latency
-  without representative timestamped traces or a separately approved narrower software-only
-  contract. Returning it to **Deferred** remains a valid decision-gate result.
+- `SOURCE-03` is **Deferred** again by the user's explicit direction on 2026-09-06 after its
+  resumed decision review found no representative recorded sensor traces in this checkout.
+  Reactivate with those traces and setup/units/operating conditions, or explicit approval for a
+  separately bounded software-only contract. Do not select or claim a production filtering
+  algorithm, window/time semantics, or acceptable latency from synthetic examples alone.
+- `VISION-03` is **Done** after user review and explicit publication authorization for the implemented shared target-to-action design. Supplied
+  vendor evidence establishes the shared principal-point angular convention; the historical
+  blanket Limelight evidence stop below is superseded. Both backends remain in scope. Physical
+  calibration, target-location accuracy, clearance/contact behavior, and capture reliability remain
+  adopting-robot validation. No physical collection is enabled without explicit robot configuration.
 - `SAFE-04` and `SENSOR-01` are **Proposed** again under explicitly narrower software-seam
   completion contracts. Physical actuator response, motor-current accuracy, polling cost, and useful
   thresholds remain adopting-robot validation; their decision gates may not claim those facts from
@@ -136,7 +141,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 27 | COMMON-01 | Cleanup action aggregation | Done | The stateless cleanup-action primitive and five bounded migrations are implemented, verified, and approved; the generic INIT runtime remains deferred. |
 | 28 | TESTER-01 | Tester child lifecycle fail-stop | Done | Approved fail-stop policies are implemented, verified, and approved without changing valid public call sites. |
 | 29 | AUTO-01 | Compact bounded Auto continuation and fresh-attempt repetition | Done | The bounded fresh-Task repetition primitive, soft-admission/hard-takeover composition, and hardware-free adaptive scenario were reviewed, verified, and approved on 2026-08-30. |
-| 30 | SOURCE-03 | General scalar measurement filters | Proposed | Reopen the existing generic conditioning item; compare explicit smoothing/outlier contracts using representative timestamped traces before selecting an algorithm or latency tradeoff. |
+| 30 | SOURCE-03 | General scalar measurement filters | Deferred | User deferred on 2026-09-06; resume with representative timestamped sensor recordings and setup/units/conditions, or a separately approved narrower software-only contract. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
 | 33 | VISION-01 | Shared webcam and Limelight vision ownership | Done | Parallel webcam/Limelight ownership, readiness, lifecycle recovery, migrations, documentation, and tests were approved on 2026-07-20. |
@@ -222,8 +227,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 113 | DOC-08 | Buildable student learning modules | Done | Raise actionable lessons from architecture-readable fragments to source-backed, blank-file-buildable vertical slices while keeping routers, operational runbooks, and advanced references truthful and compact. |
 | 114 | DOC-09 | Student-first robot course and first motion | Done | Lead with one compiled one-file drive milestone, then use the evidence-based build workflow as the progressive season course while retaining dense ownership material as reference. |
 | 115 | DOC-10 | Linked API reference in student lessons | Done | The reviewed linked APIs, maintained-source fallbacks, generated-artifact validation, comparison-backlog intake, verification, and destination-specific publication authorization are complete. |
-| 116 | VISION-03 | Reusable color-blob pipeline | Proposed | Evaluate one timestamp-truthful FTC-boundary color-blob producer without exposing mutable SDK/OpenCV results or moving season-specific color meaning into core. |
-| 117 | SPATIAL-02 | Camera observations to field positions | Proposed | Generalize only reusable time-aligned ray/plane geometry proven by the Limelight example and a second independent maintained consumer; keep detection, selection, and route policy outside core. |
+| 116 | VISION-03 | Shared vision targets and approach guidance | Done | Implemented general camera owners, located observations, parallel tag/object selection and approach consumption, and bounded resting-ball pickup examples. Full software checks pass; user review and branch/remote-specific publication authorization received. Physical pickup remains disabled. |
+| 117 | SPATIAL-02 | Camera observations to field positions | Proposed | Required fixed-mount height-plane projection and capture-time field conversion are incorporated into the approved VISION-03 scope; remaining broader geometry is not automatically completed. |
 | 118 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 | 119 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
 | 120 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
@@ -13350,6 +13355,37 @@ implementation.
   phase delay under irregular loop periods. If the evidence cannot justify one small explicit,
   resettable, cycle-idempotent `ScalarSource` decorator, the item returns to **Deferred** rather than
   gaining an implicit encoder filter or an opaque many-mode filtering layer.
+- **Decision review resumed (2026-09-06):** after DOC-20 merged as PR #144, the user's `next task`
+  instruction resumed SOURCE-03, the first remaining item in the comparison follow-up order. Created
+  `codex/source-03-measurement-filters` from `origin/master` at `a86bde6`, preserving local master.
+  This is a decision/evidence review only; no API, implementation, diagnostic tooling, or publication
+  has been approved.
+  - Current inspection confirms `ScalarSource.ratePerSecond()` derives interval-average rate from
+    accepted sample timestamps and deliberately adds no smoothing. Existing hold-last, deadband,
+    clamp, shaping, rate-limiting, and Boolean stability helpers are not a selected generic numeric
+    smoothing/outlier contract.
+  - The ordinary regulated velocity `externalEncoder(...)` path still composes package-private
+    `FtcSensors.continuousMotorPositionTicks(...)` with `ratePerSecond()`; advanced
+    `nativeFeedback(ScalarSource)` remains the distinct composed-feedback seam. No acquisition API
+    exposure or additional ordinary builder question is selected by this review.
+  - The caller scan found that FTC construction path is the only main-Java `ratePerSecond()` call;
+    no maintained robot application directly calls it or `externalEncoder(...)`. The hardware
+    tester's separate `MotorVelocityComparison` is diagnostic-only, not another production filter.
+  - An independent checkout inventory found no representative recorded timestamped raw scalar,
+    encoder, or flywheel dataset. Existing deterministic fixtures, diagnostic-row emission code,
+    generated results, and JVM crash/replay logs do not satisfy that evidence requirement. This is
+    not a claim about recordings outside the checkout or whether hardware is now available.
+  - The evidence gate remains open. Ask for raw timestamped recordings and their units/setup and
+    steady/changing operating conditions, or user direction to defer the item or approve research
+    into a separately bounded software-only contract. Do not choose an algorithm, window/delay,
+    production default, or acceptable control latency from synthetic examples alone. Do not mark
+    the design Ready or begin VISION-03 while this direction is pending.
+- **Deferral approved (2026-09-06):** the user explicitly directed, "Let us defer source-03 and
+  move to vision-03." SOURCE-03 returns to **Deferred** without choosing an algorithm, changing a
+  public API, or adding diagnostic tooling. Reactivate only with representative raw timestamped
+  recordings and documented units/setup/operating conditions, or explicit approval to research a
+  separately bounded software-only contract. The tracker-only closeout accompanies the explicitly
+  requested VISION-03 decision review; no SOURCE-03 implementation or publication is authorized.
 
 ### SAFE-03 - Regulated Plant actuator-command truth
 
@@ -27929,8 +27965,180 @@ implementation.
   fetch immediately before publication confirmed `HEAD`, `origin/master`, and their merge base all
   remain exactly `18a74b3b1ef08c1c936f4cea34831b8acb643ea9`.
 
-### VISION-03 - Reusable color-blob pipeline
+### VISION-03 - Shared vision targets and approach guidance
 
+- **Current status (2026-09-07): Done; user-reviewed and publication authorized.** The user approved the complete shared
+  target-to-action proposal with "Implement the plan" after explicitly confirming general vision
+  owners, parallel AprilTag/object approach poses, resting-ball pursuit, controlled wall/corner
+  contact, aim assistance plus full pickup, and software development before capture hardware exists.
+  Implementation and publication are authorized; physical operation is not. `origin/master` was
+  fetched and confirmed at `a86bde6` before implementation on `codex/vision-03-color-blobs`.
+  Existing tracker edits and divergent local master are preserved.
+- **Gate 1 superseding decision (2026-09-07): Ready -> In progress.**
+  - **Evidence closure:** the user-supplied vendor explanation of undistorted principal-point
+    targeting ([Limelight reply](https://www.chiefdelphi.com/t/introducing-limelight-3g/457937/36)),
+    current vendor pixel-to-angle theory, shared software release notes, and pinned FTC SDK source
+    establish right/up-positive independent plane angles from `tx_nocross`/`ty_nocross`. Convert
+    right to Sushi-left at the boundary. This documented shared-software contract is not a measured
+    LL3A physical-accuracy claim. The contradictory JSON prose and historical evidence stop below
+    remain historical findings, not active blockers. Required JSON fields must still be present
+    and finite; SDK defaults do not establish real zero observations.
+  - **Ownership/API:** replace AprilTag-specific physical owners with `FtcWebcamVisionLane` and
+    `FtcLimelightVisionLane`. Non-closeable `AprilTagVision` and floor-object sources borrow the
+    camera. Preserve narrow Limelight confirmed-tag-pipeline evidence for direct localization;
+    deferred tester factories return an explicitly owned camera handle. Remove superseded public
+    owner paths and migrate all maintained callers rather than retaining aliases. A general
+    capability registry or universal camera-control interface adds no distinct capability.
+  - **Shared contract:** evolve `TargetObservation2d`, add bounded immutable multi-target frames,
+    preserve capture time and robot-at-capture geometry, allow unknown quality, and use only
+    `Source<T>.get(clock)`. Fixed-mount height-plane projection and exact-time pose-history field
+    conversion are included from SPATIAL-02. Camera/SDK data stays at the FTC boundary; field facts
+    and robot action policy do not move into camera ownership.
+  - **Consumption:** retain ID-aware `TagSelections` and tag-relative references; add geometric
+    selection, observed point references, and computed approach references. Both tags and objects
+    use `SpatialQuery`, Drive Guidance overlays/Tasks, and existing route factories. Approach
+    results mean desired robot-center pose so intake offsets cannot be applied twice. A fresh
+    pose cannot refresh old target evidence. Direct observation guidance is delayed robot-frame
+    feedback, not invented motion-compensated field geometry.
+  - **Pursuit/action:** choose one fresh resting-ball location at attempt start, retain it as
+    bounded intent, and recheck its region before final pickup. Missing or ambiguous evidence
+    stops the attempt. Configured final intake motion may tolerate expected camera occlusion;
+    disappearance never proves capture. Floor/wall/corner templates declare permitted contact and
+    bounded motion, not a collision-free route. Capture feedback is optional for a clearly
+    unconfirmed attempt, but required for successful collection. Full pickup and aim-only TeleOp
+    share robot capabilities with Auto; no hidden retries, target tracking, or competing writers.
+  - **Alternatives rejected:** a raw/count-only blob release does not deliver the approved robot
+    outcome; renaming AprilTag owners without ownership separation preserves misleading lifetime;
+    forcing blobs into tag IDs or fake confidence loses evidence; a new guidance/follower duplicates
+    supported motion machinery; a universal object tracker or obstacle planner exceeds this scope.
+  - **Callers/construction audit:** camera constructors/configs, lane factories and return types,
+    odometry/AprilTag localization, direct Limelight field estimation, camera/Pinpoint calibration
+    tools, StandardTesters, Phoenix vision/root/tester wiring, and the independent adaptive example
+    were traced. Protected-core observation constructors/factories, References, SpatialQuery,
+    DriveGuidance plan/spec/runtime constructors and modern examples were inspected. New consumer
+    nouns must each represent sensing evidence, selection policy, geometry intent, or lifecycle;
+    they must not provide redundant construction paths. Each backend config is snapped before
+    hardware effects. The independent collection example, not Phoenix, teaches the new behavior.
+  - **Scope/verification:** one coherent VISION-03 implementation covers both backends, necessary
+    spatial integration, bounded independent examples, migration, and synchronized Javadocs/guides.
+    Preserve historical native lifetime/generation findings below. Tests cover timing/reset,
+    calibration/projection, empty/unavailable, selection/ties, live versus committed evidence,
+    tag/object guidance parity, approach offsets, feedback outcomes, and cancellation/STOP.
+    Physical setup remains unconfigured; synthetic fixtures do not establish hardware safety.
+    SOURCE-03 stays Deferred; broader SPATIAL-02 and other tracker items do not become Done.
+- **Gate 2 implementation and review record (2026-09-07):**
+  - General webcam/Limelight owners now expose borrowed AprilTag and located-object sources. The
+    deferred `AprilTagCameraFactory` / `OwnedAprilTagCamera` pair serves tester-time acquisition,
+    not a second ordinary lifecycle. Old AprilTag-specific physical owners, their factory names,
+    the parallel portal owner, and `ObservationSource2d.sample` are removed with callers migrated.
+    Phoenix retains its prior AprilTag behavior; no automatic Phoenix pickup was enabled.
+  - Core frames distinguish unavailable from observed-empty, retain capture timestamp and optional
+    field lookup provenance, and report unsupported identity/orientation/quality as missing.
+    Floor projection now also serves the existing independent adaptive example; its old
+    vertical-down Limelight interpretation and duplicated ray math were corrected together with
+    synthetic SDK-sign regressions. Plane height names a target reference point, not a ball center.
+  - Direct observed feedback and field approaches reuse spatial/guidance machinery. Independent
+    review found and corrected the bridge's use of a current tool origin in a capture-time solve,
+    hardcoded direct-tag quality, and transformed-overflow acceptance. New regressions exercise
+    translated/rotated tool frames, tag/object unknown-quality parity, finite loss outputs,
+    independent target/pose times, stale evidence, bounded commitments, and one-time tool offsets.
+  - The independent `robots.examples.visionpickup` owner supplies one selected drive source and
+    one fresh single-use Task for TeleOp/Auto. Defaults disable motion and do not guess physical
+    measurements or powers. It freezes one resting-target approach, requires a newer unique
+    neighborhood recheck, and permits expected occlusion only during bounded final intake.
+    Explicit templates distinguish open-floor/wall/adjacent-corner permissions. Robot envelope,
+    command/time/observed-travel/corridor limits are not swept-path, force, or capture guarantees.
+    Capture requires new configured sensor evidence. Explicitly unconfirmed attempts cannot return
+    SUCCESS. Independent review additionally tightened reentrant cancellation/STOP, cleanup failure
+    inhibition, selector freshness at recheck, and ambiguity across a template-region boundary.
+  - Source-level camera review retained fixed processor sets, native-allocation-free construction,
+    stable owned webcam input storage, terminal callback leases, post-enable generation gates,
+    close/rollback best-effort cleanup, same-owner Limelight synchronization, and explicit pipeline
+    switching. Color JSON copies all bounded candidates and validates required numeric angles,
+    type, size, and nesting before use. Whole color Config validation is intentional even when a
+    backend does not consume every field; no alternate public backend configuration factory exists.
+    Existing Limelight AprilTag evidence remains configured-index-confirmed; the adopting device
+    must actually configure that slot for tags. SDK typed pipeline-type metadata is not a new gate.
+  - Public construction audit: general camera constructors acquire resources; borrowed views cannot
+    close them; deferred tester factories alone postpone acquisition. Observation factories create
+    immutable evidence; source adapters borrow producers/history; the two-step geometric selector
+    asks freshness then policy directly. Approach factories distinguish robot-authored geometry
+    from reusable tool-offset calculation, and explicit bounded commitment changes evidence use.
+    Spatial solve lanes, plan/spec, and query/overlay/Task layers retain their distinct supported
+    roles; symmetry did not add another guidance engine, tracker, or universal camera registry.
+  - Documentation keeps the six areas and opening course unchanged. The new optional advanced
+    lessons explain image region versus direction versus modeled location, then a separately
+    bounded action and sensor-confirmed capture. Native SVG/Mermaid augment spatial and temporal
+    relationships; defaults, assumptions, hardware limits, sources, and existing owner guides are
+    synchronized. Framework Principles now explicitly require camera/view ownership, truthful
+    located evidence, one-time approach offsets, bounded intent, and separate capture confirmation.
+  - Page-level concept checklist (first explanation precedes required use):
+
+    | Page / audience | Central outcome and required concepts | First explanation / use | Optional depth |
+    |---|---|---|---|
+    | Locate a vision target / optional vision newcomer | Estimate and select a meaningful point; blob, ray, plane, calibration, borrowed source, freshness, history | Plain image problem and side-view before projection/config; source type before selection builder; past pose before inField | API reference, camera ownership, shared guidance |
+    | One bounded vision pickup / robot behavior author | One attempt with truthful capture; approach, bounded work, recheck, occlusion, envelope/contact | Desired destination before motion; expanded phase diagram before Task wiring; envelope and permissions before limits | Complete policy/tests, robot-specific supervised adoption |
+    | Spatial Queries / geometry consumer | Observed point versus robot-center goal and independent evidence times | New observed/committed subsection before sample gate discussion | Exact References/ApproachResult2d contracts |
+    | Drive Guidance / drive behavior author | Reuse correction for a selected point or computed pose | Prior locate lesson; gain/deadband/stand-off defined beside first required values | Runtime ownership, tuning, bounded pickup policy |
+    | AprilTag localization and practice / optional integration author | One camera owner with borrowed tag evidence | Ownership definitions before general-owner configuration examples | Deferred tester lifecycle and vendor evidence |
+    | Timestamped adaptive collection / advanced route author | Capture-time field projection within existing route policy | Correct right/up signs and floor-reference assumption before ray equation/use | Shared projection and pose-history APIs |
+
+    Cross-links between guidance, spatial reference, and pickup are optional continuations, not
+    circular prerequisites. Software scenarios retain production owners and explicitly replace
+    physical inputs; none constitutes physical camera, contact, or capture verification.
+- **Gate 2 final automated evidence (2026-09-07):**
+  - `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`;
+    `.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`
+    **PASS**. Final JUnit XML totals: **2,342 tests, 0 failures, 0 errors, 0 skipped**, including
+    protected-core boundaries, documentation integrity, migrated camera/tester/Phoenix lifecycle,
+    adaptive collection, and 20 new pickup policy scenarios. Existing Java 8 target-on-JDK21 and
+    FTC controller deprecated-API warnings remain; no new compiler or Javadoc errors.
+  - `.\build\docs-venv-win\Scripts\python.exe -m zensical build --clean --strict` **PASS**;
+    Javadocs were rebuilt afterward to retain the combined artifact. Generated guide-search check
+    **PASS** for **969 indexed sections / six guide areas**. Generated API-link check **PASS** for
+    **176 API links and 82 source links across 47 Markdown pages**. All six required combined
+    artifact entry/search files are nonempty. No deployment or external publication was performed.
+  - `git -c core.safecrlf=false diff --check` **PASS**. Trailing-whitespace scan across **94 changed
+    or untracked extant files** reported **0 matches**. Maintained Java/Markdown searches report
+    no superseded camera-owner or observation-source names outside tracker history. Git index is
+    empty; no staging, commits, pushes, pull requests, or merges were performed.
+  - Independent source/API/lifecycle/pickup review findings are resolved. Headless Edge review of
+    the actual generated vision and pickup pages at **375 px / 1280 px** passed: readable diagrams,
+    no clipping or horizontal document overflow. The site is light-only; this is not a dark-theme
+    test. SVG has its own contrasting background. Screenshots remain in ignored
+    `build/vision03-svg-review`; temporary browser/server stopped and ports confirmed closed.
+  - **Not verified:** Android native OpenCV execution/ROI behavior, real camera calibration,
+    resolution/threshold accuracy, device-side Limelight pipeline configuration and timing,
+    physical field localization, drive/intake hardware, capture-sensor wiring, clear approach
+    corridors, or wall/corner contact safety. Disabled-color Limelight avoidance of JSON work is
+    source-verified, not an SDK-runtime benchmark. No real robot motion/pickup was enabled.
+- **Gate 2 Android Studio handoff:** inspect general camera owners and borrowed capability views;
+  capture-time observation/projection/selection and spatial provenance; `VisionPickup` plus its
+  software scenarios for defaults, recheck ambiguity, cancellation/STOP and capture outcomes;
+  both new lessons, the Principles additions, and migrated tester/Phoenix call sites. Robot
+  validation is a separate adopting-robot requirement, not a prerequisite for claiming these
+  bounded software contracts. SOURCE-03 remains Deferred and SPATIAL-02 remains Proposed with its
+  required projection seam explicitly incorporated here.
+  Publication coordinates are confirmed: branch `codex/vision-03-color-blobs`, origin push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`. Divergent local master
+  and earlier tracker history remain preserved. Required combined review/publication reply:
+  `VISION-03 looks good. Authorize committing the reviewed VISION-03 diff on codex/vision-03-color-blobs, pushing that branch to https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into master.`
+- **Gate 3 review and publication authorization (2026-09-07):** the user accepted the reviewed
+  VISION-03 diff with the exact combined authorization: commit on `codex/vision-03-color-blobs`,
+  push to `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge into
+  `master`. This records the manual review gate and permits only publication of the reviewed
+  item. SOURCE-03 remains Deferred; no next item or physical operation is authorized. Git/GitHub
+  remain authoritative for the resulting commit, pull request, required checks, and merge state.
+  The divergent local `master` at `dc8a06f5f9aefee2410cf99ce7f5b186f88c2aef` is preserved.
+- **Historical status (2026-09-06; superseded above): Researching; shared-location evidence gate open.** The user
+  expanded VISION-03 to webcam and Limelight 3A behind one observation-reading contract, accepted
+  explicit activity-based switching, reported no Limelight hardware access, and chose to retain
+  useful location parity rather than stage a count-only first release. The latest "Implement the
+  plan" authorizes the evidence-gate plan, not an unverified production conversion. Work remains on
+  `codex/vision-03-color-blobs`, based on `origin/master` (`a86bde6`), with SOURCE-03 Deferred notes
+  preserved. The old webcam-only Ready design below is historical and superseded by the
+  dual-backend record following it. No framework implementation, diagnostic tooling, vendor contact,
+  publication, or SPATIAL-02 work has been performed or newly authorized.
 - **Tracker-only intake status (2026-08-31):** **Proposed.** The user asked that the previously
   accepted vision-pipeline gap be recorded explicitly, including the ability to identify color
   blobs before locating them on the field. No decision gate has started, no API or algorithm is
@@ -27970,8 +28178,334 @@ implementation.
   work must still validate exposure, illumination, thresholds, physical color separation,
   calibration, latency, and detection quality.
 
+- **Historical webcam-only gate: Researching -> Ready (2026-09-06; superseded below):**
+  - **Pinned evidence:** `build.dependencies.gradle` selects FTC Vision/RobotCore 11.1.0. Inspected
+    their cached source artifacts and EasyOpenCV 1.7.3, rather than assuming a newer SDK contract.
+    `ColorBlobLocatorProcessorImpl.processFrame(...)` receives capture nanoseconds but its polling
+    result discards that timestamp. `getBlobs()` returns a mutable list with shared mutable Blob
+    objects; the initially empty list is indistinguishable from a processed empty image. Blob
+    getters expose lazy caches, contours, point arrays, and fitted rectangles. A polling-only wrapper
+    therefore cannot establish frame identity, empty-versus-unobserved state, or deep immutability.
+    The SDK restores ROI offsets before publishing full-image coordinates. Its reported contour
+    area is integer-truncated and clamped to at least one, not an exact count of matching pixels.
+    Primary explanatory references are FIRST's
+    [color-locator guide](https://ftc-docs.firstinspires.org/en/latest/color_processing/color-locator-explore/color-locator-explore.html)
+    and [color-blob concepts](https://ftc-docs.firstinspires.org/en/latest/color_processing/color-blob-concepts/color-blob-concepts.html).
+  - **Resource/timestamp trace:** the SDK camera capture time uses the `System.nanoTime()` domain;
+    EasyOpenCV carries it through the timestamped callback to VisionPortal's sequential processor
+    calls. `ColorBlobLocatorProcessorImpl` retains a submatrix of its first input. EasyOpenCV can
+    replace that input buffer after stream stop/resume, so direct delegate reuse can analyze an old
+    allocation. One fixed-shape/type private input copy is the selected adapter safeguard; OpenCV's
+    [4.10 Mat contract](https://docs.opencv.org/4.10.0/d3/d63/classcv_1_1Mat.html) states that matching
+    destination shape/type preserves the allocation. This is a source/contract-based design, not an
+    executed native-image test. VisionPortal close is asynchronous and does not close processors;
+    a returned close call is not callback quiescence or proof of physical camera release.
+  - **Current maintained consumers:** Phoenix's `PhoenixVisionFactory` selects existing webcam or
+    Limelight AprilTag lanes without custom processors. Selectable camera-mount, localization,
+    corrected-localization, and pod-calibration tools retain those existing factory/configuration
+    paths. Webcam custom attachments currently occur in the lane/configuration tests, not a
+    maintained robot algorithm. The independent `AdaptiveCollectionVisionService` copies Limelight
+    detector angles before robot-owned projection/selection; it does not consume color results.
+    `FtcLimelightVisionLane.colorResults()` has no main-code consumer. Disabled FTC SDK rectangle/
+    circle samples and legacy AprilTag experiments are source evidence, not Sushi adopters to
+    migrate or architectural templates. No production robot is migrated in VISION-03.
+  - **Semantic-observation audit:** `TargetObservation2d` has `none()`, two position overloads, one
+    pose factory, and two bearing overloads; all produce one selected robot-horizontal-frame target
+    in inches/radians with quality and a `LoopTimestamp`. `ObservationSources.aprilTag(...)` is the
+    sole factory/implementation of `ObservationSource2d`; `CameraMountLogic` performs its frame
+    conversion. No production, maintained-example, or tool caller currently consumes these three
+    APIs. Two timestamp test classes cover target construction and camera-mount conversion. Preserve
+    that grammar unchanged: an image-space blob list is a distinct earlier measurement, not a target
+    ID list, robot bearing, confidence score, or field pose. Any later selection/projection must
+    preserve capture time and justify camera calibration/origin; SPATIAL-02 owns extraction of that
+    geometry seam. Pixels cannot be substituted for inches or camera bearing for robot-origin bearing.
+  - **Sibling public construction paths:** each of `FtcWebcamVisionPortalLane`,
+    `FtcWebcamAprilTagVisionLane`, `FtcLimelightVisionLane`, and `FtcLimelightAprilTagVisionLane` has
+    one public constructor and a defaults/copy Config with a private constructor. The two named
+    `AprilTagVisionLaneFactories.webcam/limelight` methods return a deferred
+    `AprilTagVisionLaneFactory` whose `open(map)` acquires fresh hardware later. Immediate generic
+    ownership, built-in semantic specialization, and deferred validated acquisition each provide
+    distinct capability. Retain them; add no blob-owner/factory synonyms merely for symmetry.
+    These families have no staged-builder parameter to inline. Their data-only Configs are genuinely
+    retained, copied, and reused in profiles, deferred factories, and selectable testers.
+  - **Two plausible uses, not invented adopters:** an intake camera can report whether a colored
+    region overlaps a robot-authored intake window; a floor camera can supply candidates for later
+    calibrated collection-point projection. The existing adaptive example proves adjacent
+    timestamped coordination, not color detection or the second projection consumer required by
+    SPATIAL-02. VISION-03's first maintained consumer is deliberately a camera-only observation
+    lesson, not an automatic intake, tracker, route generator, or new game strategy.
+  - **Alternatives:** (a) retain robot-owned SDK processors and document copying/timing/lifecycle;
+    this preserves every team's repeated boundary code and the polling ambiguity; (b) poll an SDK
+    locator and copy results in the loop, which cannot recover the missing frame timestamp;
+    (c) wrap the SDK callback and publish an immutable acquisition record, selected because it keeps
+    the supported algorithm while centralizing those boundary contracts; (d) write a new OpenCV
+    pipeline, rejected because it adds algorithm/metric/resource ownership without a demonstrated
+    need; (e) recreate the SDK delegate whenever input identity changes, rejected because it churns
+    unclosable SDK scratch allocations; (f) add a universal vision-result map or backend-neutral
+    detection framework, rejected because no shared semantic contract has been demonstrated.
+  - **Student call-site comparison:** the SDK/manual path needs a processor declaration and camera
+    declaration, then robot-owned frame identification, copying, lifecycle barriers, clock anchoring,
+    bounds, failure state, and cached presentation. The chosen path still makes three distinct
+    relationships explicit: `new FtcColorBlobProcessor(blobConfig)` chooses image processing;
+    `new FtcWebcamVisionPortalLane(hardwareMap, cameraConfig, blobs)` chooses the sole webcam owner;
+    `blobs.frameSource(camera)` obtains a retained `Source<ColorBlobFrame>` bound to that owner.
+    The same processor can instead be supplied in an existing AprilTag owner's additional set.
+    There is no second camera configuration/owner or public source constructor. Automatic owner
+    back-binding would save one argument but hide this relationship; a dedicated color camera lane
+    would add another assembly path. No exact line-count saving or measured runtime benefit is claimed.
+
+    | Student decision | SDK/manual path today | Selected path (proposed API) |
+    | --- | --- | --- |
+    | What colors/region count? | `new ColorBlobLocatorProcessor.Builder()` plus range, ROI, filters, and sorting | `new FtcColorBlobProcessor(blobConfig)` with explicit range, ROI, area limits, and cap |
+    | Which camera owns it? | `new FtcWebcamVisionPortalLane(hardwareMap, cameraConfig, locator)` | `new FtcWebcamVisionPortalLane(hardwareMap, cameraConfig, blobs)` |
+    | Where does the loop read? | `locator.getBlobs()` gives mutable values without frame identity; a truthful read requires a robot-authored callback adapter | `Source<ColorBlobFrame> frames = blobs.frameSource(camera)`; one service samples `frames.get(clock)` on the shared heartbeat |
+    | May the robot use this observation? | Robot-authored copying, frame-age, readiness, and generation logic | Check the immutable frame's availability/freshness, then inspect its bounded blobs |
+    | What does telemetry read? | A robot-authored cached snapshot, not the live mutable SDK list | The service's cached immutable frame; the presenter does not sample the Source |
+    | Who shuts down? | The one camera owner | The same camera owner; no second public close or resource owner |
+
+  - **Chosen public surface:** one final `FtcColorBlobProcessor` in `fw.ftc.vision`, implementing
+    the required SDK `VisionProcessor` callbacks; one public `(Config)` constructor; Config
+    `defaults()` and raw `copy()`; and `frameSource(FtcWebcamVisionPortalLane)` returning the same
+    completed Source for repeated calls with the same owner. Reject a nonowning or different owner.
+    Add one read-only immutable `ColorBlobFrame` value with nested immutable Blob values at this FTC
+    image boundary, not another `ObservationSource2d` family or a speculative protected-core detector.
+    Frame creation remains internal/test-seam work; robot code reads snapshots. No mutable SDK/OpenCV
+    values, public native delegate, source constructor, processor close method, or global registry.
+  - **Configuration decisions:** keep webcam name/resolution in the existing camera Config only.
+    Blob Config snapshots primitive channel lower/upper bounds and the immutable SDK color-space
+    enum, normalized ROI left/top/right/bottom fractions, reported-area limits, and `maxResults`.
+    Do not accept opaque SDK ColorRange/ImageRegion objects: the former retains protected mutable
+    Scalar references, while the latter can reposition a requested pixel ROI. Validate finite,
+    ordered channel/range/ROI values before native allocation or device lookup. ROI fractions are
+    within [0,1], increasing right/down, with left < right and top < bottom. Convert actual dimensions
+    using floor for left/top and ceil for right/bottom, validate the nonempty in-image half-open
+    result, and pass those exact pixel edges to the SDK. Channel names/ranges are explicit for RGB,
+    YCrCb, and HSV; reject unsupported hue wrapping rather than silently inventing it.
+    Defaults use the pinned SDK blue starting range (YCrCb lower 16/0/155, upper 255/127/255), full
+    image ROI, minimum reported area 50, maximum Double.MAX_VALUE, and 32 results (allowed 1..256).
+    These are visible software baselines, not tuned physical color recognition. Set external-only
+    contours explicitly, with blur/erosion/dilation disabled. Defer morphology, density/circularity
+    filters, rotated-orientation API, live mutation, and preset/factory proliferation until a caller
+    requires them. All active defaults and where to change them must appear in the lesson.
+  - **Frame and geometry contract:** publish actual image dimensions, original clock-anchored
+    capture timestamp, a bounded list of full-image fitted-box centers and axis-aligned bounds, and
+    the SDK-reported contour-area metric. Top-left is (0,0), +X is right, +Y is down; bounds use an
+    explicitly documented half-open image convention. Use the SDK fitted rectangle's integer
+    `boundingRect()` enclosure: left/top are x/y and exclusive right/bottom are x+width/y+height,
+    with validated arithmetic. Preserve that SDK enclosure/rounding rather than substituting raw
+    contour extents. A fitted-box center is not a contour centroid and the fitted box
+    may extend outside the ROI; never clip it silently or claim physical dimensions. No track IDs,
+    confidence, camera angles, robot poses, or field coordinates. Copy at most the first maxResults
+    candidates from the SDK's area-descending output and expose total post-filter candidate count
+    and truncation. Reject malformed/non-finite copied geometry as a failed acquisition instead of
+    silently inventing a valid blob. The cap bounds copied output, not contour discovery, SDK sorting,
+    memory usage of vendor internals, or worst-case processing time.
+  - **Publication/time contract:** camera callbacks atomically publish one immutable raw acquisition
+    record, including a successfully processed zero-blob frame; they never read or advance LoopClock.
+    The loop-thread Source reuses the existing private generation, acceptance-boundary, and
+    FtcFrameTimestampAnchor machinery, checking owner/processor terminal state before a same-cycle
+    cache. Retain one stable LoopClock and original timestamp per generation/capture identity; reject
+    future, replayed, reset-invalidated, or pre-enable captures. Same-cycle successful reads are
+    stable, except explicit lifecycle/terminal invalidation. A fresh empty observation is distinct
+    from no frame, disabled/not-ready, invalid timing, processing failure, and closed. Unavailable
+    results have no usable blobs and an actionable reason. Old observed frames keep their original
+    age; `hasFrame()`, `ageSec(clock)`, and `isFresh(clock, maxAgeSec)` express different questions.
+    Source reset clears only source-local publication cache, not camera lifecycle or identity barriers.
+  - **Native-buffer contract:** allocate native state lazily in init/processing, not in the public
+    Config/processor constructor. Copy each callback into one private fixed-shape/type buffer before
+    invoking the SDK locator; reject format/dimension changes before copy instead of leaving the
+    SDK's retained ROI alias attached to obsolete storage. Do not return or retain the SDK's drawing
+    context. Preview drawing uses only the same bounded immutable primitive boxes seen by readers.
+    A native processing/init failure terminalizes the processor and invalidates publication, retains
+    the reason, and does not repeatedly invoke a failed native state on later callbacks.
+  - **Necessary owner lifecycle hardening:** the existing portal changes its generation only after
+    SDK enable/disable/stop/resume returns. A mutate-then-throw call can leave cached typed results
+    apparently current. Preserve validation/no-op paths, but invalidate affected generations and
+    block frame admission before each real transition. Publish completion-time acceptance only after
+    success; retain a terminal transition failure on a write/timing failure, reject later mutations,
+    and keep readiness unavailable while still allowing idempotent close. A reentrant close cannot
+    be overwritten by transition completion. This changes safety semantics, not public signatures,
+    and explicitly needs approval. Existing AprilTag readiness-before-cache behavior benefits without
+    an AprilTag algorithm redesign. Current main-code transition calls are the owner/subclass
+    delegates; existing factory/configuration consumers and successful paths remain unchanged.
+  - **Processor lifetime without assuming camera quiescence:** use only narrow package-private
+    support for the built-in processor. Claim each fresh processor for one construction attempt
+    before portal effects; reject reuse without terminalizing an instance owned elsewhere. On owner
+    close or acquisition failure, terminalize only that attempt's claimed processors, regardless of
+    whether an SDK close succeeds. Close callback admission and invalidate publication under a short
+    state lock. Init/process callbacks hold one native-work lease, perform native work outside the
+    lock, and publish only if still active. Reject overlapping native callbacks. Claim wrapper-owned
+    release exactly once after its active lease ends; never wait for a callback from the OpMode.
+    Late callbacks perform no native work. Preview needs no native lease because it only reads copied
+    primitives. Still close any returned portal handle best-effort, preserving primary/suppressed
+    failures. Rollback covers all post-open work, including final timestamp sampling; one cleanup
+    failure must not skip other claimed processors or the portal-close attempt. Processor
+    terminalization is not proof of camera rollback. Releasing the wrapper's Mat
+    reference does not promise deterministic reclamation of SDK-retained ROI/contour/scratch objects.
+  - **Documentation/example scope:** add one hardware-disabled independent camera-only managed
+    example and one optional "Read colored regions in one image" lesson under Advanced, not another
+    initial tab or required beginner chapter. Teach pixels, connected colored regions, color-range
+    purpose, full-image axes, capture time, and empty versus unavailable before the first use; explain
+    Source generics and owner wiring locally. Show explicit configuration, one service sampling the
+    shared loop, cached-only telemetry, and owner shutdown. Use a single accessible image-coordinate
+    diagram and zero/one/two-region software scenarios. Keep selection, physical camera checks,
+    threshold tuning, and later projection separate. Update the owning vision guide, reference/API
+    links, navigation, examples index, and DOC-20 concept checklist together. No production-app,
+    SDK-sample, legacy, Limelight, localization, or SPATIAL-02 implementation changes.
+  - **Verification plan:** pure-JVM fake native/portal/time seams must test validation before effects,
+    configuration snapshot ownership, pixel/ROI conventions, deep immutable copies and cap/truncation,
+    empty versus unavailable, atomic replacement, stable same-cycle reads, retained capture time,
+    reset/replay/future rejection, enable/disable/stream generations, and processing failure. Test
+    mutate-then-throw transitions, completion-clock failure, same-cycle cache invalidation, no retry
+    after terminal failure, and reentrant close. Exercise close during init/copy/delegate work,
+    late callbacks, publication racing terminalization, exactly-once deferred release, construction
+    failure with a callback active, and failed reuse without damaging another owner. Compile the
+    real SDK integration and disabled example; run focused/full TeamCode tests, boundary/construction
+    checks, strict site/Javadocs/generated-artifact validation, and novice/diagram review.
+  - **Native/physical evidence limit:** current host JUnit has no runnable Android OpenCV JNI; cached
+    libraries are ARM Android and no instrumentation harness is installed. Fakes can prove protocol
+    and publication rules, not actual pixel detection or the native allocation behavior. Source and
+    documented Mat contracts justify the wrapper design; no measured detection/latency/cleanup claim
+    is made. A later camera-free Android-native check with two different same-shaped synthetic Mats
+    should verify the stable-copy safeguard and empty/timestamped output. Actual camera exposure,
+    lighting, thresholds, calibration, native runtime behavior, latency, and detection quality remain
+    explicitly separate adoption checks. Adding an instrumentation platform is not hidden in this
+    scope. If source/contracts cannot establish an implementation-critical fact during development,
+    reopen the evidence gate rather than replacing it with a fake-test claim.
+  - **Decision review evidence:** independent SDK/native-lifetime, ownership/time/construction, and
+    beginner/semantic-boundary reviews found no design blockers. Incorporated explicit ROI rounding,
+    SDK bounding-rectangle semantics, complete student consumption/presentation/shutdown comparison,
+    and all-post-open rollback with best-effort cleanup. The tracker-only Markdown link/anchor/fence
+    regression passed; `git diff --check` passed. These checks validate this decision record, not an
+    unimplemented pipeline or physical detection behavior.
+  - **Historical approval stop, no longer the active proposal:** the SDK-backed producer remains
+    the preferred small design, but new public image-frame/processor APIs and shared webcam failure
+    semantics require user approval. No framework, example, test, or guide implementation has been
+    edited. `Approve VISION-03 design` authorizes
+    only this bounded software-boundary implementation and its teaching/tests, including the stated
+    native-verification limits; it authorizes no publication or next tracker item.
+
+- **Superseding dual-backend decision/evidence record (2026-09-06):**
+  - **User decisions and authority:** the user selected "Both backends", "Switching is acceptable",
+    "3A, no hardware access", and "Keep full location contract" during the design conversation.
+    The approved next plan is to close the shared-location evidence gate before fixing the API or
+    implementing adapters. Its execution permits read-only source/recording research and durable
+    tracker updates; it does not permit vendor contact, new diagnostic tooling, a count-only
+    substitute, or production implementation while the required evidence remains missing.
+  - **Intended ordinary path:** select hardware and backend-specific configuration once in setup;
+    robot behavior consumes the same immutable blob observations without SDK/vendor types or
+    backend branches. Reuse the existing `Source<T>` sampling grammar and existing physical camera
+    owners. `AprilTagVisionLane` already proves backend-neutral AprilTag consumption. A borrowed
+    blob source must not become a second close owner, and a universal camera-control facade or
+    capability registry is not selected. Public blob type/signature and construction decisions
+    remain open until the useful common measurement is established; the historical FTC-only
+    `ColorBlobFrame` location and shape are not the approved dual-backend API.
+  - **Coexistence and switching:** one webcam portal can run its AprilTag and color processors on
+    the same delivered frames, sequentially. The ordinary Limelight 3A integration selects one
+    onboard pipeline. A robot-owned request changes that selection; reading a blob source never
+    switches a pipeline or silently interrupts AprilTags. Inactive and awaiting-new-frame results
+    are unavailable, not current copies of an earlier mode's observations. Independently sampled
+    latest tag/blob results are not an atomic synchronized pair. Simultaneous built-in pipelines
+    on one Limelight, automatic time-sharing, and a combined custom SnapScript are outside scope.
+  - **Useful common measurement under review:** camera-relative direction to the detector-reported
+    target point is a stronger candidate than pretending both backends expose the same full-image
+    pixel box and contour area. Camera-relative direction is not robot-origin bearing or floor/
+    field position. Keep `TargetObservation2d` and SPATIAL-02 unchanged. Differences in thresholds,
+    filtering, representative point, and candidate ranking do not become claims of identical
+    object recognition; a color candidate is not proof of a physical ball or persistent track.
+  - **Pinned implementation evidence:** the repository uses FTC Vision/Hardware/RobotCore 11.1.0
+    and EasyOpenCV 1.7.3. In Hardware 11.1.0, `LLResultTypes.ColorResult` copies per-result
+    `tx_nocross`/`ty_nocross` angular values without performing native geometry. It exposes no live
+    frame dimensions, guaranteed rectangle, or SDK-equivalent contour area. Corners are optional
+    variable-length mutable nested lists, and getters default missing scalar fields to zero.
+    `LLResult` receipt time is wall-clock transport evidence, not the webcam's monotonic capture
+    timestamp. Reuse `FtcLimelightVisionLane`'s confirmed pipeline, stable result identity, shared
+    clock anchoring, and retained exposure-time estimate; do not add another polling/timebase owner.
+  - **Software-resolvable gaps, not external blockers:** pinned `LLResult.toString()` is documented
+    to return the JSON data and directly returns `jsonData.toString()`. A narrow parse inside the
+    existing acquisition boundary can distinguish missing fields from real zeros and inspect
+    `pTYPE`; the typed `getPipelineType()` instead reads `pipelineType`. This is a viable seam to
+    evaluate in the next design, not an approved parser implementation or new raw-result API.
+    It needs no reflection, fabricated zero, or independent HTTP polling. Fake-backed parser and
+    ownership tests can establish this software behavior without a camera.
+  - **Confirmed source conflict:** the vendor's
+    [current JSON specification](https://docs.limelightvision.io/docs/docs-limelight/apis/json-results-specification)
+    describes vertical color offsets as down-positive and gives an inconsistent direction label
+    for `ty_nocross`. Its pixel-origin descriptions and per-target area scale also conflict with
+    other supplied descriptions/examples. The
+    [2017.7 coordinate change](https://docs.limelightvision.io/docs/docs-limelight/software-change-log-2017-2020#20177-112117)
+    describes up-positive vertical offsets. The current
+    [pixels-to-angles theory](https://docs.limelightvision.io/docs/docs-limelight/pipeline-retro/retro-theory#from-pixels-to-angles)
+    derives separate horizontal/vertical plane angles with right/up-positive axes, but uses legacy
+    camera assumptions rather than an explicit 3A per-result contract. These are evidence of the
+    ambiguity, not a license to choose a convention by majority vote or expose a student sign-fix
+    switch. The angular values must not be mislabeled spherical yaw/elevation without the correct
+    mathematical interpretation.
+  - **Target-point clarification and remaining limit:** the vendor's
+    [Targeting Region documentation](https://docs.limelightvision.io/docs/docs-limelight/pipeline-retro/contour-filtering-and-sorting#targeting-region)
+    describes a configurable point on the chosen bounding rectangle, with center as the default.
+    It does not resolve the complete 3A per-result/no-crosshair convention or rectangle meaning.
+    Crosshair-based sorting can also change the selected candidate: coordinate-origin independence
+    must be checked for the same isolated target, not inferred from an unchanged top-ranked result.
+  - **Webcam geometry feasibility:** SDK `CameraCalibration` supplies intrinsics, calibration
+    dimensions, and distortion coefficients. A future pixel-to-direction adapter must snapshot
+    them, reject absent/fake/non-finite calibration or nonpositive focal lengths, and check the
+    applicable image dimensions. No guessed FOV, zero-distortion assumption, or AprilTag fallback
+    focal length is selected. Bounded point undistortion can follow the
+    [OpenCV camera model](https://docs.opencv.org/4.10.0/d9/d0c/group__calib3d.html), but native runtime
+    checks and physical calibration accuracy remain distinct from pure-JVM tests.
+  - **Bounded search result:** independent searches of this checkout, visible official Limelight
+    example/client/notebook repositories, FIRST's live `SensorLimelight3A` sample, and vendor
+    documentation/issues found no qualifying firmware-labelled directional color recordings or
+    resolving model-specific vendor clarification. Existing local tests are synthetic; live
+    sample programs are not captured evidence. Generic JSON examples without paired images,
+    firmware, and pipeline provenance do not close the gate. This is not a claim that recordings
+    exist nowhere. No vendor was contacted and no hardware/software-version claim was inferred
+    from the configured SDK class name.
+  - **Exact evidence request:** either obtain an authoritative clarification explicitly applicable
+    to a named Limelight 3A firmware and its per-color-result fields, or obtain recorded results
+    with the following evidence. Identify hardware model, firmware, SDK, calibration/resolution,
+    crop/rotation, pipeline index/type, targeting-region setting, sort/grouping settings, and
+    crosshair configuration. Preserve original raw result JSON and matching unannotated/annotated
+    image pairs with a stable capture identifier. Use one isolated yellow target at center, left,
+    right, above, and below the optical-center reference, plus at least one diagonal position with
+    both offsets nonzero. Preserve applicable intrinsics and distortion data so the diagonal sample
+    can distinguish independent image-plane angles from spherical yaw/elevation; axis-aligned
+    samples alone cannot. An authoritative clarification must instead state the angle equations.
+    Repeat with a shifted crosshair while holding image/target/other settings fixed. Include a
+    genuine observed-empty color frame and a color-to-AprilTag-to-color sequence. Record what
+    changed rather than claiming a synthesized
+    expected value was observed. No robot actuation or new diagnostic tooling is needed to define
+    this request; any actual collection workflow needs its own explicit authorization.
+  - **Questions the evidence must answer:** establish the horizontal/vertical angular signs and
+    mathematical angle definition, principal-point versus crosshair reference, selected target-point
+    meaning, and presence of mandatory fields for usable color candidates. Explain zero-direction
+    versus absent data and
+    per-candidate versus selected-result behavior. Name any required pipeline settings and supported
+    firmware bounds. Pixel/area parity is not an extra prerequisite if the final common location
+    contract avoids those values; they must then remain explicitly separate evidence, not silently
+    converted into a shared metric. Physical location/detection accuracy is still not established
+    merely by confirming the reporting convention.
+  - **Record verification:** independent review checked current status, authority, scope, and the
+    evidence packet; incorporated the off-axis sample needed to distinguish angular definitions.
+    The focused Markdown link/anchor/fence regression passed (1 test, 0 failures/errors/skips),
+    and `git diff --check` passed. These are tracker checks, not production or hardware validation.
+  - **Exit and handoff:** evidence must settle the required meanings consistently before selecting
+    the conversion. Then reopen the full Gate 1 construction/capability and student-call-site
+    comparison for both backends, define common fields and explicit unavailable states, synchronize
+    the bounded implementation/lesson/test plan, and request approval of that completed design.
+    Preserve the historical source-backed webcam lifetime/failure findings where still applicable,
+    but re-review them in the new ownership graph. If evidence remains missing, keep Researching
+    at this gate; do not mark Ready, In progress, Verifying, Done, or silently Deferred, and do not
+    implement guessed geometry or a count-only substitute. Publication remains separately gated.
+
 ### SPATIAL-02 - Camera observations to field positions
 
+- **Scope incorporation (2026-09-07):** the approved VISION-03 design explicitly includes the
+  fixed-mount height-plane projection and exact capture-time field-position seam required by its
+  end-to-end located-target consumers. This does not mark all broader SPATIAL-02 work Done. The
+  adaptive example's old down-positive Limelight naming must be reconciled with the vendor's
+  up-positive contract; synthetic fixture parity is not an independent sign oracle.
 - **Tracker-only intake status (2026-08-31):** **Proposed after VISION-03.** The user explicitly
   called out locating a detected color blob on the field. No decision gate has started, no public
   geometry type is approved, and this intake authorizes no implementation or example migration.

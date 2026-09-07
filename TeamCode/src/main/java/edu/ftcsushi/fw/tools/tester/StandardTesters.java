@@ -6,10 +6,10 @@ import com.qualcomm.hardware.limelightvision.Limelight3A;
 import java.util.function.Function;
 
 import edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactories;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
-import edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactories;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
+import edu.ftcsushi.fw.ftc.vision.FtcLimelightVisionLane;
+import edu.ftcsushi.fw.ftc.vision.FtcWebcamVisionLane;
 import edu.ftcsushi.fw.localization.fusion.OdometryCorrectionFusionEstimator;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.tools.tester.calibration.CameraMountCalibrator;
@@ -362,13 +362,14 @@ public final class StandardTesters {
         return cfg;
     }
 
-    private static Function<String, AprilTagVisionLaneFactory> webcamLaneFactoryBuilder() {
+    private static Function<String, AprilTagCameraFactory> webcamLaneFactoryBuilder() {
         return hardwareName -> {
-            FtcWebcamAprilTagVisionLane.Config cfg =
-                    FtcWebcamAprilTagVisionLane.Config.defaults();
+            FtcWebcamVisionLane.Config cfg =
+                    FtcWebcamVisionLane.Config.defaults();
+            cfg.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
             cfg.webcamName = hardwareName;
             cfg.cameraMount = CameraMountConfig.identity();
-            return AprilTagVisionLaneFactories.webcam(cfg);
+            return AprilTagCameraFactories.webcam(cfg);
         };
     }
 
@@ -378,12 +379,13 @@ public final class StandardTesters {
         return cfg;
     }
 
-    private static Function<String, AprilTagVisionLaneFactory> limelightLaneFactoryBuilder() {
+    private static Function<String, AprilTagCameraFactory> limelightLaneFactoryBuilder() {
         return hardwareName -> {
-            FtcLimelightAprilTagVisionLane.Config cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+            FtcLimelightVisionLane.Config cfg = FtcLimelightVisionLane.Config.defaults();
+            cfg.aprilTags = FtcLimelightVisionLane.AprilTagConfig.defaults();
             cfg.hardwareName = hardwareName;
             cfg.cameraMount = CameraMountConfig.identity();
-            return AprilTagVisionLaneFactories.limelight(cfg);
+            return AprilTagCameraFactories.limelight(cfg);
         };
     }
 }

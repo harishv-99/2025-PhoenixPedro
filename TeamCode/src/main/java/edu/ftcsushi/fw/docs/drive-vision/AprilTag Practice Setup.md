@@ -52,20 +52,21 @@ AprilTagLibrary lib = FtcAprilTags.singleTagLibrary(
 );
 ```
 
-Then pass it into the explicit webcam AprilTag owner config:
+Then pass it into the webcam owner's optional AprilTag config:
 
 ```java
-FtcWebcamAprilTagVisionLane.Config visionCfg =
-        FtcWebcamAprilTagVisionLane.Config.defaults();
+FtcWebcamVisionLane.Config visionCfg =
+        FtcWebcamVisionLane.Config.defaults();
 visionCfg.webcamName = "Webcam 1";
-visionCfg.tagLibrary = lib;
+visionCfg.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
+visionCfg.aprilTags.tagLibrary = lib;
 
-FtcWebcamAprilTagVisionLane vision =
-        new FtcWebcamAprilTagVisionLane(hardwareMap, visionCfg);
+FtcWebcamVisionLane vision =
+        new FtcWebcamVisionLane(hardwareMap, visionCfg);
 ```
 
 Keep `vision` as the owner and call `vision.close()` during shutdown. Consumers borrow
-`vision.tagSensor()`; they do not own the webcam lifecycle.
+`vision.aprilTags().tagSensor()`; they do not own the webcam lifecycle.
 
 The config is an authoring draft. Its raw `copy()` isolates the config container, but deliberately
 keeps a supplied SDK `AprilTagLibrary` as a borrowed reference. The active webcam owner validates
@@ -73,7 +74,7 @@ and deep-snapshots that library before it acquires hardware, converts tag size a
 to inches, and gives the processor its own private metadata. Mutating `lib`, its metadata array, a
 position vector, or an orientation after owner construction therefore does not tune the running
 camera. Construct a new owner to adopt a changed library. A selectable tester's
-`AprilTagVisionLaneFactories.webcam(visionCfg)` performs the same validation and capture when the
+`AprilTagCameraFactories.webcam(visionCfg)` performs the same validation and capture when the
 factory is created, then gives every open a fresh private library snapshot.
 
 A **quaternion** is the SDK's four-number representation of orientation. Ordinary use of the named
@@ -117,15 +118,16 @@ policy in the tester Config, while the webcam backend Config owns `lib` and the 
 the backend recipe separately as behavior:
 
 ```java
-FtcWebcamAprilTagVisionLane.Config webcamTemplate =
-        FtcWebcamAprilTagVisionLane.Config.defaults();
-webcamTemplate.tagLibrary = lib;
+FtcWebcamVisionLane.Config webcamTemplate =
+        FtcWebcamVisionLane.Config.defaults();
+webcamTemplate.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
+webcamTemplate.aprilTags.tagLibrary = lib;
 webcamTemplate.cameraMount = solvedCameraMount;
 
-Function<String, AprilTagVisionLaneFactory> webcamBuilder = selectedName -> {
-    FtcWebcamAprilTagVisionLane.Config backend = webcamTemplate.copy();
+Function<String, AprilTagCameraFactory> webcamBuilder = selectedName -> {
+    FtcWebcamVisionLane.Config backend = webcamTemplate.copy();
     backend.webcamName = selectedName;
-    return AprilTagVisionLaneFactories.webcam(backend);
+    return AprilTagCameraFactories.webcam(backend);
 };
 
 AprilTagLocalizationTester.Config april =
@@ -148,7 +150,8 @@ The same one-Config-plus-builder shape applies to all four AprilTag tools:
 None of those tool Configs has a second camera-mount or tag-library answer. A tester snapshots its
 active Config and layout. The deferred builder may be applied again after a clean picker retry, so
 keep `webcamTemplate` and the borrowed SDK `lib` stable for the tester's full lifetime. Each factory
-`open(...)` still returns a fresh lane owner. An empty layout remains an honest empty snapshot: raw
+`open(...)` returns an `OwnedAprilTagCamera`: the tester closes that handle and passes only its
+non-closeable `aprilTags()` view to localization. An empty layout remains an honest empty snapshot: raw
 detections may still be visible, but no fixed-layout calibration sample or AprilTag field correction
 can be produced.
 

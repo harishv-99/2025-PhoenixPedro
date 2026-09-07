@@ -151,6 +151,40 @@ state.
 
 ## Control frame vs camera frame
 
+### Observed points and computed approaches
+
+An observed target and a desired robot destination answer different questions. After
+[locating and selecting a target](<Vision Targets.md>), use
+[`References.observedPoint(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/References.html>)
+for the actual observed point. The stateless
+[`ObservedTargetSpatialSolveLane`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ObservedTargetSpatialSolveLane.html>)
+solves it in robot coordinates at capture, without pretending the robot has been localized.
+An absolute-pose lane can instead solve the same point in current robot coordinates when the
+observation has a valid capture-time field projection. The camera mount is not a tool frame.
+
+Use `References.approachFrame(source)` when the source returns an
+[`ApproachResult2d`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ApproachResult2d.html>):
+a desired **robot-center field pose**, already accounting for the chosen tool offset and heading.
+Translate to `References.framePoint(frame)` and face its heading using robot-center control frames.
+Both tags and located objects can support this destination; tag-relative points/frames still
+retain their specialized identity and orientation semantics.
+
+Solutions retain `targetObservationTimestamp` separately from `robotPoseTimestamp`. Direct
+observed-point solving has no robot-pose estimate, so the latter is unavailable. For a live
+observed field target, the ordinary `timestamp` is the older required evidence: updating the robot
+pose cannot make an old ball sighting fresh. A bounded committed approach retains the original
+sighting for diagnostics but uses fresh robot-pose evidence to solve the frozen destination.
+Commitment means “continue toward this resting-target destination until this deadline,” not
+“the target is still visible.” A field-coordinate rebase must explicitly discard retained goals.
+
+Quality is a lane-specific score, not the probability of collecting a ball. `NaN` means that no
+score was supplied. `SpatialSolutionGate.defaults()` accepts unknown quality but still requires
+a valid same-clock timestamp; it imposes no finite age cap. Set `maxAgeSec(...)` for a bounded age.
+Calling `minQuality(...)` explicitly requires a known score—even `minQuality(0)` rejects unknown
+quality. A pose lane's score describes its pose evidence, not a fabricated combined target score.
+
+### The tool and sensor have different jobs
+
 A **control frame** is attached to the part whose position or facing matters, such as a shooter's
 exit. A **camera frame** is attached to the sensor that observed the target. They need not have the
 same origin or direction. A frame transform states one frame's position and orientation relative

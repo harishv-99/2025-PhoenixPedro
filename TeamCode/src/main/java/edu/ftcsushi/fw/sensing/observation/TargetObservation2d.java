@@ -2,12 +2,13 @@ package edu.ftcsushi.fw.sensing.observation;
 
 import java.util.Objects;
 
-import edu.ftcsushi.fw.core.math.MathUtil;
+import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
+import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 
 /**
- * A lightweight 2D observation of a target relative to the robot.
+ * An immutable 2D observation relative to the robot at capture, not at a later read.
  *
  * <p>This is intentionally generic: it can represent an AprilTag observation, an object detection
  * observation, or any other sensor-provided target measurement. It describes the target's
@@ -24,7 +25,8 @@ import edu.ftcsushi.fw.core.time.LoopTimestamp;
  * providing {@link #bearingRad}. Use {@link #hasPosition()} to check.</p>
  *
  * <h2>Quality and capture time</h2>
- * <p>Quality is a unitless score in [0, 1] where 1 is “very confident”. The meaning is sensor-specific
+ * <p>Quality is NaN when unknown, otherwise a score in [0, 1] where 1 is “very confident”. Geometric
+ * validity never manufactures confidence. The meaning is sensor-specific
  * but the gating logic in higher-level code typically uses it as a simple threshold. The epoch-safe
  * {@link #timestamp} keeps observation freshness valid across deliberate clock resets without
  * requiring consumers to carry a separate epoch.</p>
@@ -39,8 +41,8 @@ public final class TargetObservation2d {
     /**
      * Optional ID for the observed target.
      *
-     * <p>For AprilTags, this is the tag ID. For other detectors, it can be a class ID or tracker ID.
-     * When unknown or not applicable, this is {@code -1}.</p>
+     * <p>This requires producer-supported stable identity, such as an AprilTag ID. A blob's list
+     * index or object class is not such an identity. Unknown identity is {@code -1}.</p>
      */
     public final int targetId;
 
@@ -71,12 +73,19 @@ public final class TargetObservation2d {
     public final double targetHeadingRad;
 
     /**
-     * Confidence score in [0, 1].
+     * Confidence score in [0, 1], or NaN when unknown.
      */
     public final double quality;
 
     /** Epoch-safe timestamp of this measurement. */
     public final LoopTimestamp timestamp;
+
+    /** Optional field X in inches; NaN without a usable capture-time pose lookup. */
+    public final double fieldXInches;
+    /** Optional field Y in inches; NaN without a usable capture-time pose lookup. */
+    public final double fieldYInches;
+    private final PlanarPoseHistory.Lookup fieldLookup;
+    private final String fieldProjectionReason;
 
     private TargetObservation2d(boolean hasTarget,
                                 int targetId,
@@ -92,9 +101,80 @@ public final class TargetObservation2d {
         this.leftInches = leftInches;
         this.bearingRad = bearingRad;
         this.targetHeadingRad = targetHeadingRad;
-        this.quality = MathUtil.clamp(quality, 0.0, 1.0);
+        if (!Double.isNaN(quality) && (!Double.isFinite(quality) || quality < 0 || quality > 1)) {
+            throw new IllegalArgumentException("quality must be NaN (unknown) or within [0, 1]");
+        }
+        if (targetId < -1) throw new IllegalArgumentException("targetId must be -1 or non-negative");
+        this.quality = quality;
         this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
+        this.fieldXInches = Double.NaN;
+        this.fieldYInches = Double.NaN;
+        this.fieldLookup = null;
+        this.fieldProjectionReason = "field projection not requested";
     }
+
+    private TargetObservation2d(TargetObservation2d original, double fieldX, double fieldY,
+                                PlanarPoseHistory.Lookup lookup, String reason) {
+        hasTarget = original.hasTarget;
+        targetId = original.targetId;
+        forwardInches = original.forwardInches;
+        leftInches = original.leftInches;
+        bearingRad = original.bearingRad;
+        targetHeadingRad = original.targetHeadingRad;
+        quality = original.quality;
+        timestamp = original.timestamp;
+        fieldXInches = fieldX;
+        fieldYInches = fieldY;
+        fieldLookup = lookup;
+        fieldProjectionReason = reason;
+    }
+
+    /**
+     * Attaches an available or failed capture-time lookup without changing robot geometry,
+     * detector confidence, or the original timestamp. Failed lookup/overflow retains its reason
+     * and publishes no field position. Does not read or reset history.
+     *
+     * @throws IllegalArgumentException if the lookup did not retain this exact requested timestamp
+     */
+    public TargetObservation2d withFieldPoseLookup(PlanarPoseHistory.Lookup lookup) {
+        Objects.requireNonNull(lookup, "lookup");
+        if (lookup.timestamp() != timestamp) {
+            throw new IllegalArgumentException("field lookup must retain the exact observation timestamp");
+        }
+        double x = Double.NaN;
+        double y = Double.NaN;
+        String reason;
+        if (!lookup.isAvailable()) {
+            reason = "field pose unavailable: " + lookup.unavailableReason();
+        } else if (!hasPosition()) {
+            reason = "observation has no robot-relative position";
+        } else {
+            Pose2d pose = lookup.fieldToRobotPose();
+            double c = Math.cos(pose.headingRad);
+            double s = Math.sin(pose.headingRad);
+            double candidateX = pose.xInches + c * forwardInches - s * leftInches;
+            double candidateY = pose.yInches + s * forwardInches + c * leftInches;
+            if (Double.isFinite(candidateX) && Double.isFinite(candidateY)) {
+                x = candidateX;
+                y = candidateY;
+                reason = "available";
+            } else {
+                reason = "field transform produced non-finite coordinates";
+            }
+        }
+        return new TargetObservation2d(this, x, y, lookup, reason);
+    }
+
+    /** Returns whether the producer supplied confidence rather than an unknown NaN value. */
+    public boolean hasQuality() { return hasTarget && Double.isFinite(quality); }
+    /** Returns whether capture-time projection supplied finite field coordinates. */
+    public boolean hasFieldPosition() {
+        return hasTarget && Double.isFinite(fieldXInches) && Double.isFinite(fieldYInches);
+    }
+    /** Returns the available/failed lookup, or null before field projection was requested. */
+    public PlanarPoseHistory.Lookup fieldLookup() { return fieldLookup; }
+    /** Returns field-position availability/absence without resampling history. */
+    public String fieldProjectionReason() { return fieldProjectionReason; }
 
     /**
      * Return a "no target" observation.
@@ -130,6 +210,8 @@ public final class TargetObservation2d {
                                                               double leftInches,
                                                               double quality,
                                                               LoopTimestamp timestamp) {
+        requireFinite("forwardInches", forwardInches);
+        requireFinite("leftInches", leftInches);
         double bearing = Math.atan2(leftInches, forwardInches);
         return new TargetObservation2d(
                 true,
@@ -156,6 +238,9 @@ public final class TargetObservation2d {
                                                           double targetHeadingRad,
                                                           double quality,
                                                           LoopTimestamp timestamp) {
+        requireFinite("forwardInches", forwardInches);
+        requireFinite("leftInches", leftInches);
+        requireFinite("targetHeadingRad", targetHeadingRad);
         double bearing = Math.atan2(leftInches, forwardInches);
         return new TargetObservation2d(
                 true,
@@ -185,6 +270,7 @@ public final class TargetObservation2d {
                                                              double bearingRad,
                                                              double quality,
                                                              LoopTimestamp timestamp) {
+        requireFinite("bearingRad", bearingRad);
         return new TargetObservation2d(
                 true,
                 targetId,
@@ -225,7 +311,11 @@ public final class TargetObservation2d {
 
     /** Returns whether this observation is valid now and within the inclusive maximum age. */
     public boolean isFresh(LoopClock clock, double maxAgeSec) {
-        return timestamp.isFresh(clock, maxAgeSec);
+        return timestamp.isFresh(clock, maxAgeSec) && hasTarget;
+    }
+
+    private static void requireFinite(String name, double value) {
+        if (!Double.isFinite(value)) throw new IllegalArgumentException(name + " must be finite");
     }
 
     /**

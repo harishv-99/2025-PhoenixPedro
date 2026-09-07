@@ -19,7 +19,7 @@ import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.field.SimpleTagLayout;
 import edu.ftcsushi.fw.field.TagLayout;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.MotionDelta;
 import edu.ftcsushi.fw.localization.MotionPredictor;
@@ -355,7 +355,7 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
 
         assertTrue(failure instanceof IllegalArgumentException);
         assertTrue(failure.getMessage().contains("LIMELIGHT_FIELD_POSE"));
-        assertTrue(failure.getMessage().contains("FtcLimelightAprilTagVisionLane"));
+        assertTrue(failure.getMessage().contains("FtcLimelightAprilTagVision"));
         assertTrue(events.isEmpty());
         assertEquals(0, hardwareMap.lookupCount);
     }
@@ -568,7 +568,7 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
         assertEquals(
                 Arrays.asList(
                         HardwareMap.class,
-                        AprilTagVisionLane.class,
+                        AprilTagVision.class,
                         TagLayout.class,
                         FtcOdometryAprilTagLocalizationLane.Config.class
                 ),
@@ -591,7 +591,7 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
         Method injectedFactory = FtcOdometryAprilTagLocalizationLane.class.getMethod(
                 "withPredictor",
                 MotionPredictor.class,
-                AprilTagVisionLane.class,
+                AprilTagVision.class,
                 TagLayout.class,
                 FtcOdometryAprilTagLocalizationLane.EstimatorConfig.class
         );
@@ -602,7 +602,7 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
         assertNoPublicMethod(
                 "withPredictor",
                 MotionPredictor.class,
-                AprilTagVisionLane.class,
+                AprilTagVision.class,
                 TagLayout.class,
                 FtcOdometryAprilTagLocalizationLane.Config.class
         );
@@ -782,7 +782,7 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
         }
     }
 
-    private static AprilTagVisionLane noDetectionsVisionLane() {
+    private static AprilTagVision noDetectionsVisionLane() {
         return new RecordingVisionLane();
     }
 
@@ -831,7 +831,7 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
     }
 
     /** Completed vision collaborator with observable one-time accessor reads. */
-    private static final class EventVisionLane implements AprilTagVisionLane {
+    private static final class EventVisionLane implements AprilTagVision, AutoCloseable {
         final List<String> events;
         RecordingAprilTagSensor sensor = new RecordingAprilTagSensor();
         CameraMountConfig mount = CameraMountConfig.identity();
@@ -867,7 +867,7 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
         }
     }
 
-    private static final class RecordingVisionLane implements AprilTagVisionLane {
+    private static final class RecordingVisionLane implements AprilTagVision, AutoCloseable {
         final RecordingAprilTagSensor sensor = new RecordingAprilTagSensor();
 
         @Override

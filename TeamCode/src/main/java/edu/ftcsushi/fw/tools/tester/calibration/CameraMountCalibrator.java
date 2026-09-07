@@ -16,8 +16,8 @@ import edu.ftcsushi.fw.field.TagLayouts;
 import edu.ftcsushi.fw.ftc.FtcGameTagLayout;
 import edu.ftcsushi.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcsushi.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -111,16 +111,16 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     private final String preferredVisionDeviceName;
     private final Class<? extends HardwareDevice> visionDeviceType;
     private final String visionPickerTitle;
-    private final Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder;
+    private final Function<String, AprilTagCameraFactory> visionLaneFactoryBuilder;
     private final TagLayout layout;
     private final String layoutPolicySummary;
     private final double maxDetectionAgeSec;
 
     /** Factory captured for the initial preferred-name attempt; picker attempts replace it. */
-    private AprilTagVisionLaneFactory pendingVisionLaneFactory;
+    private AprilTagCameraFactory pendingVisionLaneFactory;
 
     // Runtime state
-    private AprilTagVisionLane visionLane;
+    private OwnedAprilTagCamera visionLane;
     private AprilTagSensor tagSensor;
 
     private boolean visionReady = false;
@@ -190,7 +190,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      */
     public CameraMountCalibrator(
             Config config,
-            Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder
+            Function<String, AprilTagCameraFactory> visionLaneFactoryBuilder
     ) {
         Config source = Objects.requireNonNull(config, "CameraMountCalibrator.Config must not be null");
 
@@ -280,8 +280,8 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 : null;
     }
 
-    private static AprilTagVisionLaneFactory requireVisionFactory(
-            AprilTagVisionLaneFactory factory,
+    private static AprilTagCameraFactory requireVisionFactory(
+            AprilTagCameraFactory factory,
             String selectedName
     ) {
         if (factory == null) {
@@ -516,7 +516,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                     "CameraMountCalibrator selected vision device name"
             );
             selectedCameraName = normalized;
-            AprilTagVisionLaneFactory selectedFactory = requireVisionFactory(
+            AprilTagCameraFactory selectedFactory = requireVisionFactory(
                     visionLaneFactoryBuilder.apply(normalized),
                     normalized
             );
@@ -537,14 +537,14 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         }
         if (visionClosingOrTerminal) return;
         if (visionCleanupFailed) return;
-        AprilTagVisionLaneFactory factory = pendingVisionLaneFactory;
+        AprilTagCameraFactory factory = pendingVisionLaneFactory;
         if (factory == null) return;
         pendingVisionLaneFactory = null;
 
         visionFailure = null;
         boolean ownerPublished = false;
         try {
-            AprilTagVisionLane openedLane = factory.open(ctx.hw);
+            OwnedAprilTagCamera openedLane = factory.open(ctx.hw);
             if (openedLane == null) {
                 throw new IllegalStateException(
                         "vision lane factory returned null for " + selectedCameraName);
@@ -552,7 +552,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             visionLane = openedLane;
             ownerPublished = true;
             tagSensor = Objects.requireNonNull(
-                    visionLane.tagSensor(),
+                    visionLane.aprilTags().tagSensor(),
                     "AprilTag vision lane returned a null tag sensor"
             );
             activeVisionDescription = factory.description();
@@ -589,13 +589,13 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
     /** Refreshes asynchronous camera readiness without opening a competing owner. */
     private void refreshVisionReadiness() {
-        AprilTagVisionLane lane = visionLane;
+        OwnedAprilTagCamera lane = visionLane;
         if (lane == null || visionClosingOrTerminal || visionCleanupFailed) {
             visionReady = false;
             return;
         }
         try {
-            VisionReadiness current = lane.readiness(ctx.clock);
+            VisionReadiness current = lane.aprilTags().readiness(ctx.clock);
             if (current == null) {
                 throw new IllegalStateException(
                         "AprilTag vision lane returned a null readiness result"
@@ -658,7 +658,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      */
     private RuntimeException closeVisionLaneOnce() {
         visionClosingOrTerminal = true;
-        AprilTagVisionLane lane = visionLane;
+        OwnedAprilTagCamera lane = visionLane;
         visionLane = null;
         if (lane == null) {
             return null;

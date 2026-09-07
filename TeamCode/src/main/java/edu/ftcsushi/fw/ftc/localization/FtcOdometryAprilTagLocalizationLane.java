@@ -8,8 +8,8 @@ import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.field.TagLayouts;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
+import edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVision;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.MotionPredictor;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
@@ -26,17 +26,18 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
  * <p>This lane consumes three stable inputs:</p>
  * <ul>
  *   <li>one {@link MotionPredictor},</li>
- *   <li>a shared {@link AprilTagVisionLane}, and</li>
+ *   <li>a shared {@link AprilTagVision}, and</li>
  *   <li>a field-fixed {@link TagLayout} describing which tags are trusted landmarks.</li>
  * </ul>
  *
  * <p>The ordinary FTC construction path creates and owns a configured
  * {@link PinpointOdometryPredictor}. Integrations that already own a predictor use
- * {@link #withPredictor(MotionPredictor, AprilTagVisionLane, TagLayout, EstimatorConfig)} so this
+ * {@link #withPredictor(MotionPredictor, AprilTagVision, TagLayout, EstimatorConfig)} so this
  * lane and the integration share that one backend-neutral source instead of creating a competing
  * hardware owner.</p>
  *
- * <p>The vision lane owns device identity, camera mount, and backend cleanup. This localization lane
+ * <p>The physical camera owner retains device identity, mount, and cleanup. Its non-closeable
+ * {@code AprilTagVision} is borrowed here; localization never closes the camera. This localization lane
  * owns the estimation strategy built on top of those resources: predictor wiring, AprilTag-only
  * field solving, optional direct Limelight field pose, correction-source selection, corrected/global
  * estimator selection, and per-loop updates.</p>
@@ -308,7 +309,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
         }
     }
 
-    private final AprilTagVisionLane visionLane;
+    private final AprilTagVision visionLane;
     private final MotionPredictor predictor;
     private final AprilTagPoseEstimator aprilTagPoseEstimator;
     private final LimelightFieldPoseEstimator limelightFieldPoseEstimator;
@@ -322,8 +323,8 @@ public final class FtcOdometryAprilTagLocalizationLane {
 
     /** Effect-free estimator inputs captured before owned Pinpoint acquisition. */
     private static final class EstimatorInputs {
-        final AprilTagVisionLane visionLane;
-        final FtcLimelightAprilTagVisionLane limelightVisionLane;
+        final AprilTagVision visionLane;
+        final FtcLimelightAprilTagVision limelightVisionLane;
         final AprilTagPoseEstimator aprilTagPoseEstimator;
         final LimelightFieldPoseEstimator.Config limelightFieldPoseConfig;
         final OdometryCorrectionFusionEstimator.Config correctionFusionConfig;
@@ -331,8 +332,8 @@ public final class FtcOdometryAprilTagLocalizationLane {
         final CorrectionSourceMode correctionSourceMode;
         final GlobalEstimatorMode correctedEstimatorMode;
 
-        EstimatorInputs(AprilTagVisionLane visionLane,
-                        FtcLimelightAprilTagVisionLane limelightVisionLane,
+        EstimatorInputs(AprilTagVision visionLane,
+                        FtcLimelightAprilTagVision limelightVisionLane,
                         AprilTagPoseEstimator aprilTagPoseEstimator,
                         LimelightFieldPoseEstimator.Config limelightFieldPoseConfig,
                         OdometryCorrectionFusionEstimator.Config correctionFusionConfig,
@@ -382,7 +383,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * @throws IllegalArgumentException for an invalid active Config value
      */
     public FtcOdometryAprilTagLocalizationLane(HardwareMap hardwareMap,
-                                               AprilTagVisionLane visionLane,
+                                               AprilTagVision visionLane,
                                                TagLayout fixedFieldTagLayout,
                                                Config config) {
         this(ownedPinpointInputs(hardwareMap, visionLane, fixedFieldTagLayout, config));
@@ -409,7 +410,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
      */
     public static FtcOdometryAprilTagLocalizationLane withPredictor(
             MotionPredictor predictor,
-            AprilTagVisionLane visionLane,
+            AprilTagVision visionLane,
             TagLayout fixedFieldTagLayout,
             EstimatorConfig estimation) {
         return new FtcOdometryAprilTagLocalizationLane(injectedInputs(
@@ -615,11 +616,11 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * and reset its hardware device.</p>
      */
     private static ConstructionInputs ownedPinpointInputs(HardwareMap hardwareMap,
-                                                          AprilTagVisionLane visionLane,
+                                                          AprilTagVision visionLane,
                                                           TagLayout fixedFieldTagLayout,
                                                           Config config) {
         HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
-        AprilTagVisionLane requiredVisionLane = Objects.requireNonNull(visionLane, "visionLane");
+        AprilTagVision requiredVisionLane = Objects.requireNonNull(visionLane, "visionLane");
         TagLayout requiredLayout = Objects.requireNonNull(fixedFieldTagLayout, "fixedFieldTagLayout");
         Config copiedConfig = Objects.requireNonNull(config, "config").validatedCopy(
                 FtcOdometryAprilTagLocalizationLane.class.getCanonicalName() + ".Config"
@@ -643,11 +644,11 @@ public final class FtcOdometryAprilTagLocalizationLane {
 
     /** Validate and copy the estimator graph inputs without constructing another predictor. */
     private static ConstructionInputs injectedInputs(MotionPredictor predictor,
-                                                      AprilTagVisionLane visionLane,
+                                                      AprilTagVision visionLane,
                                                       TagLayout fixedFieldTagLayout,
                                                       EstimatorConfig config) {
         MotionPredictor requiredPredictor = Objects.requireNonNull(predictor, "predictor");
-        AprilTagVisionLane requiredVisionLane = Objects.requireNonNull(visionLane, "visionLane");
+        AprilTagVision requiredVisionLane = Objects.requireNonNull(visionLane, "visionLane");
         TagLayout requiredLayout = Objects.requireNonNull(fixedFieldTagLayout, "fixedFieldTagLayout");
         return new ConstructionInputs(
                 requiredPredictor,
@@ -664,7 +665,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * Raw-copy, validate, and bind one estimator graph without sampling a predictor or hardware.
      */
     private static EstimatorInputs captureEstimatorInputs(
-            AprilTagVisionLane visionLane,
+            AprilTagVision visionLane,
             TagLayout fixedFieldTagLayout,
             EstimatorConfig authoredConfig,
             String context
@@ -693,9 +694,9 @@ public final class FtcOdometryAprilTagLocalizationLane {
                         ? config.correctionEkf
                         : null;
 
-        FtcLimelightAprilTagVisionLane limelightVisionLane =
-                visionLane instanceof FtcLimelightAprilTagVisionLane
-                        ? (FtcLimelightAprilTagVisionLane) visionLane
+        FtcLimelightAprilTagVision limelightVisionLane =
+                visionLane instanceof FtcLimelightAprilTagVision
+                        ? (FtcLimelightAprilTagVision) visionLane
                         : null;
         boolean limelightConfigActive = limelightVisionLane != null
                 || correctionSourceMode == CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
@@ -711,7 +712,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
                 && limelightVisionLane == null) {
             throw new IllegalArgumentException(
                     context + ".correctionSource.mode is LIMELIGHT_FIELD_POSE, but visionLane "
-                            + "must be FtcLimelightAprilTagVisionLane; received "
+                            + "must be FtcLimelightAprilTagVision; received "
                             + visionLane.getClass().getName()
             );
         }

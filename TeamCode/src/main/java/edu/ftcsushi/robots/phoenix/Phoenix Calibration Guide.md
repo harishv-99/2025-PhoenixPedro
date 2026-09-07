@@ -377,7 +377,8 @@ For Phoenix's current AprilTag use case, both backends expose the same narrow se
 
 ```java
 PhoenixProfile profile = PhoenixProfile.current();
-AprilTagVisionLane vision = PhoenixVisionFactory.create(hardwareMap, profile.vision);
+OwnedAprilTagCamera camera = PhoenixVisionFactory.create(hardwareMap, profile.vision);
+AprilTagVision vision = camera.aprilTags();
 
 FtcOdometryAprilTagLocalizationLane localization =
         new FtcOdometryAprilTagLocalizationLane(
@@ -418,10 +419,12 @@ completed-Follower adapter constructor is only for an advanced custom/portable h
 already constructed the vendor graph and will route its lifecycle through the adapter; it acquires no
 Pinpoint hardware.
 
-The backend only changes which concrete AprilTag lane is created:
+The factory transfers one `OwnedAprilTagCamera` handle to the root, which closes it at shutdown.
+Localization and targeting borrow its non-closeable `AprilTagVision`; they do not own the camera.
+The backend changes which concrete general camera owner is created:
 
-- `Backend.WEBCAM` -> `FtcWebcamAprilTagVisionLane`
-- `Backend.LIMELIGHT` -> `FtcLimelightAprilTagVisionLane`
+- `Backend.WEBCAM` -> `FtcWebcamVisionLane`
+- `Backend.LIMELIGHT` -> `FtcLimelightVisionLane`
 
 The selected concrete owner validates and snapshots its full backend Config before device lookup;
 the inactive backend branch is not opened, validated, or treated as calibrated. A custom FTC webcam
@@ -430,14 +433,14 @@ deep-snapshots its mutable metadata. Change `PhoenixVisionFactory.Config.default
 to adopt different metadata or solver tuning; neither is a live-tuning surface.
 
 Phoenix's tester factories map the relevant profile facts into one fresh tool Config and pass the
-active backend recipe separately as a `Function<String, AprilTagVisionLaneFactory>`. That function
+active backend recipe separately as a `Function<String, AprilTagCameraFactory>`. That function
 captures the selected webcam or Limelight template immediately; a later picker retry does not reread
 an aggregate profile. The tester snapshots the fixed layout, while the backend Config remains
 the sole camera-mount and detector-library owner. Keep any borrowed custom SDK tag library stable for
 the complete tester lifetime and every clean retry.
 
 Intrinsic layout, AprilTag policy, predictor, source-selection, and selected Fusion/EKF errors fail
-before portal or Pinpoint effects. Actual returned-lane subtype, accessors, and readiness can only be
+before portal or Pinpoint effects. Actual returned borrowed-capability subtype, accessors, and readiness can only be
 checked after open. Non-null `NOT_READY` remains pending; a null contract fact or `RuntimeException`
 closes the published lane once when cleanup succeeds. An `Error` propagates immediately and leaves
 no cleanup guarantee. If the lane remains published and STOP is later invoked, that boundary closes
@@ -451,10 +454,12 @@ set concurrently; a Limelight runs one onboard pipeline and must confirm a fresh
 requested change. Phoenix displays `vision.componentReadiness` and `vision.readinessReason` every
 loop independently of target visibility. A ready lane may legitimately see no tags.
 
-Custom multi-purpose vision keeps the concrete advanced owner in a robot realization:
-`FtcWebcamVisionPortalLane` maps semantic modes to processor enablement, while
-`FtcLimelightVisionLane` maps them to one pipeline request at each transition. Auto and TeleOp
-should consume one robot-owned immutable timestamped snapshot rather than FTC or Limelight result types.
+Both general camera Configs enable tags with non-null `aprilTags`; Phoenix's defaults do this
+explicitly. A separate non-null `floorObjects` enables estimated floor-object locations on the same
+owner. Phoenix does not enable that capability by default. If robot behavior adds activity changes,
+keep that policy in its realization: webcam maps activities to processor enablement and Limelight
+to one pipeline request at each transition. Consumers use borrowed tag evidence or the shared
+located-target source rather than FTC or Limelight result types.
 
 Phoenix can use Limelight's direct device field pose as an **optional** correction source through
 `PhoenixLocalizationConfiguration.current()`, while the raw AprilTag path remains

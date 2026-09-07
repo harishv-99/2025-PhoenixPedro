@@ -144,7 +144,7 @@ final class FtcWebcamAprilTagSupport {
 
     /** Adapts one owned SDK processor into cycle-stable, timestamped AprilTag frame snapshots. */
     static final class PortalAprilTagSensor implements AprilTagSensor {
-        private final FtcWebcamVisionPortalLane owner;
+        private final FtcWebcamVisionLane owner;
         private final AprilTagProcessor processor;
         private final FtcFrameTimestampAnchor frameTimestampAnchor =
                 new FtcFrameTimestampAnchor();
@@ -156,7 +156,7 @@ final class FtcWebcamAprilTagSupport {
         private AprilTagDetections lastDetections = AprilTagDetections.none();
 
         PortalAprilTagSensor(
-                FtcWebcamVisionPortalLane owner,
+                FtcWebcamVisionLane owner,
                 AprilTagProcessor processor
         ) {
             this.owner = Objects.requireNonNull(owner, "owner");

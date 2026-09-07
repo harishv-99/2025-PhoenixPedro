@@ -20,6 +20,9 @@ import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.core.math.MathUtil;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
+import edu.ftcsushi.fw.core.source.Source;
+import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 
 /**
  * FTC-boundary owner for one Limelight and its selected onboard pipeline.
@@ -34,7 +37,25 @@ import edu.ftcsushi.fw.core.time.LoopTimestamp;
  * after that close returns successfully. A close failure leaves hardware ownership uncertain, so
  * stop and restart the OpMode before acquiring the Limelight again.</p>
  */
-public class FtcLimelightVisionLane implements AutoCloseable {
+public final class FtcLimelightVisionLane implements AutoCloseable {
+
+    /** Onboard AprilTag pipeline configuration, independent of camera ownership. */
+    public static final class AprilTagConfig {
+        /** Configured AprilTag pipeline; must be in [0, 9]. */
+        public int pipelineIndex = 0;
+        private AprilTagConfig() {}
+        /** Returns a fresh AprilTag-purpose draft. */
+        public static AprilTagConfig defaults() { return new AprilTagConfig(); }
+        /** Returns an independent raw draft. */
+        public AprilTagConfig copy() {
+            AprilTagConfig c = new AprilTagConfig();
+            c.pipelineIndex = pipelineIndex;
+            return c;
+        }
+        @Override public String toString() {
+            return "AprilTagConfig{pipelineIndex=" + pipelineIndex + '}';
+        }
+    }
 
     /** Mutable data-only authoring config for one Limelight owner. */
     public static final class Config {
@@ -62,6 +83,13 @@ public class FtcLimelightVisionLane implements AutoCloseable {
          */
         public double maxResultAgeSec = 0.25;
 
+        /** Fixed camera mount shared by all configured purposes. */
+        public CameraMountConfig cameraMount = CameraMountConfig.identity();
+        /** Null omits the AprilTag capability. */
+        public AprilTagConfig aprilTags;
+        /** Null omits the floor-object capability. */
+        public FtcFloorObjectVision.Config floorObjects;
+
         private Config() {
             // Defaults assigned above.
         }
@@ -81,6 +109,9 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             c.pipelineIndex = this.pipelineIndex;
             c.pollRateHz = this.pollRateHz;
             c.maxResultAgeSec = this.maxResultAgeSec;
+            c.cameraMount = cameraMount;
+            c.aprilTags = aprilTags == null ? null : aprilTags.copy();
+            c.floorObjects = floorObjects == null ? null : floorObjects.copy();
             return c;
         }
 
@@ -91,6 +122,9 @@ public class FtcLimelightVisionLane implements AutoCloseable {
                     + ", pipelineIndex=" + pipelineIndex
                     + ", pollRateHz=" + pollRateHz
                     + ", maxResultAgeSec=" + maxResultAgeSec
+                    + ", cameraMount=" + cameraMount
+                    + ", aprilTags=" + aprilTags
+                    + ", floorObjects=" + floorObjects
                     + '}';
         }
 
@@ -99,6 +133,13 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             String p = context != null && !context.trim().isEmpty()
                     ? context.trim()
                     : "FtcLimelightVisionLane.Config";
+            if (c.cameraMount == null) throw new IllegalArgumentException(p + ".cameraMount must not be null");
+            if (c.aprilTags != null) requirePipelineIndex(c.aprilTags.pipelineIndex, p + ".aprilTags.pipelineIndex");
+            if (c.floorObjects != null) c.floorObjects = c.floorObjects.validatedCopy(p + ".floorObjects");
+            if (c.aprilTags != null && c.floorObjects != null
+                    && c.aprilTags.pipelineIndex == c.floorObjects.limelightPipelineIndex) {
+                throw new IllegalArgumentException(p + " AprilTag and floor-object pipelines must differ");
+            }
             c.hardwareName = requireNonBlank(c.hardwareName, p + ".hardwareName");
             requirePipelineIndex(c.pipelineIndex, p + ".pipelineIndex");
             if (c.pollRateHz < 1 || c.pollRateHz > 250) {
@@ -140,6 +181,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         private final List<LLResultTypes.ColorResult> colorResults;
         private final Pose3D botpose;
         private final Pose3D botposeMt2;
+        private final LimelightColorFrame colorFrame;
 
         private ResultSnapshot() {
             this.hasResult = false;
@@ -155,6 +197,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             this.colorResults = Collections.emptyList();
             this.botpose = null;
             this.botposeMt2 = null;
+            this.colorFrame = LimelightColorFrame.parse(null);
         }
 
         private ResultSnapshot(DeviceResult result, LoopTimestamp frameTimestamp) {
@@ -171,7 +214,11 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             this.colorResults = result.colorResults;
             this.botpose = copyPose(result.botpose);
             this.botposeMt2 = copyPose(result.botposeMt2);
+            this.colorFrame = result.colorFrame;
         }
+
+        /** Immutable color evidence copied inside the same SDK acquisition boundary. */
+        LimelightColorFrame colorFrame() { return colorFrame; }
 
         /** @return whether a confirmed result is present. */
         public boolean hasResult() {
@@ -303,6 +350,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         final List<LLResultTypes.ColorResult> colorResults;
         final Pose3D botpose;
         final Pose3D botposeMt2;
+        final LimelightColorFrame colorFrame;
 
         DeviceResult(long resultReceivedAtControlHubMillis,
                      double receiptStalenessSec,
@@ -319,6 +367,28 @@ public class FtcLimelightVisionLane implements AutoCloseable {
                      List<LLResultTypes.ColorResult> colorResults,
                      Pose3D botpose,
                      Pose3D botposeMt2) {
+            this(resultReceivedAtControlHubMillis, receiptStalenessSec, limelightTimestampMillis,
+                    captureLatencyMillis, targetingLatencyMillis, pipelineIndex, pipelineType,
+                    targetValid, barcodeResults, classifierResults, detectorResults, fiducialResults,
+                    colorResults, botpose, botposeMt2, LimelightColorFrame.parse(null));
+        }
+
+        DeviceResult(long resultReceivedAtControlHubMillis,
+                     double receiptStalenessSec,
+                     double limelightTimestampMillis,
+                     double captureLatencyMillis,
+                     double targetingLatencyMillis,
+                     int pipelineIndex,
+                     String pipelineType,
+                     boolean targetValid,
+                     List<LLResultTypes.BarcodeResult> barcodeResults,
+                     List<LLResultTypes.ClassifierResult> classifierResults,
+                     List<LLResultTypes.DetectorResult> detectorResults,
+                     List<LLResultTypes.FiducialResult> fiducialResults,
+                     List<LLResultTypes.ColorResult> colorResults,
+                     Pose3D botpose,
+                     Pose3D botposeMt2,
+                     LimelightColorFrame colorFrame) {
             this.resultReceivedAtControlHubMillis = resultReceivedAtControlHubMillis;
             this.receiptStalenessSec = receiptStalenessSec;
             this.limelightTimestampMillis = limelightTimestampMillis;
@@ -334,6 +404,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             this.colorResults = immutableCopy(colorResults);
             this.botpose = copyPose(botpose);
             this.botposeMt2 = copyPose(botposeMt2);
+            this.colorFrame = Objects.requireNonNull(colorFrame, "colorFrame");
         }
 
         static DeviceResult metadata(long resultReceivedAtControlHubMillis,
@@ -433,6 +504,8 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         }
     }
 
+    private final FtcLimelightAprilTagVision aprilTagVision;
+    private final Source<TargetObservations2d> floorObjectSource;
     private final Config cfg;
     private final Device device;
     private final FtcFrameTimestampAnchor resultTimestampAnchor =
@@ -464,11 +537,18 @@ public class FtcLimelightVisionLane implements AutoCloseable {
      * @param config owner config; defensively copied and validated before lookup
      */
     public FtcLimelightVisionLane(final HardwareMap hardwareMap, Config config) {
-        this(config, new DeviceFactory() {
+        this(Objects.requireNonNull(config, "FtcLimelightVisionLane.Config")
+                .validatedCopy("FtcLimelightVisionLane.Config"), hardwareMap);
+    }
+
+    /** Captured-only SDK construction: optional color work is fixed before device acquisition. */
+    private FtcLimelightVisionLane(Config captured, HardwareMap hardwareMap) {
+        this(captured, new DeviceFactory() {
             @Override
             public Device open(String hardwareName) {
                 HardwareMap requiredMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
-                return new SdkDevice(requiredMap.get(Limelight3A.class, hardwareName));
+                return new SdkDevice(requiredMap.get(Limelight3A.class, hardwareName),
+                        captured.floorObjects != null);
             }
         });
     }
@@ -500,10 +580,35 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         this.requestedPipelineIndex = base.pipelineIndex;
         this.pipelineRequestAccepted = accepted;
         this.requestCompletionBaselineMillis = baseline;
+        try {
+            this.aprilTagVision = base.aprilTags == null ? null
+                    : new FtcLimelightAprilTagVision(this, base.aprilTags, base.cameraMount);
+            this.floorObjectSource = base.floorObjects == null ? null
+                    : FtcFloorObjectVision.bindLimelight(this, base.floorObjects, base.cameraMount);
+        } catch (RuntimeException failure) {
+            throw CleanupActions.attemptAllAfterFailure(failure, opened::stop, opened::close);
+        }
         if (!accepted) {
             this.lastReadiness = rejectedReadiness(base.pipelineIndex);
         }
     }
+
+    /** Returns the stable borrowed tag capability; no device lifecycle is transferred. */
+    public FtcLimelightAprilTagVision aprilTags() {
+        if (aprilTagVision == null) throw new IllegalStateException(
+                "AprilTags are not configured; supply Config.aprilTags before opening Limelight");
+        return aprilTagVision;
+    }
+
+    /** Returns the stable floor-object source; reading never changes the requested pipeline. */
+    public Source<TargetObservations2d> floorObjects() {
+        if (floorObjectSource == null) throw new IllegalStateException(
+                "Floor objects are not configured; supply Config.floorObjects before opening Limelight");
+        return floorObjectSource;
+    }
+
+    /** Returns the immutable camera mount shared by all capabilities. */
+    public CameraMountConfig cameraMountConfig() { return cfg.cameraMount; }
 
     /** @return configured FTC hardware-map name. */
     public final String hardwareName() {
@@ -629,7 +734,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
      * @param fieldYawRad Sushi field-frame yaw, counter-clockwise positive, in radians
      * @return whether Limelight accepted the orientation update
      */
-    public final synchronized boolean updateRobotFieldYawRad(double fieldYawRad) {
+    final synchronized boolean updateRobotFieldYawRad(double fieldYawRad) {
         requireUsable();
         if (!Double.isFinite(fieldYawRad)) {
             throw new IllegalArgumentException(
@@ -980,9 +1085,13 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         private static final double MILLIS_PER_SECOND = 1000.0;
 
         private final Limelight3A limelight;
+        private final boolean colorCaptureConfigured;
+        private LLResult lastParsedResult;
+        private LimelightColorFrame lastColorFrame = LimelightColorFrame.parse(null);
 
-        SdkDevice(Limelight3A limelight) {
+        SdkDevice(Limelight3A limelight, boolean colorCaptureConfigured) {
             this.limelight = Objects.requireNonNull(limelight, "limelight");
+            this.colorCaptureConfigured = colorCaptureConfigured;
         }
 
         @Override
@@ -1021,6 +1130,10 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             if (result == null) {
                 return null;
             }
+            if (colorCaptureConfigured && result != lastParsedResult) {
+                lastColorFrame = LimelightColorFrame.parse(result.toString());
+                lastParsedResult = result;
+            }
             return new DeviceResult(
                     result.getControlHubTimeStamp(),
                     result.getStaleness() / MILLIS_PER_SECOND,
@@ -1036,7 +1149,8 @@ public class FtcLimelightVisionLane implements AutoCloseable {
                     result.getFiducialResults(),
                     result.getColorResults(),
                     result.getBotpose(),
-                    result.getBotpose_MT2()
+                    result.getBotpose_MT2(),
+                    lastColorFrame
             );
         }
 

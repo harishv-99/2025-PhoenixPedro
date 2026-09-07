@@ -146,7 +146,7 @@ public final class AdaptiveCollectionVisionServiceTest {
 
         assertEquals(1, copied.size());
         assertEquals(12.5, copied.get(0).horizontalRightDeg, 0.0);
-        assertEquals(-7.25, copied.get(0).verticalDownDeg, 0.0);
+        assertEquals(-7.25, copied.get(0).verticalUpDeg, 0.0);
         assertThrows(UnsupportedOperationException.class,
                 () -> copied.add(new AdaptiveCollectionVisionService.DetectorAngles(0.0, 0.0)));
 
@@ -224,6 +224,32 @@ public final class AdaptiveCollectionVisionServiceTest {
 
         assertTrue(one.hasSelection());
         assertEquals(-5.0, one.selectedBandCenterYInches(), EPSILON);
+    }
+
+    @Test
+    public void sdkRightPositiveAndUpPositiveAnglesReachTheSharedFloorProjector() {
+        Fixture fixture = new Fixture();
+        fixture.recordCurrentPose(Pose3d.zero());
+        double rightDeg = Math.toDegrees(Math.atan(0.5));
+        fixture.frames.frame = observed(fixture.time.clock().nowTimestamp(),
+                AdaptiveCollectionVisionService.copyDetectorAngles(Collections.singletonList(
+                        detectorResult(rightDeg, -45.0))));
+        fixture.service.start(fixture.time.clock());
+        AdaptiveCollectionVisionService.Decision rightAndDown = fixture.service.decision();
+        assertTrue(rightAndDown.hasSelection());
+        assertEquals(1, rightAndDown.projectablePointCount());
+        // Camera at (0,0,10): the ray hits (10,-5,0). The lower tied 10-inch band is [-15,-5].
+        assertEquals(-15.0, rightAndDown.selectedBandStartYInches(), EPSILON);
+        assertEquals(-5.0, rightAndDown.selectedBandEndYInches(), EPSILON);
+
+        fixture.nextObservation(AdaptiveCollectionVisionService.copyDetectorAngles(
+                Collections.singletonList(detectorResult(-rightDeg, -45.0))));
+        assertEquals(5.0, fixture.service.decision().selectedBandEndYInches(), EPSILON);
+
+        fixture.nextObservation(AdaptiveCollectionVisionService.copyDetectorAngles(
+                Collections.singletonList(detectorResult(0, 45.0))));
+        assertUnavailable(fixture.service.decision(), AdaptiveCollectionVisionService.UnavailableReason
+                .NO_PROJECTABLE_FLOOR_INTERSECTIONS);
     }
 
     @Test
@@ -427,7 +453,7 @@ public final class AdaptiveCollectionVisionServiceTest {
         rays.frames.frame = observed(rays.time.clock().nowTimestamp(), Arrays.asList(
                 new AdaptiveCollectionVisionService.DetectorAngles(Double.NaN, 45.0),
                 new AdaptiveCollectionVisionService.DetectorAngles(0.0, 0.0),
-                new AdaptiveCollectionVisionService.DetectorAngles(0.0, -45.0)
+                new AdaptiveCollectionVisionService.DetectorAngles(0.0, 45.0)
         ));
         rays.service.start(rays.time.clock());
         AdaptiveCollectionVisionService.Decision noProjection = rays.service.decision();
@@ -590,7 +616,7 @@ public final class AdaptiveCollectionVisionServiceTest {
             double yInches) {
         return new AdaptiveCollectionVisionService.DetectorAngles(
                 Math.toDegrees(Math.atan(-yInches / xInches)),
-                Math.toDegrees(Math.atan(10.0 / xInches))
+                Math.toDegrees(Math.atan(-10.0 / xInches))
         );
     }
 

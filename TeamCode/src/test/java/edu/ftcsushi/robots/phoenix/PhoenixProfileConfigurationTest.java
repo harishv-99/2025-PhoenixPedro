@@ -229,7 +229,7 @@ public final class PhoenixProfileConfigurationTest {
                 PhoenixVisionFactory.Config.defaults().webcam.cameraResolution,
                 profile.vision.webcam.cameraResolution
         );
-        assertNull(profile.vision.webcam.tagLibrary);
+        assertNull(profile.vision.webcam.aprilTags.tagLibrary);
         assertEquals("limelight", profile.vision.limelight.hardwareName);
         assertEquals(0, profile.vision.limelight.pipelineIndex);
         assertEquals(100, profile.vision.limelight.pollRateHz);

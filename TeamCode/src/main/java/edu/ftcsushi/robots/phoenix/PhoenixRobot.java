@@ -22,7 +22,8 @@ import edu.ftcsushi.fw.ftc.FtcDrives;
 import edu.ftcsushi.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.ftc.input.Gamepads;
 import edu.ftcsushi.fw.localization.MotionPredictor;
@@ -62,14 +63,14 @@ public final class PhoenixRobot {
      * and privately retain its complete mechanism graph.</p>
      */
     interface TeleOpHardwareAssembly {
-        AprilTagVisionLane createVision(
+        OwnedAprilTagCamera createVision(
                 HardwareMap hardwareMap,
                 PhoenixVisionFactory.Config visionConfig
         );
 
         FtcOdometryAprilTagLocalizationLane createLocalization(
                 HardwareMap hardwareMap,
-                AprilTagVisionLane vision,
+                AprilTagVision vision,
                 TagLayout fixedAprilTagLayout,
                 FtcOdometryAprilTagLocalizationLane.Config localizationConfig
         );
@@ -88,14 +89,14 @@ public final class PhoenixRobot {
 
     /** Package-private FTC assembly seam for managed-Auto lifecycle tests. */
     interface AutoHardwareAssembly {
-        AprilTagVisionLane createVision(
+        OwnedAprilTagCamera createVision(
                 HardwareMap hardwareMap,
                 PhoenixVisionFactory.Config visionConfig
         );
 
         FtcOdometryAprilTagLocalizationLane createLocalization(
                 MotionPredictor motionPredictor,
-                AprilTagVisionLane vision,
+                AprilTagVision vision,
                 TagLayout fixedAprilTagLayout,
                 FtcOdometryAprilTagLocalizationLane.EstimatorConfig estimationConfig
         );
@@ -110,7 +111,7 @@ public final class PhoenixRobot {
     private static final TeleOpHardwareAssembly FTC_TELEOP_HARDWARE =
             new TeleOpHardwareAssembly() {
                 @Override
-                public AprilTagVisionLane createVision(
+                public OwnedAprilTagCamera createVision(
                         HardwareMap hardwareMap,
                         PhoenixVisionFactory.Config visionConfig
                 ) {
@@ -120,7 +121,7 @@ public final class PhoenixRobot {
                 @Override
                 public FtcOdometryAprilTagLocalizationLane createLocalization(
                         HardwareMap hardwareMap,
-                        AprilTagVisionLane vision,
+                        AprilTagVision vision,
                         TagLayout fixedAprilTagLayout,
                         FtcOdometryAprilTagLocalizationLane.Config localizationConfig
                 ) {
@@ -153,7 +154,7 @@ public final class PhoenixRobot {
     private static final AutoHardwareAssembly FTC_AUTO_HARDWARE =
             new AutoHardwareAssembly() {
                 @Override
-                public AprilTagVisionLane createVision(
+                public OwnedAprilTagCamera createVision(
                         HardwareMap hardwareMap,
                         PhoenixVisionFactory.Config visionConfig
                 ) {
@@ -163,7 +164,7 @@ public final class PhoenixRobot {
                 @Override
                 public FtcOdometryAprilTagLocalizationLane createLocalization(
                         MotionPredictor motionPredictor,
-                        AprilTagVisionLane vision,
+                        AprilTagVision vision,
                         TagLayout fixedAprilTagLayout,
                         FtcOdometryAprilTagLocalizationLane.EstimatorConfig estimationConfig
                 ) {
@@ -200,7 +201,7 @@ public final class PhoenixRobot {
 
     private RuntimeMode mode = RuntimeMode.NEW;
     private PhoenixTelemetryPresenter telemetryPresenter;
-    private AprilTagVisionLane vision;
+    private OwnedAprilTagCamera vision;
     private FtcOdometryAprilTagLocalizationLane localization;
     private PhoenixScoring scoring;
     private PhoenixTargeting targeting;
@@ -325,7 +326,7 @@ public final class PhoenixRobot {
         localization = Objects.requireNonNull(
                 teleOpHardwareAssembly.createLocalization(
                         hardwareMap,
-                        vision,
+                        vision.aprilTags(),
                         selectedProfile.fixedAprilTagLayout,
                         selectedProfile.localization
                 ),
@@ -483,7 +484,7 @@ public final class PhoenixRobot {
         localization = Objects.requireNonNull(
                 autoHardwareAssembly.createLocalization(
                         Objects.requireNonNull(motionPredictor, "motionPredictor"),
-                        vision,
+                        vision.aprilTags(),
                         selectedProfile.fixedAprilTagLayout,
                         selectedProfile.localization == null
                                 ? null
@@ -562,8 +563,8 @@ public final class PhoenixRobot {
         return new PhoenixTargeting(
                 targetingConfig,
                 requiredLocalization.estimation.aprilTags.fieldPoseSolver,
-                vision.tagSensor(),
-                vision.cameraMountConfig(),
+                vision.aprilTags().tagSensor(),
+                vision.aprilTags().cameraMountConfig(),
                 localization.globalEstimator(),
                 fixedAprilTagLayout,
                 eligibleScoringTagIds,
@@ -766,9 +767,9 @@ public final class PhoenixRobot {
 
     /** Managed owner of vision readiness and its close lifecycle. */
     private final class ManagedTeleOpVisionService implements RobotProgram.Service {
-        private final AprilTagVisionLane ownedVision;
+        private final OwnedAprilTagCamera ownedVision;
 
-        private ManagedTeleOpVisionService(AprilTagVisionLane ownedVision) {
+        private ManagedTeleOpVisionService(OwnedAprilTagCamera ownedVision) {
             this.ownedVision = ownedVision;
         }
 
@@ -778,7 +779,7 @@ public final class PhoenixRobot {
             teleOpStartBoundaryReached = true;
             teleOpOrdinaryLoopReached = false;
             teleOpPoseRestore.markStartBoundary();
-            teleOpVisionReadiness = ownedVision.readiness(clock);
+            teleOpVisionReadiness = ownedVision.aprilTags().readiness(clock);
         }
 
         @Override
@@ -786,7 +787,7 @@ public final class PhoenixRobot {
             teleOpOrdinaryLoopReached = true;
             loopPhaseProfiler.startCycle(clock);
             teleOpProfileCycleActive = true;
-            teleOpVisionReadiness = ownedVision.readiness(clock);
+            teleOpVisionReadiness = ownedVision.aprilTags().readiness(clock);
             finishTeleOpProfilePhase("visionReadiness");
         }
 
@@ -949,7 +950,7 @@ public final class PhoenixRobot {
     private final class ManagedAutoService implements RobotProgram.Service {
         private final DriveCommandSink autoDrive;
         private final Runnable applyStartingPose;
-        private AprilTagVisionLane ownedVision;
+        private OwnedAprilTagCamera ownedVision;
         private FtcOdometryAprilTagLocalizationLane ownedLocalization;
         private PhoenixTargeting ownedTargeting;
         private boolean stopped;
@@ -960,7 +961,7 @@ public final class PhoenixRobot {
             this.applyStartingPose = applyStartingPose;
         }
 
-        private void attachVision(AprilTagVisionLane vision) {
+        private void attachVision(OwnedAprilTagCamera vision) {
             if (ownedVision != null) {
                 throw new IllegalStateException("Phoenix Auto vision is already attached");
             }
@@ -987,7 +988,7 @@ public final class PhoenixRobot {
             loopPhaseProfiler.reset();
             autoStartBoundaryReached = true;
             applyStartingPose.run();
-            autoVisionReadiness = ownedVision.readiness(clock);
+            autoVisionReadiness = ownedVision.aprilTags().readiness(clock);
             ownedLocalization.update(clock);
             ownedTargeting.update(clock);
             autoDrive.update(clock);
@@ -999,7 +1000,7 @@ public final class PhoenixRobot {
             loopPhaseProfiler.startCycle(clock);
             autoProfileCycleActive = true;
 
-            autoVisionReadiness = ownedVision.readiness(clock);
+            autoVisionReadiness = ownedVision.aprilTags().readiness(clock);
             finishAutoProfilePhase("visionReadiness");
             ownedLocalization.update(clock);
             finishAutoProfilePhase("localization");
@@ -1016,7 +1017,7 @@ public final class PhoenixRobot {
             }
             stopped = true;
             PhoenixTargeting targetingToStop = ownedTargeting;
-            AprilTagVisionLane visionToStop = ownedVision;
+            OwnedAprilTagCamera visionToStop = ownedVision;
             ownedTargeting = null;
             ownedLocalization = null;
             ownedVision = null;

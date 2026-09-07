@@ -31,8 +31,9 @@ import edu.ftcsushi.fw.ftc.FtcDrives;
 import edu.ftcsushi.fw.ftc.FtcGameTagLayout;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig;
 import edu.ftcsushi.fw.ftc.ui.HardwareNamePicker;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
@@ -211,7 +212,7 @@ public final class PinpointTesterConfigTest {
         authoredLayout.put(7, new Pose3d(1.0, 2.0, 3.0, 0.1, 0.2, 0.3));
         draft.fixedTagLayout = authoredLayout;
 
-        Function<String, AprilTagVisionLaneFactory> builder = ignored -> hardwareMap -> null;
+        Function<String, AprilTagCameraFactory> builder = ignored -> hardwareMap -> null;
         PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(draft, builder);
         PinpointPodOffsetCalibrator.Config captured = field(owner, "cfg");
         TagLayout capturedLayout = field(owner, "layout");
@@ -593,7 +594,7 @@ public final class PinpointTesterConfigTest {
         ));
         setField(owner, "started", true);
         IdentityLane lane = new IdentityLane();
-        setField(owner, "visionLane", lane);
+        setField(owner, "visionLane", lane.owned);
 
         try {
             invoke(
@@ -615,7 +616,7 @@ public final class PinpointTesterConfigTest {
             assertSame(zeroError, actual);
         }
 
-        assertSame("Error must leave the published lane reachable by STOP", lane,
+        assertSame("Error must leave the published lane reachable by STOP", lane.owned,
                 field(owner, "visionLane"));
         assertEquals(0, lane.closeCalls);
         assertTrue((Boolean) field(owner, "visionRetryBlocked"));
@@ -640,7 +641,7 @@ public final class PinpointTesterConfigTest {
                 new HardwareNamePicker(null, WebcamName.class, "unused")
         );
         setField(owner, "selectedVisionDeviceName", "pickedCamera");
-        setField(owner, "visionLane", lane);
+        setField(owner, "visionLane", lane.owned);
 
         invoke(owner, "disableIdentityMountAssist", new Class<?>[0]);
 
@@ -932,7 +933,8 @@ public final class PinpointTesterConfigTest {
         return null;
     }
 
-    private static final class IdentityLane implements AprilTagVisionLane {
+    private static final class IdentityLane implements AprilTagVision, AutoCloseable {
+        private final OwnedAprilTagCamera owned = new OwnedAprilTagCamera(this, this);
         private int closeCalls;
 
         @Override

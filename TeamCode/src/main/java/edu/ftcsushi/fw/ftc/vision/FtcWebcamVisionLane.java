@@ -16,6 +16,11 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
+import edu.ftcsushi.fw.core.source.Source;
+import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 /**
  * FTC-boundary owner for one webcam and one complete, fixed set of VisionPortal processors.
@@ -27,13 +32,34 @@ import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
  * instances. If close fails, hardware ownership is uncertain: do not open a replacement in the
  * same OpMode; stop and restart the OpMode first.</p>
  *
- * <p>This class owns webcam plumbing and lifecycle only. A robot-owned vision capability should
- * assign season meaning to the processors and expose typed immutable results to strategy code.</p>
+ * <p>Optional {@link Config#aprilTags} and {@link Config#floorObjects} construct their processors
+ * inside this owner and expose a borrowed tag view or immutable located-target source. A null
+ * capability config omits that processor entirely. Robot policy owns target selection and activity
+ * changes; it does not create competing camera owners.</p>
  */
-public class FtcWebcamVisionPortalLane implements AutoCloseable {
+public final class FtcWebcamVisionLane implements AutoCloseable {
 
     private static final Size DEFAULT_RESOLUTION = new Size(640, 480);
     private static final String DEFAULT_CAMERA_MONITOR_VIEW_ID_NAME = "cameraMonitorViewId";
+
+    /** Optional AprilTag detector configuration; the physical mount belongs to the camera. */
+    public static final class AprilTagConfig {
+        /** Null selects the current-game detector library; activation deeply snapshots it. */
+        public AprilTagLibrary tagLibrary;
+
+        private AprilTagConfig() {}
+        /** Returns a fresh detector authoring draft. */
+        public static AprilTagConfig defaults() { return new AprilTagConfig(); }
+        /** Raw draft copy; the mutable SDK library is captured only at an active boundary. */
+        public AprilTagConfig copy() {
+            AprilTagConfig copy = new AprilTagConfig();
+            copy.tagLibrary = tagLibrary;
+            return copy;
+        }
+        @Override public String toString() {
+            return "AprilTagConfig{tagLibrary=" + (tagLibrary == null ? "currentGame" : "custom") + '}';
+        }
+    }
 
     /** Mutable data-only authoring config for one webcam VisionPortal owner. */
     public static final class Config {
@@ -43,6 +69,13 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
 
         /** Requested camera stream resolution. */
         public Size cameraResolution = DEFAULT_RESOLUTION;
+
+        /** Fixed robot-to-camera geometry shared by configured capabilities. */
+        public CameraMountConfig cameraMount = CameraMountConfig.identity();
+        /** Null omits AprilTag processing entirely. */
+        public AprilTagConfig aprilTags;
+        /** Null omits floor-object processing entirely. */
+        public FtcFloorObjectVision.Config floorObjects;
 
         private Config() {
             // Defaults assigned in field initializers.
@@ -61,14 +94,20 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
             Config copy = new Config();
             copy.webcamName = webcamName;
             copy.cameraResolution = cameraResolution;
+            copy.cameraMount = cameraMount;
+            copy.aprilTags = aprilTags == null ? null : aprilTags.copy();
+            copy.floorObjects = floorObjects == null ? null : floorObjects.copy();
             return copy;
         }
 
         @Override
         public String toString() {
-            return "FtcWebcamVisionPortalLane.Config{"
+            return "FtcWebcamVisionLane.Config{"
                     + "webcamName='" + webcamName + '\''
                     + ", cameraResolution=" + cameraResolution
+                    + ", cameraMount=" + cameraMount
+                    + ", aprilTags=" + aprilTags
+                    + ", floorObjects=" + floorObjects
                     + '}';
         }
     }
@@ -137,6 +176,65 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
         }
     }
 
+    interface AprilTagProcessorFactory {
+        AprilTagProcessor create(CameraMountConfig mount, AprilTagLibrary library);
+    }
+
+    /** Immutable detector-library capture retained by deferred camera factories. */
+    static final class ActiveConfig {
+        private final Config config;
+        private final FtcAprilTagLibrarySnapshot library;
+        ActiveConfig(Config config, FtcAprilTagLibrarySnapshot library) {
+            this.config = config;
+            this.library = library;
+        }
+        String webcamName() { return config.webcamName; }
+        Size cameraResolution() { return config.cameraResolution; }
+        CameraMountConfig cameraMount() { return config.cameraMount; }
+        AprilTagLibrary freshTagLibrary() { return library.freshLibrary(); }
+        String tagLibraryProvenance() { return library.provenance(); }
+        Config freshConfig() {
+            Config copy = config.copy();
+            copy.aprilTags.tagLibrary = library.freshLibrary();
+            return copy;
+        }
+        ActiveConfig recaptured(ResolutionReader reader) {
+            return new ActiveConfig(validateAndCopy(config, reader), library.recaptured());
+        }
+    }
+
+    static ActiveConfig captureActiveConfig(Config config, ResolutionReader reader) {
+        Config copy = validateAndCopy(config, reader);
+        if (copy.aprilTags == null) throw new IllegalArgumentException(
+                "AprilTag camera factory requires Config.aprilTags");
+        FtcAprilTagLibrarySnapshot library = FtcAprilTagLibrarySnapshot.capture(
+                copy.aprilTags.tagLibrary, "FtcWebcamVisionLane.Config.aprilTags.tagLibrary");
+        return new ActiveConfig(copy, library);
+    }
+
+    static ActiveConfig captureActiveConfig(Config config) {
+        return captureActiveConfig(config, ANDROID_RESOLUTION_READER);
+    }
+
+    private static final class Prepared {
+        final Config config;
+        final VisionProcessor[] processors;
+        final AprilTagProcessor aprilTagProcessor;
+        final FtcFloorObjectVision.PreparedWebcam floor;
+        Prepared(Config config, VisionProcessor[] processors, AprilTagProcessor tag,
+                 FtcFloorObjectVision.PreparedWebcam floor) {
+            this.config = config;
+            this.processors = processors;
+            this.aprilTagProcessor = tag;
+            this.floor = floor;
+        }
+    }
+
+    private final AprilTagVision aprilTagVision;
+    private final AprilTagProcessor aprilTagProcessor;
+    private final FtcFloorObjectVision.PreparedWebcam floorProcessor;
+    private final Source<TargetObservations2d> floorObjectSource;
+    private RuntimeException terminalFailure;
     private final Config cfg;
     private final PortalDevice portal;
     private final NanoClock nanoClock;
@@ -154,9 +252,9 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
      *
      * @param hardwareMap FTC hardware map containing the configured webcam
      * @param config complete webcam authoring config; copied and validated before device lookup
-     * @param processors complete set of fresh processors to attach to this portal
+     * @param processors optional additional fresh processors; configured tag/floor processors are added internally
      */
-    public FtcWebcamVisionPortalLane(
+    public FtcWebcamVisionLane(
             HardwareMap hardwareMap,
             Config config,
             VisionProcessor... processors
@@ -166,7 +264,7 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     /** Package-private constructor for deterministic ownership/lifecycle tests. */
-    FtcWebcamVisionPortalLane(
+    FtcWebcamVisionLane(
             Config config,
             PortalFactory portalFactory,
             VisionProcessor... processors
@@ -175,7 +273,7 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     /** Package-private constructor with deterministic monotonic time for freshness tests. */
-    FtcWebcamVisionPortalLane(
+    FtcWebcamVisionLane(
             Config config,
             PortalFactory portalFactory,
             NanoClock nanoClock,
@@ -185,46 +283,155 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     /** Package-private constructor with deterministic Android-value and time seams. */
-    FtcWebcamVisionPortalLane(
+    FtcWebcamVisionLane(
             Config config,
             PortalFactory portalFactory,
             NanoClock nanoClock,
             ResolutionReader resolutionReader,
             VisionProcessor... processors
     ) {
-        this.cfg = validateAndCopy(config, resolutionReader);
-        this.processors = validateAndCopyProcessors(processors);
+        this(prepare(config, resolutionReader, FtcWebcamAprilTagSupport::createProcessor,
+                null, processors), portalFactory, nanoClock);
+    }
+
+    /** Hardware-neutral seam for processor validation and resource-order tests. */
+    FtcWebcamVisionLane(Config config, AprilTagProcessorFactory tagFactory,
+                        PortalFactory portalFactory, NanoClock nanoClock,
+                        ResolutionReader resolutionReader, VisionProcessor... processors) {
+        this(prepare(config, resolutionReader, tagFactory, null, processors),
+                portalFactory, nanoClock);
+    }
+
+    /** Hardware-neutral seam with a completed SDK tag processor. */
+    FtcWebcamVisionLane(Config config, AprilTagProcessor tagProcessor,
+                        PortalFactory portalFactory, NanoClock nanoClock,
+                        ResolutionReader resolutionReader, VisionProcessor... processors) {
+        this(prepare(config, resolutionReader, null, tagProcessor, processors),
+                portalFactory, nanoClock);
+    }
+
+    private FtcWebcamVisionLane(Prepared prepared, PortalFactory portalFactory, NanoClock nanoClock) {
+        this.cfg = prepared.config;
+        this.processors = prepared.processors;
+        this.aprilTagProcessor = prepared.aprilTagProcessor;
+        this.floorProcessor = prepared.floor;
         PortalFactory checkedFactory = Objects.requireNonNull(portalFactory, "portalFactory");
         this.nanoClock = Objects.requireNonNull(nanoClock, "nanoClock");
-
-        // Every caller-owned value is validated before the factory is allowed to resolve hardware.
-        PortalDevice opened = Objects.requireNonNull(
-                checkedFactory.open(this.cfg.copy(), this.processors.clone()),
-                "portalFactory returned null"
-        );
-
+        PortalDevice opened = null;
         try {
-            // Verify that every declared processor really belongs to the completed portal before
-            // publishing this owner. This catches a malformed factory or an SDK attachment failure
-            // while this constructor still owns the only cleanup path.
-            for (VisionProcessor processor : this.processors) {
+            opened = Objects.requireNonNull(
+                    checkedFactory.open(cfg.copy(), processors.clone()), "portalFactory returned null");
+            for (VisionProcessor processor : processors) {
                 if (!opened.isProcessorEnabled(processor)) {
                     throw new IllegalStateException(
                             "VisionPortal processor was not enabled after construction: "
                                     + processor.getClass().getSimpleName());
                 }
             }
+            long completedNanos = this.nanoClock.nowNanos();
+            for (VisionProcessor processor : processors) {
+                processorStates.put(processor, new ProcessorState(completedNanos));
+            }
         } catch (RuntimeException failure) {
-            throw CleanupActions.attemptAllAfterFailure(failure, opened::close);
+            PortalDevice acquired = opened;
+            throw CleanupActions.attemptAllAfterFailure(failure,
+                    () -> { if (floorProcessor != null) floorProcessor.terminalize(); },
+                    () -> { if (acquired != null) acquired.close(); });
         }
         this.portal = opened;
-
-        // A processor can retain its previous result until a newer frame arrives. Only typed
-        // processor adapters can inspect result timestamps, so record the freshness boundary here.
-        long constructionCompletedNanos = this.nanoClock.nowNanos();
-        for (VisionProcessor processor : this.processors) {
-            processorStates.put(processor, new ProcessorState(constructionCompletedNanos));
+        try {
+            this.aprilTagVision = aprilTagProcessor == null ? null
+                    : new FtcWebcamAprilTagVision(this, aprilTagProcessor, cfg.cameraMount);
+            this.floorObjectSource = floorProcessor == null ? null : floorProcessor.bind(this);
+        } catch (RuntimeException failure) {
+            throw CleanupActions.attemptAllAfterFailure(failure,
+                    () -> { if (floorProcessor != null) floorProcessor.terminalize(); },
+                    portal::close);
         }
+    }
+
+    /** Returns the stable borrowed AprilTag capability; it never owns camera shutdown. */
+    public AprilTagVision aprilTags() {
+        if (aprilTagVision == null) throw new IllegalStateException(
+                "AprilTags are not configured; supply Config.aprilTags before opening the webcam");
+        return aprilTagVision;
+    }
+
+    /** Returns the stable located floor-object source configured before acquisition. */
+    public Source<TargetObservations2d> floorObjects() {
+        if (floorObjectSource == null) throw new IllegalStateException(
+                "Floor objects are not configured; supply Config.floorObjects before opening the webcam");
+        return floorObjectSource;
+    }
+
+    /** Returns the immutable physical camera mount shared by all capabilities. */
+    public CameraMountConfig cameraMountConfig() { return cfg.cameraMount; }
+
+    /** Enables or disables the configured AprilTag processor without changing camera ownership. */
+    public void setAprilTagProcessorEnabled(boolean enabled) {
+        aprilTags();
+        setProcessorEnabled(aprilTagProcessor, enabled);
+    }
+
+    /** Returns the configured AprilTag processor's current enablement. */
+    public boolean isAprilTagProcessorEnabled() {
+        aprilTags();
+        return isProcessorEnabled(aprilTagProcessor);
+    }
+
+    /** Enables or disables the configured floor-object processor. */
+    public void setFloorObjectProcessorEnabled(boolean enabled) {
+        floorObjects();
+        setProcessorEnabled(floorProcessor.processor(), enabled);
+    }
+
+    /** Returns the configured floor-object processor's current enablement. */
+    public boolean isFloorObjectProcessorEnabled() {
+        floorObjects();
+        return isProcessorEnabled(floorProcessor.processor());
+    }
+
+    private static Prepared prepare(Config config, ResolutionReader reader,
+                                    AprilTagProcessorFactory tagFactory,
+                                    AprilTagProcessor suppliedTag, VisionProcessor[] additional) {
+        Config captured = captureConfig(config, reader);
+        Objects.requireNonNull(additional, "processors");
+        // Validate caller processors before constructing any built-in processor.
+        List<VisionProcessor> complete = new ArrayList<>();
+        for (int i = 0; i < additional.length; i++) {
+            VisionProcessor processor = Objects.requireNonNull(additional[i], "processors[" + i + "]");
+            if (complete.contains(processor)) throw new IllegalArgumentException(
+                    "VisionProcessors must be distinct under equals(); duplicate at processors[" + i + "]");
+            complete.add(processor);
+        }
+        AprilTagProcessor tag = null;
+        if (captured.aprilTags != null) {
+            tag = suppliedTag != null ? suppliedTag : Objects.requireNonNull(
+                    Objects.requireNonNull(tagFactory, "tagFactory")
+                            .create(captured.cameraMount, captured.aprilTags.tagLibrary),
+                    "tagFactory returned null");
+            complete.add(0, tag);
+        }
+        FtcFloorObjectVision.PreparedWebcam floor = captured.floorObjects == null ? null
+                : FtcFloorObjectVision.prepareWebcam(captured.floorObjects, captured.cameraMount);
+        if (floor != null) complete.add(floor.processor());
+        return new Prepared(captured,
+                validateAndCopyProcessors(complete.toArray(new VisionProcessor[0])), tag, floor);
+    }
+
+    /** Captures the complete active draft before device effects or deferred factory retention. */
+    static Config captureConfig(Config config, ResolutionReader reader) {
+        Config captured = validateAndCopy(config, reader);
+        if (captured.aprilTags != null) {
+            captured.aprilTags.tagLibrary = FtcAprilTagLibrarySnapshot.capture(
+                    captured.aprilTags.tagLibrary, "FtcWebcamVisionLane.Config.aprilTags.tagLibrary")
+                    .freshLibrary();
+        }
+        return captured;
+    }
+
+    static Config captureConfig(Config config) {
+        return captureConfig(config, ANDROID_RESOLUTION_READER);
     }
 
     /** Returns the normalized FTC hardware-map name of the owned webcam. */
@@ -241,6 +448,8 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
      * Returns webcam-stream readiness, independent of any particular processor or visible target.
      */
     public final VisionReadiness readiness() {
+        if (terminalFailure != null) return VisionReadiness.notReady(
+                "webcam lifecycle transition failed; stop and restart the OpMode: " + describe(terminalFailure));
         if (closeAttempted) {
             return VisionReadiness.notReady(closeFailureReason.isEmpty()
                     ? "webcam vision owner is closed; construct a fresh owner to use it again"
@@ -306,8 +515,11 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
         if (wasEnabled == enabled) {
             return;
         }
-        portal.setProcessorEnabled(processor, enabled);
-        invalidateProcessorData(processorState, enabled ? nanoClock.nowNanos() : Long.MAX_VALUE);
+        invalidateProcessorData(processorState, Long.MAX_VALUE);
+        try {
+            portal.setProcessorEnabled(processor, enabled);
+            if (enabled) processorState.acceptFramesAfterNanos = nanoClock.nowNanos();
+        } catch (RuntimeException failure) { failTransition(failure); throw failure; }
     }
 
     /** Returns whether one registered processor is currently enabled. */
@@ -323,9 +535,10 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
         if (!streamingRequested) {
             return;
         }
-        portal.stopStreaming();
         streamingRequested = false;
         invalidateAllProcessorData(Long.MAX_VALUE);
+        try { portal.stopStreaming(); }
+        catch (RuntimeException failure) { failTransition(failure); throw failure; }
     }
 
     /** Requests an asynchronous stream resume once; repeated requests are no-ops. */
@@ -334,9 +547,13 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
         if (streamingRequested) {
             return;
         }
-        portal.resumeStreaming();
-        streamingRequested = true;
-        invalidateAllProcessorData(nanoClock.nowNanos());
+        invalidateAllProcessorData(Long.MAX_VALUE);
+        try {
+            portal.resumeStreaming();
+            streamingRequested = true;
+            long completed = nanoClock.nowNanos();
+            for (ProcessorState state : processorStates.values()) state.acceptFramesAfterNanos = completed;
+        } catch (RuntimeException failure) { failTransition(failure); throw failure; }
     }
 
     /** Returns the current FTC camera state while this owner remains usable. */
@@ -374,7 +591,9 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
         streamingRequested = false;
         invalidateAllProcessorData(Long.MAX_VALUE);
         try {
-            portal.close();
+            CleanupActions.attemptAll(
+                    () -> { if (floorProcessor != null) floorProcessor.terminalize(); },
+                    portal::close);
             closeSucceeded = true;
         } catch (RuntimeException ex) {
             closeFailureReason = describe(ex);
@@ -424,8 +643,9 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     /** Hook for a typed specialization to append diagnostics under the same owner prefix. */
-    protected void appendDebug(DebugSink dbg, String prefix) {
-        // Base owner has no processor-specific result state.
+    private void appendDebug(DebugSink dbg, String prefix) {
+        cfg.cameraMount.debugDump(dbg, prefix + ".cameraMount");
+        if (aprilTagVision != null) aprilTagVision.debugDump(dbg, prefix + ".aprilTag");
     }
 
     final long processorDataGeneration(VisionProcessor processor) {
@@ -450,7 +670,18 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
         return state;
     }
 
+    private void failTransition(RuntimeException failure) {
+        terminalFailure = failure;
+        streamingRequested = false;
+        invalidateAllProcessorData(Long.MAX_VALUE);
+        if (floorProcessor != null) {
+            CleanupActions.attemptAllAfterFailure(failure, floorProcessor::terminalize);
+        }
+    }
+
     private void requireUsable() {
+        if (terminalFailure != null) throw new IllegalStateException(
+                "Webcam lifecycle transition failed; stop and restart the OpMode", terminalFailure);
         if (closeAttempted) {
             if (closeSucceeded) {
                 throw new IllegalStateException(
@@ -513,9 +744,11 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     private static Config validateAndCopy(Config config, ResolutionReader resolutionReader) {
-        String prefix = "FtcWebcamVisionPortalLane.Config";
+        String prefix = "FtcWebcamVisionLane.Config";
         Config copy = Objects.requireNonNull(config, prefix).copy();
         copy.webcamName = requireWebcamName(copy.webcamName);
+        Objects.requireNonNull(copy.cameraMount, prefix + ".cameraMount");
+        if (copy.floorObjects != null) copy.floorObjects = copy.floorObjects.validatedCopy(prefix + ".floorObjects");
         Objects.requireNonNull(copy.cameraResolution, prefix + ".cameraResolution");
         ResolutionReader checkedReader = Objects.requireNonNull(
                 resolutionReader, "resolutionReader");
@@ -553,7 +786,7 @@ public class FtcWebcamVisionPortalLane implements AutoCloseable {
     }
 
     private static String requireWebcamName(String webcamName) {
-        String fieldName = "FtcWebcamVisionPortalLane.Config.webcamName";
+        String fieldName = "FtcWebcamVisionLane.Config.webcamName";
         String checked = Objects.requireNonNull(webcamName, fieldName).trim();
         if (checked.isEmpty()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");

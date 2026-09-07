@@ -37,6 +37,8 @@ public final class DriveGuidanceSpec {
     public enum SolveMode {
         LOCALIZATION_ONLY,
         APRIL_TAGS_ONLY,
+        /** Fresh robot-at-capture points; no invented field pose or motion compensation. */
+        OBSERVATIONS_ONLY,
         ADAPTIVE
     }
 
@@ -209,6 +211,11 @@ public final class DriveGuidanceSpec {
             OmegaPolicy op = (omegaPolicy != null) ? omegaPolicy : OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID;
 
             switch (mode) {
+                case OBSERVATIONS_ONLY:
+                    if (localization != null || aprilTags != null) {
+                        throw new IllegalArgumentException("OBSERVATIONS_ONLY borrows its observed-point reference, not another sensor or localizer");
+                    }
+                    return new ResolveWith(mode, null, null, null, null, op, lp);
                 case LOCALIZATION_ONLY:
                     if (localization == null) {
                         throw new IllegalArgumentException("LOCALIZATION_ONLY requires localization(...)");
@@ -264,6 +271,8 @@ public final class DriveGuidanceSpec {
     public final SpatialQuerySpec spatialQuerySpec;
     public final int localizationLaneIndex;
     public final int aprilTagsLaneIndex;
+    /** Direct observation lane index, or -1 when that solve mode is not selected. */
+    public final int observationsLaneIndex;
 
     DriveGuidanceSpec(TranslationTarget2d translationTarget,
                       FacingTarget2d facingTarget,
@@ -279,6 +288,7 @@ public final class DriveGuidanceSpec {
         this.spatialQuerySpec = spatialQuerySpec;
         this.localizationLaneIndex = localizationLaneIndex;
         this.aprilTagsLaneIndex = aprilTagsLaneIndex;
+        this.observationsLaneIndex = resolveWith.mode == SolveMode.OBSERVATIONS_ONLY ? 0 : -1;
     }
 
     public DriveOverlayMask requestedMask() {

@@ -85,7 +85,7 @@ public final class CameraMountLogic {
      * and bearing.</p>
      *
      * <p>AprilTag observations currently do not expose a separate “quality” metric, so this returns
-     * a default quality of 1.0 and forwards the observation's epoch-safe frame timestamp. A target
+     * unknown quality (NaN) and forwards the observation's epoch-safe frame timestamp. A target
      * with no trustworthy current-epoch frame time fails closed as no observation. Age limits remain
      * the caller's policy; this conversion checks only that the timestamp is valid now.</p>
      *
@@ -111,13 +111,17 @@ public final class CameraMountLogic {
         }
 
         Pose3d robotToTag = robotToTagPose(mount, obs.cameraToTagPose);
+        if (!Double.isFinite(robotToTag.xInches) || !Double.isFinite(robotToTag.yInches)
+                || !Double.isFinite(robotToTag.yawRad) || obs.id < 0) {
+            return TargetObservation2d.none();
+        }
         // Preserve tag yaw so tag-relative points can be resolved in the tag frame.
         return TargetObservation2d.ofRobotRelativePose(
                 obs.id,
                 robotToTag.xInches,
                 robotToTag.yInches,
                 robotToTag.yawRad,
-                1.0,
+                Double.NaN,
                 obs.frameTimestamp()
         );
     }

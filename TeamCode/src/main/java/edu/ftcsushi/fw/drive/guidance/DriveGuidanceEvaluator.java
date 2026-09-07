@@ -73,6 +73,11 @@ final class DriveGuidanceEvaluator {
         return solutionFromLane(sampleSpatialQuery(clock), spec.aprilTagsLaneIndex);
     }
 
+    /** Reuses the same controller bridge for direct, delayed observed robot-frame points. */
+    Solution solveWithObservations(LoopClock clock) {
+        return solutionFromLane(sampleSpatialQuery(clock), spec.observationsLaneIndex);
+    }
+
     /**
      * Attempts to solve the configured targets from the localization lane.
      *
@@ -163,20 +168,30 @@ final class DriveGuidanceEvaluator {
      * <p>The shared spatial layer reports the fully solved target point in robot coordinates and in
      * the translation frame's coordinates. DriveGuidance keeps its historic convention: translation
      * error is the target point minus the translation frame's <em>origin</em>, expressed in robot
-     * forward/left axes. This preserves existing drive behavior while still exposing richer frame
-     * coordinates to non-drive consumers through {@link TranslationSolution}.</p>
+     * forward/left axes. Rotate the solved frame vector back to those axes, retaining the frame
+     * sampled by that lane (which may be at capture time), not the query's current tool pose.</p>
      */
     private static TranslationSolve toTranslationSolve(SpatialQueryResult sample, SpatialLaneResult lane) {
         if (sample == null || lane == null || lane.translation == null) {
             return TranslationSolve.invalid();
         }
         TranslationSolution translation = lane.translation;
-        double forwardErr = translation.robotToTargetPoint.xInches - sample.robotToTranslationFrame.xInches;
-        double leftErr = translation.robotToTargetPoint.yInches - sample.robotToTranslationFrame.yInches;
+        Pose2d framePoint = translation.translationFrameToTargetPoint;
+        double frameHeading = Pose2d.wrapToPi(
+                Pose2d.wrapToPi(translation.robotToTargetPoint.headingRad)
+                        - Pose2d.wrapToPi(framePoint.headingRad));
+        double c = Math.cos(frameHeading);
+        double s = Math.sin(frameHeading);
+        double forwardErr = c * framePoint.xInches - s * framePoint.yInches;
+        double leftErr = s * framePoint.xInches + c * framePoint.yInches;
+        if (!Double.isFinite(forwardErr) || !Double.isFinite(leftErr)
+                || !Double.isFinite(Math.hypot(forwardErr, leftErr))) {
+            return TranslationSolve.invalid();
+        }
         return new TranslationSolve(true,
                 forwardErr,
                 leftErr,
-                translation.hasRangeInches,
+                translation.hasRangeInches && Double.isFinite(translation.rangeInches),
                 translation.rangeInches);
     }
 
@@ -188,6 +203,7 @@ final class DriveGuidanceEvaluator {
             return FacingSolve.invalid();
         }
         FacingSolution aim = lane.facing;
+        if (!Double.isFinite(aim.facingErrorRad)) return FacingSolve.invalid();
         return new FacingSolve(true, aim.facingErrorRad);
     }
 

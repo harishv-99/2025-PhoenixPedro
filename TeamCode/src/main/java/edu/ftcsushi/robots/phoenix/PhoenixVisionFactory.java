@@ -4,16 +4,18 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import java.util.Objects;
 
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactories;
+import edu.ftcsushi.fw.ftc.vision.FtcLimelightVisionLane;
+import edu.ftcsushi.fw.ftc.vision.FtcWebcamVisionLane;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 
 /**
- * Robot-owned factory that selects Phoenix's concrete AprilTag vision lane backend.
+ * Robot-owned selection of Phoenix's camera backend with its required tag capability.
  *
  * <p>Phoenix keeps this selection wrapper in the robot layer so the rest of the robot consumes only
- * the backend-neutral {@link AprilTagVisionLane} seam. The framework still owns the concrete FTC
+ * the backend-neutral {@link AprilTagVision} seam. The framework still owns the concrete FTC
  * boundary implementations for each supported backend.</p>
  */
 public final class PhoenixVisionFactory {
@@ -33,10 +35,10 @@ public final class PhoenixVisionFactory {
         public Backend backend = Backend.WEBCAM;
 
         /** Webcam draft inspected only when {@link #backend} is {@link Backend#WEBCAM}. */
-        public FtcWebcamAprilTagVisionLane.Config webcam = webcamDefaults();
+        public FtcWebcamVisionLane.Config webcam = webcamDefaults();
 
         /** Limelight draft inspected only when {@link #backend} is {@link Backend#LIMELIGHT}. */
-        public FtcLimelightAprilTagVisionLane.Config limelight = limelightDefaults();
+        public FtcLimelightVisionLane.Config limelight = limelightDefaults();
 
         private Config() {
         }
@@ -112,7 +114,7 @@ public final class PhoenixVisionFactory {
     }
 
     /**
-     * Creates the concrete AprilTag vision lane requested by the supplied Phoenix Config.
+     * Transfers one owned camera handle with the tag capability required by Phoenix.
      *
      * <p>The selected concrete owner validates and snapshots its complete active configuration
      * before looking up the requested device. This robot selector does not validate the inactive
@@ -120,12 +122,12 @@ public final class PhoenixVisionFactory {
      *
      * @param hardwareMap FTC hardware map used to acquire the chosen vision device
      * @param cfg Phoenix AprilTag backend-selection config
-     * @return concrete vision lane for the active Phoenix backend
+     * @return owned camera handle; downstream consumers borrow its non-closeable AprilTag view
      * @throws NullPointerException if the map, Config, selected backend, or selected backend draft
      *                              is {@code null}
      * @throws IllegalArgumentException if the selected backend draft is invalid
      */
-    public static AprilTagVisionLane create(HardwareMap hardwareMap, Config cfg) {
+    public static OwnedAprilTagCamera create(HardwareMap hardwareMap, Config cfg) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
         Objects.requireNonNull(cfg, "PhoenixVisionFactory.Config");
 
@@ -135,37 +137,29 @@ public final class PhoenixVisionFactory {
         );
         switch (selected) {
             case WEBCAM:
-                return new FtcWebcamAprilTagVisionLane(
-                        hardwareMap,
-                        Objects.requireNonNull(
-                                cfg.webcam,
-                                "PhoenixVisionFactory.Config.webcam"
-                        )
-                );
+                return AprilTagCameraFactories.webcam(Objects.requireNonNull(
+                        cfg.webcam, "PhoenixVisionFactory.Config.webcam")).open(hardwareMap);
             case LIMELIGHT:
-                return new FtcLimelightAprilTagVisionLane(
-                        hardwareMap,
-                        Objects.requireNonNull(
-                                cfg.limelight,
-                                "PhoenixVisionFactory.Config.limelight"
-                        )
-                );
+                return AprilTagCameraFactories.limelight(Objects.requireNonNull(
+                        cfg.limelight, "PhoenixVisionFactory.Config.limelight")).open(hardwareMap);
             default:
                 throw new IllegalArgumentException("Unsupported Phoenix vision backend: " + selected);
         }
     }
 
-    private static FtcWebcamAprilTagVisionLane.Config webcamDefaults() {
-        FtcWebcamAprilTagVisionLane.Config config =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
+    private static FtcWebcamVisionLane.Config webcamDefaults() {
+        FtcWebcamVisionLane.Config config =
+                FtcWebcamVisionLane.Config.defaults();
+        config.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
         config.webcamName = "Webcam 1";
         config.cameraMount = currentCameraMount();
         return config;
     }
 
-    private static FtcLimelightAprilTagVisionLane.Config limelightDefaults() {
-        FtcLimelightAprilTagVisionLane.Config config =
-                FtcLimelightAprilTagVisionLane.Config.defaults();
+    private static FtcLimelightVisionLane.Config limelightDefaults() {
+        FtcLimelightVisionLane.Config config =
+                FtcLimelightVisionLane.Config.defaults();
+        config.aprilTags = FtcLimelightVisionLane.AprilTagConfig.defaults();
         config.hardwareName = "limelight";
         config.pipelineIndex = 0;
         config.pollRateHz = 100;
