@@ -109,8 +109,12 @@ readiness facts remain post-open checks. Null facts and `RuntimeException` failu
 and close a published lane when cleanup succeeds; an `Error` propagates without promised cleanup,
 although a later STOP closes any still-retained published owner. The Pinpoint pod tool maps production's
 layout and AprilTag age/solver policy, keeps a successful ordinary INIT drive-silent, and permits
-motion only after START with current-cycle `READY` pose and velocity evidence. Software defaults and
-snapshots do not establish physical calibration.
+motion only after START with current-cycle `READY` pose and velocity evidence. Each automatic turn
+or tag-search phase has its own shared-clock elapsed-time bound; expiry discards the attempt and
+requests zero before the next sensor poll or queued advance action. Manual rotation/recentering
+remains separate, and a same-cycle B abort cannot be undone by queued A/Y/X intent. These are
+cooperative loop decisions, not a hardware watchdog. Software defaults and snapshots do not
+establish physical calibration or safe stopping distance.
 
 `PhoenixRobot` is constructed once for one mode from `HardwareMap` alone. `declareTeleOp(...)` or
 `declareAuto(...)` may be called once and synchronously routes the selected profile slices and

@@ -52,7 +52,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Locks CONFIG-06's exact Axis/Pod authoring and owner-capture contracts. */
+/** Locks exact Axis/Pod authoring, active-field validation, and owner-capture contracts. */
 public final class PinpointTesterConfigTest {
 
     @Test
@@ -84,6 +84,7 @@ public final class PinpointTesterConfigTest {
                         "manualOmegaScale",
                         "autoOmegaCmd",
                         "targetTurnRad",
+                        "automaticPhaseTimeoutSec",
                         "autoComputeAfterAutoSample",
                         "enableAutoTagSearchAtStart",
                         "tagSearchMaxTurnRad",
@@ -102,6 +103,7 @@ public final class PinpointTesterConfigTest {
                 new Class<?>[]{
                         edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor.Config.class,
                         FtcDrives.MecanumConfig.class,
+                        double.class,
                         double.class,
                         double.class,
                         double.class,
@@ -142,6 +144,7 @@ public final class PinpointTesterConfigTest {
         assertEquals(0.6, podA.manualOmegaScale, 0.0);
         assertEquals(0.35, podA.autoOmegaCmd, 0.0);
         assertEquals(Math.PI, podA.targetTurnRad, 0.0);
+        assertEquals(10.0, podA.automaticPhaseTimeoutSec, 0.0);
         assertTrue(podA.autoComputeAfterAutoSample);
         assertTrue(podA.enableAutoTagSearchAtStart);
         assertEquals(4.0 * Math.PI, podA.tagSearchMaxTurnRad, 0.0);
@@ -202,6 +205,7 @@ public final class PinpointTesterConfigTest {
         draft.manualOmegaScale = 0.45;
         draft.autoOmegaCmd = 0.55;
         draft.targetTurnRad = -Math.PI;
+        draft.automaticPhaseTimeoutSec = 4.5;
         draft.autoComputeAfterAutoSample = false;
         draft.tagSearchOmegaCmd = -1.0;
         draft.tagSearchStableFrames = 5;
@@ -228,6 +232,7 @@ public final class PinpointTesterConfigTest {
         assertEquals(0.45, captured.manualOmegaScale, 0.0);
         assertEquals(0.55, captured.autoOmegaCmd, 0.0);
         assertEquals(-Math.PI, captured.targetTurnRad, 0.0);
+        assertEquals(4.5, captured.automaticPhaseTimeoutSec, 0.0);
         assertFalse(captured.autoComputeAfterAutoSample);
         assertEquals(-1.0, captured.tagSearchOmegaCmd, 0.0);
         assertEquals(5, captured.tagSearchStableFrames);
@@ -242,10 +247,12 @@ public final class PinpointTesterConfigTest {
         draft.pinpoint.hardwareMapName = "mutated";
         draft.mecanum.wiring.frontLeftName = "mutated";
         draft.aprilTags.maxDetectionAgeSec = 99.0;
+        draft.automaticPhaseTimeoutSec = 90.0;
         authoredLayout.put(7, new Pose3d(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
         assertEquals("podPinpoint", captured.pinpoint.hardwareMapName);
         assertEquals("frontLeftSentinel", captured.mecanum.wiring.frontLeftName);
         assertEquals(0.0, captured.aprilTags.maxDetectionAgeSec, 0.0);
+        assertEquals(4.5, captured.automaticPhaseTimeoutSec, 0.0);
         assertEquals(1.0, capturedLayout.getFieldToTagPose(7).xInches, 0.0);
     }
 
@@ -386,6 +393,87 @@ public final class PinpointTesterConfigTest {
                 ),
                 "tagSearchOmegaCmd"
         );
+    }
+
+    @Test
+    public void podAutomaticPhaseTimeoutRejectsInvalidActiveValuesBeforeVisionEffects() {
+        for (double invalid : new double[]{0.0, -0.0, -1.0, Double.NaN,
+                Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}) {
+            for (boolean assist : new boolean[]{false, true}) {
+                for (boolean searchesEnabled : new boolean[]{false, true}) {
+                    PinpointPodOffsetCalibrator.Config draft =
+                            PinpointPodOffsetCalibrator.Config.defaults();
+                    draft.mecanum = FtcDrives.MecanumConfig.defaults();
+                    draft.automaticPhaseTimeoutSec = invalid;
+                    draft.enableAutoTagSearchAtStart = searchesEnabled;
+                    draft.enableAutoTagSearchAtEnd = searchesEnabled;
+                    draft.preferredVisionDeviceName = "frontCam";
+                    CountingLayout layout = new CountingLayout();
+                    draft.fixedTagLayout = layout;
+                    int[] builderCalls = {0};
+                    Function<String, AprilTagCameraFactory> builder = name -> {
+                        builderCalls[0]++;
+                        return hardwareMap -> null;
+                    };
+
+                    // A configured drive can run Y's automatic turn even with no vision or
+                    // both searches disabled. Reject its timeout before any deferred builder.
+                    assertFailureContains(
+                            () -> new PinpointPodOffsetCalibrator(draft, assist ? builder : null),
+                            "automaticPhaseTimeoutSec must be finite and > 0, got " + invalid);
+                    assertEquals(0, builderCalls[0]);
+                    assertEquals(0, layout.idsReads);
+                    assertEquals(0, layout.poseReads);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void podAutomaticPhaseTimeoutCapturesEveryPositiveFiniteBoundaryExactly()
+            throws Exception {
+        for (double seconds : new double[]{Double.MIN_VALUE, 0.125, 10.0, Double.MAX_VALUE}) {
+            PinpointPodOffsetCalibrator.Config draft =
+                    PinpointPodOffsetCalibrator.Config.defaults();
+            draft.mecanum = FtcDrives.MecanumConfig.defaults();
+            draft.automaticPhaseTimeoutSec = seconds;
+            PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(draft, null);
+            PinpointPodOffsetCalibrator.Config captured = field(owner, "cfg");
+
+            // Constructor acceptance proves only the finite-positive software domain, not
+            // that this limit allows a physical turn or is a useful stopping threshold.
+            assertEquals(seconds, captured.automaticPhaseTimeoutSec, 0.0);
+            draft.automaticPhaseTimeoutSec = Double.NaN;
+            assertEquals(seconds, captured.automaticPhaseTimeoutSec, 0.0);
+        }
+    }
+
+    @Test
+    public void podAutomaticPhaseTimeoutRemainsDormantWithoutDriveEvenWithVision()
+            throws Exception {
+        for (double dormant : new double[]{0.0, -1.0, Double.NaN,
+                Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}) {
+            for (boolean assist : new boolean[]{false, true}) {
+                PinpointPodOffsetCalibrator.Config draft =
+                        PinpointPodOffsetCalibrator.Config.defaults();
+                draft.automaticPhaseTimeoutSec = dormant;
+                draft.preferredVisionDeviceName = "frontCam";
+                int[] builderCalls = {0};
+                Function<String, AprilTagCameraFactory> builder = name -> {
+                    builderCalls[0]++;
+                    return hardwareMap -> null;
+                };
+
+                // Vision alone does not create powered phases: the hand-motion workflow
+                // ignores the timeout draft while still capturing its selected vision branch.
+                PinpointPodOffsetCalibrator owner =
+                        new PinpointPodOffsetCalibrator(draft, assist ? builder : null);
+                PinpointPodOffsetCalibrator.Config captured = field(owner, "cfg");
+                assertNull(captured.mecanum);
+                assertEquals(10.0, captured.automaticPhaseTimeoutSec, 0.0);
+                assertEquals(assist ? 1 : 0, builderCalls[0]);
+            }
+        }
     }
 
     @Test

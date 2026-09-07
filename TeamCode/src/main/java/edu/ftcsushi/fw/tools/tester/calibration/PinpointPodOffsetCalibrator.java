@@ -14,6 +14,7 @@ import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.core.math.MathUtil;
 import edu.ftcsushi.fw.core.source.BooleanSource;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.drive.DriveSignal;
 import edu.ftcsushi.fw.drive.MecanumDrivebase;
 import edu.ftcsushi.fw.field.TagLayout;
@@ -62,6 +63,13 @@ import edu.ftcsushi.fw.input.binding.Bindings;
  * translation while sampling. A null builder explicitly keeps the independent Pinpoint workflow
  * vision-free. Put fixed field facts and mount-free solver/age policy in {@link Config}; the opened
  * vision lane remains the sole owner of camera hardware, its tag library, and camera mount.</p>
+ *
+ * <p>With a drive, each automatic turn or tag-search phase has its own elapsed-time limit from
+ * {@link Config#automaticPhaseTimeoutSec}. A can also begin a powered start-tag search. Expiry
+ * discards the attempt and requests zero before polling or accepting another phase action; B
+ * likewise wins over A/Y/X in the same loop cycle. A fresh later button press can retry. These
+ * cooperative checks require a serviced OpMode loop; they are not a hardware watchdog or proof
+ * of safe power, clearance, braking, or a physically sufficient time limit.</p>
  */
 public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
@@ -110,6 +118,19 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
          * {@code 4 * sin(targetTurnRad / 2)^2 >= 0.5}; its sign selects turn direction.
          */
         public double targetTurnRad = Math.PI;
+
+        /**
+         * Maximum elapsed seconds for each automatic phase: start-tag search (including one
+         * initiated by A), Y's rotation, and end-tag search. Each phase starts a fresh budget.
+         * With a drive this must be finite and {@code > 0}, even without vision or tag searches;
+         * it is dormant without a drive. Hand/stick rotation and manual recentering are untimed.
+         *
+         * <p>The 10-second software default is not a hardware-validated duration. At or after the
+         * deadline, the next serviced RUN loop discards the attempt, requests zero, and retains
+         * the failed phase's reason. An invalid/reset clock timestamp fails the attempt too.
+         * There is no automatic retry or timeout fallback to a calibration result.</p>
+         */
+        public double automaticPhaseTimeoutSec = 10.0;
 
         /**
          * If true, auto samples (Y) will compute results automatically once the rotation is done
@@ -292,6 +313,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private Phase phase = Phase.IDLE;
+    private LoopTimestamp automaticPhaseStartedAt = LoopTimestamp.unavailable();
+    // Do not clear this in reset/phase cleanup: B and expiry must win for the entire cycle.
+    private long motionInhibitedCycle = Long.MIN_VALUE;
+    private String lastAttemptFailure;
     private boolean resetRequested;
     private boolean primaryActionRequested;
     private boolean autoStartRequested;
@@ -411,6 +436,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     true
             );
             captured.targetTurnRad = requireStableTargetTurn(draft.targetTurnRad);
+            captured.automaticPhaseTimeoutSec = requirePositiveFinite(
+                    draft.automaticPhaseTimeoutSec,
+                    CONFIG_CONTEXT + ".automaticPhaseTimeoutSec"
+            );
             if (draft.enablePostRotateRecenter) {
                 captured.recenterTranslationScale = requireFiniteRange(
                         draft.recenterTranslationScale,
@@ -734,6 +763,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     @Override
     protected void onLoop(double dtSec) {
+        // Bindings have already serviced B. Neither a queued reset/start nor newly polled evidence
+        // may rescue a phase whose budget has expired. Repeated calls in this cycle stay inhibited.
+        if (started && (motionInhibitedThisCycle() || expireAutomaticPhaseIfNeeded())) {
+            discardControlRequests();
+            renderTelemetry(false);
+            return;
+        }
         ensureAprilTagAssistReady(false);
 
         updateSensors(false);
@@ -744,6 +780,11 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             return;
         }
         consumeControlRequestsAfterCurrentPoll(true);
+
+        if (motionInhibitedThisCycle()) {
+            renderTelemetry(false);
+            return;
+        }
 
         if (!pinpointReadyForMotion()) {
             abortSample();
@@ -785,6 +826,41 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         return phase == Phase.ROTATING || phase == Phase.SEARCH_TAG_END || phase == Phase.POST_RECENTER;
     }
 
+    private boolean isAutomaticPhase() {
+        return drive != null && (phase == Phase.SEARCH_TAG_START
+                || phase == Phase.SEARCH_TAG_END || (phase == Phase.ROTATING && autoSample));
+    }
+
+    /** Capture the new phase's own boundary, never the interval preceding its entry. */
+    private void enterPhase(Phase nextPhase) {
+        phase = nextPhase;
+        automaticPhaseStartedAt = isAutomaticPhase()
+                ? ctx.clock.nowTimestamp() : LoopTimestamp.unavailable();
+    }
+
+    private boolean motionInhibitedThisCycle() {
+        // Pre-init cleanup may have no context yet.
+        return ctx != null && motionInhibitedCycle == ctx.clock.cycle();
+    }
+
+    private boolean expireAutomaticPhaseIfNeeded() {
+        if (!isAutomaticPhase()) return false;
+        double elapsedSec = automaticPhaseStartedAt.ageSec(ctx.clock);
+        if (Double.isFinite(elapsedSec) && elapsedSec < cfg.automaticPhaseTimeoutSec) {
+            return false;
+        }
+        lastAttemptFailure = Double.isFinite(elapsedSec)
+                ? String.format(Locale.US, "%s timed out (%.2f / %.2f s). Attempt discarded; "
+                        + "release controls, then press A or Y to retry.",
+                        phase, elapsedSec, cfg.automaticPhaseTimeoutSec)
+                : phase + " has invalid elapsed time (clock reset or unavailable timestamp). "
+                        + "Attempt discarded; release controls, then press A or Y to retry.";
+        clearLastResults();
+        // Publish inactive state and inhibition before an external zero write can fail/reenter.
+        abortSample();
+        return true;
+    }
+
     private void updateSearchForTagStart() {
         if (drive == null || tagEstimator == null) {
             // Shouldn't happen, but fail safe.
@@ -807,14 +883,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         if (latestTagPose != null && tagStableFrames >= cfg.tagSearchStableFrames) {
             // Found a stable tag pose; align and start the actual sample.
-            drive.drive(DriveSignal.zero());
             startSampleInternal(autoSample, latestTagPose);
             return;
         }
 
         if (turned >= Math.abs(cfg.tagSearchMaxTurnRad)) {
             // Give up and just start without tag assist.
-            drive.drive(DriveSignal.zero());
             startSampleInternal(autoSample, null);
         }
     }
@@ -894,6 +968,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         clearPendingMotionIntent();
 
         clearLastResults();
+        if (!motionInhibitedThisCycle()) {
+            lastAttemptFailure = null;
+        }
 
         startTagPose = null;
         latestTagPose = null;
@@ -905,9 +982,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void clearPendingMotionIntent() {
-        phase = Phase.IDLE;
+        enterPhase(Phase.IDLE);
         autoSample = false;
         tagStableFrames = 0;
+        discardControlRequests();
+    }
+
+    private void discardControlRequests() {
         resetRequested = false;
         primaryActionRequested = false;
         autoStartRequested = false;
@@ -938,12 +1019,14 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     /** Consume binding-edge intent only after this cycle's Pinpoint/vision update. */
     private void consumeControlRequestsAfterCurrentPoll(boolean runPhase) {
+        if (motionInhibitedThisCycle()) {
+            discardControlRequests();
+            return;
+        }
         boolean shouldReset = resetRequested;
         boolean shouldRunPrimaryAction = primaryActionRequested;
         boolean shouldStartAuto = autoStartRequested;
-        resetRequested = false;
-        primaryActionRequested = false;
-        autoStartRequested = false;
+        discardControlRequests();
 
         if (terminalVisionFailureBlocksCalibration()) {
             // Identity-mount fallback explicitly clears this block through its unavailable state.
@@ -965,10 +1048,11 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             }
             return;
         }
+        if (motionInhibitedThisCycle()) return;
         if (shouldRunPrimaryAction) {
             onAPress();
         }
-        if (shouldStartAuto) {
+        if (shouldStartAuto && !motionInhibitedThisCycle()) {
             onYPress();
         }
     }
@@ -985,9 +1069,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void abortSample() {
-        phase = Phase.IDLE;
-        autoSample = false;
-        tagStableFrames = 0;
+        if (ctx != null) {
+            motionInhibitedCycle = ctx.clock.cycle();
+        }
+        clearPendingMotionIntent();
         if (started && drive != null) {
             drive.drive(DriveSignal.zero());
         }
@@ -1007,12 +1092,14 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void requestStartSample(boolean auto) {
-        if (terminalVisionFailureBlocksCalibration()
+        if (motionInhibitedThisCycle()
+                || terminalVisionFailureBlocksCalibration()
                 || phase != Phase.IDLE
                 || !pinpointReadyForMotion()) return;
 
         autoSample = auto;
         clearLastResults();
+        lastAttemptFailure = null;
 
         // Prefer to align Pinpoint to a vision pose if we have one.
         if (aprilTagAssistEnabled() && tagEstimator != null && latestTagPose != null) {
@@ -1025,7 +1112,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 && cfg.enableAutoTagSearchAtStart
                 && drive != null
                 && tagEstimator != null) {
-            phase = Phase.SEARCH_TAG_START;
+            enterPhase(Phase.SEARCH_TAG_START);
             tagStableFrames = 0;
             tagSearchUnwrapper.reset(latestPinpointPose.headingRad);
             tagSearchStartUnwrappedRad = tagSearchUnwrapper.getUnwrappedRad();
@@ -1037,6 +1124,15 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void startSampleInternal(boolean auto, Pose2d startTagPoseOrNull) {
+        if (motionInhibitedThisCycle()) return;
+        // Leave any powered search and stop before rebasing the sensor. Publish the inactive
+        // state first so a failing/reentrant zero cannot retain or revive that search's timer.
+        enterPhase(Phase.IDLE);
+        autoSample = false;
+        if (drive != null) {
+            drive.drive(DriveSignal.zero());
+        }
+        if (motionInhibitedThisCycle() || visionTerminalRequested) return;
         clearLastResults();
 
         startTagPose = startTagPoseOrNull;
@@ -1049,6 +1145,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         } else {
             pinpoint.setPose(Pose2d.zero());
         }
+        if (motionInhibitedThisCycle() || visionTerminalRequested
+                || terminalVisionFailureBlocksCalibration()) return;
 
         // Snapshot starting pose
         startPinpointPose = pinpoint.getEstimate().toPose2d();
@@ -1058,11 +1156,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         startHeadingUnwrappedRad = headingUnwrapper.getUnwrappedRad();
 
         autoSample = auto;
-        phase = Phase.ROTATING;
-
-        if (drive != null) {
-            drive.drive(DriveSignal.zero());
-        }
+        enterPhase(Phase.ROTATING);
     }
 
     private void transitionAfterRotation() {
@@ -1074,7 +1168,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 && tagEstimator != null
                 && startTagPose != null) {
             if (latestTagPose == null) {
-                phase = Phase.SEARCH_TAG_END;
+                enterPhase(Phase.SEARCH_TAG_END);
                 tagStableFrames = 0;
                 tagSearchUnwrapper.reset(latestPinpointPose.headingRad);
                 tagSearchStartUnwrappedRad = tagSearchUnwrapper.getUnwrappedRad();
@@ -1093,17 +1187,15 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 && aprilTagAssistEnabled()
                 && startTagPose != null
                 && latestTagPose != null) {
-            if (drive != null) {
-                drive.drive(DriveSignal.zero());
-            }
             finishSampleAndCompute();
             return;
         }
 
         if (cfg.enablePostRotateRecenter) {
-            phase = Phase.POST_RECENTER;
+            enterPhase(Phase.POST_RECENTER);
         } else {
             finishSampleAndCompute();
+            return;
         }
 
         if (drive != null) {
@@ -1114,10 +1206,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private void finishSampleAndCompute() {
         if (!isSampleActive()) return;
 
-        // Stop motors first.
+        // Leave the phase before external cleanup. A failing zero must not leave a live timer.
+        enterPhase(Phase.IDLE);
+        autoSample = false;
         if (drive != null) {
             drive.drive(DriveSignal.zero());
         }
+        if (motionInhibitedThisCycle() || visionTerminalRequested) return;
 
         // Compute deltas
         Pose2d endPinpointPose = latestPinpointPose;
@@ -1180,9 +1275,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             lastSolveNote = null;
         }
 
-        // Return to idle after computing.
-        phase = Phase.IDLE;
-        autoSample = false;
     }
 
     private void ensureAprilTagAssistReady(boolean initPhase) {
@@ -1505,8 +1597,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                         ? (autoSample ? "ACTIVE" : "start configured turn")
                         : "unavailable (no drive)"
         );
-        ctx.telemetry.addData("Abort [B]", isSampleActive() ? "cancel current sample" : "idle");
+        ctx.telemetry.addData("Abort [B]", phase != Phase.IDLE ? "cancel current attempt" : "idle");
         ctx.telemetry.addData("Reset [X]", "zero pose + clear results");
+        if (isAutomaticPhase()) {
+            ctx.telemetry.addData("Automatic phase elapsed / limit [s]", String.format(
+                    Locale.US, "%.2f / %.2f", automaticPhaseStartedAt.ageSec(ctx.clock),
+                    cfg.automaticPhaseTimeoutSec));
+        }
+        if (lastAttemptFailure != null) {
+            ctx.telemetry.addData("Attempt failed", lastAttemptFailure);
+        }
         if (drive != null) {
             ctx.telemetry.addData("Rotate [RightStickX]", phase == Phase.ROTATING && !autoSample ? "manual turn now" : "available in manual sample");
         }
@@ -1724,6 +1824,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         visionTerminalRequested = true;
         visionRetryBlocked = true;
         started = false;
+        clearPendingMotionIntent();
         MecanumDrivebase ownedDrive = drive;
         OwnedAprilTagCamera ownedVision = visionLane;
         drive = null;
