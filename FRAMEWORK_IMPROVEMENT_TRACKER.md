@@ -229,7 +229,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 115 | DOC-10 | Linked API reference in student lessons | Done | The reviewed linked APIs, maintained-source fallbacks, generated-artifact validation, comparison-backlog intake, verification, and destination-specific publication authorization are complete. |
 | 116 | VISION-03 | Shared vision targets and approach guidance | Done | Implemented general camera owners, located observations, parallel tag/object selection and approach consumption, and bounded resting-ball pickup examples. Full software checks pass; user review and branch/remote-specific publication authorization received. Physical pickup remains disabled. |
 | 117 | SPATIAL-02 | Camera observations to field positions | Done | Reviewed fixed-camera closeout, four focused regressions, clarified guides, 2,346 passing tests and strict documentation checks; exact branch/remote/master publication authorized. No production/API changes; turret-camera support remains deferred. |
-| 118 | CAL-05 | Bound powered calibration phases | Proposed | Add elapsed-time bounds to automatic pod turns and tag searches; preserve manual unpowered operation. |
+| 118 | CAL-05 | Bound powered calibration phases | Done | Per-phase deadlines and Abort precedence reviewed and approved for publication; 65 focused tests pass. Full local suite retains only the 2 recorded pre-existing Windows documentation checks. |
 | 119 | LOCALIZATION-02 | Make correction quality truthful | Proposed | Resolve the quality-scaled confidence contract mismatch without unnecessary pose-correction changes. |
 | 120 | LOCALIZATION-03 | Preserve localization evidence freshness | Proposed | Audit frozen predictor timestamps and missing delayed-correction history in both corrected estimators. |
 | 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Proposed | Retain capture time, count distinct tag frames, and compare compatible-time calibration endpoints. |
@@ -28908,7 +28908,14 @@ today's implementation or turn a hypothesis into a preapproved public API.
 
 ### CAL-05 - Bound powered calibration phases
 
-- **Status:** **Proposed**; first robustness decision gate, not started by this intake.
+- **Status:** **Done**; the user's combined “CAL-05 looks good” review and destination-specific
+  publication authorization on 2026-09-07 approves the reviewed implementation, following the
+  earlier Gate-1 “Yes; proceed.” approval. Physical adopting-robot validation remains separate.
+- **Publication gate:** `codex/cal-05-bounded-powered-calibration` remains based on
+  freshly fetched `origin/master` at `2a2a5717b243bc911ca07d438bdf62c4ca2be5fb` (confirmed again
+  after publication approval). Only the reviewed CAL-05 scope and this final tracker closeout are
+  authorized for commit, push, PR, and merge into `master` at the exact origin below. Existing
+  physical-validation limits and other task dispositions remain unchanged.
 - **Evidence and owners:** `fw/tools/tester/calibration/PinpointPodOffsetCalibrator.java` methods
   `updateSearchForTagStart`, `updateRotating`, and `updateSearchForTagEnd` bound automatic motion by
   measured angle, but have no elapsed-time limit. A frozen but still-present READY heading can
@@ -28936,6 +28943,321 @@ today's implementation or turn a hypothesis into a preapproved public API.
   If a chosen completion contract depends on unavailable physical stall behavior, defer that claim
   with an exact setup/run requirement or seek approval for the narrower elapsed-time contract;
   reactivate when that evidence or explicit scope approval is supplied.
+
+#### CAL-05 decision gate — 2026-09-07
+
+**Confirmed current behavior and failure path**
+
+- `PinpointPodOffsetCalibrator.onLoop` polls sensors, consumes pending A/Y/X control requests,
+  checks current READY pose/velocity, then advances its existing private phase machine.
+  `updateSearchForTagStart`, auto `updateRotating`, and `updateSearchForTagEnd` have angular
+  termination conditions but no time limit. A series of finite READY/current-cycle observations
+  with unchanged heading never reaches those angular limits and continues requesting rotation.
+  This is a traced software path, not an observed physical Pinpoint failure.
+- `requestStartSample(false)` can enter powered `SEARCH_TAG_START` after A when drive and assist
+  are configured. Only the main A/right-stick rotation is manual. Timeout eligibility must name
+  the phase, not use `autoSample` as a blanket gate.
+- A requests are consumed before the existing phase update: they can skip a search, finish a
+  rotation, or compute results. A deadline checked only inside the phase update could therefore
+  be bypassed by that cycle's A request. Expiry must be checked before those transitions.
+- `abortSample` currently sets IDLE and zeros drive, but does not clear queued A/Y requests.
+  A simultaneous Abort and start can rearm later in the same loop. Correct that local abort
+  precedence as part of this item's required cancellation guarantee; do not redesign Bindings.
+- `BaseTeleOpTester` deduplicates binding effects by cycle, not its entire `onLoop` hook. Adding
+  `dtSec` accumulation would mischarge repeated calls and pre-entry time. Existing `LoopTimestamp`
+  provides phase-relative elapsed time and reset-epoch invalidation without another clock.
+- Ordinary INIT is drive-silent; START clears pending phase intent and sends the first ordinary
+  zero. READY loss already aborts. Terminal vision failure blocks pending motion; BACK invokes
+  tester cleanup through `TesterSuite`/`TesterChildSession`; STOP stops the drive and closes the
+  camera. Preserve their existing best-effort failure boundaries. A failed zero write is not
+  physical stopping evidence.
+
+**Current callers and complete public construction-path audit**
+
+- The pod tool has one public constructor:
+  `PinpointPodOffsetCalibrator(Config, Function<String, AprilTagCameraFactory>)`. It has no
+  Config-only/no-argument constructor, `of`, or facade builder. `Config` is final, has a private
+  constructor, 19 public mutable authoring fields, and one `public static Config defaults()`.
+  No public copy, independent validation object, or staged-builder parameter is involved.
+- The Config is data; the nullable factory-builder peer is deferred behavior. These have distinct
+  ownership/effect contracts, so retain both. `mecanum == null` independently selects no drive;
+  a null factory builder selects no vision. `AprilTagCameraFactory.open(HardwareMap)` returns a
+  fresh `OwnedAprilTagCamera`. Webcam/Limelight factories remain at the existing camera boundary;
+  this item adds no backend or camera construction surface.
+- `fw/tools/tester/StandardTesters.createGenericPinpointPodOffsetTester(): TeleOpTester` returns
+  a `HardwareSelectingTester`; its selected-name callback creates a defaults Config, replaces
+  only Pinpoint configuration, and constructs the pod tool with null vision behavior. It is
+  reached through `createStandaloneCalibrationAndLocalizationSuite(): TesterSuite` and
+  `createSuite(): TesterSuite`, hosted by `FrameworkDriverStationTestersOpMode` and
+  `FrameworkPanelsTestersOpMode`. This remains hand-motion-only with no new student choice.
+  Ordinary embedded `StandardTesters.register(...)` omits these generic Pinpoint entries;
+  Reference registration is not another pod-calibrator adopter.
+- The only configured application factory is
+  `robots/phoenix/tester/PhoenixRobotTesters.pinpointPodOffsets(): TeleOpTester`: it copies the
+  profile's Pinpoint and mecanum configuration, selects the turn/compute policy and active vision
+  device, snapshots fixed-layout/AprilTag policy, and supplies the active-backend builder only
+  when the mount check permits assist. Its menu and `PhoenixCalibrationWalkthrough` reuse that
+  factory; `PhoenixTestersOpMode` hosts the suite. No independent maintained example constructs
+  the pod tool. No application runtime mechanism, control, or production localization owner needs
+  a new API or timing policy.
+- Direct test constructors are in `PinpointTesterConfigTest` and
+  `SelectableVisionTesterLifecycleTest`; `PinpointTesterReadinessTest` calls the pure READY seam.
+  Retain their hardware-neutral/private reflection seams rather than introduce public injection
+  constructors just to test deadlines.
+- Sibling Axis/CameraMount/AprilTag/CorrectedLocalization tools retain their defaults Config and
+  existing constructor grammar. Axis takes its Config alone; selectable vision tools take Config
+  plus deferred camera behavior. They gain no unrelated timeout fields merely for symmetry.
+  No overlapping public layer was found to remove or preserve for compatibility.
+
+**Alternatives and student-simplicity comparison**
+
+| Candidate | Complete configured caller impact | Concepts, errors, ownership, and disposition |
+| --- | --- | --- |
+| No code change / operator warning only | None | Cannot bound an automatic phase when heading stops changing; reject as the fix. |
+| Private fixed timeout | No assignment, but tuning requires editing shared source | Fewest public names, but hides an operational limit from the owning robot's configuration; reject. |
+| One `automaticPhaseTimeoutSec` Config scalar | Existing construction unchanged; one optional assignment | One maximum duration, reused with a fresh clock boundary for each automatic phase; actionable active-field validation; recommend. |
+| Auto-turn plus tag-search scalars, or three per-phase scalars | Two or three optional assignments and more field-domain cases | Different angular limits do not prove distinct elapsed-time needs. No current adopter supplies such evidence; reject for now. |
+| Required limits object / new builder or explicit-unset fields | New type or mandatory values in powered callers | No caller stores, shares, composes, or separately validates that object. Adds authoring/migration without improving this bounded contract; reject. |
+| Progress/stall detection | Adds motion-window and progress thresholds | Needs physical/model evidence and still benefits from an elapsed cap; defer outside CAL-05 rather than guess thresholds. |
+| Rewrite phases as timeout-wrapped Tasks | Adds Task runner/phase/cancellation mapping | Existing interactive diagnostic already owns one cooperative phase machine. No factory currently owns these operations; reject a second lifecycle just to time them. |
+
+For the ordinary generic entry, all alternatives preserve the same complete construction:
+
+```java
+PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
+cfg.pinpoint = pinpointConfig(hardwareName); // One selected device; no drive or vision.
+return new PinpointPodOffsetCalibrator(cfg, null);
+```
+
+At a configured factory, retain the same existing device/drive/vision declarations and constructor.
+These side-by-side design fragments show only the added timing answers, not complete runnable
+robot setup. Values illustrate software configuration, not reviewed physical limits:
+
+| Recommended: one timing answer | Rejected: three phase-specific answers |
+| --- | --- |
+| `cfg.automaticPhaseTimeoutSec = 10.0;` | `cfg.autoTurnTimeoutSec = 10.0;` |
+| Same value, fresh budget at each phase entry | `cfg.tagStartSearchTimeoutSec = 10.0;` |
+| Existing `new PinpointPodOffsetCalibrator(cfg, visionFactoryBuilder)` unchanged | `cfg.tagEndSearchTimeoutSec = 10.0;` plus the same constructor |
+
+The one scalar represents one maximum automatic-phase lifetime, not a total attempt timeout.
+The start/end searches already share search power and acquisition-count settings. A future measured
+need for distinct time ceilings can justify a separate design gate; this gate does not anticipate it.
+
+**Chosen design, pending user approval**
+
+1. Add exactly one public data field, `Config.automaticPhaseTimeoutSec`, default `10.0` seconds.
+   Validate finite `> 0` and defensively snapshot it when `mecanum != null`, before hardware,
+   picker, telemetry, or preferred-camera-builder effects. It is dormant without a drive, even
+   if a vision factory is supplied. Zero/infinity are not disable switches. Ten seconds is an
+   explicit finite software baseline, not a measured safety limit or a promise the configured
+   turn/search can finish within it; the robot's exclusive tester factory may override it after
+   reviewing the physical setup. Existing factories remain source-compatible.
+2. Keep a private shared-clock phase-entry timestamp. Start a fresh interval for
+   `SEARCH_TAG_START` (A or Y), `ROTATING` only for auto samples with drive, and `SEARCH_TAG_END`.
+   Hand rotation, stick-controlled manual rotation, and `POST_RECENTER` remain untimed. This is
+   a per-phase ceiling, not three new independent knobs or a total-attempt deadline.
+3. At the beginning of a serviced RUN loop, before further sensor polling or queued A/Y/X phase
+   transitions, expire an already-active timed phase at `elapsed >= automaticPhaseTimeoutSec`.
+   A reset-epoch/invalid phase age fails closed rather than silently rearming. An unexpired phase
+   may still finish earlier through its existing angle/tag/manual-skip rules. A newly entered
+   phase gets the current clock boundary, never prior `dtSec`; repeated same-cycle visits do not
+   spend extra time or reset that boundary. This ceiling does not promise a minimum powered pulse.
+4. Expiry discards the incomplete sample/results, clears pending motion, marks it inactive before
+   the zero request, records a phase-specific failure reason, and returns for that loop. It does
+   not continue to a later powered phase, recenter, compute offsets, treat timeout as angle
+   completion, or auto-retry. Deadline expiry beats newly observed angle/tag success and pending
+   skip/finish/start/reset actions. An Abort already handled by bindings remains an Abort.
+5. Give B-abort and timeout local same-cycle motion inhibition and clear queued A/Y intent so
+   neither can be undone by an already-queued or repeated-loop request. X/reset may clear timing
+   but must not clear this cycle's abort/timeout inhibition or its retained failure reason. Keep
+   that policy inside this tester, not in generic Bindings. After successful zero, another attempt needs a new A/Y
+   press in a later cycle. Do not latch the entire tester permanently for an ordinary timeout.
+6. Clear phase timing on every exit, abort, reset, START, successful completion, and STOP; ensure
+   cleanup state is published before external zero/stop callbacks. Preserve RuntimeException
+   propagation to parent fail-stop cleanup and existing reachable-camera behavior after a zero
+   failure; do not hide exceptions or claim physical zero when a write fails.
+7. Show phase elapsed/limit while automatically moving and a retained timeout/invalid-time reason
+   outside the completed-result block. Existing `lastSolveNote` alone would be invisible when no
+   sample was computed. Fix the local Abort control label to include start search without changing
+   the geometry-specific meaning of `isSampleActive()`. Explain that timeout means the phase did
+   not finish in time, not that a particular sensor or mechanical fault was diagnosed.
+
+**Bounded implementation and synchronized teaching**
+
+- Implementation stays in `PinpointPodOffsetCalibrator.java` with private helpers/state, the one
+  Config field, updated Javadocs, and local telemetry. No core Task/timer/lane API, new tester,
+  background loop, profile persistence, automatically chosen physical thresholds, or production
+  robot behavior is in scope.
+- Extend `PinpointTesterConfigTest`'s exact field/default/capture/active-versus-dormant assertions
+  and add focused phase-level regression coverage, preferably in a same-package
+  `PinpointPodOffsetCalibratorTimingTest` if that keeps the existing Config tests focused. Preserve
+  the real calibrator, shared clock, phase transitions, and real drive owner over recorded fake
+  outputs; substitute only outside hardware/observations. No detached timer-only proof or public
+  test-only constructors.
+- Update the existing optional powered section of `Robot Calibration Tutorials.md` with the
+  visible default, where to configure it, automatic-search-after-A nuance, timeout/Abort outcome,
+  new-attempt action, and cooperative/physical limits. Keep its generic manual procedure and
+  beginner navigation unchanged. Update the configured procedure in the application-local
+  `Phoenix Calibration Guide.md` and any affected constructor/lifecycle wording in its architecture
+  or the existing selectable-tool guides; shared teaching must not depend on that application.
+- No changes to distinct-frame counting/capture-time alignment (`CAL-06`), pod solve equations or
+  rebase mathematics (`CAL-08`), mount sampling (`CAL-09`), estimator freshness, drive hardware
+  policy, or Task composition. Existing non-timeout angular fallback and manual-skip outcomes
+  remain unchanged. The local Abort precedence repair is explicitly included, not adjacent
+  generic-binding cleanup.
+
+**Verification plan and evidence boundary**
+
+- Reproduce current-cycle READY/frozen-heading behavior, then test start search, automatic turn,
+  and end search immediately before, exactly at, and after the limit. Include A-started search,
+  missing tags, simultaneous tag/angle success, and queued A/Y/X actions at expiry.
+- Prove independent phase budgets, late first update, long pre-entry `dtSec`, repeated same-cycle
+  access, reset epoch/invalid time, explicit fresh retry, and no inheritance of a previous attempt's
+  timer. Verify A/right-stick rotation and recenter remain untimed.
+- Assert ordered real drive output calls, inactive phase and absent recommendations on timeout,
+  visible reason, B versus simultaneous A/Y, no same-cycle rearm, readiness loss, INIT/START,
+  reset, BACK, STOP, and zero-write failure with later camera cleanup. No nonzero output may be
+  issued after expiry/abort until a fresh permitted later attempt; a loop/hardware failure is not
+  covered by a real-time stopping guarantee.
+- Validate zero, negative, NaN, and infinities before effects; finite positive boundaries,
+  defensive capture, dormant no-drive values, drive-without-vision, and disabled-search branches.
+  Re-run existing readiness, selectable-vision lifecycle, tester-child cleanup, and application
+  construction/shape checks where affected.
+- After implementation, run focused tests, then full `:TeamCode:testDebugUnitTest` and
+  `:TeamCode:compileDebugJavaWithJavac`, documentation regressions and relevant strict generated
+  docs/API checks, whitespace/caller scans, and independent adversarial review. Count XML results
+  and hand off at Verifying for Android Studio review; do not stage or publish without the exact
+  branch/remote/master authorization required by the skill.
+- **Gate-1 baseline actually run:** existing `PinpointTesterConfigTest` (15 tests),
+  `PinpointTesterReadinessTest` (2), and `SelectableVisionTesterLifecycleTest` (24): **41 tests,
+  3 suites, 0 failures/errors/skips**, Gradle BUILD SUCCESSFUL on 2026-09-07. Existing Java 21 /
+  source-target 8 and SDK deprecation warnings remain. These establish the current regression
+  baseline, not proof of the proposed timeout behavior; no new regression or implementation code
+  has been written. Independent lifecycle, API/caller, and teaching/test-seam audits agree with
+  the bounded recommendation; independent review of this decision record found no blocking issue.
+- **Additional documentation baseline:** `DocumentationLinksTest` ran 51 tests: **49 passed,
+  2 failed, 0 errors/skips**. The unchanged `everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy`
+  and `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair` assertions use literal LF-only
+  substrings, while the current Windows checkout has CRLF guide files (`core.autocrlf=true`).
+  Source inspection of `readUtf8` confirms no normalization; read-only in-memory normalization
+  finds the expected Notice markers in all 11 cited Build pages and the exact-success Task-guide
+  text. Git confirms those guides and the test file match HEAD. Record this pre-existing
+  checkout-sensitive test defect separately from CAL-05; do not alter Git settings, normalize
+  unrelated files, or repair documentation tests during this design-approval stop. No claim of
+  a wholly passing documentation suite is made.
+- **Physical boundary:** the software can issue zero on the next serviced loop at/after the
+  shared-clock deadline. It cannot stop hardware while the OpMode loop is stalled, prove physical
+  braking/clearance, identify why heading froze, or establish a safe/sufficient duration. Retain
+  supervised physical review of powers, directions, stopping distance, camera/odometry setup, and
+  emergency STOP. Unknown hardware does not block this explicitly limited software contract.
+
+**Gate-1 approval stop (subsequently approved):** adding `automaticPhaseTimeoutSec` changes public configuration and
+abort precedence changes local lifecycle behavior. The execute-framework-improvements skill's
+Gate 1 therefore requires user design approval before implementation. Approve the one-field
+`10.0`-second software-default/per-phase design, timeout-as-failed-attempt behavior, and same-cycle
+Abort precedence described above, or revise those choices. At that stop only the tracker decision
+record was modified; nothing was staged, committed, pushed, or merged, and no next item was started.
+
+**Approval received — 2026-09-07:** the user's “Yes; proceed.” authorizes implementing the exact
+design above. It does not authorize committing, pushing, opening a pull request, or merging; those
+remain behind the skill's post-verification review gate.
+
+#### CAL-05 implementation and review handoff — 2026-09-07
+
+- **Implemented:** exactly one public Config field, `automaticPhaseTimeoutSec = 10.0`, with
+  finite-positive validation and defensive capture whenever a drive is configured. The generic
+  no-drive caller ignores this dormant draft, including with vision selected. Existing public
+  construction paths and both real caller graphs remain unchanged.
+- **Lifecycle:** one private `LoopTimestamp` captures each automatic phase's entry on the shared
+  clock. Start-tag search (including A-initiated search), Y rotation, and end-tag search each get
+  a fresh budget. The first serviced RUN at/after the limit, or with invalid timing, rejects the
+  attempt before polling or consuming queued phase controls. It clears results, timing, and motion
+  intent, records a visible phase-specific failure, and requests zero. B and expiry inhibit all
+  A/Y/X intent for the rest of that cycle; repeated calls cannot clear the failure or restart.
+  A fresh later press can retry after successful cleanup and current READY evidence.
+- **Preserved behavior:** hand/stick rotation and manual recentering remain untimed. Angular-limit
+  fallback and explicit skips before the time limit still use their existing paths. INIT remains
+  drive-silent, START owns its first zero, and readiness loss, BACK, STOP, and vision failures keep
+  their existing ownership boundaries. Phase exits clear timing before external zero callbacks;
+  a transition out of start search still stops before rebasing Pinpoint. No solve math, camera
+  capture/freshness, correction-quality, or other queued work is included.
+- **Documentation:** class/Config Javadocs, the framework guide's existing optional powered section,
+  Phoenix calibration Step 7, and Phoenix's calibration ownership paragraph now explain elapsed
+  time, the A-started-search nuance, configuration location, abort/retry, and physical limits.
+  No beginner tabs, mandatory introductory material, or production-dependent examples were added.
+- **Independent review:** production/API review confirmed the one-setting design, unchanged
+  construction/value audit, lifecycle ordering, and Framework Principles compliance. Documentation
+  review confirmed beginner scope and the actual `PhoenixRobotTesters.pinpointPodOffsets()` edit
+  point. Independent timing-test review found no blocker; two strengthening suggestions were
+  implemented: an actual `2.5`-second configured deadline and seeded results checked as cleared
+  inside the failing zero callback. All final regressions were rerun after those additions.
+- **Focused evidence:** final full-run XML includes **65 tests across 4 calibration suites, with
+  0 failures, 0 errors, and 0 skips**: `PinpointPodOffsetCalibratorTimingTest` **21**,
+  `PinpointTesterConfigTest` **18**, `PinpointTesterReadinessTest` **2**, and
+  `SelectableVisionTesterLifecycleTest` **24**. Tests retain the real calibrator, clock,
+  predictor, and drive mixer over scripted device/output seams. They cover all timed phases,
+  exact/late deadlines before polling, current READY but frozen heading, custom duration, large
+  pre-entry intervals, repeated cycles, reset/unavailable/nonfinite timing, button precedence,
+  later retry, manual paths, angle fallback, real TesterSuite BACK, and RuntimeException/Error
+  zero-write reentry with later camera STOP. Binding requests are injected and B calls its existing
+  callback directly; this is not physical gamepad, sensor, or braking validation.
+- **Full verification command:** Android Studio JBR (`C:\Program Files\Android\Android Studio\jbr`)
+  with `gradlew.bat --console=plain :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`.
+  Java compilation passed. Final XML: **262 suites, 2,370 tests, 2,368 passed, 2 failures,
+  0 errors, 0 skips**. The command is **not wholly green**: only the two previously recorded
+  `DocumentationLinksTest` failures remain (`everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy`
+  and `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair`). Both still fail at the same
+  LF-only string checks in untouched files on this CRLF checkout. No Git settings, unrelated
+  guide line endings, or documentation-test implementation were changed to hide them. Existing
+  Java-21/source-target-8 obsolescence and FTC SDK deprecation warnings remain.
+- **Documentation artifact evidence:** existing `build/docs-venv-win/Scripts/python.exe` passed
+  `-m pip check`, `-m zensical build --clean --strict`, and
+  `.github/verify_generated_guide_search.py` (**969 indexed sections, all six guide areas**).
+  `:TeamCode:sushiJavadocs` passed. `.github/verify_generated_api_links.py` verified **176 generated
+  API links and 82 maintained source links across 47 Markdown pages**. All six CI-required
+  artifact files are nonempty, contain their expected identity/API-search entries, and have no
+  reparse points. The generated optional guide and Config API page contain the new setting.
+- **Static scope:** `git diff --check` and a trailing-whitespace scan including the untracked
+  regression test pass. A normalized-content comparison confirms every tracker row and section
+  outside CAL-05 is unchanged. No staging, commit, push, PR, merge, or next-item work was performed.
+- **Android Studio review requested:** inspect `PinpointPodOffsetCalibrator.java`,
+  `PinpointPodOffsetCalibratorTimingTest.java`, `PinpointTesterConfigTest.java`, the optional powered
+  section in `Robot Calibration Tutorials.md`, and Phoenix's Step 7/architecture paragraph. Check
+  each timer boundary, timeout-versus-control precedence, visible retained failure, fresh-button
+  recovery, unchanged manual controls, and state-before-zero/STOP ownership. The supervised
+  adopting-robot review must still establish useful duration, powers/direction, clearance, stopping
+  distance, sensor/camera setup, and access to FTC STOP. A serviced-loop zero request does not prove
+  physical stopping or operate while the loop is stalled; the default is not a safety result.
+- **Resolved publication coordinates:** branch `codex/cal-05-bounded-powered-calibration`, exact
+  origin push destination `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`.
+  At the implementation handoff, remain `Verifying` and unstaged until the user provides the
+  combined review/publication reply:
+
+  > CAL-05 looks good. Authorize committing the reviewed CAL-05 diff on
+  > codex/cal-05-bounded-powered-calibration, pushing that branch to
+  > https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  > master.
+
+#### CAL-05 manual approval and publication — 2026-09-07
+
+- **Manual verification recorded:** the user supplied the exact combined authorization above,
+  approving the reviewed CAL-05 diff and Android Studio review handoff. No new physical-run result
+  was supplied, so the documented adopting-robot safety/calibration limits remain unverified.
+- **Authorized destination and scope:** commit the reviewed seven-file CAL-05 change on
+  `codex/cal-05-bounded-powered-calibration`, push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a PR, and merge into `master`.
+  This final tracker status/approval record is the only post-review content change. No next item
+  or unrelated documentation-test repair is authorized by this closeout.
+- **Publication preflight:** HEAD, local `master`, and freshly fetched `origin/master` are all
+  `2a2a5717b243bc911ca07d438bdf62c4ca2be5fb`; no PR already exists for this item branch. The target's
+  required checks are `Verify Sushi framework` and `Verify documentation artifact`. Preserve those
+  checks and verify the approved head and resulting merge tree before reporting publication done.
+  Git/GitHub provide the eventual commit, PR, CI, and merge identities; this record does not claim
+  a merge before that verification.
+- **Final local closeout check:** after marking the approved item Done,
+  `DocumentationLinksTest.currentTrackerGuidanceDoesNotDependOnTheProductionApplication` passes
+  (**1 test, 0 failures/errors/skips**). The reviewed implementation is unchanged, and final
+  whitespace and CAL-05-only tracker-scope checks pass.
 
 ### LOCALIZATION-02 - Make correction quality truthful
 

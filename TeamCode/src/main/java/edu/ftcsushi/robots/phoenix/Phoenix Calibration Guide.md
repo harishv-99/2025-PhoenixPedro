@@ -581,6 +581,22 @@ Automatic and stick-driven calibration motion fail-stops whenever the current Pi
 `READY` pose and velocity evidence. If that happens, keep the robot still and restart the sample
 after the status returns to `READY`.
 
+The configured tester also bounds each automatic rotation phase with
+`PinpointPodOffsetCalibrator.Config.automaticPhaseTimeoutSec`, default `10.0` seconds. A fresh
+budget begins for start-tag search, the Y-initiated sample turn, and end-tag search. A search before
+an A-initiated manual sample is automatic and therefore timed too; hand/stick sample rotation and
+manual recentering remain untimed. To change this diagnostic limit, set
+`cfg.automaticPhaseTimeoutSec` in `PhoenixRobotTesters.pinpointPodOffsets()` before constructing
+the tester. With a drive configured, the value must be finite and greater than zero.
+
+At an expired deadline, the next serviced loop requests zero and discards the attempt before
+polling sensors or consuming queued advance/reset requests. Read the retained timeout reason; do
+not copy an offset result from that attempt. B likewise discards A/Y/X actions from its own cycle.
+After inspecting the cause and restoring the required evidence, release the controls and use a
+fresh press in a later loop to retry. The limit is cooperative, not a hardware watchdog: it cannot
+interrupt a blocked OpMode loop or prove stopping distance. Review the command, duration, clear
+floor area, and FTC STOP plan on Phoenix; the `10.0`-second software default is not a safety result.
+
 Paste result into:
 
 ```java

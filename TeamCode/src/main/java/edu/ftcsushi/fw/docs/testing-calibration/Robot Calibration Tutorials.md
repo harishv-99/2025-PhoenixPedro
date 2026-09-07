@@ -778,12 +778,32 @@ assist, start/end tag searches default on at omega `+0.25`, require `3` stable f
 to `4π` radians before the sample and `2π` afterward; automatic compute and post-turn recenter also
 default on. These commands and limits are active powered values, not reviewed safe values.
 
+Each automatic rotation phase also has its own elapsed-time limit. Set
+`PinpointPodOffsetCalibrator.Config.automaticPhaseTimeoutSec` on the tool Config before constructing
+the tester; its software default is `10.0` seconds, and a configured drive requires a finite value
+greater than zero. Without a drive, this setting is ignored. A fresh timer starts when each
+start-tag search, Y-initiated sample turn, or
+end-tag search begins. It is not one shared budget for the complete sample. A start-tag search is
+powered and timed even when A requested the following manual sample. Hand rotation, stick-driven
+sample rotation, and manual recentering are not subject to this automatic-phase timer.
+
+If a serviced loop reaches the deadline, the tester requests zero and discards the attempt before
+another sensor poll or queued A/Y/X action can advance it. It retains the timeout reason and does
+not produce an offset recommendation from that attempt. Inspect the cause, keep the robot still,
+and retry only with a fresh button press in a later loop after the required evidence is ready.
+This is a **cooperative timeout**: it is checked when the OpMode loop runs, not by an independent
+hardware watchdog. It cannot interrupt a blocked loop or prove stopping distance; `10.0` seconds
+is not a physically validated safe duration. Review the limit for the actual commands and clear
+floor area, and keep a person at FTC STOP.
+
 Successful ordinary INIT may configure the drive and poll Pinpoint/vision, but does not call the
 ordinary drive command path. Driver Station START sends the first explicit zero. Y begins the
 configured automatic turn; A begins or advances a manual sample, RightStickX rotates during its
-powered rotation phase, LeftStick translates during recenter, and B aborts to zero. Every motion
-path requires current-cycle Pinpoint `READY` pose and velocity and aborts if that evidence
-disappears. Vision assist disables itself when the opened lane still reports an identity mount.
+powered rotation phase, LeftStick translates during recenter, and B aborts to zero. B also discards
+A/Y/X actions queued in that same cycle, so another button cannot restart or advance the aborted
+attempt. Every motion path requires current-cycle Pinpoint `READY` pose and velocity and aborts if
+that evidence disappears. Vision assist disables itself when the opened lane still reports an
+identity mount.
 
 ## Optional EKF comparison
 
