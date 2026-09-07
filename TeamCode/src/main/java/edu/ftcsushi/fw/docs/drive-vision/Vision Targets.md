@@ -20,6 +20,12 @@ To estimate distance, this capability follows that direction until it reaches an
 above the floor. A **ray** is that direction starting at the camera. A **height plane** is an
 imaginary flat surface at the chosen height. Their intersection gives an estimated target point.
 
+This path uses a **fixed mount**: the camera stays in the same position and orientation relative
+to the robot. The robot itself may drive and turn; the pose-history step below accounts for that
+motion. A camera that turns with a turret does not have a fixed mount and is not supported by this
+shared floor-object path. The height plane stays parallel to the robot's horizontal floor plane;
+it does not describe a tilted surface.
+
 ![Side view: a camera 10 inches high sees along a downward ray that meets the modeled target-height plane at 2 inches; the plane intersection estimates a point, not a proven ball center.](<../assets/diagrams/floor-target-ray.svg>)
 
 In the drawing, the camera is 10 inches above the floor and the modeled point is 2 inches high.
@@ -178,11 +184,24 @@ the producer supplies no meaningful score; no fictitious confidence is added.
 
 ## Software checkpoint and next action
 
-The maintained geometry, selection, and guidance tests inject observations and pose evidence;
-they do not run a lens, native color processor, or moving robot. They check projection signs,
-timestamps, stale/empty data, deterministic selection, and tag/object guidance parity.
-**Complete source:** [observation tests](<../../../../../../../test/java/edu/ftcsushi/fw/sensing/observation/TargetSelectionsTest.java>)
-and [shared guidance tests](<../../../../../../../test/java/edu/ftcsushi/fw/spatial/ObservedTargetGuidanceTest.java>).
+The software checks ask whether a known image direction reaches the expected target location.
+They keep the real calibration math and projection, but replace the camera with authored pixels,
+calibration values, and mount geometry. Image-center and four-corner cases check the axes and
+offsets; an off-center ray with a rolled camera checks rotation about its forward axis.
+The expected positions are calculated independently of the production rotation code.
+**Complete source:** [calibrated pixel checks](<../../../../../../../test/java/edu/ftcsushi/fw/ftc/vision/WebcamColorCalibrationTest.java>)
+and [projection checks](<../../../../../../../test/java/edu/ftcsushi/fw/sensing/vision/FloorTargetProjectionTest.java>).
+
+The [bounded pickup checkpoint](<../examples/One Bounded Vision Pickup.md#software-checkpoint-and-hardware-gate>)
+also feeds a projected ray through real pose history, selection, and pickup policy. Authored pose
+samples put the robot somewhere different when the image arrives. The expected field target and
+approach stay tied to capture time; missing capture-time history prevents pickup instead of using
+the current pose. **Complete source:** [pickup scenarios](<../../../../../../../test/java/edu/ftcsushi/robots/examples/visionpickup/VisionPickupSoftwareScenarioTest.java>).
+These are supplied software experiments, not a lens, native color processor, or moving robot.
+The existing [selection](<../../../../../../../test/java/edu/ftcsushi/fw/sensing/observation/TargetSelectionsTest.java>)
+and [shared guidance](<../../../../../../../test/java/edu/ftcsushi/fw/spatial/ObservedTargetGuidanceTest.java>)
+checks additionally cover stale/empty data, deterministic selection, and tag/object parity
+(**Complete source**).
 The [maintainer verification command](<../maintainers/Maintainer Notes.md#16-automated-framework-verification>)
 runs them as part of the software suite.
 

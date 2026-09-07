@@ -228,7 +228,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 114 | DOC-09 | Student-first robot course and first motion | Done | Lead with one compiled one-file drive milestone, then use the evidence-based build workflow as the progressive season course while retaining dense ownership material as reference. |
 | 115 | DOC-10 | Linked API reference in student lessons | Done | The reviewed linked APIs, maintained-source fallbacks, generated-artifact validation, comparison-backlog intake, verification, and destination-specific publication authorization are complete. |
 | 116 | VISION-03 | Shared vision targets and approach guidance | Done | Implemented general camera owners, located observations, parallel tag/object selection and approach consumption, and bounded resting-ball pickup examples. Full software checks pass; user review and branch/remote-specific publication authorization received. Physical pickup remains disabled. |
-| 117 | SPATIAL-02 | Camera observations to field positions | Proposed | Required fixed-mount height-plane projection and capture-time field conversion are incorporated into the approved VISION-03 scope; remaining broader geometry is not automatically completed. |
+| 117 | SPATIAL-02 | Camera observations to field positions | Done | Reviewed fixed-camera closeout, four focused regressions, clarified guides, 2,346 passing tests and strict documentation checks; exact branch/remote/master publication authorized. No production/API changes; turret-camera support remains deferred. |
 | 118 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 | 119 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
 | 120 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
@@ -28501,7 +28501,130 @@ implementation.
 
 ### SPATIAL-02 - Camera observations to field positions
 
-- **Scope incorporation (2026-09-07):** the approved VISION-03 design explicitly includes the
+- **Current status (2026-09-07): Done.** The user approved the narrower fixed-camera
+  closeout, explicitly excluded tilted surfaces, requested a quick turret-camera assessment, then
+  selected "Defer turret support" and authorized the resulting plan with "Implement the plan."
+  This is approval for tests, current-boundary documentation, and this decision record, not for
+  publication, a new geometry API, physical collection, or starting AUDIT-01.
+- **Gate 1: Researching -> Ready (2026-09-07).** Source, caller, documentation, and independent
+  regression review against merged VISION-03 (`3d96941`, implementation `6609346`) establish that
+  the useful shared seam already exists. `FloorTargetProjection` converts calibrated rays or
+  left/up-positive image-plane angles to robot-at-capture points on an explicit horizontal height.
+  `ObservationSources.inField(...)` retains capture-time pose-history provenance and never
+  substitutes current localization. Invalid calibration, geometry, timestamps, and history are
+  already rejected. No runtime defect was confirmed; corner-to-position, nonzero-roll, and full
+  projection-to-pickup evidence were missing from the existing tests.
+- **Current callers and independent uses:** both `FtcFloorObjectVision` backend sources use the
+  core projection under their existing webcam/Limelight camera owner. The maintained adaptive
+  collection example's `AdaptiveCollectionProjection` already delegates ray geometry to the core,
+  preserves historical field conversion and robot-owned band ranking, and consumes corrected
+  right/up-positive Limelight angles. `VisionPickup` is a distinct maintained consumer of field
+  observations, selection, approach guidance, and bounded capture policy; its old scenarios
+  synthesized already-located points, so this item adds the missing projection-through-policy
+  experiment. Production applications, testers, camera ownership, tag localization, and all other
+  existing callers require no migration. The optional "Locate a vision target" and "Spatial
+  Queries" guides own the affected explanation; introductory navigation remains unchanged.
+- **Public-path and simplicity audit:** `FloorTargetModel.atHeightInches(...)` and immutable
+  `withMaxRangeInches(...)` name independent model/range decisions. `projectAngles(...)` and
+  `projectRay(...)` accept distinct existing boundary evidence and return the same `Result`; they
+  are not competing owner constructions. `ObservationSources.aprilTag(...)` adapts an already
+  selected tag, `aprilTags(...)` adapts a complete tag frame, and `inField(...)` adds historical
+  field evidence. Their existing source/result types remain unchanged. Camera owners retain their
+  existing Config-based construction and borrowed views. No builder stage, overload, facade,
+  constructor, return type, or compatibility layer is added or removed. Camera mount and target
+  model are reusable immutable facts shared at their existing ownership boundaries, not temporary
+  wrappers introduced for another builder question.
+- **Alternatives and chosen design:** a tracker-only closeout would leave the missing software
+  proofs unaddressed; documentation-only changes would not prove capture-time behavior. Extracting
+  another projector or generic plane/mount layer would duplicate the supported path or introduce
+  unneeded choices. Keep the common robot call unchanged:
+  `ObservationSources.inField(camera.floorObjects(), poseHistory.lookupSource())`; it names the
+  observed camera evidence and its existing robot-pose history once. The rejected additional
+  projector/facade would ask for another owner without changing that result. Chosen: add bounded
+  deterministic tests and clarify current limits, with no new student-facing concepts or runtime
+  behavior. The user explicitly approved narrowing the original broader hypothesis, not claiming
+  completion of arbitrary-plane or moving-camera support.
+- **Turret assessment and deferral:** existing `AprilTagSpatialSolveLane` accepts a
+  `TimeAwareSource<CameraMountConfig>` at capture time, but the framework provides no complete
+  measured-angle/mount-history owner or typed history-miss path for that seam. Shared floor-object
+  sources retain a fixed mount; vendor-computed robot poses do not automatically consult a
+  historical turret mount. Future robot clients could keep selection and pickup unchanged, but
+  complete support needs one measured-yaw history, surveyed robot-to-pivot and pivot-to-lens
+  transforms (rotating the offset, not merely adding yaw), bounded interpolation and reset/miss
+  handling, and consistent tag/object/vendor-pose provenance. Defer this focused extension until
+  a concrete maintained turret-camera adopter supplies measured-angle semantics, pivot/lens
+  geometry, capture-time history requirements, and an approved history-loss contract. Tilted
+  surfaces are excluded; this record neither opens another item nor expands AUDIT-01's prerequisites.
+- **Verification plan:** add calibrated center/four-corner pixel-to-position checks, an off-axis
+  nonzero-roll mount check with an independent oracle, and delayed ray-to-projection-to-history-
+  to-selection-to-pickup checks across yaw wrap, including missing-history rejection. Preserve real
+  production geometry, history, selection, guidance, and pickup owners; substitute only authored
+  camera/sensor/localization evidence. Run focused and full TeamCode unit/compile checks, independent
+  oracle/scope review, documentation checks, strict site/Javadocs/artifact verification, and whitespace
+  checks. Physical calibration, native image processing, accuracy, clearance, and reliable capture
+  remain separate adopting-robot evidence; default pickup motion remains disabled.
+- **Documentation concept checklist:** "Locate a vision target" remains an optional Advanced
+  location lesson with Source/frame prerequisites; define fixed-to-robot mounting beside the
+  camera explanation and describe the software experiment's retained/replaced boundaries before
+  linking its complete source. "Spatial Queries" remains an optional geometry reference; its
+  existing timestamp-aware source explanation distinguishes an advanced supplied-history seam
+  from end-to-end moving-camera capability. Neither change introduces a required beginner lesson,
+  a new API recipe, a visual, or an assertion of physical evidence.
+- **Gate 2 branch:** freshly fetched `origin/master` and created
+  `codex/spatial-02-projection-closeout` from `3d96941`, preserving divergent local master at
+  `dc8a06f5f9aefee2410cf99ce7f5b186f88c2aef`. Only the approved closeout is In progress. Stop at
+  Verifying for Android Studio review and exact branch/remote/master publication authorization.
+- **Implementation completed (2026-09-07):** the six-file diff changes this tracker, the two
+  optional guides above, and three existing test suites. Four added methods prove real calibrated
+  center/corner projection, asymmetric yaw/pitch/nonzero-roll projection, delayed capture-time
+  field selection and pickup staging, and no-history rejection despite valid current localization.
+  The pickup fixture injects a ray and localization samples, not an already-located point. Its
+  independent expected robot point is `(9,4)`, field target `(12,8)`, and staging goal `(4,8,0)`;
+  current-pose substitution would incorrectly yield `(28,7)` and `(20,7,0)`. No production Java,
+  public signature, default, camera lifecycle, navigation, renderer, or visual asset changed.
+- **Automated evidence (2026-09-07):** first focused geometry/observation/docs run: 80 tests pass;
+  pickup/history/adaptive/docs run: 107 tests pass. Final full
+  `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest :TeamCode:sushiJavadocs` succeeds
+  after the rotation-oracle strengthening: 2,346 tests across 261 suites, zero failures, errors, or
+  skips. `pip check`, strict Zensical narrative build, all 969 search sections across six guide
+  areas, 176 generated API links and 82 maintained source links across 47 pages pass. The six
+  required combined-artifact files are nonempty with expected identity/content and no reparse
+  points. `git diff --check` and a trailing-whitespace scan of all six changed paths pass. Existing
+  Java 8 source/target and SDK deprecation warnings remain; no new build failure remains.
+- **Independent review:** a separate API/principles/docs audit found no new redundant public
+  layer or scope issue. The two test authors cross-reviewed each other's oracles and retained
+  production paths. Findings were resolved: remove older wording that made capture-time mount
+  history sound optional, name the plane rather than scalar height as parallel, and use asymmetric
+  rotations so omitted rotations cannot accidentally cancel out. Final expected values are
+  independently calculated rather than produced by the geometry under test. The changes are
+  text-only in the guides; no new desktop/mobile browser layout or student-comprehension study was
+  performed. Software checks do not validate camera calibration or any physical collection.
+- **Gate 2 review handoff:** inspect `WebcamColorCalibrationTest`, `FloorTargetProjectionTest`, and
+  `VisionPickupSoftwareScenarioTest` in Android Studio, especially the independent coordinate
+  expectations, wrapped capture-time interpolation, and missing-history no-motion result. Review
+  "Locate a vision target" and "Spatial Queries" for fixed-mount limits, truthful advanced
+  turret-history language, and software-versus-hardware evidence; preview those text changes on
+  desktop/mobile before approval if desired. This is the approved narrowed software completion
+  contract, not completion of arbitrary tilted surfaces or turret mounting. Physical pickup is
+  still disabled by default. Branch: `codex/spatial-02-projection-closeout`; exact origin push URL:
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; target: `master`. Nothing is staged,
+  committed, pushed, or opened as a PR for this item. Await combined review-and-publication
+  authorization, keep SOURCE-03 Deferred, preserve local master, and do not start AUDIT-01.
+- **Gate 3 approval (2026-09-07):** the user accepted the reviewed SPATIAL-02 diff with
+  "SPATIAL-02 looks good" and explicitly authorized committing it on
+  `codex/spatial-02-projection-closeout`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it
+  into `master`. This records manual-review acceptance and destination-specific publication
+  authority for these six reviewed paths, including this completion record. The item is Done
+  under the approved fixed-camera software contract; no new hardware or browser-layout evidence
+  is implied, turret-camera support remains deferred, and no physical pickup is enabled. Git and
+  GitHub own the resulting commit/PR/merge publication state. Preserve divergent local master at
+  `dc8a06f5f9aefee2410cf99ce7f5b186f88c2aef` and stop before AUDIT-01 or any other item.
+
+The following intake is historical. Its unimplemented-seam and sign-migration descriptions were
+superseded by VISION-03 and the approved narrower closeout above; they are retained as provenance.
+
+- **Historical scope incorporation (2026-09-07):** the approved VISION-03 design explicitly includes the
   fixed-mount height-plane projection and exact capture-time field-position seam required by its
   end-to-end located-target consumers. This does not mark all broader SPATIAL-02 work Done. The
   adaptive example's old down-positive Limelight naming must be reconciled with the vendor's
@@ -28509,7 +28632,7 @@ implementation.
 - **Tracker-only intake status (2026-08-31):** **Proposed after VISION-03.** The user explicitly
   called out locating a detected color blob on the field. No decision gate has started, no public
   geometry type is approved, and this intake authorizes no implementation or example migration.
-- **Confirmed present boundary:** EXAMPLE-10 already copies Limelight detector angles, translates
+- **Historical confirmed boundary (2026-08-31):** EXAMPLE-10 already copies Limelight detector angles, translates
   exposure time into the shared clock, looks up the robot pose at capture time through completed
   LOCALIZATION-01, intersects a camera ray with the floor, and produces a field point before robot-
   owned band selection. That projection is intentionally package-private example code. SPATIAL-01

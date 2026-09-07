@@ -10,6 +10,7 @@ import java.util.function.Consumer;
 
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
+import edu.ftcsushi.fw.core.geometry.Vec3;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.source.Source;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -25,6 +26,9 @@ import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
 import edu.ftcsushi.fw.sensing.observation.TargetSelections;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+import edu.ftcsushi.fw.sensing.vision.FloorTargetModel;
+import edu.ftcsushi.fw.sensing.vision.FloorTargetProjection;
 import edu.ftcsushi.fw.spatial.AxisAlignedBoxRegion2d;
 import edu.ftcsushi.fw.spatial.RobotFrameRectangle2d;
 import edu.ftcsushi.fw.task.Task;
@@ -36,6 +40,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -45,6 +50,88 @@ import static org.junit.Assert.fail;
  * These tests prove no physical clearance, contact force, motor behavior, or real object capture.
  */
 public final class VisionPickupSoftwareScenarioTest {
+
+    @Test
+    public void delayedProjectedRayUsesInterpolatedCapturePoseForSelectionAndPickupStaging() {
+        Fixture fixture = delayedProjectedRayFixture();
+        TargetSelectionResult selected = fixture.selected.get(fixture.clock());
+        assertTrue(selected.isUsable(fixture.clock()));
+        TargetObservation2d target = selected.observation();
+
+        // Camera (1,2,10) + 8 * ray (1,0.25,-1) intersects height 2 at robot (9,4).
+        assertEquals(9, target.forwardInches, 1e-9);
+        assertEquals(4, target.leftInches, 1e-9);
+        // Halfway from (20,10,170 deg) to (22,14,-170 deg) is (21,12,180 deg),
+        // not a zero-heading interpolation. A half-turn negates both robot coordinates.
+        PlanarPoseHistory.Lookup capturePose = target.fieldLookup();
+        assertEquals(PlanarPoseHistory.Lookup.Kind.INTERPOLATED, capturePose.kind());
+        assertEquals(21, capturePose.fieldToRobotPose().xInches, 1e-9);
+        assertEquals(12, capturePose.fieldToRobotPose().yInches, 1e-9);
+        assertEquals(Math.PI, Math.abs(capturePose.fieldToRobotPose().headingRad), 1e-9);
+        assertEquals(12, target.fieldXInches, 1e-9); // 21 - 9.
+        assertEquals(8, target.fieldYInches, 1e-9); // 12 - 4.
+        assertSame(fixture.raw.timestamp(), target.timestamp);
+        assertSame(target.timestamp, capturePose.timestamp());
+        assertEquals(0.08, target.timestamp.ageSec(fixture.clock()), 1e-9);
+        assertFalse(target.hasQuality());
+
+        Task task = fixture.pickup.createPickupTask(clock -> true);
+        task.start(fixture.clock());
+        VisionPickup.Status status = fixture.pickup.status();
+        assertEquals(VisionPickup.Phase.STAGING, status.phase);
+        assertEquals(TaskOutcome.NOT_DONE, task.getOutcome());
+        assertSame(target, status.approach.observation());
+        assertTrue(status.approach.isCommitted());
+        // At authored heading 0, the intake is 3 inches forward and waits 5 inches
+        // from the target: robot-center staging is (12 - 3 - 5, 8) = (4,8).
+        Pose2d staging = status.approach.fieldToRobotGoalPose();
+        assertEquals(4, staging.xInches, 1e-9);
+        assertEquals(8, staging.yInches, 1e-9);
+        assertEquals(0, staging.headingRad, 1e-9);
+        // Delivery-time pose (24,16,-90 deg) would incorrectly locate (28,7),
+        // with staging (20,7). Real guidance instead receives the capture-time goal.
+        DriveSignal command = fixture.pickup.driveSource().get(fixture.clock());
+        assertTrue(Math.abs(command.axial) + Math.abs(command.lateral) > 0);
+        assertTrue(fixture.intakeRequests.isEmpty());
+        task.cancel();
+    }
+
+    @Test
+    public void projectedRayWithoutCaptureHistoryCannotUseCurrentPoseOrStartPickup() {
+        Fixture fixture = delayedProjectedRayFixture();
+        // Keep the exact same ray, capture time, and current localization, but remove
+        // its earlier bracket. Only the valid delivery-time pose is recorded now.
+        fixture.history.reset();
+        fixture.history.recordCurrent(fixture.clock());
+        assertEquals(PlanarPoseHistory.Lookup.Kind.EXACT, fixture.history.lookupSource()
+                .getAt(fixture.clock(), fixture.localizer.estimate.timestamp).kind());
+
+        TargetSelectionResult selected = fixture.selected.get(fixture.clock());
+        assertTrue(selected.isUsable(fixture.clock())); // Robot-relative geometry is still real.
+        TargetObservation2d target = selected.observation();
+        assertEquals(9, target.forwardInches, 1e-9);
+        assertEquals(4, target.leftInches, 1e-9);
+        assertFalse(target.hasFieldPosition());
+        assertTrue(Double.isNaN(target.fieldXInches));
+        assertTrue(Double.isNaN(target.fieldYInches));
+        assertEquals(PlanarPoseHistory.Lookup.UnavailableReason.BEFORE_FIRST,
+                target.fieldLookup().unavailableReason());
+        assertSame(fixture.raw.timestamp(), target.timestamp);
+        assertSame(target.timestamp, target.fieldLookup().timestamp());
+        assertEquals(0.08, target.timestamp.ageSec(fixture.clock()), 1e-9);
+
+        Task task = fixture.pickup.createPickupTask(clock -> true);
+        task.start(fixture.clock());
+        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertEquals(VisionPickup.Phase.DONE, fixture.pickup.status().phase);
+        assertEquals("fresh field target unavailable", fixture.pickup.status().reason);
+        assertFalse(fixture.pickup.status().approach.hasApproach());
+        assertTrue(fixture.intakeRequests.isEmpty());
+        DriveSignal command = fixture.pickup.driveSource().get(fixture.clock());
+        assertEquals(0, command.axial, 0);
+        assertEquals(0, command.lateral, 0);
+        assertEquals(0, command.omega, 0);
+    }
 
     @Test
     public void arrivalIsNotCaptureAndOnlyNewFeedbackCompletesPickupSuccessfully() {
@@ -458,12 +545,33 @@ public final class VisionPickupSoftwareScenarioTest {
         return c;
     }
 
+    /**
+     * Substitutes a calibrated ray and localization samples, retaining the real projection,
+     * history, field conversion, selector, and pickup. No already-located point is injected.
+     */
+    private static Fixture delayedProjectedRayFixture() {
+        Fixture fixture = new Fixture(configured(), new Pose2d(20, 10, Math.toRadians(170)));
+        fixture.time.nextCycle(0.04);
+        LoopTimestamp captureTimestamp = fixture.clock().nowTimestamp();
+        // There is deliberately no localization sample at the exact image capture time.
+        fixture.step(0.04, new Pose2d(22, 14, Math.toRadians(-170)));
+        fixture.step(0.04, new Pose2d(24, 16, -Math.PI / 2));
+        FloorTargetProjection.Result projection = FloorTargetProjection.projectRay(
+                new Vec3(1, 0.25, -1), CameraMountConfig.of(1, 2, 10, 0, 0, 0),
+                FloorTargetModel.atHeightInches(2).withMaxRangeInches(30), captureTimestamp);
+        assertEquals(FloorTargetProjection.Reason.AVAILABLE, projection.reason());
+        fixture.raw = TargetObservations2d.fromFrame(captureTimestamp,
+                Collections.singletonList(projection.observation()));
+        return fixture;
+    }
+
     /** Test-only outside-world substitution; history, selector, guidance, and policy remain real. */
     private static final class Fixture {
         final ManualLoopClock time = new ManualLoopClock();
         final FakeLocalizer localizer = new FakeLocalizer();
         final PlanarPoseHistory history = new PlanarPoseHistory(localizer, PlanarPoseHistory.Config.defaults());
         final List<Boolean> intakeRequests = new ArrayList<>();
+        final Source<TargetSelectionResult> selected;
         final VisionPickup pickup;
         TargetObservations2d raw;
         VisionPickup.CaptureFeedback feedback;
@@ -476,7 +584,7 @@ public final class VisionPickupSoftwareScenarioTest {
 
         Fixture(VisionPickup.Config config, Pose2d pose, double... fieldTargets) {
             publish(pose, fieldTargets);
-            Source<TargetSelectionResult> selected = TargetSelections.from(
+            selected = TargetSelections.from(
                     ObservationSources.inField(Source.of(clock -> raw), history.lookupSource()))
                     .freshWithinSec(config.maxObservationAgeSec).nearestToRobot();
             pickup = new VisionPickup(config, Source.of(clock -> {

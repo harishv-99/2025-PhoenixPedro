@@ -39,6 +39,23 @@ public final class FloorTargetProjectionTest {
         assertEquals(15, point.leftInches, EPS);
     }
 
+    @Test public void nonzeroRollMixesOffAxisComponentsBeforePitchYawAndTranslation() {
+        CameraMountConfig mount = CameraMountConfig.of(
+                3, -2, 12, Math.PI, Math.PI / 2, Math.PI / 2);
+        FloorTargetProjection.Result result = FloorTargetProjection.projectRay(
+                new Vec3(2, -1, 0.5), mount, FloorTargetModel.atHeightInches(2), captured);
+
+        // Independent right-hand turns, without the production rotation matrix:
+        // roll (2,-1,0.5) -> (2,-0.5,-1), pitch -> (-1,-0.5,-2), half-turn yaw -> (1,0.5,-2).
+        // Reaching z=2 from the translated lens at z=12 scales this ray by 5.
+        // Add the lens's (3,-2) offset only after that intersection: (8,0.5).
+        assertTrue(result.reason().toString(), result.isAvailable());
+        TargetObservation2d point = result.observation();
+        assertEquals(8.0, point.forwardInches, EPS);
+        assertEquals(0.5, point.leftInches, EPS);
+        assertSame(captured, point.timestamp);
+    }
+
     @Test public void positiveRayScalingIncludingHugeAndTinyValuesDoesNotChangeLocation() {
         CameraMountConfig mount = CameraMountConfig.of(0, 0, 10, 0, 0, 0);
         for (double scale : new double[] {1, 1.0e300, 1.0e-300}) {
