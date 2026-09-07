@@ -25,8 +25,16 @@ public final class TranslationSolution {
     public final Pose2d translationFrameToTargetPoint;
     public final boolean hasRangeInches;
     public final double rangeInches;
+    /** Lane-specific score, or NaN when no calibrated score is supplied; not pickup probability. */
     public final double quality;
+    /** Oldest required live evidence; a committed goal does not pretend to be a new sighting. */
     public final LoopTimestamp timestamp;
+    /** Pose evidence used for a field solve; unavailable for direct observed-point feedback. */
+    public final LoopTimestamp robotPoseTimestamp;
+    /** Original target sighting, or unavailable for an authored fixed target. */
+    public final LoopTimestamp targetObservationTimestamp;
+    /** True when target age constrains this result; false for an explicit committed destination. */
+    public final boolean liveTarget;
 
     /**
      * Creates a translation solution.
@@ -37,6 +45,14 @@ public final class TranslationSolution {
                                double rangeInches,
                                double quality,
                                LoopTimestamp timestamp) {
+        this(robotToTargetPoint, translationFrameToTargetPoint, hasRangeInches, rangeInches,
+                quality, timestamp, timestamp, LoopTimestamp.unavailable(), false);
+    }
+
+    private TranslationSolution(Pose2d robotToTargetPoint, Pose2d translationFrameToTargetPoint,
+                                boolean hasRangeInches, double rangeInches, double quality,
+                                LoopTimestamp timestamp, LoopTimestamp robotPoseTimestamp,
+                                LoopTimestamp targetObservationTimestamp, boolean liveTarget) {
         this.robotToTargetPoint = Objects.requireNonNull(robotToTargetPoint, "robotToTargetPoint");
         this.translationFrameToTargetPoint = Objects.requireNonNull(translationFrameToTargetPoint,
                 "translationFrameToTargetPoint");
@@ -44,6 +60,25 @@ public final class TranslationSolution {
         this.rangeInches = rangeInches;
         this.quality = quality;
         this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
+        this.robotPoseTimestamp = robotPoseTimestamp;
+        this.targetObservationTimestamp = targetObservationTimestamp;
+        this.liveTarget = liveTarget;
+    }
+
+    /** Adds provenance without treating a new pose or committed goal as a new target sighting. */
+    TranslationSolution withTargetEvidence(LoopTimestamp observation, boolean live) {
+        LoopTimestamp effective = timestamp;
+        double difference = timestamp.secondsSince(observation);
+        if (live && Double.isFinite(difference) && difference > 0.0) effective = observation;
+        return new TranslationSolution(robotToTargetPoint, translationFrameToTargetPoint,
+                hasRangeInches, rangeInches, quality, effective, robotPoseTimestamp, observation, live);
+    }
+
+    /** A direct observation solves in its capture frame without a field-pose estimate. */
+    TranslationSolution withDirectObservationEvidence(LoopTimestamp observation) {
+        return new TranslationSolution(robotToTargetPoint, translationFrameToTargetPoint,
+                hasRangeInches, rangeInches, quality, observation, LoopTimestamp.unavailable(),
+                observation, true);
     }
 
     /**

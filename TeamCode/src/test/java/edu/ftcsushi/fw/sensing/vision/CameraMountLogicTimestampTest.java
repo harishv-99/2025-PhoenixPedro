@@ -45,6 +45,7 @@ public final class CameraMountLogicTimestampTest {
         assertEquals(20.0, converted.forwardInches, EPSILON);
         assertEquals(3.0, converted.leftInches, EPSILON);
         assertSame(frameTimestamp, converted.timestamp);
+        assertFalse(converted.hasQuality());
     }
 
     @Test
@@ -86,5 +87,20 @@ public final class CameraMountLogicTimestampTest {
                 CameraMountConfig.identity(),
                 time.clock()
         ).hasTarget);
+    }
+
+    @Test
+    public void malformedGeometryAndTagIdFailClosedWithoutInventingConfidence() {
+        ManualLoopClock time = new ManualLoopClock();
+        for (AprilTagObservation geometry : new AprilTagObservation[]{
+                AprilTagObservation.target(8, new Pose3d(Double.NaN, 0, 0, 0, 0, 0)),
+                AprilTagObservation.target(-2, Pose3d.zero())}) {
+            AprilTagObservation framed = AprilTagDetections.fromFrame(time.clock().nowTimestamp(),
+                    Collections.singletonList(geometry)).observations.get(0);
+            TargetObservation2d converted = CameraMountLogic.robotObservation2d(
+                    framed, CameraMountConfig.identity(), time.clock());
+            assertFalse(converted.hasTarget);
+            assertFalse(converted.hasQuality());
+        }
     }
 }

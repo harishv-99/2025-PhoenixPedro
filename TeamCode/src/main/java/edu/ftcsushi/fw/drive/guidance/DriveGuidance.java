@@ -417,6 +417,12 @@ public final class DriveGuidance {
      */
     public interface ResolveModeChoice<RETURN> {
         /**
+         * Uses the selected observed-point reference as delayed robot-frame visual feedback.
+         * The reference supplies freshness; this answer explicitly chooses target-loss behavior.
+         * No localization or capture-time-to-current-motion compensation is implied.
+         */
+        RETURN observationsOnly(DriveGuidanceSpec.LossPolicy onLoss);
+        /**
          * Uses localization only with default lane bounds and loss policy.
          */
         RETURN localizationOnlyWithDefaults(AbsolutePoseEstimator poseEstimator);
@@ -676,6 +682,11 @@ public final class DriveGuidance {
         int aprilTagsLaneIndex = -1;
         int nextLaneIndex = 0;
 
+        if (mode == DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY) {
+            solveSetBuilder = SpatialSolveSet.builder()
+                    .add(new edu.ftcsushi.fw.spatial.ObservedTargetSpatialSolveLane());
+        }
+
         if (localization != null) {
             localizationLaneIndex = nextLaneIndex++;
             solveSetBuilder = SpatialSolveSet.builder()
@@ -751,7 +762,8 @@ public final class DriveGuidance {
         boolean hasLocalization = s.poseEstimator != null;
         boolean hasLayout = fixedAprilTagLayout != null;
 
-        if (!hasAprilTags && !hasLocalization) {
+        if (!hasAprilTags && !hasLocalization
+                && s.solveMode != DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY) {
             errors.add("solveWith() must choose localizationOnlyWithDefaults(...), aprilTagsOnlyWithDefaults(...), adaptiveWithDefaults(...), or enter one of the solve-mode branches");
         }
 
@@ -773,6 +785,14 @@ public final class DriveGuidance {
         }
 
         DriveGuidanceSpec.SolveMode mode = effectiveSolveMode(s, hasAprilTags, hasLocalization);
+        if (mode == DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY) {
+            if (s.translationTarget != null && !isObservedPointTarget(s.translationTarget)) {
+                errors.add("observationsOnly() translateTo() requires References.observedPoint(...)");
+            }
+            if (s.facingTarget != null && !isObservedPointTarget(s.facingTarget)) {
+                errors.add("observationsOnly() faceTo() requires References.observedPoint(...)");
+            }
+        }
         if (mode == DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY) {
             if (!hasLocalization) {
                 errors.add("localizationOnly() requires localization(...)");
@@ -1025,7 +1045,7 @@ public final class DriveGuidance {
     }
 
     private static boolean canResolvePointWithLocalization(ReferencePoint2d ref, TagLayout layout) {
-        if (References.isFieldPoint(ref)) {
+        if (References.isFieldPoint(ref) || References.isObservedPoint(ref)) {
             return true;
         }
         if (References.isDirectTagPoint(ref) || References.isSelectedTagPoint(ref)) {
@@ -1038,7 +1058,7 @@ public final class DriveGuidance {
     }
 
     private static boolean canResolvePointWithAprilTags(ReferencePoint2d ref, boolean hasLayout) {
-        if (References.isFieldPoint(ref)) {
+        if (References.isFieldPoint(ref) || References.isObservedPoint(ref)) {
             return hasLayout;
         }
         if (References.isDirectTagPoint(ref) || References.isSelectedTagPoint(ref)) {
@@ -1051,7 +1071,7 @@ public final class DriveGuidance {
     }
 
     private static boolean canResolveFrameWithLocalization(ReferenceFrame2d ref, TagLayout layout) {
-        if (References.isFieldFrame(ref)) {
+        if (References.isFieldFrame(ref) || References.isApproachFrame(ref)) {
             return true;
         }
         if (References.isDirectTagFrame(ref) || References.isSelectedTagFrame(ref)) {
@@ -1061,7 +1081,7 @@ public final class DriveGuidance {
     }
 
     private static boolean canResolveFrameWithAprilTags(ReferenceFrame2d ref, boolean hasLayout) {
-        if (References.isFieldFrame(ref)) {
+        if (References.isFieldFrame(ref) || References.isApproachFrame(ref)) {
             return hasLayout;
         }
         return References.isDirectTagFrame(ref) || References.isSelectedTagFrame(ref);
@@ -1071,6 +1091,11 @@ public final class DriveGuidance {
     // ------------------------------------------------------------------------
     // Builder implementations
     // ------------------------------------------------------------------------
+
+    private static boolean isObservedPointTarget(Object target) {
+        return target instanceof SpatialTargets.ReferencePointTarget
+                && References.isObservedPoint(((SpatialTargets.ReferencePointTarget) target).reference);
+    }
 
     private static void resetSolve(State s, DriveGuidanceSpec.SolveMode mode) {
         s.solveMode = mode;
@@ -1337,6 +1362,13 @@ public final class DriveGuidance {
         ResolveModeChoiceStep(State s, RETURN ret) {
             this.s = s;
             this.ret = ret;
+        }
+
+        @Override
+        public RETURN observationsOnly(DriveGuidanceSpec.LossPolicy onLoss) {
+            resetSolve(s, DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY);
+            s.onLoss = Objects.requireNonNull(onLoss, "onLoss");
+            return ret;
         }
 
         @Override

@@ -31,7 +31,8 @@ import edu.ftcsushi.fw.ftc.FtcDrives;
 import edu.ftcsushi.fw.ftc.FtcRobotOpMode;
 import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.MotionDelta;
 import edu.ftcsushi.fw.localization.MotionPredictor;
@@ -229,17 +230,17 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         }
 
         @Override
-        public AprilTagVisionLane createVision(
+        public OwnedAprilTagCamera createVision(
                 HardwareMap hardwareMap,
                 PhoenixVisionFactory.Config visionConfig
         ) {
-            return vision;
+            return new OwnedAprilTagCamera(vision, vision);
         }
 
         @Override
         public FtcOdometryAprilTagLocalizationLane createLocalization(
                 HardwareMap hardwareMap,
-                AprilTagVisionLane createdVision,
+                AprilTagVision createdVision,
                 TagLayout fixedAprilTagLayout,
                 FtcOdometryAprilTagLocalizationLane.Config localizationConfig
         ) {
@@ -343,7 +344,7 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         }
     }
 
-    private static final class RecordingVisionLane implements AprilTagVisionLane {
+    private static final class RecordingVisionLane implements AprilTagVision, AutoCloseable {
         private final List<String> events;
         private final AprilTagSensor sensor = new AprilTagSensor() {
             @Override

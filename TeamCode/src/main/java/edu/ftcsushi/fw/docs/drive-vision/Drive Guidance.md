@@ -41,7 +41,7 @@ stage; mechanism planning instead requires its fixed or live request at the fact
 DriveGuidance.plan()
     target question: choose the first channel with translateTo() or faceTo(), then optionally add the other with andFaceTo() or andTranslateTo()
     optional frame question: controlFrames(...)
-    solve question: solveWith().localizationOnly..., aprilTagsOnly..., or adaptive...
+    solve question: solveWith().localizationOnly..., aprilTagsOnly..., observationsOnly(...), or adaptive...
     optional tuning: driveTuning()
     build()
 ```
@@ -114,6 +114,71 @@ The important separation is:
 The camera does not need to be centered or aligned with the shooter.
 
 ## Runtime ownership and cycle safety
+
+### Use an observed object or a computed approach
+
+First [locate and select a vision target](<Vision Targets.md>). `selected` below is that existing
+selection source, with its explicit capture-age limit. `robotToIntakeFrame` describes the measured
+intake position and facing direction relative to the robot. It is not the camera mount.
+
+```java
+ReferencePoint2d point = References.observedPoint(selected);
+DriveGuidancePlan aim = DriveGuidance.plan().faceTo().point(point)
+        .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(robotToIntakeFrame))
+        .solveWith().observationsOnly(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+        .build();
+DriveSource assistedDrive = DriveOverlayStack.on(manualDrive)
+        .add("targetAim", aimButton, aim.overlay(), DriveOverlayMask.OMEGA_ONLY)
+        .build();
+```
+
+`PASS_THROUGH` means the driver keeps control if the target is unavailable. With `OMEGA_ONLY`,
+the overlay changes only turning while the button is held; driver translation remains unchanged.
+The gain converts angle error in radians to a turn command; the deadband ignores small errors.
+The unchanged tuning defaults include `aimKp = 2.5`, a `1°` deadband, and a normalized turn cap of
+`0.80`; these are software values requiring bounded physical tuning, not safe starting powers.
+Direct observation mode is delayed visual feedback in the robot frame **at capture**, not motion
+compensation. Its age limit comes from `selected`; it accepts only observed-point targets.
+
+A complete approach also chooses where the robot center should end up. **Stand-off** is the
+remaining distance from the intake's origin to the target along intake +X. Suppose an observed ball
+has field position `(20, 3)` inches. An intake at `(6, 1)` relative to the robot, facing forward,
+with `2` inches of stand-off and desired field heading `0`, requires robot-center pose `(12, 2, 0)`.
+Those numbers are illustrative geometry, not physical pickup settings.
+
+```java
+ApproachResult2d approach = ApproachResult2d.forTarget(
+        target, robotToIntakeFrame, standOffInches, desiredFieldHeadingRad, maxTargetAgeSec);
+ReferenceFrame2d goal = References.approachFrame(Source.constant(approach));
+DriveGuidancePlan move = DriveGuidance.plan()
+        .translateTo().point(References.framePoint(goal))
+        .andFaceTo().frameHeading(goal)
+        .solveWith().localizationOnlyWithDefaults(poseEstimator)
+        .build();
+```
+
+`target` must have valid capture-time field coordinates. The other named values are explicit
+robot configuration, and `poseEstimator` is the already updated localization source. The
+localization-default branch accepts pose evidence no older than `0.50` seconds with quality at
+least `0.10`. Use its full branch to configure different evidence requirements. This snippet
+constructs a plan; it does not start motion. Robot-center control frames are the default: do not
+apply the intake offset again. This same plan can create an overlay, query, or fresh guidance
+Task with the lifecycle described below.
+
+For a tag-relative approach, existing `References.relativeToTagFrame(...)` and selected-tag
+frames express an authored tag-local offset and heading. They already work with frame-point and
+frame-heading guidance. When a robot policy computes a destination from located tag evidence,
+`ApproachResult2d.observedFieldPose(...)` retains that evidence exactly as it does for an object.
+Tags preserve orientation and identity; anonymous balls do not acquire those facts by analogy.
+
+An observed approach expires with its sighting. Only an explicitly bounded call such as
+`approach.committedFor(clock, attemptTimeoutSec)` freezes the destination for a resting-target
+attempt, and it cannot extend itself by recommitting. The robot still owns rechecking the target
+region, safe staging, loss behavior, capture feedback, cancellation, and limits on wall contact.
+Guidance arrival is **not** capture confirmation. See
+[one bounded vision pickup](<../examples/One Bounded Vision Pickup.md>) for that separate policy.
+
+### Each consumer owns its runtime
 
 `DriveGuidancePlan` is reusable configuration; each call to `overlay()`, `query()`, or
 `task(driveSink, taskConfig)` creates fresh runtime state. These plan-owned methods are the public

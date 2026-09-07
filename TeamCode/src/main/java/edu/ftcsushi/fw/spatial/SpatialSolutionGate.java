@@ -16,8 +16,10 @@ public final class SpatialSolutionGate {
 
     public final double maxAgeSec;
     public final double minQuality;
+    /** True only when the caller explicitly requires a producer quality score. */
+    public final boolean requiresQuality;
 
-    private SpatialSolutionGate(double maxAgeSec, double minQuality) {
+    private SpatialSolutionGate(double maxAgeSec, double minQuality, boolean requiresQuality) {
         if (Double.isNaN(maxAgeSec) || maxAgeSec < 0.0) {
             throw new IllegalArgumentException(
                     "maxAgeSec must be >= 0 or positive infinity, got " + maxAgeSec);
@@ -27,10 +29,12 @@ public final class SpatialSolutionGate {
         }
         this.maxAgeSec = maxAgeSec;
         this.minQuality = minQuality;
+        this.requiresQuality = requiresQuality;
     }
 
     /**
-     * Returns a permissive default gate.
+     * Returns a gate with no finite age limit or required quality score. Unknown quality (NaN) is
+     * accepted, but a valid same-clock/epoch timestamp is still required.
      */
     public static SpatialSolutionGate defaults() {
         return builder().build();
@@ -50,7 +54,7 @@ public final class SpatialSolutionGate {
      */
     public boolean accepts(FacingSolution solution, LoopTimestamp sampleTimestamp) {
         return solution != null
-                && solution.quality >= minQuality
+                && acceptsQuality(solution.quality)
                 && acceptsTimestamp(solution.timestamp, sampleTimestamp);
     }
 
@@ -60,7 +64,7 @@ public final class SpatialSolutionGate {
      */
     public boolean accepts(TranslationSolution solution, LoopTimestamp sampleTimestamp) {
         return solution != null
-                && solution.quality >= minQuality
+                && acceptsQuality(solution.quality)
                 && acceptsTimestamp(solution.timestamp, sampleTimestamp);
     }
 
@@ -73,12 +77,17 @@ public final class SpatialSolutionGate {
                 && (!Double.isFinite(maxAgeSec) || Math.max(0.0, ageSec) <= maxAgeSec);
     }
 
+    private boolean acceptsQuality(double quality) {
+        return Double.isNaN(quality) ? !requiresQuality : Double.isFinite(quality) && quality >= minQuality;
+    }
+
     /**
      * Builder for {@link SpatialSolutionGate}.
      */
     public static final class Builder {
         private double maxAgeSec = Double.POSITIVE_INFINITY;
         private double minQuality = 0.0;
+        private boolean requiresQuality;
 
         /**
          * Reject solutions older than this age; use infinity to disable.
@@ -89,10 +98,11 @@ public final class SpatialSolutionGate {
         }
 
         /**
-         * Reject solutions below this lane-specific quality score.
+         * Requires a known lane-specific score at least this value; unknown quality is rejected.
          */
         public Builder minQuality(double minQuality) {
             this.minQuality = minQuality;
+            this.requiresQuality = true;
             return this;
         }
 
@@ -100,7 +110,7 @@ public final class SpatialSolutionGate {
          * Builds the immutable gate.
          */
         public SpatialSolutionGate build() {
-            return new SpatialSolutionGate(maxAgeSec, minQuality);
+            return new SpatialSolutionGate(maxAgeSec, minQuality, requiresQuality);
         }
     }
 }

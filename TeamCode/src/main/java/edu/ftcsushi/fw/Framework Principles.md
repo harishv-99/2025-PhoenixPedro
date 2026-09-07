@@ -390,6 +390,18 @@ finite range clamping and loss of target evidence through explicit status rather
   radians. Convert vendor conventions at boundaries.
 - Data spanning frames uses explicit transform names such as `fieldToRobotPose` and
   `robotToCameraPose`; vague `pose`, `x`, or `heading` names are insufficient when the frame matters.
+- A physical camera lane owns its resource graph once. AprilTag and object views borrow that
+  owner; reading a capability does not switch a pipeline, reset a camera, or invent simultaneous
+  backend support. Keep tag identity/localization evidence distinct from unlabeled object geometry.
+- A located object is still evidence, not a field fact. Name the modeled target point and its
+  height assumption; preserve robot-at-capture coordinates, capture time, and pose-history lookup
+  provenance. Missing calibration, identity, orientation, or quality stays missing. Fresh robot
+  localization must not refresh an old target sighting.
+- A computed approach names the desired robot-center pose; apply a tool offset exactly once.
+  Freezing an observed destination is explicit bounded robot intent, not continued visibility or
+  object tracking. Recheck before an occluding final maneuver. Arrival, intake command, and timeout
+  are not capture confirmation. Wall contact permissions and bounded actions belong to robot policy;
+  geometric feasibility alone is not a collision or swept-path safety certificate.
 
 ### Routes and integrations
 

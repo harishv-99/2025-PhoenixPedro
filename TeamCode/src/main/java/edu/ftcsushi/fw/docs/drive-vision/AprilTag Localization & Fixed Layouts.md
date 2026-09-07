@@ -31,7 +31,8 @@ The short version:
 
 - **`AprilTagLibrary`** tells a detector which tags exist and how large they are.
 - **`TagLayout`** tells Sushi which tag IDs are trusted as fixed field landmarks.
-- **`AprilTagVisionLane`** owns the FTC-side AprilTag rig and exposes a shared `AprilTagSensor`.
+- **`FtcWebcamVisionLane` / `FtcLimelightVisionLane`** owns one physical camera.
+- **`AprilTagVision`** borrows that owner's tag capability and exposes a shared `AprilTagSensor`.
 - **`AbsolutePoseEstimator`** answers "where is the robot on the field?"
 - **`HeadingEstimator`** answers the narrower "which field direction is the robot facing?"
 - **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last accepted motion baseline?"
@@ -168,31 +169,36 @@ Both expose the same high-level contract, so robot code and tools can swap betwe
 
 ## 3. Vision-lane ownership
 
-At the FTC boundary, the important seam is:
+At the FTC boundary, retain one physical camera owner and borrow only the capability a consumer needs:
 
-- `AprilTagVisionLane`
+- `FtcWebcamVisionLane` owns one webcam, one portal, and the complete processor set chosen
+  before construction. It supports processor enable/disable and stream/camera controls, but does
+  not add processors after the portal is built.
+- `FtcLimelightVisionLane` owns one Limelight connection and one requested onboard pipeline.
+  It tracks request acceptance, requested-versus-observed pipeline, result generation, freshness,
+  and shutdown. A source read never changes the pipeline.
 
-Standard FTC-boundary implementations are:
+Set `Config.aprilTags` to a fresh `AprilTagConfig.defaults()` to enable the tag capability.
+Leave it null to omit tags entirely. `Config.floorObjects` independently enables estimated
+floor-object locations; see [Vision targets](<Vision Targets.md>) when that capability is needed.
+Both capabilities share the owner's one physical `Config.cameraMount`.
 
-- `FtcWebcamAprilTagVisionLane`
-- `FtcLimelightAprilTagVisionLane`
+`camera.aprilTags()` returns a stable, non-closeable `AprilTagVision` view. Localization and tag
+selection borrow this view; they cannot close the camera. The Limelight view is specifically
+`FtcLimelightAprilTagVision`, which also exposes confirmed tag results and the narrow field-yaw
+write needed for optional MegaTag2 estimation. The root alone retains and closes `camera`.
 
-They are AprilTag-specialized forms of two different advanced owners:
-
-- `FtcWebcamVisionPortalLane` owns one webcam, one portal, and the complete set of fresh
-  `VisionProcessor` instances supplied before construction. It supports processor enable/disable
-  and stream/camera controls, but it does not add processors after the portal is built.
-- `FtcLimelightVisionLane` owns one Limelight connection and one requested onboard pipeline. It
-  tracks request acceptance, requested-versus-observed pipeline, result generation, freshness, and
-  shutdown. It never treats an unconfirmed post-switch result as belonging to the new mode.
-
-Those owners are intentionally parallel in lifecycle and readiness, not flattened into a fake
-camera API. Webcam processors can coexist; Limelight pipelines cannot.
+Those owners preserve the hardware's real differences: webcam processors can coexist, while a
+Limelight runs one pipeline at a time. Configure the Limelight AprilTag pipeline in
+`Config.aprilTags.pipelineIndex`; `Config.pipelineIndex` separately chooses the initial active
+pipeline. Configure that actual device slot as an AprilTag pipeline in the Limelight UI; Sushi's
+existing tag-purpose gate confirms the configured index, not the vendor's mislabeled SDK pipeline-type
+getter. Robot policy calls `requestPipeline(...)` only at a deliberate activity change.
 
 Their Config objects are mutable authoring drafts. A direct owner validates and snapshots its
-complete active config before device lookup. A deferred `AprilTagVisionLaneFactories.webcam(cfg)`
+complete active config before device lookup. A deferred `AprilTagCameraFactories.webcam(cfg)`
 or `.limelight(cfg)` validates and captures when the factory is created, and a later `open(...)`
-constructs another independently validated owner. Retain the authored config when configuration
+returns an `OwnedAprilTagCamera` containing a fresh owner and its borrowed tag view. Retain the authored config when configuration
 provenance matters; runtime lanes expose focused identity, mount, readiness, and diagnostics rather
 than exporting another construction Config.
 
@@ -203,7 +209,7 @@ canonicalizes tag sizes and field positions to inches, and deep-snapshots the co
 Later mutation of the source library, metadata array, position vectors, or quaternions cannot drift
 the running processor. Construct a fresh factory or owner to adopt changed metadata.
 
-When `FtcWebcamAprilTagVisionLane` also owns custom processors, its
+When `FtcWebcamVisionLane` also owns custom processors, its
 `setAprilTagProcessorEnabled(...)` and `isAprilTagProcessorEnabled()` operations let the
 robot-owned mode realization control the built-in AprilTag processor without exposing that SDK
 processor instance.
@@ -214,20 +220,20 @@ processor instance.
 `PinpointAprilTagCorrectedLocalizationTester`, and the optional-assist path of
 `PinpointPodOffsetCalibrator` use one construction story. Author a fresh tool Config, put the fixed
 layout and mount-free localization policy there, and pass a
-`Function<String, AprilTagVisionLaneFactory>` separately. The webcam/Limelight backend Config—not
+`Function<String, AprilTagCameraFactory>` separately. The webcam/Limelight backend Config—not
 the tool Config—owns camera mount and detector-library answers. See
 [`AprilTag Practice Setup`](<AprilTag Practice Setup.md>) for the complete call shape.
 
 The tool constructor validates and snapshots active data before using a child context. A preferred
 device applies the builder immediately; a picker applies it once per confirmed selection. The
-deferred factory then opens a fresh lane owner. The builder/template and any borrowed custom SDK tag
+deferred factory then opens a fresh `OwnedAprilTagCamera` handle. The builder/template and any borrowed custom SDK tag
 library must remain stable for the tester's whole lifetime because a clean picker retry may apply the
 builder again. Tool defaults are valid software baselines, not evidence that a camera, mount, library,
 or field placement is physically correct.
 
 The shared AprilTag policy and corrected-localization Configs expose context-aware validated copies
 so intrinsic age, solver, predictor, source-selection, and selected Fusion/EKF facts fail before a
-portal or Pinpoint effect. Actual lane subtype, mount/sensor accessors, and readiness remain honest
+portal or Pinpoint effect. Actual borrowed-capability subtype, mount/sensor accessors, and readiness remain honest
 post-open facts. A non-null `NOT_READY` retains the owner for another poll; a null contract fact or
 `RuntimeException` detaches and closes the published lane once when cleanup succeeds. An `Error`
 propagates immediately without promised cleanup. If the lane remains published and STOP is later
@@ -240,16 +246,17 @@ empty: it can show raw detections, but cannot publish a fixed-layout mount sampl
 correction. Pinpoint prediction or configured direct-Limelight correction remains governed by its
 own evidence.
 
-Both expose the same shared resources above the FTC boundary:
+For either physical camera, borrow the same tag contract:
 
 ```java
-AprilTagSensor tags = visionLane.tagSensor();
-CameraMountConfig mount = visionLane.cameraMountConfig();
-VisionReadiness readiness = visionLane.readiness(clock);
+AprilTagVision vision = camera.aprilTags();
+AprilTagSensor tags = vision.tagSensor();
+CameraMountConfig mount = vision.cameraMountConfig();
+VisionReadiness readiness = vision.readiness(clock);
 ```
 
 The supplied webcam and Limelight owners perform frame construction automatically; ordinary robot
-code reads `visionLane.tagSensor()` and does not manage timestamps. Only an advanced custom
+code reads `camera.aprilTags().tagSensor()` and does not manage timestamps. Only an advanced custom
 `AprilTagSensor` adapter builds tag geometry and attaches its acquisition owner's one timestamp at
 the frame boundary:
 
@@ -300,8 +307,8 @@ disconnected even when the device is otherwise healthy.
 
 What changes is only how raw AprilTag observations are acquired:
 
-- `FtcWebcamAprilTagVisionLane` uses a `WebcamName` plus FTC VisionPortal / FTC AprilTag processing.
-- `FtcLimelightAprilTagVisionLane` requests the configured Limelight AprilTag pipeline, confirms a
+- `FtcWebcamVisionLane` uses a `WebcamName` plus FTC VisionPortal / FTC AprilTag processing.
+- `FtcLimelightVisionLane` requests the configured initial pipeline; its borrowed tag view confirms a
   fresh result from that pipeline, and adapts its fiducial results into the same `AprilTagSensor`
   seam. Limelight also exposes direct device field pose and a narrow orientation-update operation,
   which Sushi can optionally consume through a separate absolute-pose estimator path without
@@ -358,11 +365,13 @@ This is exactly why the framework does **not** need a new fusion class for every
 This is the most common baseline.
 
 ```java
-FtcWebcamAprilTagVisionLane.Config camCfg = FtcWebcamAprilTagVisionLane.Config.defaults();
+FtcWebcamVisionLane.Config camCfg = FtcWebcamVisionLane.Config.defaults();
 camCfg.webcamName = "Webcam 1";
+camCfg.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
 camCfg.cameraMount = solvedCameraMount;
 
-AprilTagVisionLane vision = new FtcWebcamAprilTagVisionLane(hardwareMap, camCfg);
+FtcWebcamVisionLane camera = new FtcWebcamVisionLane(hardwareMap, camCfg);
+AprilTagVision vision = camera.aprilTags();
 
 FtcOdometryAprilTagLocalizationLane.Config locCfg =
         FtcOdometryAprilTagLocalizationLane.Config.defaults();
@@ -381,6 +390,9 @@ FtcOdometryAprilTagLocalizationLane localization =
         );
 ```
 
+Register `camera.close()` at the composition root's shutdown boundary. Do not close or reset
+borrowed vision from localization.
+
 This gives you:
 
 - Pinpoint-based motion prediction
@@ -392,13 +404,16 @@ This gives you:
 If you want Limelight to behave like a smart AprilTag camera but keep Sushi's own raw-tag pose solve as the correction source:
 
 ```java
-FtcLimelightAprilTagVisionLane.Config llCfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+FtcLimelightVisionLane.Config llCfg = FtcLimelightVisionLane.Config.defaults();
 llCfg.hardwareName = "limelight";
-llCfg.pipelineIndex = 0;
+llCfg.aprilTags = FtcLimelightVisionLane.AprilTagConfig.defaults();
+llCfg.aprilTags.pipelineIndex = 0;
+llCfg.pipelineIndex = llCfg.aprilTags.pipelineIndex;
 llCfg.pollRateHz = 100;
 llCfg.cameraMount = solvedCameraMount;
 
-AprilTagVisionLane vision = new FtcLimelightAprilTagVisionLane(hardwareMap, llCfg);
+FtcLimelightVisionLane camera = new FtcLimelightVisionLane(hardwareMap, llCfg);
+AprilTagVision vision = camera.aprilTags();
 
 FtcOdometryAprilTagLocalizationLane.Config locCfg =
         FtcOdometryAprilTagLocalizationLane.Config.defaults();
@@ -409,7 +424,7 @@ locCfg.estimation.correctedEstimatorMode =
         FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
 ```
 
-Everything above `AprilTagVisionLane` still consumes the same `AprilTagSensor` seam.
+Everything above `AprilTagVision` still consumes the same `AprilTagSensor` seam.
 
 ### 5.3 Limelight + direct field-pose correction
 

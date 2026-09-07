@@ -167,17 +167,18 @@ different `LoopClock` is a wiring error rather than an unavailable observation.
 
 FTC detector objects remain inside the robot/FTC edge. The service immediately copies only the two
 principal-pixel angles needed by this case. Limelight reports horizontal positive right and
-vertical positive down, so the Sushi camera-frame ray is:
+vertical positive up, so the Sushi camera-frame ray is:
 
 ```text
-(forward, left, up) = (1, -tan(horizontalAngle), -tan(verticalAngle))
+(forward, left, up) = (1, -tan(horizontalAngle), +tan(verticalAngle))
 ```
 
-The configured robot-to-camera pose and the history's field-to-robot pose at exposure time rotate
-and translate that ray. Because the maintained history is planar, the service deliberately lifts
-its `Pose2d` into a `Pose3d` with z, pitch, and roll equal to zero before composing the calibrated
-3D camera mount. That one configured mount must remain fixed relative to the robot; an articulated
-or moving camera needs its own timestamp-aware mount transform and is outside this example service.
+The shared [`FloorTargetProjection`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/vision/FloorTargetProjection.html>)
+rotates the camera ray through the configured 3D robot-to-camera mount and intersects the
+robot's Z=0 floor plane. The resulting robot-at-capture point is then transformed using the
+history's planar field-to-robot pose at exposure time. The height-zero model estimates a floor
+reference point; it is not a claim of a ball center. The mount must remain fixed relative to the
+robot; an articulated camera needs a timestamp-aware mount and is outside this example service.
 The selector rejects non-finite values, parallel/upward rays, non-positive floor intersections, and
 points outside the inclusive collection box. It then considers fixed-width Y bands, choosing the
 band containing the most projected points and breaking a tie by the lower band start. Vendor list

@@ -75,7 +75,7 @@ import edu.ftcsushi.fw.core.geometry.Vec3;
  * common naming where roll is about +X and pitch is about +Y. Therefore, when converting the
  * configured processor's {@code det.ftcPose} into a {@link Pose3d}, preserve the angle values and
  * swap the pitch/roll fields (FTC pitch→Sushi roll, FTC roll→Sushi pitch). The webcam
- * AprilTag adapter owned by {@code FtcWebcamAprilTagVisionLane} applies the canonical conversion
+ * AprilTag adapter owned by {@code FtcWebcamVisionLane} applies the canonical conversion
  * before observations cross the FTC boundary.
  * </p>
  * <h2>How to use</h2>

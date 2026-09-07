@@ -100,8 +100,7 @@ A lane usually:
 
 Examples:
 
-- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
-- `FtcWebcamVisionPortalLane` / `FtcLimelightVisionLane` for advanced multi-purpose vision
+- `FtcWebcamVisionLane` / `FtcLimelightVisionLane` for one physical camera and its configured capabilities
 - `FtcOdometryAprilTagLocalizationLane`
 
 A lane answers:
@@ -397,7 +396,7 @@ Good names reveal the role.
 
 Good:
 
-- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
+- `FtcWebcamVisionLane` / `FtcLimelightVisionLane`
 - `MecanumDrivebase`
 - `ShooterSupervisor`
 - `StarterTeleOpControls`
@@ -503,9 +502,10 @@ public final class MyRobotProfile {
 ```
 
 
-For the simplest robot, keeping `vision` concrete as `FtcWebcamAprilTagVisionLane.Config` is still a good default.
+For the simplest robot, keeping `vision` concrete as `FtcWebcamVisionLane.Config` is still a good default.
 If you expect to swap between webcam and smart-camera backends, keep a robot-owned `VisionConfig`
-wrapper in the profile and let the composition root hold the backend-neutral `AprilTagVisionLane` interface.
+wrapper in the profile. Keep the selected camera's owned handle at the root and pass its
+non-closeable `AprilTagVision` view to tag consumers. That view is not a lifecycle owner.
 
 The aggregate is a short-lived composition draft, not a runtime owner. `current()` returns a fresh
 graph, and the ordinary composition path passes that one local value synchronously to the selected
@@ -547,26 +547,32 @@ adapter, not to direct mecanum drive.
 ### Vision lane example
 
 ```java
-AprilTagVisionLane vision = MyVisionFactory.create(hardwareMap, profile.vision);
+FtcWebcamVisionLane.Config cameraConfig = FtcWebcamVisionLane.Config.defaults();
+cameraConfig.webcamName = "Webcam 1";
+cameraConfig.cameraMount = solvedCameraMount;
+cameraConfig.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
+FtcWebcamVisionLane camera = new FtcWebcamVisionLane(hardwareMap, cameraConfig);
+AprilTagVision vision = camera.aprilTags();
 ```
 
-The important split is: construct a concrete lane at the FTC boundary, but store and pass around the
-backend-neutral `AprilTagVisionLane` seam above that boundary. That lets localization and targeting
-consume tag observations without caring whether the implementation is webcam-backed or Limelight-backed.
+The root retains `camera` and registers `camera.close()` at shutdown. Localization and targeting
+borrow only `vision`, so neither can close the shared camera. For a robot-owned backend choice,
+a tag-only deferred factory may return `OwnedAprilTagCamera`; its `aprilTags()` method yields the
+same borrowed view while the root closes the handle.
 
-That shared AprilTag seam should not be stretched into a universal arbitrary-vision API. The two
-advanced owners preserve the hardware's real model:
+The two camera owners preserve the hardware's real model:
 
-- build `FtcWebcamVisionPortalLane` once with the complete fresh processor set, then enable or
+- build `FtcWebcamVisionLane` once with the complete fresh processor set, then enable or
   disable processors as modes change;
 - build `FtcLimelightVisionLane` once, request a pipeline only on a semantic mode transition, and
   wait for `pipelineReadiness(clock)` before consuming its confirmed result.
 
-Robot code owns the unifying vocabulary when its strategy needs one. A small `MyVision` interface
-can expose `select(Mode)` plus an immutable timestamped `Snapshot`; its webcam realization maps a mode to
-processor enablement, and its Limelight realization maps that mode to one pipeline request. Auto,
-TeleOp, and strategy code see only those robot nouns. FTC `VisionProcessor` and Limelight result
-types stop inside the corresponding realization.
+Configured floor-object sensing already has a shared `Source<TargetObservations2d>` from
+`camera.floorObjects()`; do not create another camera or a capability registry to combine it with
+tags. Add a robot-owned `select(Mode)` only when the season needs semantic activity changes. Its
+webcam realization maps those changes to processor enablement, and its Limelight realization maps
+them to one pipeline request. Auto and TeleOp share that robot policy; SDK processor and mutable
+vendor result types stay inside the acquisition boundary.
 
 All of these owners expose component readiness separately from target visibility. A ready camera
 may see no target. Close the owner at the OpMode boundary. After that close succeeds, retry by
@@ -1321,7 +1327,7 @@ If the composition root starts containing lots of button semantics, aim threshol
 ```text
 MyRobotProfile
   ├─ drive      -> FtcDrives.MecanumConfig
-  ├─ vision     -> FtcWebcamAprilTagVisionLane.Config (or a robot-owned backend wrapper)
+  ├─ vision     -> FtcWebcamVisionLane.Config (or a robot-owned backend wrapper)
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
   ├─ fixedAprilTagLayout -> TagLayout / field facts
   ├─ controls   -> MyTeleOpControls.Config
@@ -1330,7 +1336,8 @@ MyRobotProfile
 
 MyRobot
   ├─ MecanumDrivebase (created by FtcDrives)
-  ├─ AprilTagVisionLane (commonly `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`)
+  ├─ FtcWebcamVisionLane or FtcLimelightVisionLane (owned camera)
+  │    └─ AprilTagVision (borrowed by localization and targeting)
   ├─ FtcOdometryAprilTagLocalizationLane
   ├─ MyCapabilities
   ├─ MyTeleOpControls
@@ -1420,9 +1427,9 @@ Why it is a problem:
 
 Instead, split:
 
-- `AprilTagVisionLane` plus a concrete backend owner such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` for the camera rig
-- a robot-owned semantic vision interface above `FtcWebcamVisionPortalLane` or
-  `FtcLimelightVisionLane` when the season needs more than AprilTags
+- `FtcWebcamVisionLane` or `FtcLimelightVisionLane` for the owned camera rig
+- its borrowed `AprilTagVision` and configured floor-object source for observation consumers
+- robot-owned activity policy only when the season needs semantic mode transitions
 - `FtcOdometryAprilTagLocalizationLane` for pose production
 - field facts for shared landmarks
 
@@ -1454,8 +1461,8 @@ framework template:
 - first single-input sensing service: `BasicSwitchService`
 - multi-input sensing service: `ReferenceInventoryStatusService`
 - focused coordination service: `ReferenceCoordinatedShotService`
-- framework vision lanes: `AprilTagVisionLane` with a concrete FTC backend, independently of robot
-  field facts and strategy
+- framework vision lanes: `FtcWebcamVisionLane` or `FtcLimelightVisionLane`, independently of robot
+  field facts and strategy; `AprilTagVision` is a borrowed capability, not another owner
 
 Use the Starter for the copyable complete minimum and each focused Reference example only for the
 concern it names. Add a larger robot-owned capability aggregate only when actual mode clients need

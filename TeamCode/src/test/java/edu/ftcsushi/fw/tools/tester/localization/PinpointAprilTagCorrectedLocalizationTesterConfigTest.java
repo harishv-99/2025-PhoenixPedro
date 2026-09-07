@@ -22,7 +22,7 @@ import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.ftc.FtcGameTagLayout;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -134,7 +134,7 @@ public final class PinpointAprilTagCorrectedLocalizationTesterConfigTest {
 
         AtomicInteger builderCalls = new AtomicInteger();
         AtomicReference<String> selectedName = new AtomicReference<String>();
-        Function<String, AprilTagVisionLaneFactory> builder = name -> {
+        Function<String, AprilTagCameraFactory> builder = name -> {
             assertEquals("layout snapshot must precede preferred factory capture", 1,
                     layout.idsReads);
             assertEquals("layout snapshot must precede preferred factory capture", 1,

@@ -41,7 +41,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Focused ownership, processor-state, and result-generation coverage for webcam vision. */
-public final class FtcWebcamVisionPortalLaneTest {
+public final class FtcWebcamVisionLaneTest {
 
     @Test
     public void cameraMountConversionMatchesFtcRobotAndOpticalCameraFrames() {
@@ -92,34 +92,34 @@ public final class FtcWebcamVisionPortalLaneTest {
         RecordingFactory factory = new RecordingFactory(new FakePortal());
         FakeProcessor processor = new FakeProcessor("one", false);
 
-        FtcWebcamVisionPortalLane.Config cfg = validConfig();
+        FtcWebcamVisionLane.Config cfg = validConfig();
         cfg.webcamName = "  ";
-        FtcWebcamVisionPortalLane.Config blankName = cfg;
+        FtcWebcamVisionLane.Config blankName = cfg;
         expectFailureMessage(IllegalArgumentException.class,
-                "FtcWebcamVisionPortalLane.Config.webcamName must not be blank",
+                "FtcWebcamVisionLane.Config.webcamName must not be blank",
                 () -> testOwner(blankName, factory, processor));
 
         cfg = validConfig();
         cfg.webcamName = null;
-        FtcWebcamVisionPortalLane.Config nullName = cfg;
+        FtcWebcamVisionLane.Config nullName = cfg;
         expectFailureMessage(NullPointerException.class,
-                "FtcWebcamVisionPortalLane.Config.webcamName",
+                "FtcWebcamVisionLane.Config.webcamName",
                 () -> testOwner(nullName, factory, processor));
 
         cfg = validConfig();
         cfg.cameraResolution = null;
-        FtcWebcamVisionPortalLane.Config nullResolution = cfg;
+        FtcWebcamVisionLane.Config nullResolution = cfg;
         expectFailureMessage(NullPointerException.class,
-                "FtcWebcamVisionPortalLane.Config.cameraResolution",
+                "FtcWebcamVisionLane.Config.cameraResolution",
                 () -> testOwner(nullResolution, factory, processor));
 
         cfg = validConfig();
         cfg.cameraResolution = new Size(0, 480);
-        FtcWebcamVisionPortalLane.Config invalidWidth = cfg;
+        FtcWebcamVisionLane.Config invalidWidth = cfg;
         expectFailureMessage(IllegalArgumentException.class,
-                "FtcWebcamVisionPortalLane.Config.cameraResolution "
+                "FtcWebcamVisionLane.Config.cameraResolution "
                         + "must have positive width and height, got 0x480",
-                () -> new FtcWebcamVisionPortalLane(
+                () -> new FtcWebcamVisionLane(
                         invalidWidth,
                         factory,
                         new MutableNanoClock(100),
@@ -128,11 +128,11 @@ public final class FtcWebcamVisionPortalLaneTest {
 
         cfg = validConfig();
         cfg.cameraResolution = new Size(640, 0);
-        FtcWebcamVisionPortalLane.Config invalidHeight = cfg;
+        FtcWebcamVisionLane.Config invalidHeight = cfg;
         expectFailureMessage(IllegalArgumentException.class,
-                "FtcWebcamVisionPortalLane.Config.cameraResolution "
+                "FtcWebcamVisionLane.Config.cameraResolution "
                         + "must have positive width and height, got 640x0",
-                () -> new FtcWebcamVisionPortalLane(
+                () -> new FtcWebcamVisionLane(
                         invalidHeight,
                         factory,
                         new MutableNanoClock(100),
@@ -160,7 +160,7 @@ public final class FtcWebcamVisionPortalLaneTest {
     public void readinessSeparatesStreamStateFromProcessorState() {
         FakePortal portal = new FakePortal();
         FakeProcessor processor = new FakeProcessor("main", false);
-        FtcWebcamVisionPortalLane lane = open(portal, processor);
+        FtcWebcamVisionLane lane = open(portal, processor);
 
         portal.cameraState = VisionPortal.CameraState.OPENING_CAMERA_DEVICE;
         assertNotReady(lane.readiness(), "not streaming");
@@ -190,7 +190,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         FakeProcessor first = new FakeProcessor("first", false);
         FakeProcessor second = new FakeProcessor("second", false);
         MutableNanoClock nanos = new MutableNanoClock(100);
-        FtcWebcamVisionPortalLane lane = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane lane = new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(portal), nanos,
                 VALID_RESOLUTION_READER, first, second);
 
@@ -233,8 +233,10 @@ public final class FtcWebcamVisionPortalLaneTest {
         FakeProcessor customProcessor = new FakeProcessor("custom", false);
         FakeAprilTagProcessor aprilTagProcessor = new FakeAprilTagProcessor();
         MutableNanoClock nanos = new MutableNanoClock(100);
-        FtcWebcamAprilTagVisionLane lane = new FtcWebcamAprilTagVisionLane(
-                FtcWebcamAprilTagVisionLane.Config.defaults(),
+        FtcWebcamVisionLane.Config config = FtcWebcamVisionLane.Config.defaults();
+        config.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
+        FtcWebcamVisionLane lane = new FtcWebcamVisionLane(
+                config,
                 aprilTagProcessor,
                 factory,
                 nanos,
@@ -248,13 +250,13 @@ public final class FtcWebcamVisionPortalLaneTest {
         assertSame(aprilTagProcessor, builtInAprilTagProcessor);
         assertSame(customProcessor, portal.openProcessors[1]);
         assertTrue(lane.isAprilTagProcessorEnabled());
-        assertTrue(lane.readiness(new ManualLoopClock().clock()).isReady());
+        assertTrue(lane.aprilTags().readiness(new ManualLoopClock().clock()).isReady());
 
         lane.setAprilTagProcessorEnabled(false);
         lane.setAprilTagProcessorEnabled(false);
         assertEquals(1, portal.enableWrites);
         assertFalse(lane.isAprilTagProcessorEnabled());
-        assertNotReady(lane.readiness(new ManualLoopClock().clock()), "disabled");
+        assertNotReady(lane.aprilTags().readiness(new ManualLoopClock().clock()), "disabled");
         assertEquals(1L, lane.processorDataGeneration(builtInAprilTagProcessor));
 
         nanos.now = 200;
@@ -262,11 +264,46 @@ public final class FtcWebcamVisionPortalLaneTest {
         lane.setAprilTagProcessorEnabled(true);
         assertEquals(2, portal.enableWrites);
         assertTrue(lane.isAprilTagProcessorEnabled());
-        assertTrue(lane.readiness(new ManualLoopClock().clock()).isReady());
+        assertTrue(lane.aprilTags().readiness(new ManualLoopClock().clock()).isReady());
         assertEquals(2L, lane.processorDataGeneration(builtInAprilTagProcessor));
         assertEquals(200L, lane.acceptProcessorFramesAfterNanos(builtInAprilTagProcessor));
 
         lane.close();
+        assertEquals(1, portal.closeCalls);
+    }
+
+    @Test
+    public void colorOnlyOwnerCreatesNoTagProcessorAndTerminalizesBeforePortalClose() {
+        FakePortal portal = new FakePortal();
+        RecordingFactory factory = new RecordingFactory(portal);
+        int[] tagCreations = {0};
+        FtcWebcamVisionLane.Config config = FtcWebcamVisionLane.Config.defaults();
+        config.floorObjects = FtcFloorObjectVision.Config.defaults();
+        FtcWebcamVisionLane camera = new FtcWebcamVisionLane(config,
+                (mount, library) -> { tagCreations[0]++; return new FakeAprilTagProcessor(); },
+                factory, new MutableNanoClock(100), VALID_RESOLUTION_READER);
+        assertEquals(0, tagCreations[0]);
+        assertEquals(1, portal.openProcessors.length);
+        FtcColorBlobProcessor processor = (FtcColorBlobProcessor) portal.openProcessors[0];
+        edu.ftcsushi.fw.core.source.Source<edu.ftcsushi.fw.sensing.observation.TargetObservations2d> source =
+                camera.floorObjects();
+        assertSame(source, camera.floorObjects());
+        assertTrue(camera.isFloorObjectProcessorEnabled());
+        expectFailure(IllegalStateException.class, camera::aprilTags);
+        ManualLoopClock manual = new ManualLoopClock();
+        assertFalse("no callback is unavailable, not observed empty", source.get(manual.clock()).isAvailable());
+        portal.duringEnable = () -> {
+            assertEquals(1L, camera.processorDataGeneration(processor));
+            assertEquals(Long.MAX_VALUE, camera.acceptProcessorFramesAfterNanos(processor));
+            assertFalse(source.get(manual.clock()).isAvailable());
+        };
+        camera.setFloorObjectProcessorEnabled(false);
+        assertFalse(camera.isFloorObjectProcessorEnabled());
+        portal.duringClose = () -> assertTrue(processor.isTerminal());
+        camera.close();
+        assertFalse(source.get(manual.clock()).isAvailable());
+        source.reset();
+        assertFalse(source.get(manual.clock()).isAvailable());
         assertEquals(1, portal.closeCalls);
     }
 
@@ -280,7 +317,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         RecordingFactory factory = new RecordingFactory(portal);
 
         try {
-            new FtcWebcamVisionPortalLane(
+            new FtcWebcamVisionLane(
                     validConfig(), factory, new MutableNanoClock(100),
                     VALID_RESOLUTION_READER, new FakeProcessor("main", false));
             fail("Expected verification failure");
@@ -297,7 +334,7 @@ public final class FtcWebcamVisionPortalLaneTest {
     public void closeFailureIsVisibleExactlyOnceAndPostCloseUseFails() {
         FakePortal portal = new FakePortal();
         FakeProcessor processor = new FakeProcessor("main", false);
-        FtcWebcamVisionPortalLane lane = open(portal, processor);
+        FtcWebcamVisionLane lane = open(portal, processor);
         RuntimeException closeFailure = new IllegalStateException("USB close failed");
         portal.closeFailure = closeFailure;
 
@@ -327,7 +364,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         FakePortal portal = new FakePortal();
         FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
         MutableNanoClock nanos = new MutableNanoClock(100);
-        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane owner = new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(portal), nanos,
                 VALID_RESOLUTION_READER, processor);
         FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
@@ -388,7 +425,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         FakePortal portal = new FakePortal();
         FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
         MutableNanoClock nanos = new MutableNanoClock(100);
-        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane owner = new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(portal), nanos,
                 VALID_RESOLUTION_READER, processor);
         FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
@@ -437,7 +474,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         FakePortal portal = new FakePortal();
         FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
         MutableNanoClock nanos = new MutableNanoClock(1_000_000_000L);
-        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane owner = new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(portal), nanos,
                 VALID_RESOLUTION_READER, processor);
         FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
@@ -485,7 +522,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         FakePortal portal = new FakePortal();
         FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
         MutableNanoClock nanos = new MutableNanoClock(1_000_000_000L);
-        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane owner = new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(portal), nanos,
                 VALID_RESOLUTION_READER, processor);
         FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
@@ -529,7 +566,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         FakePortal portal = new FakePortal();
         FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
         MutableNanoClock nanos = new MutableNanoClock(1_000_000_000L);
-        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane owner = new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(portal), nanos,
                 VALID_RESOLUTION_READER, processor);
         FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
@@ -566,10 +603,10 @@ public final class FtcWebcamVisionPortalLaneTest {
 
     @Test
     public void freshReconstructionHasIndependentConfigProcessorsAndOwnership() {
-        FtcWebcamVisionPortalLane.Config cfg = validConfig();
+        FtcWebcamVisionLane.Config cfg = validConfig();
         FakePortal firstPortal = new FakePortal();
         FakeProcessor firstProcessor = new FakeProcessor("first", false);
-        FtcWebcamVisionPortalLane first = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane first = new FtcWebcamVisionLane(
                 cfg, new RecordingFactory(firstPortal), new MutableNanoClock(100),
                 VALID_RESOLUTION_READER, firstProcessor);
         cfg.webcamName = "mutated after construction";
@@ -578,7 +615,7 @@ public final class FtcWebcamVisionPortalLaneTest {
 
         FakePortal secondPortal = new FakePortal();
         FakeProcessor secondProcessor = new FakeProcessor("second", false);
-        FtcWebcamVisionPortalLane second = new FtcWebcamVisionPortalLane(
+        FtcWebcamVisionLane second = new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(secondPortal), new MutableNanoClock(100),
                 VALID_RESOLUTION_READER, secondProcessor);
         assertTrue(second.ownsProcessor(secondProcessor));
@@ -586,26 +623,26 @@ public final class FtcWebcamVisionPortalLaneTest {
         assertFalse(second.isCloseAttempted());
     }
 
-    private static FtcWebcamVisionPortalLane open(
+    private static FtcWebcamVisionLane open(
             FakePortal portal,
             VisionProcessor... processors
     ) {
-        return new FtcWebcamVisionPortalLane(
+        return new FtcWebcamVisionLane(
                 validConfig(), new RecordingFactory(portal), new MutableNanoClock(100),
                 VALID_RESOLUTION_READER, processors);
     }
 
-    private static FtcWebcamVisionPortalLane testOwner(
-            FtcWebcamVisionPortalLane.Config config,
-            FtcWebcamVisionPortalLane.PortalFactory factory,
+    private static FtcWebcamVisionLane testOwner(
+            FtcWebcamVisionLane.Config config,
+            FtcWebcamVisionLane.PortalFactory factory,
             VisionProcessor... processors
     ) {
-        return new FtcWebcamVisionPortalLane(
+        return new FtcWebcamVisionLane(
                 config, factory, new MutableNanoClock(100), VALID_RESOLUTION_READER, processors);
     }
 
-    private static FtcWebcamVisionPortalLane.Config validConfig() {
-        return FtcWebcamVisionPortalLane.Config.defaults();
+    private static FtcWebcamVisionLane.Config validConfig() {
+        return FtcWebcamVisionLane.Config.defaults();
     }
 
     private static void assertNotReady(VisionReadiness readiness, String reasonFragment) {
@@ -674,7 +711,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         }
     }
 
-    private static final class MutableNanoClock implements FtcWebcamVisionPortalLane.NanoClock {
+    private static final class MutableNanoClock implements FtcWebcamVisionLane.NanoClock {
         long now;
 
         MutableNanoClock(long now) {
@@ -687,8 +724,8 @@ public final class FtcWebcamVisionPortalLaneTest {
         }
     }
 
-    private static final FtcWebcamVisionPortalLane.ResolutionReader VALID_RESOLUTION_READER =
-            new FtcWebcamVisionPortalLane.ResolutionReader() {
+    private static final FtcWebcamVisionLane.ResolutionReader VALID_RESOLUTION_READER =
+            new FtcWebcamVisionLane.ResolutionReader() {
                 @Override
                 public int width(Size size) {
                     return 640;
@@ -700,8 +737,8 @@ public final class FtcWebcamVisionPortalLaneTest {
                 }
             };
 
-    private static final FtcWebcamVisionPortalLane.ResolutionReader INVALID_WIDTH_READER =
-            new FtcWebcamVisionPortalLane.ResolutionReader() {
+    private static final FtcWebcamVisionLane.ResolutionReader INVALID_WIDTH_READER =
+            new FtcWebcamVisionLane.ResolutionReader() {
                 @Override
                 public int width(Size size) {
                     return 0;
@@ -713,8 +750,8 @@ public final class FtcWebcamVisionPortalLaneTest {
                 }
             };
 
-    private static final FtcWebcamVisionPortalLane.ResolutionReader INVALID_HEIGHT_READER =
-            new FtcWebcamVisionPortalLane.ResolutionReader() {
+    private static final FtcWebcamVisionLane.ResolutionReader INVALID_HEIGHT_READER =
+            new FtcWebcamVisionLane.ResolutionReader() {
                 @Override
                 public int width(Size size) {
                     return 640;
@@ -726,7 +763,7 @@ public final class FtcWebcamVisionPortalLaneTest {
                 }
             };
 
-    private static final class RecordingFactory implements FtcWebcamVisionPortalLane.PortalFactory {
+    private static final class RecordingFactory implements FtcWebcamVisionLane.PortalFactory {
         private final FakePortal portal;
         private int openCount;
 
@@ -735,8 +772,8 @@ public final class FtcWebcamVisionPortalLaneTest {
         }
 
         @Override
-        public FtcWebcamVisionPortalLane.PortalDevice open(
-                FtcWebcamVisionPortalLane.Config config,
+        public FtcWebcamVisionLane.PortalDevice open(
+                FtcWebcamVisionLane.Config config,
                 VisionProcessor[] processors
         ) {
             openCount++;
@@ -749,11 +786,11 @@ public final class FtcWebcamVisionPortalLaneTest {
         }
     }
 
-    private static final class FakePortal implements FtcWebcamVisionPortalLane.PortalDevice {
+    private static final class FakePortal implements FtcWebcamVisionLane.PortalDevice {
         final IdentityHashMap<VisionProcessor, Boolean> enabled =
                 new IdentityHashMap<VisionProcessor, Boolean>();
         VisionPortal.CameraState cameraState = VisionPortal.CameraState.STREAMING;
-        FtcWebcamVisionPortalLane.Config openConfig;
+        FtcWebcamVisionLane.Config openConfig;
         VisionProcessor[] openProcessors;
         RuntimeException enabledFailure;
         RuntimeException closeFailure;
@@ -762,6 +799,8 @@ public final class FtcWebcamVisionPortalLaneTest {
         int stopStreamingCalls;
         int resumeStreamingCalls;
         int closeCalls;
+        Runnable duringEnable;
+        Runnable duringClose;
 
         @Override
         public VisionPortal.CameraState cameraState() {
@@ -771,6 +810,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         @Override
         public void setProcessorEnabled(VisionProcessor processor, boolean value) {
             enableWrites++;
+            if (duringEnable != null) duringEnable.run();
             enabled.put(processor, value);
         }
 
@@ -806,6 +846,7 @@ public final class FtcWebcamVisionPortalLaneTest {
         @Override
         public void close() {
             closeCalls++;
+            if (duringClose != null) duringClose.run();
             if (closeFailure != null) throw closeFailure;
         }
     }

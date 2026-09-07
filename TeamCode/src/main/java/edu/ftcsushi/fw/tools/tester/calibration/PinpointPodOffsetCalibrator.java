@@ -25,8 +25,8 @@ import edu.ftcsushi.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig;
 import edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcsushi.fw.ftc.localization.PinpointKinematicSnapshot;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
@@ -238,7 +238,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private final Config cfg;
-    private final Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder;
+    private final Function<String, AprilTagCameraFactory> visionLaneFactoryBuilder;
     private final String fixedTagLayoutPolicySummary;
 
     private PinpointOdometryPredictor pinpoint;
@@ -248,9 +248,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     // AprilTag assist
     private HardwareNamePicker visionPicker;
     private String selectedVisionDeviceName;
-    private AprilTagVisionLaneFactory pendingVisionFactory;
+    private AprilTagCameraFactory pendingVisionFactory;
     private final TagLayout layout;
-    private AprilTagVisionLane visionLane;
+    private OwnedAprilTagCamera visionLane;
     private AprilTagSensor tagSensor;
     private AprilTagPoseEstimator tagEstimator;
     private String activeVisionDescription;
@@ -366,7 +366,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
      */
     public PinpointPodOffsetCalibrator(
             Config config,
-            Function<String, AprilTagVisionLaneFactory> visionFactoryBuilder) {
+            Function<String, AprilTagCameraFactory> visionFactoryBuilder) {
         ConfigCapture capture = captureConfig(config, visionFactoryBuilder != null);
         this.cfg = capture.config;
         this.visionLaneFactoryBuilder = visionFactoryBuilder;
@@ -502,8 +502,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         return new ConfigCapture(captured, capturedLayout, policySummary);
     }
 
-    private AprilTagVisionLaneFactory applyVisionFactoryBuilder(String selectedName) {
-        final AprilTagVisionLaneFactory factory;
+    private AprilTagCameraFactory applyVisionFactoryBuilder(String selectedName) {
+        final AprilTagCameraFactory factory;
         try {
             factory = visionLaneFactoryBuilder.apply(selectedName);
         } catch (RuntimeException failure) {
@@ -1209,10 +1209,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             }
         }
 
-        AprilTagVisionLaneFactory factory = pendingVisionFactory;
+        AprilTagCameraFactory factory = pendingVisionFactory;
         pendingVisionFactory = null;
         try {
-            AprilTagVisionLane openedLane = factory.open(ctx.hw);
+            OwnedAprilTagCamera openedLane = factory.open(ctx.hw);
             if (openedLane == null) {
                 throw new IllegalStateException(
                         "vision lane factory returned null for device '"
@@ -1222,7 +1222,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             // Publish immediately so any later accessor/readiness failure has one closeable owner.
             visionLane = openedLane;
             CameraMountConfig cameraMount = Objects.requireNonNull(
-                    visionLane.cameraMountConfig(),
+                    visionLane.aprilTags().cameraMountConfig(),
                     "vision lane cameraMountConfig() must not return null"
             );
             if (isLikelyIdentity(cameraMount)) {
@@ -1231,11 +1231,11 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             }
 
             tagSensor = Objects.requireNonNull(
-                    visionLane.tagSensor(),
+                    visionLane.aprilTags().tagSensor(),
                     "vision lane tagSensor() must not return null"
             );
             activeVisionDescription = factory.description();
-            VisionReadiness initialReadiness = visionLane.readiness(ctx.clock);
+            VisionReadiness initialReadiness = visionLane.aprilTags().readiness(ctx.clock);
             if (initialReadiness == null) {
                 throw new IllegalStateException("vision lane returned a null readiness result");
             }
@@ -1269,7 +1269,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void disableIdentityMountAssist() {
-        AprilTagVisionLane identityLane = visionLane;
+        OwnedAprilTagCamera identityLane = visionLane;
         visionLane = null;
         tagSensor = null;
         tagEstimator = null;
@@ -1307,7 +1307,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             return;
         }
         try {
-            VisionReadiness current = visionLane.readiness(ctx.clock);
+            VisionReadiness current = visionLane.aprilTags().readiness(ctx.clock);
             if (current == null) {
                 throw new IllegalStateException("vision lane returned a null readiness result");
             }
@@ -1331,7 +1331,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             boolean initPhase,
             boolean suppressedFailureMeansUncertainRollback
     ) {
-        AprilTagVisionLane failedLane = visionLane;
+        OwnedAprilTagCamera failedLane = visionLane;
         boolean uncertainFactoryRollback = failedLane == null
                 && suppressedFailureMeansUncertainRollback
                 && failure.getSuppressed().length > 0;
@@ -1725,7 +1725,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         visionRetryBlocked = true;
         started = false;
         MecanumDrivebase ownedDrive = drive;
-        AprilTagVisionLane ownedVision = visionLane;
+        OwnedAprilTagCamera ownedVision = visionLane;
         drive = null;
         pendingVisionFactory = null;
         visionReadiness = VisionReadiness.notReady("Vision tester is stopping");

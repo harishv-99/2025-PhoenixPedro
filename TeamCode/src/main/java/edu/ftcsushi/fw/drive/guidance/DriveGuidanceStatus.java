@@ -19,6 +19,8 @@ public final class DriveGuidanceStatus {
         NONE,
         LOCALIZATION,
         APRIL_TAGS,
+        /** Direct, delayed robot-frame target observations rather than a field pose. */
+        OBSERVATIONS,
         BLENDED
     }
 
@@ -140,6 +142,7 @@ public final class DriveGuidanceStatus {
         if (step == null || !step.hasTranslationError) {
             return ChannelSource.NONE;
         }
+        if ("observations".equals(step.mode)) return ChannelSource.OBSERVATIONS;
         boolean hasLocalization = step.localization != null && step.localization.valid && step.localization.canTranslate;
         boolean hasAprilTags = step.aprilTags != null && step.aprilTags.valid && step.aprilTags.canTranslate;
         if (hasLocalization && hasAprilTags) {
@@ -161,6 +164,7 @@ public final class DriveGuidanceStatus {
         if (step == null || !step.hasOmegaError) {
             return ChannelSource.NONE;
         }
+        if ("observations".equals(step.mode)) return ChannelSource.OBSERVATIONS;
         boolean hasLocalization = step.localization != null && step.localization.valid && step.localization.canOmega;
         boolean hasAprilTags = step.aprilTags != null && step.aprilTags.valid && step.aprilTags.canOmega;
         if (hasLocalization && hasAprilTags) {

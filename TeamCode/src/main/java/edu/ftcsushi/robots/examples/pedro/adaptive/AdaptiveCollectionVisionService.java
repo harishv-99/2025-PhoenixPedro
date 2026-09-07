@@ -8,8 +8,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-import edu.ftcsushi.fw.core.geometry.Pose2d;
-import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.source.TimeAwareSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
@@ -322,14 +320,14 @@ public final class AdaptiveCollectionVisionService implements RobotProgram.Servi
         }
     }
 
-    /** Immutable principal-pixel detector angles after the FTC SDK boundary. */
+    /** Immutable principal-pixel plane angles: Limelight reports right-positive and up-positive. */
     static final class DetectorAngles {
         final double horizontalRightDeg;
-        final double verticalDownDeg;
+        final double verticalUpDeg;
 
-        DetectorAngles(double horizontalRightDeg, double verticalDownDeg) {
+        DetectorAngles(double horizontalRightDeg, double verticalUpDeg) {
             this.horizontalRightDeg = horizontalRightDeg;
-            this.verticalDownDeg = verticalDownDeg;
+            this.verticalUpDeg = verticalUpDeg;
         }
     }
 
@@ -484,20 +482,10 @@ public final class AdaptiveCollectionVisionService implements RobotProgram.Servi
             return unavailable(frame, frameAgeSec, 0, 0, poseLookup,
                     UnavailableReason.POSE_HISTORY_UNAVAILABLE);
         }
-        Pose2d planarFieldToRobotPose = poseLookup.fieldToRobotPose();
-        Pose3d fieldToRobotPose = new Pose3d(
-                planarFieldToRobotPose.xInches,
-                planarFieldToRobotPose.yInches,
-                0.0,
-                planarFieldToRobotPose.headingRad,
-                0.0,
-                0.0
-        );
-
         AdaptiveCollectionProjection.Result projection = AdaptiveCollectionProjection.select(
                 frame.detectorAngles,
-                fieldToRobotPose,
-                config.cameraMount.robotToCameraPose(),
+                poseLookup,
+                config.cameraMount,
                 config.minCollectionFieldXInches,
                 config.maxCollectionFieldXInches,
                 config.minCollectionFieldYInches,

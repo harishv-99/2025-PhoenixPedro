@@ -36,6 +36,7 @@ Build lessons, while geometry and vision introduce their own additional concepts
 
 - [Field-relative drive](<../examples/Field-relative Drive.md>)
 - [Drive, spatial reasoning, and vision](<../drive-vision/README.md>)
+- [One bounded vision pickup](<../examples/One Bounded Vision Pickup.md>)
 - [Timestamped adaptive collection](<../examples/Timestamped Adaptive Collection.md>)
 - [Pedro Pathing integration contract](<../../integrations/pedro/README.md>)
 - [Inspect one Pedro route's software outcome](<../build/First Pedro Auto.md>) — a blocked

@@ -9,7 +9,9 @@ import java.util.Set;
 
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
+import edu.ftcsushi.fw.core.source.Source;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
 import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionSource;
@@ -142,6 +144,33 @@ public final class References {
      */
     public static ReferenceFrame2d fieldFrame(double xInches, double yInches, double headingRad) {
         return new FieldFrameRef(xInches, yInches, headingRad);
+    }
+
+    /**
+     * Borrows a geometric selection as a live target point. Reads preserve its observation age;
+     * localization cannot turn an expired sighting into a fixed field fact. The source owns any
+     * selection state and is never reset by a query or guidance consumer.
+     */
+    public static ReferencePoint2d observedPoint(Source<TargetSelectionResult> selection) {
+        return new ObservedPointRef(Objects.requireNonNull(selection, "selection").memoized());
+    }
+
+    /**
+     * Borrows a computed desired robot-center field pose. The result owns its live-versus-committed
+     * evidence contract. Use robot-center control frames, not a second copy of the intake offset.
+     */
+    public static ReferenceFrame2d approachFrame(Source<ApproachResult2d> approach) {
+        return new ApproachFrameRef(Objects.requireNonNull(approach, "approach").memoized());
+    }
+
+    /** Whether this reference is an observation-backed point (not a fixed field fact). */
+    public static boolean isObservedPoint(ReferencePoint2d reference) {
+        return reference instanceof ObservedPointRef;
+    }
+
+    /** Whether this reference supplies a computed robot-center approach pose. */
+    public static boolean isApproachFrame(ReferenceFrame2d reference) {
+        return reference instanceof ApproachFrameRef;
     }
 
     /**
@@ -350,6 +379,12 @@ public final class References {
     }
 
     public static Pose2d tryResolveFieldPoint(ReferencePoint2d ref, TagLayout layout, LoopClock clock) {
+        if (ref instanceof ObservedPointRef) {
+            TargetSelectionResult selected = ((ObservedPointRef) ref).get(clock);
+            if (!selected.isUsable(clock) || !selected.observation().hasFieldPosition()) return null;
+            return new Pose2d(selected.observation().fieldXInches,
+                    selected.observation().fieldYInches, 0.0);
+        }
         if (ref instanceof FieldPointRef) {
             FieldPointRef fp = (FieldPointRef) ref;
             return new Pose2d(fp.xInches, fp.yInches, 0.0);
@@ -385,6 +420,10 @@ public final class References {
     }
 
     public static Pose2d tryResolveFieldFrame(ReferenceFrame2d ref, TagLayout layout, LoopClock clock) {
+        if (ref instanceof ApproachFrameRef) {
+            ApproachResult2d approach = ((ApproachFrameRef) ref).get(clock);
+            return approach.isUsable(clock) ? approach.fieldToRobotGoalPose() : null;
+        }
         if (ref instanceof FieldFrameRef) {
             FieldFrameRef ff = (FieldFrameRef) ref;
             return new Pose2d(ff.xInches, ff.yInches, ff.headingRad);
@@ -626,6 +665,30 @@ public final class References {
             TagFrameOffset offset = offsetsByTag.get(tagId);
             return offset != null ? new Pose2d(offset.forwardInches, offset.leftInches, offset.headingRad) : null;
         }
+    }
+
+    static final class ObservedPointRef implements ReferencePoint2d {
+        final Source<TargetSelectionResult> selection;
+
+        ObservedPointRef(Source<TargetSelectionResult> selection) { this.selection = selection; }
+
+        TargetSelectionResult get(LoopClock clock) {
+            return Objects.requireNonNull(selection.get(clock), "Observed point selection returned null");
+        }
+
+        @Override public String toString() { return "ObservedPointRef{borrowed selection}"; }
+    }
+
+    static final class ApproachFrameRef implements ReferenceFrame2d {
+        final Source<ApproachResult2d> approach;
+
+        ApproachFrameRef(Source<ApproachResult2d> approach) { this.approach = approach; }
+
+        ApproachResult2d get(LoopClock clock) {
+            return Objects.requireNonNull(approach.get(clock), "Approach source returned null");
+        }
+
+        @Override public String toString() { return "ApproachFrameRef{desired robot-center pose}"; }
     }
 
     static final class FieldPointRef implements ReferencePoint2d {

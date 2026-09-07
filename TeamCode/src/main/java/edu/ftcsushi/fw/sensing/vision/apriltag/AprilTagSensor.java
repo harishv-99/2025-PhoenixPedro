@@ -26,11 +26,11 @@ import edu.ftcsushi.fw.core.time.LoopClock;
  *
  * <h2>Typical usage</h2>
  * <pre>{@code
- * FtcWebcamAprilTagVisionLane.Config config =
- *         FtcWebcamAprilTagVisionLane.Config.defaults();
+ * FtcWebcamVisionLane.Config config =
+ *         FtcWebcamVisionLane.Config.defaults();
  * config.webcamName = "Webcam 1";
- * FtcWebcamAprilTagVisionLane vision =
- *         new FtcWebcamAprilTagVisionLane(hardwareMap, config);
+ * FtcWebcamVisionLane vision =
+ *         new FtcWebcamVisionLane(hardwareMap, config);
  * AprilTagSensor tags = vision.tagSensor();
  *
  * // Shared loop sample (memoized inside the sensor).

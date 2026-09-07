@@ -28,8 +28,9 @@ import edu.ftcsushi.fw.field.SimpleTagLayout;
 import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.ftc.FtcGameTagLayout;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
@@ -166,7 +167,7 @@ public final class CameraAprilTesterConfigurationTest {
     @Test
     public void pickerPathDoesNotApplyBuilderUntilADeviceIsChosen() {
         final int[] applies = {0};
-        Function<String, AprilTagVisionLaneFactory> builder = name -> {
+        Function<String, AprilTagCameraFactory> builder = name -> {
             applies[0]++;
             return hardwareMap -> null;
         };
@@ -318,7 +319,7 @@ public final class CameraAprilTesterConfigurationTest {
         camera.maxDetectionAgeSec = 0.0;
         CameraMountCalibrator cameraOwner = new CameraMountCalibrator(
                 camera,
-                name -> hardwareMap -> new ReadyLane(sensor)
+                name -> hardwareMap -> new ReadyLane(sensor).owned
         );
         cameraOwner.init(context(clock));
         cameraOwner.initLoop(0.0);
@@ -332,7 +333,7 @@ public final class CameraAprilTesterConfigurationTest {
         april.aprilTags.maxDetectionAgeSec = 0.0;
         AprilTagLocalizationTester aprilOwner = new AprilTagLocalizationTester(
                 april,
-                name -> hardwareMap -> new ReadyLane(sensor)
+                name -> hardwareMap -> new ReadyLane(sensor).owned
         );
         aprilOwner.init(context(clock));
         aprilOwner.initLoop(0.0);
@@ -615,7 +616,8 @@ public final class CameraAprilTesterConfigurationTest {
         }
     }
 
-    private static final class ReadyLane implements AprilTagVisionLane {
+    private static final class ReadyLane implements AprilTagVision, AutoCloseable {
+        private final OwnedAprilTagCamera owned = new OwnedAprilTagCamera(this, this);
         private final AprilTagSensor sensor;
 
         ReadyLane(AprilTagSensor sensor) {

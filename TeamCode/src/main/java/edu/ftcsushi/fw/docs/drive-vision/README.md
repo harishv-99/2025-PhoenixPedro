@@ -11,6 +11,7 @@ These guides are feature-specific. Start with the page that matches the result y
 |---|---|
 | Ask a spatial question in a named frame | [`Spatial Queries`](<Spatial Queries.md>) |
 | Shape or override drivetrain intent | [`Drive Guidance`](<Drive Guidance.md>) |
+| turn camera detections into useful target locations | [Locate a vision target](<Vision Targets.md>) |
 | Generate a mechanism target from exact, periodic, overlaid, or spatial requests | [`Mechanism Target Planning`](<Mechanism Target Planning.md>) |
 | Build AprilTag and odometry localization | [`AprilTag Localization & Fixed Layouts`](<AprilTag Localization & Fixed Layouts.md>) |
 | Set up AprilTags away from a full field | [`AprilTag Practice Setup`](<AprilTag Practice Setup.md>) |

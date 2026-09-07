@@ -64,6 +64,7 @@ nav = [
       { "Periodic turret position" = "docs/advanced/Periodic Turret Position.md" },
       { "Field-relative drive" = "docs/examples/Field-relative Drive.md" },
       { "Subsystem experiments" = "docs/examples/Subsystem Experiments.md" },
+      { "One bounded vision pickup" = "docs/examples/One Bounded Vision Pickup.md" },
       { "Timestamped adaptive collection" = "docs/examples/Timestamped Adaptive Collection.md" },
     ] },
     { "Core concepts" = [
@@ -90,6 +91,7 @@ nav = [
     ] },
     { "Drive, geometry, and vision" = [
       { "Drive and vision home" = "docs/drive-vision/README.md" },
+      { "Locate a vision target" = "docs/drive-vision/Vision Targets.md" },
       { "Spatial queries" = "docs/drive-vision/Spatial Queries.md" },
       { "Drive guidance" = "docs/drive-vision/Drive Guidance.md" },
       { "Mechanism target planning" = "docs/drive-vision/Mechanism Target Planning.md" },

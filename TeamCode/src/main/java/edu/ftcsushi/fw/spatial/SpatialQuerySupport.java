@@ -6,6 +6,7 @@ import java.util.Set;
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.CameraMountLogic;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
@@ -19,6 +20,49 @@ final class SpatialQuerySupport {
 
     private SpatialQuerySupport() {
         // utility holder
+    }
+
+    /** Attaches observed/committed target evidence without discarding the solve pose timestamp. */
+    static TranslationSolution targetEvidence(TranslationSolution solution, Object target, LoopClock clock) {
+        if (solution == null) return null;
+        TargetEvidence evidence = targetEvidence(target, clock);
+        return evidence == null ? solution
+                : solution.withTargetEvidence(evidence.timestamp, evidence.live);
+    }
+
+    /** Facing counterpart to the translation evidence bridge. */
+    static FacingSolution targetEvidence(FacingSolution solution, Object target, LoopClock clock) {
+        if (solution == null) return null;
+        TargetEvidence evidence = targetEvidence(target, clock);
+        return evidence == null ? solution
+                : solution.withTargetEvidence(evidence.timestamp, evidence.live);
+    }
+
+    private static TargetEvidence targetEvidence(Object target, LoopClock clock) {
+        Object reference = target;
+        if (target instanceof SpatialTargets.ReferencePointTarget) {
+            reference = ((SpatialTargets.ReferencePointTarget) target).reference;
+        } else if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
+            reference = ((SpatialTargets.ReferenceFrameHeadingTarget) target).reference;
+        }
+        if (reference instanceof References.FramePointRef) {
+            reference = ((References.FramePointRef) reference).frame;
+        }
+        if (reference instanceof References.ObservedPointRef) {
+            return new TargetEvidence(((References.ObservedPointRef) reference).get(clock)
+                    .observation().timestamp, true);
+        }
+        if (reference instanceof References.ApproachFrameRef) {
+            ApproachResult2d approach = ((References.ApproachFrameRef) reference).get(clock);
+            return new TargetEvidence(approach.observation().timestamp, !approach.isCommitted());
+        }
+        return null;
+    }
+
+    private static final class TargetEvidence {
+        final LoopTimestamp timestamp;
+        final boolean live;
+        TargetEvidence(LoopTimestamp timestamp, boolean live) { this.timestamp = timestamp; this.live = live; }
     }
 
     static Pose2d resolveFieldPointTarget(Object target,

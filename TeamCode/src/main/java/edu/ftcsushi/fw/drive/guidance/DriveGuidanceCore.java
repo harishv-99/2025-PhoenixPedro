@@ -73,6 +73,12 @@ final class DriveGuidanceCore {
             return commitStep(cycle, requestedMask, Step.noCommand("none"));
         }
 
+        if (rw.mode == DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY) {
+            CandidateSolution observed = toCandidate(evaluator.solveWithObservations(clock));
+            return commitStep(cycle, requestedMask,
+                    applyLossPolicy(observed, requestedMask, rw.lossPolicy, "observations"));
+        }
+
         CandidateSolution localization = rw.hasLocalization()
                 ? toCandidate(evaluator.solveWithLocalization(clock))
                 : CandidateSolution.invalid();

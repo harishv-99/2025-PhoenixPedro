@@ -23,8 +23,8 @@ import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcsushi.fw.ftc.localization.LimelightFieldPoseEstimator;
 import edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcsushi.fw.ftc.ui.HardwareNamePicker;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.input.binding.Bindings;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
@@ -109,13 +109,13 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
     private final String preferredVisionDeviceName;
     private final Class<? extends HardwareDevice> visionDeviceType;
     private final String visionPickerTitle;
-    private final Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder;
+    private final Function<String, AprilTagCameraFactory> visionLaneFactoryBuilder;
     private final TagLayout fixedTagLayout;
     private final String fixedTagLayoutPolicySummary;
     private final FtcOdometryAprilTagLocalizationLane.Config localizationConfig;
 
     /** Non-null only for the preferred path between construction and its first open attempt. */
-    private AprilTagVisionLaneFactory pendingVisionFactory;
+    private AprilTagCameraFactory pendingVisionFactory;
     private HardwareNamePicker visionPicker;
     private String selectedVisionDeviceName;
 
@@ -129,7 +129,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
     private VisionReadiness visionReadiness =
             VisionReadiness.notReady("No vision device is open");
 
-    private AprilTagVisionLane visionLane;
+    private OwnedAprilTagCamera visionLane;
     private CameraMountConfig activeCameraMount;
     private AprilTagSensor tagSensor;
     private TagSelectionSource selection;
@@ -156,7 +156,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
      */
     public PinpointAprilTagCorrectedLocalizationTester(
             Config config,
-            Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder) {
+            Function<String, AprilTagCameraFactory> visionLaneFactoryBuilder) {
         Config authored = Objects.requireNonNull(config, CONFIG_CONTEXT + " must not be null");
 
         String preferred = authored.preferredVisionDeviceName;
@@ -201,7 +201,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
                         authored.localization,
                         CONFIG_CONTEXT + ".localization must not be null"
                 ).validatedCopy(CONFIG_CONTEXT + ".localization");
-        Function<String, AprilTagVisionLaneFactory> requiredBuilder = Objects.requireNonNull(
+        Function<String, AprilTagCameraFactory> requiredBuilder = Objects.requireNonNull(
                 visionLaneFactoryBuilder,
                 PinpointAprilTagCorrectedLocalizationTester.class.getCanonicalName()
                         + ".visionLaneFactoryBuilder must not be null"
@@ -380,7 +380,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
         boolean openCalled = false;
         boolean ownerPublished = false;
         try {
-            AprilTagVisionLaneFactory factory = pendingVisionFactory;
+            AprilTagCameraFactory factory = pendingVisionFactory;
             pendingVisionFactory = null;
             if (factory == null) {
                 factory = requireDeferredFactory(
@@ -390,7 +390,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
             }
 
             openCalled = true;
-            AprilTagVisionLane opened = factory.open(ctx.hw);
+            OwnedAprilTagCamera opened = factory.open(ctx.hw);
             if (opened == null) {
                 throw new IllegalStateException(
                         "vision lane factory returned null for " + selectedVisionDeviceName
@@ -402,17 +402,17 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
             activeVisionDescription = factory.description();
             localizationLane = new FtcOdometryAprilTagLocalizationLane(
                     ctx.hw,
-                    visionLane,
+                    visionLane.aprilTags(),
                     fixedTagLayout,
                     localizationConfig
             );
             tagSensor = Objects.requireNonNull(
-                    visionLane.tagSensor(),
-                    "visionLane.tagSensor() must not return null"
+                    visionLane.aprilTags().tagSensor(),
+                    "visionLane.aprilTags().tagSensor() must not return null"
             );
             activeCameraMount = Objects.requireNonNull(
-                    visionLane.cameraMountConfig(),
-                    "visionLane.cameraMountConfig() must not return null"
+                    visionLane.aprilTags().cameraMountConfig(),
+                    "visionLane.aprilTags().cameraMountConfig() must not return null"
             );
             rebuildSelection();
 
@@ -446,16 +446,16 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
 
     /** Poll one published owner; null and throwing readiness are contract failures, not WAITING. */
     private void refreshVisionReadiness() {
-        AprilTagVisionLane lane = visionLane;
+        OwnedAprilTagCamera lane = visionLane;
         if (lane == null || visionClosingOrTerminal || visionCleanupFailed) {
             ready = false;
             return;
         }
         try {
-            VisionReadiness current = lane.readiness(clock);
+            VisionReadiness current = lane.aprilTags().readiness(clock);
             if (current == null) {
                 throw new IllegalStateException(
-                        "visionLane.readiness(clock) must not return null"
+                        "visionLane.aprilTags().readiness(clock) must not return null"
                 );
             }
             visionReadiness = current;
@@ -516,7 +516,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
     /** Detach before close so repeated and reentrant lifecycle callbacks cannot close twice. */
     private RuntimeException closeVisionLaneOnce() {
         visionClosingOrTerminal = true;
-        AprilTagVisionLane lane = visionLane;
+        OwnedAprilTagCamera lane = visionLane;
         visionLane = null;
         if (lane == null) {
             return null;
@@ -842,8 +842,8 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
         telemetry.update();
     }
 
-    private static AprilTagVisionLaneFactory requireDeferredFactory(
-            AprilTagVisionLaneFactory factory,
+    private static AprilTagCameraFactory requireDeferredFactory(
+            AprilTagCameraFactory factory,
             String selectedName) {
         if (factory == null) {
             throw new IllegalStateException(

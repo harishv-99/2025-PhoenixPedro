@@ -8,10 +8,10 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import java.util.function.Function;
 
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactories;
-import edu.ftcsushi.fw.ftc.vision.AprilTagVisionLaneFactory;
-import edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
-import edu.ftcsushi.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactories;
+import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
+import edu.ftcsushi.fw.ftc.vision.FtcLimelightVisionLane;
+import edu.ftcsushi.fw.ftc.vision.FtcWebcamVisionLane;
 import edu.ftcsushi.fw.tools.tester.TeleOpTester;
 import edu.ftcsushi.fw.tools.tester.TesterSuite;
 import edu.ftcsushi.fw.tools.tester.calibration.CalibrationChecks;
@@ -33,7 +33,7 @@ import edu.ftcsushi.robots.phoenix.PhoenixVisionFactory;
  * a Limelight-backed rig.</p>
  *
  * <p>Each factory maps the current profile into one fresh tool-owned Config and supplies backend
- * behavior separately through an {@link AprilTagVisionLaneFactory} builder. The builder captures the
+ * behavior separately through an {@link AprilTagCameraFactory} builder. The builder captures the
  * selected backend template immediately instead of rereading the broad mutable profile on a later
  * picker retry; a borrowed custom SDK tag library must therefore remain stable for the tester's
  * complete lifetime.</p>
@@ -65,22 +65,22 @@ public final class PhoenixRobotTesters {
                 : "Select Camera";
     }
 
-    private static Function<String, AprilTagVisionLaneFactory> activeVisionLaneFactoryBuilder(PhoenixProfile p) {
+    private static Function<String, AprilTagCameraFactory> activeVisionLaneFactoryBuilder(PhoenixProfile p) {
         switch (p.vision.backend) {
             case WEBCAM: {
-                final FtcWebcamAprilTagVisionLane.Config template = p.vision.webcam.copy();
+                final FtcWebcamVisionLane.Config template = p.vision.webcam.copy();
                 return hardwareName -> {
-                    FtcWebcamAprilTagVisionLane.Config cfg = template.copy();
+                    FtcWebcamVisionLane.Config cfg = template.copy();
                     cfg.webcamName = hardwareName;
-                    return AprilTagVisionLaneFactories.webcam(cfg);
+                    return AprilTagCameraFactories.webcam(cfg);
                 };
             }
             case LIMELIGHT: {
-                final FtcLimelightAprilTagVisionLane.Config template = p.vision.limelight.copy();
+                final FtcLimelightVisionLane.Config template = p.vision.limelight.copy();
                 return hardwareName -> {
-                    FtcLimelightAprilTagVisionLane.Config cfg = template.copy();
+                    FtcLimelightVisionLane.Config cfg = template.copy();
                     cfg.hardwareName = hardwareName;
-                    return AprilTagVisionLaneFactories.limelight(cfg);
+                    return AprilTagCameraFactories.limelight(cfg);
                 };
             }
             default:
@@ -254,7 +254,7 @@ public final class PhoenixRobotTesters {
         cfg.visionPickerTitle = activeVisionPickerTitle(p);
         cfg.fixedTagLayout = p.fixedAprilTagLayout;
         cfg.aprilTags = p.localization.estimation.aprilTags.copy();
-        Function<String, AprilTagVisionLaneFactory> visionFactoryBuilder =
+        Function<String, AprilTagCameraFactory> visionFactoryBuilder =
                 CalibrationChecks.canUseAprilTagAssist(p.vision.activeCameraMount())
                         ? activeVisionLaneFactoryBuilder(p)
                         : null;

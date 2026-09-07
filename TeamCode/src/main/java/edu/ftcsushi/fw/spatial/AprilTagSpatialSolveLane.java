@@ -130,8 +130,8 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
         FacingSolution facing = solveFacing(request, detections, mountAtFrame, timestamp, liveFieldPose);
 
         return SpatialLaneResult.of(
-                translation,
-                facing,
+                SpatialQuerySupport.targetEvidence(translation, request.translationTarget, request.clock),
+                SpatialQuerySupport.targetEvidence(facing, request.facingTarget, request.clock),
                 SpatialQuerySupport.translationSelectionSnapshot(request.translationTarget, request.clock, detections, maxAgeSec),
                 SpatialQuerySupport.facingSelectionSnapshot(request.facingTarget, request.clock, detections, maxAgeSec)
         );
@@ -179,9 +179,9 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
                     robotToTargetPoint,
                     Double.isFinite(range),
                     range,
-                    1.0,
+                    Double.NaN,
                     timestamp
-            );
+            ).withDirectObservationEvidence(timestamp);
         }
 
         if (liveFieldPose != null) {
@@ -231,9 +231,9 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
                                 robotToFrame.headingRad,
                                 target.headingOffsetRad
                         ),
-                        1.0,
+                        Double.NaN,
                         timestamp
-                );
+                ).withDirectObservationEvidence(timestamp);
             }
         } else if (request.facingTarget instanceof SpatialTargets.ReferencePointTarget) {
             Pose2d robotToPoint = SpatialQuerySupport.resolveRobotPointDirect(
@@ -244,7 +244,8 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
                     maxAgeSec
             );
             if (robotToPoint != null) {
-                return SpatialSolveMath.facingFromRobotPoint(facingFrame, robotToPoint, 1.0, timestamp);
+                return SpatialSolveMath.facingFromRobotPoint(facingFrame, robotToPoint, Double.NaN, timestamp)
+                        .withDirectObservationEvidence(timestamp);
             }
         }
 

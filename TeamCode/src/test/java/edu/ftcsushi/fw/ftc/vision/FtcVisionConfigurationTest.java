@@ -27,6 +27,7 @@ import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -34,8 +35,8 @@ import static org.junit.Assert.fail;
 /** Configuration-boundary and API-shape coverage for the FTC vision owners. */
 public final class FtcVisionConfigurationTest {
 
-    private static final FtcWebcamVisionPortalLane.ResolutionReader VALID_RESOLUTION_READER =
-            new FtcWebcamVisionPortalLane.ResolutionReader() {
+    private static final FtcWebcamVisionLane.ResolutionReader VALID_RESOLUTION_READER =
+            new FtcWebcamVisionLane.ResolutionReader() {
                 @Override
                 public int width(Size size) {
                     return 640;
@@ -50,15 +51,15 @@ public final class FtcVisionConfigurationTest {
     @Test
     public void rawWebcamConfigCopyRetainsBorrowedLibraryWithoutValidation() {
         AprilTagLibrary malformed = new AprilTagLibrary.Builder().build();
-        FtcWebcamAprilTagVisionLane.Config authored =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
+        FtcWebcamVisionLane.Config authored =
+                tagWebcamConfig();
         authored.webcamName = "  Webcam Left  ";
-        authored.tagLibrary = malformed;
+        authored.aprilTags.tagLibrary = malformed;
 
-        FtcWebcamAprilTagVisionLane.Config copy = authored.copy();
+        FtcWebcamVisionLane.Config copy = authored.copy();
 
         assertNotSame(authored, copy);
-        assertSame(malformed, copy.tagLibrary);
+        assertSame(malformed, copy.aprilTags.tagLibrary);
         assertEquals("  Webcam Left  ", copy.webcamName);
     }
 
@@ -81,13 +82,13 @@ public final class FtcVisionConfigurationTest {
                 metadata(4, DistanceUnit.INCH, 3.0,
                         new VectorF(7.0f, 8.0f, 9.0f), Quaternion.identityQuaternion())
         );
-        FtcWebcamAprilTagVisionLane.Config cfg =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
+        FtcWebcamVisionLane.Config cfg =
+                tagWebcamConfig();
         cfg.webcamName = "  Webcam Left  ";
-        cfg.tagLibrary = source;
+        cfg.aprilTags.tagLibrary = source;
 
-        FtcWebcamAprilTagVisionLane.ActiveConfig captured =
-                FtcWebcamAprilTagVisionLane.captureActiveConfig(
+        FtcWebcamVisionLane.ActiveConfig captured =
+                FtcWebcamVisionLane.captureActiveConfig(
                         cfg,
                         VALID_RESOLUTION_READER
                 );
@@ -137,11 +138,11 @@ public final class FtcVisionConfigurationTest {
 
     @Test
     public void currentGameMeaningIsResolvedAtCaptureAndFreshLibrariesAreIndependent() {
-        FtcWebcamAprilTagVisionLane.Config cfg =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
+        FtcWebcamVisionLane.Config cfg =
+                tagWebcamConfig();
 
-        FtcWebcamAprilTagVisionLane.ActiveConfig captured =
-                FtcWebcamAprilTagVisionLane.captureActiveConfig(
+        FtcWebcamVisionLane.ActiveConfig captured =
+                FtcWebcamVisionLane.captureActiveConfig(
                         cfg,
                         VALID_RESOLUTION_READER
                 );
@@ -162,7 +163,7 @@ public final class FtcVisionConfigurationTest {
     public void activeLibraryCaptureRejectsMalformedMetadataWithExactLocation() {
         assertLibraryRejected(
                 rawLibrary((AprilTagMetadata) null),
-                "Config.tagLibrary.metadata[0] must not be null"
+                "Config.aprilTags.tagLibrary.metadata[0] must not be null"
         );
         assertLibraryRejected(
                 rawLibrary(metadata(-1, DistanceUnit.INCH, 1.0,
@@ -200,7 +201,7 @@ public final class FtcVisionConfigurationTest {
         );
         assertLibraryRejected(
                 new AprilTagLibrary.Builder().build(),
-                "Config.tagLibrary must contain at least one tag"
+                "Config.aprilTags.tagLibrary must contain at least one tag"
         );
 
         AprilTagLibrary duplicate = library(
@@ -288,7 +289,7 @@ public final class FtcVisionConfigurationTest {
     @Test
     public void quaternionToleranceAcceptsNearUnitWithoutNormalizingAndRejectsOutsideIt() {
         Quaternion accepted = new Quaternion(1.000009f, 0.0f, 0.0f, 0.0f, 456L);
-        FtcWebcamAprilTagVisionLane.ActiveConfig captured = capture(
+        FtcWebcamVisionLane.ActiveConfig captured = capture(
                 library(metadata(1, DistanceUnit.INCH, 1.0,
                         new VectorF(0.0f, 0.0f, 0.0f), accepted))
         );
@@ -313,11 +314,11 @@ public final class FtcVisionConfigurationTest {
 
     @Test
     public void deferredFactoriesValidateAndCaptureBeforeHardwareOpen() {
-        FtcLimelightAprilTagVisionLane.Config limelight =
-                FtcLimelightAprilTagVisionLane.Config.defaults();
+        FtcLimelightVisionLane.Config limelight =
+                tagLimelightConfig();
         limelight.hardwareName = "  limelight-main  ";
-        AprilTagVisionLaneFactory limelightFactory =
-                AprilTagVisionLaneFactories.limelight(limelight);
+        AprilTagCameraFactory limelightFactory =
+                AprilTagCameraFactories.limelight(limelight);
         limelight.hardwareName = "changed";
         limelight.pipelineIndex = 9;
         assertEquals("limelight: limelight-main", limelightFactory.description());
@@ -331,25 +332,25 @@ public final class FtcVisionConfigurationTest {
         assertLimelightFactoryRejected(
                 "cameraMount", "null", config -> config.cameraMount = null);
 
-        FtcWebcamAprilTagVisionLane.Config webcam =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
+        FtcWebcamVisionLane.Config webcam =
+                tagWebcamConfig();
         webcam.webcamName = "  Webcam Right  ";
-        webcam.tagLibrary = library(metadata(1, DistanceUnit.INCH, 1.0,
+        webcam.aprilTags.tagLibrary = library(metadata(1, DistanceUnit.INCH, 1.0,
                 new VectorF(0.0f, 0.0f, 0.0f), Quaternion.identityQuaternion()));
-        AprilTagVisionLaneFactory webcamFactory =
-                AprilTagVisionLaneFactories.webcam(webcam, VALID_RESOLUTION_READER);
+        AprilTagCameraFactory webcamFactory =
+                AprilTagCameraFactories.webcam(webcam, VALID_RESOLUTION_READER);
         webcam.webcamName = "changed";
-        webcam.tagLibrary.getAllTags()[0] = metadata(99, DistanceUnit.INCH, 1.0,
+        webcam.aprilTags.tagLibrary.getAllTags()[0] = metadata(99, DistanceUnit.INCH, 1.0,
                 new VectorF(0.0f, 0.0f, 0.0f), Quaternion.identityQuaternion());
         assertEquals("webcam: Webcam Right", webcamFactory.description());
 
-        webcam = FtcWebcamAprilTagVisionLane.Config.defaults();
+        webcam = tagWebcamConfig();
         webcam.webcamName = "  ";
-        FtcWebcamAprilTagVisionLane.Config invalidWebcam = webcam;
+        FtcWebcamVisionLane.Config invalidWebcam = webcam;
         expectFailureContaining(
                 IllegalArgumentException.class,
-                "FtcWebcamAprilTagVisionLane.Config.webcamName",
-                () -> AprilTagVisionLaneFactories.webcam(
+                "FtcWebcamVisionLane.Config.webcamName",
+                () -> AprilTagCameraFactories.webcam(
                         invalidWebcam,
                         VALID_RESOLUTION_READER
                 )
@@ -358,24 +359,24 @@ public final class FtcVisionConfigurationTest {
 
     @Test
     public void deferredFactoriesOwnAllFieldsAndProduceIndependentRepeatedOpenSnapshots() {
-        FtcWebcamAprilTagVisionLane.Config webcam =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
+        FtcWebcamVisionLane.Config webcam =
+                tagWebcamConfig();
         Size authoredResolution = webcam.cameraResolution;
         CameraMountConfig authoredMount = CameraMountConfig.of(
                 1.0, 2.0, 3.0, 0.1, 0.2, 0.3);
         webcam.webcamName = "  Webcam Factory  ";
         webcam.cameraMount = authoredMount;
-        webcam.tagLibrary = library(metadata(7, DistanceUnit.INCH, 2.0,
+        webcam.aprilTags.tagLibrary = library(metadata(7, DistanceUnit.INCH, 2.0,
                 new VectorF(1.0f, 2.0f, 3.0f), Quaternion.identityQuaternion()));
 
-        List<FtcWebcamAprilTagVisionLane.ActiveConfig> webcamOwners =
-                new ArrayList<FtcWebcamAprilTagVisionLane.ActiveConfig>();
+        List<FtcWebcamVisionLane.ActiveConfig> webcamOwners =
+                new ArrayList<FtcWebcamVisionLane.ActiveConfig>();
         List<AprilTagLibrary> openedLibraries = new ArrayList<AprilTagLibrary>();
-        AprilTagVisionLaneFactory webcamFactory = AprilTagVisionLaneFactories.webcam(
+        AprilTagCameraFactory webcamFactory = AprilTagCameraFactories.webcam(
                 webcam,
                 VALID_RESOLUTION_READER,
                 (hardwareMap, captured) -> {
-                    FtcWebcamAprilTagVisionLane.ActiveConfig owner =
+                    FtcWebcamVisionLane.ActiveConfig owner =
                             captured.recaptured(VALID_RESOLUTION_READER);
                     webcamOwners.add(owner);
                     openedLibraries.add(owner.freshTagLibrary());
@@ -386,14 +387,14 @@ public final class FtcVisionConfigurationTest {
         webcam.webcamName = "mutated";
         webcam.cameraResolution = null;
         webcam.cameraMount = CameraMountConfig.identity();
-        webcam.tagLibrary.getAllTags()[0] = metadata(99, DistanceUnit.INCH, 9.0,
+        webcam.aprilTags.tagLibrary.getAllTags()[0] = metadata(99, DistanceUnit.INCH, 9.0,
                 new VectorF(9.0f, 9.0f, 9.0f), Quaternion.identityQuaternion());
 
         webcamFactory.open(null);
         webcamFactory.open(null);
         assertEquals(2, webcamOwners.size());
         assertNotSame(webcamOwners.get(0), webcamOwners.get(1));
-        for (FtcWebcamAprilTagVisionLane.ActiveConfig owner : webcamOwners) {
+        for (FtcWebcamVisionLane.ActiveConfig owner : webcamOwners) {
             assertEquals("Webcam Factory", owner.webcamName());
             assertSame(authoredResolution, owner.cameraResolution());
             assertSame(authoredMount, owner.cameraMount());
@@ -403,8 +404,8 @@ public final class FtcVisionConfigurationTest {
         assertEquals(7, openedLibraries.get(0).getAllTags()[0].id);
         assertEquals(7, openedLibraries.get(1).getAllTags()[0].id);
 
-        FtcLimelightAprilTagVisionLane.Config limelight =
-                FtcLimelightAprilTagVisionLane.Config.defaults();
+        FtcLimelightVisionLane.Config limelight =
+                tagLimelightConfig();
         CameraMountConfig limelightMount = CameraMountConfig.of(
                 -1.0, -2.0, 4.0, -0.1, 0.0, 0.2);
         limelight.hardwareName = "  limelight-factory  ";
@@ -412,13 +413,13 @@ public final class FtcVisionConfigurationTest {
         limelight.pollRateHz = 250;
         limelight.maxResultAgeSec = Double.MIN_VALUE;
         limelight.cameraMount = limelightMount;
-        List<FtcLimelightAprilTagVisionLane.Config> limelightOwners =
-                new ArrayList<FtcLimelightAprilTagVisionLane.Config>();
-        AprilTagVisionLaneFactory limelightFactory = AprilTagVisionLaneFactories.limelight(
+        List<FtcLimelightVisionLane.Config> limelightOwners =
+                new ArrayList<FtcLimelightVisionLane.Config>();
+        AprilTagCameraFactory limelightFactory = AprilTagCameraFactories.limelight(
                 limelight,
                 (hardwareMap, captured) -> {
-                    FtcLimelightAprilTagVisionLane.Config owner =
-                            FtcLimelightAprilTagVisionLane.validatedCopy(captured);
+                    FtcLimelightVisionLane.Config owner =
+                            validateLimelight(captured);
                     limelightOwners.add(owner);
                     return fakeLane(owner.cameraMount);
                 }
@@ -434,7 +435,7 @@ public final class FtcVisionConfigurationTest {
 
         assertEquals(2, limelightOwners.size());
         assertNotSame(limelightOwners.get(0), limelightOwners.get(1));
-        for (FtcLimelightAprilTagVisionLane.Config owner : limelightOwners) {
+        for (FtcLimelightVisionLane.Config owner : limelightOwners) {
             assertEquals("limelight-factory", owner.hardwareName);
             assertEquals(9, owner.pipelineIndex);
             assertEquals(250, owner.pollRateHz);
@@ -447,44 +448,44 @@ public final class FtcVisionConfigurationTest {
     public void specializedWebcamPreflightRejectsBeforeProcessorOrPortalEffects() {
         int[] processorCreates = {0};
         int[] portalOpens = {0};
-        FtcWebcamAprilTagVisionLane.AprilTagProcessorFactory processorFactory =
+        FtcWebcamVisionLane.AprilTagProcessorFactory processorFactory =
                 (mount, tagLibrary) -> {
                     processorCreates[0]++;
                     return new org.firstinspires.ftc.vision.apriltag.AprilTagProcessor.Builder()
                             .setTagLibrary(tagLibrary)
                             .build();
                 };
-        FtcWebcamVisionPortalLane.PortalFactory portalFactory = (config, processors) -> {
+        FtcWebcamVisionLane.PortalFactory portalFactory = (config, processors) -> {
             portalOpens[0]++;
             return null;
         };
 
         expectFailureMessage(
                 NullPointerException.class,
-                "FtcWebcamAprilTagVisionLane.Config",
+                "FtcWebcamVisionLane.Config",
                 () -> specializedOwner(null, processorFactory, portalFactory,
                         VALID_RESOLUTION_READER)
         );
 
-        FtcWebcamAprilTagVisionLane.Config blank = validWebcamConfig();
+        FtcWebcamVisionLane.Config blank = validWebcamConfig();
         blank.webcamName = " ";
         expectFailureMessage(
                 IllegalArgumentException.class,
-                "FtcWebcamAprilTagVisionLane.Config.webcamName must not be blank",
+                "FtcWebcamVisionLane.Config.webcamName must not be blank",
                 () -> specializedOwner(blank, processorFactory, portalFactory,
                         VALID_RESOLUTION_READER)
         );
 
-        FtcWebcamAprilTagVisionLane.Config nullName = validWebcamConfig();
+        FtcWebcamVisionLane.Config nullName = validWebcamConfig();
         nullName.webcamName = null;
         expectFailureMessage(
                 NullPointerException.class,
-                "FtcWebcamAprilTagVisionLane.Config.webcamName",
+                "FtcWebcamVisionLane.Config.webcamName",
                 () -> specializedOwner(nullName, processorFactory, portalFactory,
                         VALID_RESOLUTION_READER)
         );
 
-        FtcWebcamAprilTagVisionLane.Config nullResolution = validWebcamConfig();
+        FtcWebcamVisionLane.Config nullResolution = validWebcamConfig();
         nullResolution.cameraResolution = null;
         expectFailureContaining(NullPointerException.class, ".cameraResolution",
                 () -> specializedOwner(nullResolution, processorFactory, portalFactory,
@@ -492,7 +493,7 @@ public final class FtcVisionConfigurationTest {
 
         expectFailureContaining(IllegalArgumentException.class, ".cameraResolution",
                 () -> specializedOwner(validWebcamConfig(), processorFactory, portalFactory,
-                        new FtcWebcamVisionPortalLane.ResolutionReader() {
+                        new FtcWebcamVisionLane.ResolutionReader() {
                             @Override
                             public int width(Size size) {
                                 return 0;
@@ -504,23 +505,23 @@ public final class FtcVisionConfigurationTest {
                             }
                         }));
 
-        FtcWebcamAprilTagVisionLane.Config nullMount = validWebcamConfig();
+        FtcWebcamVisionLane.Config nullMount = validWebcamConfig();
         nullMount.cameraMount = null;
         expectFailureContaining(NullPointerException.class, ".cameraMount",
                 () -> specializedOwner(nullMount, processorFactory, portalFactory,
                         VALID_RESOLUTION_READER));
 
-        FtcWebcamAprilTagVisionLane.Config emptyLibrary = validWebcamConfig();
-        emptyLibrary.tagLibrary = new AprilTagLibrary.Builder().build();
-        expectFailureContaining(IllegalArgumentException.class, ".tagLibrary",
+        FtcWebcamVisionLane.Config emptyLibrary = validWebcamConfig();
+        emptyLibrary.aprilTags.tagLibrary = new AprilTagLibrary.Builder().build();
+        expectFailureContaining(IllegalArgumentException.class, ".aprilTags.tagLibrary",
                 () -> specializedOwner(emptyLibrary, processorFactory, portalFactory,
                         VALID_RESOLUTION_READER));
 
         VisionProcessor duplicate = new NoopProcessor();
-        expectFailureContaining(NullPointerException.class, "additionalProcessors",
+        expectFailureContaining(NullPointerException.class, "processors",
                 () -> specializedOwner(validWebcamConfig(), processorFactory, portalFactory,
                         VALID_RESOLUTION_READER, (VisionProcessor[]) null));
-        expectFailureContaining(NullPointerException.class, "additionalProcessors[0]",
+        expectFailureContaining(NullPointerException.class, "processors[0]",
                 () -> specializedOwner(validWebcamConfig(), processorFactory, portalFactory,
                         VALID_RESOLUTION_READER, (VisionProcessor) null));
         expectFailureContaining(IllegalArgumentException.class, "duplicate",
@@ -533,9 +534,9 @@ public final class FtcVisionConfigurationTest {
         expectFailureMessage(
                 NullPointerException.class,
                 "hardwareMap",
-                () -> new FtcWebcamAprilTagVisionLane(
+                () -> new FtcWebcamVisionLane(
                         null,
-                        FtcWebcamAprilTagVisionLane.Config.defaults()
+                        tagWebcamConfig()
                 )
         );
         assertEquals(0, processorCreates[0]);
@@ -546,8 +547,8 @@ public final class FtcVisionConfigurationTest {
     public void ownerSpecificNullConfigAndLimelightBoundaryDiagnosticsAreExact() {
         expectFailureMessage(
                 NullPointerException.class,
-                "FtcWebcamVisionPortalLane.Config",
-                () -> new FtcWebcamVisionPortalLane(
+                "FtcWebcamVisionLane.Config",
+                () -> new FtcWebcamVisionLane(
                         null,
                         (config, processors) -> null,
                         () -> 0L,
@@ -561,51 +562,51 @@ public final class FtcVisionConfigurationTest {
         );
         expectFailureMessage(
                 NullPointerException.class,
-                "FtcLimelightAprilTagVisionLane.Config",
-                () -> new FtcLimelightAprilTagVisionLane(null, hardwareName -> null)
+                "FtcLimelightVisionLane.Config",
+                () -> new FtcLimelightVisionLane(null, hardwareName -> null)
         );
         expectFailureMessage(
                 NullPointerException.class,
-                "FtcWebcamAprilTagVisionLane.Config",
-                () -> AprilTagVisionLaneFactories.webcam(null, VALID_RESOLUTION_READER)
+                "FtcWebcamVisionLane.Config",
+                () -> AprilTagCameraFactories.webcam(null, VALID_RESOLUTION_READER)
         );
         expectFailureMessage(
                 NullPointerException.class,
-                "FtcLimelightAprilTagVisionLane.Config",
-                () -> AprilTagVisionLaneFactories.limelight(null)
+                "FtcLimelightVisionLane.Config",
+                () -> AprilTagCameraFactories.limelight(null)
         );
 
-        FtcLimelightAprilTagVisionLane.Config lower =
-                FtcLimelightAprilTagVisionLane.Config.defaults();
+        FtcLimelightVisionLane.Config lower =
+                tagLimelightConfig();
         lower.pipelineIndex = 0;
         lower.pollRateHz = 1;
         lower.maxResultAgeSec = Double.MIN_VALUE;
-        FtcLimelightAprilTagVisionLane.Config lowerSnapshot =
-                FtcLimelightAprilTagVisionLane.validatedCopy(lower);
+        FtcLimelightVisionLane.Config lowerSnapshot =
+                validateLimelight(lower);
         assertEquals(0, lowerSnapshot.pipelineIndex);
         assertEquals(1, lowerSnapshot.pollRateHz);
         assertEquals(Double.MIN_VALUE, lowerSnapshot.maxResultAgeSec, 0.0);
 
-        FtcLimelightAprilTagVisionLane.Config upper =
-                FtcLimelightAprilTagVisionLane.Config.defaults();
+        FtcLimelightVisionLane.Config upper =
+                tagLimelightConfig();
         upper.pipelineIndex = 9;
         upper.pollRateHz = 250;
-        FtcLimelightAprilTagVisionLane.Config upperSnapshot =
-                FtcLimelightAprilTagVisionLane.validatedCopy(upper);
+        FtcLimelightVisionLane.Config upperSnapshot =
+                validateLimelight(upper);
         assertEquals(9, upperSnapshot.pipelineIndex);
         assertEquals(250, upperSnapshot.pollRateHz);
 
         assertLimelightFailureMessage(
                 config -> config.pipelineIndex = -1,
-                "FtcLimelightAprilTagVisionLane.Config.pipelineIndex must be within [0, 9], got -1"
+                "FtcLimelightVisionLane.Config.pipelineIndex must be within [0, 9], got -1"
         );
         assertLimelightFailureMessage(
                 config -> config.pollRateHz = 0,
-                "FtcLimelightAprilTagVisionLane.Config.pollRateHz must be within [1, 250], got 0"
+                "FtcLimelightVisionLane.Config.pollRateHz must be within [1, 250], got 0"
         );
         assertLimelightFailureMessage(
                 config -> config.maxResultAgeSec = Double.POSITIVE_INFINITY,
-                "FtcLimelightAprilTagVisionLane.Config.maxResultAgeSec must be finite and > 0, "
+                "FtcLimelightVisionLane.Config.maxResultAgeSec must be finite and > 0, "
                         + "got Infinity"
         );
     }
@@ -613,50 +614,69 @@ public final class FtcVisionConfigurationTest {
     @Test
     public void retainedVisionApiHasOneConstructorPerOwnerAndOnlyConfigFactories() {
         assertPublicConstructors(
-                FtcWebcamVisionPortalLane.class,
-                signature(HardwareMap.class, FtcWebcamVisionPortalLane.Config.class,
-                        VisionProcessor[].class)
-        );
-        assertPublicConstructors(
-                FtcWebcamAprilTagVisionLane.class,
-                signature(HardwareMap.class, FtcWebcamAprilTagVisionLane.Config.class,
+                FtcWebcamVisionLane.class,
+                signature(HardwareMap.class, FtcWebcamVisionLane.Config.class,
                         VisionProcessor[].class)
         );
         assertPublicConstructors(
                 FtcLimelightVisionLane.class,
                 signature(HardwareMap.class, FtcLimelightVisionLane.Config.class)
         );
-        assertPublicConstructors(
-                FtcLimelightAprilTagVisionLane.class,
-                signature(HardwareMap.class, FtcLimelightAprilTagVisionLane.Config.class)
-        );
+        assertEquals(0, FtcLimelightAprilTagVision.class.getConstructors().length);
+        assertFalse(AutoCloseable.class.isAssignableFrom(AprilTagVision.class));
+        assertFalse(AutoCloseable.class.isAssignableFrom(FtcLimelightAprilTagVision.class));
 
-        assertNoDeclaredMethod(FtcWebcamVisionPortalLane.class, "portalConfig");
-        assertNoDeclaredMethod(FtcWebcamAprilTagVisionLane.class, "config");
+        assertNoDeclaredMethod(FtcWebcamVisionLane.class, "portalConfig");
+        assertNoDeclaredMethod(FtcWebcamVisionLane.class, "config");
         assertNoDeclaredMethod(FtcLimelightVisionLane.class, "visionConfig");
-        assertNoDeclaredMethod(FtcLimelightAprilTagVisionLane.class, "config");
+        assertNoDeclaredMethod(FtcLimelightAprilTagVision.class, "config");
 
         List<String> publicFactories = new ArrayList<String>();
-        for (Method method : AprilTagVisionLaneFactories.class.getDeclaredMethods()) {
+        for (Method method : AprilTagCameraFactories.class.getDeclaredMethods()) {
             if (Modifier.isPublic(method.getModifiers())) {
                 publicFactories.add(method.getName() + Arrays.toString(method.getParameterTypes()));
             }
         }
         assertEquals(Arrays.asList(
-                "limelight[class edu.ftcsushi.fw.ftc.vision.FtcLimelightAprilTagVisionLane$Config]",
-                "webcam[class edu.ftcsushi.fw.ftc.vision.FtcWebcamAprilTagVisionLane$Config]"
+                "limelight[class edu.ftcsushi.fw.ftc.vision.FtcLimelightVisionLane$Config]",
+                "webcam[class edu.ftcsushi.fw.ftc.vision.FtcWebcamVisionLane$Config]"
         ), sorted(publicFactories));
 
-        assertConfigSurface(FtcWebcamVisionPortalLane.Config.class);
-        assertConfigSurface(FtcWebcamAprilTagVisionLane.Config.class);
+        assertConfigSurface(FtcWebcamVisionLane.Config.class);
         assertConfigSurface(FtcLimelightVisionLane.Config.class);
-        assertConfigSurface(FtcLimelightAprilTagVisionLane.Config.class);
+        assertConfigSurface(FtcWebcamVisionLane.AprilTagConfig.class);
+        assertConfigSurface(FtcLimelightVisionLane.AprilTagConfig.class);
+    }
+
+    @Test
+    public void optionalCapabilitiesSnapshotDraftsAndRejectConflictsBeforeDeviceOpen() {
+        FtcWebcamVisionLane.Config webcam = tagWebcamConfig();
+        webcam.floorObjects = FtcFloorObjectVision.Config.defaults();
+        FtcWebcamVisionLane.Config webcamCopy = webcam.copy();
+        assertNotSame(webcam.aprilTags, webcamCopy.aprilTags);
+        assertNotSame(webcam.floorObjects, webcamCopy.floorObjects);
+        assertSame(webcam.cameraMount, webcamCopy.cameraMount);
+        webcam.floorObjects.maxCandidates = 2;
+        assertEquals(16, webcamCopy.floorObjects.maxCandidates);
+        assertNull(FtcWebcamVisionLane.Config.defaults().aprilTags);
+        assertNull(FtcWebcamVisionLane.Config.defaults().floorObjects);
+        expectFailureContaining(IllegalArgumentException.class, "requires Config.aprilTags",
+                () -> AprilTagCameraFactories.webcam(
+                        FtcWebcamVisionLane.Config.defaults(), VALID_RESOLUTION_READER));
+
+        FtcLimelightVisionLane.Config limelight = tagLimelightConfig();
+        limelight.floorObjects = FtcFloorObjectVision.Config.defaults();
+        limelight.floorObjects.limelightPipelineIndex = limelight.aprilTags.pipelineIndex;
+        int[] opens = {0};
+        expectFailureContaining(IllegalArgumentException.class, "pipelines must differ",
+                () -> new FtcLimelightVisionLane(limelight, name -> { opens[0]++; return null; }));
+        assertEquals(0, opens[0]);
     }
 
     @Test
     public void everyRetainedVisionConfigHasCompactFieldBearingToString() {
-        FtcWebcamVisionPortalLane.Config genericWebcamConfig =
-                FtcWebcamVisionPortalLane.Config.defaults();
+        FtcWebcamVisionLane.Config genericWebcamConfig =
+                tagWebcamConfig();
         // Android's pure-JVM stub does not implement Size.toString(); a raw null draft still
         // exercises the config formatter and is intentionally not validated by toString().
         genericWebcamConfig.cameraResolution = null;
@@ -664,8 +684,8 @@ public final class FtcVisionConfigurationTest {
         assertTrue(genericWebcam, genericWebcam.contains("webcamName"));
         assertTrue(genericWebcam, genericWebcam.contains("cameraResolution"));
 
-        FtcWebcamAprilTagVisionLane.Config tagWebcamConfig =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
+        FtcWebcamVisionLane.Config tagWebcamConfig =
+                tagWebcamConfig();
         tagWebcamConfig.cameraResolution = null;
         String tagWebcam = tagWebcamConfig.toString();
         assertTrue(tagWebcam, tagWebcam.contains("cameraMount"));
@@ -676,14 +696,31 @@ public final class FtcVisionConfigurationTest {
         assertTrue(genericLimelight, genericLimelight.contains("pollRateHz=100"));
         assertTrue(genericLimelight, genericLimelight.contains("maxResultAgeSec=0.25"));
 
-        String tagLimelight = FtcLimelightAprilTagVisionLane.Config.defaults().toString();
+        String tagLimelight = tagLimelightConfig().toString();
         assertTrue(tagLimelight, tagLimelight.contains("cameraMount"));
     }
 
-    private static FtcWebcamAprilTagVisionLane.Config validWebcamConfig() {
-        FtcWebcamAprilTagVisionLane.Config config =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
-        config.tagLibrary = library(metadata(
+    private static FtcWebcamVisionLane.Config tagWebcamConfig() {
+        FtcWebcamVisionLane.Config config = FtcWebcamVisionLane.Config.defaults();
+        config.aprilTags = FtcWebcamVisionLane.AprilTagConfig.defaults();
+        return config;
+    }
+
+    private static FtcLimelightVisionLane.Config tagLimelightConfig() {
+        FtcLimelightVisionLane.Config config = FtcLimelightVisionLane.Config.defaults();
+        config.aprilTags = FtcLimelightVisionLane.AprilTagConfig.defaults();
+        return config;
+    }
+
+    private static FtcLimelightVisionLane.Config validateLimelight(
+            FtcLimelightVisionLane.Config config) {
+        return config.validatedCopy("FtcLimelightVisionLane.Config");
+    }
+
+    private static FtcWebcamVisionLane.Config validWebcamConfig() {
+        FtcWebcamVisionLane.Config config =
+                tagWebcamConfig();
+        config.aprilTags.tagLibrary = library(metadata(
                 1,
                 DistanceUnit.INCH,
                 1.0,
@@ -694,13 +731,13 @@ public final class FtcVisionConfigurationTest {
     }
 
     private static void specializedOwner(
-            FtcWebcamAprilTagVisionLane.Config config,
-            FtcWebcamAprilTagVisionLane.AprilTagProcessorFactory processorFactory,
-            FtcWebcamVisionPortalLane.PortalFactory portalFactory,
-            FtcWebcamVisionPortalLane.ResolutionReader resolutionReader,
+            FtcWebcamVisionLane.Config config,
+            FtcWebcamVisionLane.AprilTagProcessorFactory processorFactory,
+            FtcWebcamVisionLane.PortalFactory portalFactory,
+            FtcWebcamVisionLane.ResolutionReader resolutionReader,
             VisionProcessor... additionalProcessors
     ) {
-        new FtcWebcamAprilTagVisionLane(
+        new FtcWebcamVisionLane(
                 config,
                 processorFactory,
                 portalFactory,
@@ -710,8 +747,8 @@ public final class FtcVisionConfigurationTest {
         );
     }
 
-    private static AprilTagVisionLane fakeLane(CameraMountConfig mount) {
-        return new AprilTagVisionLane() {
+    private static OwnedAprilTagCamera fakeLane(CameraMountConfig mount) {
+        AprilTagVision view = new AprilTagVision() {
             @Override
             public edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor tagSensor() {
                 return clock -> edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections.none();
@@ -727,32 +764,29 @@ public final class FtcVisionConfigurationTest {
                 return VisionReadiness.ready();
             }
 
-            @Override
-            public void close() {
-                // No resource in this factory-capture test value.
-            }
         };
+        return new OwnedAprilTagCamera(() -> { }, view);
     }
 
     private static void assertLimelightFailureMessage(
             ConfigMutation mutation,
             String expectedMessage
     ) {
-        FtcLimelightAprilTagVisionLane.Config config =
-                FtcLimelightAprilTagVisionLane.Config.defaults();
+        FtcLimelightVisionLane.Config config =
+                tagLimelightConfig();
         mutation.apply(config);
         expectFailureMessage(
                 IllegalArgumentException.class,
                 expectedMessage,
-                () -> FtcLimelightAprilTagVisionLane.validatedCopy(config)
+                () -> validateLimelight(config)
         );
     }
 
-    private static FtcWebcamAprilTagVisionLane.ActiveConfig capture(AprilTagLibrary library) {
-        FtcWebcamAprilTagVisionLane.Config cfg =
-                FtcWebcamAprilTagVisionLane.Config.defaults();
-        cfg.tagLibrary = library;
-        return FtcWebcamAprilTagVisionLane.captureActiveConfig(cfg, VALID_RESOLUTION_READER);
+    private static FtcWebcamVisionLane.ActiveConfig capture(AprilTagLibrary library) {
+        FtcWebcamVisionLane.Config cfg =
+                tagWebcamConfig();
+        cfg.aprilTags.tagLibrary = library;
+        return FtcWebcamVisionLane.captureActiveConfig(cfg, VALID_RESOLUTION_READER);
     }
 
     private static AprilTagMetadata metadata(
@@ -798,15 +832,15 @@ public final class FtcVisionConfigurationTest {
             String value,
             ConfigMutation mutation
     ) {
-        FtcLimelightAprilTagVisionLane.Config cfg =
-                FtcLimelightAprilTagVisionLane.Config.defaults();
+        FtcLimelightVisionLane.Config cfg =
+                tagLimelightConfig();
         mutation.apply(cfg);
         try {
-            AprilTagVisionLaneFactories.limelight(cfg);
+            AprilTagCameraFactories.limelight(cfg);
             fail("Expected invalid Limelight config");
         } catch (RuntimeException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains(
-                    "FtcLimelightAprilTagVisionLane.Config." + field));
+                    "FtcLimelightVisionLane.Config." + field));
             if (!"null".equals(value)) {
                 assertTrue(expected.getMessage(), expected.getMessage().contains(value));
             }
@@ -814,7 +848,7 @@ public final class FtcVisionConfigurationTest {
     }
 
     private interface ConfigMutation {
-        void apply(FtcLimelightAprilTagVisionLane.Config config);
+        void apply(FtcLimelightVisionLane.Config config);
     }
 
     private static final class NoopProcessor implements VisionProcessor {
