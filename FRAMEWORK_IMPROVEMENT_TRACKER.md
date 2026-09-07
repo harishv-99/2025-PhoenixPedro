@@ -229,24 +229,81 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 115 | DOC-10 | Linked API reference in student lessons | Done | The reviewed linked APIs, maintained-source fallbacks, generated-artifact validation, comparison-backlog intake, verification, and destination-specific publication authorization are complete. |
 | 116 | VISION-03 | Shared vision targets and approach guidance | Done | Implemented general camera owners, located observations, parallel tag/object selection and approach consumption, and bounded resting-ball pickup examples. Full software checks pass; user review and branch/remote-specific publication authorization received. Physical pickup remains disabled. |
 | 117 | SPATIAL-02 | Camera observations to field positions | Done | Reviewed fixed-camera closeout, four focused regressions, clarified guides, 2,346 passing tests and strict documentation checks; exact branch/remote/master publication authorized. No production/API changes; turret-camera support remains deferred. |
-| 118 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
-| 119 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
-| 120 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
-| 121 | CAL-04 | Mechanism-owned semantic request consistency | Done | The reviewed command-preserving search API, mechanism-owned lift request snapshots, semantic move/home composition, maintained caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 122 | STATUS-01 | Composable scalar actuator snapshots | Done | The reviewed generic snapshot machinery, thin capability-shaped status views, named position/velocity guidance, maintained migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 123 | STATUS-02 | Reference launcher snapshot composition cleanup | Done | The reviewed launcher snapshot composition, transactional publication, fresh experiment evidence, caller/test migrations, synchronized teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 124 | TASK-06 | Parallel numeric and semantic scalar Task lifetimes | Done | The reviewed parallel scalar Task API, maintained-caller migration, synchronized documentation, adversarial review, deterministic verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 125 | SIMPLICITY-02 | Concise actuator declaration and use | Done | Revised implementation reviewed and publication authorized for the recorded item branch, origin push URL, pull request, and `master` target. |
-| 126 | DOC-11 | Outcome-focused learning, examples, reference, and search | Done | The reviewed six-area learning site, concise explained scenarios, accessible global guide search, categorized API reference, evidence ladder, focused example cleanup, verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 127 | DOC-12 | Progressive actuator API learning path | Done | Make the first motor lesson self-contained, teach later Plant shapes through cumulative outcomes, add the missing single-motor velocity step, and keep exhaustive alternatives in reference documentation. |
-| 128 | DOC-13 | Reconstruction-grade beginner Build spine | Done | The reviewed reconstruction-grade Build route, focused integration outcomes, maintained fixtures, source-excerpt contracts, deterministic evidence, Android Studio approval, and destination-specific publication authorization are complete. |
-| 129 | DOC-14 | Beginner course and first sensor-to-status outcome | Done | Implemented the compact read-first course, no-motion sensor fixture, optional own-robot authoring, and focused controls cleanup. All 2,249 tests and generated documentation checks pass; the user approved Android Studio review and authorized publication to origin/master. |
-| 130 | DOC-15 | FTC-loop-first Get Started path | Done | The reviewed FTC-loop-first introduction, required software-only tour, progressive Build first passes, synchronized guidance, verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 131 | DOC-16 | Documentation quality criteria as design authority | Done | The reviewed applicability-qualified documentation rubric, focused structural contract, deterministic verification, Android Studio approval, and destination-specific publication authorization are complete. |
-| 132 | DOC-17 | Source-optional lessons and visual teaching grammar | Done | The reviewed point-of-use explanations, bounded beginner first passes, restrained accessible visual grammar, reconstruction repairs, verification, Android Studio review, and destination-specific publication authorization are complete. |
-| 133 | DOC-18 | Test & Tune operational onboarding cleanup | Done | The reviewed source-optional Test & Tune spine, exact operational contracts, generic-versus-configured calibration boundary, verification, Android Studio approval, and destination-specific publication authorization are complete. |
-| 134 | DOC-19 | Windows and macOS command tabs | Done | The reviewed 26-pair Windows/macOS migration, linked selection, maintainer contract, hardened regressions, verification, manual approval, and destination-specific publication authorization are complete. |
-| 135 | DOC-20 | Concept-first documentation and visual learning | Done | Concept-first repairs and six diagrams implemented; principles strengthened; 2,254 tests and strict docs/API checks pass. User approved the reviewed diff and exact branch/remote/master publication on 2026-09-06. |
+| 118 | CAL-05 | Bound powered calibration phases | Proposed | Add elapsed-time bounds to automatic pod turns and tag searches; preserve manual unpowered operation. |
+| 119 | LOCALIZATION-02 | Make correction quality truthful | Proposed | Resolve the quality-scaled confidence contract mismatch without unnecessary pose-correction changes. |
+| 120 | LOCALIZATION-03 | Preserve localization evidence freshness | Proposed | Audit frozen predictor timestamps and missing delayed-correction history in both corrected estimators. |
+| 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Proposed | Retain capture time, count distinct tag frames, and compare compatible-time calibration endpoints. |
+| 122 | CAL-07 | Correct direction recommendations | Proposed | Make Pinpoint encoder-direction advice depend on the current configured direction and observed motion. |
+| 123 | CAL-08 | Verify pod-offset mathematics independently | Proposed | Recover independently known offsets across rotations and starting configurations; fix only proven defects. |
+| 124 | CAL-09 | Strengthen camera-mount sample evidence | Proposed | Prove six-component geometry and audit sample identity, replay, invalid data, and angle averaging. |
+| 125 | CAL-10 | Make calibration acceptance reproducible | Proposed | Extend the existing record/rebuild/configured-retest handoff with a compact independent-validation record. |
+| 126 | TEST-02 | Add deterministic localization robustness scenarios | Proposed | Exercise real estimators against independent synthetic truth and report error and recovery metrics. |
+| 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Proposed | Use the robustness benchmark to evaluate bounded policy for predictor-yaw reuse and shared vision assumptions. |
+| 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Proposed | Evaluate bounded timestamped trial capture and offline replay using existing diagnostics; keep results off the Robot Controller. |
+| 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Proposed | Prove paired-wheel settling, staged-object evidence, bounded departure confirmation, and explicit recovery in an independent example. |
+| 130 | EXAMPLE-12 | Demonstrate graceful assist degradation | Proposed | Evaluate existing robot-owned manual fallback and teach bounded evidence-loss behavior and explicit reacquisition. |
+| 131 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 132 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
+| 133 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
+| 134 | CAL-04 | Mechanism-owned semantic request consistency | Done | The reviewed command-preserving search API, mechanism-owned lift request snapshots, semantic move/home composition, maintained caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 135 | STATUS-01 | Composable scalar actuator snapshots | Done | The reviewed generic snapshot machinery, thin capability-shaped status views, named position/velocity guidance, maintained migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 136 | STATUS-02 | Reference launcher snapshot composition cleanup | Done | The reviewed launcher snapshot composition, transactional publication, fresh experiment evidence, caller/test migrations, synchronized teaching, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 137 | TASK-06 | Parallel numeric and semantic scalar Task lifetimes | Done | The reviewed parallel scalar Task API, maintained-caller migration, synchronized documentation, adversarial review, deterministic verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 138 | SIMPLICITY-02 | Concise actuator declaration and use | Done | Revised implementation reviewed and publication authorized for the recorded item branch, origin push URL, pull request, and `master` target. |
+| 139 | DOC-11 | Outcome-focused learning, examples, reference, and search | Done | The reviewed six-area learning site, concise explained scenarios, accessible global guide search, categorized API reference, evidence ladder, focused example cleanup, verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 140 | DOC-12 | Progressive actuator API learning path | Done | Make the first motor lesson self-contained, teach later Plant shapes through cumulative outcomes, add the missing single-motor velocity step, and keep exhaustive alternatives in reference documentation. |
+| 141 | DOC-13 | Reconstruction-grade beginner Build spine | Done | The reviewed reconstruction-grade Build route, focused integration outcomes, maintained fixtures, source-excerpt contracts, deterministic evidence, Android Studio approval, and destination-specific publication authorization are complete. |
+| 142 | DOC-14 | Beginner course and first sensor-to-status outcome | Done | Implemented the compact read-first course, no-motion sensor fixture, optional own-robot authoring, and focused controls cleanup. All 2,249 tests and generated documentation checks pass; the user approved Android Studio review and authorized publication to origin/master. |
+| 143 | DOC-15 | FTC-loop-first Get Started path | Done | The reviewed FTC-loop-first introduction, required software-only tour, progressive Build first passes, synchronized guidance, verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 144 | DOC-16 | Documentation quality criteria as design authority | Done | The reviewed applicability-qualified documentation rubric, focused structural contract, deterministic verification, Android Studio approval, and destination-specific publication authorization are complete. |
+| 145 | DOC-17 | Source-optional lessons and visual teaching grammar | Done | The reviewed point-of-use explanations, bounded beginner first passes, restrained accessible visual grammar, reconstruction repairs, verification, Android Studio review, and destination-specific publication authorization are complete. |
+| 146 | DOC-18 | Test & Tune operational onboarding cleanup | Done | The reviewed source-optional Test & Tune spine, exact operational contracts, generic-versus-configured calibration boundary, verification, Android Studio approval, and destination-specific publication authorization are complete. |
+| 147 | DOC-19 | Windows and macOS command tabs | Done | The reviewed 26-pair Windows/macOS migration, linked selection, maintainer contract, hardened regressions, verification, manual approval, and destination-specific publication authorization are complete. |
+| 148 | DOC-20 | Concept-first documentation and visual learning | Done | Concept-first repairs and six diagrams implemented; principles strengthened; 2,254 tests and strict docs/API checks pass. User approved the reviewed diff and exact branch/remote/master publication on 2026-09-06. |
+
+### Current robustness execution order (added 2026-09-07)
+
+The user approved this tracker-only intake and chose **robustness first**, before `AUDIT-01`.
+All thirteen items are **Proposed**: their leading hypotheses are not approved designs, and this
+intake starts no decision gate, implementation, hardware run, or publication. Execute one item per
+branch through the normal research, design-approval, implementation, and review gates:
+
+1. `CAL-05` — bound powered calibration phases.
+2. `LOCALIZATION-02` — make correction quality truthful.
+3. `LOCALIZATION-03` — preserve localization evidence freshness.
+4. `CAL-06` — align AprilTag-assisted calibration evidence.
+5. `CAL-07` — correct direction recommendations.
+6. `CAL-08` — verify pod-offset mathematics independently.
+7. `CAL-09` — strengthen camera-mount sample evidence.
+8. `CAL-10` — make calibration acceptance reproducible.
+9. `TEST-02` — add deterministic localization robustness scenarios.
+10. `LOCALIZATION-04` — handle shared measurement evidence explicitly.
+11. `DIAG-01` — correlate experiment evidence for offline analysis.
+12. `EXAMPLE-11` — demonstrate feedback-confirmed feeding.
+13. `EXAMPLE-12` — demonstrate graceful assist degradation.
+14. `AUDIT-01` — run the unchanged Cuberobot/DECODE closure comparison last.
+
+The detailed entries before `AUDIT-01` separate source evidence, investigation questions, bounded
+scope, alternatives, regressions, dependencies, and physical-adoption limits. Resolve calibration
+contracts before `CAL-10`; establish the initial localization fixes before `TEST-02`; use that
+benchmark to evaluate `LOCALIZATION-04`, never require its later policy to complete the baseline
+benchmark. `DIAG-01` reuses existing experiment/test seams, and the examples reuse completed
+primitives. A new core abstraction requires its own explicit design decision, not approval by
+inclusion in an example's hypothesis.
+
+Every item must reach **Done** (including an approved, recorded, verified no-change result) or
+**Deferred** with evidence and a concrete reactivation trigger before `AUDIT-01` starts. This is an
+explicit amendment to its start condition only: the frozen capability matrix and comparison
+repositories do not expand. Earlier completed records, `SOURCE-03` and other hardware-evidence
+deferrals, and deferred turret-camera support retain their current dispositions.
+
+Software completion proves only the stated software contract. Do not choose field geometry, sensor
+placement, physical acceptance thresholds, production filtering, or shooter physics without the
+required evidence. Camera intrinsics, camera-to-robot mounting, and shooter alignment are distinct
+facts; do not fit a camera mount to conceal a shooter bias. Use the existing calibration runbook
+and optional concept/example pages, with plain-language first-use explanations and focused visuals
+where useful. Keep the beginner navigation compact; this intake creates no new introductory tabs.
+Preserve the experiment policy: trial results are not persisted on the Robot Controller.
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
@@ -28839,6 +28896,410 @@ superseded by VISION-03 and the approved narrower closeout above; they are retai
 | `getting-started/Basic Mechanisms Robot` | returning URL / reach current lesson | none | search-excluded compatibility pointer | unchanged; not a parallel course |
 | `getting-started/First Pedro Auto` | returning URL / reach current route guide | none | search-excluded compatibility pointer | unchanged; not a second integration path |
 
+### Robustness intake evidence and boundaries (2026-09-07)
+
+These thirteen entries record the user's approved backlog and order, not thirteen completed
+decision gates. Evidence below is source inspection at `origin/master` commit
+`700e344c166028a8607a46a6614b52c7bd774d28`; proposed regression cases still need to be executed.
+Paths beginning `fw/` and `robots/` are relative to
+`TeamCode/src/main/java/edu/ftcsushi/`; tests use the corresponding `src/test/java` tree. Every
+future Gate 1 must recheck current callers, Javadocs, and the affected guide rather than freeze
+today's implementation or turn a hypothesis into a preapproved public API.
+
+### CAL-05 - Bound powered calibration phases
+
+- **Status:** **Proposed**; first robustness decision gate, not started by this intake.
+- **Evidence and owners:** `fw/tools/tester/calibration/PinpointPodOffsetCalibrator.java` methods
+  `updateSearchForTagStart`, `updateRotating`, and `updateSearchForTagEnd` bound automatic motion by
+  measured angle, but have no elapsed-time limit. A frozen but still-present READY heading can
+  therefore keep requesting rotation until operator abort or lifecycle cleanup. Existing B-abort,
+  readiness-loss, and STOP paths must be preserved. `fw/tools/tester/StandardTesters.java` supplies
+  neither drive nor vision for the generic pod tool; that manual entry is unpowered. The affected
+  teaching home is `fw/docs/testing-calibration/Robot Calibration Tutorials.md`, especially its
+  optional powered/vision-assisted section.
+- **Bounded scope / leading hypothesis:** bound each automatic turn and tag-search phase by elapsed
+  shared-clock time independent of angle progress. Preserve one drive owner, one heartbeat, and
+  phase-local timing; do not add a background watchdog, a new drive lane, or automatic motion to the
+  generic tester. Manual operator-controlled phases need an explicit scope decision, not silent
+  timeout changes.
+- **Decision gate:** compare documentation-only restrictions, the smallest local elapsed-time
+  bounds, and progress/stall detection as an additional policy. Decide timeout configuration,
+  failure status, and cleanup using existing tester lifecycle before adding a public abstraction.
+- **Required regressions:** frozen READY heading, missing tags, successful angle completion,
+  timeout in each powered phase, phase-entry timing after a long prior loop, same-cycle repetition,
+  readiness loss, B-abort, BACK, and STOP. Verify no further nonzero command after termination and
+  preserve the generic unpowered/manual workflow.
+- **Completion / adoption boundary:** deterministic tests and focused compile/docs checks can prove
+  bounded command lifetime and cleanup. Safe power, stopping distance, clearance, and useful time
+  limits remain supervised adopting-robot validation; a software default is not a safety review.
+- **Dependencies / deferral trigger:** no new-item prerequisite. `CAL-06` builds on this lifecycle.
+  If a chosen completion contract depends on unavailable physical stall behavior, defer that claim
+  with an exact setup/run requirement or seek approval for the narrower elapsed-time contract;
+  reactivate when that evidence or explicit scope approval is supplied.
+
+### LOCALIZATION-02 - Make correction quality truthful
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/localization/fusion/OdometryCorrectionFusionEstimator.java` documents
+  a recent-correction confidence boost scaled by accepted correction quality, but its output-quality
+  calculation uses `1 - correctionAgeSec / holdSec` without that quality. A newly accepted weak
+  correction can therefore raise reported quality to `1.0`. Acceptance, manual anchors, resets,
+  and failure rollback share the relevant state. Review its estimator validation/timestamp tests,
+  `fw/ftc/localization/FtcOdometryAprilTagLocalizationLane.java`, quality consumers, and
+  `fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md`.
+- **Bounded scope / leading hypothesis:** make correction contribution and its documented meaning
+  agree, retaining accepted quality if the existing scaling contract is confirmed. Do not change
+  pose-correction gains, correction acceptance, or invent calibrated accuracy from a heuristic score
+  merely to repair confidence reporting.
+- **Decision gate:** compare documenting the present unscaled behavior with the smallest quality-
+  scaled fix; audit callers before selecting the meaning of manual anchors and missing quality.
+  Compare EKF semantics for truth, not as a reason to force identical confidence formulas.
+- **Required regressions:** low/high accepted quality, hold decay and expiry, predictor-quality
+  dominance, rejected/duplicate/out-of-order frames, reset, manual correction/pose anchors,
+  same-cycle access, and failure rollback. Verify pose results remain unchanged unless a separate
+  defect and approved scope require otherwise.
+- **Completion / adoption boundary:** software tests prove the score contract, not a probability of
+  physical correctness or useful robot readiness thresholds. Synchronize exact Javadocs and the
+  owning localization explanation without adding mandatory beginner estimator lessons.
+- **Dependencies / deferral trigger:** independent of other new fixes; finish before `TEST-02`.
+  If callers require a physically calibrated confidence interpretation, defer that expansion with
+  representative truth-labeled measurements as its reactivation requirement; do not block or
+  relabel a narrower source-proven reporting repair as physical calibration.
+
+### LOCALIZATION-03 - Preserve localization evidence freshness
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** both `fw/localization/fusion/OdometryCorrectionFusionEstimator.java`
+  and `OdometryCorrectionEkfEstimator.java` accept finite same-epoch predictor timestamps and can
+  publish output at now while a predictor keeps returning an older present pose. This is a
+  custom-source evidence path, not proof of a Pinpoint hardware failure. Their delayed-correction
+  fallback can return the original old pose when predictor history is absent; inspect whether
+  subsequent status truthfully distinguishes that case from compensation. Review their history,
+  replay/projection statistics, timestamp/validation tests, `fw/localization/PlanarPoseHistory.java`,
+  and the localization guide.
+- **Bounded scope / leading hypothesis:** preserve the age of evidence and make unavailable
+  latency compensation explicit in both estimators. Distinguish a current estimate derived from
+  fresh inputs from a retained old pose. Do not restamp frozen evidence as a new observation or
+  describe an uncompensated correction as capture-time replay.
+- **Decision gate:** compare status/documentation-only changes, local freshness/history gates, and
+  explicit retained-pose or fallback policies. Decide output timestamps, valid same-time samples,
+  missing history, and gap handling from caller contracts; do not preselect a new history API,
+  filter, universal age threshold, or estimator redesign.
+- **Required regressions:** frozen-but-present predictor, ordinary repeated same-cycle access,
+  newly acquired stationary samples, missing predictor, fresh correction with stale predictor,
+  delayed corrections inside/outside history and across gaps, reset epochs, duplicates,
+  out-of-order input, reacquisition, and truthful replay/projected counters in both estimators.
+- **Completion / adoption boundary:** deterministic tests can prove timestamp/provenance and
+  fallback semantics. They cannot prove real device freeze detection, clock synchronization
+  accuracy, or safe physical continuation during sensor loss. Update Javadocs and affected guide
+  explanations/callers together if the approved software contract changes.
+- **Dependencies / deferral trigger:** review after `LOCALIZATION-02`, without requiring a new
+  filter or benchmark to reproduce these paths; complete before `TEST-02`. Defer a vendor-timing-
+  dependent claim if it requires unavailable recorded timestamp/device evidence, and name that
+  evidence as the reactivation trigger rather than guessing a production threshold.
+
+### CAL-06 - Align AprilTag-assisted calibration evidence
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/tools/tester/calibration/PinpointPodOffsetCalibrator.java` stores
+  `tagEst.toPose2d()` as `latestTagPose`, dropping capture time. Its start/end search stability count
+  advances on loops containing a pose rather than distinct frames; the solve subtracts tag
+  translation from current odometry endpoints without capture-time alignment. Inspect tag-source
+  identity, start alignment, endpoint capture, and the configured suite path. The generic
+  `StandardTesters` entry does not enable this optional assist. Update the existing calibration
+  runbook rather than add another setup workflow.
+- **Bounded scope / leading hypothesis:** preserve timestamped tag evidence, count independent
+  frames, and compare tag/odometry endpoints at compatible times. A repeated reading must not
+  satisfy a multi-frame acquisition requirement or refresh an old endpoint.
+- **Decision gate:** compare explicit stationary acquisition, bounded historical alignment, and
+  disabling unsupported automatic assist with truthful guidance. Choose the smallest design after
+  verifying source timestamps and available history; do not preapprove a history owner or hide
+  latency with an arbitrary delay or average.
+- **Required regressions:** repeated frames across many loops, genuinely distinct frames, stale or
+  missing tags, changing robot pose during capture delay, missing history, source/epoch changes,
+  interrupted start/end acquisition, timeout/abort cleanup, and unchanged manual no-vision solves.
+- **Completion / adoption boundary:** software evidence proves frame counting and compatible-time
+  arithmetic, not camera latency accuracy or improved physical pod calibration. Mount/layout,
+  stationary criteria, safe motion, and comparison against independent pose remain robot evidence.
+- **Dependencies / deferral trigger:** use `CAL-05`'s bounded phase lifecycle; consult
+  `LOCALIZATION-03`'s evidence contract if sharing a history/fallback seam. If source timing cannot
+  support a truthful implementation, defer the affected assist mode until timestamp/latency
+  evidence or an approved narrower stationary contract is available. Do not disable or delay the
+  independent manual workflow by implication.
+
+### CAL-07 - Correct direction recommendations
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/tools/tester/calibration/PinpointAxisDirectionTester.java` currently
+  recommends `REVERSED` for negative forward/lateral deltas even if that encoder is already
+  configured `REVERSED`. The desired recommendation depends on the current configuration plus the
+  known physical test direction. Review configuration capture, result reset, `StandardTesters`,
+  configured caller factories, and the calibration runbook's axis-direction procedure.
+- **Bounded scope / leading hypothesis:** keep the current direction when measured sign agrees,
+  otherwise recommend the opposite configured direction. Retain the current-cycle READY and
+  sufficient-motion gates; an unavailable sample must not produce confident configuration advice.
+- **Decision gate:** reproduce both configured starting directions, then compare a narrow
+  recommendation fix with documentation-only or no-change if another boundary changes the traced
+  sign. Keep encoder sign, yaw sign, distance scale, and yaw scalar distinct.
+- **Required regressions:** both initial encoder directions with positive/negative displacement,
+  forward/left axes, insufficient and unavailable motion, reset/reconfiguration, and preserved
+  heading-direction reporting. Confirm messages name the actual configuration change to make.
+- **Completion / adoption boundary:** tests prove software advice relative to submitted motion
+  evidence, not which way a person pushed the robot or how pods are wired. Verify directions on
+  real hardware after record/rebuild/configured-retest. No scale-calibration feature is included.
+- **Dependencies / deferral trigger:** no hard new-item prerequisite; its result informs `CAL-08`
+  and `CAL-10`. If a vendor convention is ambiguous, defer only that claim until an exact-stack
+  direction observation or authoritative contract resolves it; do not infer physical direction
+  from configuration metadata alone.
+
+### CAL-08 - Verify pod-offset mathematics independently
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/tools/tester/calibration/PinpointPodOffsetCalibrator.java` contains
+  the rotation/translation offset solve and a conditioning gate near degenerate heading changes.
+  Existing configuration/lifecycle coverage does not establish independent numeric recovery of
+  known geometry. No mathematical defect is declared by this intake. Inspect the current
+  Pinpoint coordinate adapter, manual recenter assumptions, optional tag subtraction, and the
+  pod-offset runbook before authoring truth fixtures.
+- **Bounded scope / leading hypothesis:** derive expected sensor displacement from independently
+  chosen pod geometry, then prove that recommendations recover the known offsets. Correct only a
+  reproduced defect; a documented, reviewed, verified no-change result is valid completion.
+- **Decision gate:** compare tests/documentation only, the smallest proven arithmetic repair, and
+  a local pure solve seam only if necessary for independent testing. Do not create a new calibration
+  framework or copy the implementation equation into a self-confirming expected-value function.
+- **Required regressions:** nonzero true and configured starting offsets, clockwise and
+  counter-clockwise turns, multiple initial headings, small/near-full-turn degeneracy, manual
+  recenter, known real translation, and tag-assisted subtraction under `CAL-06`'s contract. Include
+  invalid/non-finite inputs, extreme finite values, and intermediate overflow before recommendations
+  can be published.
+  Explicitly show when unaccounted real motion contaminates an offset recommendation instead of
+  claiming that geometry can distinguish all slip from calibration error.
+- **Completion / adoption boundary:** independent synthetic geometry proves signs, frames, units,
+  conditioning, and arithmetic only. Physical pod resolution, slip, pivot behavior, and convergence
+  still need supervised robot tests; do not invent acceptance thresholds from fixture tolerances.
+- **Dependencies / deferral trigger:** use the settled `CAL-06` assist evidence and `CAL-07`
+  direction contracts; preserve unpowered manual coverage independently. Defer any unsupported
+  physical model conclusion with the required known-motion/independent-pose experiment as its
+  reactivation trigger, while recording whatever software mathematics was actually verified.
+
+### CAL-09 - Strengthen camera-mount sample evidence
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/tools/tester/calibration/CameraMountCalibrator.java` solves
+  `inverse(fieldToRobot) * fieldToTag * inverse(cameraToTag)` without using the configured camera
+  mount as an input. It reports full translation and yaw/pitch/roll, while interactive known robot
+  pose editing supplies X/Y/yaw on a level robot. Sampling retains solved poses and averages
+  translation plus separate circular Euler components. That is not a robust fit or proof of
+  accuracy. Review sample capture/reset, camera/layout/setup identity, configuration/lifecycle
+  tests, and the camera-mount runbook. Replay/identity weaknesses are investigation questions,
+  not additional reproduced bugs declared here.
+- **Bounded scope / leading hypothesis:** prove independent six-component geometric recovery and
+  keep every accepted sample tied to compatible, fresh observation and setup evidence. Distinguish
+  camera intrinsics from camera-to-robot extrinsics and later shooter/tool alignment.
+- **Decision gate:** compare independent tests and clarified operator rules, local sample metadata
+  and rejection, and alternate rotation averaging only if a demonstrated case requires it. Do not
+  preselect a robust filter, automatically remove outliers, or expand the UI into arbitrary tilted
+  robot/movement-only calibration without a separate approved requirement.
+- **Required regressions:** independently chosen nonzero mount translation/yaw/pitch/roll, multiple
+  known robot poses/tags, repeated capture identity, stale/invalid observation, setup changes,
+  clear/restart, angle wrap, and averaging cases that challenge separate Euler means. Expected
+  geometry must not simply round-trip the implementation's own solver.
+- **Completion / adoption boundary:** software can prove transforms and accepted-sample semantics.
+  Small spread/residual can still be repeatably wrong; camera calibration, tag layout, known robot
+  pose, physical accuracy, and acceptance remain independently validated robot facts.
+- **Dependencies / deferral trigger:** reuse `CAL-06`'s settled timestamp/identity vocabulary where
+  applicable, without inventing a shared owner just for symmetry; finish before `CAL-10`. Defer
+  any algorithm choice requiring representative observations until those observations and an
+  independent pose reference are supplied; synthetic samples do not reactivate `SOURCE-03`.
+
+### CAL-10 - Make calibration acceptance reproducible
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/docs/testing-calibration/Robot Calibration Tutorials.md` already
+  requires record -> rebuild -> fresh robot-configured tester -> production verification.
+  `Guided Calibration Walkthroughs.md` orders tests and reports status, but does not persist or
+  propagate results. Generic `StandardTesters` reconstructs defaults on each selection. Preserve
+  those truthful limitations while making the evidence handoff easier to repeat and review.
+- **Bounded scope / leading hypothesis:** extend the existing runbook with one compact reusable
+  record template: device/configuration identity and revision, setup and units/frames, candidate
+  values, observations, independent validation poses, operator criterion/acceptance, canonical
+  profile update, rebuild, and configured retest. Prefer the existing experiment lab-card
+  vocabulary; do not introduce a second wizard, calibration registry, or automatic acceptance flag.
+- **Decision gate:** compare a small runbook/template addition with clearer use of existing lab
+  cards; retain a no-change disposition if the settled calibration contracts already provide a
+  reproducible handoff. Identify what is mandatory for each calibration rather than demand camera
+  or whole-robot facts for an unrelated direction check.
+- **Required checks:** walk the record through manual pod, camera mount, and direction examples;
+  distinguish generic versus configured values, calibration versus independent validation data,
+  missing source access, missing configured verifier, rejected candidate, and changed configuration
+  after acceptance. Check links, terminology, and visible stop/next-gate instructions.
+- **Completion / adoption boundary:** this is a documentation/software-workflow contract, not a
+  physical acceptance run or automatic profile persistence. Teams own measured criteria and
+  acceptance. It is not `CHECK-01`'s assembled-robot validation and must not mark that item complete.
+- **Dependencies / deferral trigger:** follow terminal dispositions of `CAL-05` through `CAL-09`
+  and reflect any unavailable paths honestly; do not make them depend on this later template.
+  An unavailable physical verifier/record blocks the adopting procedure, not completion of a
+  truthful documentation/template contract; label that procedure blocked and name the missing
+  configured verifier or physical record needed to resume it. Defer this item only if its own
+  software-workflow contract cannot be established, recording the exact missing contract evidence
+  or scope decision as its reactivation trigger. Never fabricate a successful calibration card.
+
+### TEST-02 - Add deterministic localization robustness scenarios
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** estimator validation, timestamp, and cycle-safety tests already exercise
+  real `fw/localization/fusion` owners, but no independent-truth trajectory/fault-sweep benchmark
+  was found in the source review. Reuse those test seams, the real gain-fusion and EKF estimators,
+  `CorrectionStats`, and relevant pose-history evidence rather than a second robot implementation.
+- **Bounded scope / leading hypothesis:** create deterministic, independently authored trajectory
+  and observation scenarios comparing predictor-only, gain-fusion, and EKF outputs. Report position
+  and heading error, recovery time, rejected/accepted outliers, and modeled uncertainty against
+  synthetic truth. Keep it a maintainer software benchmark, not an introductory simulator.
+- **Decision gate:** compare extending existing fixtures with one bounded test-only scenario
+  harness; require distinct value for every new helper. Decide reproducible inputs and assertions
+  from independent geometry, including which metrics are descriptive versus contractual. Do not
+  choose a production filter or physical tuning values based only on synthetic rankings.
+- **Required scenarios:** drift/slip-like errors, delay/jitter, dropout, isolated outliers,
+  persistent bias, frozen timestamps, reset/history boundaries, varying sample rates, and
+  reacquisition. Include clean baselines and deterministic seeds or explicit authored traces;
+  investigate rate-dependent behavior without predeclaring a particular process-noise repair.
+- **Completion / adoption boundary:** verify reproducibility and software error/recovery properties,
+  with focused tests/compile and maintainer instructions. Scenario success is not physical accuracy,
+  camera performance, or evidence that EKF is better on a particular robot. Physical comparisons
+  require independently measured trajectories and exact setup/conditions.
+- **Dependencies / deferral trigger:** follow `LOCALIZATION-02` and `LOCALIZATION-03`. This baseline
+  supplies evidence to `LOCALIZATION-04`; it does not wait for that later policy. `DIAG-01` may
+  reuse its replay seams without being a prerequisite. Defer only claims requiring representative
+  recorded truth, reactivating those claims when the missing datasets arrive; synthetic traces do
+  not satisfy `SOURCE-03`'s production-filter evidence gate.
+
+### LOCALIZATION-04 - Handle shared measurement evidence explicitly
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/ftc/localization/LimelightFieldPoseEstimator.java` can supply
+  predictor yaw to Limelight MegaTag2 and return a field pose for correction of that predictor.
+  `fw/localization/fusion/OdometryCorrectionEkfEstimator.java` models correction covariance from
+  quality/age without an explicit shared-evidence contract. SDK/vendor and explicit geometry
+  estimates can also share the same camera observations, mount, and tag layout; agreement between
+  them is not independent truth. Review the configured FTC localization lane and owning guide.
+- **Bounded scope / leading hypothesis:** use the benchmark to make reused heading and common
+  measurement assumptions visible and choose a bounded policy that avoids unjustified confidence.
+  This intake identifies an evidence/modeling concern, not a proven instability or a selected new
+  covariance algorithm.
+- **Decision gate:** compare documentation/configuration restrictions, narrow correction-component
+  handling, and conservative trust policies against a more explicit correlation model. Retain the
+  smallest option supported by actual callers and tests; no new filter, multi-camera fusion layer,
+  generic covariance API, or production default is preapproved.
+- **Required regressions / experiments:** reused biased predictor yaw, genuinely independent
+  correction evidence, shared camera/layout bias, cross-check agreement despite common error,
+  repeated/delayed measurements, dropout/reacquisition, and the selected policy's effect on error
+  and reported confidence using `TEST-02` scenarios. Keep raw evidence available for explanation.
+- **Completion / adoption boundary:** a bounded software policy and truthful model documentation
+  may be proven without hardware; actual vendor correlation, physical accuracy, useful trust
+  levels, and adoption remain evidence-gated. Do not market a conservative model as measured truth.
+- **Dependencies / deferral trigger:** use completed `TEST-02` baseline evidence and
+  `LOCALIZATION-02`/`LOCALIZATION-03` contracts. If a production choice cannot be justified without
+  representative paired predictor/correction and independent-pose data, record a deferral and
+  reactivate on that dataset or explicit approval of a narrower software contract.
+
+### DIAG-01 - Correlate experiment evidence for offline analysis
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `fw/docs/examples/Subsystem Experiments.md` already supplies a lab card,
+  configuration revision, trial identity, computed-versus-observed evidence, and the explicit rule
+  **Do not persist trial results on the Robot Controller.** Existing tuning/experiment owners
+  retain session/segment and per-member response evidence; `robots/examples/reference/tester/`
+  contains the bounded `ReferenceFlywheelSpinUpExperiment`. Localization exposes rejection/replay
+  diagnostics. These are the starting points, not justification for another generic tuner.
+- **Bounded scope / leading hypothesis:** evaluate a bounded timestamped trial capture that
+  correlates configuration identity, requests, feedback, outcomes, and available rejection reasons
+  for off-robot analysis. Replay recorded inputs through existing hardware-neutral test seams;
+  retain unavailable/unrecorded facts as unavailable.
+- **Decision gate:** compare clearer use of current telemetry/lab cards, small immutable diagnostic
+  snapshots plus off-robot capture, and a bounded replay format only where it removes real repeated
+  investigation work. Decide volume limits, omissions/drop reporting, and export ownership before
+  adding an API. No on-Robot-Controller result persistence or new background hardware loop.
+- **Required checks:** session/trial/configuration correlation, units/frames/capture versus loop
+  time, reset and duplicate evidence, missing observations, bounded memory/transport volume,
+  rejection causes, and deterministic replay of selected recorded-input decisions. Diagnostics
+  must not repoll hardware, advance behavior sources, block the loop, or own another telemetry
+  commit. Record export gaps rather than silently fill them.
+- **Completion / adoption boundary:** synthetic/export fixture checks prove data and replay
+  contracts only. Offline replay is not native image processing, a physics simulator, or proof of
+  unobserved sensor/mechanism behavior; actual capture cost and physical outcomes need robot runs.
+- **Dependencies / deferral trigger:** reuse existing completed experiment facilities and
+  `TEST-02` seams where appropriate; the benchmark must not depend on this later export work.
+  Record `LOCALIZATION-04` limitations rather than infer independent evidence. Defer any transport
+  or timing claim needing unavailable representative captures, with exact setup/volume/run evidence
+  as the trigger. Real later traces may help `SOURCE-03`; this intake does not reactivate it.
+
+### EXAMPLE-11 - Demonstrate feedback-confirmed feeding
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `robots/examples/reference/capability/flywheel/ReferenceFlywheels.java`
+  already checks each wheel against the matching accepted, unclamped request; grouped mean alone
+  is insufficient. `ReferenceFlywheelMechanism` correlates feedback completion with requests, and
+  core `ScalarTasks`/`SemanticScalarTasks` already offer `stableFor(...)`.
+  `robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java` uses an initial
+  readiness gate followed by timed release/transfer; it does not prove object departure or scoring.
+  `ReferenceInventoryStatusService` supplies conditioned presence/order evidence, not projectile
+  tracking. Inspect their current tests and experiment/course explanations before choosing scope.
+- **Bounded scope / leading hypothesis:** demonstrate a robot-owned feed attempt using paired-wheel
+  settling, staged-object evidence, bounded feed/departure confirmation, and explicit recovery
+  before another attempt. Reuse existing Tasks first in an independent maintained example; no
+  production application adoption, universal shooter model, sensor placement, or new core readiness
+  abstraction is approved by this entry.
+- **Decision gate:** compare a focused extension of the existing reference with a distinct complete
+  teaching fixture only if it has a different learning purpose. Check whether existing factories
+  express the needed composite evidence before adding a state machine. Any core extraction needs
+  a separate explicit design decision. Do not confuse sampled debounce with continuous dwell proof.
+- **Required regressions:** opposing wheel errors hidden by a good mean, fleeting readiness,
+  request changes during settling, stale/replayed feedback, speed droop during feeding, no staged
+  object, missing departure, contradictory inventory, recovery before another attempt, timeout,
+  and cancellation/STOP in every phase. Use explicitly authored sensor fixtures and truthful
+  outcomes: a cleared sensor, feed-sequence completion, launch, and score are different facts.
+- **Completion / adoption boundary:** prove the software policy with real example owners and fake
+  outside hardware, and teach one central outcome with visible explanations. Mechanism timing,
+  sensor placement, safe mid-feed stopping/recovery, and shot consistency require supervised robot
+  validation. Never assume stopping a particular feed halfway is mechanically safe.
+- **Dependencies / deferral trigger:** reuse completed Task/status/inventory primitives and
+  `DIAG-01`'s disposition if it adds useful evidence, without requiring that it invent a logger.
+  If a proposed recovery depends on unknown hardware, defer that policy until the physical setup,
+  safe actions, and observations are supplied, or seek approval for a clearly limited software-only
+  example. Do not change production feeding implicitly.
+
+### EXAMPLE-12 - Demonstrate graceful assist degradation
+
+- **Status:** **Proposed**.
+- **Evidence and owners:** `robots/examples/visionpickup/VisionPickup.java` already returns manual
+  intent from `readDriveIntent` when aiming evidence is unavailable; its controls and software
+  scenarios provide an existing independent teaching owner. Localization quality/freshness,
+  correction statistics, and located-target timestamps already expose evidence for robot policy.
+  Inspect those actual paths before declaring a missing fallback or adding another owner.
+- **Bounded scope / leading hypothesis:** teach explicit robot-owned behavior for stale, missing,
+  or contradictory localization/target evidence: visible operator status, bounded assisted action,
+  manual fallback, and deliberate reacquisition. Keep TeleOp/Auto differences in robot policy and
+  preserve one selected drive-intent path and final writer.
+- **Decision gate:** compare clearer documentation and tests of existing fallback with a narrow
+  extension of the same example. Select only genuinely missing behavior; a verified no-change
+  implementation result is acceptable. Do not add a framework-wide supervisor, sensor-voting
+  service, second scheduler, automatic calibration, or universal confidence thresholds.
+- **Required regressions:** target loss, stale target with fresh robot localization, predictor or
+  correction loss, contradictory evidence under an explicitly named policy, intermittent
+  reacquisition, retained destination versus live sighting, operator release/cancel, bounded Auto
+  failure, and STOP. Check that status names the actual reason and loss never silently authorizes
+  blind motion or a switch to an unreviewed drive owner.
+- **Completion / adoption boundary:** software scenarios and a focused optional lesson can prove
+  the chosen fallback/status/continuation contract. They cannot prove safe driving, field
+  clearance, contact behavior, capture reliability, or useful physical thresholds; existing pickup
+  motion permissions remain disabled unless independently reviewed by the adopting robot owner.
+- **Dependencies / deferral trigger:** consume the terminal `LOCALIZATION-02`/`LOCALIZATION-03`/
+  `LOCALIZATION-04` contracts and existing VISION-03/SPATIAL-02 features. Reuse prior example/diagnostic
+  work only where it adds value; do not make those earlier items depend on this case study. Defer
+  hardware-dependent continuation rules until the robot's safe fallback and evidence criteria are
+  supplied, or explicitly approve a narrower software teaching contract. Turret support remains
+  outside scope.
+
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 
 - **Tracker-only intake status (2026-08-22):** **Proposed and deliberately last.** No re-audit has
@@ -28850,7 +29311,12 @@ superseded by VISION-03 and the approved narrower closeout above; they are retai
   comparison follow-up additionally requires `SOURCE-03`, `VISION-03`, and `SPATIAL-02` to be
   **Done** or **Deferred** with concrete reactivation triggers. The user's 2026-08-28
   LOCALIZATION-01, 2026-08-31 BRAND-02, and 2026-08-31 comparison directions explicitly amend this
-  otherwise frozen prerequisite list. A Gate 1 split does not silently enlarge AUDIT-01. It does
+  otherwise frozen prerequisite list. The user's 2026-09-07 robustness-first intake additionally
+  requires `CAL-05`, `LOCALIZATION-02`, `LOCALIZATION-03`, `CAL-06`, `CAL-07`, `CAL-08`, `CAL-09`,
+  `CAL-10`, `TEST-02`, `LOCALIZATION-04`, `DIAG-01`, `EXAMPLE-11`, and `EXAMPLE-12` each to be
+  **Done** or evidence-backed **Deferred** with a concrete reactivation trigger. This changes
+  execution prerequisites only, not the frozen capability matrix or comparison repositories.
+  A Gate 1 split does not silently enlarge AUDIT-01. It does
   not wait for unavailable hardware runs belonging to PERF-03 or other deliberately hardware-gated
   items; SOURCE-03 may satisfy this condition by returning to its evidence-backed deferral.
 - **Pinned scope and provenance:** pin current Sushi when this audit starts, then compare it against
