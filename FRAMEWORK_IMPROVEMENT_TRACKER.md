@@ -232,7 +232,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 118 | CAL-05 | Bound powered calibration phases | Done | Per-phase deadlines and Abort precedence reviewed and approved for publication; 65 focused tests pass. Full local suite retains only the 2 recorded pre-existing Windows documentation checks. |
 | 119 | LOCALIZATION-02 | Make correction quality truthful | Done | Reviewed and publication-authorized: accepted-quality-scaled hold, 28 new regressions, and owning-guide explanation. 101 focused tests pass; full local run retains only two known Windows documentation failures. |
 | 120 | LOCALIZATION-03 | Preserve localization evidence freshness | Done | Reviewed and publication-authorized: 29 new regressions, 121 focused tests pass, and full 2427-test run retains only two known Windows documentation failures. Compile and generated docs pass. |
-| 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Proposed | Retain capture time, count distinct tag frames, and compare compatible-time calibration endpoints. |
+| 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Done | Capture-matched raw/tag endpoints and distinct-frame acquisition verified; user approved the reviewed diff and exact branch/remote/master publication. |
 | 122 | CAL-07 | Correct direction recommendations | Proposed | Make Pinpoint encoder-direction advice depend on the current configured direction and observed motion. |
 | 123 | CAL-08 | Verify pod-offset mathematics independently | Proposed | Recover independently known offsets across rotations and starting configurations; fix only proven defects. |
 | 124 | CAL-09 | Strengthen camera-mount sample evidence | Proposed | Prove six-component geometry and audit sample identity, replay, invalid data, and angle averaging. |
@@ -29970,7 +29970,14 @@ and adopting-robot thresholds remain unverified, and Phoenix remains unchanged.
 
 ### CAL-06 - Align AprilTag-assisted calibration evidence
 
-- **Status:** **Proposed**.
+- **Status:** **Done**. Gate 1 began after LOCALIZATION-03 merged as PR #150
+  (`ba8861ecdc7fe2eaaf4b268e5475f8b7a4a28483`); local `master` was safely fast-forwarded to
+  the verified merge. The user requested the next task after publication. No implementation
+  changes were authorized by that decision-gate transition alone. The user subsequently approved
+  the recorded design with `Proceed with CAL-06`. Gate 2 fetched `origin/master` and created
+  `codex/cal-06-calibration-evidence` at `ba8861ecdc7fe2eaaf4b268e5475f8b7a4a28483`, preserving
+  the uncommitted Gate 1 record. That approval authorized implementation and review, not publication;
+  the subsequent exact combined review-and-publication authorization closed Gate 3 below.
 - **Evidence and owners:** `fw/tools/tester/calibration/PinpointPodOffsetCalibrator.java` stores
   `tagEst.toPose2d()` as `latestTagPose`, dropping capture time. Its start/end search stability count
   advances on loops containing a pose rather than distinct frames; the solve subtracts tag
@@ -29996,6 +30003,323 @@ and adopting-robot thresholds remain unverified, and Phoenix remains unchanged.
   support a truthful implementation, defer the affected assist mode until timestamp/latency
   evidence or an approved narrower stationary contract is available. Do not disable or delay the
   independent manual workflow by implication.
+
+#### Gate 1 decision record (2026-09-07)
+
+- **Publication prerequisite complete:** LOCALIZATION-03 commit
+  `d1fb2cbe740ac1f5b8c9b6b5ea28c67cd7e948ea` on
+  `codex/localization-03-evidence-freshness` was published to the authorized origin and merged by
+  PR #150 as `ba8861ecdc7fe2eaaf4b268e5475f8b7a4a28483`. Both required checks passed:
+  `Verify Sushi framework` and `Verify documentation artifact`. The fetched merge tree equals
+  the reviewed commit tree (`81c3a9a0bc4e15e97756a633a5c13c8816fa5559`). Local `master`
+  fast-forwarded without rewriting history. CAL-06 began only afterward at the user's request.
+- **Confirmed failure path:** `updateSensors()` reduces the timestamped tag estimate to
+  `latestTagPose`. Both `updateSearchForTagStart()` and `updateSearchForTagEnd()` increment
+  `tagStableFrames` on every loop with a pose. `requestStartSample()` also has a direct-visible
+  single-frame path, and `transitionAfterRotation()` can bypass end search when a pose is visible.
+  `startSampleInternal()` writes the historical tag pose into current Pinpoint state;
+  `finishSampleAndCompute()` then subtracts capture-time tag translation from delivery-time
+  odometry translation and uses delivery-time accumulated heading. Fixing only the counter or
+  only the final subtraction would leave the other mismatched endpoints intact.
+- **Available evidence:** `AprilTagPoseEstimator` preserves the accepted detections'
+  `frameTimestamp()` in its `PoseEstimate`. Webcam ownership anchors processor generation plus
+  SDK acquisition identity once; Limelight anchors pipeline generation plus its result timestamp
+  (receipt identity fallback). `FtcFrameTimestampAnchor` retains time across repeated identities
+  and blocks reset-invalidated identity. Strictly advancing compatible capture timestamps are the
+  conservative frame-count evidence exposed at this layer; Java object identity is not.
+  Pinpoint exposes a timestamped raw trajectory and a segment identifier. Existing
+  `PlanarPoseHistory` can borrow it directly and provides bounded exact/interpolated lookup, never
+  nearest/current fallback or extrapolation. Pinpoint `setPose()` changes the trajectory segment.
+- **Scope of the timing claim:** this design matches software-reported capture times. Pinpoint
+  timestamps represent its hardware-poll loop, and Limelight exposure time is estimated from
+  supplied age/latency evidence. Tests cannot establish physical simultaneity or those devices'
+  absolute timing accuracy. No algorithm decision here depends on claiming that physical proof.
+
+**Supported construction layers and callers**
+
+- `PinpointPodOffsetCalibrator.Config.defaults(): Config` is the only public Config factory;
+  its constructor is private. The tester has exactly one public constructor,
+  `(Config, Function<String, AprilTagCameraFactory>)`. There are no tester facade factories,
+  static `of` methods, overloads, staged-builder interfaces, or injected-history/estimator paths
+  to migrate. Config owns data; the nullable function supplies distinct deferred behavior, and
+  each `AprilTagCameraFactory.open(HardwareMap): OwnedAprilTagCamera` supplies a fresh resource
+  owner. Neither responsibility duplicates the other.
+- The proposed `Config.assistOdometryHistory` uses the existing
+  `PlanarPoseHistory.Config.defaults()` type, not a new calibration-specific wrapper. Its
+  `copy()` and `validatedCopy(context)` paths already support independent authoring, reuse, and
+  validation. Retention, sample capacity, and interpolation bounds have distinct value from
+  `aprilTags.maxDetectionAgeSec`, which governs camera-observation acceptance. Do not add another
+  detection-age setting or silently widen either policy. Validate and snapshot this nested draft
+  only when a non-null vision factory selects assist, including assist without a drive; leave it
+  dormant when assist is absent. No staged parameter or new stage-answer method is needed.
+- One private `PlanarPoseHistory(PoseTrajectoryEstimator, Config)` is owned and recorded by the
+  existing tester after its raw Pinpoint update. The history never advances Pinpoint or the clock.
+  `lookupSource()` remains its existing read-only projection. Do not add a calibrator facade,
+  public endpoint model, shared history service, or parallel legacy construction layer.
+- Supporting construction edges remain unchanged: `HardwareSelectingTester` accepts a deferred
+  `Function<String, TeleOpTester>` for device selection; `AprilTagCameraFactories.webcam(...)`
+  and `.limelight(...)` each accept their backend Config and return `AprilTagCameraFactory`.
+  `OwnedAprilTagCamera(AutoCloseable, AprilTagVision)` transfers cleanup ownership and exposes
+  the borrowed capability through `aprilTags()`. The physical owners remain
+  `FtcWebcamVisionLane(HardwareMap, Config, VisionProcessor...)` and
+  `FtcLimelightVisionLane(HardwareMap, Config)` with backend `Config.defaults()/copy()` drafts.
+  `FtcDrives.mecanum(HardwareMap)` and `(HardwareMap, MecanumConfig)` return `MecanumDrivebase`;
+  this calibrator uses the complete-config path. `PinpointOdometryPredictor(HardwareMap, Config)`
+  remains the sole raw predictor constructor; its Config supports
+  `defaults()/copy()/validatedCopy(String)`. These layers respectively select, capture recipes,
+  own hardware, or expose a narrow capability; no redundant supported layer needs expansion or
+  deferred removal for CAL-06.
+- `StandardTesters.createStandaloneCalibrationAndLocalizationSuite()` constructs the generic
+  no-drive/no-vision pod entry through `createSuite()`, reached by the framework Panels and Driver
+  Station tester OpModes. Its constructor call stays `new PinpointPodOffsetCalibrator(cfg, null)`.
+  The camera-only `createCalibrationAndLocalizationSuite()` used by `StandardTesters.register()`
+  does not register this pod entry; indirect example users of `register()` are not pod callers.
+- `PhoenixRobotTesters.pinpointPodOffsets(): TeleOpTester` is the configured application factory:
+  it submits profile Pinpoint, drive, layout, solver policy, and an optional webcam/Limelight
+  factory. Its constructor remains `new PinpointPodOffsetCalibrator(cfg, visionFactoryBuilder)`.
+  This item does not change Phoenix source, profile choices, or production behavior wiring.
+  No maintained independent example directly constructs the pod calibrator.
+- The configured Phoenix factory is reached by its calibration menu and
+  `PhoenixCalibrationWalkthrough`; neither owns a second calibration implementation. Review any
+  application calibration instructions that describe assisted failure/retry so the shared behavior
+  change does not leave stale operational advice, without introducing application adoption work.
+- Existing configuration/lifecycle consumers are `PinpointTesterConfigTest` and
+  `PinpointPodOffsetCalibratorTimingTest`, plus `SelectableVisionTesterLifecycleTest` for the shared
+  selectable-camera lifecycle. The timing fixture's direct `latestTagPose` injection is not
+  timestamp evidence and must be replaced for assisted-path scenarios. Camera-mount calibration
+  is a different independent-pose solve; CAL-09 remains its sample-evidence owner. No shared owner
+  is justified merely to make the two tools look symmetric.
+
+**Ordinary setup and alternatives**
+
+The fragments below compare setup responsibilities, not standalone robot programs. `cfg` is the
+existing complete tester draft; `cameraFactory` is its existing deferred backend behavior.
+
+| Design | Ordinary setup shape | Student decisions and distinct value |
+| --- | --- | --- |
+| Chosen private raw-history owner | `new PinpointPodOffsetCalibrator(cfg, cameraFactory)` | Same existing data and optional camera decisions. Defaults add no required line; the optional `cfg.assistOdometryHistory` draft exposes bounded history policy only for teams tuning it. |
+| Stationary endpoint acquisition | Same constructor, but new stop/confirm or stability configuration and acquisition phases | Requires an additional explanation and evidence for physical stillness, post-stop capture, and recovery. Commanding zero or waiting a fixed time does not supply that evidence. |
+| Inject an external history/source | A new constructor would also require an estimator/history and root heartbeat | Adds owner selection, update order, and potentially inconsistent raw/corrected trajectories to every configured caller; redundant with the tester's privately owned Pinpoint graph. Rejected. |
+| Disable optional assist | `new PinpointPodOffsetCalibrator(cfg, null)` | Small implementation, but removes useful software-supported matched evidence and leaves only the explicit no-vision procedure. Retain as an independent mode, not the chosen repair. |
+
+- **Documentation-only** cannot stop duplicate counting or mismatched subtraction.
+- **Counter-only/local timestamp retention** is insufficient: start rebase and both solve endpoints
+  must agree in time and frame. Timestamp retention plus current-pose substitution still guesses.
+- **Chosen bounded history** reuses an existing proven capability, keeps student setup unchanged,
+  and fits the existing moving searches without new stationary thresholds or settling delays.
+  Raw history intentionally retains the odometry error being measured. Corrected/global history
+  could conceal that error and is explicitly rejected. Do not project a delayed tag through raw
+  motion and call it current independent truth.
+
+**Chosen behavior, approved by `Proceed with CAL-06`**
+
+1. Preserve full timestamped tag evidence and resolve raw odometry at that exact capture time.
+   Freeze one start pair and one end pair, including lookup provenance and owner/epoch/trajectory
+   identity. A stored start pair survives ordinary history retention eviction during a long turn;
+   it is a fixed experimental endpoint, not a claim that the camera is still seeing that pose.
+2. Do not call `pinpoint.setPose(historicalTagPose)` to start an assisted sample. Keep one raw
+   odometry coordinate system through that attempt. Rotate each stream's start-to-end translation
+   into its own robot-at-start axes before subtraction. Use the matched odometry endpoint headings
+   in the existing offset equations. Keep current unwrapped turn progress and automatic timeout
+   boundaries separate: history's planar yaw is not an unwrapped turn history. The raw wrapped
+   endpoint yaw difference supplies the same sine/cosine terms; diagnostics must label capture-
+   interval solve rotation separately from commanded-turn progress.
+   Label any start-body residual as robot-at-start data, not field-frame translation, and apply
+   each frame rotation only once.
+3. Preserve `tagSearchStableFrames` as a search-only setting and its existing active/dormant
+   configuration domain. Count distinct, strictly advancing eligible capture timestamps, not
+   loops. A duplicate does not increment; missing/stale/invalid/out-of-order evidence breaks the
+   good-frame streak without allowing an already-consumed timestamp to count again. Describe this
+   as valid-frame acquisition, not a jitter or statistical independence score. Existing direct-
+   visible start/end paths still require one eligible matched pair, not the search count; neither
+   path may bypass capture-time matching. No new acquisition phase or count-setting rename.
+4. Require an end capture strictly after the frozen start capture in compatible source, clock,
+   and trajectory context. Reject unavailable/wrong-epoch/future timestamps, unavailable lookup,
+   coordinate discontinuity, or changed owner/setup; clear attempt evidence on reset, abort,
+   stop, and vision-owner failure/replacement. Retain no endpoint across an incompatible restart.
+   A single immutable owned camera/setup remains the supported attempt boundary; the calibrator
+   does not switch backend pipelines or reinterpret changing field facts mid-attempt.
+5. While a configured search is active, missing matching evidence may wait within its existing
+   angle/time limits. Limit exhaustion must stop with a clear reason, not silently turn a selected
+   assisted attempt into an uncorrected recommendation. A during `SEARCH_TAG_START` can explicitly
+   skip acquisition before an assisted anchor exists and begin the established no-tag workflow.
+   An IDLE A press still requests a sample; it is not an implicit skip when searches are disabled
+   or no drive exists. Once that anchor
+   exists, skipping or failing end acquisition discards that assisted attempt; use a fresh
+   explicitly unassisted attempt when manual recentering is desired. With searches disabled, a
+   requested assisted endpoint that lacks matching evidence reports unavailable rather than
+   substituting current odometry. This failure/skip behavior is an approval-required change.
+6. Preserve the independent null-factory manual workflow, its reset/turn/recenter equations, and
+   no-drive behavior. Also preserve the existing identity-mount-disabled path: after successful
+   camera cleanup it permits no-tag calibration even with a non-null factory; uncertain/failed
+   cleanup remains terminal and blocks reuse. Preserve CAL-05's deadline-before-poll ordering,
+   B precedence over A/Y/X,
+   fresh later retry, INIT/START separation, current READY gate, and best-effort/reentrant cleanup.
+   No new robot motion, automatic retry, physical stopping guarantee, or configuration persistence.
+
+**Bounded implementation, documentation, and verification**
+
+- Implement inside the existing calibrator, with a package-private pure evidence helper only if
+  it makes invariant tests clearer. Reuse existing core history and timestamp APIs without changing
+  vision adapters, corrected estimators, or their public contracts. Do not preempt CAL-07 offset
+  direction advice, CAL-08 independent geometry closeout, CAL-09 mount samples, or CAL-10 adoption.
+- Update calibrator/Config Javadocs, its telemetry, the existing optional powered/vision-assisted
+  section of `Robot Calibration Tutorials.md`, and affected source-backed documentation checks.
+  Explain capture time (when the image was taken), delivery time (when code reads it), and matching
+  odometry before first use. Add one small labeled capture-versus-delivery timeline with a nearby
+  text equivalent if it clarifies the mismatch; preserve the compact beginner navigation and the
+  ordinary manual runbook. Explain exact versus interpolated evidence and limits without claiming
+  interpolation observed the robot continuously. List active defaults and where to change them.
+  Audit the shared `AprilTag Practice Setup.md` and `AprilTag Localization & Fixed Layouts.md`
+  construction descriptions; migrate only statements actually affected by this scoped change.
+  Independent inspection found Phoenix's Step-7 calibration guide makes no obsolete frame-count,
+  historical-rebase, or automatic-fallback promises; no application guide migration is required.
+- Focused regressions: equal/repeated timestamps across loops and object instances; genuinely
+  new same-pose frames; interrupted streaks and replay; direct-visible and searched endpoints;
+  exact/interpolated delayed capture with deliberately different delivery poses; independently
+  chosen raw/tag origins and headings; start retention eviction; missing brackets/READY gaps;
+  source/segment/epoch reset; capture-end ordering and yaw wrap; search-angle/skip/recenter paths;
+  timeout at the exact newly-eligible-frame boundary; B/A/Y/X precedence and reentrant cleanup;
+  fresh retry; unchanged no-vision solves and dormant config; nested active validation and defensive
+  capture before factory effects. Drive scripts must pass through real timestamped detections,
+  the real AprilTag estimator, and real history, not merely assign a solved `Pose2d`.
+- An independent frame-arithmetic oracle can choose odometry start-body displacement `(6, 8)`
+  inches and tag start-body displacement `(2, 4)` inches, expecting residual `(4, 4)` inches
+  despite different field origins/headings. This tests endpoint alignment; it is not CAL-08's full
+  independent pod-geometry proof. Preserve the existing offset solve unless that scope is reopened.
+- Run focused calibration/config/history/AprilTag timestamp tests, then the normal TeamCode unit
+  tests and Java compile, exact XML totals, diff/trailing-whitespace checks, and affected strict
+  docs/Javadoc/generated-link checks. Repeat independent correctness, ownership, construction-layer,
+  failure-path, and novice-explanation review before the normal Android Studio handoff.
+- Physical adoption still requires reviewed wiring/motion limits, mount/layout, device timestamps,
+  independent pose/rotation evidence, and supervised repeatability. Software tests do not establish
+  physical latency accuracy, stillness, slip removal, or better calibrated offsets. No physical run
+  was performed and no calibration accuracy claim is being accepted at this gate.
+
+- **Approval boundary:** this decision follows the leading hypothesis but adds a public nested
+  Config field and materially tightens assisted sample/recovery semantics. Under
+  `execute-framework-improvements`, stop for explicit design approval before implementation.
+  Only this tracker has changed during Gate 1; no source, tests, guides, or application files were
+  edited. After approval, fetch `origin/master` and create the CAL-06 item branch from that ref.
+- **Gate 1 verification:** three independent read-only audits covered source timestamp provenance,
+  construction/caller scope, and test/lifecycle feasibility. Final review clarified identity-mount
+  fallback and the phase-specific meaning of A before marking Ready. `git diff --check` and the
+  tracker trailing-whitespace scan passed. No implementation tests were added or run at this
+  decision gate; LOCALIZATION-03's passing required CI is publication evidence, not CAL-06 proof.
+
+#### Gate 2 implementation and review handoff (2026-09-07)
+
+- **Approval and scope:** `Proceed with CAL-06` closed the preceding design-approval stop.
+  Implementation is complete on `codex/cal-06-calibration-evidence`. The reviewed scope is seven
+  files: this tracker, `PinpointPodOffsetCalibrator.java`, the existing calibration tutorial,
+  `DocumentationLinksTest`, `PinpointTesterConfigTest`, `PinpointPodOffsetCalibratorTimingTest`,
+  and new `PinpointPodOffsetCalibratorEvidenceTest`. No Phoenix code/configuration, core history,
+  camera adapter, example, navigation, or adjacent tracker implementation changed.
+- **Implemented evidence contract:** the existing calibrator privately owns raw Pinpoint history
+  and records it after the one Pinpoint poll. The full tag estimate is retained. Each private
+  immutable endpoint pairs that estimate with exact/interpolated capture-time raw odometry and
+  retains camera, estimator, trajectory, and history-continuity identity. A frozen start survives
+  ordinary rolling-history eviction. An assisted start never rebases Pinpoint. The existing
+  equations receive each stream's displacement in its own robot-at-start axes and the matched
+  raw endpoint yaw difference; ongoing automatic turn progress remains current/unwrapped.
+  Non-finite matched arithmetic/recommendations are rejected, and telemetry distinguishes
+  robot-at-start residuals and capture-interval yaw from ongoing turn progress.
+- **Acquisition and recovery:** searches count strictly advancing eligible capture timestamps;
+  duplicate reads do not increase the count, and interrupted streaks retain their consumed-time
+  watermark. Direct visible endpoints still require one eligible pair. An end must follow its
+  compatible start. Missing history, incompatible clock/owner/raw coordinates, READY loss, or
+  angular/time exhaustion cannot produce an unassisted recommendation. Angular exhaustion wins
+  over even an otherwise completing new frame. Abort/reset/STOP/vision failure clear evidence
+  before external cleanup. CAL-05's deadline-before-poll, B precedence, fresh retry, INIT/START,
+  current READY, zero-first, and reentrant cleanup contracts remain covered.
+- **Phase clarification within the approved contract:** an enabled start search can precede
+  A/manual or Y/automatic sampling. End search is only for an automatic sample computing at turn
+  completion. Manual sampling, or deferred automatic computation with recenter enabled, enters
+  recenter without acquiring a redundant end; final A matches its own eligible end or discards,
+  never launches another rotating search or substitutes an earlier endpoint. A during start search
+  explicitly selects the established no-tag workflow; A during end search discards the assisted
+  attempt. Null-factory manual sampling and successful identity-mount-disabled fallback remain
+  available. Failed/uncertain camera cleanup still blocks reuse. Skipped-assist telemetry does not
+  promise assisted automatic computation.
+- **Public construction and principles audit:** independently repeated the complete Gate 1
+  construction/caller review after implementation. The sole public addition is
+  `Config.assistOdometryHistory`, using the existing `PlanarPoseHistory.Config`. Its five bounds
+  are validated and defensively captured before deferred factory effects whenever a vision
+  factory selects assist, with or without drive; dormant invalid/null drafts remain ignored
+  without vision. The existing sole tester constructor and Config factory remain unchanged.
+  The private endpoint has a distinct frozen-evidence role; no public endpoint, injected history,
+  wrapper, helper file, competing heartbeat, or redundant construction layer was introduced.
+  Both direct production/tool call sites remain unchanged. Independent adversarial review of
+  arithmetic, lifecycle, API scope, test validity, and documentation found no remaining blocker.
+- **Beginner-documentation check:** the existing optional advanced section first explains capture
+  versus delivery time and raw history, then exact versus interpolated matching, starting axes,
+  residuals, distinct-frame acquisition, and recovery. A single illustrative Mermaid sequence
+  includes seconds, accessible title/description, and a nearby text equivalent. The five history
+  defaults and separate camera-age policy are visible with links to their actual API; optional
+  recentering and the final A are explained without assuming the reader knows capture matching.
+  The initial course/navigation and ordinary manual runbook remain unchanged. Javadocs, telemetry,
+  and source-backed documentation checks agree; no physical latency/slip-removal promise is made.
+- **Focused verification:** `:TeamCode:testDebugUnitTest` with the six focused filters and
+  `:TeamCode:compileDebugJavaWithJavac` passed against the final implementation: **109 tests,
+  6 suites, 0 failures, 0 errors, 0 skips**. Counts: evidence 21, timing 21, Config 21,
+  selectable-camera lifecycle 24, history 17, AprilTag timestamps 5. Assisted tests pass real
+  timestamped detections through the real AprilTag solver and raw history, replacing only
+  hardware acquisition/camera observations/drive outputs. Independently derived planar geometry
+  tests different field origins/headings and delayed exact/interpolated captures; the fixture
+  selects a visible fixed tag without weakening solver checks. This is not CAL-08 pod geometry
+  or physical latency proof.
+- **Full verification:** with Android Studio JBR, the normal
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run produced **2,451 tests,
+  266 suites, 2 failures, 0 errors, 0 skips** (2,449 passing). The only failures are the previously
+  recorded Windows CRLF-sensitive `DocumentationLinksTest` methods
+  `everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy` (line 1226) and
+  `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair` (now line 2219). Both failing methods
+  are unchanged from HEAD, as are their 11 Build recipes and Tasks guide inputs; LF-only substring
+  expectations reject their CRLF working copies. No unrelated line-ending repair is included.
+  A separate `:TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run passed. Existing
+  Java 21/source-target 8 and SDK deprecation warnings remain, with no new compilation failure.
+- **Documentation artifact:** the existing `build/docs-venv-win/Scripts/python.exe` environment
+  passed `pip check`. Final `-m zensical build --clean --strict` passed in **16.25 s**; Javadocs
+  were generated afterward. `.github/verify_generated_guide_search.py` passed **973 indexed
+  sections across all six guide areas**. `.github/verify_generated_api_links.py` passed
+  **178 generated API links and 82 maintained source links across 48 Markdown pages**.
+  Final `git diff --check` and tracked/untracked trailing-whitespace scans passed across all
+  seven changed files (zero whitespace hits); the index remains unstaged.
+- **Manual inspection and evidence limits:** inspect the calibrator/Config and evidence/timing
+  tests in Android Studio, especially final-A/end-search behavior, capture-frame arithmetic,
+  unavailable-evidence messages, and zero/abort precedence. Inspect the optional guide section
+  and its diagram at wide/narrow widths in light/dark appearance. Browser discovery returned no
+  available preview browser, so visual rendering was not verified in this session. No robot run
+  was performed. Actual camera/Pinpoint timing, mount/layout accuracy, safe powered limits,
+  independent pose/turn reference, and repeated offset accuracy remain adopting-robot checks;
+  record -> rebuild -> fresh configured tester -> verify before adopting offsets. CAL-07 through
+  CAL-10 remain separate tasks and are not started by this handoff.
+- **Resolved publication coordinates and stop:** exact current branch is
+  `codex/cal-06-calibration-evidence`; `git remote get-url --push origin` resolves to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; target is `master`. HEAD, local `master`,
+  and `origin/master` remain at `ba8861ecdc7fe2eaaf4b268e5475f8b7a4a28483`. No files are staged
+  and no CAL-06 commit, push, pull request, or merge is authorized or performed. Under
+  `execute-framework-improvements`, stop for Android Studio review and this combined approval:
+
+  > CAL-06 looks good. Authorize committing the reviewed CAL-06 diff on
+  > codex/cal-06-calibration-evidence, pushing that branch to
+  > https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging
+  > it into master.
+
+#### Gate 3 approval and publication (2026-09-07)
+
+- The user returned the exact combined CAL-06 review-and-publication authorization above. This
+  records acceptance of the reviewed implementation/Android Studio handoff and authorizes one
+  reviewed commit on `codex/cal-06-calibration-evidence`, push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, a pull request, and merge into `master`.
+  It does not assert a physical calibration run or independent visual-rendering measurement;
+  the Gate 2 evidence limits remain unchanged. No next-item work is authorized by this approval.
+- Pre-publication inspection confirmed the expected seven-file scope, no staged or unrelated
+  changes, no existing pull request for the item branch, and HEAD/local `master`/freshly fetched
+  `origin/master` at `ba8861ecdc7fe2eaaf4b268e5475f8b7a4a28483`. The tracker closeout is the
+  only post-review edit. Recheck final diff/whitespace, stage only the reviewed files, and preserve
+  the two hosted verification checks before merging. Verify the published head and fetched merge
+  tree afterward; do not bypass checks or rewrite divergent local/remote history.
 
 ### CAL-07 - Correct direction recommendations
 

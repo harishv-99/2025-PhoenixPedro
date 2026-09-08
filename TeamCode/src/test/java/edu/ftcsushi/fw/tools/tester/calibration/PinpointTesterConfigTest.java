@@ -36,6 +36,7 @@ import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
 import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
+import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
@@ -98,7 +99,8 @@ public final class PinpointTesterConfigTest {
                         "visionDeviceType",
                         "visionPickerTitle",
                         "fixedTagLayout",
-                        "aprilTags"
+                        "aprilTags",
+                        "assistOdometryHistory"
                 },
                 new Class<?>[]{
                         edu.ftcsushi.fw.ftc.localization.PinpointOdometryPredictor.Config.class,
@@ -120,7 +122,8 @@ public final class PinpointTesterConfigTest {
                         Class.class,
                         String.class,
                         TagLayout.class,
-                        AprilTagLocalizationConfig.class
+                        AprilTagLocalizationConfig.class,
+                        PlanarPoseHistory.Config.class
                 }
         );
     }
@@ -140,6 +143,12 @@ public final class PinpointTesterConfigTest {
         assertNotSame(podA.pinpoint, podB.pinpoint);
         assertNotSame(podA.aprilTags, podB.aprilTags);
         assertNotSame(podA.aprilTags.fieldPoseSolver, podB.aprilTags.fieldPoseSolver);
+        assertNotSame(podA.assistOdometryHistory, podB.assistOdometryHistory);
+        assertEquals(0.50, podA.assistOdometryHistory.retentionSec, 0.0);
+        assertEquals(128, podA.assistOdometryHistory.maxSamples);
+        assertEquals(0.10, podA.assistOdometryHistory.maxInterpolationGapSec, 0.0);
+        assertEquals(12.0, podA.assistOdometryHistory.maxInterpolationTranslationInches, 0.0);
+        assertEquals(Math.PI / 2.0, podA.assistOdometryHistory.maxInterpolationYawRad, 0.0);
         assertNull(podA.mecanum);
         assertEquals(0.6, podA.manualOmegaScale, 0.0);
         assertEquals(0.35, podA.autoOmegaCmd, 0.0);
@@ -354,6 +363,122 @@ public final class PinpointTesterConfigTest {
                 ),
                 "preferredVisionDeviceName"
         );
+    }
+
+    @Test
+    public void podAssistHistoryIsCapturedBeforePreferredFactoryEffects() throws Exception {
+        for (boolean withDrive : new boolean[]{false, true}) {
+            PinpointPodOffsetCalibrator.Config draft = PinpointPodOffsetCalibrator.Config.defaults();
+            draft.mecanum = withDrive ? FtcDrives.MecanumConfig.defaults() : null;
+            draft.preferredVisionDeviceName = "camera";
+            draft.aprilTags.maxDetectionAgeSec = 0.8;
+            PlanarPoseHistory.Config authored = draft.assistOdometryHistory;
+            authored.retentionSec = 0.4;
+            authored.maxSamples = 24;
+            authored.maxInterpolationGapSec = 0.03;
+            authored.maxInterpolationTranslationInches = 2.5;
+            authored.maxInterpolationYawRad = 0.3;
+            int[] builderCalls = {0};
+            int[] openCalls = {0};
+
+            PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(draft, name -> {
+                assertEquals("camera", name);
+                builderCalls[0]++;
+                // A deferred collaborator cannot alter the already-captured owner policy.
+                authored.retentionSec = Double.NaN;
+                authored.maxSamples = 0;
+                authored.maxInterpolationGapSec = Double.NaN;
+                authored.maxInterpolationTranslationInches = Double.NaN;
+                authored.maxInterpolationYawRad = Double.NaN;
+                draft.assistOdometryHistory = null;
+                draft.aprilTags.maxDetectionAgeSec = 99.0;
+                return hardwareMap -> {
+                    openCalls[0]++;
+                    return null;
+                };
+            });
+
+            PinpointPodOffsetCalibrator.Config captured = field(owner, "cfg");
+            assertNotSame(authored, captured.assistOdometryHistory);
+            assertEquals(0.4, captured.assistOdometryHistory.retentionSec, 0.0);
+            assertEquals(24, captured.assistOdometryHistory.maxSamples);
+            assertEquals(0.03, captured.assistOdometryHistory.maxInterpolationGapSec, 0.0);
+            assertEquals(2.5, captured.assistOdometryHistory.maxInterpolationTranslationInches, 0.0);
+            assertEquals(0.3, captured.assistOdometryHistory.maxInterpolationYawRad, 0.0);
+            assertEquals("history retention must not widen camera acceptance or vice versa",
+                    0.8, captured.aprilTags.maxDetectionAgeSec, 0.0);
+            assertEquals(1, builderCalls[0]);
+            assertEquals(0, openCalls[0]);
+        }
+    }
+
+    @Test
+    public void podInvalidActiveHistoryFailsBeforePreferredFactoryWithoutRequiringDrive() {
+        Map<String, Consumer<PinpointPodOffsetCalibrator.Config>> invalid = new LinkedHashMap<>();
+        invalid.put("", draft -> draft.assistOdometryHistory = null);
+        invalid.put(".retentionSec", draft -> draft.assistOdometryHistory.retentionSec = Double.NaN);
+        invalid.put(".maxSamples", draft -> draft.assistOdometryHistory.maxSamples = 1);
+        invalid.put(".maxInterpolationGapSec",
+                draft -> draft.assistOdometryHistory.maxInterpolationGapSec = -1.0);
+        invalid.put(".maxInterpolationTranslationInches",
+                draft -> draft.assistOdometryHistory.maxInterpolationTranslationInches = Double.POSITIVE_INFINITY);
+        invalid.put(".maxInterpolationYawRad",
+                draft -> draft.assistOdometryHistory.maxInterpolationYawRad = Math.PI + 0.01);
+
+        for (boolean withDrive : new boolean[]{false, true}) {
+            for (String selectedName : new String[]{null, "camera"}) {
+                for (Map.Entry<String, Consumer<PinpointPodOffsetCalibrator.Config>> entry
+                        : invalid.entrySet()) {
+                    PinpointPodOffsetCalibrator.Config draft = PinpointPodOffsetCalibrator.Config.defaults();
+                    draft.mecanum = withDrive ? FtcDrives.MecanumConfig.defaults() : null;
+                    draft.preferredVisionDeviceName = selectedName;
+                    entry.getValue().accept(draft);
+                    int[] builderCalls = {0};
+                    assertFailureContains(() -> new PinpointPodOffsetCalibrator(draft, name -> {
+                        builderCalls[0]++;
+                        return hardwareMap -> null;
+                    }), "PinpointPodOffsetCalibrator.Config.assistOdometryHistory" + entry.getKey());
+                    assertEquals("invalid active data fails before a deferred factory effect", 0,
+                            builderCalls[0]);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void podHistoryRemainsDormantWithoutVisionAndExactOnlyHistoryIsSupported()
+            throws Exception {
+        for (boolean withDrive : new boolean[]{false, true}) {
+            for (boolean missing : new boolean[]{false, true}) {
+                PinpointPodOffsetCalibrator.Config draft = PinpointPodOffsetCalibrator.Config.defaults();
+                draft.mecanum = withDrive ? FtcDrives.MecanumConfig.defaults() : null;
+                if (missing) {
+                    draft.assistOdometryHistory = null;
+                } else {
+                    draft.assistOdometryHistory.retentionSec = Double.NaN;
+                    draft.assistOdometryHistory.maxSamples = 0;
+                    draft.assistOdometryHistory.maxInterpolationGapSec = -1.0;
+                    draft.assistOdometryHistory.maxInterpolationTranslationInches = Double.NaN;
+                    draft.assistOdometryHistory.maxInterpolationYawRad = Double.NaN;
+                }
+                PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(draft, null);
+                PinpointPodOffsetCalibrator.Config captured = field(owner, "cfg");
+                assertNull(captured.assistOdometryHistory);
+            }
+        }
+
+        PinpointPodOffsetCalibrator.Config exact = PinpointPodOffsetCalibrator.Config.defaults();
+        exact.assistOdometryHistory.retentionSec = 0.0;
+        exact.assistOdometryHistory.maxSamples = 2;
+        exact.assistOdometryHistory.maxInterpolationGapSec = 0.0;
+        exact.assistOdometryHistory.maxInterpolationTranslationInches = 0.0;
+        exact.assistOdometryHistory.maxInterpolationYawRad = 0.0;
+        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator(
+                exact, name -> hardwareMap -> null);
+        PinpointPodOffsetCalibrator.Config captured = field(owner, "cfg");
+        assertEquals(0.0, captured.assistOdometryHistory.retentionSec, 0.0);
+        assertEquals(2, captured.assistOdometryHistory.maxSamples);
+        assertEquals(0.0, captured.assistOdometryHistory.maxInterpolationGapSec, 0.0);
     }
 
     @Test

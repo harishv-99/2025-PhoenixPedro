@@ -15,10 +15,12 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 
 import edu.ftcsushi.fw.core.geometry.Pose2d;
+import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.hal.PowerOutput;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
@@ -30,8 +32,11 @@ import edu.ftcsushi.fw.ftc.vision.AprilTagVision;
 import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
+import edu.ftcsushi.fw.localization.PlanarPoseHistory;
+import edu.ftcsushi.fw.field.SimpleTagLayout;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
+import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.fw.tools.tester.TesterContext;
 import edu.ftcsushi.fw.tools.tester.TeleOpTester;
@@ -53,7 +58,9 @@ import static org.junit.Assert.fail;
  * uses the predictor's existing package-private device seam for finite scripted observations.
  * Pending flags represent binding-edge requests; direct private Abort invocation represents the
  * existing binding callback, without recreating its registration as purported production proof.
- * Camera availability is supplied at sample-entry boundaries; capture freshness belongs to CAL-06.
+ * Camera acquisition is replaced with scripted timestamped detections; the real AprilTag solver
+ * and bounded raw-odometry history retain capture-time matching. These observations do not prove
+ * physical timing accuracy, braking, or pod geometry.
  */
 public final class PinpointPodOffsetCalibratorTimingTest {
 
@@ -162,7 +169,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
             fixture.queueAuto();
             setField(fixture.owner, "resetRequested", true);
             fixture.device.pose = sdkPose(Math.PI);
-            setField(fixture.owner, "latestTagPose", Pose2d.zero());
+            fixture.frameAt(fixture.clock.nowTimestamp(), Pose2d.zero());
             setField(fixture.owner, "tagStableFrames", 3);
             setField(fixture.owner, "lastRecommendedStrafePodOffsetForwardInches", 12.0);
             setField(fixture.owner, "lastRecommendedForwardPodOffsetLeftInches", 13.0);
@@ -362,7 +369,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
     }
 
     @Test
-    public void startSearchAngularLimitStillFallsBackToAnUnassistedSampleBeforeTimeout()
+    public void startSearchAngularLimitDiscardsAssistedAttemptBeforeTimeout()
             throws Exception {
         Fixture fixture = new Fixture(true, true, config -> config.tagSearchMaxTurnRad = 1.0);
         fixture.queueAuto();
@@ -371,20 +378,17 @@ public final class PinpointPodOffsetCalibratorTimingTest {
 
         fixture.loopAt(1.0);
 
-        assertEquals("ROTATING", fixture.phase());
-        assertNull(field(fixture.owner, "startTagPose"));
-        assertNull(field(fixture.owner, "lastAttemptFailure"));
+        assertEquals("IDLE", fixture.phase());
+        assertNotNull(field(fixture.owner, "lastAttemptFailure"));
+        assertNull(field(fixture.owner, "lastRecommendedStrafePodOffsetForwardInches"));
         fixture.assertStopped();
         fixture.loopAt(2.0);
-        fixture.assertPowered();
-        fixture.loopAt(10.999);
-        assertEquals("ROTATING", fixture.phase());
-        fixture.loopAt(11.0);
-        fixture.assertRejected();
+        fixture.assertStopped();
+        assertEquals("IDLE", fixture.phase());
     }
 
     @Test
-    public void endSearchAngularLimitStillFallsBackToRecenterBeforeTimeout() throws Exception {
+    public void endSearchAngularLimitDiscardsInsteadOfFallingBackToRecenter() throws Exception {
         Fixture fixture = new Fixture(true, true,
                 config -> config.tagEndSearchMaxExtraTurnRad = 1.0);
         fixture.startAutoWithTag();
@@ -395,12 +399,13 @@ public final class PinpointPodOffsetCalibratorTimingTest {
 
         fixture.loopAt(2.0);
 
-        assertEquals("POST_RECENTER", fixture.phase());
-        assertNull(field(fixture.owner, "lastAttemptFailure"));
+        assertEquals("IDLE", fixture.phase());
+        assertNotNull(field(fixture.owner, "lastAttemptFailure"));
+        assertNull(field(fixture.owner, "lastRecommendedStrafePodOffsetForwardInches"));
         fixture.assertStopped();
         fixture.loopAt(100.0);
-        assertEquals("POST_RECENTER", fixture.phase());
-        assertNull(field(fixture.owner, "lastAttemptFailure"));
+        assertEquals("IDLE", fixture.phase());
+        assertNotNull(field(fixture.owner, "lastAttemptFailure"));
     }
 
     @Test
@@ -485,7 +490,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
             CountingCamera camera = new CountingCamera();
             setField(fixture.owner, "visionLane", camera.owned);
             setField(fixture.owner, "lastRecommendedStrafePodOffsetForwardInches", 12.0);
-            setField(fixture.owner, "lastDxFieldInches", 4.0);
+            setField(fixture.owner, "lastDxStartBodyInches", 4.0);
             Throwable expected = throwError ? new AssertionError("zero write error")
                     : new IllegalStateException("zero write failed");
             fixture.outputs[0].beforeZero = () -> {
@@ -494,7 +499,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
                     assertFalse((Boolean) field(fixture.owner, "autoStartRequested"));
                     assertNull(field(fixture.owner,
                             "lastRecommendedStrafePodOffsetForwardInches"));
-                    assertNull(field(fixture.owner, "lastDxFieldInches"));
+                    assertNull(field(fixture.owner, "lastDxStartBodyInches"));
                     assertEquals(fixture.clock.cycle(),
                             ((Long) field(fixture.owner, "motionInhibitedCycle")).longValue());
                     fixture.queuePrimary();
@@ -548,7 +553,10 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         return fixture;
     }
 
-    private static final class Fixture {
+    /** Shared hardware-substitution fixture; never supplies an already-matched endpoint. */
+    static final class Fixture {
+        private static final double[] TAG_X = {24.0, -24.0, 0.0, 0.0, 100.0, 100.0, 124.0, 76.0};
+        private static final double[] TAG_Y = {0.0, 0.0, 24.0, -24.0, 26.0, 74.0, 50.0, 50.0};
         final LoopClock clock = new LoopClock();
         final Gamepad gamepad = new Gamepad();
         final List<Double> commands = new ArrayList<>();
@@ -557,6 +565,8 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         final FakePinpoint device = new FakePinpoint();
         final PinpointOdometryPredictor predictor;
         final PinpointPodOffsetCalibrator owner;
+        final PinpointPodOffsetCalibrator.Config config;
+        ScriptedCamera camera = new ScriptedCamera();
 
         Fixture(boolean assist, boolean powered) throws Exception {
             this(assist, powered, config -> { });
@@ -565,11 +575,15 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         Fixture(boolean assist, boolean powered,
                 Consumer<PinpointPodOffsetCalibrator.Config> configure) throws Exception {
             clock.reset(0.0);
-            PinpointPodOffsetCalibrator.Config config =
-                    PinpointPodOffsetCalibrator.Config.defaults();
+            config = PinpointPodOffsetCalibrator.Config.defaults();
             config.mecanum = powered ? FtcDrives.MecanumConfig.defaults() : null;
             config.automaticPhaseTimeoutSec = LIMIT;
             configure.accept(config);
+            SimpleTagLayout layout = new SimpleTagLayout();
+            for (int i = 0; i < TAG_X.length; i++) {
+                layout.addPose(i + 1, new Pose3d(TAG_X[i], TAG_Y[i], 0.0, 0.0, 0.0, 0.0));
+            }
+            config.fixedTagLayout = layout;
             owner = new PinpointPodOffsetCalibrator(config,
                     assist ? ignored -> hardwareMap -> null : null);
             Telemetry sink = (Telemetry) Proxy.newProxyInstance(
@@ -594,22 +608,65 @@ public final class PinpointPodOffsetCalibratorTimingTest {
                         outputs[2], outputs[3], MecanumDrivebase.Config.defaults()));
             }
             if (assist) {
-                setField(owner, "tagEstimator", new AprilTagPoseEstimator(
-                        ignored -> AprilTagDetections.none(), config.fixedTagLayout,
-                        AprilTagPoseEstimator.Config.defaults()));
+                installCamera();
+                setField(owner, "assistOdometryHistory", new PlanarPoseHistory(predictor,
+                        config.assistOdometryHistory));
             }
             predictor.update(clock);
             setField(owner, "latestPinpointPose", predictor.getEstimate().toPose2d());
             owner.start();
         }
 
+        void installCamera() throws Exception {
+            setField(owner, "visionLane", camera.owned);
+            setField(owner, "tagSensor", camera.sensor);
+            setField(owner, "tagEstimator", new AprilTagPoseEstimator(camera.sensor,
+                    config.fixedTagLayout,
+                    config.aprilTags.toAprilTagPoseEstimatorConfig(camera.cameraMountConfig())));
+        }
+
         void queueAuto() throws Exception { setField(owner, "autoStartRequested", true); }
         void queuePrimary() throws Exception { setField(owner, "primaryActionRequested", true); }
 
         void startAutoWithTag() throws Exception {
-            setField(owner, "latestTagPose", Pose2d.zero());
-            invoke(owner, "requestStartSample", new Class<?>[]{boolean.class}, true);
+            frameAt(clock.nowTimestamp(), Pose2d.zero());
+            queueAuto();
+            owner.loop(0.0);
             assertEquals("ROTATING", phase());
+            camera.next = AprilTagDetections.none();
+        }
+
+        void frameAt(LoopTimestamp timestamp, Pose2d fieldToRobot) {
+            double c = Math.cos(fieldToRobot.headingRad);
+            double s = Math.sin(fieldToRobot.headingRad);
+            int selected = -1;
+            double nearestRange = Double.POSITIVE_INFINITY;
+            for (int i = 0; i < TAG_X.length; i++) {
+                double dx = TAG_X[i] - fieldToRobot.xInches;
+                double dy = TAG_Y[i] - fieldToRobot.yInches;
+                double forward = c * dx + s * dy - 1.0;
+                double left = -s * dx + c * dy;
+                double range = Math.hypot(forward, left);
+                if (forward > Math.abs(left) && range < nearestRange) {
+                    selected = i;
+                    nearestRange = range;
+                }
+            }
+            assertTrue("fixture needs a fixed tag visibly in front of this camera", selected >= 0);
+            double dx = TAG_X[selected] - fieldToRobot.xInches;
+            double dy = TAG_Y[selected] - fieldToRobot.yInches;
+            // Independently invert the planar robot pose and subtract the camera's +1 in mount.
+            Pose3d cameraToTag = new Pose3d(c * dx + s * dy - 1.0,
+                    -s * dx + c * dy, 0.0, -fieldToRobot.headingRad, 0.0, 0.0);
+            camera.next = AprilTagDetections.fromFrame(timestamp,
+                    Collections.singletonList(AprilTagObservation.target(selected + 1, cameraToTag)));
+        }
+
+        void noFrame() { camera.next = AprilTagDetections.none(); }
+
+        void poseAt(double timeSec, Pose2d pose) {
+            device.pose = sdkPose(pose);
+            loopAt(timeSec);
         }
 
         void loopAt(double timeSec) {
@@ -653,7 +710,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         }
     }
 
-    private static final class FakePinpoint {
+    static final class FakePinpoint {
         Pose2D pose = sdkPose(0.0);
         GoBildaPinpointDriver.DeviceStatus status = GoBildaPinpointDriver.DeviceStatus.READY;
         int polls;
@@ -682,6 +739,26 @@ public final class PinpointPodOffsetCalibratorTimingTest {
             constructor.setAccessible(true);
             return constructor.newInstance(lookup, PinpointOdometryPredictor.Config.defaults());
         }
+    }
+
+    /** The selected camera resource is real-owned; only its external frame/readiness is scripted. */
+    static final class ScriptedCamera implements AprilTagVision, AutoCloseable {
+        final OwnedAprilTagCamera owned = new OwnedAprilTagCamera(this, this);
+        AprilTagDetections next = AprilTagDetections.none();
+        int polls;
+        int closes;
+        RuntimeException failure;
+        final AprilTagSensor sensor = ignored -> { polls++; return next; };
+
+        @Override public AprilTagSensor tagSensor() { return sensor; }
+        @Override public CameraMountConfig cameraMountConfig() {
+            return CameraMountConfig.of(1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        }
+        @Override public VisionReadiness readiness(LoopClock clock) {
+            if (failure != null) throw failure;
+            return VisionReadiness.ready();
+        }
+        @Override public void close() { closes++; }
     }
 
     private static final class RecordingOutput implements PowerOutput {
@@ -718,6 +795,11 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         return new Pose2D(DistanceUnit.INCH, 0.0, 0.0, AngleUnit.RADIANS, headingRad);
     }
 
+    static Pose2D sdkPose(Pose2d pose) {
+        return new Pose2D(DistanceUnit.INCH, pose.xInches, pose.yInches,
+                AngleUnit.RADIANS, pose.headingRad);
+    }
+
     private static Field reflectedField(Object owner, String name) throws Exception {
         for (Class<?> type = owner.getClass(); type != null; type = type.getSuperclass()) {
             try {
@@ -731,15 +813,15 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         throw new NoSuchFieldException(name);
     }
 
-    private static Object field(Object owner, String name) throws Exception {
+    static Object field(Object owner, String name) throws Exception {
         return reflectedField(owner, name).get(owner);
     }
 
-    private static void setField(Object owner, String name, Object value) throws Exception {
+    static void setField(Object owner, String name, Object value) throws Exception {
         reflectedField(owner, name).set(owner, value);
     }
 
-    private static Object invoke(Object owner, String name) throws Exception {
+    static Object invoke(Object owner, String name) throws Exception {
         return invoke(owner, name, new Class<?>[0]);
     }
 
