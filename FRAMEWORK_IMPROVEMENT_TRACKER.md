@@ -261,12 +261,73 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 147 | DOC-19 | Windows and macOS command tabs | Done | The reviewed 26-pair Windows/macOS migration, linked selection, maintainer contract, hardened regressions, verification, manual approval, and destination-specific publication authorization are complete. |
 | 148 | DOC-20 | Concept-first documentation and visual learning | Done | Concept-first repairs and six diagrams implemented; principles strengthened; 2,254 tests and strict docs/API checks pass. User approved the reviewed diff and exact branch/remote/master publication on 2026-09-06. |
 | 149 | DOC-21 | Integrate calibration testers with a new robot | Done | Independent example and three layered Test & Tune lessons reviewed; user authorized destination-specific commit, PR, and merge on 2026-09-08. Physical adopting-robot validation remains separate. |
+| 150 | MATH-02 | Finite two-dimensional calibration tables | Proposed | Extend finite interpolation to two independent inputs without owning calibration fitting or mechanism meaning. |
+| 151 | TASK-07 | Terminal Task cleanup composition | Proposed | Revisit the earlier exclusion with complete caller evidence for one narrow, outcome-preserving cleanup decorator. |
+| 152 | RUNTIME-04 | Managed registration ownership transfer | Proposed | Evaluate a stronger existing registration contract that removes adopter cleanup guards without stopping already-owned resources. |
+| 153 | VISION-04 | Bounded recent field-location memory | Proposed | Remember recently observed ball/cluster locations, refresh unambiguous spatial matches, and expire unseen entries without velocity prediction or physical-identity claims. |
+| 154 | SPATIAL-03 | Bounded intake-sweep geometry | Proposed | Answer point coverage for explicitly supported intake corridors without claiming capture or collision clearance. |
+| 155 | EXAMPLE-13 | Bounded multi-object collection | Proposed | Extend the maintained adaptive-collection example with robot-owned ordering, capacity, return cost, confirmation, and fallback. |
+| 156 | CTRL-03 | Coherent externally supplied motion setpoints | Proposed | Evaluate one position/velocity/acceleration input through the existing Plant control path, only with concrete adopter simplification. |
+| 157 | SENSOR-02 | Truthful directional range observations | Proposed | Expose directional range and available timing evidence at the sensor boundary without inventing acquisition timestamps or localization policy. |
+| 158 | LOCALIZATION-05 | Known-wall localization constraints | Proposed | Use directional range to correct only observable components, retaining timing and shared-heading evidence. |
+| 159 | AUDIT-02 | Cuttlefish/Worlds capability and simplicity closure | Proposed | Close the separately pinned 2026-09-08 comparison after its implementation candidates reach terminal dispositions. |
+| 160 | VISION-05 | Learned-detector observation adapter | Deferred | Resume with a selected backend/model, licensing, annotated scenes, target-point interpretation, and measured latency. |
+| 161 | DRIVE-04 | Range-based approach-speed limiting | Deferred | Resume after truthful range evidence and representative sensor/drivetrain braking measurements; reduction-only assistance is not collision avoidance. |
+
+### Current Cuttlefish/Worlds follow-up order (approved 2026-09-08)
+
+The user approved implementation of this **tracker-only intake** and explicitly retained
+**robustness first**. This adds ten **Proposed** items and two evidence-backed **Deferred** items;
+it does not approve their public APIs, begin their decision gates, enable motion, or authorize
+publication. All robot-code simplicity comparisons include **every affected package under
+`edu.ftcsushi.robots`**, including configuration, helpers, lifecycle, tests, and presenters. A
+shorter OpMode or a helper moved elsewhere in robot code is not by itself a framework improvement.
+
+The user's subsequent vision discussion and tracker-update direction narrow VISION-04 to
+**bounded recent field-location memory with simple spatial matching**. It remains **Proposed** in
+the same position: neither the earlier suggestion to defer it entirely nor the broader original
+motion-predicting tracker is the current decision. Remember one ball or a recently seen cluster;
+refresh actual sightings and age out unseen entries. Ball velocity estimation, predicted/coasting
+positions, interception, appearance matching, automatic occlusion/absence inference, confidence-
+decay models, and long-lived accumulated field maps are not pursued in this initial scope. All
+other task priorities and statuses remain unchanged, and CAL-10 remains next.
+
+1. Finish `CAL-10` -> `TEST-02` -> `LOCALIZATION-04` -> `DIAG-01` -> `EXAMPLE-11` -> `EXAMPLE-12`.
+   `CAL-10` remains the next decision gate; completed robustness work is not reopened.
+2. Run the original `AUDIT-01` with its unchanged frozen repositories, capability matrix, and
+   terminal-disposition prerequisites. It closes that earlier program, not this new comparison.
+3. Run `MATH-02` -> `TASK-07` -> `RUNTIME-04` -> `VISION-04` -> `SPATIAL-03` -> `EXAMPLE-13` ->
+   `CTRL-03` -> `SENSOR-02` -> `LOCALIZATION-05`, one item per branch and approval cycle.
+4. Run `AUDIT-02` after those nine implementation candidates have reached **Done** (including an
+   approved, recorded, verified no-change result) or evidence-backed **Deferred** with a concrete
+   reactivation trigger. Include the two newly deferred opportunities in its classification, but
+   do not wait for unavailable hardware or model evidence.
+
+This is priority order, not a dependency chain between independent capabilities. Dependencies are
+recorded per item: in particular, sensor evidence precedes wall-based correction; pure corridor
+geometry and any useful recent-location memory precede their multi-object consumer. Earlier
+robustness items must not wait for these later APIs. An unavailable prerequisite needs an explicit
+bounded fallback or deferral, not fabricated evidence or a silently changed completion contract.
+
+Extend existing `CAL-10`, `TEST-02`, `LOCALIZATION-04`, `DIAG-01`, `EXAMPLE-11`, and `EXAMPLE-12`
+records where the comparison adds evidence, rather than duplicate those tasks. Preserve all
+historical decisions and current deferrals, including `SOURCE-03`, `PERF-03`, `CHECK-01`,
+`DRIVE-02`, `FIELD-01`, and articulated-camera support. TASK-07 and RUNTIME-04 explicitly revisit
+previously rejected/excluded designs; inclusion here does not overturn those decisions.
+
+Every eventual change keeps one owner, heartbeat, and final writer; follows Framework Principles;
+and synchronizes APIs, Javadocs, guides, and independent compiling examples. Explain unfamiliar
+concepts at first use, keep each optional lesson focused on one outcome, and keep advanced topics
+after the beginner foundation without adding introductory tabs. A useful diagram has labeled
+units/frames and nearby text conveying the same meaning. Tests prove the named software contract,
+not physical accuracy, successful capture, safe braking, or match benefit.
 
 ### Current robustness execution order (added 2026-09-07)
 
 The user approved this tracker-only intake and chose **robustness first**, before `AUDIT-01`.
-All thirteen items are **Proposed**: their leading hypotheses are not approved designs, and this
-intake starts no decision gate, implementation, hardware run, or publication. Execute one item per
+At that intake, all thirteen items were **Proposed**; the queue and detailed records now retain
+their individual completion states. The intake itself approved no designs and started no decision
+gate, implementation, hardware run, or publication. Execute one item per
 branch through the normal research, design-approval, implementation, and review gates:
 
 1. `CAL-05` — bound powered calibration phases.
@@ -455,6 +516,98 @@ intentional final control-command constraint from universal regulated-output saf
 generic rate estimation from optional signal conditioning rather than naming either source
 abstraction after one encoder. Later API cleanup should not begin until tests protect the core
 semantics it depends on.
+
+## External competition capability benchmark (2026-09-08 Cuttlefish/Worlds follow-up)
+
+This is a separate, frozen comparison supporting the approved tracker-only intake above. The Sushi
+baseline is `983b09fb457ad9dcb2bf24291b0f92d2561e0437` (merged CAL-09). It does not rewrite
+the historical 2026-07-11 benchmark or enlarge AUDIT-01. AUDIT-02 later compares its current Sushi
+head against the source snapshots and capability rows below.
+
+### Access, provenance, and reuse limits
+
+- The paginated GitHub organization inventory exposed 27 public repositories for
+  [6165 MSET Cuttlefish](https://github.com/6165-MSET-Cuttlefish): 14 non-forks and 13 forks.
+  Inventory is not exhaustive source review. Selected original season projects, experiments, and
+  relevant tools were inspected; every branch and every vendor/SDK file was not. Access to private,
+  removed, or undisclosed repositories is not established.
+- The formerly reviewed `6165-MSET-Cuttlefish/Decode` and its old benchmark commit did not resolve
+  during this review. No rename/history relationship with `summer-2026` was established. Retain
+  historical links as historical evidence; do not relabel the new snapshot as the old repository.
+- [Official 2026 Worlds results](https://ftc-events.firstinspires.org/2025/FTCCMP1) establish event
+  participation/results, not which source commit ran on a robot. The additional public snapshots
+  below were published after Worlds. The review does not cover every top team or claim access to
+  the overall champions' exact deployed code.
+- Learn independently implemented techniques; do not copy unreviewed code or model assets.
+  `summer-2026`, PowerPlay, and IntoTheDeep report BSD-3-Clause-Clear licensing. Homography-Guide
+  and ITD-Tensorflow had no detected repository license; public readability is not reuse permission.
+  Check relevant file, dataset, model, and dependency licenses before any reuse. Vendor forks are
+  credited to their upstreams unless a distinct team-authored change is established.
+
+### Pinned implementation evidence
+
+| Source snapshot | Inspected evidence and interpretation |
+|---|---|
+| [Cuttlefish summer-2026, `daa86456cc641a51064caca08de6003cfcda606f`](https://github.com/6165-MSET-Cuttlefish/summer-2026/tree/daa86456cc641a51064caca08de6003cfcda606f) | [BallTracker](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/daa86456cc641a51064caca08de6003cfcda606f/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/vision/BallTracker.java#L47) associates persistent tracks; [RouteOptimizer](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/daa86456cc641a51064caca08de6003cfcda606f/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Spline/Field/RouteOptimizer.java#L75) and [IntakeCurvePlanner](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/daa86456cc641a51064caca08de6003cfcda606f/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Spline/Field/IntakeCurvePlanner.java#L42) compare collection geometry; [PredictiveBraking](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/daa86456cc641a51064caca08de6003cfcda606f/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/test/PredictiveBraking.java#L278) experiments with delayed range and stopping distance. These are implementation examples, not portable physical guarantees. |
+| [Cuttlefish historical Freight Frenzy, `3b9e6203c99c4b3d024249a6069e7bf74b76475c`](https://github.com/6165-MSET-Cuttlefish/FtcRobotController/tree/3b9e6203c99c4b3d024249a6069e7bf74b76475c) | [Relocalizer](https://github.com/6165-MSET-Cuttlefish/FtcRobotController/blob/3b9e6203c99c4b3d024249a6069e7bf74b76475c/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/relocalizer/Relocalizer.kt#L75) demonstrates known-wall range geometry. Automatic update calls in the reviewed path are commented out; do not infer match usage. |
+| [Cuttlefish Homography-Guide, `a5da9208f6a71a4598506bb618c32b4f1ce68b4c`](https://github.com/6165-MSET-Cuttlefish/Homography-Guide/tree/a5da9208f6a71a4598506bb618c32b4f1ce68b4c) | [Guide](https://github.com/6165-MSET-Cuttlefish/Homography-Guide/blob/a5da9208f6a71a4598506bb618c32b4f1ce68b4c/docs/README.md) and [calibration script](https://github.com/6165-MSET-Cuttlefish/Homography-Guide/blob/a5da9208f6a71a4598506bb618c32b4f1ce68b4c/src/python/homography_calibration.py#L61) make image/plane correspondence and measured-point checks visible. This motivates validation teaching, not a competing default projection solver. |
+| [Cuttlefish ITD-Tensorflow, `5f8822f11b14a950d85567c332172b5ffebce76e`](https://github.com/6165-MSET-Cuttlefish/ITD-Tensorflow/tree/5f8822f11b14a950d85567c332172b5ffebce76e) | A model, labels, and training links demonstrate a learned-detector option for touching samples. The README's 91% claim is team-reported, restricted to fully visible samples within 24 inches, and not independently validated here. |
+| [Cuttlefish IntoTheDeep, `74bc0605080c8b76142d657ea7003375e2300056`](https://github.com/6165-MSET-Cuttlefish/6165-IntoTheDeep/tree/74bc0605080c8b76142d657ea7003375e2300056), [PowerPlay, `76cf8151b0e744dbe16180f4ef8810f629d74b3e`](https://github.com/6165-MSET-Cuttlefish/PowerPlay/tree/76cf8151b0e744dbe16180f4ef8810f629d74b3e) | Historical original robot code provides context for target prioritization, mechanisms, and task sequencing. Distance/neighbor scoring is not a new Sushi selector gap; unbounded retry patterns are not adoption candidates. |
+| [Cuttlefish Decode-Simulator, `d364b8a93a3158fa4edab9b84fca59d37481487c`](https://github.com/6165-MSET-Cuttlefish/Decode-Simulator/tree/d364b8a93a3158fa4edab9b84fca59d37481487c), [ftc-teamtrack, `c68757cf1530ea2c8ad6fe747d699aa37088c65e`](https://github.com/6165-MSET-Cuttlefish/ftc-teamtrack/tree/c68757cf1530ea2c8ad6fe747d699aa37088c65e) | Simplified game-like simulation and practice/scouting tooling are not evidence for a physics simulator or scouting application in Sushi core. |
+| [RevAmped 12808, `3dbc4cb23f7a6302f3251291333a9daeeea8c2d9`](https://github.com/junkjunk123/RevAmped-Decode-V2/tree/3dbc4cb23f7a6302f3251291333a9daeeea8c2d9), published July 25 | [Official Goodall Control Award winner](https://ftc-events.firstinspires.org/2025/FTCCMP1GOOD/awards). [SimpleShooterMath](https://github.com/junkjunk123/RevAmped-Decode-V2/blob/3dbc4cb23f7a6302f3251291333a9daeeea8c2d9/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/math/projectile/SimpleShooterMath.java#L95) interpolates RPM, hood, and flight time on goal-relative X/Y grids, consumed by TrackingThread. Gradient-prediction gains default to zero; their presence does not establish active compensation. |
+| [Overclock 15083, `6267d38bdffc6cdb37c441200ee12fdf0d501645`](https://github.com/Xtendera/OverclockDecode/tree/6267d38bdffc6cdb37c441200ee12fdf0d501645), published May 4 | [Official Lovelace finalist captain and Design winner](https://ftc-events.firstinspires.org/2025/FTCCMP1LOVE/awards). [Shooter](https://github.com/Xtendera/OverclockDecode/blob/6267d38bdffc6cdb37c441200ee12fdf0d501645/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/overclock/subsystems/Shooter.java#L119) uses bounded motion-aware refinements; [FeedforwardTurretController](https://github.com/Xtendera/OverclockDecode/blob/6267d38bdffc6cdb37c441200ee12fdf0d501645/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/overclock/globals/FeedforwardTurretController.java#L33) consumes target velocity and handles wrap overlap. [SolverCommands](https://github.com/Xtendera/OverclockDecode/blob/6267d38bdffc6cdb37c441200ee12fdf0d501645/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/overclock/opmodes/auto/common/SolverCommands.java#L60) is a compact composition benchmark, not evidence for a second scheduler. |
+| [I.C.E. 11329, `829cc23106d1a281a3c04ae7aaa6c2fec4573e6c`](https://github.com/FTC11329/11329-2026-repo/tree/829cc23106d1a281a3c04ae7aaa6c2fec4573e6c), published August 4 | [Official Edison winning alliance and Design runner-up](https://ftc-events.firstinspires.org/2025/FTCCMP1EDIS/awards). [ShotCalculator](https://github.com/FTC11329/11329-2026-repo/blob/829cc23106d1a281a3c04ae7aaa6c2fec4573e6c/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/ShootOnTheFly/ShotCalculator.java#L35) returns a coherent multi-output solution with turret rate. [VisionSpline](https://github.com/FTC11329/11329-2026-repo/blob/829cc23106d1a281a3c04ae7aaa6c2fec4573e6c/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/VisionSpline.java#L25) and [FromShootFarPos](https://github.com/FTC11329/11329-2026-repo/blob/829cc23106d1a281a3c04ae7aaa6c2fec4573e6c/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modularAutos/modules/FromShootFarPos.java#L549) demonstrate multi-detection curves and runtime alternatives. Bezier control points are not guaranteed visited waypoints. |
+
+### Frozen capability/disposition matrix for AUDIT-02
+
+| Opportunity | Sushi baseline and bounded disposition | Task/closure owner |
+|---|---|---|
+| Two-input empirical maps | `InterpolatingTable1D` exists; finite rectangular 2D interpolation does not. Share math, not projectile fitting or goal semantics. | MATH-02 |
+| Compact macros with mandatory terminal cleanup | Outcome-aware Tasks exist; equivalent adopter lifecycle wrappers remain. Reconsider only the synchronous cleanup mechanism, not domain recovery. | TASK-07; existing TASK-05/06 |
+| Registration failure cleanup | Managed lifecycle exists; multiple adopters still wrap registration to clean newly constructed owners. Strengthen one existing path only if complete callers get simpler. | RUNTIME-04; existing COMMON-01/RUNTIME-01/03 |
+| Persistent anonymous-object identity across frames | `TargetSelections` deliberately selects within one frame; pickup rechecks a frozen point. The user narrowed adoption to recent field-location memory and simple spatial matching. Motion prediction and physical-identity tracking are not pursued; no new camera owner is needed. | VISION-04 narrowed scope; broader tracker deliberately excluded pending demonstrated need |
+| Intake-footprint collection sweeps | Current rectangle checks establish containment at a pose, and examples select targets; neither establishes multi-point sweep coverage. Separate reusable geometry from route/capacity/return policy. | SPATIAL-03; EXAMPLE-13 |
+| Externally computed position/rate/acceleration | Standard Plants generate internal setpoints or accept a custom regulator. The coordinated example already publishes one solution, but ordinary realization does not consume an authored coherent full-state setpoint. | CTRL-03; existing CTRL-02/EXAMPLE-03 |
+| Directional range and known-wall correction | FTC scalar distance sources exist; timestamped beam evidence and component-limited wall correction are separate missing contracts. Existing correctors consume complete absolute poses; do not fabricate one from one beam. | SENSOR-02; LOCALIZATION-05 |
+| Range-dependent manual approach ceiling | Pedro already retains its predictive-braking coefficients and path constraints. A manual intent overlay using range/latency/deceleration is distinct and needs measurements. | DRIVE-04, Deferred |
+| Visible measured-point calibration validation | The existing record/rebuild/configured-retest procedure needs a compact independent-validation example, not another calibration registry or homography default. | CAL-10 amendment |
+| Correlated evidence and offline replay | Existing experiment/lab-card and localization test seams are the starting point; capture must be bounded and off-robot. Last-sighting, remembered-location, expiry, and ambiguity evidence are optional later consumers, not a requirement to add motion prediction. | DIAG-01; TEST-02 |
+| Feedback-confirmed feeding and assist degradation | Inventory, paired-wheel evidence, Task composition, and manual fallback already exist; pending examples address the remaining bounded policy/teaching work. | EXAMPLE-11/12 amendments |
+| Learned detection of touching/confusing objects | The webcam owner already accepts custom VisionProcessors. A maintained model-specific observation adapter is optional; no model/backend/evaluation evidence is selected. | VISION-05, Deferred |
+| Richer moving-shot physics and game strategy | Coherent robot-owned solutions and bounded motion-aware calculations fit existing ownership. Numerical model choice, inventory value, recovery, and contact permissions remain robot policy. | Deliberately not a framework model; MATH-02/CTRL-03 evaluate only reusable gaps |
+| Selectors, shared cameras, approach guidance, coordinated snapshots | Already supported; use current APIs and their exact limitations rather than add renamed parallel families. | Existing VISION-03/SPATIAL-02/EXAMPLE-03/STATUS work |
+| Whole experimental planners, replacement runtime, simulator, scouting/CAD/vendor forks | No demonstrated principle-consistent framework gap justifies copying those systems. | Rejections and evidence triggers below |
+
+### Explicit non-adoption decisions
+
+- Do not copy Cuttlefish's tracking provenance shortcuts: tracking before camera-to-field conversion,
+  processing-start time presented as capture time, or pose history clamped outside its retained
+  interval. Preserve capture-time transforms and original sighting evidence; predictions are not
+  fresh observations and indistinguishable balls do not have provable physical identity.
+- The user's follow-up retains simple location association, not the reviewed tracker's velocity
+  estimation and predicted-position matching/coasting. Cuttlefish matches geometric predictions,
+  not visual appearance features; the narrower Sushi proposal compares recent observed field
+  locations under a resting-object assumption. Interception is a separate robot motion-planning
+  problem, not a benefit established by that tracker. Reconsider excluded motion models only with
+  recordings showing the simpler approach fails and a measurable association/collection benefit;
+  do not silently reactivate them through diagnostic or example work.
+- Do not adopt a universal shooter, collection optimizer, or season strategy layer. Cuttlefish's
+  fixed three-ball assumptions and permutation growth are not bounded generic planning; its sampled
+  collision checks and `FORCE_SPLINE_ONLY` path are not safety certificates. Preserve independent
+  capture confirmation, explicit wall/corner permission, and bounded robot-owned alternatives.
+- Do not replace truthful route outcomes with vendor `isBusy()`, switch pipelines while reading a
+  capability, add unbounded retries, or move FTC hardware work to background threads. Existing
+  Tasks, stable camera owners, managed runtime, and route executions are the supported vocabulary.
+- Do not add a default homography alternative, native calibration UI, or physics simulator from
+  these examples. A floor-plane mapping is not valid for every target height; measured-point
+  validation and existing test/replay seams provide the currently justified benefit. A simulator
+  needs a concrete production-graph validation gap and independently defensible physical models.
+- Do not add scouting, practice-web, CAD, model-training platforms, or vendor-fork wrappers to core.
+  Reconsider only a concrete reusable robot-code gap with bounded ownership and evidence, not
+  repository availability or competition reputation alone.
+- Existing filtering, hardware-write suppression, assembled-robot checks, field symmetry, PTO, and
+  articulated-camera deferrals retain their recorded triggers. This comparison supplies neither
+  their missing hardware evidence nor permission to reopen them.
 
 ## External competition capability benchmark (2026-07-11)
 
@@ -31268,6 +31421,15 @@ The setup fragments below compare the recommendation design, not standalone robo
 ### CAL-10 - Make calibration acceptance reproducible
 
 - **Status:** **Proposed**.
+- **Approved comparison amendment (2026-09-08):** include a camera validation card showing measured
+  reference locations alongside predicted locations and residuals, at several distances/image
+  positions. Separate fitted points from independently held-out validation positions; retain
+  resolution, target-height assumption, mount/configuration revision, units, and frames. A labeled
+  diagram/table with a visible text explanation should help students spot systematic offsets.
+  Keep camera-mount fitting, object projection validation, and shooter/tool alignment distinct.
+  Use clearly labeled illustrative data, never an invented passed physical record. This remains
+  the existing record -> rebuild -> configured-retest handoff, not a new solver, native visual UI,
+  automatic acceptance system, or prerequisite on later MATH-02/SENSOR-02 features.
 - **Evidence and owners:** `fw/docs/testing-calibration/Robot Calibration Tutorials.md` already
   requires record -> rebuild -> fresh robot-configured tester -> production verification.
   `Guided Calibration Walkthroughs.md` orders tests and reports status, but does not persist or
@@ -31300,6 +31462,11 @@ The setup fragments below compare the recommendation design, not standalone robo
 ### TEST-02 - Add deterministic localization robustness scenarios
 
 - **Status:** **Proposed**.
+- **Approved comparison amendment (2026-09-08):** keep the baseline scoped to localization; do not
+  delay it for field-location memory, a range adapter, or a new simulator. LOCALIZATION-05 may later
+  add independent known-wall range/partial-observability scenarios through the established seams.
+  Location-memory tests belong with VISION-04, even when they reuse the independent-truth
+  methodology.
 - **Evidence and owners:** estimator validation, timestamp, and cycle-safety tests already exercise
   real `fw/localization/fusion` owners, but no independent-truth trajectory/fault-sweep benchmark
   was found in the source review. Reuse those test seams, the real gain-fusion and EKF estimators,
@@ -31329,6 +31496,10 @@ The setup fragments below compare the recommendation design, not standalone robo
 ### LOCALIZATION-04 - Handle shared measurement evidence explicitly
 
 - **Status:** **Proposed**.
+- **Approved comparison amendment (2026-09-08):** retain the current predictor/vision investigation
+  and schedule. Later LOCALIZATION-05 must consume its supported evidence contract when wall
+  geometry reuses predictor heading; this task does not wait for that new range consumer and does
+  not preapprove a generic partial-measurement or covariance API for it.
 - **Evidence and owners:** `fw/ftc/localization/LimelightFieldPoseEstimator.java` can supply
   predictor yaw to Limelight MegaTag2 and return a field pose for correction of that predictor.
   `fw/localization/fusion/OdometryCorrectionEkfEstimator.java` models correction covariance from
@@ -31358,6 +31529,14 @@ The setup fragments below compare the recommendation design, not standalone robo
 ### DIAG-01 - Correlate experiment evidence for offline analysis
 
 - **Status:** **Proposed**.
+- **Approved comparison amendment (2026-09-08):** preserve original observation time separately
+  from processing time, configuration identity, omitted/dropped records, and supported reset
+  boundaries. Once VISION-04 exists, its owner may contribute remembered field locations, original
+  last-sighting times, spatial-match ambiguity, and expiry reasons through the selected capture
+  seam. This does not require persistent physical IDs, ball velocity, or predicted-state evidence.
+  Do not pre-create memory types or make this task wait for VISION-04. Check deterministic decision
+  replay under transport chunking and retain missing data as missing. This is not native-image
+  replay or an RC file logger.
 - **Evidence and owners:** `fw/docs/examples/Subsystem Experiments.md` already supplies a lab card,
   configuration revision, trial identity, computed-versus-observed evidence, and the explicit rule
   **Do not persist trial results on the Robot Controller.** Existing tuning/experiment owners
@@ -31389,6 +31568,10 @@ The setup fragments below compare the recommendation design, not standalone robo
 ### EXAMPLE-11 - Demonstrate feedback-confirmed feeding
 
 - **Status:** **Proposed**.
+- **Approved comparison amendment (2026-09-08):** keep the existing bounded feed/confirmation scope
+  and do not wait for TASK-07. If terminal-cleanup composition is approved later, that task owns
+  migration of genuinely equivalent wrappers here. Wheel settling, attempt ownership, departure
+  interpretation, and recovery remain robot policy; no richer shooting model is added by intake.
 - **Evidence and owners:** `robots/examples/reference/capability/flywheel/ReferenceFlywheels.java`
   already checks each wheel against the matching accepted, unclamped request; grouped mean alone
   is insufficient. `ReferenceFlywheelMechanism` correlates feedback completion with requests, and
@@ -31424,6 +31607,14 @@ The setup fragments below compare the recommendation design, not standalone robo
 ### EXAMPLE-12 - Demonstrate graceful assist degradation
 
 - **Status:** **Proposed**.
+- **Approved comparison amendment (2026-09-08):** preserve the current example's schedule and
+  evidence-loss behavior without waiting for VISION-04. Any later memory integration must
+  distinguish a fresh sighting, a recently remembered field location, and a committed destination.
+  Memory does not satisfy a live-visibility requirement or authorize reacquisition, blind motion,
+  or wall contact. The current pickup retains its staging destination and permits bounded final
+  camera occlusion, but requires a fresh recheck at staging. For an off-axis camera, first evaluate
+  a visible staging checkpoint; any changed handoff to camera-unseen motion needs an explicit
+  robot-policy decision and tests, not a silent relaxation caused by adding memory.
 - **Evidence and owners:** `robots/examples/visionpickup/VisionPickup.java` already returns manual
   intent from `readDriveIntent` when aiming evidence is unavailable; its controls and software
   scenarios provide an existing independent teaching owner. Localization quality/freshness,
@@ -31505,6 +31696,502 @@ The setup fragments below compare the recommendation design, not standalone robo
   gap, create one separate **Proposed** item with its own later branch and decision gate; do not edit
   teaching material or implement that gap under AUDIT-01. A zero-new-item result is successful
   closure.
+
+### Cuttlefish/Worlds intake implementation records (2026-09-08)
+
+These entries implement only the user's approved backlog intake. The nine implementation candidates
+and separate closure audit remain **Proposed**; the two explicit evidence-gated opportunities remain
+**Deferred**. No API, algorithm, physical threshold, diagnostic tool, or production adoption is
+approved by an entry's leading hypothesis. Each later decision gate audits all affected public
+construction paths and complete robot callers, compares no-change and smaller alternatives, and
+obtains the skill-required approval before API or major lifecycle changes.
+
+### MATH-02 - Finite two-dimensional calibration tables
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** the pinned RevAmped map uses two goal-relative displacement
+  inputs for RPM/hood/flight-time outputs. Sushi provides immutable `fw/core/math/InterpolatingTable1D`
+  with finite authored samples, endpoint clamping, and unavailable non-finite queries, but no
+  rectangular 2D equivalent. The independent `ReferenceCoordinatedShotService` currently consumes
+  distance-only tables. Inspect its whole owner/configuration/test graph and other table callers
+  before adding another math type.
+- **Bounded scope / leading hypothesis:** one finite immutable rectangular-grid interpolation
+  capability for two independent scalar inputs. Reuse MATH-01's authored-versus-runtime validation
+  vocabulary and defensive capture. The robot owns axis meaning, units, calibration measurements,
+  fitting, and the relationship among multiple outputs; no shooter type, optimizer, extrapolated
+  physical promise, gradient API, or automatic calibration is included.
+- **Decision gate and simplicity:** compare existing composed 1D tables, a small robot-local
+  calculation, and one reusable 2D table. Decide grid/axis ordering, degenerate-axis support, and
+  outside-grid behavior explicitly and coherently with 1D tables. Require an independent maintained
+  consumer that eliminates interpolation plumbing, not a new model that every robot must configure.
+  Do not add parallel factories or generic dimensions without distinct caller value.
+- **Required checks / documentation:** independent corner/edge/interior calculations, asymmetric
+  axes to catch transposition, outside-grid queries, finite extreme arithmetic, invalid or ragged
+  grids, duplicate/non-finite axis values, unavailable queries, and mutation after construction.
+  Add an optional concept-first interpolation example; illustrative measurements are not tuning
+  recommendations. Compile affected callers and synchronize the math API/reference.
+- **Dependencies / completion / deferral:** build on completed MATH-01; do not delay CAL-10 or
+  require CTRL-03. Deterministic tests prove table behavior, not model accuracy. Physical map
+  acceptance remains with the adopting robot. A verified no-change result is valid if full callers
+  do not justify a reusable table; defer only with the exact missing use case or contract evidence
+  needed to resume, not a vague request for more data.
+
+### TASK-07 - Terminal Task cleanup composition
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** `Tasks.sequenceOnCompletion(...)` explicitly is not `finally`;
+  direct cancellation and lifecycle failures do not start later sequence children. The independent
+  `ReferenceLauncherMechanism.LaunchTask` and production scoring-attempt code retain analogous
+  cleanup-once, child cancellation, and terminal-publication wrappers. Audit every equivalent
+  wrapper across `edu.ftcsushi.robots` and core Task composition before designing extraction.
+- **Bounded scope / leading hypothesis:** evaluate one `Tasks` factory decorating a child with a
+  synchronous terminal cleanup action. Preserve exact child outcomes, single-use start, active-only
+  idempotent cancellation, per-cycle/reentrant safety, and primary/suppressed exception identity.
+  Cleanup cannot start asynchronous recovery, choose actuator owners, bypass the source graph,
+  or claim physical rollback. The actual API spelling remains a Gate 1 decision.
+- **Decision gate and simplicity:** explicitly revisit TASK-05's exclusion of general cleanup and
+  compare existing owner `stop()`, `CleanupActions`, a local wrapper, and the narrow decorator.
+  Show complete before/after adopters, including queued-attempt generations and permission checks.
+  Keep those domain protections, retry policy, and retained outcomes in robot owners; do not
+  replace genuine policy state machines merely because they are long. Add no scheduler, TaskSlot,
+  requirements arbitration, public concrete wrapper, or competing lifecycle owner.
+- **Required checks / documentation:** normal success and every non-success terminal outcome;
+  cancellation before start, during child start/update, and after termination; repeated start;
+  child start/update/outcome/cancel exceptions; cleanup exception and reentrant callbacks; malformed
+  child outcomes; and cleanup exactly once after the selected active boundary. Preserve the
+  original actionable failure and ensure cancellation never reopens work. Test the migrated real
+  examples, not only a standalone wrapper, and explain cleanup versus recovery at first use.
+- **Dependencies / completion / deferral:** reuse TASK-05/06 and COMMON-01. Do not block EXAMPLE-11;
+  this later task owns any approved migration of its equivalent wrappers. Completion requires
+  equivalent observable behavior and a smaller complete adopter lifecycle. If ownership differences
+  prevent a useful general contract, record a verified no-change result or defer with the specific
+  additional equivalent caller needed; do not weaken safety to obtain a shorter macro.
+
+### RUNTIME-04 - Managed registration ownership transfer
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** the managed host already owns update/stop lifetimes, but
+  `robots/examples/pedro/basic/BasicPedroAuto` and production composition roots still guard service
+  or output registration to clean newly constructed owners when registration fails. Inspect all
+  supported `RobotProgram` registration roles and failure paths, their tests, and custom-host seams.
+- **Bounded scope / leading hypothesis:** strengthen the existing registration path if it can
+  truthfully accept cleanup responsibility at one named transfer boundary. Distinguish a new
+  transferred owner from an identity already owned by the program. A rejected duplicate must not
+  stop a valid existing registration. Objects whose constructors never returned still require
+  constructor-owned partial cleanup; no runtime can recover their hidden resource graph.
+- **Decision gate and simplicity:** explicitly revisit COMMON-01's rejection of cleanup-registration
+  transactions and `InitRuntimeGuard`. Compare clearer existing semantics, local guards, stronger
+  registration, and a factory-based alternative only if it has distinct value. Show full adopter
+  removals and count concepts/ownership decisions. Prefer one supported registration path; do not
+  add a registry, blanket `AutoCloseable`, generic transaction, automatic retry, or second host.
+- **Required checks / documentation:** accepted ownership and normal stop; rejection before and
+  after the selected transfer boundary; duplicate identity in the same or another role; stopped
+  program; null/invalid registration; cleanup failure with retained primary failure; reentrancy;
+  partial configuration failure; and no double stop at later host teardown. Verify existing loop
+  and shutdown order is unchanged and all equivalent callers use the approved normal path.
+- **Dependencies / completion / deferral:** build on RUNTIME-01/03 and COMMON-01, independently of
+  TASK-07. Complete only with demonstrably simpler callers and a testable transfer contract. If
+  resource/role differences defeat that contract, record a verified no-change decision or the
+  concrete missing equivalent owner/transfer evidence needed to reopen it. No physical rollback
+  or safe-state claim follows from best-effort software cleanup.
+
+### VISION-04 - Bounded recent field-location memory
+
+- **Status:** **Proposed**.
+- **User-approved narrowing (2026-09-08):** retain recently observed field locations for a resting
+  ball or cluster, including while turning or temporarily outside camera view. Compare subsequent
+  observations by location, not appearance or predicted motion. This supersedes both the original
+  broader tracker hypothesis and the tentative suggestion to defer the whole item. The user
+  authorized updating the backlog to this scope; no API, algorithm details, numerical thresholds,
+  implementation start, or motion-policy change is approved. Other task priorities are unchanged.
+- **Evidence and current callers:** `TargetSelections` chooses from one current frame;
+  `TargetObservations2d` already retains an immutable bounded frame with its original timestamp.
+  `VisionPickup` commits one resting-target destination, rechecks a fresh frame at staging, and
+  permits bounded camera occlusion only in its final intake phase. `AdaptiveCollectionProjection`
+  ranks a multi-point band and `AdaptiveCollectionAttempt` freezes the resulting route decision.
+  These support retaining evidence/intent, not a reusable multi-frame location memory. Inspect
+  their complete owner, configuration, source, and test graphs before extracting another owner.
+  The pinned Cuttlefish tracker uses nearest predicted-position association, not image features;
+  its velocity estimation and coasting are deliberately outside the narrower Sushi proposal.
+- **Bounded scope / leading hypothesis:** remember a bounded set of valid capture-time field
+  positions and each entry's last actual sighting timestamp/provenance. A new observation near
+  one unambiguous remembered location refreshes that entry's position and actual capture time;
+  an observation clearly outside existing matching neighborhoods may add an entry. An unseen
+  entry keeps its old location and timestamp until its configured usable-age limit expires.
+  Support a recently observed cluster, not only one selected destination. Bound entry count,
+  matching work, and retention duration. Entries mean "last seen here within the age limit", not
+  current visibility, proven physical identity, or an exact count of distinct balls still present.
+- **Explicit exclusions:** no ball velocity/acceleration estimation, predicted/coasting positions,
+  interception, visual-feature recognition, probabilistic confidence decay, automatic occlusion
+  classification, or long-lived accumulated field map. A missing detection does not prove absence;
+  use positive sightings and age-based expiry initially. Explicit removal following capture may
+  be considered only when robot-owned independent feedback can associate the event with that
+  location; intake command, arrival, or image disappearance is not confirmation. Reconsider
+  excluded algorithms only with representative recordings demonstrating a failure of this simpler
+  approach, a measurable improvement criterion, and a separately approved design/scope change.
+- **Decision gate and simplicity:** compare existing snapshot retention/local bookkeeping with
+  the smallest optional reusable memory. Use observations already converted with robot pose at
+  image capture, so robot motion is not mistaken for ball motion. Decide spatial tolerance,
+  conservative ambiguous/overlapping-match handling, one-to-one updates, duplicate/out-of-order
+  frames, bounded eviction, and field/clock/camera reset invalidation. Do not silently merge
+  neighboring balls, count ambiguous duplicates as certain inventory, or infer movement from an
+  assignment. Retain per-entry capture time when entries come from different images; do not
+  disguise that collection as one newly captured `TargetObservations2d` frame. Repeated reads,
+  repeated camera results, fresh localization, or reprojection cannot refresh an old sighting.
+  Unknown measurement quality stays unknown and is distinct from whether a ball still remains.
+- **Consumer and ownership boundary:** memory supplies evidence for selection or a bounded robot
+  action; it does not switch targets, steer, authorize camera-unseen motion, infer clearance, or
+  confirm capture. Preserve existing snapshot/approach use when it is sufficient. A visible staging
+  checkpoint or a different bounded handoff for an off-axis camera is explicit robot policy,
+  not an automatic consequence of accepting remembered data. No camera owner, second scheduler,
+  hidden hardware polling, SOURCE-03 filtering algorithm, or physical default is added by intake.
+- **Required checks / documentation:** retain a stationary cluster while the robot translates and
+  turns; then see two of three locations again and update only those two entries using the new
+  frame's original capture time, leaving the unseen entry's timestamp unchanged.
+  Cover unambiguous near matches, genuinely new locations, overlapping matching neighborhoods,
+  reordered/duplicate detections, unavailable versus observed-empty frames, unseen-entry expiry,
+  changed/missing capture-time pose history, out-of-order frames, field/clock/camera resets,
+  memory/work limits, and repeated same-cycle reads. Assert no unseen entry moves or gets a new
+  sighting time, absence alone never means confirmed removal, and memory cannot satisfy a fresh
+  recheck. Use complete independent consumer tests with explicit cancellation/capture behavior.
+  Explain observed versus remembered versus expired locations with a small multi-frame diagram
+  and text equivalent; keep this optional teaching outside the beginner navigation spine.
+- **Dependencies / completion / deferral:** reuse VISION-03, TIME-01, LOCALIZATION-01/03 and the
+  fixed-camera SPATIAL-02 boundary. Do not make DIAG-01 or EXAMPLE-12 wait for this work; integrate
+  actual last-sighting/expiry evidence through their settled seams if useful. EXAMPLE-13 may use
+  this memory without moving-object pursuit or physical-ID tracking. Require simpler complete
+  robot callers or a verified no-change result if existing snapshots suffice. Deterministic tests
+  prove bounded memory/provenance, not useful physical matching tolerances, retention times, or
+  collection reliability. Those need adopting-robot observations. Any contract requiring missing
+  physical evidence must record the exact setup/data needed for deferral or seek approval for a
+  narrower software-only claim; synthetic success does not prove the remembered ball remains.
+
+### SPATIAL-03 - Bounded intake-sweep geometry
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** Cuttlefish's intake-width coverage and I.C.E.'s multi-detection
+  curve show why visiting every center can be unnecessary. Sushi `RobotFrameRectangle2d` tests
+  containment at a pose; `VisionPickup` selects one-target approach templates. Those are not a
+  swept intake-coverage query. Inspect current spatial value types, boundary/approach tests, and
+  the adaptive collection path consumer before extending core geometry.
+- **Bounded scope / leading hypothesis:** pure point-coverage calculations for an explicitly
+  supported intake corridor, beginning with a fixed-heading straight segment if sufficient.
+  Name the intake tool offset, width, longitudinal/end bounds, units, and field frame. Apply the
+  tool offset once. The result describes geometric coverage, not capture, robot-body clearance,
+  free space between sampled poses, or an arbitrary curved swept-body collision certificate.
+- **Decision gate and simplicity:** compare existing transforms/local geometry with one reusable
+  corridor primitive. Decide supported motion shapes, degenerate paths, boundary inclusion, and
+  bounded calculation/approximation semantics from an independent complete consumer. Do not
+  introduce a collection optimizer, field occupancy map, generic path language, or Pedro types in
+  core. EXAMPLE-13 owns candidate count, route order, capacity, return destination, and scoring.
+- **Required checks / documentation:** independent offset/width/endpoint fixtures, reversed and
+  zero-length motion under the chosen contract, tangential boundaries, duplicate points, rotated
+  corridors, field-frame transforms, finite extremes, and near-wall cases that must not imply
+  body clearance. Reject unsupported motion explicitly rather than certify sampled positions.
+  Add a focused compiling geometry consumer and a labeled footprint/coverage diagram with text.
+- **Dependencies / completion / deferral:** build on SPATIAL-01/02 and existing geometry contracts;
+  recent-location memory is not a mathematical prerequisite. EXAMPLE-13 later consumes the result.
+  Software geometry can complete without a robot, but actual capture and clearance require the
+  adopting robot's measured footprint, contact rules, and validation. If no distinct reusable
+  query improves complete callers, retain local geometry through a verified no-change disposition;
+  defer unsupported shape claims with the precise motion/accuracy evidence needed to resume.
+
+### EXAMPLE-13 - Bounded multi-object collection
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** the independent `robots/examples/pedro/adaptive` package
+  already demonstrates capture-time projection, candidate selection, fresh attempts, start-built
+  routes, and bounded Auto fallback. It does not compare intake coverage and return cost for
+  multiple objects. The pinned Cuttlefish and I.C.E. paths supply strategy examples, not a reusable
+  optimal planner or a guarantee that Bezier control points are visited.
+- **Bounded scope / leading hypothesis:** extend that maintained example with an optional bounded
+  multi-object policy rather than another beginner robot or framework game planner. Robot-owned
+  code selects an explicit bounded candidate set, evaluates supported corridor coverage and return
+  cost, accounts for remaining capacity/time, and chooses among a small bounded plan set. Preserve
+  a coherent observation snapshot, current-pose start-time route construction, truthful follower
+  outcomes, independent capture confirmation, and explicit fallback/abort.
+- **Decision gate and simplicity:** compare a small extension with the current band-based,
+  one-route collection policy and local strategy alternatives. Use VISION-04/SPATIAL-03 only where
+  their completed contracts remove bookkeeping; a deferred prerequisite requires a bounded
+  alternative approved at Gate 1. Keep utility, capacity, target preferences, pursuit permission, wall/corner
+  contact, revalidation, and retry policy in the robot package. No unbounded permutation search,
+  hidden pipeline switch, global optimum promise, or general navigation/collision planner.
+- **Required checks / documentation:** no/one/many candidates, duplicate or ambiguous location matches,
+  capacity/time limits, cluster versus nearest/return-cost tradeoffs, stale/rebased observations,
+  changed inventory, missing confirmation, route failure, acquisition fallback, cancellation and
+  STOP. Enforce hard candidate/work limits; failed route construction leaves the follower
+  untouched. Include wall/corner rejection when permissions/clearance are absent. Teach one
+  optional outcome with a complete independent source graph and visible illustrative values.
+- **Dependencies / completion / deferral:** follow terminal VISION-04/SPATIAL-03 dispositions and
+  reuse completed EXAMPLE-10, AUTO-01, route, inventory, and relevant EXAMPLE-12 behavior. This task
+  may consume a recent cluster snapshot or bounded location memory, not velocity predictions or
+  claimed physical IDs. Retained candidate locations are not confirmed current inventory, and
+  adopting memory does not silently turn a frozen route into continuous moving-target pursuit.
+  Any change to recheck or camera-unseen approach policy needs its own explicit bounded decision.
+  This task must not force new framework APIs approved only by example inclusion. Compare all affected robot
+  code, including helpers, configuration, telemetry, and tests. Hardware-free scenarios prove
+  policy and lifecycle, not collection efficiency or safety. Keep physical motion disabled until
+  independently reviewed; defer hardware-specific recovery/contact behavior with exact setup,
+  permitted actions, and observation requirements rather than guessing a safe maneuver.
+
+### CTRL-03 - Coherent externally supplied motion setpoints
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** the pinned Overclock turret consumes target velocity and I.C.E.
+  publishes position/rate/acceleration in a coordinated solution. Sushi CTRL-02 offers direct or
+  internally profiled standard setpoints and an advanced custom regulator. The independent
+  `ReferenceCoordinatedShotService` already publishes coherent targets and velocity-based lead,
+  while its turret uses device-managed position; it does not consume an external full-state
+  setpoint. Do not describe all moving-shot support as absent.
+- **Bounded scope / leading hypothesis:** evaluate one coherent externally computed
+  position/velocity/acceleration input to the existing Plant control path, only if concrete
+  maintained callers become simpler. Keep one final target resolver, controller/Plant owner,
+  update/stop path, coordinate reference, and actuator writer. Use the settled word **setpoint**,
+  not an ambiguous new use of **reference**. No framework ballistics, shot solver, numerical
+  differentiation filter, generic controller graph, or second command channel is preapproved.
+- **Decision gate and simplicity:** compare existing profiles, direct targets, custom regulators,
+  and the smallest typed input. Audit position/velocity control families and all public construction
+  paths without adding symmetry-only APIs. Decide coherent timing/units, stale/unavailable input,
+  and what bounds, reference changes, overlays, and guards mean for associated rates. Reject a
+  design that preserves an unsafe feedforward after the scalar target was altered. A position
+  scalar alone cannot silently assert measured derivative evidence.
+- **Required checks / documentation:** coherent versus mismatched evidence, direct/profiled
+  regressions, stale/non-finite input, timestamp reset, guard/clamp/reference transitions, repeated
+  cycle, cancellation and STOP, and retained requested/applied/measured distinctions. Prove final
+  finite bounded outputs and no competing setpoint/profile owner. Demonstrate the complete
+  independent adopter and explain target versus setpoint versus feedback before advanced code.
+- **Dependencies / completion / deferral:** builds on CTRL-02 and Plant target/ownership contracts;
+  MATH-02 is optional input math, not a prerequisite. Inspect EXAMPLE-03 without replacing its
+  software-reference scope with unvalidated shooting physics. Completion proves the chosen control
+  interface, not physical tracking/shot accuracy. If no concrete coherent adopter beats existing
+  seams, record a verified no-change result or defer until that adopter and its timing/units/control
+  requirements exist. Any hardware-dependent control choice retains its physical evidence gate.
+
+### SENSOR-02 - Truthful directional range observations
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** `FtcSensors.distance(...)` and named inch/cm sources expose
+  scalar measurements. They do not establish a beam frame, acquisition identity, or acquisition
+  timestamp. Cuttlefish's historical wall solver and braking experiment demonstrate two distinct
+  consumers for directional evidence. Inspect existing distance adapters, SDK contracts, spatial
+  mount types, timing primitives, and all maintained callers before selecting a supported boundary.
+- **Bounded scope / leading hypothesis:** provide one narrow observation contract for distance,
+  beam/mount geometry, validity, and the timing evidence the backend actually exposes. Pure types
+  stay in core; FTC acquisition/conversion stays at the FTC boundary. Preserve the original units
+  and convert to named Sushi inches/radians/frame conventions once. Receipt-only timing must stay
+  receipt-only; numerical equality or a fresh loop read cannot prove a new physical acquisition.
+- **Decision gate and simplicity:** compare existing scalar sources plus explicit robot facts with
+  a reusable directional observation. Name an actual supported backend and its invalid-range,
+  repeated-sample, latency, and timestamp guarantees before adding a production adapter. Missing
+  facts remain unavailable, not guessed capture time or invented confidence. Decide cycle sampling,
+  mount capture, reset, and immutable configuration ownership. No wall selection, localization
+  estimator, obstacle policy, polling thread, or generic sensor registry is included.
+- **Required checks / documentation:** inch/unit and beam/mount conversions, invalid/non-finite/
+  out-of-contract distances, stationary equal readings, duplicated backend samples where identity
+  is available, receipt versus capture time, source failures, epoch/reset and repeated-cycle reads,
+  and configuration mutation. Demonstrate a complete independent read-only consumer and explain
+  sensor distance versus robot-to-obstacle clearance; a range sensor is not an obstacle map.
+- **Dependencies / completion / deferral:** reuse existing FtcSensors/TIME-01/source-cache contracts;
+  do not require future LOCALIZATION-05 or DRIVE-04. A truthful software boundary may complete
+  without proving a physical range envelope. Reflectivity, angle, occlusion, actual latency, and
+  sampling cost require measured adoption evidence. If source inspection cannot establish a fact
+  required by the chosen adapter, defer that adapter with its exact device/firmware/measurement
+  question or seek approval for a narrower contract; do not manufacture timing in a fake-backed test.
+
+### LOCALIZATION-05 - Known-wall localization constraints
+
+- **Status:** **Proposed**.
+- **Evidence and current callers:** the pinned historical Cuttlefish solver relates range, mount,
+  heading, and a known wall. Sushi gain-fusion and EKF correctors currently consume an
+  `AbsolutePoseEstimator`, which supplies complete pose evidence. A single range to a wall instead
+  constrains only part of pose, often using predictor heading. Inspect both estimators, configured
+  localization ownership, evidence diagnostics, and the completed LOCALIZATION-04 decision.
+- **Bounded scope / leading hypothesis:** separate pure known-wall geometry from narrowly supported
+  correction integration. Correct only observable components, retain timing/alignment and reused-
+  heading provenance, and report why geometry/evidence is unusable. The robot explicitly supplies
+  trusted wall facts, wall choice, valid operating envelope, and contact permissions. Never fill
+  missing coordinates from the predictor and relabel that composite as an independent full-pose
+  measurement; never use an unconditional pose reset as a correction shortcut.
+- **Decision gate and simplicity:** compare geometry-only information for robot policy, existing
+  correction restrictions, and the smallest component-aware integration. Explicitly decide whether
+  both fusion families can truthfully support the selected seam; do not claim unsupported parity.
+  Resolve observability, common heading/layout error, delay alignment, correction diagnostics,
+  and initialization before a public measurement contract is approved. No generic covariance
+  framework, multi-sensor voting service, automatic wall recognition, or new filter is preapproved.
+- **Required checks / documentation:** independent mount-offset and yaw geometry, oblique and
+  near-parallel beams, wrong/ambiguous wall, missing/invalid/stale/repeated readings, delayed motion
+  and missing history, reset/rebase, shared biased heading, dropout/reacquisition, and unobservable
+  components remaining unconstrained. Extend TEST-02's real-estimator benchmark with independent
+  synthetic truth rather than invent a second simulator. Explain measured range versus inferred
+  coordinate, confidence limitations, and the configured correction path in an optional example.
+- **Dependencies / completion / deferral:** requires supported SENSOR-02 evidence plus terminal
+  LOCALIZATION-04 and TEST-02 contracts. Earlier tasks do not wait for this work. Deterministic
+  geometry/fusion checks may prove a bounded software contract; sensor envelopes, trustworthy wall
+  identity, useful correction weights, and physical accuracy remain adoption evidence. If the
+  integration requires unavailable device timing or paired range/independent-pose recordings,
+  record the exact dataset/setup needed and defer, or explicitly approve a narrower geometry-only
+  contract. Such narrowing is a new design decision, not silent completion of fused localization.
+
+### AUDIT-02 - Cuttlefish/Worlds capability and simplicity closure
+
+- **Status:** **Proposed**, last in the separate 2026-09-08 follow-up.
+- **Pinned scope:** use the 2026-09-08 Cuttlefish/Worlds benchmark sources and fifteen capability
+  rows above, preserving access, licensing, publication-date, and deployment caveats. Pin current
+  Sushi at audit start; compare with the intake baseline where assessing changed robot-code burden.
+  Do not enlarge or repeat AUDIT-01, add teams, or rank source quality from awards alone.
+- **Start condition:** the original robustness queue and AUDIT-01 have terminal dispositions, then
+  MATH-02, TASK-07, RUNTIME-04, VISION-04, SPATIAL-03, EXAMPLE-13, CTRL-03, SENSOR-02, and
+  LOCALIZATION-05 each reach **Done** (including approved, recorded, verified no-change) or
+  evidence-backed **Deferred** with a concrete trigger. VISION-05 and DRIVE-04 must have current
+  explicit dispositions; their missing model/hardware evidence does not block closure.
+- **Required result:** classify every frozen row as implemented, already supported, robot-owned,
+  deliberately rejected, or evidence-gated. Link each supported claim to its exact current API,
+  independent compiling example, and deterministic evidence; link every rejection/deferral to
+  rationale or reactivation evidence. Resolve all rows; no new implementation is required merely
+  to avoid a candid rejection or hardware-gated result.
+- **Simplicity and truth checks:** compare every affected `edu.ftcsushi.robots` package, not a facade
+  snippet. Include concepts, configuration, helpers, lifecycle, presenters, tests, and approximate
+  source size alongside behavior retained or newly enabled. Confirm no mandatory memory/2D/control
+  complexity was added to simple robots; no extra scheduler, writer, clock, camera owner, refreshed
+  unseen-sighting age, fabricated partial-pose evidence, or unproven collision/capture claim exists.
+  Classify the source tracker's velocity estimation, predicted-position association/coasting,
+  and physical-identity ambitions separately from VISION-04's narrower recent-location memory.
+  Do not mark that broader capability implemented because stationary-location memory exists.
+  Check optional lessons remain explained, independent, and outside the beginner navigation spine.
+- **Completion / output boundary:** this audit updates the tracker only. Verify links, statuses,
+  complete row coverage, and the evidence-backed simplicity comparison. Any new gap needs a
+  separately proposed item and later approval; do not implement it in the closure audit. Preserve
+  original benchmark snapshots and hardware gates even when newer public code becomes available.
+
+### VISION-05 - Learned-detector observation adapter
+
+- **Status:** **Deferred**; no model/backend or production adapter is selected.
+- **Evidence and current support:** Cuttlefish ITD-Tensorflow publishes a model for touching samples
+  with restricted team-reported accuracy. `FtcWebcamVisionLane` already accepts additional
+  `VisionProcessor`s under one physical camera owner; Sushi located observations can carry typed
+  geometry, timestamps, and available quality. The missing convenience is a maintained adapter
+  for a concrete detector, not universal custom-processor hosting or a new strategy API.
+- **Candidate scope after reactivation:** one optional adapter maps a selected backend's actual
+  class/geometry/timestamp evidence into existing located observations. Keep target-point/height
+  interpretation explicit and preserve backend simultaneity limits. Selection, optional recent-
+  location memory, approach, and robot policy use the existing paths; no model trainer, season
+  classifier, opaque result map, universal confidence conversion, or copied model weights without permission.
+- **Reactivation trigger:** supply a supported backend/version and exact model/output schema;
+  model/data/code licensing; representative annotated scenes including touching, occluded, and
+  confusing objects; validated image-to-target point convention; and measured latency/throughput
+  on the intended camera/controller stack. Then reopen Gate 1, including a no-adapter alternative.
+- **Required later checks / completion:** malformed/empty results, class filtering, unknown
+  confidence, repeated/out-of-order frames, capture versus processing time, invalid calibration,
+  model reload/reset, resource cleanup, and coexistence with AprilTags where actually supported.
+  Fixture tests prove adapter contracts; annotated independent validation proves the stated model
+  performance only within its measured envelope. No accuracy value is imported as a Sushi promise.
+- **Dependencies and boundary:** reuse VISION-03/SPATIAL-02 and VISION-04 only when useful; no earlier
+  task waits for this model choice. AUDIT-02 can close with this exact evidence-backed deferral.
+
+### DRIVE-04 - Range-based approach-speed limiting
+
+- **Status:** **Deferred**; representative sensor/drivetrain evidence is unavailable.
+- **Evidence and current support:** Cuttlefish PredictiveBraking distinguishes delayed-distance
+  compensation from future stopping distance. Sushi's Pedro runtime already retains vendor
+  predictive-braking coefficients and path constraints; this candidate is distinct optional manual
+  intent assistance using directional range, closing speed, latency, and measured deceleration.
+- **Candidate scope after reactivation:** an explicitly enabled reduction-only drive overlay may
+  limit the component approaching the observed surface while preserving retreat. Robot policy
+  chooses the protected direction, valid envelope, evidence-loss behavior, permissions, and
+  enablement. Tangential/rotational motion and protruding mechanisms need explicit limits; reducing
+  forward intent alone cannot protect a turning bumper. No automatic creep/reverse, route
+  replacement, obstacle recovery, blind stale-distance retention, or collision-avoidance guarantee.
+- **Reactivation trigger:** complete a usable SENSOR-02 contract and provide the exact device,
+  firmware, mount, field surfaces, trustworthy angle/range/occlusion envelope, and measured sensor
+  latency. Supply independently measured stopping/deceleration trials across relevant speed, load,
+  battery, floor, and approach conditions, plus the adopting robot's footprint and permitted safe
+  actions. Reopen Gate 1 to decide whether a useful conservative overlay is justified; inspection
+  of a formula or controller setting does not establish this physical envelope.
+- **Required later checks / completion:** independent model calculations, monotonic approaching
+  ceiling under the stated model, output never increasing the limited approach request, preserved
+  retreat, stale/missing/invalid data, reset and repeated cycle, operator release, STOP, and no
+  competing final writer. Test the actual chosen composition and loss policy; conduct controlled
+  hardware validation before describing physical benefit. Do not infer safety from sampled geometry.
+- **Dependencies and boundary:** reuse SENSOR-02 and existing DriveSource/overlay/sink contracts;
+  LOCALIZATION-05 is not a prerequisite for range-relative assistance. AUDIT-02 can close while
+  this remains deferred. Any proposed software-only narrowing requires explicit design approval
+  and must retain the physical limits rather than mark unmeasured braking complete.
+
+#### Tracker-only intake review state (2026-09-08)
+
+The user approved the plan and requested implementation. Only this tracker is changed on
+`codex/cuttlefish-worlds-opportunities`, based on fetched `origin/master` at
+`983b09fb457ad9dcb2bf24291b0f92d2561e0437`. The intake adds ten Proposed and two Deferred
+records, amends six existing Proposed records, preserves the original AUDIT-01 scope, and keeps
+CAL-10 next. At the review handoff, feature decision gates, code changes, hardware runs, and
+publication had not started. The **tracker intake is Done** following the user's manual review
+and exact-destination publication authorization below; the feature statuses above are unchanged.
+
+- **User-directed scope revision (2026-09-08):** VISION-04 is now **Bounded recent field-location
+  memory**, still **Proposed** and still queue position 153. It covers resting balls/clusters,
+  simple unambiguous field-position association, original last-sighting evidence, bounded retention,
+  and age-out. It excludes ball velocity estimation, predicted/coasting positions, interception,
+  appearance matching, automatic occlusion/absence classification, confidence-decay models, and
+  long-lived accumulated maps. Updated the queue, benchmark disposition/non-adoption text, related
+  diagnostic/example/audit references, and required scenarios. The source snapshots, fifteen
+  benchmark capability rows, all other task statuses/priorities, and CAL-10-next order are unchanged.
+  This supersedes the conversational suggestion to defer VISION-04 entirely. No code changes or
+  public API approval followed; the existing publication-review boundary still applies.
+- **Scope-revision review and verification (2026-09-08):** independently rechecked all active
+  VISION-04 references, positive-sighting/per-entry timing, expiry and ambiguity, unchanged task
+  order/statuses, and the separation from motion permission; no material contradictions remain.
+  The focused tracker test below was rerun successfully (**1 test / 0 failures / 0 errors /
+  0 skipped**). Repeated structural checks retain the counts below and additionally verify the
+  narrowed title/status, stationary-cluster scenario, per-entry timestamps, fresh-recheck boundary,
+  and explicit exclusion of ball velocity prediction. Only the tracker remains modified.
+
+- **Focused automated evidence:** with Android Studio JBR, ran
+  `.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests 'edu.ftcsushi.fw.docs.DocumentationLinksTest.currentTrackerGuidanceDoesNotDependOnTheProductionApplication'`.
+  Gradle succeeded; XML reports **1 suite / 1 test / 0 failures / 0 errors / 0 skipped**. Its
+  prerequisite compile tasks succeeded or were up-to-date. Existing Java 8/JDK 21 deprecation
+  warnings remain; this tracker-only change does not modify build settings or claim a full-suite
+  run. No hardware run is relevant to backlog intake, and no physical claim was validated.
+- **Targeted structural evidence:** all **161** main-queue rows have unique IDs and sequential
+  order numbers; the original **149** rows are unchanged. The **12** new rows each have exactly
+  one matching detailed title/status (**10 Proposed / 2 Deferred**). There are exactly **6** dated
+  existing-task amendments and **15** frozen AUDIT-02 capability rows. All **38** task IDs mentioned
+  in added text resolve to the queue. The AUDIT-01 detailed record matches HEAD unchanged after
+  normalizing line endings. The **30** unique new benchmark source URLs are well formed and retain
+  the pinned evidence from the prior read-only review; this check is not a fresh remote-availability
+  audit. `git diff --check` and a whole-tracker trailing-whitespace scan pass.
+- **Independent review:** separate source/provenance and tracker/dependency/principles reviews
+  found no remaining material scope or evidence issue. Corrected one baseline description to say
+  the existing adaptive example uses a band-based, one-route collection policy, not single-target
+  selection. Only the tracker is modified; no feature implementation, tests, or source files changed.
+- **Android Studio review:** inspect the twelve new queue rows, robustness-first order, frozen
+  benchmark/rejection matrix, six amendments, and twelve detailed records. Confirm that later
+  implementation needs separate design approval and that learned detection/braking remain deferred.
+
+Publication coordinates recorded for the review stop are branch
+`codex/cuttlefish-worlds-opportunities`, origin push URL
+`https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. The following review
+request is historical: the user supplied its complete authorization, as recorded below. It
+authorizes publication of this backlog only, not implementation of any listed API.
+
+> Cuttlefish/Worlds tracker intake looks good. Authorize committing the reviewed tracker diff on
+> codex/cuttlefish-worlds-opportunities, pushing that branch to
+> https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into master.
+
+#### Tracker intake Gate 3 authorization (2026-09-08)
+
+- The user supplied the complete review/publication authorization above for the reviewed tracker
+  diff, including VISION-04's narrowed recent-field-location-memory scope. This records manual
+  review and authorizes committing on `codex/cuttlefish-worlds-opportunities`, pushing to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. Only this completion/authorization record changed after approval; the approved task
+  scopes, counts, evidence, and priorities are retained.
+- The approved file set is only `FRAMEWORK_IMPROVEMENT_TRACKER.md`. Rerun its focused regression
+  and whitespace/structural checks after this record, then publish that exact file set. Git/GitHub
+  establishes the commit, pull request, checks, and merge identity during publication; report and
+  verify them rather than writing speculative identifiers into this commit.
+- The user separately added **"Proceed to next task after merge"**. After successful merge
+  verification, begin only CAL-10's decision gate on its own branch; do not mix CAL-10 edits into
+  this publication or treat backlog approval as approval of CAL-10's eventual design.
 
 ## Explicitly deferred architectural ideas
 
