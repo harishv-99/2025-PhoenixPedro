@@ -32,6 +32,11 @@ An **AprilTag** is a printed visual identifier whose observed geometry can help 
 A **camera mount** records the lens position and orientation relative to the robot. A **field
 layout** records trusted landmarks' positions; the next section explains their coordinate frames.
 
+Image/lens calibration, called **intrinsics**, describes how pixels relate to viewing directions,
+including lens distortion (image bending). Camera placement is **extrinsics**. The mount tester
+solves only placement: it neither calibrates the lens for the selected image size nor measures
+where a shooter or intake sits and points. Those are separate setup facts.
+
 A Limelight **pipeline** is a processing setup on that device. Selecting pipeline `0` in Java does
 not create or configure its AprilTag detector. Two timing facts matter: **receipt staleness** is
 time since the Control Hub received a result; **estimated capture age** also includes the camera's
@@ -89,10 +94,15 @@ used for its numbers. The camera's image measurements become useful field coordi
 the software also knows where the camera sits on the robot and where trusted tags sit on the field.
 
 [`CameraMountConfig`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/vision/CameraMountConfig.html>)
-describes the lens relative to the robot's center of rotation on the floor: X forward, Y left,
+describes the lens relative to the same chosen robot reference point used for localization, fixed
+to the robot at floor height—not whichever point it happens to turn around. X is forward, Y left,
 Z up, all in inches. Its `ofDegrees(...)` convenience uses yaw about Z, pitch about Y and roll about
 X in degrees; the stored angles are radians. Follow the
 [mount measurement procedure](<Robot Calibration Tutorials.md#camera-mount>) for the actual values.
+
+The mount tester's ordinary known-robot inputs are X/Y/yaw; Z/pitch/roll remain zero. It requires
+the level/floor-origin setup above. A six-component camera-mount output does not imply that the
+screen can describe an arbitrarily tilted robot.
 
 The profile starts with `cameraMount = CameraMountConfig.identity()`: zero displacement and zero
 rotation. That is a placeholder, not a measured mount. It is suitable as an unknown to solve in the
@@ -285,14 +295,18 @@ estimator and delayed-evidence contracts; this lesson only connects the configur
 ## Verify the handoff
 
 1. Select the actual backend and names; verify its detector setup and fixed-field facts.
-2. Run the configured camera-mount check with known robot placement. Record and review the result.
+2. Run the configured camera-mount check with independently known, stationary robot placement.
+   Each accepted sample uses a distinct fresh image. Actual tag/known-pose edits clear its sample batch;
+   wait for images captured after the edit, then record and review this setup's result.
 3. Edit the canonical `cameraMount`, rebuild, and open a fresh configured AprilTag-localization
    check. An old suite cannot reload changed facts.
 4. Compare its field pose at independently known placements. Only after the mount and Pinpoint
    facts are credible should you run the corrected-localization check.
 
 The existing [runbook](<Robot Calibration Tutorials.md>) owns the physical controls, observations
-and stop gates. A working detector or non-identity mount alone does not prove correct robot pose.
+and stop gates, including B's clear precedence and the difference between Driver Station START
+and gamepad START. A retained historical average is not a fresh image; an ambiguous average gives
+no copy/paste result. A working detector or non-identity mount alone does not prove correct robot pose.
 
 These are the same independent source files as the basic lesson:
 

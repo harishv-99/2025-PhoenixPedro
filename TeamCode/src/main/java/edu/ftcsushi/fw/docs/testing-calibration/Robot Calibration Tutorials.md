@@ -239,11 +239,17 @@ A student can answer, without hesitation, “yes, each wheel does the expected t
 
 ### Why this matters
 
-A camera usually sits away from the robot's chosen origin and faces its own direction.
+A camera usually sits away from the robot's chosen reference point—the point whose field position
+you enter—and faces its own direction. Keep that point fixed to the robot throughout calibration.
 The **camera mount** describes that position and orientation relative to the robot; the exact term
 is `robot -> camera` **extrinsics**. The solver needs this relationship to convert what the camera
 sees into the robot's field pose. An unmeasured identity placeholder can produce a plausible but
 wrong answer. Correctness means matching the physical installation, not merely using nonzero values.
+
+**Intrinsics** instead describe the image/lens calibration: how image pixels relate to viewing
+directions, including distortion, or lens-induced image bending. They must suit the camera and
+image size; this tool does not estimate them. **Shooter/intake alignment**—where that tool sits and
+points relative to the robot—is another separate fact, not a camera-mount result.
 
 ### Framework-only entries and active defaults
 
@@ -251,10 +257,10 @@ wrong answer. Correctness means matching the physical installation, not merely u
 - `Calib: Camera Mount (Limelight)`
 
 Both entries use the current-game fixed layout and accept detections no older than `0.35 s`. The
-known `fieldToRobotPose` starts at `(0, 0, 0)`, the first fixed-layout tag ID is initially selected,
-and quick-edit mode starts with fine steps of `0.25 in` and `0.5°`; START switches to coarse steps of
-`1.0 in` and `2.0°`. The generic webcam lane uses `640 x 480`. The generic Limelight lane requests
-pipeline `0` at `100 Hz` and requires a result no older than `0.25 s` to confirm transport
+known `fieldToRobotPose` starts with X/Y/yaw at `(0, 0, 0)`, the first fixed-layout tag ID is initially
+selected, and quick-edit mode starts with fine steps of `0.25 in` and `0.5°`; gamepad START switches
+to coarse steps of `1.0 in` and `2.0°`. The generic webcam lane uses `640 x 480`. The generic
+Limelight lane requests pipeline `0` at `100 Hz` and requires a result no older than `0.25 s` to confirm transport
 readiness. Those are software defaults, not proof that the installed camera or pipeline is correct.
 
 The generic lane's identity mount does not contaminate this solve: `robotToCameraPose` is the fact
@@ -263,28 +269,68 @@ input. It still does not write the measured answer anywhere.
 
 ### What you are solving
 
-You tell the tester where the robot is on the field, the tester observes a known tag, and it solves for the camera pose relative to the robot.
+You tell the tester where the robot is on the field, the tester observes a known tag, and it solves
+for the camera pose relative to the robot. The ordinary controls edit only known robot X/Y/yaw;
+known robot Z/pitch/roll stay zero. Use a level robot with its chosen reference point at floor
+height. The result includes camera X/Y/Z/yaw/pitch/roll, but that does not make this a general
+tilted-robot setup screen.
 
 **Spread** describes how far repeated answers differ from one another. A **residual** is the
 remaining mismatch when a solved answer is checked against the observed geometry. **Range** is
 distance to the tag. Compare these with independently measured geometry and your team's criterion;
 a small spread alone can mean a repeatably wrong setup.
 
+A **batch** contains accepted samples for one camera, selected tag, and entered robot pose. Each
+fresh A press requests the eligible image read in that loop, not the previous screen's preview.
+A camera **frame** is one processed image: its capture timestamp states when it was taken.
+Repeated or older capture timestamps cannot add another sample. Missing, stale, or unusable
+evidence rejects that press; it does not save the request for a later image. Release A and press
+again after fresh evidence becomes available.
+
 ### Procedure
 
-1. Place the robot in a pose you can describe confidently in the FTC field frame.
+1. Place the level robot in a pose you can establish independently in the FTC field frame.
 2. Open the exact `(Webcam)` or `(Limelight)` entry for the installed backend. In the device picker,
    Dpad Up/Down highlights, A chooses, and X refreshes. Wait for vision readiness.
 3. In quick mode, Y increments and X decrements the tag ID. Dpad Left/Right edits known robot X,
-   Dpad Up/Down edits known robot Y, LB adds yaw, and RB subtracts yaw. START selects the fine or
-   coarse increments listed above. Right-stick click optionally enters field-by-field edit mode.
+   Dpad Up/Down edits known robot Y, LB adds yaw, and RB subtracts yaw. Gamepad START selects fine
+   or coarse increments. Right-stick click optionally enters field-by-field edit mode.
 4. Match the displayed known robot pose and selected tag to the physical setup. Hold the robot still
-   and press A several times to capture samples; B clears a bad set.
-5. Record the printed `CameraMountConfig.ofDegrees(...)`, the selected device and tag, the physical
-   pose, sample count, sample-to-average spread, residual, and range comparison.
+   and press A for each new eligible image; inspect the accepted count. B clears the batch and wins
+   over A in the same loop, so pressing both cannot immediately refill it.
+5. When a usable average is shown, record the printed `CameraMountConfig.ofDegrees(...)`, the
+   selected device and tag, physical pose, sample count, sample-to-average spread, residual, and
+   range comparison. Record this setup's result before moving or editing to another setup.
 6. Put the accepted mount in the canonical robot profile, rebuild, and open a fresh
    robot-configured AprilTag-localization tester. Verify the field pose there. Reopening the generic
    camera calibrator can check repeatability, but cannot prove that production consumed the value.
+
+Actually changing the selected tag or any known robot-pose value clears the batch and pending
+capture. Changing fine/coarse steps, entering edit mode, or navigating between editable fields
+does not. After B, a geometry edit, a new camera, or a clock reset, wait for an image captured
+**strictly after** that boundary; an older image delivered afterward cannot describe the new setup.
+The tester cannot detect that someone physically moved the robot without updating its entered pose.
+
+This illustrative sequence uses capture times in seconds, not measured hardware timing. Assume
+the camera and geometry are otherwise usable and B cleared the batch at `1.00 s`:
+
+| Action / image | Accepted count | Why |
+| --- | --- | --- |
+| A with image captured at `1.10 s` | 1 | New eligible image |
+| A again with the same `1.10 s` image | 1 | Another press is not another image |
+| Change known robot X at `1.20 s` | 0 | A new setup starts a new batch |
+| A with a delayed image captured at `1.15 s` | 0 | It was taken before the edit |
+| A with image captured at `1.30 s` | 1 | It was taken after the edit |
+
+Driver Station START resets the shared clock and clears the batch; gamepad START only changes
+fine/coarse steps and retains it. Camera close/failure/replacement, BACK, STOP, and clock reset
+discard that camera's sample evidence. During temporary `WAITING` on the same camera, any retained
+average is **historical**—previously accepted evidence, not a current image or permission to capture.
+
+The average combines positions and orientations. If accepted orientations do not determine one
+clear average, no copy/paste average is printed. The accepted count can still increase; later
+distinct images may resolve the ambiguity, or B clears it. Invalid calculations likewise produce
+no usable new average. Never substitute sample count alone for an independently checked result.
 
 ### What “good” looks like
 

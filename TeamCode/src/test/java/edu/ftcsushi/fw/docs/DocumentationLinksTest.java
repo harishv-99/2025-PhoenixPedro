@@ -1923,6 +1923,15 @@ public final class DocumentationLinksTest {
                 "optional advanced: powered and vision-assisted pod offsets",
                 "optional ekf comparison", "does **not** register an ekf entry",
                 "optional advanced: guided suite construction");
+        String cameraCalibration = sectionBetween(calibration,
+                "## Camera mount", "## AprilTag-only localization check");
+        assertContainsAll("Camera mount teaches evidence and calibration boundaries", cameraCalibration,
+                "**extrinsics**", "**intrinsics**", "**shooter/intake alignment**",
+                "known robot z/pitch/roll stay zero", "a **batch**", "a camera **frame**",
+                "not the previous screen's preview", "repeated or older capture timestamps",
+                "wins", "**strictly after**", "driver station start", "gamepad start",
+                "**historical**", "no copy/paste average is printed",
+                "| action / image | accepted count | why |");
         String axisCalibration = sectionBetween(calibration,
                 "## Pinpoint axis directions", "## Pinpoint pod offsets");
         assertContainsAll("Axis directions explain the active sign experiment", axisCalibration,
@@ -2051,7 +2060,8 @@ public final class DocumentationLinksTest {
                 "cameraMountAccepted", "currentGameFieldFixed()", "APRILTAG_POSE", "FUSION",
                 "maxDetectionAgeSec = 0.35", "0.25 s", "receipt staleness",
                 "estimated capture age", "not two cutoffs on the same age",
-                "fresh configured", "physical accuracy");
+                "fresh configured", "physical accuracy", "chosen robot reference point",
+                "z/pitch/roll remain zero", "image/lens", "extrinsics", "intrinsics");
         String powered = readUtf8(calibrationRoot.resolve(lessonFiles[2]));
         assertContainsAll("Optional powered integration cannot imply passive or accepted hardware",
                 powered, "poweredMotionReviewed", "cameraMountAccepted", "before constructing",

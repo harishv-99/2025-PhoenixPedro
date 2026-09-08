@@ -10,7 +10,9 @@ import java.util.Objects;
 import java.util.function.Function;
 
 import edu.ftcsushi.fw.core.geometry.Pose3d;
+import edu.ftcsushi.fw.core.geometry.Mat3;
 import edu.ftcsushi.fw.core.source.BooleanSource;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.field.TagLayouts;
 import edu.ftcsushi.fw.ftc.FtcGameTagLayout;
@@ -20,6 +22,7 @@ import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
 import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
+import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcsushi.fw.ftc.ui.HardwareNamePicker;
@@ -46,14 +49,28 @@ import edu.ftcsushi.fw.input.binding.Bindings;
  * => robotToCameraPose = inv(fieldToRobotPose) · fieldToTagPose · inv(cameraToTagPose)
  * </pre>
  *
+ * <h2>Capture evidence</h2>
+ * <p>A requests one sample from the current loop's ready camera and fresh frame, not the previous
+ * preview. Each accepted frame timestamp must advance. B and actual tag/known-pose edits clear
+ * the stationary batch and win over A in that cycle; subsequent captures must come from images
+ * taken after that boundary. Camera replacement, shutdown, and Driver Station START/clock reset
+ * also clear the batch. Temporary WAITING retains only historical results, never a capture request.
+ * UI step/mode/field selection does not change the batch.</p>
+ *
+ * <p>The equal-weight mean averages translations and complete rotations, not separate Euler
+ * angles. Finite but conflicting rotations remain counted; an ambiguous rotation mean has no
+ * printable recommendation. This estimates mount extrinsics relative to the chosen fixed robot
+ * reference point, not lens intrinsics or shooter/intake alignment. The ordinary pose controls
+ * assume a level robot with its reference point at field Z=0; only X, Y, and yaw are editable.</p>
+ *
  * <h2>Controls (gamepad1)</h2>
  * <ul>
  *   <li><b>PICKER (no camera chosen yet)</b>: Dpad Up/Down highlight, A choose, X refresh</li>
  *   <li><b>CALIBRATE (camera chosen)</b>:
  *     <ul>
  *       <li>Y/X: increment/decrement tag ID</li>
- *       <li>A: capture sample (average mount)</li>
- *       <li>B: clear captured samples</li>
+ *       <li>A: capture one new, fresh frame into the average mount</li>
+ *       <li>B: clear captured samples (wins over A in the same cycle)</li>
  *       <li>Dpad: adjust known robot pose (XY)</li>
  *       <li>LB/RB: adjust known robot yaw</li>
  *       <li>START: fine/coarse step</li>
@@ -161,6 +178,12 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     private Pose3d lastObservedCameraToTag = null;
 
     private final PoseAverager avg = new PoseAverager();
+    private boolean captureRequested;
+    private long batchGeneration;
+    private LoopTimestamp batchBoundary = LoopTimestamp.unavailable();
+    private LoopTimestamp lastAcceptedFrame = LoopTimestamp.unavailable();
+    private long captureInhibitedCycle = Long.MIN_VALUE;
+    private String captureStatus = "Hold still; press A for a new, fresh frame.";
 
     /**
      * Creates one backend-neutral camera-mount calibration owner.
@@ -335,20 +358,16 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         );
 
         // B clears samples once vision is already running.
-        calibrationControls.onRise(gamepads.p1().b(), avg::clear);
+        calibrationControls.onRise(gamepads.p1().b(), this::clearCapturedSamples);
 
         // Capture sample (only when vision is ready)
-        calibrationControls.onRise(gamepads.p1().a(), () -> {
-            if (lastRobotToCameraSample != null) {
-                avg.add(lastRobotToCameraSample);
-            }
-        });
+        calibrationControls.onRise(gamepads.p1().a(), () -> captureRequested = true);
 
         // Calibration controls (only when vision is ready)
-        calibrationControls.onRise(gamepads.p1().y(), () -> selectedTagId++);
+        calibrationControls.onRise(gamepads.p1().y(), () -> changeTagId(1));
 
         calibrationControls.onRise(gamepads.p1().x(),
-                () -> selectedTagId = Math.max(1, selectedTagId - 1));
+                () -> changeTagId(-1));
 
         calibrationControls.onRise(gamepads.p1().start(), () -> fineSteps = !fineSteps);
 
@@ -436,11 +455,6 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         tagSensor = null;
         activeVisionDescription = null;
 
-        lastRobotToCameraSample = null;
-        lastObservedCameraToTag = null;
-
-        avg.clear();
-
         if (cleanupFailure != null) {
             blockVisionSelection(cleanupFailure);
             return true;
@@ -476,12 +490,6 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      */
     @Override
     protected void onInitLoop(double dtSec) {
-        refreshVisionReadiness();
-        if (!visionReady) {
-            renderCameraPicker();
-            return;
-        }
-
         updateSolveAndTelemetry();
     }
 
@@ -490,13 +498,43 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      */
     @Override
     protected void onLoop(double dtSec) {
-        refreshVisionReadiness();
-        if (!visionReady) {
-            renderCameraPicker();
-            return;
-        }
-
         updateSolveAndTelemetry();
+    }
+
+    @Override
+    protected void onStart() {
+        clearCapturedSamples();
+    }
+
+    /** B's action also fences reentrant capture/solve work already in flight. */
+    private void clearCapturedSamples() {
+        batchGeneration++;
+        captureRequested = false;
+        lastRobotToCameraSample = null;
+        lastObservedCameraToTag = null;
+        avg.clear();
+        lastAcceptedFrame = LoopTimestamp.unavailable();
+        // Shutdown is also safe before init has installed a context.
+        batchBoundary = ctx == null ? LoopTimestamp.unavailable() : ctx.clock.nowTimestamp();
+        captureInhibitedCycle = ctx == null ? Long.MIN_VALUE : ctx.clock.cycle();
+        captureStatus = "Batch cleared; wait for an image captured after this setup boundary.";
+    }
+
+    private boolean sameBatch(OwnedAprilTagCamera owner, long generation) {
+        return sameCameraOwner(owner)
+                && batchGeneration == generation
+                && Double.isFinite(batchBoundary.ageSec(ctx.clock));
+    }
+
+    private boolean sameCameraOwner(OwnedAprilTagCamera owner) {
+        return visionLane == owner && owner != null && !visionClosingOrTerminal
+                && !visionTerminalRequested && !visionCleanupFailed;
+    }
+
+    private void invalidateResetEpoch() {
+        if (ctx != null && !Double.isFinite(batchBoundary.ageSec(ctx.clock))) {
+            clearCapturedSamples();
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -541,21 +579,47 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         if (factory == null) return;
         pendingVisionLaneFactory = null;
 
+        clearCapturedSamples();
         visionFailure = null;
         boolean ownerPublished = false;
         try {
-            OwnedAprilTagCamera openedLane = factory.open(ctx.hw);
+            OwnedAprilTagCamera openedLane;
+            try {
+                openedLane = factory.open(ctx.hw);
+            } finally {
+                invalidateResetEpoch();
+            }
             if (openedLane == null) {
                 throw new IllegalStateException(
                         "vision lane factory returned null for " + selectedCameraName);
             }
             visionLane = openedLane;
             ownerPublished = true;
-            tagSensor = Objects.requireNonNull(
-                    visionLane.aprilTags().tagSensor(),
-                    "AprilTag vision lane returned a null tag sensor"
-            );
-            activeVisionDescription = factory.description();
+            if (visionTerminalRequested) {
+                RuntimeException cleanupFailure = closeVisionLaneOnce();
+                if (cleanupFailure != null) {
+                    visionCleanupFailed = true;
+                    throw cleanupFailure;
+                }
+                return;
+            }
+            AprilTagSensor openedSensor;
+            try {
+                openedSensor = Objects.requireNonNull(openedLane.aprilTags().tagSensor(),
+                        "AprilTag vision lane returned a null tag sensor");
+            } finally {
+                invalidateResetEpoch();
+            }
+            if (!sameCameraOwner(openedLane)) return;
+            String description;
+            try {
+                description = factory.description();
+            } finally {
+                invalidateResetEpoch();
+            }
+            if (!sameCameraOwner(openedLane)) return;
+            tagSensor = openedSensor;
+            activeVisionDescription = description;
 
             visionReady = false;
             visionReadiness = VisionReadiness.notReady("Vision device is opening");
@@ -595,7 +659,14 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             return;
         }
         try {
-            VisionReadiness current = lane.aprilTags().readiness(ctx.clock);
+            long generation = batchGeneration;
+            VisionReadiness current;
+            try {
+                current = lane.aprilTags().readiness(ctx.clock);
+            } finally {
+                invalidateResetEpoch();
+            }
+            if (!sameBatch(lane, generation)) return;
             if (current == null) {
                 throw new IllegalStateException(
                         "AprilTag vision lane returned a null readiness result"
@@ -625,6 +696,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
     /** Records an effect-free builder/selection failure and returns to the same picker. */
     private void recordCleanSelectionFailure(String prefix, RuntimeException failure) {
+        clearCapturedSamples();
         visionFailure = failure;
         tagSensor = null;
         activeVisionDescription = null;
@@ -657,6 +729,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      * @return the close failure, or {@code null} when no lane was owned or close succeeded
      */
     private RuntimeException closeVisionLaneOnce() {
+        clearCapturedSamples();
         visionClosingOrTerminal = true;
         OwnedAprilTagCamera lane = visionLane;
         visionLane = null;
@@ -711,6 +784,10 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             t.addData("Vision readiness", visionReadiness.isReady() ? "READY" : "WAITING");
             t.addData("Vision status", visionReadiness.reason());
             t.addLine("Press BACK to close this owner and choose another device.");
+            t.addData("Historical captured samples (not current readiness)", avg.count());
+            if (avg.meanOrNull() == null && avg.count() > 0) {
+                t.addData("Historical average unavailable", avg.unavailableReason());
+            }
         }
         if (visionCleanupFailed) {
             t.addLine("VISION DEVICE SELECTION DISABLED.");
@@ -735,30 +812,98 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     }
 
     private void updateSolveAndTelemetry() {
-        AprilTagObservation obs = tagSensor.get(ctx.clock).forId(
-                ctx.clock,
-                selectedTagId,
-                maxDetectionAgeSec
-        );
-        lastObservedCameraToTag = (obs.hasTarget) ? obs.cameraToTagPose : null;
-
+        // Bindings precede this phase. Drain before any external callback can fail or reenter.
+        boolean requested = captureRequested;
+        captureRequested = false;
         lastRobotToCameraSample = null;
-
-        if (obs.hasTarget) {
-            Pose3d fieldToTagPose = layout.getFieldToTagPose(obs.id);
-            if (fieldToTagPose != null) {
-                Pose3d cameraToTagPose = obs.cameraToTagPose;
-
-                Pose3d robotToCameraPose = fieldToRobotPose.inverse()
-                        .then(fieldToTagPose)
-                        .then(cameraToTagPose.inverse());
-
-                lastRobotToCameraSample = robotToCameraPose;
-
-            }
+        lastObservedCameraToTag = null;
+        if (!Double.isFinite(batchBoundary.ageSec(ctx.clock))) {
+            clearCapturedSamples();
+            requested = false;
         }
-
+        OwnedAprilTagCamera owner = visionLane;
+        long generation = batchGeneration;
+        int tagId = selectedTagId;
+        Pose3d knownRobotPose = fieldToRobotPose;
+        refreshVisionReadiness();
+        if (!sameBatch(owner, generation) || !visionReady) {
+            renderCameraPicker();
+            return;
+        }
+        AprilTagDetections frame;
+        try {
+            frame = Objects.requireNonNull(tagSensor.get(ctx.clock),
+                    "Camera mount calibration tag sensor returned null detections");
+        } finally {
+            invalidateResetEpoch();
+        }
+        if (!sameBatch(owner, generation)) return;
+        // A wrong-clock frame is a source contract failure, not an ordinary missing target.
+        AprilTagObservation obs = frame.forId(ctx.clock, tagId, maxDetectionAgeSec);
+        captureStatus = "No fresh detection for selected tag ID.";
+        if (obs.hasTarget && isFinitePose(obs.cameraToTagPose)) {
+            lastObservedCameraToTag = obs.cameraToTagPose;
+            Pose3d tagPose = layout.getFieldToTagPose(tagId);
+            if (!isFinitePose(knownRobotPose) || !isFinitePose(tagPose)) {
+                captureStatus = "Need finite known robot and fixed tag poses.";
+            } else if (!(frame.frameTimestamp().secondsSince(batchBoundary) > 0.0)) {
+                captureStatus = "Wait for an image captured after this setup boundary.";
+            } else {
+                Pose3d solved = knownRobotPose.inverse().then(tagPose)
+                        .then(obs.cameraToTagPose.inverse());
+                if (isFinitePose(solved)) {
+                    CaptureCandidate candidate = new CaptureCandidate(owner, generation,
+                            frame.frameTimestamp(), tagId, knownRobotPose, solved);
+                    lastRobotToCameraSample = solved;
+                    captureStatus = "Fresh preview; press A to capture a distinct frame.";
+                    if (requested && captureInhibitedCycle != ctx.clock.cycle()
+                            && sameBatch(candidate.owner, candidate.generation)
+                            && candidate.tagId == selectedTagId
+                            && candidate.knownRobotPose == fieldToRobotPose) {
+                        if (lastAcceptedFrame.isAvailable()
+                                && !(candidate.timestamp.secondsSince(lastAcceptedFrame) > 0.0)) {
+                            captureStatus = "Frame already counted or older; wait for a new image.";
+                        } else if (avg.add(candidate.mountPose)) {
+                            lastAcceptedFrame = candidate.timestamp;
+                            captureStatus = "Captured one new, fresh frame.";
+                        } else {
+                            captureStatus = "Capture rejected: finite aggregation could not be preserved.";
+                        }
+                    }
+                } else {
+                    captureStatus = "Capture unavailable: mount solve is non-finite. Check geometry.";
+                }
+            }
+        } else if (obs.hasTarget) {
+            captureStatus = "Capture unavailable: observed geometry is non-finite.";
+        }
         renderCalibrationTelemetry();
+    }
+
+    /** Immutable provenance for this loop's solve; never retained as a future A-button sample. */
+    private static final class CaptureCandidate {
+        final OwnedAprilTagCamera owner;
+        final long generation;
+        final LoopTimestamp timestamp;
+        final int tagId;
+        final Pose3d knownRobotPose;
+        final Pose3d mountPose;
+
+        CaptureCandidate(OwnedAprilTagCamera owner, long generation, LoopTimestamp timestamp,
+                         int tagId, Pose3d knownRobotPose, Pose3d mountPose) {
+            this.owner = owner;
+            this.generation = generation;
+            this.timestamp = timestamp;
+            this.tagId = tagId;
+            this.knownRobotPose = knownRobotPose;
+            this.mountPose = mountPose;
+        }
+    }
+
+    private static boolean isFinitePose(Pose3d pose) {
+        return pose != null && Double.isFinite(pose.xInches) && Double.isFinite(pose.yInches)
+                && Double.isFinite(pose.zInches) && Double.isFinite(pose.yawRad)
+                && Double.isFinite(pose.pitchRad) && Double.isFinite(pose.rollRad);
     }
 
     private void renderCalibrationTelemetry() {
@@ -783,6 +928,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         t.addData(editableFieldLabel(EditField.ROBOT_Y, "Dpad U/D"), "%.2f in", fieldToRobotPose.yInches);
         t.addData(editableFieldLabel(EditField.ROBOT_YAW, "LB/RB"), "%.1f°", Math.toDegrees(fieldToRobotPose.yawRad));
         t.addData("Samples [A capture | B clear]", avg.count());
+        t.addData("Capture status", captureStatus);
         t.addData("MaxAge", "%.0f ms", maxDetectionAgeSec * 1000.0);
 
         t.addLine("");
@@ -797,6 +943,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             t.addLine("Edit controls: Dpad U/D chooses the field; Dpad L/R or LB/RB changes the selected value.");
         }
         t.addLine("BACK: return to the camera picker. Hold the robot still while capturing.");
+        t.addLine("Tag/known-pose edits clear this fixed-setup batch; B wins over A.");
 
         // Show the known field pose of the selected tag (from the fixed layout or an override layout).
         t.addLine("");
@@ -844,13 +991,17 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             if (mean != null) {
                 Pose3d avgToSamplePose = mean.inverse().then(lastRobotToCameraSample);
                 double sampleDeltaTrans = translationDistanceInches(mean, lastRobotToCameraSample);
-                t.addLine(String.format(Locale.US,
-                        "Sample vs avg mount: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
-                        sampleDeltaTrans,
-                        Math.toDegrees(avgToSamplePose.yawRad),
-                        Math.toDegrees(avgToSamplePose.pitchRad),
-                        Math.toDegrees(avgToSamplePose.rollRad)
-                ));
+                if (isFinitePose(avgToSamplePose) && Double.isFinite(sampleDeltaTrans)) {
+                    t.addLine(String.format(Locale.US,
+                            "Sample vs avg mount: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
+                            sampleDeltaTrans,
+                            Math.toDegrees(avgToSamplePose.yawRad),
+                            Math.toDegrees(avgToSamplePose.pitchRad),
+                            Math.toDegrees(avgToSamplePose.rollRad)
+                    ));
+                } else {
+                    t.addLine("Sample vs avg mount: unavailable (non-finite comparison).");
+                }
             }
 
             if (mean != null && selectedTagPose != null && lastObservedCameraToTag != null) {
@@ -863,21 +1014,26 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 double observedRange = translationNormInches(lastObservedCameraToTag);
                 double predictedRange = translationNormInches(avgPredictedCameraToTag);
 
-                t.addLine(String.format(Locale.US,
-                        "Avg residual: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
-                        trans,
-                        Math.toDegrees(avgPredToObsPose.yawRad),
-                        Math.toDegrees(avgPredToObsPose.pitchRad),
-                        Math.toDegrees(avgPredToObsPose.rollRad)
-                ));
-                t.addLine(String.format(Locale.US,
-                        "Range check: obs=%.2f in | avgPred=%.2f in | Δ=%.2f in",
-                        observedRange,
-                        predictedRange,
-                        observedRange - predictedRange
-                ));
+                if (isFinitePose(avgPredToObsPose) && Double.isFinite(trans)
+                        && Double.isFinite(observedRange) && Double.isFinite(predictedRange)) {
+                    t.addLine(String.format(Locale.US,
+                            "Avg residual: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
+                            trans,
+                            Math.toDegrees(avgPredToObsPose.yawRad),
+                            Math.toDegrees(avgPredToObsPose.pitchRad),
+                            Math.toDegrees(avgPredToObsPose.rollRad)
+                    ));
+                    t.addLine(String.format(Locale.US,
+                            "Range check: obs=%.2f in | avgPred=%.2f in | Δ=%.2f in",
+                            observedRange,
+                            predictedRange,
+                            observedRange - predictedRange
+                    ));
+                } else {
+                    t.addLine("Avg residual / range check: unavailable (non-finite comparison).");
+                }
             } else if (mean == null) {
-                t.addLine("Residual check: capture at least one sample to compare against an averaged mount.");
+                t.addLine("Residual check: needs a usable captured average.");
             }
         }
 
@@ -885,8 +1041,9 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         t.addLine(String.format(Locale.US, "Captured samples: %d", avg.count()));
 
         if (mean == null) {
-            t.addLine("Average: (none yet) Press A a few times while holding still.");
+            t.addLine("Average unavailable: " + avg.unavailableReason());
         } else {
+            t.addLine("Historical captured average: not a physical accuracy or current-readiness claim.");
             t.addLine("Average mount (paste into CameraMountConfig.of / ofDegrees):");
             addPoseLine(t, "robotToCameraPose(avg)", mean);
 
@@ -929,14 +1086,14 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         double dx = b.xInches - a.xInches;
         double dy = b.yInches - a.yInches;
         double dz = b.zInches - a.zInches;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return Math.hypot(Math.hypot(dx, dy), dz);
     }
 
     private static double translationNormInches(Pose3d p) {
         double dx = p.xInches;
         double dy = p.yInches;
         double dz = p.zInches;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return Math.hypot(Math.hypot(dx, dy), dz);
     }
 
     // Robot pose adjustment
@@ -949,7 +1106,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     }
 
     private void adjustRobotPose(double dxInches, double dyInches, double dyawRad) {
-        fieldToRobotPose = new Pose3d(
+        Pose3d adjusted = new Pose3d(
                 fieldToRobotPose.xInches + dxInches,
                 fieldToRobotPose.yInches + dyInches,
                 fieldToRobotPose.zInches,
@@ -957,6 +1114,21 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 fieldToRobotPose.pitchRad,
                 fieldToRobotPose.rollRad
         );
+        if (!isFinitePose(adjusted)) return;
+        if (adjusted.xInches != fieldToRobotPose.xInches
+                || adjusted.yInches != fieldToRobotPose.yInches
+                || adjusted.yawRad != fieldToRobotPose.yawRad) {
+            clearCapturedSamples();
+            fieldToRobotPose = adjusted;
+        }
+    }
+
+    private void changeTagId(int delta) {
+        int next = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, (long) selectedTagId + delta));
+        if (next != selectedTagId) {
+            clearCapturedSamples();
+            selectedTagId = next;
+        }
     }
 
 
@@ -972,11 +1144,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     private void adjustEditField(int dir) {
         switch (editField) {
             case TAG_ID:
-                if (dir > 0) {
-                    selectedTagId++;
-                } else {
-                    selectedTagId = Math.max(1, selectedTagId - 1);
-                }
+                changeTagId(dir > 0 ? 1 : -1);
                 break;
             case ROBOT_X:
                 adjustRobotPose(dir * stepXY(), 0.0, 0.0);
@@ -990,55 +1158,171 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         }
     }
 
-    // Averager
+    // Equal-weight quaternion outer-product mean. All numerical work is bounded and runs only
+    // when accepting a sample; rendering reads the cached answer. No physical outlier gate.
     private static final class PoseAverager {
+        // Dimensionless tolerances on the normalized (trace ~1) 4x4 matrix, not accuracy scores.
+        private static final double OFF_DIAGONAL_TOLERANCE = 1e-14;
+        private static final double EIGENPAIR_TOLERANCE = 1e-10;
+        private static final int MAX_JACOBI_ROTATIONS = 96;
         private int n = 0;
-
-        private double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
-        private double sumSinYaw = 0.0, sumCosYaw = 0.0;
-        private double sumSinPitch = 0.0, sumCosPitch = 0.0;
-        private double sumSinRoll = 0.0, sumCosRoll = 0.0;
+        private double meanX, meanY, meanZ;
+        private double[][] rotationMoment = new double[4][4];
+        private Pose3d cachedMean;
+        private String unavailableReason = "No captured frames yet; hold still and press A.";
 
         void clear() {
             n = 0;
-            sumX = sumY = sumZ = 0.0;
-            sumSinYaw = sumCosYaw = 0.0;
-            sumSinPitch = sumCosPitch = 0.0;
-            sumSinRoll = sumCosRoll = 0.0;
+            meanX = meanY = meanZ = 0.0;
+            rotationMoment = new double[4][4];
+            cachedMean = null;
+            unavailableReason = "No captured frames yet; hold still and press A.";
         }
 
         int count() {
             return n;
         }
 
-        void add(Pose3d p) {
-            n++;
-            sumX += p.xInches;
-            sumY += p.yInches;
-            sumZ += p.zInches;
+        boolean add(Pose3d p) {
+            if (!isFinitePose(p) || n == Integer.MAX_VALUE) return false;
+            int nextCount = n + 1;
+            double weight = 1.0 / nextCount;
+            double x = blend(meanX, p.xInches, weight);
+            double y = blend(meanY, p.yInches, weight);
+            double z = blend(meanZ, p.zInches, weight);
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) return false;
 
-            sumSinYaw += Math.sin(p.yawRad);
-            sumCosYaw += Math.cos(p.yawRad);
-
-            sumSinPitch += Math.sin(p.pitchRad);
-            sumCosPitch += Math.cos(p.pitchRad);
-
-            sumSinRoll += Math.sin(p.rollRad);
-            sumCosRoll += Math.cos(p.rollRad);
+            double cy = Math.cos(p.yawRad / 2), sy = Math.sin(p.yawRad / 2);
+            double cp = Math.cos(p.pitchRad / 2), sp = Math.sin(p.pitchRad / 2);
+            double cr = Math.cos(p.rollRad / 2), sr = Math.sin(p.rollRad / 2);
+            double[] q = {cy * cp * cr + sy * sp * sr, cy * cp * sr - sy * sp * cr,
+                    cy * sp * cr + sy * cp * sr, sy * cp * cr - cy * sp * sr};
+            if (!normalize(q)) return false;
+            double[][] nextMoment = new double[4][4];
+            for (int i = 0; i < 4; i++) {
+                for (int j = i; j < 4; j++) {
+                    double value = blend(rotationMoment[i][j], q[i] * q[j], weight);
+                    if (!Double.isFinite(value)) return false;
+                    nextMoment[i][j] = nextMoment[j][i] = value;
+                }
+            }
+            // q and -q produce the same moment. Contradictory finite captures still belong to the
+            // batch: commit their count/statistics even if no unique mean can yet be printed.
+            double[] meanRotation = principalRotation(nextMoment);
+            Pose3d mean = null;
+            if (meanRotation != null) {
+                double w = meanRotation[0], qx = meanRotation[1];
+                double qy = meanRotation[2], qz = meanRotation[3];
+                Mat3 rotation = new Mat3(
+                        1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - w * qz), 2 * (qx * qz + w * qy),
+                        2 * (qx * qy + w * qz), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - w * qx),
+                        2 * (qx * qz - w * qy), 2 * (qy * qz + w * qx), 1 - 2 * (qx * qx + qy * qy));
+                // Test singularity from the actual horizontal basis, not cos(asin(m20)): a
+                // rounded m20 at an exactly vertical orientation can invent a nonzero cosine.
+                double horizontal = Math.hypot(rotation.m00, rotation.m10);
+                double pitch = Math.atan2(-rotation.m20, horizontal);
+                double yaw = horizontal > 1e-9 ? Math.atan2(rotation.m10, rotation.m00)
+                        : Math.atan2(-rotation.m01, rotation.m11);
+                double roll = horizontal > 1e-9 ? Math.atan2(rotation.m21, rotation.m22) : 0.0;
+                mean = new Pose3d(x, y, z, yaw, pitch, roll);
+                if (!isFinitePose(mean)) mean = null;
+            }
+            n = nextCount;
+            meanX = x;
+            meanY = y;
+            meanZ = z;
+            rotationMoment = nextMoment;
+            cachedMean = mean;
+            unavailableReason = mean == null
+                    ? "Rotation mean is ambiguous or numerically unresolved; inspect setup, capture a new frame, or B clear."
+                    : "";
+            return true;
         }
 
         Pose3d meanOrNull() {
-            if (n <= 0) return null;
+            return cachedMean;
+        }
 
-            double x = sumX / n;
-            double y = sumY / n;
-            double z = sumZ / n;
+        String unavailableReason() {
+            return unavailableReason;
+        }
 
-            double yaw = Math.atan2(sumSinYaw, sumCosYaw);
-            double pitch = Math.atan2(sumSinPitch, sumCosPitch);
-            double roll = Math.atan2(sumSinRoll, sumCosRoll);
+        private static double blend(double previous, double value, double weight) {
+            // Same-sign subtraction cannot overflow; opposite-sign weighted terms cannot overflow
+            // their sum. This also handles finite translations whose naive running sum overflows.
+            return Math.copySign(1.0, previous) == Math.copySign(1.0, value)
+                    ? previous + (value - previous) * weight
+                    : previous * (1.0 - weight) + value * weight;
+        }
 
-            return new Pose3d(x, y, z, yaw, pitch, roll);
+        private static boolean normalize(double[] q) {
+            double norm = Math.hypot(Math.hypot(q[0], q[1]), Math.hypot(q[2], q[3]));
+            if (!Double.isFinite(norm) || norm == 0.0) return false;
+            for (int i = 0; i < 4; i++) q[i] /= norm;
+            return true;
+        }
+
+        /** Symmetric Jacobi diagonalization examines all four directions (no fixed-start bias). */
+        private static double[] principalRotation(double[][] moment) {
+            double[][] a = new double[4][4];
+            double[][] eigenvectors = new double[4][4];
+            for (int i = 0; i < 4; i++) {
+                System.arraycopy(moment[i], 0, a[i], 0, 4);
+                eigenvectors[i][i] = 1.0;
+            }
+            boolean converged = false;
+            for (int iteration = 0; iteration < MAX_JACOBI_ROTATIONS; iteration++) {
+                int p = 0, r = 1;
+                double largest = 0;
+                for (int i = 0; i < 4; i++) {
+                    for (int j = i + 1; j < 4; j++) {
+                        if (Math.abs(a[i][j]) > largest) {
+                            largest = Math.abs(a[i][j]);
+                            p = i;
+                            r = j;
+                        }
+                    }
+                }
+                if (largest <= OFF_DIAGONAL_TOLERANCE) {
+                    converged = true;
+                    break;
+                }
+                double tau = (a[r][r] - a[p][p]) / (2.0 * a[p][r]);
+                double t = Math.copySign(1.0, tau) / (Math.abs(tau) + Math.hypot(1.0, tau));
+                double c = 1.0 / Math.sqrt(1.0 + t * t), s = t * c;
+                double offDiagonal = a[p][r];
+                a[p][p] -= t * offDiagonal;
+                a[r][r] += t * offDiagonal;
+                a[p][r] = a[r][p] = 0;
+                for (int k = 0; k < 4; k++) {
+                    if (k != p && k != r) {
+                        double kp = a[k][p], kr = a[k][r];
+                        a[k][p] = a[p][k] = c * kp - s * kr;
+                        a[k][r] = a[r][k] = s * kp + c * kr;
+                    }
+                    double vp = eigenvectors[k][p], vr = eigenvectors[k][r];
+                    eigenvectors[k][p] = c * vp - s * vr;
+                    eigenvectors[k][r] = s * vp + c * vr;
+                }
+            }
+            if (!converged) return null;
+            int top = 0;
+            for (int i = 1; i < 4; i++) if (a[i][i] > a[top][top]) top = i;
+            double second = Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < 4; i++) if (i != top) second = Math.max(second, a[i][i]);
+            double eigenvalue = a[top][top];
+            if (!Double.isFinite(eigenvalue) || !Double.isFinite(second)
+                    || eigenvalue - second <= EIGENPAIR_TOLERANCE) return null;
+            double[] q = new double[4];
+            for (int i = 0; i < 4; i++) q[i] = eigenvectors[i][top];
+            if (!normalize(q)) return null;
+            double residual = 0;
+            for (int i = 0; i < 4; i++) {
+                double component = -eigenvalue * q[i];
+                for (int j = 0; j < 4; j++) component += moment[i][j] * q[j];
+                residual = Math.hypot(residual, component);
+            }
+            return Double.isFinite(residual) && residual <= EIGENPAIR_TOLERANCE ? q : null;
         }
     }
 }
