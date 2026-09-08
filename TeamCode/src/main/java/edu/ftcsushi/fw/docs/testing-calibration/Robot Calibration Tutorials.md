@@ -458,7 +458,10 @@ checked all three axes on real hardware. The generic tester neither sets nor per
 
 ### Why this matters
 
-Axis directions only fix signs. Pod offsets fix the geometry. Leaving offsets at `0 / 0` makes rotation drift look like translation.
+Axis directions fix signs; pod offsets describe the pods' placement relative to the robot's
+**reference point**, the point whose position Pinpoint reports. In the tool's geometry calculation,
+matching offsets account for pod movement caused by turning. Incorrect offsets can leave extra
+reported translation, even when that reference point returns to its starting place.
 
 ### Tester
 
@@ -471,8 +474,9 @@ previous screen. If either fact differs, do not accept a generic offset solve; s
 robot-configured calibrator built from the reviewed profile.
 
 The generic entry supplies neither a mecanum drive config nor a vision factory. The robot cannot
-power itself and AprilTag assist is off. X resets pose and clears results, A advances the manual
-sample, and B aborts; Y reports unavailable. The solve requires
+power itself and AprilTag assist is off. X resets the reported pose and clears results; it does not
+physically move or recenter the robot. A advances the manual sample, and B aborts; Y reports
+unavailable. The solve requires
 `4 * sin(deltaHeading / 2)^2 >= 0.5`, roughly `45°` away from a degenerate `0°`/`360°` result, while
 the tool recommends a turn near `180°`.
 
@@ -485,6 +489,11 @@ velocity evidence, clear floor space, and an independent way to judge whether th
 its starting position. A camera mount is not required unless a robot-specific advanced tester
 enables AprilTag assist.
 
+Keep that reference point fixed to the robot and measure the pod offsets from it. Mark its starting
+floor position. Recenter that same point, not whichever wheel or contact point the robot happened
+to turn around. Without tag assistance, real start-to-end movement of the reference point is mixed
+into the offset recommendation; the tool cannot distinguish it from incorrect pod geometry.
+
 ### Procedure
 
 1. Confirm the selected generic-or-configured path satisfies the direction/resolution gate above.
@@ -493,13 +502,18 @@ enables AprilTag assist.
 2. Press Driver Station START, then A to start the sample. Rotate the unpowered robot by hand
    roughly `180°` in place.
 3. Press A to finish rotation and enter the default recenter phase. Physically translate the robot
-   back to its starting point without adding rotation, then press A again to compute. Press B at
-   any time to abort.
+   so its reference point returns to the marked position without adding rotation, then press A
+   again to compute. Press B at any time to abort.
 4. Record both recommended offset assignments and the observed heading change. Repeat the sample;
    reject a result that does not stabilize or fails the solve gate.
 5. Put the accepted offsets in the canonical Pinpoint profile, rebuild, and run a fresh
    robot-configured pod-offset tester. Confirm the current offsets shown there are the rebuilt
-   values and that a repeat sample produces only a small, stable recommendation.
+   values and that the repeated recommendations differ from them by only a small, stable amount
+   under your team's physical acceptance criterion.
+
+The printed recommendations are **absolute replacement offsets**, not adjustments to add to the
+current values. Correct offsets can remain nonzero on every repeat; it is their difference from
+the configured values that should become small, not the offsets themselves.
 
 ### What “good” looks like
 
@@ -963,10 +977,11 @@ that evidence disappears. If the opened camera reports an identity mount, succes
 cleanup disables assist and leaves the no-tag workflow available; failed cleanup blocks reuse
 until the OpMode is stopped and restarted.
 
-The matched timestamps establish software evidence only. Camera timing estimates, Pinpoint poll
-timing, mount/layout accuracy, physical slip, and the resulting offset accuracy still require
-controlled robot checks against independent observations. Follow the same record -> rebuild ->
-fresh robot-configured tester -> verify handoff as the manual procedure.
+Matched timestamps and independent geometry tests establish software evidence only. Pod resolution,
+heading calibration, camera and Pinpoint timing, mount/layout accuracy, physical slip, and the
+resulting offset accuracy still require controlled robot checks against independent observations.
+Follow the same record -> rebuild -> fresh robot-configured tester -> verify handoff as the manual
+procedure.
 
 ## Optional EKF comparison
 

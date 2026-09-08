@@ -1949,6 +1949,14 @@ public final class DocumentationLinksTest {
                 "actively applies those reconstructed defaults",
                 "do not accept a generic offset solve",
                 "fresh robot-configured calibrator");
+        String podCalibration = sectionBetween(calibration,
+                "## Pinpoint pod offsets", "## Pinpoint plus field corrections");
+        assertContainsAll("Pod geometry explains what the sample and recommendation mean", podCalibration,
+                "reference point", "point whose position pinpoint reports",
+                "incorrect offsets", "does not physically move or recenter",
+                "real start-to-end movement", "cannot distinguish it from incorrect pod geometry",
+                "absolute replacement offsets", "not adjustments to add",
+                "difference from the configured values", "not the offsets themselves");
         String assistedCalibration = sectionBetween(calibration,
                 "## Optional advanced: powered and vision-assisted pod offsets",
                 "## Optional EKF comparison");
