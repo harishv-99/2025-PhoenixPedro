@@ -48,10 +48,20 @@ import edu.ftcsushi.fw.localization.PoseResetter;
  * measurement timestamp once, so a single stale frame cannot keep "pulling" the fused pose over
  * several loops.</p>
  *
- * <p><b>Reported fused quality:</b> the short-term confidence boost given after an accepted correction
- * now scales with the accepted correction measurement's own quality instead of treating
- * every fresh correction as equally trustworthy. Manual {@link #setPose(Pose2d)} anchors clear
- * that recent-correction hold so resets do not masquerade as fresh camera corrections.</p>
+ * <p><b>Reported fused quality:</b> an ordinary update that publishes a pose reports the maximum
+ * of sanitized current predictor quality and a recent accepted correction's contribution. With a
+ * positive {@link Config#correctionConfidenceHoldSec hold}, that contribution is
+ * {@code acceptedQuality * (1 - acceptanceAgeSec / holdSec)} until expiry. The hold starts at
+ * acceptance, not capture, and a newer accepted correction replaces the retained quality even
+ * when weaker. Rejected or repeated frames do not refresh it. Disabling corrections leaves an
+ * earlier contribution to decay; it does not accept new evidence. A zero hold contributes nothing,
+ * and a hold alone cannot make an unavailable pose available. This is a heuristic score, not a
+ * probability or measured accuracy. Predictor quality does not set the pose-blending gains.</p>
+ *
+ * <p>Manual {@link #setPose(Pose2d)} anchors and unexpected predictor rebases clear the
+ * recent-correction hold. An immediate manual anchor uses sanitized predictor quality when that
+ * source reports a pose, otherwise {@code 1.0} for the caller's assertion. A clock reset invalidates
+ * the hold's acceptance age. Neither creates a new accepted camera correction.</p>
  *
  * <p><b>Trajectory continuity:</b> ordinary accepted corrections remain in this estimator's
  * as-published corrected trajectory, including an expected push into the predictor. A manual pose
@@ -120,7 +130,14 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         public boolean enablePushCorrectedPoseToPredictor = true;
 
         /**
-         * How long (seconds) a recently-accepted correction measurement should boost the reported quality.
+         * Duration in seconds over which an accepted correction's quality contribution fades
+         * linearly to zero, measured from acceptance rather than image capture.
+         *
+         * <p>Defaults to {@code 0.75}. Must be finite and non-negative; zero disables this
+         * contribution. The reported quality is the maximum of sanitized current predictor quality
+         * and {@code acceptedQuality * (1 - acceptanceAgeSec / correctionConfidenceHoldSec)}
+         * before expiry. This setting changes reported quality, not pose-correction gains,
+         * correction freshness, or pose availability.</p>
          */
         public double correctionConfidenceHoldSec = 0.75;
 
@@ -315,8 +332,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     private Pose3d replayBaseFusedPose = Pose3d.zero();
     private Pose3d replayBasePredictorPose = Pose3d.zero();
 
-    // Debug/telemetry helpers.
+    // Accepted correction evidence and debug/telemetry helpers.
     private LoopTimestamp lastCorrectionAccepted = LoopTimestamp.unavailable();
+    private double lastAcceptedCorrectionQuality = 0.0;
     private LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp = LoopTimestamp.unavailable();
     private LoopTimestamp lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
     private Pose3d lastCorrectionPose = Pose3d.zero();
@@ -542,6 +560,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         Pose3d beforeReplayBaseFusedPose = replayBaseFusedPose;
         Pose3d beforeReplayBasePredictorPose = replayBasePredictorPose;
         LoopTimestamp beforeCorrectionAccepted = lastCorrectionAccepted;
+        double beforeAcceptedCorrectionQuality = lastAcceptedCorrectionQuality;
         LoopTimestamp beforeAcceptedMeasurement = lastAcceptedCorrectionMeasurementTimestamp;
         LoopTimestamp beforeEvaluatedMeasurement = lastEvaluatedCorrectionTimestamp;
         Pose3d beforeCorrectionPose = lastCorrectionPose;
@@ -574,6 +593,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             replayBaseFusedPose = beforeReplayBaseFusedPose;
             replayBasePredictorPose = beforeReplayBasePredictorPose;
             lastCorrectionAccepted = beforeCorrectionAccepted;
+            lastAcceptedCorrectionQuality = beforeAcceptedCorrectionQuality;
             lastAcceptedCorrectionMeasurementTimestamp = beforeAcceptedMeasurement;
             lastEvaluatedCorrectionTimestamp = beforeEvaluatedMeasurement;
             lastCorrectionPose = beforeCorrectionPose;
@@ -712,6 +732,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                         lastLatencyCompensatedCorrectionPose = initialPose;
                         lastReplayReferencePose = correctionPose;
                         lastCorrectionAccepted = nowTimestamp;
+                        lastAcceptedCorrectionQuality = correctionEst.quality;
                         lastAcceptedCorrectionMeasurementTimestamp = correctionEst.timestamp;
                         lastCorrectionUsedReplay = false;
                         acceptedCorrectionCount++;
@@ -808,7 +829,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         double correctionAgeSec = lastCorrectionAccepted.ageSec(clock);
         if (Double.isFinite(correctionAgeSec)) {
             if (correctionAgeSec < cfg.correctionConfidenceHoldSec) {
-                double boost = 1.0 - (correctionAgeSec / cfg.correctionConfidenceHoldSec);
+                double boost = lastAcceptedCorrectionQuality
+                        * (1.0 - (correctionAgeSec / cfg.correctionConfidenceHoldSec));
                 quality = MathUtil.clamp(Math.max(quality, boost), 0.0, 1.0);
             }
         }
@@ -1048,6 +1070,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         lastLatencyCompensatedCorrectionPose = compensatedCorrectionPoseAtNow;
         lastReplayReferencePose = replayReferencePose;
         lastCorrectionAccepted = nowTimestamp;
+        lastAcceptedCorrectionQuality = q;
         lastAcceptedCorrectionMeasurementTimestamp = correctionEst.timestamp;
         lastCorrectionUsedReplay = usedReplay;
         acceptedCorrectionCount++;
@@ -1219,6 +1242,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     private void clearRecentCorrectionState() {
         lastCorrectionAccepted = LoopTimestamp.unavailable();
+        lastAcceptedCorrectionQuality = 0.0;
         lastAcceptedCorrectionMeasurementTimestamp = LoopTimestamp.unavailable();
         lastCorrectionUsedReplay = false;
     }

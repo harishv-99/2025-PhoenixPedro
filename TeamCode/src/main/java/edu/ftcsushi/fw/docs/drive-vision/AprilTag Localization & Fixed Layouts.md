@@ -669,20 +669,67 @@ An unavailable timestamp means that no truthful measurement time exists. It is n
 placed in the current clock epoch. Passing a timestamp from a different `LoopClock` is a wiring
 error: keep one stable loop clock for the complete OpMode.
 
-Typical fusion setup:
+A pose can be available without being equally useful for every action. Its `PoseEstimate.quality`
+is a score from `0` to `1`, with larger values meaning better evidence according to that estimator's
+rules. It is a **heuristic**: a useful software rule, not a measured probability that the robot's
+position is correct.
+
+Typical Fusion setup:
 
 ```java
 OdometryCorrectionFusionEstimator.Config fusionCfg =
         OdometryCorrectionFusionEstimator.Config.defaults();
 fusionCfg.maxCorrectionAgeSec = 0.35;
 fusionCfg.predictorHistorySec = 1.0;  // must cover maxCorrectionAgeSec when latency compensation is enabled
+fusionCfg.correctionConfidenceHoldSec = 0.75;  // the default quality-contribution duration
 
 OdometryCorrectionFusionEstimator corrected =
         new OdometryCorrectionFusionEstimator(predictor, absoluteCorrection, fusionCfg);
 ```
 
+An accepted camera correction can temporarily raise the reported score. Fusion starts that
+contribution at the accepted measurement's own quality and fades it evenly to zero over
+`correctionConfidenceHoldSec`. Change the assignment above before construction, or the same field
+under `locCfg.estimation.correctionFusion` when using the FTC lane. The duration must be finite and
+non-negative; `0` disables this contribution.
+
+Fusion reports the larger of the predictor score and this fading contribution, never their sum.
+For positive duration `H` and elapsed seconds `a` since acceptance, while `0 <= a < H`, the rule is
+`max(predictorQuality, acceptedQuality * (1 - a / H))`; `max` means choose the larger value.
+At or after expiry, only predictor quality contributes. A clock reset makes an old contribution
+ineligible. These rules do not make an otherwise unavailable pose available.
+
+For an illustrative predictor score of `0.2`, accepted correction quality of `0.4`, and the default
+`0.75`-second duration, with no further accepted correction:
+
+| Seconds since acceptance | Correction contribution | Reported Fusion quality |
+| --- | --- | --- |
+| `0.000` | `0.4` | `0.4` |
+| `0.375` | `0.2` | `0.2` |
+| `0.750` and later | `0.0` | `0.2` |
+
+The temporary contribution shrinks, but the predictor keeps the reported score at least `0.2`.
+These are software-example values, not recommended robot thresholds. Pinpoint instead defaults
+to a fixed configured quality of `0.75` when it has a usable pose; it does not measure accumulating
+odometry drift and reduce that score automatically. A weaker camera contribution therefore cannot
+lower that predictor score.
+
+The hold starts when Fusion **accepts** a correction, not when the image was captured. Capture time
+still controls freshness and delayed-motion replay. Only a newly accepted correction replaces the
+retained quality and restarts the hold, even if it is weaker. Rejected or repeated frames do neither.
+Disabling corrections stops new acceptance; an earlier contribution can still finish fading.
+
+This score is separate from how far Fusion moves the estimated pose toward a camera observation.
+Its position and heading gains are each multiplied by the accepted correction's quality; predictor
+quality is not another blending weight. Changing the hold changes reporting, not those pose gains.
+A manual `setPose(...)` asserts a known pose and clears the earlier correction contribution. Its
+immediate score uses the predictor's reported quality when it reports a pose, otherwise `1.0`;
+that fallback expresses the caller's assertion, not new camera evidence or proven accuracy.
+
 Optional EKF setup: an **extended Kalman filter** tracks uncertainty as well as an estimate.
-Its covariance values describe that uncertainty; they are additional modeling/tuning decisions,
+Its covariance values describe modeled uncertainty, not measured physical error. EKF uses
+measurement quality in that model and derives its output score from covariance, not Fusion's
+fading contribution. These are additional modeling/tuning decisions,
 not required knowledge for the ordinary Fusion baseline. Use this alternative only when your team
 can justify those assumptions and evaluate the resulting evidence:
 
