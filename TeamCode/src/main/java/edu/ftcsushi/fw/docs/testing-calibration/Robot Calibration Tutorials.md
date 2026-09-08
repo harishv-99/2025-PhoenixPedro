@@ -370,31 +370,79 @@ proof of absolute accuracy. Use the team's stated acceptance limits, not a unive
 
 ### Why this matters
 
-Odometry sign mistakes poison every later localization step. Fix them before tuning offsets.
+When you push the robot forward, its reported X position should increase; when you push it left,
+its Y position should increase. Check those signs before tuning offsets. Otherwise later
+localization can report motion in the wrong direction.
+
+`EncoderDirection.FORWARD` and `EncoderDirection.REVERSED` are two named Java choices (an **enum**)
+for an encoder's reported sign. They are not commands to drive the robot forward or backward.
+Either setting can be correct for a particular mounted pod.
 
 ### Tester
 
 - `Calib: Pinpoint Axis Check`
 
-The sample controls are exact: A toggles forward, Y toggles left, B toggles CCW rotation, and X
-resets pose and clears every result. A translation sample must cover at least `6 in`; the rotation
-sample must cover at least `20°`. The tester also requires `READY` Pinpoint pose evidence from the
-current cycle before it accepts a sample.
+A starts or stops a forward sample, Y a left sample, and B a counterclockwise (**CCW**) rotation
+sample. X sets the reported pose to zero and clears every result; it does not move the robot.
+A **delta** is the reported end value minus its start value. After X, with the robot's facing
+unchanged, X and Y deltas correspond to forward and left motion.
+
+The checked X or Y delta must have a magnitude (size ignoring sign) of at least `6 in`; moving only
+along the other axis does not count. The rotation delta must have a magnitude of at least `20°`. These defaults
+belong to [`PinpointAxisDirectionTester.Config`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/calibration/PinpointAxisDirectionTester.Config.html>):
+`minTranslationInches = 6.0` and `minRotationDeg = 20.0`. Set different finite, positive thresholds
+on that draft before constructing the tester. It copies the settings at construction; editing the
+old draft does not retune a running tester. Starting and completing a sample also require a
+Pinpoint `READY` pose read in the current loop cycle.
 
 ### Procedure
 
 1. Keep the robot still until the tester reports Pinpoint `READY`, then press X.
-2. Press A, push the robot forward by hand at least `6 in`, then press A again.
-3. Press Y, push the robot left by hand at least `6 in`, then press Y again.
-4. Press B, rotate the robot CCW by hand at least `20°`, then press B again.
+2. Press A, push the robot straight forward by hand at least `6 in` without changing its facing,
+   then press A again.
+3. Press Y, push the robot straight left by hand at least `6 in` with the same facing,
+   then press Y again.
+4. Check rotation last: press B, rotate the robot CCW by hand at least `20°`, then press B again.
+   Before repeating translations after any turn, stop and press X again.
 5. Record each delta and suggested config assignment. Put accepted changes in the robot Pinpoint
    profile, rebuild, then repeat all three samples in a fresh robot-configured tester.
+
+### Read the recommendation
+
+For a sufficiently large, usable sample in the instructed physical direction, the tester compares
+the delta with the direction setting it captured at construction:
+
+| Current encoder setting | Reported delta | Recommendation |
+| --- | --- | --- |
+| `FORWARD` | Positive | Keep `FORWARD` |
+| `FORWARD` | Negative | Change to `REVERSED` |
+| `REVERSED` | Positive | Keep `REVERSED` |
+| `REVERSED` | Negative | Change to `FORWARD` |
+
+Forward samples name `cfg.pinpoint.forwardPodDirection`; left samples name
+`cfg.pinpoint.strafePodDirection`. The displayed assignment spells the selected value as
+`GoBildaPinpointDriver.EncoderDirection.FORWARD` or `.REVERSED`. A negative reading means
+**opposite of the current setting**, not always `REVERSED`.
+
+Missing `READY` pose evidence cannot complete a new sample. A too-small or unusable result produces
+no new direction recommendation. **Last completed samples** are historical results: each stays
+until a replacement sample for that axis completes or X clears all results. Starting or interrupting
+another attempt does not make the old result evidence about that attempt or current readiness.
+
+The tester gives advice only: it does not apply or save the suggested direction changes. It also
+cannot tell which way a person actually pushed the robot or compensate for turning during a
+translation sample. Follow the motion procedure, then record, rebuild, and verify on the robot.
 
 ### What “good” looks like
 
 - forward motion produces positive X
 - left motion produces positive Y
 - CCW rotation produces positive heading
+
+For negative heading during the instructed CCW turn, investigate Pinpoint mounting, firmware axis
+settings, and alignment of its IMU (the inertial sensor that measures turning). Do not reverse a pod
+setting to repair it. Leave `yawScalar = null` to use factory calibration; if you supply a numeric
+`yawScalar`, it must stay positive, not serve as a direction fix.
 
 ### Record this result in code
 

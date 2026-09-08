@@ -1,5 +1,6 @@
 package edu.ftcsushi.fw.tools.tester.calibration;
 
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver.EncoderDirection;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
@@ -188,20 +189,66 @@ public final class PinpointTesterConfigTest {
 
         draft.pinpoint.hardwareMapName = "mutated";
         draft.minTranslationInches = 900.0;
+        draft.minRotationDeg = 90.0;
         assertEquals("axisPinpoint", captured.pinpoint.hardwareMapName);
         assertEquals(7.25, captured.minTranslationInches, 0.0);
+        assertEquals(31.5, captured.minRotationDeg, 0.0);
 
         assertFailureContains(
                 () -> new PinpointAxisDirectionTester(null),
                 "PinpointAxisDirectionTester.Config"
         );
-        for (double invalid : new double[]{0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY}) {
-            PinpointAxisDirectionTester.Config bad = PinpointAxisDirectionTester.Config.defaults();
-            bad.minTranslationInches = invalid;
-            assertFailureContains(
-                    () -> new PinpointAxisDirectionTester(bad),
-                    "minTranslationInches"
-            );
+        for (String name : new String[]{"minTranslationInches", "minRotationDeg"}) {
+            for (double invalid : new double[]{0.0, -1.0, Double.NaN,
+                    Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}) {
+                PinpointAxisDirectionTester.Config bad = PinpointAxisDirectionTester.Config.defaults();
+                PinpointAxisDirectionTester.Config.class.getField(name).setDouble(bad, invalid);
+                assertFailureContains(
+                        () -> new PinpointAxisDirectionTester(bad),
+                        "PinpointAxisDirectionTester.Config." + name
+                );
+            }
+        }
+        PinpointAxisDirectionTester.Config missing = PinpointAxisDirectionTester.Config.defaults();
+        missing.pinpoint = null;
+        assertFailureContains(() -> new PinpointAxisDirectionTester(missing),
+                "PinpointAxisDirectionTester.Config.pinpoint");
+    }
+
+    /** Captured sign settings remain experimental inputs, not live authoring-draft references. */
+    @Test
+    public void axisSnapshotsBothDirectionChoicesAndFreshOwnersUseRevisedDrafts() throws Exception {
+        for (EncoderDirection forward : EncoderDirection.values()) {
+            for (EncoderDirection strafe : EncoderDirection.values()) {
+                PinpointAxisDirectionTester.Config draft = PinpointAxisDirectionTester.Config.defaults();
+                draft.pinpoint.forwardPodDirection = forward;
+                draft.pinpoint.strafePodDirection = strafe;
+                PinpointAxisDirectionTester owner = new PinpointAxisDirectionTester(draft);
+                PinpointAxisDirectionTester.Config captured = field(owner, "cfg");
+
+                EncoderDirection changedForward = forward == EncoderDirection.FORWARD
+                        ? EncoderDirection.REVERSED : EncoderDirection.FORWARD;
+                EncoderDirection changedStrafe = strafe == EncoderDirection.FORWARD
+                        ? EncoderDirection.REVERSED : EncoderDirection.FORWARD;
+                draft.pinpoint.forwardPodDirection = changedForward;
+                draft.pinpoint.strafePodDirection = changedStrafe;
+                assertSame(forward, captured.pinpoint.forwardPodDirection);
+                assertSame(strafe, captured.pinpoint.strafePodDirection);
+
+                PinpointAxisDirectionTester freshOwner = new PinpointAxisDirectionTester(draft);
+                PinpointAxisDirectionTester.Config fresh = field(freshOwner, "cfg");
+                assertNotSame(captured.pinpoint, fresh.pinpoint);
+                assertNotSame(draft.pinpoint, fresh.pinpoint);
+                assertSame(changedForward, fresh.pinpoint.forwardPodDirection);
+                assertSame(changedStrafe, fresh.pinpoint.strafePodDirection);
+
+                // Replacing the nested draft cannot replace either already-owned snapshot.
+                draft.pinpoint = PinpointAxisDirectionTester.Config.defaults().pinpoint;
+                assertSame(forward, captured.pinpoint.forwardPodDirection);
+                assertSame(strafe, captured.pinpoint.strafePodDirection);
+                assertSame(changedForward, fresh.pinpoint.forwardPodDirection);
+                assertSame(changedStrafe, fresh.pinpoint.strafePodDirection);
+            }
         }
     }
 

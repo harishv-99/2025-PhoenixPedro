@@ -233,7 +233,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 119 | LOCALIZATION-02 | Make correction quality truthful | Done | Reviewed and publication-authorized: accepted-quality-scaled hold, 28 new regressions, and owning-guide explanation. 101 focused tests pass; full local run retains only two known Windows documentation failures. |
 | 120 | LOCALIZATION-03 | Preserve localization evidence freshness | Done | Reviewed and publication-authorized: 29 new regressions, 121 focused tests pass, and full 2427-test run retains only two known Windows documentation failures. Compile and generated docs pass. |
 | 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Done | Capture-matched raw/tag endpoints and distinct-frame acquisition verified; user approved the reviewed diff and exact branch/remote/master publication. |
-| 122 | CAL-07 | Correct direction recommendations | Proposed | Make Pinpoint encoder-direction advice depend on the current configured direction and observed motion. |
+| 122 | CAL-07 | Correct direction recommendations | Done | Relative keep/opposite advice, finite-result guards, historical labels, and beginner guide reviewed; combined commit/push/PR/merge authorization recorded. |
 | 123 | CAL-08 | Verify pod-offset mathematics independently | Proposed | Recover independently known offsets across rotations and starting configurations; fix only proven defects. |
 | 124 | CAL-09 | Strengthen camera-mount sample evidence | Proposed | Prove six-component geometry and audit sample identity, replay, invalid data, and angle averaging. |
 | 125 | CAL-10 | Make calibration acceptance reproducible | Proposed | Extend the existing record/rebuild/configured-retest handoff with a compact independent-validation record. |
@@ -30323,7 +30323,14 @@ existing complete tester draft; `cameraFactory` is its existing deferred backend
 
 ### CAL-07 - Correct direction recommendations
 
-- **Status:** **Proposed**.
+- **Status:** **Done**. Started only after CAL-06 PR #151 merged as
+  `120829cb187bc4d827c5dc392fb4c670ca1f0f85` with both required checks passing and the fetched
+  merge tree matching reviewed commit `2abc6ec5687773c81fc33927388e62d3a60399ef`. Local `master`
+  safely fast-forwarded to the verified merge. The user's follow-up "After that is done, move to
+  next task" authorized the next decision gate only. The user subsequently approved the recorded
+  design with `proceed with CAL-07`. Gate 2 fetched `origin/master` and created
+  `codex/cal-07-direction-recommendations` at `120829cb187bc4d827c5dc392fb4c670ca1f0f85`,
+  preserving the uncommitted Gate 1 record. Implementation approval does not authorize publication.
 - **Evidence and owners:** `fw/tools/tester/calibration/PinpointAxisDirectionTester.java` currently
   recommends `REVERSED` for negative forward/lateral deltas even if that encoder is already
   configured `REVERSED`. The desired recommendation depends on the current configuration plus the
@@ -30345,6 +30352,241 @@ existing complete tester draft; `cameraFactory` is its existing deferred backend
   and `CAL-10`. If a vendor convention is ambiguous, defer only that claim until an exact-stack
   direction observation or authoritative contract resolves it; do not infer physical direction
   from configuration metadata alone.
+
+#### Gate 1 decision record (2026-09-07)
+
+- **Publication prerequisite:** CAL-06 branch `codex/cal-06-calibration-evidence`, commit
+  `2abc6ec5687773c81fc33927388e62d3a60399ef`, was pushed to the exact authorized repository
+  and merged by PR #151 into `master` as `120829cb187bc4d827c5dc392fb4c670ca1f0f85`.
+  `Verify Sushi framework` and `Verify documentation artifact` both passed. The fetched merge
+  tree is `3ab9ccf04fff171cb46ec228f2f62e48802d37cb`, exactly the reviewed commit tree.
+  Local `master` fast-forwarded safely to that merge before this decision gate began.
+- **Confirmed source trace:** `PinpointAxisDirectionTester.renderForward()` and `.renderLeft()`
+  accept a sufficiently large positive delta as OK; a sufficiently large negative delta always
+  prints `GoBildaPinpointDriver.EncoderDirection.REVERSED`. The tester captures its nested
+  Pinpoint Config before hardware effects. `PinpointOdometryPredictor` then passes its two
+  configured directions unchanged through `SdkPinpointDevice.setEncoderDirections()` to the SDK;
+  it applies no second Java sign reversal when publishing pose. Therefore an already-REVERSED
+  configured encoder with the wrong measured sign is advised to retain the setting that failed.
+- **Vendor evidence and limits:** the local FTC Hardware 11.1.0 source defines exactly `FORWARD`
+  and `REVERSED`; `setEncoderDirections()` documents increasing X for robot-forward and Y for
+  robot-left and sets distinct direction-control bits. This establishes the software-relative
+  advice rule, not which way a person moved the robot, hardware wiring, or successful adoption.
+  A new physical evidence gate is not needed to choose this local repair.
+
+For either axis, after the existing minimum movement gate and the instructed positive hand motion:
+
+| Captured current direction | Measured delta | Correct recommendation | Current behavior |
+| --- | --- | --- | --- |
+| `FORWARD` | positive | Keep `FORWARD` | OK, no change |
+| `FORWARD` | negative | Change to `REVERSED` | Correct assignment |
+| `REVERSED` | positive | Keep `REVERSED` | OK, no change |
+| `REVERSED` | negative | Change to `FORWARD` | Incorrectly repeats `REVERSED` |
+
+**Supported construction layers and callers**
+
+- The tester has one public constructor, `PinpointAxisDirectionTester(Config)`. Its Config has
+  one public factory, `Config.defaults(): Config`, a private constructor, and only `pinpoint`,
+  `minTranslationInches` (default `6.0`), and `minRotationDeg` (default `20.0`). There are no
+  overloads, `of` factories, facade constructors, staged builders, injected-predictor paths, or
+  public recommendation-result types. No new public construction surface is needed.
+- The nested `PinpointOdometryPredictor.Config` already supports `defaults()`, `copy()`, and
+  `validatedCopy(String)`: it is retained, reused, and independently validated data, not an inline
+  staged-builder question. The predictor's sole public constructor takes `HardwareMap` and that
+  Config; its package-private device-lookup seam is for deterministic hardware-edge tests.
+  The existing configuration and device owner have distinct roles. No redundant public layer is
+  justified, expanded, or deferred by this change.
+- Exactly two main-source sites directly construct the axis tester. `StandardTesters`' private
+  `createGenericPinpointAxisCheckTester(): TeleOpTester` uses `HardwareSelectingTester` to choose
+  the Pinpoint name and create a fresh default Config with that name. The public standalone
+  calibration/localization suite reaches it through `createSuite()` and the framework Driver
+  Station/Panel tester OpModes. The public camera-only suite and `register()` do not register the
+  axis entry; indirect example users of that registration are not axis-tester callers.
+- `PhoenixRobotTesters.pinpointAxisCheck(): TeleOpTester` constructs it with a copy of the
+  current profile's predictor Config. The configured suite/registration and calibration walkthrough
+  reach that factory from the Phoenix tester root. They provide fresh configuration and discovery,
+  not another recommendation algorithm. No maintained independent example constructs the tester.
+  All these ordinary caller expressions and declared return types remain unchanged.
+- Current tests are `PinpointTesterConfigTest`, `PinpointTesterReadinessTest`, and the predictor
+  construction/lifecycle/update suites. They establish snapshot, validation, current-READY pose,
+  and SDK-direction forwarding, but do not exercise real axis-owner recommendation telemetry for
+  both starting directions. Phoenix's walkthrough shape test validates registration, not advice.
+- The predictor's existing `EncoderResolution.forGoBildaPod(...)` and `ticksPerInch(double)`
+  factories each return `EncoderResolution` and represent distinct preset/custom resolution
+  evidence. They are unaffected; sign advice does not introduce a parallel resolution choice.
+
+**Alternatives and student simplicity**
+
+The setup fragments below compare the recommendation design, not standalone robot programs.
+`cfg` is the existing complete tester draft; its nested Pinpoint configuration supplies actual facts.
+
+| Design | Ordinary caller | Decisions, complexity, and disposition |
+| --- | --- | --- |
+| Chosen local keep/opposite rule | `new PinpointAxisDirectionTester(cfg)` | Uses the already-captured direction and measured sign; no extra student answer or public noun. A private helper is sufficient if it avoids duplicating the two-value rule. |
+| Documentation-only instruction to manually flip | Same constructor | Leaves the displayed assignment wrong for configured `REVERSED`; students would have to distrust the tool. Rejected. |
+| Force every test to start with `FORWARD` | Change `cfg.pinpoint` before construction | Changes the configuration being verified and defeats the fresh robot-configured verification handoff. Rejected. |
+| Public recommendation strategy/result family | Add a strategy argument or configure another policy | No independent policy choice exists for this two-value sign relationship; adds API and ownership without capability. Rejected. |
+| No change | Same constructor | The direct configured-REVERSED trace disproves correctness. Rejected. |
+
+**Chosen bounded behavior**
+
+1. Preserve the current-direction snapshot and the tester's hand-motion workflow. For sufficient
+   finite positive X/forward or Y/left displacement, explicitly say to keep the respective captured
+   direction. For sufficient negative displacement, name the opposite enum in the exact respective
+   `cfg.pinpoint.forwardPodDirection` or `cfg.pinpoint.strafePodDirection` assignment. Rendering is
+   advice only: it must not mutate the captured draft, configure hardware, persist settings, or
+   claim that a rebuild has happened.
+2. Preserve the axis tester's current-cycle `READY` **pose-only** gate; do not copy the powered
+   pod calibrator's velocity requirement. Keep the inclusive magnitude threshold (`>=` the
+   configured minimum), wrong-axis insufficient-motion behavior, controls, and poll-before-action
+   order. Unavailable/invalid observations cannot complete a new sample or issue new direction
+   advice. Add a local finite-result check before an OK/assignment if derived arithmetic is invalid;
+   raw non-finite device poses already fail upstream. Such derived overflow is defensive coverage,
+   not a claimed reproduced physical failure of the SDK's finite float coordinates.
+3. Retain completed per-axis results as historical facts until a replacement completes or X clears
+   all of them. Label them as last completed samples so an active/interrupted replacement and a
+   READY-loss message cannot imply that old advice came from the current attempt. No new public
+   result model or automatic discard of independent completed axes is needed. A new owner receives
+   rebuilt configuration; mutating an old draft cannot reconfigure an existing owner.
+4. Preserve the unwrapped CCW rotation check and its independent mounting/firmware/IMU guidance.
+   A heading-sign failure must not recommend encoder reversal or a negative `yawScalar`. Keep
+   direction, distance scale, pod-offset geometry, and yaw scale separate; no new calibration
+   feature, thresholds, motor motion, automatic retry, or persistence is included.
+5. Keep the existing reset-aligned field-delta experiment explicit: wait still for READY, X zero,
+   translate straight forward/left without changing facing, then perform the CCW check last.
+   Restart/reset before repeating translations after a turn. This item does not silently add
+   start-body projection, detect human motion direction, or compensate for rotation during a
+   translation sample. The person supplies that physical test condition.
+
+**Documentation and verification plan**
+
+- Update only the axis tester's applicable Javadocs/telemetry and the existing `Pinpoint axis
+  directions` section of `Robot Calibration Tutorials.md`, with a source-backed documentation
+  assertion where useful. Explain `FORWARD`/`REVERSED` as encoder-sign settings, not drive
+  commands; explain keep versus change beside the actual field names. A small four-case table
+  suffices; no new diagram, page, navigation, or opening-course concept is required. Keep visible
+  defaults, reset/fixed-facing prerequisites, historical-result labels, and the record -> rebuild
+  -> fresh configured tester -> verify handoff together. Phoenix's Step-6 guide has no hardcoded
+  REVERSED advice and already requires profile edits/rebuild/physical verification; no application
+  code/configuration or guide migration is required by this repair.
+- Add a small camera-free real-axis-owner fixture. Retain its actual constructor, copied Config,
+  Pinpoint predictor through the existing device seam, shared clock, current polls, sample actions,
+  and telemetry. Replace hardware acquisition/measurements only. Construct the predictor from the
+  owner's captured Config, not unrelated fixture defaults. Exercise public loop/initLoop with
+  queued binding-edge intent; do not add a public/package production helper merely for tests.
+- Cover both axes x both directions x both signs; the relevant field/enum and unaffected peer;
+  zero/below/exact/above thresholds and wrong-axis movement; READY loss/unusable pose at start,
+  mid-sample, and completion; no new recommendation on invalid evidence; retained historical-result
+  labeling; X clearing; unchanged old owner after draft mutation and fresh owner after rebuild;
+  preserved positive/negative CCW, rotation threshold/yaw wrap, and no negative-yaw or encoder
+  advice from rotation. Prove rendering/recommendations have no configuration/persistence effects.
+- Extend direction-specific defensive-copy and both evidence-threshold validation coverage where
+  missing. Run focused axis/config/readiness/predictor tests, then normal TeamCode compile/unit
+  checks with exact XML totals, diff/whitespace scans, strict narrative/Javadoc/link verification,
+  independent API/correctness/novice-documentation review, and Android Studio handoff.
+- Three independent read-only audits confirmed the recommendation defect, construction/caller and
+  documentation scope, and feasibility of real-owner tests without another API. This decision gate
+  added no implementation/test files and ran no new calibration tests. CAL-06's hosted green run
+  proves its publication, not CAL-07's unimplemented repair. Physical sign acceptance, known hand
+  direction, wiring, and after-rebuild behavior remain supervised adopting-robot validation.
+  The tracker-only `git diff --check` and trailing-whitespace scan passed before this handoff.
+- **Approval boundary:** the recommendation matches the leading hypothesis and needs no new public
+  API. The user's move-to-next instruction authorizes this decision review only. Stop at Ready for
+  `Proceed with CAL-07`; after that approval, fetch `origin/master`, create
+  `codex/cal-07-direction-recommendations`, mark In progress, and implement only this recorded scope.
+  Only this uncommitted tracker record changed after CAL-06 publication.
+
+#### Gate 2 implementation and review record (2026-09-07)
+
+- **Approved implementation:** the user's `proceed with CAL-07` authorized this recorded design.
+  Work is on `codex/cal-07-direction-recommendations`, created from freshly fetched
+  `origin/master` at `120829cb187bc4d827c5dc392fb4c670ca1f0f85`. The implementation is complete;
+  the Ready/In progress approval boundary above records the preceding gate, not current status.
+- **Exact six-file scope:** this tracker; `PinpointAxisDirectionTester.java`;
+  `Robot Calibration Tutorials.md`; `DocumentationLinksTest.java`; `PinpointTesterConfigTest.java`;
+  and new `PinpointAxisDirectionTesterTest.java`. No Phoenix, independent-example, protected-core,
+  predictor/SDK, public API, navigation, or later-item implementation changed.
+- **Behavior:** both translation axes now print an exact Keep or Change assignment based on their
+  captured direction and measured sign, including changing an already-REVERSED setting back to
+  FORWARD. Private helpers reject non-finite derived sample values before an OK/sign recommendation.
+  Results are explicitly last-completed historical samples, not evidence from an active or
+  interrupted replacement. The existing pose-only current-READY gate, inclusive thresholds,
+  sampling/clock order, reset and replacement behavior, independent CCW check, and advice-only
+  ownership remain unchanged. No automatic setting change, persistence, or motor motion was added.
+- **Documentation / student concepts:** the existing Test & Tune axis-check section teaches one
+  outcome: choose and verify the correct reported sign. It defines the enum as sign choices rather
+  than drive commands, delta, magnitude, CCW, and IMU at use. A four-case table explains Keep/Change
+  beside the actual configuration fields; defaults and their Config API link, fixed-facing/X-reset
+  prerequisites, historical results, and record -> rebuild -> fresh configured verification stay
+  together. The heading paragraph distinguishes factory `yawScalar = null` from positive numeric
+  overrides, neither a pod-sign repair. No new lesson, diagram, initial-tab concept, or scale-tuning
+  path was added; the CAL-06 sections remain untouched. The artifact check caught and prompted
+  correction of the new API link's required angle-bracket destination before final verification.
+- **Independent reviews:** separate agents implemented source, tests, and guide/assertions in
+  non-overlapping files; central review inspected the shared diff. An independent repeat of the
+  construction-path/distinct-capability audit confirmed the sole `(Config)` constructor, private
+  Config constructor with `defaults(): Config`, existing nested configuration/predictor boundaries,
+  and two direct main-code callers. No duplicate public layer was added or left for deferral by
+  this change. A separate adversarial test/source review found no blockers: the real owner captures
+  settings and polls its real predictor against independently scripted observations; expected
+  advice does not call the production helper or derive measurements from configured direction.
+- **Regression evidence:** the focused run passed **66 tests across 6 suites, 0 failures, errors,
+  or skips**: axis owner (14), tester Config (22), tester readiness (2), predictor lifecycle (13),
+  predictor update state (7), and predictor Config validation (8). New coverage includes both axes,
+  directions and signs in INIT/RUN; zero/below/exact/above thresholds; wrong-axis movement;
+  unavailable/invalid poses at start/mid/end; READY pose with unavailable velocity; historical
+  replacement and X clearing; old-draft versus fresh-owner capture; both CCW signs, yaw wrap and
+  rotation thresholds; same-cycle polling; no hardware reconfiguration from advice; and explicitly
+  defensive non-finite derived-result coverage. Configuration tests also cover both thresholds'
+  invalid values and nested direction snapshots.
+- **Final automated checks:** `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`
+  and the final `--continue` run including `:TeamCode:sushiJavadocs` produced **2,466 tests across
+  267 suites: 2,464 passed, 2 failed, 0 errors/skips**, counted from final XML. The only failures
+  remain the recorded Windows CRLF-sensitive `DocumentationLinksTest` methods
+  `everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy` (line 1226) and
+  `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair` (line 2239). Both method bodies and
+  their affected Build/Tasks guide inputs are unchanged from HEAD; read-only checks confirmed the
+  failing LF-only substrings match after CRLF normalization. They were not repaired as CAL-07
+  cleanup. Standalone Java compile plus Javadocs passed; the final Javadocs task also succeeded.
+  Existing Java 21/source-8 and SDK deprecation warnings are unchanged.
+- **Documentation artifacts:** the existing documentation environment's dependency check passed.
+  Final clean strict Zensical build passed with no issues, followed by regenerated Javadocs.
+  Guide-search verification passed for **974 sections across all six areas**; generated-link
+  verification passed for **179 API links and 82 maintained-source links across 48 Markdown pages**.
+  Final `git diff --check` and a trailing-whitespace scan of all six changed files, including the
+  untracked regression test, passed. No generated files are part of the diff.
+  The preview-browser runtime reports no available browser;
+  rendered wide/narrow table inspection remains manual, not claimed as automated visual validation.
+- **Evidence limits and Android Studio handoff:** inspect the private advice/finite-result helpers,
+  the real-owner regression fixture and assertions, and the revised axis-check lesson/table. The
+  fixture explicitly replaces hardware acquisition and queues existing binding-edge requests; it
+  does not validate physical button registration, wiring, actual hand motion, or successful hardware
+  adoption. Only the named defensive arithmetic test injects private completed results. A supervised
+  still/READY -> X -> fixed-facing forward/left -> CCW-last run, followed by accepted configuration
+  edits/rebuild/fresh robot-configured retest, remains necessary before adopting physical settings.
+- **Publication stop:** no files are staged, committed, pushed, or submitted as a CAL-07 pull request.
+  Exact destination from `git remote get-url --push origin` is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; item branch is
+  `codex/cal-07-direction-recommendations`, target `master`. Request Android Studio review and the
+  combined destination-specific authorization before Gate 3. Do not begin CAL-08 at this stop.
+
+#### Gate 3 review approval and publication closeout (2026-09-07)
+
+- The user accepted the reviewed CAL-07 diff with the exact combined authorization to commit on
+  `codex/cal-07-direction-recommendations`, push that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge into `master`.
+  This records the requested manual review approval, not an unreported physical calibration run;
+  the Gate 2 evidence limits remain unchanged.
+- Pre-publication inspection and an independent read-only audit confirmed the expected six-file
+  scope, empty index, no unrelated edits, and no existing pull request for this branch. HEAD,
+  local `master`, and freshly fetched `origin/master` all remain at
+  `120829cb187bc4d827c5dc392fb4c670ca1f0f85`. The tracker closeout is the only post-review edit.
+  Recheck whitespace, stage only the reviewed files, and publish one commit. Preserve both hosted
+  framework and documentation checks before merging; verify the approved head and fetched merge
+  tree afterward without rewriting divergent history.
+- The subsequent request is a read-only reassessment of framework versus Phoenix tester naming
+  after publication. It does not authorize renaming, additional implementation, or CAL-08 work in
+  this commit.
 
 ### CAL-08 - Verify pod-offset mathematics independently
 
