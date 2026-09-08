@@ -45,7 +45,7 @@ public final class DocumentationLinksTest {
             "https://github.com/harishv-99/2025-PhoenixPedro/";
     private static final String FENCE =
             String.valueOf((char) 96) + (char) 96 + (char) 96;
-    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 27;
+    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 28;
 
     private static final List<String> GUIDE_AREAS = Arrays.asList(
             "Get Started",
@@ -115,6 +115,9 @@ public final class DocumentationLinksTest {
             "docs/testing-calibration/Robot Calibration Tutorials.md",
             "docs/testing-calibration/Control Tuning Workflow.md",
             "docs/testing-calibration/How to test a Sushi component.md",
+            "docs/testing-calibration/Add Calibration Testers to Your Robot.md",
+            "docs/testing-calibration/Add Vision to Your Calibration Suite.md",
+            "docs/testing-calibration/Enable Powered Calibration.md",
             "docs/testing-calibration/Guided Calibration Walkthroughs.md",
             "docs/troubleshooting/README.md",
             "docs/troubleshooting/Common Problems.md");
@@ -317,8 +320,8 @@ public final class DocumentationLinksTest {
         for (Integer count : PUBLISHED_SHELL_PAIRS_BY_PAGE.values()) {
             approvedPairs += count;
         }
-        assertEquals("The approved inventory must cover exactly 19 published pages",
-                19, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
+        assertEquals("The approved inventory must cover exactly 20 published pages",
+                20, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
         assertEquals("The per-page inventory must account for every approved pair",
                 PUBLISHED_SHELL_COMMAND_PAIR_COUNT, approvedPairs);
 
@@ -1979,16 +1982,93 @@ public final class DocumentationLinksTest {
 
         assertContainsAll("Guided calibration stays an honest advanced mapping", guided,
                 "architecture reference", "does not save calibration results",
-                "not a complete robot registry", "supplier<teleoptester>",
-                "must return a new inactive apriltag-localization tester every time",
-                "not another mount calibrator", "ownership checklist",
+                "guidedWalkthrough(profile)", "supplier<teleoptester>",
+                "pinpointAxesVerified", "pinpointOffsetsVerified", "no tag authorizes powered motion",
+                "fresh inactive tester", "not another mount calibrator", "ownership checklist",
                 "record the result, edit the profile, rebuild");
+        assertFalse("Guided calibration must use the maintained assembly rather than a stub",
+                guided.contains("teaching-shape"));
         assertFalse("Guided calibration must not retain fictional RobotCalibration calls",
                 guided.contains("RobotCalibration::"));
         assertContainsAll("Guided calibration example uses the real builder signature",
                 walkthroughBuilderSource, "public int addStep(String label",
                 "Supplier<CalibrationStatus> status",
                 "Supplier<TeleOpTester> testerFactory");
+    }
+
+    @Test
+    public void calibrationIntegrationUsesIndependentSourceBackedLessons() throws IOException {
+        Path repositoryRoot = repositoryRoot();
+        Path docsRoot = repositoryRoot.resolve(FRAMEWORK_DOCS_PATH).resolve("docs");
+        Path calibrationRoot = docsRoot.resolve("testing-calibration");
+        String basicFile = "Add Calibration Testers to Your Robot.md";
+        String[] lessonFiles = {
+                basicFile,
+                "Add Vision to Your Calibration Suite.md",
+                "Enable Powered Calibration.md"
+        };
+        String examplePath = "TeamCode/src/main/java/edu/ftcsushi/robots/examples/calibration/";
+        for (String lesson : lessonFiles) {
+            String markdown = readUtf8(calibrationRoot.resolve(lesson));
+            assertContainsAll(lesson + " has a declared learning purpose", markdown,
+                    "test & tune", "learning mode", "before", "rebuild");
+            assertTrue(lesson + " must use the independent compiling example",
+                    markdown.contains("<!-- source-excerpt: " + examplePath));
+            assertTrue(lesson + " needs exact API lookup", markdown.contains(PUBLISHED_API_ROOT));
+            assertTrue(lesson + " needs a separately labeled complete-source lookup",
+                    markdown.toLowerCase(Locale.ROOT).contains("complete source"));
+            assertFalse(lesson + " must not teach an invented assembly fragment",
+                    markdown.contains("teaching-shape"));
+            assertFalse(lesson + " must not rely on a production application",
+                    Pattern.compile("edu\\.ftcsushi\\.robots\\.(?!examples\\.)")
+                            .matcher(markdown).find());
+            assertEquals(lesson + " must give every Java excerpt checked-in provenance",
+                    literalCount(markdown, FENCE + "java"),
+                    literalCount(markdown, "<!-- source-excerpt:"));
+        }
+
+        String basic = readUtf8(calibrationRoot.resolve(basicFile));
+        assertContainsAll("The basic integration names all three maintained roles", basic,
+                "CalibrationRobotProfile", "CalibrationTesters", "CalibrationTestersOpMode",
+                "FtcTeleOpTesterOpMode", "FW Example: Calibration Testers", "@Disabled");
+        assertContainsAll("The basic integration explains fresh ownership before optional depth", basic,
+                "a **profile**", "a **factory**", "lambda", "supplier<teleoptester>",
+                "does not start another thread", "fresh inactive owner",
+                "do not keep a second calibration-only copy", "supported devices",
+                "accTitle:", "accDescr:", "**text version:**", "FTC STOP");
+        String vision = readUtf8(calibrationRoot.resolve(lessonFiles[1]));
+        assertContainsAll("Optional vision keeps hardware choice and evidence explicit", vision,
+                "a **backend**", "a **pose**", "a **frame**", "an **apriltag**",
+                "Function<String, AprilTagCameraFactory>", "CameraMountConfig.identity()",
+                "cameraMountAccepted", "currentGameFieldFixed()", "APRILTAG_POSE", "FUSION",
+                "maxDetectionAgeSec = 0.35", "0.25 s", "receipt staleness",
+                "estimated capture age", "not two cutoffs on the same age",
+                "fresh configured", "physical accuracy");
+        String powered = readUtf8(calibrationRoot.resolve(lessonFiles[2]));
+        assertContainsAll("Optional powered integration cannot imply passive or accepted hardware",
+                powered, "poweredMotionReviewed", "cameraMountAccepted", "before constructing",
+                "enableAutoTagSearchAtStart = false", "enableAutoTagSearchAtEnd = false",
+                "never silently falls back", "Disabling tag searches does **not**",
+                "Y still requests", "right stick", "left stick", "both searches are off",
+                "autoComputeAfterAutoSample = true", "final A", "cooperatively",
+                "watchdog", "FTC STOP", "a menu status must never authorize motion");
+        assertTrue("The basic integration must explain optional local verification",
+                ShellCommandTabs.validate(basicFile, basic).hasEquivalentGradleTestSelector(
+                        "edu.ftcsushi.robots.examples.calibration.*"));
+        for (String doorway : new String[]{"README.md", "testing-calibration/README.md",
+                "testing-calibration/Robot Calibration Tutorials.md",
+                "testing-calibration/Guided Calibration Walkthroughs.md",
+                "examples/Subsystem Experiments.md"}) {
+            assertTrue(doorway + " must route configured-tester authors to the canonical lesson",
+                    readUtf8(docsRoot.resolve(doorway)).contains(basicFile));
+        }
+        for (String type : new String[]{"CalibrationRobotProfile", "CalibrationTesters",
+                "CalibrationTestersOpMode"}) {
+            String source = readUtf8(repositoryRoot.resolve(examplePath + type + ".java"));
+            assertFalse(type + " must remain independent of production applications",
+                    Pattern.compile("edu\\.ftcsushi\\.robots\\.(?!examples\\.)")
+                            .matcher(source).find());
+        }
     }
 
     @Test
@@ -2999,6 +3079,7 @@ public final class DocumentationLinksTest {
         counts.put("docs/getting-started/First Software Tour.md", 3);
         counts.put("docs/maintainers/Maintainer Notes.md", 4);
         counts.put("docs/testing-calibration/Control Tuning Workflow.md", 1);
+        counts.put("docs/testing-calibration/Add Calibration Testers to Your Robot.md", 1);
         counts.put("docs/troubleshooting/Common Problems.md", 1);
         return Collections.unmodifiableMap(counts);
     }

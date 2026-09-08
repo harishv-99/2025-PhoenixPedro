@@ -34,6 +34,7 @@ the picker.
 | Which camera, odometry, or localization fact is missing? | [Robot calibration](<Robot Calibration Tutorials.md>) | one fact is recorded in the robot profile and rechecked by its configured owner |
 | Do controller gains meet a written criterion? | [Control tuning](<Control Tuning Workflow.md>) | one bounded experiment meets the criterion |
 | How do I design another focused test? | [Testing philosophy](<How to test a Sushi component.md>) | its owner, replacement, observation, limit, and next gate are explicit |
+| How do I connect testers to my robot's settings? | [Add calibration testers to your robot](<Add Calibration Testers to Your Robot.md>) | fresh testers receive the same checked-in facts as the robot; cameras and powered checks stay optional |
 | How should a team-specific procedure be assembled? | [Guided calibration](<Guided Calibration Walkthroughs.md>) | each stage exposes one fact and handoff |
 | Something is already failing | [Common problems](<../troubleshooting/Common Problems.md>) | the observed symptom has one evidence-backed cause |
 

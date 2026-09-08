@@ -260,6 +260,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 146 | DOC-18 | Test & Tune operational onboarding cleanup | Done | The reviewed source-optional Test & Tune spine, exact operational contracts, generic-versus-configured calibration boundary, verification, Android Studio approval, and destination-specific publication authorization are complete. |
 | 147 | DOC-19 | Windows and macOS command tabs | Done | The reviewed 26-pair Windows/macOS migration, linked selection, maintainer contract, hardened regressions, verification, manual approval, and destination-specific publication authorization are complete. |
 | 148 | DOC-20 | Concept-first documentation and visual learning | Done | Concept-first repairs and six diagrams implemented; principles strengthened; 2,254 tests and strict docs/API checks pass. User approved the reviewed diff and exact branch/remote/master publication on 2026-09-06. |
+| 149 | DOC-21 | Integrate calibration testers with a new robot | Done | Independent example and three layered Test & Tune lessons reviewed; user authorized destination-specific commit, PR, and merge on 2026-09-08. Physical adopting-robot validation remains separate. |
 
 ### Current robustness execution order (added 2026-09-07)
 
@@ -28895,6 +28896,178 @@ superseded by VISION-03 and the approved narrower closeout above; they are retai
 | `maintainers/Maintainer Notes` | maintainer / apply authoring and verification contract | principles | concept checklist, sparse diagrams, assets/accessibility and novice walkthrough | exact tooling/CI |
 | `getting-started/Basic Mechanisms Robot` | returning URL / reach current lesson | none | search-excluded compatibility pointer | unchanged; not a parallel course |
 | `getting-started/First Pedro Auto` | returning URL / reach current route guide | none | search-excluded compatibility pointer | unchanged; not a second integration path |
+
+### DOC-21 - Integrate calibration testers with a new robot
+
+- **Status:** **Done**. The user accepted the reviewed diff and supplied the exact combined
+  review/publication authorization on 2026-09-08. This records manual-review approval, not a
+  physical calibration run. The user originally requested an implementation plan, explicitly selected
+  **Full, layered coverage**, then approved it with **Implement the plan.** Gate 2 fetched
+  `origin/master` and created `codex/doc-21-robot-calibration-integration` from
+  `3a02cc827ed9f14d2621e727ee6035b3c4c567f1` (CAL-07 PR #152). The starting tree was clean and
+  local `master` was already synchronized. No publication is authorized by implementation approval.
+
+#### Gate 1 decision record and approved scope (2026-09-07)
+
+- **Confirmed documentation gap:** the console guide explains ready framework OpModes;
+  `Subsystem Experiments` explains fresh menu suppliers and a thin host around the independent
+  flywheel experiment. `Guided Calibration Walkthroughs` explicitly assumes robot-configured
+  factories already exist, and its illustrative fragment is not a complete registry. The calibration
+  runbook requires a project-supplied configured verifier without teaching that assembly end to end.
+  No independent maintained example constructs the configured Pinpoint axis/pod owners.
+- **Ownership and current callers:** reusable calibrators/localization testers already belong to
+  `fw.tools.tester`; generic factories in `StandardTesters` provide defaults and name selection.
+  The standalone `createSuite()` includes generic Pinpoint tools; embedded `register(TesterSuite)`
+  supplies generic groups but no configured Pinpoint factories. The existing reference experiment
+  demonstrates independent suite/host structure only. Production application factories additionally
+  map their own hardware, camera, estimator, and acknowledgement facts; no application migration or
+  copying of that application into shared documentation is needed.
+- **Public construction-path audit:** `PinpointAxisDirectionTester(Config)` and each camera/pod/
+  corrected-localization tester's `(Config, Function<String, AprilTagCameraFactory>)` construction
+  remain supported without additions. Their `Config.defaults()` factories create mutable data;
+  active owners capture it. `TesterSuite` construction plus `add` overloads register fresh inactive
+  suppliers, with optional help/tags/item metadata representing distinct menu capabilities.
+  `FtcTeleOpTesterOpMode.createTester()` is the specialized exclusive dynamic-tester host, not a
+  replacement match-robot lifecycle. `AprilTagCameraFactories.webcam/limelight` capture distinct
+  backend configurations and defer hardware opening. These layers each have a concrete role; no
+  redundant new facade, strategy, builder, runtime registry, or public injection seam is required.
+- **Configuration questions:** retained predictor/drive/camera/localization configurations contain
+  independently meaningful facts used by ordinary owners and testers, not disposable staged-builder
+  answers. The example must obtain those facts from the adopting robot's canonical authoring source,
+  not keep a separate mutable calibration profile beside production settings. No hardware owner,
+  clock, camera, or live localization graph is shared with match code.
+
+| Alternative | Student call-site cost | Disposition |
+| --- | --- | --- |
+| Link existing architecture references only | Student still invents configuration-to-factory-to-host wiring | Rejected: the confirmed reconstruction gap remains |
+| Teach from a production robot | Student untangles unrelated application policy and hardware | Rejected: violates requested independence |
+| Add universal framework calibration registration | Adds backend/drive/profile abstractions and another public assembly layer | Rejected: existing constructors already express the required graph |
+| Independent profile, tester factories, and thin host | One config source, one fresh-owner recipe per fact, one suite | Chosen: compiling support for complete small excerpts, no framework API change |
+
+- **Bounded implementation:** add `CalibrationRobotProfile`, `CalibrationTesters`, and disabled
+  `CalibrationTestersOpMode` under `robots.examples.calibration`, with matching tests. The default
+  suite contains only configured Pinpoint axis/manual pod checks. Camera selection defaults to NONE;
+  webcam/Limelight branches, camera-mount and AprilTag/corrected-localization checks, and reviewed
+  powered/assisted pod operation are explicitly optional. Inactive camera/drive branches stay
+  unconstructed. Powered direct factory calls fail before construction unless motion is reviewed;
+  assisted calls additionally require accepted suitable mount evidence and never silently fall back
+  to unassisted operation. Automatic tag searches remain off in the example. All examples are
+  diagnostic-only, software-valid illustrations, not measured hardware or safety approvals.
+- **Documentation:** three focused Test & Tune lessons teach basic integration, optional vision,
+  and optional powered integration. Update the canonical hub, Test & Tune chooser/navigation,
+  calibration handoff links, guided-walkthrough excerpt, and subsystem-experiment cross-reference.
+  Reuse physical runbooks rather than copying procedures. Add one accessible ownership/configuration
+  flow with visible equivalent text. No new Get Started/Learn/Build requirement, initial-course
+  expansion, production application mention/dependency, launcher renaming, or CAL-08 work.
+
+| Page | Audience / outcome | Required concepts and first explanations | Optional destination |
+| --- | --- | --- | --- |
+| Add calibration testers to your robot | Student author / run configured unpowered checks | Basic Java and console prerequisites; canonical config, copies, fresh factory/lambda supplier, suite and specialized host explained before their excerpts | Vision, powered integration, guided ordering |
+| Add vision to your calibration suite | Camera-equipped author / reuse authored camera facts with fresh owners | Basic integration; backend enum, selected-name function, mount/frame, fixed layout, age and correction explained beside active values | Physical camera runbooks and estimator reference |
+| Enable powered calibration | Reviewed drivetrain author / explicitly permit bounded powered checks | Basic integration; optional vision only for assistance; command scales, phase timeout, motion review and accepted mount explained beside active settings | Existing physical powered/assisted runbook |
+| Guided calibration walkthroughs | Optional author / order existing factories and display acknowledgements | Link real integration prerequisite; explain status heuristic versus human evidence beside exact maintained excerpt | Independent runbooks |
+
+- **Verification plan:** prove fresh profile data and inactive owner identities, canonical config
+  propagation/snapshots, default menu isolation, typed backend mappings, pre-construction motion and
+  assistance rejection, and truthful optional labels. Reuse existing FTC/lifecycle test facilities;
+  do not invent public production seams or mirror commands into simulated physical evidence. Update
+  navigation/excerpt/link and independence checks, then run focused and full Java tests/compile,
+  strict narrative/Javadocs/search/API artifact checks, whitespace scans, independent design/test/
+  novice-documentation review, and wide/narrow/light/dark visual inspection when available. Keep the
+  known Windows-only CRLF documentation baseline separate from new failures. Robot execution remains
+  supervised adopting-team validation. Stop at Verifying for Android Studio review and the exact
+  combined publication authorization.
+
+#### Gate 2 implementation and review handoff (2026-09-07)
+
+- **Implemented graph:** the independent `robots.examples.calibration` package contains exactly
+  three main files: `CalibrationRobotProfile`, `CalibrationTesters`, and disabled
+  `CalibrationTestersOpMode`. The Driver Station name is **FW Example: Calibration Testers**.
+  The ordinary menu registers only configured axis and manual pod-offset checks by default;
+  optional vision and powered groups are absent until selected in the captured profile. No
+  framework algorithm/API, production application, legacy example, or existing launcher changed.
+- **Construction-layer closeout:** `current()` is the profile's sole public construction entry;
+  the constructor and raw registration copy are non-public. Lazy `pinpoint`, `fixedTagLayout`,
+  `aprilTags`, `webcam`, `limelight`, `localization`, and `mecanum` recipes return facts or fresh
+  data Configs, never owners. Each tester operation has one profile-taking factory and its concrete
+  tester return type; there are no parallel no-argument conveniences, injected-owner overloads, or
+  public test-only seams. `create(profile)` supplies the ordinary menu; `guidedWalkthrough(profile)`
+  adds the distinct optional ordering/status capability. Named powered and assisted factories have
+  different review/evidence requirements, not interchangeable fallback behavior.
+- **Ownership and safety:** suite construction freezes raw authoring facts before saving lambda
+  suppliers. Each selection constructs a fresh inactive framework tester; the existing exclusive
+  tester host supplies its clock, INIT/RUN/BACK/STOP lifecycle, and cleanup. Optional camera builders
+  capture the selected backend template, copy it for each preferred/picked name, and keep the
+  correct SDK picker type. Direct powered calls reject an unreviewed request before active Config
+  construction. Assisted calls additionally reject NONE, unaccepted, and identity-placeholder
+  mounts. Both automatic tag searches are explicitly disabled; Y's automatic turn and applicable
+  manual stick/recenter phases remain powered. Acknowledgements and heuristic status never certify
+  physical facts or authorize motion by themselves.
+- **Documentation closeout:** the three Test & Tune lessons teach basic configured integration,
+  optional vision, and optional powered integration. Their **19** exact source-backed Java excerpts
+  (5 basic, 8 vision, 4 powered, 2 guided) reference the compiling example. Basic integration explains
+  profile, Config, snapshot, factory, lambda supplier, suite, and specialized host before use. The
+  optional lessons explain backend/type/function, mount/frame/fixed landmarks, receipt versus
+  capture age, correction, normalized commands, cooperative bounds, and acceptance near their
+  active values. One accessible Mermaid ownership flow has a visible text equivalent. Existing
+  runbook/experiment handoffs point to the new path; the former incomplete guided fragment is gone.
+  One nested Test & Tune group keeps optional depth together without changing Get Started/Learn/
+  Build. Native shell-tab inventory is **28 pairs across 20 pages**, with one new optional pair.
+- **Independent adversarial review:** separate agents reviewed source ownership/guard order and
+  construction layers, maintainer test validity, and novice/source-accurate documentation; the main
+  agent reviewed the complete shared diff. Resolved findings included the positive auto-turn
+  magnitude test fixture, an assertion against intentionally dormant picker fields, the stale
+  shell-page inventory message, stronger powered-documentation guardrails, receipt/capture-age
+  terminology, application-neutral boundary assertions, and canonical complete-source link labels.
+  No unresolved implementation/design finding remains.
+- **Java evidence:** the final full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run with
+  `--continue` reports **2,485 tests across 268 suites, 2 failures, 0 errors, 0 skipped**. All **18**
+  new example tests pass; the new documentation integration contract passes. The only failures are
+  the previously recorded Windows CRLF-sensitive `DocumentationLinksTest` methods
+  `everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy` and
+  `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair`. Their failing Build/Tasks inputs and
+  assertion bodies are unchanged; no line-ending cleanup or assertion weakening was mixed into
+  this item. Compilation and strict Javadocs succeed. Existing JDK 21/source-target 8 and SDK
+  deprecation warnings remain unchanged.
+- **Documentation/static evidence:** the existing pinned Windows environment passes `pip check`
+  and final `zensical build --clean --strict` (**No issues found**). Generated-guide search verifies
+  **996 indexed sections across all six areas**; generated API validation verifies **214 API links
+  and 90 maintained source links across 52 Markdown pages**. Required generated API/search/index
+  artifacts and new lesson outputs are present and nonempty. `git diff --check` and a trailing-
+  whitespace scan including all **15** tracked/untracked changed files pass; nothing is staged.
+- **Evidence limits and manual review:** tests keep the real configs, factories, constructors and
+  menu suppliers, with maintainer-only reflection; they do not initialize hardware or manufacture
+  sensor observations. The webcam Android `Size` active-capture boundary is covered by existing
+  framework boundary tests, not falsely executed by the new JVM example test. No physical device
+  identity, mount, motor sign, calibration accuracy, safe power, or stopping behavior is established.
+  The browser skill reported **No browser is available**, so wide/narrow and light/dark rendered
+  visual inspection remains manual. In Android Studio review the three example files, the three
+  new lessons and guided rewrite, default two-entry menu, canonical-config mapping, direct gates,
+  capture-age wording, and source-backed tests. Inspect the generated navigation/diagram visually;
+  any hardware run requires the adopting robot's reviewed configuration and supervised runbook.
+- **Publication gate:** remain unstaged/uncommitted/unpushed on
+  `codex/doc-21-robot-calibration-integration`. The resolved origin push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; target is `master`. No CAL-08 work or launcher
+  rename is included. Await the exact combined reply:
+  **DOC-21 looks good. Authorize committing the reviewed DOC-21 diff on
+  codex/doc-21-robot-calibration-integration, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.**
+
+#### Gate 3 review approval and publication (2026-09-08)
+
+- The user supplied the exact combined DOC-21 review and publication authorization, naming
+  `codex/doc-21-robot-calibration-integration`,
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. This supersedes the
+  Gate 2 publication stop and authorizes the reviewed 15-file diff plus this tracker closeout.
+- Preserve the documented software/hardware and unavailable-browser evidence limits. The user's
+  review approval does not claim measured calibration, safe motion, or a physical tester run.
+- Publish one reviewed commit, open a pull request, require successful hosted framework and
+  documentation checks, merge, then verify the expected head and merge tree. Do not reset or
+  rewrite local `master` if it diverges.
+- The user separately requested **Move to next task after this**. Complete this publication first;
+  only then begin the next item's decision gate and honor its design/evidence approvals again.
 
 ### Robustness intake evidence and boundaries (2026-09-07)
 
