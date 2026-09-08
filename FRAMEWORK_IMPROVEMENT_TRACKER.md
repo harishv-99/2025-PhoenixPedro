@@ -236,7 +236,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 122 | CAL-07 | Correct direction recommendations | Done | Relative keep/opposite advice, finite-result guards, historical labels, and beginner guide reviewed; combined commit/push/PR/merge authorization recorded. |
 | 123 | CAL-08 | Verify pod-offset mathematics independently | Done | Local heading-order/finite-result repair, 15 independent geometry tests, and teaching corrections reviewed and publication authorized; 153 focused checks pass. Physical adoption remains unverified. |
 | 124 | CAL-09 | Strengthen camera-mount sample evidence | Done | Fresh fixed-setup captures and rotation-aware mean reviewed; 96 focused tests pass. Manual review and exact-destination publication authorized 2026-09-08. |
-| 125 | CAL-10 | Make calibration acceptance reproducible | Proposed | Extend the existing record/rebuild/configured-retest handoff with a compact independent-validation record. |
+| 125 | CAL-10 | Make calibration acceptance reproducible | Done | Reviewed lab-card extension and independent camera-validation examples; 2542 tests and strict docs/API checks pass; user approved exact branch publication and merge. |
 | 126 | TEST-02 | Add deterministic localization robustness scenarios | Proposed | Exercise real estimators against independent synthetic truth and report error and recovery metrics. |
 | 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Proposed | Use the robustness benchmark to evaluate bounded policy for predictor-yaw reuse and shared vision assumptions. |
 | 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Proposed | Evaluate bounded timestamped trial capture and offline replay using existing diagnostics; keep results off the Robot Controller. |
@@ -31420,7 +31420,17 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### CAL-10 - Make calibration acceptance reproducible
 
-- **Status:** **Proposed**.
+- **Status:** **Done**; user accepted the reviewed implementation and authorized publication.
+- **Gate 1 start (2026-09-08):** the user requested the next task after publication of the
+  Cuttlefish/Worlds tracker intake. PR #156 merged as
+  `d5d11637d0e72f73adb49e7230f45aef032ab3ad`; its reviewed head
+  `18eda592d534a04d81ee483c2b86ec8e60a6b2ba` is an ancestor and its exact tree matches the merge.
+  Hosted framework and documentation checks passed. Local master was fast-forwarded without
+  rewriting history. CAL-10 is the sole decision-gate item on
+  `codex/cal-10-calibration-acceptance`, based on that fetched origin/master commit. Inspect
+  existing runbooks, lab cards, configured tester contracts, and tests before choosing a design.
+  Only this tracker decision record may change at this stage; no calibration, API, example,
+  physical run, or publication is authorized by starting the gate.
 - **Approved comparison amendment (2026-09-08):** include a camera validation card showing measured
   reference locations alongside predicted locations and residuals, at several distances/image
   positions. Separate fitted points from independently held-out validation positions; retain
@@ -31458,6 +31468,223 @@ The setup fragments below compare the recommendation design, not standalone robo
   configured verifier or physical record needed to resume it. Defer this item only if its own
   software-workflow contract cannot be established, recording the exact missing contract evidence
   or scope decision as its reactivation trigger. Never fabricate a successful calibration card.
+
+#### CAL-10 decision gate (2026-09-08)
+
+- **Implementation approval (2026-09-08):** the user requested `implement CAL-10`, approving the
+  recorded documentation-only design below. Fetched origin/master and confirmed this item's branch
+  `codex/cal-10-calibration-acceptance` still starts exactly at
+  `d5d11637d0e72f73adb49e7230f45aef032ab3ad`. Preserve the prior decision record; implement only this
+  item. The approval does not authorize a physical run, staging, commit, push, PR, or merge.
+
+- **Confirmed gap:** the runbook already explains record -> rebuild -> fresh configured tester ->
+  production verification. `fw/docs/examples/Subsystem Experiments.md` already owns the lab card's
+  question, configuration revision, safety setup, evidence location, trial table, criterion, and
+  accept/revise/reject decision. Neither supplies a compact calibration-specific handoff connecting
+  current/candidate values, fit versus held-out observations, deployed configuration identity,
+  configured retest, and production consumption. Reuse the card rather than invent a second
+  experiment procedure or interpret copying a candidate into source as physical acceptance.
+- **Inspected owners and callers:** generic `StandardTesters`; `CameraMountCalibrator`,
+  `PinpointAxisDirectionTester`, `PinpointPodOffsetCalibrator`, `AprilTagLocalizationTester`,
+  `CalibrationChecks`; the independent `robots.examples.calibration` profile, fresh tester
+  factories, and thin OpMode; and the maintained application-local tester factory call sites.
+  All remain unchanged and shared teaching uses only the independent example. Read the complete
+  operational runbook, basic/vision integration lessons, guided-walkthrough reference, experiment
+  guide, and evidence reference, with their source mappings and documentation regression checks.
+  The factories capture configuration; no existing menu saves a result or reloads a rebuilt profile
+  into an already-created suite. Guided `OK` can be a nonzero/non-identity heuristic or a human flag;
+  it is not automatically the proposed record's acceptance decision.
+- **Construction-path and ownership audit:** there is no new or changed public API family, builder
+  stage, result type, overload, or return type. Existing Config drafts, concrete tester constructors,
+  example factories, and `TesterSuite` suppliers retain their distinct roles: author facts,
+  construct an inactive exclusive owner, map independent robot facts, and defer fresh construction
+  until selection. No extra persistence owner, registry, acceptance builder, or sibling facade is
+  justified. Existing public-layer consolidation and lifecycle repairs are outside this doc-only
+  task; no compatibility shim or caller migration is needed.
+- **Alternatives and student simplicity:**
+
+  | Design | Student work / robot-code impact | Decision |
+  | --- | --- | --- |
+  | No change, or only link the existing lab card | No Java change, but students must invent the candidate-to-deployed-evidence fields and distinguish reused fit data unaided | Reject: leaves the demonstrated handoff gap |
+  | Add calibration-only fields to the existing card through one runbook section | Same Java factories; one externally kept record, with only fields relevant to the chosen fact | Choose: smallest coherent addition |
+  | Separate standalone calibration guide or full duplicate form | Same robot code, another document/form and overlapping safety/trial/decision instructions | Reject: splits the canonical teaching path |
+  | Native result registry, wizard, auto-acceptance flag, or export API | New configuration/result lifecycle and robot integration concepts without new measured evidence | Reject: unnecessary API and ownership expansion |
+
+  Before and after CAL-10 the ordinary host remains
+  `return CalibrationTesters.create(CalibrationRobotProfile.current());`. A selected hand-motion
+  check remains `CalibrationTesters.axisDirections(profile)` or
+  `CalibrationTesters.manualPodOffsets(profile)`; the camera check remains
+  `CalibrationTesters.aprilTagLocalization(profile)`. The student still supplies the canonical
+  profile and chooses the needed check; there is no added Java answer or repeated hardware owner.
+- **Chosen record:** the operational runbook owns one compact calibration extension to the
+  existing lab card, not a second complete form. Keep the common question, safety, trial, criterion,
+  and review fields in their current home; paste only the applicable calibration fields into the
+  same external record. Link directly to `Subsystem Experiments.md#copyable-lab-card-and-results-sheet`:
+  copy the shared card once, then append these facts; reading the whole advanced example is not a
+  prerequisite. Allow not-applicable fields with a reason. Add device/backend and actual tester identity (generic or configured),
+  setup/reference point/units/frames, current fact versus candidate assignment, independent reference
+  method, source/configuration and rebuilt/deployed identity, fresh configured retest evidence,
+  and separate production-owner verification. Define candidate, independent validation, revision,
+  and residual beside first use. Teams set criteria before trials; the framework supplies no physical
+  pass threshold, repetition count, automatic acceptance, or Robot Controller trial persistence.
+  Reviewing a candidate for a bounded configured trial permits that trial, not ordinary robot use
+  or final acceptance: distinguish proposed value, reviewed trial, independent validation,
+  production integration check, and human acceptance scoped to the documented question and setup.
+- **Short fact-specific mappings:** direction checks record actual instructed hand motion, captured
+  setting, reported delta, and Keep/Change assignment; a negative delta means reverse the current
+  setting, not always choose `REVERSED`. No camera facts are mandatory. Manual pods
+  record the verified direction/resolution setup, robot reference point and physical recentering,
+  turn, current offsets, absolute replacement recommendations, and recommendation-minus-configured
+  differences on the rebuilt pass. Software zeroing is not physical recentering; repeated agreement
+  is not independent truth. Camera records separate fixed-setup fitting batches from independently
+  measured placements used only after fixing the candidate. Changing a candidate after seeing a
+  validation result makes that observation development evidence; obtain new held-out checks.
+- **Camera visual and evidence limits:** use a small labeled measured-reference versus estimated
+  coordinate/error table covering several distances and image positions, with visible prose
+  explaining systematic offset, in optional camera depth rather than the opening chooser. Any numeric data is explicitly illustrative, not an executed or
+  accepted hardware record; explain the error arithmetic in named units and one coordinate frame.
+  Keep mount fitting, AprilTag-derived robot-pose validation, floor-object projection, and
+  shooter/intake alignment separate. Preserve image size/intrinsics, backend/pipeline, mount and
+  layout revisions as applicable; object projection additionally names the observed point/height
+  model and capture-time robot pose. A camera-mount `Avg residual` or `Range check` measures
+  consistency against the captured-average mount at the entered setup, not held-out field accuracy.
+  The AprilTag-localization tester's A-sample statistics do not certify distinct fresh frames;
+  compare independently known stationary placements with a fresh displayed pose and its age,
+  without claiming that button-press count proves independent images.
+  Known locations must come from a separately established physical reference, not the same
+  odometry or tag solution being checked. Label the kind of error per example; do not combine
+  mount, robot-pose, and object-location errors into one unexplained number.
+- **Unavailable paths and acceptance scope:** there is no maintained generic floor-object
+  projection-validation tester. Its optional record must name the adopting team's actual configured
+  observation/display source or mark that check blocked until one is supplied; do not advertise
+  AprilTag screens as ball-location verifiers. Missing source access, deployment evidence, configured
+  verifier, or independent reference stops at recorded evidence with the exact missing next step.
+  Preserve rejected/revise outcomes, and distinguish accepted-for-this-check from unverified
+  production consumption. Hardware, mount, relevant configuration, layout, image size, or target
+  model changes invalidate the affected acceptance until retested; do not erase the old record.
+  A blocked optional projection check does not block an unrelated valid direction check or certify
+  assembled-robot readiness. No physical run is needed to establish this narrower doc contract.
+- **Bounded implementation:** edit `Robot Calibration Tutorials.md` for the extension and worked
+  mappings; add small contextual links in `Subsystem Experiments.md`,
+  `Add Calibration Testers to Your Robot.md`, `Add Vision to Your Calibration Suite.md`, and
+  `Guided Calibration Walkthroughs.md` where they describe acceptance. Preserve the bounded opening
+  chooser, existing controls and defaults, one central lesson per page, and current navigation.
+  Add focused checks in `DocumentationLinksTest.java`; no runtime code, production application,
+  example configuration, solver, native UI, or profile-status changes. Framework Principles already
+  require the relevant evidence, ownership, and progressive teaching boundaries; no principle
+  amendment is needed for this item.
+- **Verification plan:** walk the record through direction, manual-pod, camera-mount, optional
+  projection, rejected candidate, missing source/verifier, and changed-configuration cases. Run the
+  documentation link/source-excerpt/navigation/first-contact-budget regressions and independent
+  calibration-example tests; check illustrative error arithmetic if numeric rows are used. Before
+  implementation review, run the skill's normal TeamCode unit-test/compile checks and the existing
+  documentation build, plus whitespace checks. Physical measurement, camera accuracy, installation,
+  safe motion, and production adoption remain explicitly unverified without an adopting robot.
+- **Approval boundary:** the completed tracker publication plus the user's next-task request starts
+  this decision gate only. CAL-10's recommended documentation-only scope now awaits approval to
+  implement; its docs/tests, physical runs, commit, push, PR, and merge have not been authorized.
+- **Independent decision review:** separate source/contract and beginner-simplicity reviews agree
+  that the existing owners support this doc-only contract. Incorporated their clarifications on
+  one externally kept card, trial permission versus scoped acceptance, fresh images versus button
+  samples, independent physical references, and the unavailable generic projection verifier.
+- **Decision-record verification:** the focused
+  `DocumentationLinksTest.currentTrackerGuidanceDoesNotDependOnTheProductionApplication` run passed
+  (1 suite, 1 test, 0 failures/errors/skips); prerequisite Java compilation succeeded or was
+  up-to-date. Only existing Java 8 target/deprecation warnings were reported. Whitespace and
+  one-item scope checks cover the final tracker-only record; no CAL-10 runtime or documentation
+  implementation, hardware validation, staging, or publication has occurred.
+
+#### CAL-10 implementation record (2026-09-08)
+
+- Added one runbook extension to the canonical external lab card, with configuration and deployment
+  identity, candidate-versus-configured facts, reviewed-trial permission, independent validation,
+  production consumption, rejected/blocked outcomes, and affected-acceptance retest after changes.
+  Direction and manual-pod examples preserve captured signs, absolute replacement offsets, and
+  physical recentering. Optional camera depth separates fitted and held-out observations, mount
+  residuals, robot field pose, floor-object points, and tool alignment. The invented three-location
+  table illustrates a common signed offset; it supplies no physical result or tolerance.
+- Four existing guides link to that extension without copying the form or adding a navigation
+  entry. Runtime code, public construction paths, application code, example profiles, tester controls,
+  configuration defaults, and status/lifecycle owners are unchanged. Framework Principles already
+  express the necessary requirements, so no principles amendment was made.
+- **Page-by-page concept review:**
+
+  | Page / audience | Central outcome and required concepts | First explanation / first use / optional depth |
+  | --- | --- | --- |
+  | Robot calibration tutorials / operator and profile owner | Record and verify one physical fact; tester-console basics, named procedure's hardware | Candidate explained in the stage chooser; revision, fitting, held-out, and independent validation explained before the companion fields; projection and square-root error arithmetic explained beside the optional camera table. The opening chooser remains within 650 words. |
+  | Subsystem Experiments / team experiment author | One question, trial record, and scoped decision; existing safety/evidence vocabulary | Link after the unchanged copyable card adds calibration facts only when needed; no new required flywheel or calibration lesson. |
+  | Add calibration testers to your robot / robot author | Connect canonical facts to fresh testers; existing profile/factory/host explanations | Closing handoff explains deployment versus acceptance and links the record; basic camera-free assembly stays complete. |
+  | Add vision to your calibration suite / camera-suite author | Reuse configured camera facts in fresh checks; basic suite lesson | Candidate validation precedes the acknowledgement; optional measured-location link distinguishes mount, projection, and tool checks without promising a projection tester. |
+  | Guided Calibration Walkthroughs / advanced suite author | Order existing checks and read captured status; basic suite lesson | Added link explains that neither deployment, menu OK, nor an external card updates physical acceptance/status automatically. |
+
+- **Independent review and fixes:** source/contract and beginner reviews confirmed no need for new
+  APIs or software owners. Moved fitting/held-out definitions before the common record's first use,
+  removed a lingering axis-step implication that candidates were accepted before configured trials,
+  and preserved direct access to the one shared card. Root review added explicit source/deployment
+  mismatch and rejected-candidate stop instructions and explained square-root notation. A test review
+  required validating every table-body row instead of silently ignoring malformed unexpected IDs.
+- **Verification in progress:** the first focused run executed 73 tests; all three new CAL-10 tests
+  passed. It exposed an opening chooser of 661 words (shortened to 641), plus two existing Windows
+  CRLF-sensitive documentation assertions in unchanged guide content. The test-only reader repair
+  normalizes line endings rather than weakening content or source-excerpt comparisons. Final focused
+  and full-suite results, strict site/API artifact checks, and the manual review boundary follow.
+- **Generated documentation evidence:** existing `build/docs-venv-win` dependency check passed;
+  `python -m zensical build --clean --strict` passed on the final guide text. The generated search
+  check found 1001 sections across all six areas. After the clean narrative build,
+  `:TeamCode:sushiJavadocs` passed, followed by `verify_generated_api_links.py` (214 generated API
+  links, 90 maintained source links, 52 Markdown pages). All six required narrative/search/API
+  artifact files are present and nonempty. No generated file is part of the diff.
+- **Rendered review limitation:** the Browser skill's supported connection reported no available
+  browser, and its documented discovery returned an empty list. No desktop/mobile or light/dark
+  screenshot review was performed. Review the new record and six-column camera table in the
+  generated preview during the manual handoff; automated structure/arithmetic checks do not prove
+  visual readability or beginner comprehension. No physical calibration or production-robot run
+  was performed or claimed.
+- **Final software verification:** focused documentation and independent calibration-example run
+  passed: 2 suites, 74 tests, 0 failures/errors/skips. Full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` passed:
+  271 suites, 2542 tests, 0 failures/errors/skips. The four added tests cover the shared-record
+  contract, optional camera evidence and authored arithmetic, ten damaged-table variants, and
+  newline portability without relaxing exact excerpts or the required Notice section. The table
+  parser now rejects every malformed or unexpected body row. Only existing Java 8 target and
+  deprecation warnings were reported; no warning suppression or unrelated guide rewrite was added.
+  Final source/API link and search checks passed again after the combined build. A scope check
+  confirms exactly five guides, one documentation test file, and this tracker; all other task
+  records and all runtime/example Java files remain unchanged. Whitespace checks pass.
+- **Manual review requested:** in Android Studio inspect the runbook's `Keep one calibration record`,
+  `Compare camera estimates with measured locations`, and direction/manual-pod record examples;
+  follow the shared lab-card and four companion links. Check beginner terminology, candidate trial
+  permission versus scoped acceptance, independent reference/held-out data, missing-verifier and
+  rejected/retest instructions, and visible explanation of the illustrative table. Inspect that
+  table in the rendered preview on wide/narrow and light/dark views when available. The test diff
+  changes maintainer checks only. Physical results and configuration acceptance remain the adopting
+  team's separate supervised responsibility, not a condition claimed proven by this doc change.
+- **Publication coordinates and stop:** branch `codex/cal-10-calibration-acceptance`; exact origin
+  push URL `https://github.com/harishv-99/2025-PhoenixPedro.git`; target `master`. Local master,
+  origin/master, and this branch's base are still `d5d11637d0e72f73adb49e7230f45aef032ab3ad`.
+  Nothing is staged, committed, pushed, or opened as a CAL-10 PR. No next task is started. Request:
+
+  `CAL-10 looks good. Authorize committing the reviewed CAL-10 diff on
+  codex/cal-10-calibration-acceptance, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into master.`
+
+#### CAL-10 completion and publication approval (2026-09-08)
+
+- The user accepted the reviewed CAL-10 diff with the exact combined authorization: commit on
+  `codex/cal-10-calibration-acceptance`, push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge into `master`.
+  This records manual review approval of the documentation-only implementation; it does not invent
+  screenshots, physical calibration, or measurements not performed by the agent.
+- A final independent scope audit confirmed exactly the reviewed seven files: this tracker, five
+  guides, and `DocumentationLinksTest.java`. No runtime/example Java, navigation, other tracker
+  items, staged files, or untracked files were included before finalization. The implementation
+  evidence remains 2542 passing tests and the strict narrative/API artifact checks recorded above.
+  Rerun the tracker-sensitive documentation regression and whitespace checks after this completion
+  record, then publish only those seven files. Git and the pull request retain final commit/check/
+  merge identities; do not fabricate those identities before publication.
+- The user subsequently requested the next task after merging. Finish and verify CAL-10 publication
+  first, then begin only TEST-02's decision gate from fetched origin/master on its own branch.
+  This approval does not approve TEST-02's eventual design or implementation.
 
 ### TEST-02 - Add deterministic localization robustness scenarios
 

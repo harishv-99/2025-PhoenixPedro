@@ -39,6 +39,11 @@ Walkthrough steps can show a small `OK` / `TODO` tag plus a one-line reason. The
 that status while it builds the suite. Opening or completing a tester does not mutate the profile or
 refresh the tag: record the result, edit the profile, rebuild, and start a newly built suite.
 
+Use [Keep one calibration record](<Robot Calibration Tutorials.md#keep-one-calibration-record>) to
+connect those edits to the reviewed validation and acceptance evidence. Deploying a proposed value
+or seeing `OK` in this menu is not physical acceptance, and the external record does not update
+suite status automatically.
+
 ### Robot code should stay thin
 
 The framework should own the generic menu/status mechanics. Robot code should mainly supply:

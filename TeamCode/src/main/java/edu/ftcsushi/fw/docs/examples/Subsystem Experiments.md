@@ -88,6 +88,11 @@ One falsifiable question: ________________________________________________
 The adopting team supplies every blank. Checked-in examples do not choose a safe command, a
 repetition count, or an acceptance threshold for another robot.
 
+For calibration, copy this shared card once and append only the applicable facts from
+[Keep one calibration record](<../testing-calibration/Robot Calibration Tutorials.md#keep-one-calibration-record>).
+That companion connects the proposed values, reviewed verification runs, and human acceptance;
+it does not replace this card's question, safety plan, trial rows, or decision.
+
 ## Computed evidence versus observation
 
 Driver Station telemetry always keeps the state and control hint visible. Add a trial number for

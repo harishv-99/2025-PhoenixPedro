@@ -106,10 +106,11 @@ screen can describe an arbitrarily tilted robot.
 
 The profile starts with `cameraMount = CameraMountConfig.identity()`: zero displacement and zero
 rotation. That is a placeholder, not a measured mount. It is suitable as an unknown to solve in the
-mount calibrator; it does not establish a trustworthy AprilTag-derived robot pose. Record an
-accepted result in that same `cameraMount` field, rebuild, and use the configured localization
-check. The separate `cameraMountAccepted` acknowledgement starts `false`; only a reviewed physical
-result justifies changing it, and the assisted powered extension additionally checks it.
+mount calibrator; it does not establish a trustworthy AprilTag-derived robot pose. Put a value being
+considered in that same `cameraMount` field for a reviewed validation run, rebuild and deploy, then
+open a fresh configured localization check. The separate `cameraMountAccepted` acknowledgement
+starts `false`; keep it false until the team accepts the physical validation evidence, not merely
+the deployment. The assisted powered extension additionally checks that acknowledgement.
 Set `cameraMountAccepted` back to `false` and re-review after changing the backend, physical camera,
 or mount. Acceptance of the old setup does not transfer automatically to its replacement.
 
@@ -307,6 +308,12 @@ The existing [runbook](<Robot Calibration Tutorials.md>) owns the physical contr
 and stop gates, including B's clear precedence and the difference between Driver Station START
 and gamepad START. A retained historical average is not a fresh image; an ambiguous average gives
 no copy/paste result. A working detector or non-identity mount alone does not prove correct robot pose.
+
+Use [Keep one calibration record](<Robot Calibration Tutorials.md#keep-one-calibration-record>) for
+the configuration and acceptance handoff. The optional
+[measured-location comparison](<Robot Calibration Tutorials.md#compare-camera-estimates-with-measured-locations>)
+keeps mount validation, object projection, and tool alignment separate; these three menu entries
+do not supply a floor-object projection tester.
 
 These are the same independent source files as the basic lesson:
 

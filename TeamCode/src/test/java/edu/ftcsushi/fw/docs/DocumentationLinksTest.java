@@ -1210,18 +1210,7 @@ public final class DocumentationLinksTest {
                 failures.add(fileName + ": contains a full, annotated, or invented Java source");
             }
 
-            int noticeStart = markdown.indexOf("\nNotice:\n");
-            int filesStart = markdown.indexOf("## Files in this checkpoint");
-            if (noticeStart < 0 || filesStart <= noticeStart) {
-                failures.add(fileName + ": missing bounded Notice section");
-            } else {
-                String notice = markdown.substring(noticeStart, filesStart);
-                int observations = matcherCount(Pattern.compile("(?m)^- ").matcher(notice));
-                if (observations < 1 || observations > 3) {
-                    failures.add(fileName + ": Notice must contain one to three observations, found "
-                            + observations);
-                }
-            }
+            validateBuildNotice(markdown, fileName, failures);
 
             validateBuildSources(repositoryRoot, fileName, markdown, failures);
         }
@@ -2011,6 +2000,143 @@ public final class DocumentationLinksTest {
                 walkthroughBuilderSource, "public int addStep(String label",
                 "Supplier<CalibrationStatus> status",
                 "Supplier<TeleOpTester> testerFactory");
+    }
+
+    /** Maintainer contract checks, not evidence that a robot passed calibration. */
+    @Test
+    public void calibrationAcceptanceExtendsOneSharedLabCard() throws IOException {
+        Path docsRoot = repositoryRoot().resolve(FRAMEWORK_DOCS_PATH).resolve("docs");
+        String calibration = readUtf8(docsRoot.resolve(
+                "testing-calibration/Robot Calibration Tutorials.md"));
+        String record = sectionBetween(calibration,
+                "## Keep one calibration record", "## Actuator direction and safe endpoints");
+        assertEquals("Calibration has one canonical extension, not several competing forms",
+                1, literalCount(calibration, "## Keep one calibration record"));
+        assertContainsAll("Calibration extends the shared card instead of duplicating it", record,
+                "Subsystem Experiments.md#copyable-lab-card-and-results-sheet",
+                "same record", "question, safety plan", "trial table", "acceptance criterion",
+                "not the advanced flywheel example", "not applicable", "no camera calibration data",
+                "outside the Robot Controller", "testers do not save it");
+        assertFalse("The extension must not duplicate the lab card's safety form",
+                record.contains("Emergency STOP owner:"));
+        assertFalse("The extension must not duplicate the lab card's complete trial table",
+                record.contains("| Trial | Starting condition | Command |"));
+        assertContainsAll("Calibration facts identify the exact candidate-to-production handoff", record,
+                "**candidate**", "**revision**", "**Independent validation**", "uncommitted edits",
+                "Device identity", "actual OpMode", "generic or configured",
+                "reference point", "coordinate frame and units",
+                "Current configured value -> exact candidate assignment",
+                "fitting trial IDs", "held-out validation trial IDs", "Canonical source file + field",
+                "Reviewed candidate trial", "Rebuilt and deployed revision", "deployment confirmation",
+                "Fresh configured tester", "captured values checked", "Production-owner check",
+                "same configuration confirmed", "Decision scope", "still-unverified uses");
+        assertContainsAll("Calibration acceptance remains a scoped human evidence decision", record,
+                "Before trials", "no physical pass threshold", "only the reviewed trial",
+                "not ordinary robot use", "fresh configured suite", "separate production-owner check",
+                "**Accept / Revise and repeat / Reject**", "source edit", "configured verifier",
+                "independent reference", "**blocked**", "do not mark acceptance",
+                "Keep rejected results", "retune", "new independent checks", "needs retest",
+                "hardware, pod setting, mount, layout, image size, target model, or configuration",
+                "Preserve the old record", "affected robot-owned acknowledgement",
+                "blocked camera check does not invalidate a verified encoder sign",
+                "never certifies the whole robot");
+        String axisRecord = sectionBetween(calibration,
+                "### Example record: axis directions", "## Pinpoint pod offsets");
+        assertContainsAll("Direction record checks the instructed motion against the captured sign",
+                axisRecord, "physical hand motion", "captured encoder setting", "measured delta",
+                "`REVERSED`", "negative X delta", "change to `FORWARD`", "fresh configured tester",
+                "left and CCW", "No real run", "does not prove distance accuracy");
+        String podRecord = sectionBetween(calibration,
+                "### Example record: manual pod offsets", "## Pinpoint plus field corrections");
+        assertContainsAll("Manual pod record preserves geometry and independent placement evidence",
+                podRecord, "pod resolution/directions", "fixed robot reference point", "floor mark",
+                "physical recentering", "heading change", "current offsets", "absolute replacement",
+                "rebuilt configured trial", "not measured acceptance", "independently checked",
+                "zero software is not recentering", "failed trials", "production-owner verification");
+        for (String companion : new String[]{"examples/Subsystem Experiments.md",
+                "testing-calibration/Add Calibration Testers to Your Robot.md",
+                "testing-calibration/Add Vision to Your Calibration Suite.md",
+                "testing-calibration/Guided Calibration Walkthroughs.md"}) {
+            assertTrue(companion + " must route to the same calibration record",
+                    readUtf8(docsRoot.resolve(companion)).contains(
+                            "Robot Calibration Tutorials.md#keep-one-calibration-record"));
+        }
+    }
+
+    /** Reads the published numbers; no duplicate expected-coordinate fixture certifies the table. */
+    @Test
+    public void cameraValidationSeparatesHeldOutEvidenceAndChecksIllustrativeErrors()
+            throws IOException {
+        String calibration = readUtf8(repositoryRoot().resolve(FRAMEWORK_DOCS_PATH)
+                .resolve("docs/testing-calibration/Robot Calibration Tutorials.md"));
+        String camera = sectionBetween(calibration,
+                "### Compare camera estimates with measured locations",
+                "## AprilTag-only localization check");
+        assertContainsAll("Optional camera validation distinguishes fitting from independent checks",
+                camera, "Optional camera depth", "**Fitting**", "**Held-out**",
+                "same", "#keep-one-calibration-record", "not another form or tester",
+                "mount-fitting batch separately", "image size", "intrinsics", "pipeline",
+                "tag IDs/size/layout", "candidate mount/revision", "Freeze that candidate",
+                "rebuild/deploy", "configured AprilTag-localization tester",
+                "independently measured stationary placements", "field X/Y/yaw", "fieldToRobot",
+                "Pose age", "inches and degrees", "radians", "new validation placements");
+        assertContainsAll("Existing displays must not be promoted into independent camera evidence",
+                camera, "**residual**", "captured-average mount", "Avg residual", "Range check",
+                "not independently measured field errors", "sample count does not certify",
+                "distinct fresh images", "repeated button presses");
+        assertContainsAll("Projection needs an actual configured source and separate tool evidence",
+                camera, "**Projection**", "no maintained generic floor-object projection-validation tester",
+                "configured observation/display source", "**blocked**", "until supplied",
+                "AprilTag screens do not verify ball locations", "target point and assumed height",
+                "image capture time", "robot pose at that capture time", "same frame",
+                "localization error can contribute", "does not isolate a camera fault",
+                "shooter/intake", "separate tool check", "pickup or shot");
+        assertContainsAll("The numeric illustration has visible assumptions and no physical pass claim",
+                camera, "invented arithmetic", "not a physical run or pass", "`M1`", "`F1`",
+                "none of `V1`", "independently known field pose `(0, 0, 0)`",
+                "field +X is forward and +Y is left", "`2 in`", "not a recommended height",
+                "neither configuration values nor permission", "subtract measured from estimated",
+                "dX = estimated X - measured X", "sqrt(dX*dX + dY*dY)", "systematic offset",
+                "cannot identify its cause", "heading errors", "do not mix mount, robot-pose");
+        assertIllustrativeCameraValidationTable(camera);
+    }
+
+    /** These damaged published rows prove the arithmetic check cannot pass by skipping bad data. */
+    @Test
+    public void cameraValidationArithmeticRejectsMissingMalformedAndInconsistentRows()
+            throws IOException {
+        String calibration = readUtf8(repositoryRoot().resolve(FRAMEWORK_DOCS_PATH)
+                .resolve("docs/testing-calibration/Robot Calibration Tutorials.md"));
+        String camera = sectionBetween(calibration,
+                "### Compare camera estimates with measured locations",
+                "## AprilTag-only localization check");
+        String firstRow = null;
+        for (String line : camera.split("\\R")) {
+            if (line.startsWith("| V1 |")) firstRow = line;
+        }
+        assertTrue("The illustrative V1 row must exist before testing damaged variants", firstRow != null);
+        String[] cells = firstRow.split("\\|", -1);
+        String[] invalid = {
+                camera.replace(firstRow, ""),
+                camera.replace(firstRow, firstRow + "\n" + firstRow),
+                camera.replace(firstRow, firstRow + "\n| X4 | malformed |"),
+                camera.replace(firstRow, firstRow + "\n" + firstRow.replace("V1", "X4")),
+                camera.replace(firstRow, "| V1 | incomplete |"),
+                camera.replace(firstRow, firstRow.replace(cells[3], " (24) ")),
+                camera.replace(firstRow, firstRow.replace(cells[3], " (NaN, 12) ")),
+                camera.replace(firstRow, firstRow.replace(cells[3], " (Infinity, 12) ")),
+                camera.replace(firstRow, firstRow.replace(cells[5], " (0, 0) ")),
+                camera.replace(firstRow, firstRow.replace(cells[6], " -1 "))
+        };
+        for (int i = 0; i < invalid.length; i++) {
+            boolean rejected = false;
+            try {
+                assertIllustrativeCameraValidationTable(invalid[i]);
+            } catch (AssertionError expected) {
+                rejected = true;
+            }
+            assertTrue("Damaged camera table variant " + i + " must be rejected", rejected);
+        }
     }
 
     @Test
@@ -2905,6 +3031,45 @@ public final class DocumentationLinksTest {
                         && taskBindingProse.contains("fresh single-use Task"));
     }
 
+    /** File newline spelling is portable; content, relative indentation, and required prose are not optional. */
+    @Test
+    public void utf8ReadsNormalizeOnlyLineEndingsWithoutWeakeningSourceOrNoticeChecks()
+            throws IOException {
+        Path root = temporaryFolder.getRoot().toPath();
+        String markdown = "# Example\n\nNotice:\n- Watch the result.\n\n## Files in this checkpoint\n";
+        String source = "class Example {\n    void run() {\n"
+                + "        emit(\"café\\r\\n\");  \n    }\n}\n";
+        String snippet = normalizeExcerpt("    void run() {\n"
+                + "        emit(\"café\\r\\n\");  \n    }");
+        String[] endings = {"\n", "\r\n", "\r"};
+        for (int i = 0; i < endings.length; i++) {
+            String guideFile = "Guide" + i + ".md";
+            String sourceFile = "Example" + i + ".java";
+            write(root, guideFile, markdown.replace("\n", endings[i]));
+            write(root, sourceFile, source.replace("\n", endings[i]));
+            String actualGuide = readUtf8(root.resolve(guideFile));
+            String actualSource = readUtf8(root.resolve(sourceFile));
+            assertEquals("Only line terminators may change in Markdown", markdown, actualGuide);
+            assertEquals("Preserve UTF-8, indentation, trailing spaces, and escaped source text",
+                    source, actualSource);
+            assertTrue("The same contiguous source excerpt must work for each newline spelling",
+                    containsDedentedBlock(actualSource, snippet));
+            assertFalse("A different source call must still fail exact excerpt comparison",
+                    containsDedentedBlock(actualSource, snippet.replace("emit(", "other(")));
+            assertFalse("Changed relative indentation must still fail exact excerpt comparison",
+                    containsDedentedBlock(actualSource, snippet.replace("    emit(", "   emit(")));
+            List<String> failures = new ArrayList<>();
+            validateBuildNotice(actualGuide, guideFile, failures);
+            assertTrue("A present Notice is valid for every newline spelling: " + failures,
+                    failures.isEmpty());
+            write(root, guideFile, markdown.replace("Notice:\n", "")
+                    .replace("\n", endings[i]));
+            validateBuildNotice(readUtf8(root.resolve(guideFile)), guideFile, failures);
+            assertEquals("Newline normalization must not invent a missing Notice",
+                    Collections.singletonList(guideFile + ": missing bounded Notice section"), failures);
+        }
+    }
+
     @Test
     public void validatesAuthoredBuildAreaWhileSkippingGeneratedBuildOutput()
             throws IOException {
@@ -3025,7 +3190,10 @@ public final class DocumentationLinksTest {
     }
 
     private static String readUtf8(Path path) throws IOException {
-        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        // Git may check the same authored file out with LF or CRLF. Source-excerpt comparison
+        // already uses this newline contract; retain every other character exactly.
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").replace('\r', '\n');
     }
 
     private static String shellTabPair(String windowsCommands, String macOsCommands) {
@@ -3358,6 +3526,100 @@ public final class DocumentationLinksTest {
         int sectionEnd = markdown.indexOf(end, sectionStart + start.length());
         assertTrue("Missing section end " + end, sectionEnd > sectionStart);
         return markdown.substring(sectionStart, sectionEnd);
+    }
+
+    /** Checks only the six-column, three-placement teaching table, not arbitrary Markdown. */
+    private static void assertIllustrativeCameraValidationTable(String camera) {
+        String header = "| Check | Distance / image position | Measured field point (in) | "
+                + "Estimated field point (in) | Error (dX, dY) (in) | Position error (in) |";
+        String[] lines = camera.split("\\R");
+        int headerIndex = -1;
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].trim().equals(header)) {
+                assertEquals("The named camera-validation table must appear once", -1, headerIndex);
+                headerIndex = i;
+            }
+        }
+        assertTrue("Camera-validation table must name its coordinates and error units", headerIndex >= 0);
+        assertTrue("Camera-validation table needs a separator after its header", headerIndex + 1 < lines.length);
+        assertTrue("Camera-validation table needs exactly six separator cells",
+                lines[headerIndex + 1].trim().matches("\\|(?:\\s*:?-{3,}:?\\s*\\|){6}"));
+        Set<String> checks = new LinkedHashSet<>();
+        Set<String> placements = new LinkedHashSet<>();
+        Set<Double> measuredDistances = new HashSet<>();
+        Set<List<Double>> errors = new HashSet<>();
+        for (int i = headerIndex + 2; i < lines.length && !lines[i].trim().isEmpty(); i++) {
+            String line = lines[i];
+            assertTrue("Every camera-validation table body line must be a row: " + line,
+                    line.trim().startsWith("|") && line.trim().endsWith("|"));
+            String[] cells = line.trim().split("\\|", -1);
+            assertEquals("Camera-validation row needs exactly six cells: " + line, 8, cells.length);
+            String check = cells[1].trim();
+            assertTrue("Unexpected camera-validation check " + check,
+                    Arrays.asList("V1", "V2", "V3").contains(check));
+            assertTrue("Duplicate camera-validation check " + check, checks.add(check));
+            placements.add(cells[2].trim());
+            double[] measured = calibrationCoordinatePair(check + " measured", cells[3]);
+            double[] estimated = calibrationCoordinatePair(check + " estimated", cells[4]);
+            double[] publishedError = calibrationCoordinatePair(check + " error", cells[5]);
+            double magnitude = finiteCalibrationNumber(check + " position error", cells[6]);
+            double dx = estimated[0] - measured[0];
+            double dy = estimated[1] - measured[1];
+            assertTrue(check + " must have finite derived errors",
+                    Double.isFinite(dx) && Double.isFinite(dy) && Double.isFinite(Math.hypot(dx, dy)));
+            assertEquals(check + " dX must be estimated minus measured", dx, publishedError[0], 1e-9);
+            assertEquals(check + " dY must be estimated minus measured", dy, publishedError[1], 1e-9);
+            assertEquals(check + " position error must be the straight-line separation",
+                    Math.hypot(dx, dy), magnitude, 1e-9);
+            assertTrue(check + " must support the prose's +X/+Y systematic-offset example",
+                    dx > 0.0 && dy > 0.0);
+            errors.add(Arrays.asList(dx, dy));
+            measuredDistances.add(Math.hypot(measured[0], measured[1]));
+        }
+        assertEquals("All three held-out checks must be present exactly once",
+                new LinkedHashSet<>(Arrays.asList("V1", "V2", "V3")), checks);
+        assertEquals("The illustration must cover three distance/image-position cases",
+                new LinkedHashSet<>(Arrays.asList("Near / left", "Middle / center", "Far / right")),
+                placements);
+        assertEquals("The independently known origin must have three distinct measured distances",
+                3, measuredDistances.size());
+        assertEquals("The explanation describes the same coordinate offset in all three checks",
+                1, errors.size());
+    }
+
+    private static double[] calibrationCoordinatePair(String description, String cell) {
+        Matcher pair = Pattern.compile("\\(\\s*([^,()]+)\\s*,\\s*([^,()]+)\\s*\\)")
+                .matcher(cell.trim());
+        assertTrue(description + " must be a numeric (X, Y) pair: " + cell, pair.matches());
+        return new double[]{finiteCalibrationNumber(description + " X", pair.group(1)),
+                finiteCalibrationNumber(description + " Y", pair.group(2))};
+    }
+
+    private static double finiteCalibrationNumber(String description, String text) {
+        double value;
+        try {
+            value = Double.parseDouble(text.trim());
+        } catch (NumberFormatException invalid) {
+            throw new AssertionError(description + " must be numeric: " + text, invalid);
+        }
+        assertTrue(description + " must be finite", Double.isFinite(value));
+        return value;
+    }
+
+    /** Shared by the full Build contract and its line-ending regression. */
+    private static void validateBuildNotice(String markdown, String fileName, List<String> failures) {
+        int noticeStart = markdown.indexOf("\nNotice:\n");
+        int filesStart = markdown.indexOf("## Files in this checkpoint");
+        if (noticeStart < 0 || filesStart <= noticeStart) {
+            failures.add(fileName + ": missing bounded Notice section");
+        } else {
+            String notice = markdown.substring(noticeStart, filesStart);
+            int observations = matcherCount(Pattern.compile("(?m)^- ").matcher(notice));
+            if (observations < 1 || observations > 3) {
+                failures.add(fileName + ": Notice must contain one to three observations, found "
+                        + observations);
+            }
+        }
     }
 
     private static String markdownTableRow(String markdown, String criterion) {
