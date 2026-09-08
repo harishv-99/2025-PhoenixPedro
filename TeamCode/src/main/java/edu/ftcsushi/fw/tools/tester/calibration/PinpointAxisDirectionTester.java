@@ -16,7 +16,8 @@ import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
  * Step-0 bring-up tester for goBILDA Pinpoint odometry:
  * verify Sushi axis conventions match your physical robot motion.
  *
- * <p>Sushi conventions (robot/field planar pose):</p>
+ * <p>After X zeros the pose, keep the same facing direction for straight translation samples.
+ * In that reset-aligned frame:</p>
  * <ul>
  *   <li><b>+X</b> forward</li>
  *   <li><b>+Y</b> left</li>
@@ -25,7 +26,21 @@ import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
  *
  * <p>This tester guides you through three short samples (forward, left, rotate CCW)
  * and suggests which {@link PinpointOdometryPredictor.Config} fields to flip when signs
- * are inverted.</p>
+ * are inverted. A sufficient finite positive translation keeps the captured encoder direction;
+ * a negative translation recommends its opposite, including REVERSED to FORWARD. These enum
+ * values select encoder signs, not drive commands. The tester only displays advice: record it,
+ * rebuild with accepted configuration, and verify with a fresh robot-configured tester.</p>
+ *
+ * <p>Wait still for current-cycle Pinpoint READY pose evidence, then X zero. Translate straight
+ * forward and left without changing facing; perform the CCW check last. Before repeating
+ * translations after a turn, stop and X reset again. The tester compares field-coordinate deltas;
+ * it neither detects the person's actual motion direction nor compensates for turning during a
+ * translation sample. Heading advice remains separate from encoder sign and yaw scale.</p>
+ *
+ * <p>Completed per-axis samples remain visible until a replacement completes or X clears them.
+ * An active or interrupted replacement does not make those retained results current evidence.
+ * Missing READY pose cannot complete a new sample, and non-finite derived results produce no
+ * direction recommendation.</p>
  *
  * <h2>Controls (gamepad1)</h2>
  * <ul>
@@ -335,7 +350,9 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     private void render(Pose2d pose) {
         telemHeader("Pinpoint Axis Direction Check");
 
-        ctx.telemetry.addLine("Sushi pose convention: +X forward, +Y left, heading CCW+.");
+        ctx.telemetry.addLine("After X zero: +X forward, +Y left with facing unchanged; heading CCW+.");
+        ctx.telemetry.addLine("Wait still for READY, then X zero. Translate straight without changing facing.");
+        ctx.telemetry.addLine("Check CCW rotation last; X reset before translations after a turn.");
         ctx.telemetry.addLine("Push the robot by hand, then press the same key again to stop that sample.");
         ctx.telemetry.addLine("");
 
@@ -384,13 +401,15 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             ctx.telemetry.addLine("");
         }
 
-        // Completed results + suggestions.
-        ctx.telemetry.addLine("--- RESULTS ---");
+        // Completed historical results, never a claim about an unfinished replacement.
+        ctx.telemetry.addLine("--- LAST COMPLETED SAMPLES ---");
+        ctx.telemetry.addLine("Retained until a replacement completes or X clears; not the current attempt.");
         renderForward();
         renderLeft();
         renderRotate();
 
         ctx.telemetry.addLine("");
+        ctx.telemetry.addLine("Advice only: record, rebuild, then verify with a fresh robot-configured tester.");
         ctx.telemetry.addLine("Controls: Forward [A] | Left [Y] | Rotate CCW [B] | Reset [X]");
         telemUpdate();
     }
@@ -404,6 +423,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
 
         double dx = forwardResult.dxIn;
         ctx.telemetry.addData("  dx(in)", fmt(dx));
+        if (renderUnavailableIfNonFinite(forwardResult)) return;
 
         if (Math.abs(dx) < cfg.minTranslationInches) {
             ctx.telemetry.addLine("  -> Move farther (at least ~" + fmt(cfg.minTranslationInches) + " in)");
@@ -414,9 +434,8 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             ctx.telemetry.addLine("  -> OK: +X is forward");
         } else {
             ctx.telemetry.addLine("  -> WRONG SIGN: forward produced negative X");
-            ctx.telemetry.addLine("     Suggest: cfg.pinpoint.forwardPodDirection = "
-                    + "GoBildaPinpointDriver.EncoderDirection.REVERSED;");
         }
+        renderDirectionAdvice("cfg.pinpoint.forwardPodDirection", cfg.pinpoint.forwardPodDirection, dx > 0);
     }
 
     private void renderLeft() {
@@ -428,6 +447,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
 
         double dy = leftResult.dyIn;
         ctx.telemetry.addData("  dy(in)", fmt(dy));
+        if (renderUnavailableIfNonFinite(leftResult)) return;
 
         if (Math.abs(dy) < cfg.minTranslationInches) {
             ctx.telemetry.addLine("  -> Move farther (at least ~" + fmt(cfg.minTranslationInches) + " in)");
@@ -438,9 +458,8 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             ctx.telemetry.addLine("  -> OK: +Y is left");
         } else {
             ctx.telemetry.addLine("  -> WRONG SIGN: left produced negative Y");
-            ctx.telemetry.addLine("     Suggest: cfg.pinpoint.strafePodDirection = "
-                    + "GoBildaPinpointDriver.EncoderDirection.REVERSED;");
         }
+        renderDirectionAdvice("cfg.pinpoint.strafePodDirection", cfg.pinpoint.strafePodDirection, dy > 0);
     }
 
     private void renderRotate() {
@@ -452,6 +471,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
 
         double dDeg = Math.toDegrees(rotateResult.dHeadingRad);
         ctx.telemetry.addData("  dHeading(deg)", fmt(dDeg));
+        if (renderUnavailableIfNonFinite(rotateResult)) return;
 
         if (Math.abs(dDeg) < cfg.minRotationDeg) {
             ctx.telemetry.addLine("  -> Rotate more (at least ~" + fmt(cfg.minRotationDeg) + " deg)");
@@ -465,6 +485,31 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             ctx.telemetry.addLine("     Check Pinpoint mounting orientation, firmware axis settings,");
             ctx.telemetry.addLine("     and IMU alignment; yawScalar must remain positive.");
         }
+    }
+
+    /** Reject invalid derived sample arithmetic before any OK, sign advice, or assignment. */
+    private boolean renderUnavailableIfNonFinite(SampleResult result) {
+        if (Double.isFinite(result.dxIn) && Double.isFinite(result.dyIn)
+                && Double.isFinite(result.dHeadingRad)
+                && Double.isFinite(Math.toDegrees(result.dHeadingRad))) {
+            return false;
+        }
+        ctx.telemetry.addLine("  -> UNAVAILABLE: non-finite sample delta; no direction recommendation.");
+        return true;
+    }
+
+    /** Display a keep/change assignment relative to the immutable setup; never apply it. */
+    private void renderDirectionAdvice(String configField,
+                                       GoBildaPinpointDriver.EncoderDirection currentDirection,
+                                       boolean signAgrees) {
+        GoBildaPinpointDriver.EncoderDirection recommended = currentDirection;
+        if (!signAgrees) {
+            recommended = currentDirection == GoBildaPinpointDriver.EncoderDirection.FORWARD
+                    ? GoBildaPinpointDriver.EncoderDirection.REVERSED
+                    : GoBildaPinpointDriver.EncoderDirection.FORWARD;
+        }
+        ctx.telemetry.addLine("     " + (signAgrees ? "Keep: " : "Change: ") + configField
+                + " = GoBildaPinpointDriver.EncoderDirection." + recommended + ";");
     }
 
     private static String fmt(double v) {

@@ -1920,6 +1920,26 @@ public final class DocumentationLinksTest {
                 "optional advanced: powered and vision-assisted pod offsets",
                 "optional ekf comparison", "does **not** register an ekf entry",
                 "optional advanced: guided suite construction");
+        String axisCalibration = sectionBetween(calibration,
+                "## Pinpoint axis directions", "## Pinpoint pod offsets");
+        assertContainsAll("Axis directions explain the active sign experiment", axisCalibration,
+                "reported sign", "not commands to drive", "end value minus its start value",
+                "magnitude (size ignoring sign)",
+                "minTranslationInches = 6.0", "minRotationDeg = 20.0",
+                "before constructing", "copies the settings at construction",
+                "without changing its facing", "check rotation last", "press x again",
+                "current loop cycle", "moving only along the other axis does not count");
+        assertContainsAll("Axis recommendations are relative to the captured configuration",
+                axisCalibration,
+                "| `FORWARD` | Positive | Keep `FORWARD` |",
+                "| `FORWARD` | Negative | Change to `REVERSED` |",
+                "| `REVERSED` | Positive | Keep `REVERSED` |",
+                "| `REVERSED` | Negative | Change to `FORWARD` |",
+                "cfg.pinpoint.forwardPodDirection", "cfg.pinpoint.strafePodDirection",
+                "last completed samples", "historical results", "no new direction recommendation",
+                "does not apply or save", "fresh robot-configured tester",
+                "cannot tell which way a person actually pushed", "sensor that measures turning",
+                "yawScalar = null", "factory calibration", "must stay positive");
         assertContainsAll("Generic pod-offset solve is gated by its active defaults", calibration,
                 "can be the rookie manual path only when",
                 "`gobilda_4_bar_pod` resolution", "both `forward`",
