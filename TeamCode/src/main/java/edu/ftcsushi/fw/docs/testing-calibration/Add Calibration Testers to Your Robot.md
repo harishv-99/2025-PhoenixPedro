@@ -247,9 +247,12 @@ mappings, then perform the supervised hardware procedure.
 
 ## Record, rebuild, and verify
 
-The handoff is **record -> rebuild -> fresh robot-configured tester -> verify**. Record each accepted
-observation in your existing canonical configuration, rebuild, and open a newly built suite so its
-testers capture the changed values. Verify through the configured tester, then the production owner.
+The handoff is **record -> rebuild -> fresh robot-configured tester -> verify**. Use
+[Keep one calibration record](<Robot Calibration Tutorials.md#keep-one-calibration-record>) to connect
+the observed facts to the exact configuration being tested. Put a value being considered into your
+canonical configuration for a reviewed validation run, rebuild and deploy, then open a newly built
+suite so its testers capture the changed values. Deployment is not physical acceptance: verify
+through the configured tester and the production owner before accepting ordinary robot use.
 No menu entry saves results, changes your profile, or certifies physical calibration automatically.
 
 The basic integration is complete here. Return to the

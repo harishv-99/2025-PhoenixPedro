@@ -19,10 +19,10 @@ this is not a requirement to calibrate every device in order.
 | Stage | Use it when | Outcome |
 | --- | --- | --- |
 | **1. Probe and record** | You have the robot, even if you cannot edit its source. | Run the framework-only testers, isolate one fact, and record the exact observation or suggested value. |
-| **2. Rebuild and verify** | The robot profile owner can edit/deploy and the project supplies a fresh configured verifier for this fact. | Put the accepted fact in the canonical robot profile, rebuild, and verify it with that fresh robot-configured tester and then the production owner. |
+| **2. Rebuild and verify** | The robot profile owner can edit/deploy and the project supplies a fresh configured verifier for this fact. | Review a candidate (value to test), rebuild/deploy it in the canonical profile, then verify through the configured tester and production owner before acceptance. |
 | **3. Investigate an advanced question** | The ordinary path is already credible and you have a specific reason to go deeper. | Compare encoder representations, enable powered/vision-assisted pod calibration, compare an EKF, or construct a guided suite. |
 
-The rookie first path is Stage 1 followed by a handoff to the Stage-2 owner. Source access is
+Start with Stage 1, then hand off to the Stage-2 owner. Source access is
 optional for Stage 1 only. If you cannot edit and rebuild—or the project does not yet supply the
 configured verifier—preserve the recorded evidence for the profile owner and stop before claiming
 production verification. This page does not generate a robot-specific verifier from generic
@@ -61,17 +61,18 @@ every selection reconstructs a fresh tester `Config` from framework defaults.
 The required handoff is **record -> rebuild -> fresh robot-configured tester -> verify**:
 
 1. **Record** the exact displayed value, suggested assignment, device name, conditions, and the
-   observations that justified accepting it.
-2. **Rebuild** after the profile owner copies that fact into the canonical robot configuration.
+   observations that justify a reviewed trial, not final acceptance.
+2. **Rebuild** and deploy after the profile owner copies that candidate into the canonical robot configuration.
 3. **Open a fresh robot-configured tester supplied by the robot project.** Its suite factory creates
    a new owner and that owner snapshots its supplied configuration; an already-open tester cannot
    reload a changed profile.
 4. **Verify** the rebuilt value through that configured tester, then through the real mechanism,
    drivetrain, or localization owner. A repeatable generic probe alone is not this verification.
 
-Read [`Actuator bring-up`](<Actuator Bring-up.md>) before first motion. Direct controller/encoder
-experiments and custom suite construction are optional advanced work, not prerequisites for the
-ordinary calibration path.
+Use [one calibration record](<#keep-one-calibration-record>) to keep those stages together.
+
+Read [`Actuator bring-up`](<Actuator Bring-up.md>) before first motion. Controller/encoder
+experiments and custom suites are optional advanced work.
 
 ## Before you start
 
@@ -91,6 +92,65 @@ Each vision tester owns the selected camera until BACK or STOP closes it. Wait w
 `WAITING`; no visible tag is a different fact from camera readiness. If cleanup becomes uncertain,
 stop and restart the OpMode rather than selecting another owner. An empty fixed layout may still show
 raw detections, but it cannot produce a fixed-layout mount sample or field-pose correction.
+
+## Keep one calibration record
+
+**Question:** which value was tested, and what evidence justifies using it on this robot?
+
+Copy the [shared lab card](<../examples/Subsystem Experiments.md#copyable-lab-card-and-results-sheet>)
+once, then append the calibration facts below to that same record. Its question, safety plan,
+operator, evidence location, trial table, acceptance criterion, and decision stay in one place.
+You need only the copyable card, not the advanced flywheel example. Keep this record outside the
+Robot Controller; testers do not save it or change the profile. A profile edit is not an evidence sheet.
+
+A **candidate** is a value being considered, not yet proven for ordinary robot use. A **revision**
+identifies the exact code/configuration version tested; include any uncommitted edits, not just a
+commit name. **Fitting** uses observations to choose that value; **held-out** observations are reserved
+for checking it afterward. **Independent validation** checks the fixed candidate against a separately
+established physical reference, using those held-out observations. For example, compare a pose
+with marked floor locations, not with the same odometry or camera calculation being evaluated.
+
+Append only fields relevant to your question; write `not applicable` with a reason for others.
+An encoder-direction check needs no camera calibration data.
+
+```text
+Calibration facts — append to the shared lab card
+Device identity / FTC hardware name; actual OpMode and selected tester (generic or configured): ___
+Physical setup / robot reference point; coordinate frame and units: ___
+Current configured value -> exact candidate assignment: ___
+Probe or fitting trial IDs used to choose this candidate: ___
+Independent reference method / held-out validation trial IDs: ___
+Canonical source file + field; starting revision: ___
+Reviewed candidate trial: who reviewed it / which bounded check is permitted: ___
+Rebuilt and deployed revision / deployment confirmation: ___
+Fresh configured tester: identity / captured values checked / validation evidence: ___
+Production-owner check: identity / same configuration confirmed / evidence: ___
+Decision scope: this fact and setup only / still-unverified uses: ___
+If blocked: missing evidence, source access, or verifier / owner and next step: ___
+```
+
+Before trials, fill the shared card's criterion: the allowed error or required sign, conditions,
+and repetitions your team chose. Software defaults supply no physical pass threshold. Deploying a
+candidate permits only the reviewed trial, not ordinary robot use. Construct a fresh configured
+suite after rebuilding; compare its captured facts with the candidate, then perform the independent
+check. Not every screen prints every setting: for an unprinted value, record the configuration-to-tester
+mapping from the deployed source revision. Do not infer it from a plausible result. If
+captured values differ, stop and resolve the source/deployment mismatch. Run the separate
+production-owner check under its reviewed safety plan before accepting
+production use. Neither a successful build nor a guided menu's `OK` replaces these observations.
+
+Use the card's **Accept / Revise and repeat / Reject** decision for its stated question and revision.
+If a required source edit, deployment confirmation, configured verifier, or independent reference
+is missing, record **blocked**, the missing step, and who can supply it; do not mark acceptance.
+Keep rejected results and reasons; do not use a rejected candidate in ordinary robot operation.
+If validation data is used to retune the candidate, it becomes
+fitting data; the revised value needs new independent checks. A nonzero mount or offset is not proof.
+
+After a relevant hardware, pod setting, mount, layout, image size, target model, or configuration
+change, mark the affected acceptance **needs retest**. Preserve the old record as history, clear any
+affected robot-owned acknowledgement, and repeat the reviewed handoff. Unrelated checks remain
+separate: a blocked camera check does not invalidate a verified encoder sign. This record never
+certifies the whole robot. Next, choose the one physical procedure below that answers your question.
 
 ## Actuator direction and safe endpoints
 
@@ -301,7 +361,8 @@ again after fresh evidence becomes available.
 5. When a usable average is shown, record the printed `CameraMountConfig.ofDegrees(...)`, the
    selected device and tag, physical pose, sample count, sample-to-average spread, residual, and
    range comparison. Record this setup's result before moving or editing to another setup.
-6. Put the accepted mount in the canonical robot profile, rebuild, and open a fresh
+6. Review the candidate mount for a configured trial, put it in the canonical robot profile,
+   rebuild and deploy, and open a fresh
    robot-configured AprilTag-localization tester. Verify the field pose there. Reopening the generic
    camera calibrator can check repeatability, but cannot prove that production consumed the value.
 
@@ -355,6 +416,70 @@ acceptance limit. The team must compare the solve with measured geometry and rep
 
 Update the robot-owned camera mount profile when source is available. Otherwise preserve the exact
 record for that owner; do not mark the production camera calibrated from the generic screen alone.
+
+### Compare camera estimates with measured locations
+
+**Optional camera depth:** can the fixed candidate predict locations it was not fitted to?
+**Fitting** uses observations to choose a value. **Held-out** observations are reserved for checking
+it afterward; they were not used to choose it. This is an extension of the same
+[calibration record](<#keep-one-calibration-record>), not another form or tester.
+
+1. Record each mount-fitting batch separately, such as `F1`, before changing the entered pose or tag.
+   Record the selected device/backend, image size and matching intrinsics (lens calibration), pipeline
+   if applicable, tag IDs/size/layout, known robot placement, and exact candidate mount/revision.
+2. Freeze that candidate, rebuild/deploy, and create the configured AprilTag-localization tester.
+   At new, independently measured stationary placements, record reference field X/Y/yaw, displayed
+   `fieldToRobot`, and `Pose age`. Compare like units: that screen prints inches and degrees, while
+   stored angles are radians. Keep these validation trials separate from `F1`.
+3. Apply the team's predeclared position and heading criteria. Repeated close answers show
+   consistency, not necessarily accuracy. If the candidate changes, reserve new validation placements.
+
+The mount screen's **residual**, or remaining mismatch, compares an observation with the geometry
+predicted by its captured-average mount at the entered setup. `Avg residual` and `Range check` are
+not independently measured field errors. The AprilTag-localization screen's A button stores a
+published pose; its sample count does not certify distinct fresh images. Check the displayed pose
+and its age after each placement; do not treat repeated button presses as independent camera frames.
+
+#### Optional: check a ball's estimated position
+
+**Projection** turns an image direction into an estimated physical point using camera placement
+and a target-height assumption. A valid camera mount alone does not prove that point is correct.
+There is no maintained generic floor-object projection-validation tester. Name your robot's actual
+configured observation/display source in the record. If it is absent, mark this check **blocked**
+until supplied; the AprilTag screens do not verify ball locations. The
+[spatial reference](<../drive-vision/Spatial Queries.md>) explains the existing observation contract,
+not a ready calibration OpMode.
+
+Record the source's image size/intrinsics, backend/pipeline, fixed mount/configuration revision,
+target point and assumed height, image capture time, and robot pose at that capture time. The
+**target point** means what the estimate represents, such as a ball's center, not its floor contact.
+Compare that same point with independently measured locations in the same frame. If the field
+conversion uses robot localization, this checks the combined path; localization error can contribute.
+It does not isolate a camera fault. Keep shooter/intake position and aiming alignment as a separate
+tool check; neither a mount solve nor a point estimate proves a successful pickup or shot.
+
+**Illustrative floor-object validation table — invented arithmetic, not a physical run or pass.**
+Suppose mount candidate `M1` was chosen using batch `F1`; none of `V1`–`V3` below chose it. The robot
+is level at independently known field pose `(0, 0, 0)`, so field +X is forward and +Y is left here.
+The example point is a modeled ball center `2 in` above the floor—an illustrative assumption, not a
+recommended height or proof that an image center sees the ball's physical center. A real record must
+identify its actual camera setup and configured source; this table provides neither configuration
+values nor permission to run a robot.
+
+| Check | Distance / image position | Measured field point (in) | Estimated field point (in) | Error (dX, dY) (in) | Position error (in) |
+| --- | --- | --- | --- | --- | --- |
+| V1 | Near / left | (24, 12) | (27, 16) | (+3, +4) | 5 |
+| V2 | Middle / center | (48, 0) | (51, 4) | (+3, +4) | 5 |
+| V3 | Far / right | (72, -12) | (75, -8) | (+3, +4) | 5 |
+
+**Read the table:** subtract measured from estimated coordinates: `dX = estimated X - measured X`
+and likewise for Y. Position error is `sqrt(dX*dX + dY*dY)`, where `sqrt` means square root: the
+straight-line separation in the field's horizontal plane. For V1, `27 - 24 = +3`, `16 - 12 = +4`,
+and `sqrt(9 + 16) = 5 in`.
+All three estimates miss in the same +X/+Y direction, so agreement between them would hide a
+systematic offset. The table cannot identify its cause or say whether `5 in` meets a team's criterion.
+Real checks should span the distances and image positions the robot will use, with separately
+recorded heading errors for robot-pose checks; do not mix mount, robot-pose, and ball-position errors.
 
 ## AprilTag-only localization check
 
@@ -455,8 +580,9 @@ Pinpoint `READY` pose read in the current loop cycle.
    then press Y again.
 4. Check rotation last: press B, rotate the robot CCW by hand at least `20°`, then press B again.
    Before repeating translations after any turn, stop and press X again.
-5. Record each delta and suggested config assignment. Put accepted changes in the robot Pinpoint
-   profile, rebuild, then repeat all three samples in a fresh robot-configured tester.
+5. Record each delta and suggested config assignment. Review the candidate changes for a configured
+   trial, put them in the robot Pinpoint profile, rebuild and deploy, then repeat all three samples
+   in a fresh robot-configured tester before accepting the signs.
 
 ### Read the recommendation
 
@@ -499,6 +625,16 @@ setting to repair it. Leave `yawScalar = null` to use factory calibration; if yo
 
 Set a robot-owned verification acknowledgement only after the rebuilt, robot-configured pass has
 checked all three axes on real hardware. The generic tester neither sets nor persists that flag.
+
+### Example record: axis directions
+
+In the [same record](<#keep-one-calibration-record>), name the physical hand motion, captured encoder
+setting, measured delta, and exact recommendation. For an illustrative forward test starting with
+`REVERSED`, a sufficiently large negative X delta means change to `FORWARD`, not copy `REVERSED`
+again. Preserve that trial, review the new assignment, rebuild/deploy, and repeat with a fresh
+configured tester showing `FORWARD`. A positive X delta on the new instructed forward motion
+supports that axis sign; complete left and CCW checks before acknowledging all three. No real run
+is claimed by this example, and sign agreement alone does not prove distance accuracy.
 
 ## Pinpoint pod offsets
 
@@ -552,7 +688,8 @@ into the offset recommendation; the tool cannot distinguish it from incorrect po
    again to compute. Press B at any time to abort.
 4. Record both recommended offset assignments and the observed heading change. Repeat the sample;
    reject a result that does not stabilize or fails the solve gate.
-5. Put the accepted offsets in the canonical Pinpoint profile, rebuild, and run a fresh
+5. Review the candidate offsets for a configured trial, put them in the canonical Pinpoint profile,
+   rebuild and deploy, and run a fresh
    robot-configured pod-offset tester. Confirm the current offsets shown there are the rebuilt
    values and that the repeated recommendations differ from them by only a small, stable amount
    under your team's physical acceptance criterion.
@@ -579,6 +716,18 @@ the configured values that should become small, not the offsets themselves.
 
 Set a robot-owned “offsets calibrated” acknowledgement only after the rebuilt configured pass is
 accepted. The generic tester prints assignments but persists neither the offsets nor the flag.
+
+### Example record: manual pod offsets
+
+Record the verified pod resolution/directions, fixed robot reference point, floor mark and physical
+recentering method, heading change, current offsets, and exact absolute replacement recommendations.
+For example, current `4.0 in` and recommended `4.5 in` means try `4.5 in`, not `8.5 in`. On a rebuilt
+configured trial showing `4.5 in`, a new recommendation of `4.6 in` differs by `+0.1 in`; compare that
+difference with the team's criterion. These numbers illustrate arithmetic, not measured acceptance.
+Repeat with independently checked physical placement; pressing X to zero software is not recentering
+the robot. Small repeated differences alone do not prove correct geometry if every trial repeats the
+same setup error. Keep failed trials and production-owner verification in the
+[same record](<#keep-one-calibration-record>).
 
 ## Pinpoint plus field corrections
 
