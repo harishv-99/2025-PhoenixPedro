@@ -49,7 +49,7 @@ public final class OdometryCorrectionFusionEstimatorQualityTest {
             assertPose(fixture, 2.0 * quality, -quality, 0.1 * quality);
             assertEquals(1, fixture.estimator.getAcceptedCorrectionCount());
             assertEquals(0, fixture.estimator.getRejectedCorrectionCount());
-            assertEquals(1, fixture.estimator.getProjectedCorrectionCount());
+            assertEquals(1, fixture.estimator.getNonReplayedCorrectionCount());
             assertEquals(0, fixture.estimator.getReplayedCorrectionCount());
             assertEquals(segment, fixture.estimator.trajectorySegmentId());
         }
@@ -312,7 +312,7 @@ public final class OdometryCorrectionFusionEstimatorQualityTest {
         assertPose(fixture, 20.40, 0.0, 0.0);
         assertQuality(fixture, 0.40);
         assertEquals(1, fixture.estimator.getReplayedCorrectionCount());
-        assertEquals(0, fixture.estimator.getProjectedCorrectionCount());
+        assertEquals(0, fixture.estimator.getNonReplayedCorrectionCount());
         assertTrue(fixture.estimator.wasLastCorrectionReplay());
         assertSame(capture, fixture.estimator.getLastAcceptedCorrectionMeasurementTimestamp());
         assertEquals(0.0, fixture.estimator.getLastCorrectionAccepted().secondsSince(fixture.now()), 0.0);
@@ -337,7 +337,7 @@ public final class OdometryCorrectionFusionEstimatorQualityTest {
 
         assertQuality(fixture, 0.40);
         assertPose(fixture, 0.80, -0.40, 0.04);
-        assertEquals(1, fixture.estimator.getProjectedCorrectionCount());
+        assertEquals(1, fixture.estimator.getNonReplayedCorrectionCount());
         assertEquals(0, fixture.estimator.getReplayedCorrectionCount());
         fixture.advanceTo(1.10);
         fixture.predictor.publishNone(fixture.now());

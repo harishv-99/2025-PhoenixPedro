@@ -114,6 +114,12 @@ This is the interface most consumers want:
 - targeting
 - telemetry
 
+Its `PoseEstimate` separates three questions: **availability** (`hasPose`) says whether there is a
+pose, **age** says how old its supporting evidence is, and **quality** scores that evidence under
+the estimator's rules. An available, high-quality pose can still be too old for a particular
+action. Existing guidance and spatial-query consumers check age and quality separately; reading
+the pose again does not refresh it. [The optional latency section](<#7-correctedglobal-localization-and-latency-compensation>) explains how the timestamp is chosen when measurements are combined.
+
 Every `AbsolutePoseEstimator` is also a `HeadingEstimator`. Its default heading view projects the
 cached pose yaw, availability, quality, and timestamp without advancing localization again. A
 consumer that needs only heading—such as field-relative manual drive—therefore avoids depending on
@@ -551,6 +557,11 @@ localization. The stable `lookupSource()` is a borrowed read-only projection, so
 on that projection cannot clear the concrete owner's history. Only `poseHistory.reset()` clears it
 and releases its clock binding for another lifecycle.
 
+Recording also requires evidence at the current loop time. An available corrected pose with an
+older timestamp is not a new current sample: the history records a gap, preserving eligible older
+entries but refusing to interpolate across that gap. A large quality score cannot override this
+time check.
+
 The default lookup horizon is 0.50 seconds with a hard bound of 128 samples; each successful record
 heartbeat also prunes samples beyond that horizon. Interpolation spans at most 0.10 seconds, 12
 inches of translation, and pi/2 radians of shortest-path yaw. Configuration is a mutable authoring
@@ -628,33 +639,49 @@ those software baselines are intended. Neither proves a physically calibrated ca
 
 **Latency** is the delay between capturing an observation and using it. The robot may move during
 that delay, so a camera result should not be treated as a fresh measurement of its current pose.
+**Capture time** is when the camera observed the robot; **delivery time** is when the loop receives
+that result. The combined estimate's **supported pose time** is the endpoint reached by evidence
+the estimator actually incorporates. It can be earlier than delivery time. One composite
+timestamp does not promise that every coordinate was independently refreshed.
 
 ```mermaid
 sequenceDiagram
-    accTitle: A delayed camera observation keeps its capture time
-    accDescr: The camera captures a frame, odometry records intervening motion, and the frame arrives later. When usable history exists, localization corrects the estimate at capture time and replays motion toward the current loop.
+    accTitle: Supported pose time can precede camera delivery time
+    accDescr: In this illustrative ordered timeline, a camera captures at t0 and usable recorded motion reaches t1. The frame arrives at t2, after t1. Localization corrects at t0 and replays only the supported motion through t1, publishing t1 rather than inventing evidence at t2.
     participant Camera
     participant Odometry
     participant Localization
     Camera->>Camera: Capture frame at t0
-    Odometry->>Localization: Record motion after t0
-    Camera->>Localization: Deliver frame at t1, retaining t0
-    Localization->>Localization: Correct at t0 when usable history exists
-    Localization->>Localization: Replay recorded motion toward t1
+    Odometry->>Localization: Usable recorded motion from t0 through t1
+    Camera->>Localization: Deliver at t2, retaining capture time t0
+    Localization->>Localization: Correct at t0 and replay motion through t1
+    Localization->>Localization: Publish supported pose time t1, not delivery time t2
 ```
 
-In words: the image describes capture time `t0`, even if it arrives at `t1`. With usable history,
-the estimator adjusts the earlier pose and reapplies the recorded intervening motion. The result
-is still an estimate, not proof of exact physical position. Missing or invalid history is handled
-by the selected estimator's explicit policy, not invented by the diagram.
+In this illustrative timeline, `t0 < t1 < t2`: the image describes `t0`, recorded motion supports
+`t1`, and delivery occurs at `t2`. **Replay** means adjusting the earlier estimate and reapplying
+usable recorded motion. The result still represents `t1`; it is not proof of exact physical
+position or of movement between `t1` and `t2`. With motion evidence through the current loop, the
+result can instead represent the current loop. If a correction is older than the state being
+updated and no continuous usable history connects those times, both estimators reject it rather
+than assume that the robot stood still.
 
-When you combine a `MotionPredictor` with an absolute correction source, Sushi's corrected estimators do two important reliability jobs:
+When you combine a `MotionPredictor` with an absolute correction source, Sushi's corrected estimators do three important reliability jobs:
 
 - deduplicate repeated absolute measurements by measurement timestamp
 - consume each predictor motion interval once by its end timestamp, independently of cycle guards
-- when history is available, apply the correction at the measurement timestamp and replay predictor motion forward to the current loop
+- align an older correction through usable history to the supported pose time, never merely to its delivery time
 
-That is more trustworthy than repeatedly blending the same delayed frame against "now".
+A correction whose capture time is at or after both the represented state and any usable predictor
+endpoint can be applied directly to the retained estimate. It does not reconstruct any unobserved
+motion. A camera-only initialization therefore uses capture time, not acceptance time, even when
+the frame arrives late. **Projection** is the alternative of moving a camera pose to a supported
+later time using recorded motion before blending it; it also needs that motion evidence.
+
+`enableLatencyCompensation` defaults to `true`: supported replay, projection, and direct updates
+are eligible. Setting it to `false` permits only eligible direct updates, not blending an older
+camera pose into a newer state without alignment. An age limit and enough configured history
+capacity are necessary checks, but cannot supply missing startup samples or fill a motion gap.
 
 These measurements carry one `LoopTimestamp`, not a separate timestamp number plus an age or reset
 counter. The value keeps its `LoopClock` and reset epoch attached internally. Estimators derive age
@@ -669,6 +696,14 @@ An unavailable timestamp means that no truthful measurement time exists. It is n
 placed in the current clock epoch. Passing a timestamp from a different `LoopClock` is a wiring
 error: keep one stable loop clock for the complete OpMode.
 
+“In the current clock epoch” does not mean “measured this loop.” A predictor that keeps returning
+the same old sample can leave an available corrected estimate with its old timestamp. Existing
+consumer age limits decide whether to use it. If the predictor is missing or invalid and no new
+correction incorporates pose evidence, the estimators publish no pose while retaining internal
+recovery state. Conversely, newly acquired stationary samples can be fresh: a coherent,
+positive-duration motion interval with zero movement still advances time. Unchanged coordinates
+alone cannot distinguish stationary motion from frozen evidence.
+
 A pose can be available without being equally useful for every action. Its `PoseEstimate.quality`
 is a score from `0` to `1`, with larger values meaning better evidence according to that estimator's
 rules. It is a **heuristic**: a useful software rule, not a measured probability that the robot's
@@ -680,7 +715,7 @@ Typical Fusion setup:
 OdometryCorrectionFusionEstimator.Config fusionCfg =
         OdometryCorrectionFusionEstimator.Config.defaults();
 fusionCfg.maxCorrectionAgeSec = 0.35;
-fusionCfg.predictorHistorySec = 1.0;  // must cover maxCorrectionAgeSec when latency compensation is enabled
+fusionCfg.predictorHistorySec = 1.0;  // capacity must cover maxCorrectionAgeSec; usable samples are still required
 fusionCfg.correctionConfidenceHoldSec = 0.75;  // the default quality-contribution duration
 
 OdometryCorrectionFusionEstimator corrected =
@@ -720,11 +755,27 @@ retained quality and restarts the hold, even if it is weaker. Rejected or repeat
 Disabling corrections stops new acceptance; an earlier contribution can still finish fading.
 
 This score is separate from how far Fusion moves the estimated pose toward a camera observation.
-Its position and heading gains are each multiplied by the accepted correction's quality; predictor
-quality is not another blending weight. Changing the hold changes reporting, not those pose gains.
+A **gain** determines how much of the gap toward that observation to close. Fusion multiplies
+its configured position and heading gains by the accepted correction's quality, then limits each
+result to the range `0` to `1`. These are the **effective gains**: `0` ignores that component of
+the observation, while `1` uses it completely. Predictor quality is not another blending weight.
+Changing the hold changes reporting, not those pose gains.
+
+Acceptance and new pose evidence are different facts. If both effective Fusion gains are zero,
+an ordinary accepted correction still updates acceptance diagnostics and the quality hold, but
+does not advance pose time or restore missing-predictor availability. A positive effective gain
+can incorporate new evidence even when the measured pose agrees exactly. Check
+`estimate.timestamp.ageSec(clock)` separately from its score; a new acceptance time or large
+quality value cannot make old pose evidence fresh.
+
 A manual `setPose(...)` asserts a known pose and clears the earlier correction contribution. Its
 immediate score uses the predictor's reported quality when it reports a pose, otherwise `1.0`;
 that fallback expresses the caller's assertion, not new camera evidence or proven accuracy.
+A manual anchor uses the owner's last actual publication-loop boundary, not an aged estimate's
+evidence time; before the first publication its time is unavailable. Re-reading a cache does not
+move that boundary. An automatic correction may be retained locally at an older supported time,
+but can be pushed through `PoseResetter` only when that endpoint is current. That reset API has
+no historical-time argument and must not turn an old correction into a present assertion.
 
 Optional EKF setup: an **extended Kalman filter** tracks uncertainty as well as an estimate.
 Its covariance values describe modeled uncertainty, not measured physical error. EKF uses
@@ -746,26 +797,43 @@ CorrectedPoseEstimator corrected =
 Notes:
 
 - `predictorHistorySec` must be at least `maxCorrectionAgeSec` when latency compensation is enabled;
-  active configuration rejects a shorter history rather than silently accepting unreplayable frames.
+  active configuration rejects a shorter capacity. An otherwise fresh frame can still be rejected
+  when actual history is missing, evicted, or crosses an unsupported motion gap.
+- EKF's `projectedCorrectionPositionStdPerSec` and `projectedCorrectionHeadingStdPerSec` retain
+  conservative age-based uncertainty for eligible delayed non-replayed updates. Their defaults
+  are `4.0 in/s` and `12 degrees/s` (stored in radians/s); change them on `ekfCfg` before
+  construction or under `locCfg.estimation.correctionEkf`. They do not authorize a missing-history
+  fallback or measure physical error. Admitted quality zero is finite measurement uncertainty in
+  EKF, not automatically a zero-weight update.
 - corrected estimators consume an explicit `MotionDelta` from the predictor instead of
   reverse-engineering motion from two unrelated pose snapshots.
 - repeated same-cycle updates cannot apply that delta or EKF process covariance twice, and a retained
   equal/older predictor timestamp does not clear valid replay history.
-- predictor pose evidence must be current and finite. A claimed `MotionDelta` additionally needs
-  finite planar components/quality, positive coherent duration, and a current end timestamp;
-  `hasDelta == false` remains valid absence. Without current predictor evidence or a correction
-  accepted in that update, the estimators may retain internal recovery state but publish no pose.
+- predictor pose evidence must be finite and belong to the current clock epoch. A claimed
+  `MotionDelta` additionally needs finite planar components/quality, positive coherent duration,
+  and an end timestamp matching the latest predictor sample. `hasDelta == false` remains valid
+  absence, but a newer `MotionDelta.none(...)` alone does not move an already-corrected estimate
+  forward except through a supported baseline/reacquisition path.
 - correction timestamps must belong to the current clock epoch. Unavailable/materially-future
   timestamps do not advance the watermark; duplicate/out-of-order frames retain their skip
   classification; a strictly newer stale frame is rejected once. `maxCorrectionAgeSec == 0`
   inclusively accepts only a current-time correction.
-- every accepted/manual pose anchor excludes predictor motion from before that anchor. When the
+- every incorporated correction/manual pose anchor excludes predictor motion from before that anchor. When the
   corrected pose is pushed into the predictor, both baselines move together. With push-back
   disabled, the estimator derives the first later motion from a predictor pose captured at or
   after the anchor; if no such pose exists yet, the first interval that straddles the anchor is
   consumed only as a new baseline rather than risking replay of its pre-anchor prefix.
 - `PoseEstimate` and `MotionDelta` expose `LoopTimestamp` values; derive age or duration from those
   values instead of retaining a second scalar age.
+
+Correction diagnostics separate accepted-loop time (`lastCorrectionAccepted`) from camera
+capture time (`lastAcceptedCorrectionMeasurementTimestamp`) and the pose's own timestamp.
+`acceptedCorrectionCount` is the sum of `replayedCorrectionCount` and
+`nonReplayedCorrectionCount`; the latter includes direct and supported projected updates, not
+just projections. `lastCorrectionUsedReplay` describes the last accepted correction and is not
+replaced by a rejected, duplicate, or out-of-order candidate. Lifecycle clears can clear that
+last-accepted status without erasing lifetime counts. None of these counters proves freshness,
+physical accuracy, or permission to drive.
 
 ---
 
@@ -845,9 +913,9 @@ When AprilTag-based global localization feels wrong, work down this list:
 3. trusted `TagLayout` matches the field you are actually on
 4. raw selected-tag observations look sane in the tester
 5. raw `AprilTagPoseEstimator` solves look sane before trusting the corrected/global estimator
-6. `predictorHistorySec` is large enough for accepted correction age when latency compensation is enabled
+6. `predictorHistorySec` is large enough for accepted correction age when latency compensation is enabled, and actual usable history covers the delayed interval
 7. direct Limelight field pose, if enabled, stays reasonable while the robot is moving
-8. corrected/global telemetry shows accepted corrections rather than repeated rejection or duplicate-frame skipping
+8. corrected/global telemetry distinguishes accepted, rejected, and skipped frames; pose age and quality independently satisfy the action's requirements
 
 The intended tester progression is:
 

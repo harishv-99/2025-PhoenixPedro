@@ -62,15 +62,21 @@ public interface AbsolutePoseEstimator extends HeadingEstimator {
      * Returns the most recent absolute field pose estimate.
      *
      * <p>This method must be safe to call multiple times between {@link #update(LoopClock)} calls.
-     * Callers should always check {@link PoseEstimate#hasPose} before using the returned pose for
-     * control.</p>
+     * Availability is not sufficient control evidence: callers also apply their action's
+     * timestamp-age and quality requirements. A retained available pose can be old even when
+     * this cycle's update succeeds.</p>
      *
-     * <p>Common usage:</p>
+     * <p>Common usage after choosing {@code maxAgeSec} and {@code minQuality} for this action;
+     * neither value is a universal robot-safety threshold:</p>
      * <pre>
+     * // The lifecycle owner updates before downstream consumers.
      * estimator.update(clock);
      * PoseEstimate est = estimator.getEstimate();
-     * if (est.hasPose) {
-     *     // use est.toPose2d() for guidance / targeting / telemetry
+     * if (est.hasPose
+     *         &amp;&amp; est.timestamp.isFresh(clock, maxAgeSec)
+     *         &amp;&amp; Double.isFinite(est.quality)
+     *         &amp;&amp; est.quality &gt;= minQuality) {
+     *     // Use est.toPose2d() subject to the action's remaining control checks.
      * }
      * </pre>
      *

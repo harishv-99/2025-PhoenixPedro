@@ -791,10 +791,10 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
                 stats.rejectedCorrectionCount
         );
         telemetry.addData(
-                "  Replay / projected",
+                "  Replayed / non-replayed",
                 "%d / %d",
                 stats.replayedCorrectionCount,
-                stats.projectedCorrectionCount
+                stats.nonReplayedCorrectionCount
         );
         telemetry.addData(
                 "  Skip dup / old",

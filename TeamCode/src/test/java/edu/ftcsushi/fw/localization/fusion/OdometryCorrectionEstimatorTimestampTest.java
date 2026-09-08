@@ -54,7 +54,7 @@ public final class OdometryCorrectionEstimatorTimestampTest {
         CorrectionStats stats = fixture.estimator.getCorrectionStats();
         assertEquals(1, stats.acceptedCorrectionCount);
         assertEquals(1, stats.replayedCorrectionCount);
-        assertEquals(0, stats.projectedCorrectionCount);
+        assertEquals(0, stats.nonReplayedCorrectionCount);
         assertTrue(stats.lastCorrectionUsedReplay);
         assertSame(measurementTimestamp, stats.lastAcceptedCorrectionMeasurementTimestamp);
         // Predictor interpolation reconstructs x=15 at the half-second frame. Correct to x=17,
@@ -83,7 +83,7 @@ public final class OdometryCorrectionEstimatorTimestampTest {
         CorrectionStats stats = estimator.getCorrectionStats();
         assertEquals(1, stats.acceptedCorrectionCount);
         assertEquals(1, stats.replayedCorrectionCount);
-        assertEquals(0, stats.projectedCorrectionCount);
+        assertEquals(0, stats.nonReplayedCorrectionCount);
         assertTrue(stats.lastCorrectionUsedReplay);
         assertSame(measurementTimestamp, stats.lastAcceptedCorrectionMeasurementTimestamp);
         // The replay comparison must occur at interpolated x=15, so the x=17 frame has a

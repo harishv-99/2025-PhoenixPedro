@@ -8,7 +8,9 @@ import edu.ftcsushi.fw.core.time.LoopTimestamp;
  * <p>This intentionally captures only the common, high-level behavior that testers and robot code
  * may want regardless of whether the underlying estimator is the lightweight complementary fusion
  * path or a more advanced uncertainty-aware estimator. It is <em>not</em> a full dump of every
- * internal filter variable.</p>
+ * internal filter variable. Accepted corrections partition into replayed and non-replayed counts.
+ * Acceptance is not itself proof of a newly incorporated pose: consumers still inspect the
+ * estimate's availability, evidence timestamp, and quality.</p>
  */
 public final class CorrectionStats {
 
@@ -33,23 +35,36 @@ public final class CorrectionStats {
      */
     public final int replayedCorrectionCount;
     /**
-     * Number of accepted corrections that fell back to a projected-now path.
+     * Number of accepted corrections that did not use measurement-time replay.
+     *
+     * <p>This includes direct updates and supported motion-aligned projections; it does not
+     * promise that every counted correction was projected to the current loop.</p>
      */
-    public final int projectedCorrectionCount;
+    public final int nonReplayedCorrectionCount;
     /**
-     * Loop timestamp when a correction was last accepted, or unavailable if never.
+     * Loop timestamp when a correction was last accepted, or unavailable before acceptance or
+     * after the corresponding lifecycle state is cleared. This is not the pose's evidence time.
      */
     public final LoopTimestamp lastCorrectionAccepted;
     /**
-     * Measurement timestamp of the most recently accepted correction, or unavailable if never.
+     * Measurement timestamp of the most recently accepted correction, or unavailable before
+     * acceptance or after the corresponding lifecycle state is cleared.
      */
     public final LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp;
     /**
-     * Measurement timestamp of the most recently evaluated correction, or unavailable if never.
+     * Time boundary used to skip already-evaluated or pre-rebase corrections.
+     *
+     * <p>Normally this is the most recently evaluated measurement's capture time. A predictor
+     * rebase can instead set it to the observed rebase's loop boundary to exclude older-segment
+     * frames. It is unavailable before evaluation or after a temporal clear; it is not itself
+     * evidence that a correction was captured or accepted at that time.</p>
      */
     public final LoopTimestamp lastEvaluatedCorrectionTimestamp;
     /**
      * Whether the most recently accepted correction used measurement-time replay.
+     *
+     * <p>Rejected, duplicate, and out-of-order candidates do not replace this value. It is false
+     * before acceptance and after the corresponding lifecycle state is cleared.</p>
      */
     public final boolean lastCorrectionUsedReplay;
 
@@ -61,7 +76,7 @@ public final class CorrectionStats {
                            int skippedDuplicateCorrectionCount,
                            int skippedOutOfOrderCorrectionCount,
                            int replayedCorrectionCount,
-                           int projectedCorrectionCount,
+                           int nonReplayedCorrectionCount,
                            LoopTimestamp lastCorrectionAccepted,
                            LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp,
                            LoopTimestamp lastEvaluatedCorrectionTimestamp,
@@ -71,7 +86,7 @@ public final class CorrectionStats {
         this.skippedDuplicateCorrectionCount = skippedDuplicateCorrectionCount;
         this.skippedOutOfOrderCorrectionCount = skippedOutOfOrderCorrectionCount;
         this.replayedCorrectionCount = replayedCorrectionCount;
-        this.projectedCorrectionCount = projectedCorrectionCount;
+        this.nonReplayedCorrectionCount = nonReplayedCorrectionCount;
         if (lastCorrectionAccepted == null
                 || lastAcceptedCorrectionMeasurementTimestamp == null
                 || lastEvaluatedCorrectionTimestamp == null) {
@@ -103,7 +118,7 @@ public final class CorrectionStats {
                 ", skippedDuplicateCorrectionCount=" + skippedDuplicateCorrectionCount +
                 ", skippedOutOfOrderCorrectionCount=" + skippedOutOfOrderCorrectionCount +
                 ", replayedCorrectionCount=" + replayedCorrectionCount +
-                ", projectedCorrectionCount=" + projectedCorrectionCount +
+                ", nonReplayedCorrectionCount=" + nonReplayedCorrectionCount +
                 ", lastCorrectionAccepted=" + lastCorrectionAccepted +
                 ", lastAcceptedCorrectionMeasurementTimestamp=" + lastAcceptedCorrectionMeasurementTimestamp +
                 ", lastEvaluatedCorrectionTimestamp=" + lastEvaluatedCorrectionTimestamp +

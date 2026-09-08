@@ -919,7 +919,7 @@ public final class OdometryCorrectionEstimatorCycleSafetyTest {
         assertEquals(expected.skippedOutOfOrderCorrectionCount,
                 actual.skippedOutOfOrderCorrectionCount);
         assertEquals(expected.replayedCorrectionCount, actual.replayedCorrectionCount);
-        assertEquals(expected.projectedCorrectionCount, actual.projectedCorrectionCount);
+        assertEquals(expected.nonReplayedCorrectionCount, actual.nonReplayedCorrectionCount);
         assertSame(expected.lastCorrectionAccepted, actual.lastCorrectionAccepted);
         assertSame(expected.lastAcceptedCorrectionMeasurementTimestamp,
                 actual.lastAcceptedCorrectionMeasurementTimestamp);
