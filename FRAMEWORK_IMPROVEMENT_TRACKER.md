@@ -235,7 +235,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Done | Capture-matched raw/tag endpoints and distinct-frame acquisition verified; user approved the reviewed diff and exact branch/remote/master publication. |
 | 122 | CAL-07 | Correct direction recommendations | Done | Relative keep/opposite advice, finite-result guards, historical labels, and beginner guide reviewed; combined commit/push/PR/merge authorization recorded. |
 | 123 | CAL-08 | Verify pod-offset mathematics independently | Done | Local heading-order/finite-result repair, 15 independent geometry tests, and teaching corrections reviewed and publication authorized; 153 focused checks pass. Physical adoption remains unverified. |
-| 124 | CAL-09 | Strengthen camera-mount sample evidence | Proposed | Prove six-component geometry and audit sample identity, replay, invalid data, and angle averaging. |
+| 124 | CAL-09 | Strengthen camera-mount sample evidence | Done | Fresh fixed-setup captures and rotation-aware mean reviewed; 96 focused tests pass. Manual review and exact-destination publication authorized 2026-09-08. |
 | 125 | CAL-10 | Make calibration acceptance reproducible | Proposed | Extend the existing record/rebuild/configured-retest handoff with a compact independent-validation record. |
 | 126 | TEST-02 | Add deterministic localization robustness scenarios | Proposed | Exercise real estimators against independent synthetic truth and report error and recovery metrics. |
 | 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Proposed | Use the robustness benchmark to evaluate bounded policy for predictor-yaw reuse and shared vision assumptions. |
@@ -30986,8 +30986,18 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### CAL-09 - Strengthen camera-mount sample evidence
 
-- **Status:** **Proposed**.
-- **Evidence and owners:** `fw/tools/tester/calibration/CameraMountCalibrator.java` solves
+- **Status:** **Done**. The user approved the reviewed implementation and exact-destination
+  publication on 2026-09-08; see Gate 3 below. The user's **proceed** approved the Gate 1 design.
+  Fetched `origin/master` and created `codex/cal-09-camera-mount-evidence` from `02d3235`, preserving
+  the tracker decision record. At that stage only implementation was authorized; publication and
+  physical runs were not. Gate 3 now records the later publication authorization.
+  The user's **Move to next task** direction began this decision gate
+  after CAL-08 PR #154 merged as `02d3235974f87776a345ac9ce7049015e4de28cb` on 2026-09-08. Its
+  framework and documentation hosted checks passed; merge tree `b3e9b798583c00a2eb9d1c43b2046cb3bb186995`
+  exactly matches reviewed commit `28ea689aaceb08d0ab416f0cf4a741c1bb431ae0`. Local `master` was
+  safely fast-forwarded and synchronized before this research. Selecting the decision gate alone
+  did not authorize implementation; the later **proceed** supplied that approval.
+- **Pre-implementation evidence and owners:** `fw/tools/tester/calibration/CameraMountCalibrator.java` solves
   `inverse(fieldToRobot) * fieldToTag * inverse(cameraToTag)` without using the configured camera
   mount as an input. It reports full translation and yaw/pitch/roll, while interactive known robot
   pose editing supplies X/Y/yaw on a level robot. Sampling retains solved poses and averages
@@ -31013,6 +31023,247 @@ The setup fragments below compare the recommendation design, not standalone robo
   applicable, without inventing a shared owner just for symmetry; finish before `CAL-10`. Defer
   any algorithm choice requiring representative observations until those observations and an
   independent pose reference are supplied; synthetic samples do not reactivate `SOURCE-03`.
+
+#### Gate 1 decision record (2026-09-08)
+
+- **Traced current behavior:** `BaseTeleOpTester` runs bindings before the owner's loop hook.
+  `CameraMountCalibrator`'s A callback immediately adds `lastRobotToCameraSample`, before current
+  readiness and the current `AprilTagDetections` snapshot are checked. The previous preview can
+  therefore be captured when this cycle's frame is stale/missing, readiness is lost, or the clock
+  has reset. No capture timestamp/watermark is retained, so separate A edges can count one camera
+  frame repeatedly. B clears before A's callback runs, allowing B+A to repopulate the cleared batch.
+- **Camera/setup evidence:** explicit BACK clears the average, but only after external close;
+  readiness-failure cleanup/replacement does not clear the old camera's candidate/average. STOP
+  leaves numeric samples retained, and no clock-epoch batch boundary exists. Tag/known-pose edits
+  currently retain the unlabelled candidate/average. Combining correctly known different robot
+  poses is not mathematically wrong, but editing an incorrect setup does not repair its old samples.
+  The chosen fixed-setup policy below is a deliberate simpler operator contract, not a declaration
+  that every multi-pose average is invalid. Layout mutation is already prevented by the owner's
+  immutable snapshot; do not add a runtime layout-generation API.
+- **Invalid input path:** `AprilTagObservation.target(...)` requires non-null geometry but permits
+  non-finite components. The current mount solve checks only target presence/layout membership;
+  invalid observed geometry or overflowing derived translation can reach `PoseAverager`, which
+  increments its count and mutates sums without checking validity. Add checks here, not a broad
+  change to the shared observation/geometry types or all their callers.
+- **Independent transform assessment:** frame cancellation supports the existing
+  `inverse(fieldToRobot) * fieldToTag * inverse(cameraToTag)` solve. The configured mount is not
+  read, correctly keeping the unknown out of its own calibration. Known six-component truth will
+  generate camera/tag basis vectors by elementary Rx/Ry/Rz rotations and dot products rather than
+  by `Pose3d.then`, `inverse`, or production `Mat3` helpers. Expected output remains the originally
+  chosen mount; compare physical basis vectors where Euler spelling is non-unique.
+- **Demonstrated averaging requirement:** two canonical yaw/pitch/roll triples, in degrees,
+  `(0, 89, 0)` and `(179.99, 89, -179.99)`, represent orientations only `2.00009999496` degrees apart.
+  The current separate circular component means give `(89.995, 89, -89.995)`, about
+  `179.981274337` degrees from each input orientation. Root and an independent reviewer reproduced
+  those numbers using elementary basis-vector calculations, not Java-owner execution or hardware.
+  This is a physical-orientation difference, not alternate angle spelling. A level robot does not
+  preclude a near-vertical camera mount. Thus a rotation-aware private mean is justified by a
+  concrete case; no representative-noise claim, robust fitter, or automatic outlier policy follows.
+- **Public layers and callers:** four main-source constructor sites remain: `StandardTesters`
+  webcam/Limelight factories, application-owned `PhoenixRobotTesters`, and independent
+  `CalibrationTesters.cameraMount(profile)`. The owner has one public
+  `CameraMountCalibrator(Config, Function<String, AprilTagCameraFactory>)` constructor. Its private
+  Config constructor and public `defaults()` expose five meaningful captured facts: preferred
+  device name, replacement picker type/title, fixed layout, and maximum frame age. No staged
+  throwaway answer, overload, public solve seam, or new student parameter is needed. Standard
+  embedded and standalone suites have different menu contents; production and example factories
+  capture their own canonical facts and serve their own suite/walkthrough roles. Retain those
+  distinct layers; no redundant public layer or application migration was identified.
+
+| Alternative | Ordinary construction and student effect | Disposition |
+| --- | --- | --- |
+| Tests and operator warnings only | Existing `new CameraMountCalibrator(cfg, factoryBuilder)`; user must work around stale/repeated capture and rotation-mean failures | Rejected as complete resolution of traced behavior |
+| Private evidence repair with a fixed-setup batch and rotation-aware equal-weight mean | Same constructor and `CalibrationTesters.cameraMount(profile)`; existing A/B controls, clearer acceptance/reset feedback, no new Config answer | Chosen smallest coherent supported path |
+| Keep Euler averaging but reject incompatible-chart batches | Same construction; some valid near-vertical samples cannot be averaged | Credible safe fallback, rejected in favor of representation-independent averaging |
+| Retain different edited setups in one richer sample collection | Same constructor but additional per-sample setup/review concepts | Deferred; not needed for the documented stationary-batch workflow |
+| Public calibration solver/builder, global host-order change, or robust fit/filter | New public concepts or unrelated lifecycle/algorithm changes | Rejected; not required to repair this owner |
+
+##### Chosen bounded implementation
+
+1. Keep the camera owner, Config fields/defaults, fixed layout snapshot, controls, shared clock,
+   and transform formula. Queue A intent privately and consume it once only after current camera
+   readiness, one complete frame snapshot, age/identity eligibility, and a finite solve. Do not
+   leave an ineligible A queued to capture an unrelated later image. Wrong-clock or null-source
+   contract violations remain actionable failures, not silently fresh evidence. Drain pending A
+   and invalidate the old candidate before readiness/frame/solve calls that may throw; recheck
+   owner/batch identity before publishing after any reentrant callback.
+2. Keep a private fixed-setup batch identity and frame watermark. An accepted capture must belong
+   to the active camera owner/clock epoch and be strictly newer than the last accepted capture.
+   Repeated/out-of-order frames do not increment the sample count. A candidate retains its capture
+   and setup provenance; an average is historical accepted evidence, not a newly captured image.
+3. B wins over A in the same cycle. Actual selected-tag or known-robot-pose changes clear the batch,
+   candidate, and pending capture; fine/coarse step, edit-mode and field-navigation changes do not.
+   After clear, geometry edit, new camera, or epoch reset, require a frame captured strictly after
+   that boundary so an old delivered image cannot be reinterpreted with new setup facts. Explain
+   that the student should record one setup's result before moving/editing to the next setup.
+   Use a current-cycle inhibition marker, not just clearing a pending flag: a later A binding or
+   repeated owner call in that same cycle must not undo B or a geometry edit.
+4. Invalidate pending/candidate/batch evidence before external camera close/failure/replacement/STOP
+   callbacks; preserve detach-once, reentrant terminal precedence, and uncertain-cleanup blocking.
+   Clear across the START/reset epoch boundary. Temporary WAITING on the same owner invalidates
+   the current candidate/request; any retained valid batch remains historical and cannot authorize
+   another capture without fresh evidence. Do not open a competing camera or change host order.
+5. Validate observed, known, solved and aggregated geometry before numeric publication. Keep
+   translation's equal-sample arithmetic mean with finite/stable accumulation. Replace only the
+   private orientation average with a sign-invariant, equal-weight quaternion outer-product mean:
+   use the principal unit eigenvector of the four-by-four accumulated matrix. Perform bounded
+   numerical work only on accepted captures, and suppress the printable mean if the orientation is
+   mathematically ambiguous, non-finite, or the bounded numerical solve fails. Do not choose an
+   arbitrary direction, silently remove samples, create a public quaternion abstraction, introduce
+   an SDK dependency, or turn numerical tolerances into physical acceptance thresholds.
+   Validate prospective finite accumulation transactionally before changing count/statistics or
+   the accepted watermark. A valid finite sample whose orientation contribution makes the batch
+   ambiguous is different from invalid arithmetic: retain that contribution/count but remove the
+   previous printable mean. Later distinct evidence may resolve the ambiguity, or B clears it.
+   Verify the principal eigenpair residual, convergence and top-two eigenvalue separation on the
+   normalized matrix; a fixed-start iteration that can miss the largest eigendirection is not
+   sufficient. Numerical ambiguity is not permission to discard disagreeing samples.
+   The orientation-mean basis is the primary
+   [Markley et al. quaternion averaging paper](<https://ntrs.nasa.gov/api/citations/20070017872/downloads/20070017872.pdf?attachment=true>).
+   Its indexed primary text confirms the principal-eigenvector/sign-invariant construction;
+   direct PDF retrieval was unavailable during this research. This supplies mathematical method
+   context, not evidence about FTC camera accuracy or an optimal physical noise model.
+6. Keep all support inside this existing tool and its private sample/averager helpers. No motion
+   commands, arbitrary tilted-robot UI, movement-only calibration, persistent recording, new core
+   solver, production-robot change, CAL-10 handoff template, or SOURCE-03 reactivation is included.
+
+##### Tests, teaching and next gate
+
+- **Existing baseline:** reran `CameraAprilTesterConfigurationTest`,
+  `SelectableVisionTesterLifecycleTest`, and `CalibrationTestersTest`: **56 tests / 3 suites /
+  0 failures / 0 errors / 0 skipped**. They establish configuration snapshots, deferred ownership,
+  cleanup, and independent mappings, not sample eligibility or numeric mount recovery.
+- **New regressions after approval:** first reproduce stale/current-frame capture, repeated frame,
+  B+A, clock reset, and failed-camera replacement against the real owner before repair. Retain
+  actual init/initLoop/loop, bindings/gamepad edges, clock, camera ownership and geometry; replace
+  only the external camera observations/readiness. Add independent nonzero X/Y/Z/yaw/pitch/roll
+  recovery across multiple known level robot poses and differently oriented tags, one batch per
+  setup. Cover distinct timestamps represented by different objects, stale/empty/unavailable/wrong
+  clock frames, invalid geometry, changed setup, rejected old-delivery frames, clear/restart and
+  fresh recovery. Test ordinary yaw wrap, the near-vertical counterexample, equivalent rotations,
+  sample-order/sign invariance, ambiguous opposing orientations, and finite/overflow accumulation.
+  Keep helper math independent of production transforms; no new public test seam.
+- **Teaching:** update existing owner Javadocs, camera-mount runbook and optional vision-integration
+  lesson with the accepted-frame and clear-on-edit contract. Explain intrinsics as image/lens
+  calibration, extrinsics as camera placement relative to the same chosen robot reference point,
+  and shooter/intake alignment as a separate fact this tool does not measure. Ordinary known robot
+  editing supplies X/Y/yaw with Z/pitch/roll zero for the level/floor-origin setup; full mount
+  output does not imply a general tilted-robot calibration UI. Show a compact textual capture
+  sequence if useful to distinguish repeated button presses from new images, without adding an
+  initial-course page or new prerequisite. Preserve record/rebuild/configured verification and
+  independent placement; small spread/residual is not physical acceptance.
+  Distinguish Driver Station START (clock reset clears the batch) from gamepad START (fine/coarse
+  step toggle preserves it), and distinguish retained historical averages from a fresh candidate.
+- **Verification / design stop:** run focused new regressions and existing configuration/lifecycle
+  and example tests, then full compile/unit/Javadocs and strict documentation/link checks. Review
+  ownership, same-cycle clear precedence, numerical ambiguity, test truth and beginner instructions
+  independently. New sample/clear/averaging semantics require user approval before implementation.
+  After approval, fetch `origin/master` and create `codex/cal-09-camera-mount-evidence`. Until then,
+  only this research/decision tracker is modified; no calibration implementation or physical run
+  has been performed or authorized.
+
+#### Gate 2 implementation and review handoff (2026-09-08)
+
+- **Reproduction before production edits:** eight new real-owner/private-arithmetic baseline tests
+  completed with **7 failures / 0 errors / 0 skipped**. Current-versus-preview capture, stale A,
+  duplicate frame, B+A, Driver Station reset, and failed-camera replacement each failed. The
+  independent six-component owner recovery control passed; the near-vertical private average
+  counterexample failed. This confirmed the evidence/averaging changes without replacing the
+  existing transform formula.
+- **Implemented evidence contract:** A now requests one current-loop solve after readiness and a
+  complete fresh frame; it is drained before external calls and never waits for later evidence.
+  Immutable private candidate provenance, batch generation/epoch, setup boundary, and advancing
+  `LoopTimestamp` watermark prevent replay or reinterpretation after clear/edit. B and actual
+  tag/known-pose edits clear and inhibit capture for the whole cycle. Step/mode/navigation retain
+  the batch. START/reset and camera close/failure/replacement clear evidence before cleanup;
+  WAITING retains only a labelled historical batch. Null/wrong-clock/source failures remain
+  actionable. No new public configuration, solver, or application change was introduced.
+- **Implemented geometry contract:** observed/known/solved/aggregated values are finite-checked.
+  Stable equal-weight translation accumulation avoids raw-sum and opposite-sign-difference
+  overflow. The private normalized quaternion outer-product mean uses at most 96 Jacobi rotations
+  on a 4x4 matrix, checks convergence, principal eigenpair residual and top-two separation, and
+  caches the result for telemetry. Valid contradictory samples stay counted while an ambiguous
+  mean becomes unavailable; later distinct evidence can resolve it. Numerical tolerances are not
+  physical accuracy thresholds. The private Euler output uses the actual horizontal basis length
+  at vertical orientations; core geometry and the mount transform formula remain unchanged.
+  Non-finite residual/comparison calculations are displayed as unavailable.
+- **Independent review and corrections:** separate reviewers audited real-binding test validity,
+  independent elementary-axis geometry oracles, rotation mathematics, lifecycle callbacks,
+  beginner prose, and every public construction/caller layer. Review caught and resolved shutdown
+  without an initialized context, evidence clear/reset during camera setup stranding the sensor
+  handle, uncertain cleanup after a late open following STOP, callback-triggered epoch changes
+  retaining old samples for one loop, and misleading residual advice for an ambiguous batch.
+  Resource-handle installation now checks camera ownership separately from sample-batch identity;
+  callback returns/failures recheck epoch before publishing evidence. The exact-vertical mean
+  conversion has a 128-orientation / 384-result private grid; eight additional exact-vertical
+  cases pass through the real owner. No remaining concrete blocker was identified.
+- **Teaching and API scope:** owner Javadocs and the existing camera-mount runbook/optional vision
+  integration lesson explain intrinsics, extrinsics, tool alignment, level/floor-origin inputs,
+  fresh/distinct capture, setup clearing, historical/ambiguous results, and Driver Station versus
+  gamepad START. A compact illustrative capture-time/count table teaches delayed-image rejection;
+  it is not a hardware measurement. Navigation and the beginner course stay unchanged. The one
+  constructor, five Config facts/defaults, and four main-source callers retain distinct roles;
+  no redundant public layer or caller/example migration is needed.
+- **Focused verification:** **96 tests / 6 suites / 0 failures / 0 errors / 0 skipped**:
+  `CameraMountCalibratorEvidenceTest` 22, `CameraMountCalibratorGeometryTest` 16,
+  `CameraAprilTesterConfigurationTest` 14, `SelectableVisionTesterLifecycleTest` 24,
+  independent-example `CalibrationTestersTest` 18, and two affected documentation tests.
+  New tests cover source contract failures, exact age limits, repeated/equal/out-of-order timestamps,
+  clear/edit/open/reset boundaries, WAITING, reentrant clear/reset/STOP, late cleanup uncertainty,
+  ambiguous-mean telemetry/watermark/recovery, finite arithmetic, independent full mount recovery,
+  wrap/equivalent rotations, and sign/order invariance.
+- **Full verification:** `:TeamCode:testDebugUnitTest` completed **2,538 tests / 271 suites /
+  2 failures / 0 errors / 0 skipped**. The two unchanged Windows CRLF-sensitive baseline failures
+  remain `DocumentationLinksTest.everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy` (11 existing
+  Notice-section matches) and `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair` (literal
+  LF match in the existing Tasks guide). They were already recorded for CAL-08; neither failing
+  assertion nor its input pages changed here. Do not report the full suite as green.
+  `:TeamCode:compileDebugJavaWithJavac` and `:TeamCode:sushiJavadocs` pass. Existing Java 8 target /
+  Java 21 deprecation warnings remain; no new compiler/Javadoc error was observed.
+- **Documentation artifact checks:** existing docs environment `pip check` passes;
+  `zensical build --clean --strict` passes. Generated guide search verifies **996 indexed sections /
+  6 areas**; API/source links verify **214 API links / 90 maintained source links / 52 pages**.
+  Nine expected guide/API/search artifacts are nonempty, and generated runbook HTML contains the
+  capture table and boundary/historical teaching text. Source excerpts remain matched; generated
+  artifacts are not part of the diff. `git diff --check` and the tracked-plus-untracked trailing
+  whitespace scan pass.
+- **Physical boundary:** no robot/camera run was performed. Automated tests prove software
+  contracts over scripted camera boundaries, not native frame timing, image intrinsics, tag size /
+  placement, known robot pose, physical mount accuracy, or shooter/intake alignment. An adopting
+  team should use a level, stationary, independently known setup, compare plausible mount results
+  across fresh separate batches, then record/rebuild and verify in a fresh robot-configured
+  localization tester. These checks do not authorize powered motion or supply acceptance limits.
+- **Android Studio review stop:** inspect `CameraMountCalibrator.java`, the two new test classes,
+  both updated calibration guides, and the documentation assertions. Review A/B precedence,
+  clear-on-geometry/reset/replacement, current-frame provenance, ambiguous-average display,
+  private numerical safeguards, and cleanup/callback behavior. All seven changed/new files remain
+  unstaged. This skill-driven stop requires the combined review/publication authorization below;
+  no CAL-09 commit/push/PR/merge or CAL-10 work has occurred.
+- **Resolved publication coordinates:** branch `codex/cal-09-camera-mount-evidence`;
+  `git remote get-url --push origin` = `https://github.com/harishv-99/2025-PhoenixPedro.git`;
+  target `master`. Requested reply:
+
+  > CAL-09 looks good. Authorize committing the reviewed CAL-09 diff on
+  > codex/cal-09-camera-mount-evidence, pushing that branch to
+  > https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  > master.
+
+#### Gate 3 manual review and publication authorization (2026-09-08)
+
+- The user supplied the complete CAL-09 review/publication reply after the Gate 2 handoff. This
+  records manual review approval and authorizes staging/committing the reviewed diff on
+  `codex/cal-09-camera-mount-evidence`, pushing to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. No implementation changes were made after that approval; only this completion record
+  changed. The prior Gate 2 unstaged/review-stop text is historical.
+- The approved scope remains the seven CAL-09 files listed by the worktree. The 96-test focused
+  pass, 2,538-test full run with two unchanged Windows CRLF baseline failures, successful
+  compilation/Javadocs/docs artifact checks, and unperformed hardware-validation boundary remain
+  exactly as recorded above. The final tracker-specific test passes (1 test / 0 failures / 0 errors /
+  0 skipped); its run replaces the local full-run XML, whose exact totals remain recorded in Gate 2.
+  Final whitespace checks pass for all seven files.
+- This reply does not authorize starting CAL-10. Commit, pull-request, check, and merge identities
+  are established by Git/GitHub during publication and reported in the completion handoff.
 
 ### CAL-10 - Make calibration acceptance reproducible
 
