@@ -44,6 +44,7 @@ Hardware is a separate supervised path; no lesson requires an unrelated mechanis
 | operate the ready Driver Station or Panels tester console | [Using the tester console](<testing-calibration/Using the Tester Console.md>) |
 | bring up an actuator without assuming its safe range | [Actuator bring-up](<testing-calibration/Actuator Bring-up.md>) |
 | establish one camera, odometry, or localization fact | [Robot calibration](<testing-calibration/Robot Calibration Tutorials.md>) |
+| connect calibration testers to my robot's checked-in settings | [Add calibration testers to your robot](<testing-calibration/Add Calibration Testers to Your Robot.md>) |
 | tune one controller with a bounded experiment | [Control tuning](<testing-calibration/Control Tuning Workflow.md>) |
 | design another useful software or hardware test | [How to test a Sushi component](<testing-calibration/How to test a Sushi component.md>) |
 | study a less-common composition | [Advanced patterns](<advanced/README.md>) |

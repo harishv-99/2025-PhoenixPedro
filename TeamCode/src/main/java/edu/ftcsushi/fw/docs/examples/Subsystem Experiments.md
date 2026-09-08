@@ -211,6 +211,12 @@ generic experiment framework:
 8. Record external observations outside the Robot Controller and promote configuration only after
    the reviewed decision accepts it.
 
+For a complete configuration → fresh factory → suite → thin OpMode example, use
+[Add calibration testers to your robot](<../testing-calibration/Add Calibration Testers to Your Robot.md>).
+That lesson assembles existing calibration tools; this page remains the reference for designing a
+new subsystem experiment. Registering generic tools does not create robot-configured calibration
+checks automatically.
+
 ## Maintained experiment slice
 
 Create a criteria card, one `BaseTeleOpTester` experiment, and one robot-owned tester registry. The

@@ -7,8 +7,12 @@ tags:
 
 **Learning mode:** Architecture reference
 
-This is optional architecture for a team that already owns a checked-in robot profile and fresh
-robot-configured tester factories. The framework home works without it: use
+**Before this page:** complete the reading path in
+[Add calibration testers to your robot](<Add Calibration Testers to Your Robot.md>). It supplies the
+checked-in robot profile and fresh configured tester factories used here. This optional page adds
+only ordering and completion status; the camera-free example is enough.
+
+The framework home works without a custom walkthrough: use
 [`Robot Calibration Tutorials`](<Robot Calibration Tutorials.md>) to probe and record facts even
 when source is unavailable.
 
@@ -59,7 +63,8 @@ physical zero before START.
 
 ### `CalibrationStatus`
 
-A tiny immutable status object used by walkthrough menus.
+[`CalibrationStatus`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/calibration/CalibrationStatus.html>)
+is a small immutable status value: once created, its completion flag and reason do not change.
 
 Use it when you want a step to answer two questions:
 
@@ -68,7 +73,8 @@ Use it when you want a step to answer two questions:
 
 ### `CalibrationChecks`
 
-Shared heuristics for common calibration questions.
+[`CalibrationChecks`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/calibration/CalibrationChecks.html>)
+supplies shared **heuristics**: simple clues in configuration, not physical measurements.
 
 Examples:
 
@@ -80,7 +86,10 @@ The point is not to make the framework magically know everything. The point is t
 
 ### `CalibrationWalkthroughBuilder`
 
-A builder that produces a normal `TesterSuite`, but with a few calibration-specific opinions baked in:
+[`CalibrationWalkthroughBuilder`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/calibration/CalibrationWalkthroughBuilder.html>)
+collects ordered steps and produces a normal
+[`TesterSuite`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/TesterSuite.html>).
+It adds these calibration-specific choices:
 
 - steps are shown in the order you add them
 - tracked steps can show `OK` / `TODO`
@@ -90,38 +99,59 @@ A builder that produces a normal `TesterSuite`, but with a few calibration-speci
 
 ## Map one checked-in fact
 
-The fragment below uses the real helper signatures for one fact. It is deliberately **not a complete
-robot registry**: the robot project must supply its own checked-in mount and a factory that creates
-an AprilTag-localization tester whose lane was built from that robot profile.
+The maintained
+[`CalibrationTesters.guidedWalkthrough(profile)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/calibration/CalibrationTesters.html#guidedWalkthrough(edu.ftcsushi.robots.examples.calibration.CalibrationRobotProfile)>)
+uses the same profile and factories from the basic integration lesson. This camera-free beginning
+copies the facts and adds two steps; it creates no tester or hardware during registration:
 
-<!-- teaching-shape -->
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/calibration/CalibrationTesters.java -->
 ```java
-static TesterSuite cameraMountWalkthrough(
-        CameraMountConfig checkedInCameraMount,
-        Supplier<TeleOpTester> freshConfiguredAprilTagLocalizationTester) {
-    CalibrationWalkthroughBuilder guide =
-            new CalibrationWalkthroughBuilder("Robot calibration");
-    guide.addStep(
-            "Verify configured camera mount",
-            "After rebuild, compare field pose through the robot-configured lane.",
-            () -> CalibrationChecks.cameraMount(checkedInCameraMount),
-            freshConfiguredAprilTagLocalizationTester);
-    return guide.build();
-}
+CalibrationRobotProfile captured = capture(profile);
+CalibrationWalkthroughBuilder guide =
+        new CalibrationWalkthroughBuilder("Robot calibration walkthrough");
+guide.addStep("Verify Pinpoint axes", "Hand motion; record, rebuild, and verify",
+        () -> CalibrationChecks.pinpointAxes(captured.pinpointAxesVerified),
+        () -> axisDirections(captured));
+guide.addStep("Verify Pinpoint offsets", "Status is not physical evidence",
+        () -> CalibrationChecks.pinpointOffsets(
+                captured.pinpoint(), captured.pinpointOffsetsVerified),
+        () -> manualPodOffsets(captured));
 ```
 
-`CalibrationChecks.cameraMount(...)` supplies the real `CalibrationStatus` heuristic used for the
-menu tag. It notices an identity placeholder in the checked-in profile; it does not prove the
-camera's physical mount. `addStep(label, help, status, testerFactory)` stores the real
-`Supplier<TeleOpTester>`; the suite calls it only when the operator selects the step. That supplier
-must return a new inactive AprilTag-localization tester every time, not another mount calibrator, a
-retained tester, or the production camera owner.
+`addStep(label, help, status, testerFactory)` saves two functions after the text: a status reader
+and a fresh tester recipe. The `() ->` syntax has the same saved-function meaning as menu
+registration in the basic lesson. The builder calls the status reader while building the suite;
+the suite calls the tester recipe only after selection. Neither is a new thread.
 
-The profile owner passes the stable, checked-in `CameraMountConfig`. The tester factory separately
-maps that same mount and the other current robot vision facts into a fresh tester Config and a
-backend-neutral lane factory. That is what makes the selected check capable of verifying the
-rebuilt profile. The walkthrough reads both; it owns neither profile mutation nor result
-persistence.
+`pinpointAxesVerified` and `pinpointOffsetsVerified` start `false`. A person edits them only after
+accepting the rebuilt robot-configured result. The offset helper also considers nonzero offsets a
+clue; an `OK` tag therefore does not always mean that explicit human verification happened. The
+default `0 / 0` offsets and false flags yield incomplete status. No tag authorizes powered motion.
+
+When a camera backend is selected, the same method additionally registers mount measurement,
+configured AprilTag verification and corrected-localization comparison using the
+[vision lesson's factories](<Add Vision to Your Calibration Suite.md>). The mount-status helper
+only notices a non-identity value; it does not prove the mount is physically correct. The
+verification factory creates an AprilTag-localization tester, not another mount calibrator or the
+production camera owner.
+
+The method finishes by returning the ordinary suite:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/calibration/CalibrationTesters.java -->
+```java
+return guide.build();
+```
+
+To select this ordered view, have your thin host's `createTester()` return
+`CalibrationTesters.guidedWalkthrough(CalibrationRobotProfile.current())` instead of the basic
+`CalibrationTesters.create(...)` result. Do not add another clock or FTC loop. The built suite keeps
+its status snapshot; record the result, edit the profile, rebuild, and create a fresh suite to see
+changed acknowledgements.
+
+[Complete source: `CalibrationTesters.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/calibration/CalibrationTesters.java>)
+contains the complete method and the real factories it uses. The
+[basic integration lesson](<Add Calibration Testers to Your Robot.md>) owns the profile and host
+assembly; this page adds ordering and status only.
 
 ### Ownership checklist
 

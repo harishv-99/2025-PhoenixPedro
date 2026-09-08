@@ -50,7 +50,12 @@ nav = [
     { "Robot calibration" = "docs/testing-calibration/Robot Calibration Tutorials.md" },
     { "Control tuning" = "docs/testing-calibration/Control Tuning Workflow.md" },
     { "Testing philosophy" = "docs/testing-calibration/How to test a Sushi component.md" },
-    { "Guided calibration" = "docs/testing-calibration/Guided Calibration Walkthroughs.md" },
+    { "Add your robot's testers" = [
+      { "Add calibration testers" = "docs/testing-calibration/Add Calibration Testers to Your Robot.md" },
+      { "Add vision" = "docs/testing-calibration/Add Vision to Your Calibration Suite.md" },
+      { "Enable powered calibration" = "docs/testing-calibration/Enable Powered Calibration.md" },
+      { "Guided calibration" = "docs/testing-calibration/Guided Calibration Walkthroughs.md" },
+    ] },
     { "Troubleshooting" = [
       { "Start from a symptom" = "docs/troubleshooting/README.md" },
       { "Common problems" = "docs/troubleshooting/Common Problems.md" },

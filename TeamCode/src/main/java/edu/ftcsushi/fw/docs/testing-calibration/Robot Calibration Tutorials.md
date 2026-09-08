@@ -28,6 +28,11 @@ configured verifier—preserve the recorded evidence for the profile owner and s
 production verification. This page does not generate a robot-specific verifier from generic
 defaults.
 
+If you own the source but have not supplied that verifier yet, follow
+[Add calibration testers to your robot](<Add Calibration Testers to Your Robot.md>). It builds a
+small, configured suite without requiring a camera or powered drivetrain. Then return here for the
+physical procedure; assembling the software is not calibration evidence.
+
 ## What the framework-only testers know
 
 For camera/position procedures, a **pose** is position plus facing direction. A **frame** specifies
@@ -818,6 +823,10 @@ and evaluate the recorded loop intervals because per-cycle Logcat output can its
 
 ## Optional advanced: powered and vision-assisted pod offsets
 
+For the complete authoring path, use [Enable powered calibration](<Enable Powered Calibration.md>);
+add [vision integration](<Add Vision to Your Calibration Suite.md>) only when you need AprilTag
+assistance. This section owns the physical procedure and its evidence limits.
+
 This is not supplied by the generic `StandardTesters` pod-offset entry. A robot-specific factory
 provides a complete mecanum config to enable powered motion. An AprilTag camera-factory builder
 is a separate option: assist also works with hand rotation and no configured drive. Before using
@@ -988,8 +997,10 @@ profile; its menu wording belongs to that suite. There is no generic EKF menu la
 
 ## Optional advanced: guided suite construction
 
-The rookie path does not require a custom tester registry. Teams that already own checked-in robot
-profiles and fresh robot-configured tester factories can order those existing facts with
+The probe-and-record path does not require a custom tester registry. To build the configured
+verifiers needed for the rebuild handoff, use
+[Add calibration testers to your robot](<Add Calibration Testers to Your Robot.md>). After those
+factories exist, order the same checks with
 [`Guided calibration walkthroughs`](<Guided Calibration Walkthroughs.md>). The walkthrough adds
 status and ordering; it does not persist results or replace the record → rebuild → fresh configured
 tester → verify handoff.
