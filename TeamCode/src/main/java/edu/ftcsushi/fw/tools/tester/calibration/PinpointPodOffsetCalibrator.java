@@ -30,6 +30,7 @@ import edu.ftcsushi.fw.ftc.vision.OwnedAprilTagCamera;
 import edu.ftcsushi.fw.ftc.vision.AprilTagCameraFactory;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
+import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -59,8 +60,12 @@ import edu.ftcsushi.fw.input.binding.Bindings;
  * Failed-initialization rollback and STOP-before-START are deliberate cleanup exceptions: either
  * may command physical zero while releasing an already returned drive owner.</p>
  *
- * <p>Optional: supply a backend-neutral AprilTag vision-factory builder to subtract real
- * translation while sampling. A null builder explicitly keeps the independent Pinpoint workflow
+ * <p>Optional: supply a backend-neutral AprilTag vision-factory builder to subtract independently
+ * measured tag displacement while sampling. Each endpoint pairs a full camera observation with
+ * raw Pinpoint history at its exact capture time; missing evidence never substitutes a current
+ * pose. The two displacements are expressed in their own robot-at-start frames before subtraction.
+ * This software matching does not prove physical timing accuracy or remove all slip/noise.
+ * A null builder explicitly keeps the independent Pinpoint workflow
  * vision-free. Put fixed field facts and mount-free solver/age policy in {@link Config}; the opened
  * vision lane remains the sole owner of camera hardware, its tag library, and camera mount.</p>
  *
@@ -136,14 +141,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
          * If true, auto samples (Y) will compute results automatically once the rotation is done
          * <b>when AprilTag assist is active</b>.
          *
-         * <p>This is the recommended way to run the calibrator: the tester uses the Pinpoint IMU
-         * heading to stop at ~180°, and uses AprilTags to subtract any real translation (carpet slip,
-         * imperfect pivot, etc.). When a tag pose is available at both the start and end of the
-         * sample, the test becomes fully automatic: press <b>Y</b>, and it will stop and compute on
-         * its own.</p>
+         * <p>The tester uses current Pinpoint heading to stop at the configured target turn and
+         * subtracts independently measured tag displacement over matched capture endpoints.
+         * With eligible evidence at both ends, Y's sample stops and computes without another
+         * button press. This does not prove physical latency accuracy or remove all slip/noise.
+         * When false, enabled recentering requires a final A; disabling recentering explicitly
+         * selects computation at the end of rotation instead.</p>
          *
-         * <p>If tags are not available (no known-pose tag seen), the tester will fall back to the
-         * recenter-and-press-A flow to avoid producing misleading numbers.</p>
+         * <p>Each assisted endpoint requires raw odometry at the tag's capture time. Missing end
+         * evidence is searched for when configured, otherwise the attempt is discarded; it never
+         * falls back to an unassisted solve.</p>
          */
         public boolean autoComputeAfterAutoSample = true;
 
@@ -161,8 +168,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
          * Maximum amount of rotation (radians) to spend searching for a tag. When start search,
          * drive, and AprilTag assist are active, this must be finite and {@code > 0}.
          *
-         * <p>Defaults to ~2 full turns. If a tag isn't found within this rotation, the
-         * sample will proceed without tag assist.</p>
+         * <p>Defaults to ~2 full turns. Exhaustion discards the attempt. A may explicitly skip
+         * this start search before an assisted start has been captured.</p>
          */
         public double tagSearchMaxTurnRad = 4.0 * Math.PI;
 
@@ -174,14 +181,20 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public double tagSearchOmegaCmd = 0.25;
 
         /**
-         * Number of consecutive loops with a valid tag pose before we consider the tag "found".
+         * Number of consecutive eligible, strictly advancing capture timestamps required during
+         * a tag search. Repeated frames do not count again. Missing, invalid, stale, or older
+         * evidence breaks the streak without making a previously consumed frame new again.
+         * Direct visible start/end acquisition requires one matched pair, not this search count.
+         * This is valid-frame acquisition, not a jitter or statistical-independence test.
          * With drive and assist this must be at least one whenever either search branch is enabled.
          */
         public int tagSearchStableFrames = 3;
 
         /**
-         * If true, after an auto-rotation reaches {@link #targetTurnRad}, the tester will
-         * optionally continue rotating a bit longer to reacquire a tag pose (for assist/recenter).
+         * If true, when an assisted auto sample requests computation at the end of rotation,
+         * missing capture-matched end evidence may start a bounded reacquisition search.
+         * Merely entering optional recentering does not require a redundant end capture;
+         * the final A there must acquire its own eligible matched end.
          */
         public boolean enableAutoTagSearchAtEnd = true;
 
@@ -243,6 +256,15 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
          */
         public AprilTagLocalizationConfig aprilTags = AprilTagLocalizationConfig.defaults();
 
+        /**
+         * Bounded raw Pinpoint history used only to match assisted endpoints at camera capture
+         * time. Required, validated, and defensively copied when a vision factory selects assist,
+         * even without a drive; dormant with a null factory. The camera's independent acceptance
+         * age remains {@link #aprilTags}'s maxDetectionAgeSec. Missing history never extrapolates
+         * or substitutes the delivery-time pose. Defaults are software bounds, not physical proof.
+         */
+        public PlanarPoseHistory.Config assistOdometryHistory = PlanarPoseHistory.Config.defaults();
+
         private Config() {
             // Defaults assigned in field initializers.
         }
@@ -274,6 +296,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private OwnedAprilTagCamera visionLane;
     private AprilTagSensor tagSensor;
     private AprilTagPoseEstimator tagEstimator;
+    private PlanarPoseHistory assistOdometryHistory;
+    private PoseEstimate previousAssistOdometryEstimate;
+    private long assistHistorySourceSegment;
+    private long assistHistoryGeneration;
     private String activeVisionDescription;
     private String aprilTagAssistNotice;
     private boolean visionCleanupFailed;
@@ -332,9 +358,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private final AngleUnwrapper tagSearchUnwrapper = new AngleUnwrapper();
     private double tagSearchStartUnwrappedRad = 0.0;
     private int tagStableFrames = 0;
+    private LoopTimestamp tagSearchConsumedTimestamp = LoopTimestamp.unavailable();
 
     private Pose2d startPinpointPose = Pose2d.zero();
-    private Pose2d startTagPose = null;
+    private AssistedEndpoint startAssistEndpoint;
+    private AssistedEndpoint endAssistEndpoint;
+    private String assistEvidenceNotice;
 
     private double startHeadingRad = 0.0;
     private double startHeadingUnwrappedRad = 0.0;
@@ -342,11 +371,11 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     // latest values
     private Pose2d latestPinpointPose = Pose2d.zero();
-    private Pose2d latestTagPose = null;
+    private PoseEstimate latestTagEstimate;
 
     // last sample results (null means not available)
-    private Double lastDxFieldInches = null;
-    private Double lastDyFieldInches = null;
+    private Double lastDxStartBodyInches = null;
+    private Double lastDyStartBodyInches = null;
     private Double lastDeltaHeadingRad = null;
 
     private Double lastXErrorInches = null;
@@ -361,6 +390,27 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     private boolean lastHadTagStart = false;
     private boolean lastHadTagEnd = false;
+
+    /** Frozen experimental endpoint; both poses describe one capture, not its delivery loop. */
+    private static final class AssistedEndpoint {
+        final PoseEstimate tagEstimate;
+        final PlanarPoseHistory.Lookup odometry;
+        final OwnedAprilTagCamera cameraOwner;
+        final AprilTagPoseEstimator estimator;
+        final long rawTrajectorySegment;
+        final long historyGeneration;
+
+        AssistedEndpoint(PoseEstimate tagEstimate, PlanarPoseHistory.Lookup odometry,
+                         OwnedAprilTagCamera cameraOwner, AprilTagPoseEstimator estimator,
+                         long rawTrajectorySegment, long historyGeneration) {
+            this.tagEstimate = tagEstimate;
+            this.odometry = odometry;
+            this.cameraOwner = cameraOwner;
+            this.estimator = estimator;
+            this.rawTrajectorySegment = rawTrajectorySegment;
+            this.historyGeneration = historyGeneration;
+        }
+    }
 
     /**
      * Creates the calibrator from one explicit configuration and optional AprilTag behavior peer.
@@ -494,6 +544,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     draft.aprilTags,
                     CONFIG_CONTEXT + ".aprilTags must not be null when AprilTag assist is selected"
             ).validatedCopy(CONFIG_CONTEXT + ".aprilTags");
+            captured.assistOdometryHistory = Objects.requireNonNull(
+                    draft.assistOdometryHistory,
+                    CONFIG_CONTEXT + ".assistOdometryHistory must not be null when AprilTag assist is selected"
+            ).validatedCopy(CONFIG_CONTEXT + ".assistOdometryHistory");
 
             if (hasDrive
                     && (draft.enableAutoTagSearchAtStart
@@ -526,6 +580,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             captured.preferredVisionDeviceName = null;
             captured.fixedTagLayout = null;
             captured.aprilTags = null;
+            captured.assistOdometryHistory = null;
         }
 
         return new ConfigCapture(captured, capturedLayout, policySummary);
@@ -672,6 +727,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         try {
             pinpoint = new PinpointOdometryPredictor(ctx.hw, cfg.pinpoint);
+            if (visionLaneFactoryBuilder != null) {
+                assistOdometryHistory = new PlanarPoseHistory(pinpoint, cfg.assistOdometryHistory);
+            }
         } catch (RuntimeException failure) {
             RuntimeException primary = new IllegalStateException(
                     CONFIG_CONTEXT + ".pinpoint construction failed after drive setup; "
@@ -773,6 +831,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         ensureAprilTagAssistReady(false);
 
         updateSensors(false);
+        if (motionInhibitedThisCycle()) {
+            discardControlRequests();
+            renderTelemetry(false);
+            return;
+        }
+        if (isSampleActive() && startAssistEndpoint != null && !assistedStartStillCompatible()) {
+            failAssistedAttempt("Assisted start lost its camera, clock epoch, or raw trajectory identity");
+            renderTelemetry(false);
+            return;
+        }
         if (!started) {
             // A malformed/custom host cannot bypass START by invoking RUN directly.
             consumeControlRequestsAfterCurrentPoll(false);
@@ -863,34 +931,26 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     private void updateSearchForTagStart() {
         if (drive == null || tagEstimator == null) {
-            // Shouldn't happen, but fail safe.
-            startSampleInternal(autoSample, null);
+            failAssistedAttempt("Start-tag search lost its configured drive or camera");
             return;
         }
-
-        // Continue rotating while we search for any known-pose tag.
-        drive.drive(new DriveSignal(0.0, 0.0, cfg.tagSearchOmegaCmd));
 
         // Track how far we've rotated while searching.
         tagSearchUnwrapper.update(latestPinpointPose.headingRad);
         double turned = Math.abs(tagSearchUnwrapper.getUnwrappedRad() - tagSearchStartUnwrappedRad);
 
-        if (latestTagPose != null) {
-            tagStableFrames++;
-        } else {
-            tagStableFrames = 0;
-        }
-
-        if (latestTagPose != null && tagStableFrames >= cfg.tagSearchStableFrames) {
-            // Found a stable tag pose; align and start the actual sample.
-            startSampleInternal(autoSample, latestTagPose);
+        if (turned >= Math.abs(cfg.tagSearchMaxTurnRad)) {
+            failAssistedAttempt("Start-tag search exhausted its angular limit");
             return;
         }
 
-        if (turned >= Math.abs(cfg.tagSearchMaxTurnRad)) {
-            // Give up and just start without tag assist.
-            startSampleInternal(autoSample, null);
+        AssistedEndpoint endpoint = matchLatestAssistedEndpoint(false);
+        if (countSearchFrame(endpoint)) {
+            startSampleInternal(autoSample, endpoint);
+            return;
         }
+
+        drive.drive(new DriveSignal(0.0, 0.0, cfg.tagSearchOmegaCmd));
     }
 
     private void updateRotating() {
@@ -921,7 +981,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     private void updateSearchForTagEnd() {
         if (drive == null || tagEstimator == null) {
-            transitionToPostRecenterOrFinish();
+            failAssistedAttempt("End-tag search lost its configured drive or camera");
             return;
         }
 
@@ -929,19 +989,15 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         tagSearchUnwrapper.update(latestPinpointPose.headingRad);
         double turnedExtra = Math.abs(tagSearchUnwrapper.getUnwrappedRad() - tagSearchStartUnwrappedRad);
 
-        if (latestTagPose != null) {
-            tagStableFrames++;
-        } else {
-            tagStableFrames = 0;
-        }
-
-        if (latestTagPose != null && tagStableFrames >= cfg.tagSearchStableFrames) {
-            transitionToPostRecenterOrFinish();
+        if (turnedExtra >= Math.abs(cfg.tagEndSearchMaxExtraTurnRad)) {
+            failAssistedAttempt("End-tag search exhausted its angular limit");
             return;
         }
 
-        if (turnedExtra >= Math.abs(cfg.tagEndSearchMaxExtraTurnRad)) {
-            transitionToPostRecenterOrFinish();
+        AssistedEndpoint endpoint = matchLatestAssistedEndpoint(true);
+        if (countSearchFrame(endpoint)) {
+            endAssistEndpoint = endpoint;
+            finishSampleAndCompute();
             return;
         }
 
@@ -972,8 +1028,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             lastAttemptFailure = null;
         }
 
-        startTagPose = null;
-        latestTagPose = null;
         if (rebasePinpoint && pinpoint != null) {
             pinpoint.setPose(Pose2d.zero());
         }
@@ -984,7 +1038,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private void clearPendingMotionIntent() {
         enterPhase(Phase.IDLE);
         autoSample = false;
-        tagStableFrames = 0;
+        clearAssistEvidence();
         discardControlRequests();
     }
 
@@ -1008,8 +1062,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 transitionAfterRotation();
                 break;
             case SEARCH_TAG_END:
-                // Skip end tag search.
-                transitionToPostRecenterOrFinish();
+                failAssistedAttempt("End-tag search skipped after an assisted start");
                 break;
             case POST_RECENTER:
                 finishSampleAndCompute();
@@ -1079,8 +1132,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void clearLastResults() {
-        lastDxFieldInches = null;
-        lastDyFieldInches = null;
+        lastDxStartBodyInches = null;
+        lastDyStartBodyInches = null;
         lastDeltaHeadingRad = null;
         lastXErrorInches = null;
         lastYErrorInches = null;
@@ -1100,10 +1153,17 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         autoSample = auto;
         clearLastResults();
         lastAttemptFailure = null;
+        startAssistEndpoint = null;
+        endAssistEndpoint = null;
+        resetSearchAcquisition();
 
-        // Prefer to align Pinpoint to a vision pose if we have one.
-        if (aprilTagAssistEnabled() && tagEstimator != null && latestTagPose != null) {
-            startSampleInternal(auto, latestTagPose);
+        if (!aprilTagAssistEnabled()) {
+            startSampleInternal(auto, null);
+            return;
+        }
+        AssistedEndpoint endpoint = matchLatestAssistedEndpoint(false);
+        if (endpoint != null) {
+            startSampleInternal(auto, endpoint);
             return;
         }
 
@@ -1113,17 +1173,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 && drive != null
                 && tagEstimator != null) {
             enterPhase(Phase.SEARCH_TAG_START);
-            tagStableFrames = 0;
+            resetSearchAcquisition();
             tagSearchUnwrapper.reset(latestPinpointPose.headingRad);
             tagSearchStartUnwrappedRad = tagSearchUnwrapper.getUnwrappedRad();
             return;
         }
 
-        // Otherwise, just start without tag assist.
-        startSampleInternal(auto, null);
+        failAssistedAttempt("Assisted start unavailable: " + assistEvidenceNotice);
     }
 
-    private void startSampleInternal(boolean auto, Pose2d startTagPoseOrNull) {
+    private void startSampleInternal(boolean auto, AssistedEndpoint endpoint) {
         if (motionInhibitedThisCycle()) return;
         // Leave any powered search and stop before rebasing the sensor. Publish the inactive
         // state first so a failing/reentrant zero cannot retain or revive that search's timer.
@@ -1135,20 +1194,22 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         if (motionInhibitedThisCycle() || visionTerminalRequested) return;
         clearLastResults();
 
-        startTagPose = startTagPoseOrNull;
-        lastHadTagStart = (startTagPose != null);
+        startAssistEndpoint = endpoint;
+        endAssistEndpoint = null;
+        resetSearchAcquisition();
+        lastHadTagStart = endpoint != null;
         lastHadTagEnd = false;
 
-        // Align Pinpoint's field frame so deltas are comparable.
-        if (startTagPose != null) {
-            pinpoint.setPose(startTagPose);
-        } else {
+        // Manual/no-tag sampling retains its established software-zero workflow. Assisted
+        // sampling never rebases a historical camera pose into the current Pinpoint frame.
+        if (endpoint == null) {
             pinpoint.setPose(Pose2d.zero());
+            resetAssistHistory();
         }
         if (motionInhibitedThisCycle() || visionTerminalRequested
                 || terminalVisionFailureBlocksCalibration()) return;
 
-        // Snapshot starting pose
+        // The command-phase heading is current even when the assisted capture was delayed.
         startPinpointPose = pinpoint.getEstimate().toPose2d();
         startHeadingRad = startPinpointPose.headingRad;
 
@@ -1160,38 +1221,33 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void transitionAfterRotation() {
-        // If this was an auto sample and we want to reacquire a tag at the end, do that first.
-        if (autoSample
-                && aprilTagAssistEnabled()
-                && cfg.enableAutoTagSearchAtEnd
-                && drive != null
-                && tagEstimator != null
-                && startTagPose != null) {
-            if (latestTagPose == null) {
+        boolean computeNow = !cfg.enablePostRotateRecenter
+                || (autoSample && cfg.autoComputeAfterAutoSample && startAssistEndpoint != null);
+        if (startAssistEndpoint != null && computeNow) {
+            AssistedEndpoint endpoint = matchLatestAssistedEndpoint(true);
+            if (endpoint != null) {
+                endAssistEndpoint = endpoint;
+                finishSampleAndCompute();
+                return;
+            }
+            if (autoSample && cfg.enableAutoTagSearchAtEnd && drive != null && tagEstimator != null) {
                 enterPhase(Phase.SEARCH_TAG_END);
-                tagStableFrames = 0;
+                resetSearchAcquisition();
                 tagSearchUnwrapper.reset(latestPinpointPose.headingRad);
                 tagSearchStartUnwrappedRad = tagSearchUnwrapper.getUnwrappedRad();
                 return;
             }
+            failAssistedAttempt("Assisted end unavailable: " + assistEvidenceNotice);
+            return;
         }
-
         transitionToPostRecenterOrFinish();
     }
 
     private void transitionToPostRecenterOrFinish() {
-        // Fully automatic path (recommended): if this was an auto sample and AprilTag assist
-        // produced a start+end tag pose, compute immediately (no extra button presses).
-        if (autoSample
-                && cfg.autoComputeAfterAutoSample
-                && aprilTagAssistEnabled()
-                && startTagPose != null
-                && latestTagPose != null) {
-            finishSampleAndCompute();
-            return;
-        }
-
         if (cfg.enablePostRotateRecenter) {
+            // Recenter is not a solve. The final A must acquire its own matched end, without
+            // requiring a redundant end pair simply to enter this optional phase.
+            endAssistEndpoint = null;
             enterPhase(Phase.POST_RECENTER);
         } else {
             finishSampleAndCompute();
@@ -1205,6 +1261,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     private void finishSampleAndCompute() {
         if (!isSampleActive()) return;
+        if (startAssistEndpoint != null && endAssistEndpoint == null) {
+            endAssistEndpoint = matchLatestAssistedEndpoint(true);
+            if (endAssistEndpoint == null) {
+                failAssistedAttempt("Assisted end unavailable: " + assistEvidenceNotice);
+                return;
+            }
+        }
 
         // Leave the phase before external cleanup. A failing zero must not leave a live timer.
         enterPhase(Phase.IDLE);
@@ -1214,38 +1277,32 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
         if (motionInhibitedThisCycle() || visionTerminalRequested) return;
 
-        // Compute deltas
-        Pose2d endPinpointPose = latestPinpointPose;
-        double dxField = endPinpointPose.xInches - startPinpointPose.xInches;
-        double dyField = endPinpointPose.yInches - startPinpointPose.yInches;
-
+        double dx0;
+        double dy0;
         double deltaHeading = headingUnwrapper.getUnwrappedRad() - startHeadingUnwrappedRad;
-
-        // AprilTag assist: subtract real translation (tag-measured) so we isolate odometry drift
-        // caused by pod-offset misconfiguration, not carpet slip or an imperfect pivot.
-        if (aprilTagAssistEnabled() && startTagPose != null) {
-            Pose2d end = latestTagPose;
-            if (end != null) {
-                double dxTrue = end.xInches - startTagPose.xInches;
-                double dyTrue = end.yInches - startTagPose.yInches;
-
-                dxField -= dxTrue;
-                dyField -= dyTrue;
-
-                lastHadTagEnd = true;
+        if (startAssistEndpoint != null) {
+            Pose2d rawStart = startAssistEndpoint.odometry.fieldToRobotPose();
+            Pose2d rawEnd = endAssistEndpoint.odometry.fieldToRobotPose();
+            Pose2d tagStart = startAssistEndpoint.tagEstimate.toPose2d();
+            Pose2d tagEnd = endAssistEndpoint.tagEstimate.toPose2d();
+            // Each independent field frame is reduced to its own robot-at-start body frame.
+            // Subtract those comparable displacements once; never rotate the residual again.
+            dx0 = displacementForward(rawStart, rawEnd) - displacementForward(tagStart, tagEnd);
+            dy0 = displacementLeft(rawStart, rawEnd) - displacementLeft(tagStart, tagEnd);
+            deltaHeading = MathUtil.wrapToPi(rawEnd.headingRad - rawStart.headingRad);
+            if (!Double.isFinite(dx0) || !Double.isFinite(dy0) || !Double.isFinite(deltaHeading)) {
+                failAssistedAttempt("Capture-matched displacement or heading is non-finite");
+                return;
             }
+            lastHadTagEnd = true;
+        } else {
+            dx0 = displacementForward(startPinpointPose, latestPinpointPose);
+            dy0 = displacementLeft(startPinpointPose, latestPinpointPose);
         }
 
-        lastDxFieldInches = dxField;
-        lastDyFieldInches = dyField;
+        lastDxStartBodyInches = dx0;
+        lastDyStartBodyInches = dy0;
         lastDeltaHeadingRad = deltaHeading;
-
-        // Rotate drift into a frame where +X is robot-forward at the start of the sample.
-        // (This makes the math independent of the absolute field heading.)
-        double c = Math.cos(startHeadingRad);
-        double s = Math.sin(startHeadingRad);
-        double dx0 = dxField * c + dyField * s;
-        double dy0 = -dxField * s + dyField * c;
 
         // Solve for offset errors
         double a = Math.sin(deltaHeading);
@@ -1264,6 +1321,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             // yError = y_est - y_true (forward pods left offset error)
             double xError = (b * dx0 - a * dy0) / denom;
             double yError = (a * dx0 + b * dy0) / denom;
+            if (startAssistEndpoint != null && (!Double.isFinite(xError) || !Double.isFinite(yError)
+                    || !Double.isFinite(cfg.pinpoint.strafePodOffsetForwardInches - xError)
+                    || !Double.isFinite(cfg.pinpoint.forwardPodOffsetLeftInches - yError))) {
+                failAssistedAttempt("Capture-matched solve or recommended offsets are non-finite");
+                return;
+            }
 
             lastXErrorInches = xError;
             lastYErrorInches = yError;
@@ -1275,6 +1338,122 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             lastSolveNote = null;
         }
 
+    }
+
+    /** Forward displacement expressed in the robot's body frame at this stream's start. */
+    private static double displacementForward(Pose2d start, Pose2d end) {
+        return (end.xInches - start.xInches) * Math.cos(start.headingRad)
+                + (end.yInches - start.yInches) * Math.sin(start.headingRad);
+    }
+
+    /** Left displacement expressed in the robot's body frame at this stream's start. */
+    private static double displacementLeft(Pose2d start, Pose2d end) {
+        return -(end.xInches - start.xInches) * Math.sin(start.headingRad)
+                + (end.yInches - start.yInches) * Math.cos(start.headingRad);
+    }
+
+    /** Reject one assisted attempt before cleanup can call back into the tester. */
+    private void failAssistedAttempt(String reason) {
+        lastAttemptFailure = reason + ". Attempt discarded; release controls and retry. "
+                + "Only A during start-tag search explicitly selects a fresh no-tag sample.";
+        clearLastResults();
+        abortSample();
+    }
+
+    private void resetSearchAcquisition() {
+        tagStableFrames = 0;
+        tagSearchConsumedTimestamp = LoopTimestamp.unavailable();
+    }
+
+    /** Retain the consumed watermark across loss, while only new eligible frames grow a streak. */
+    private boolean countSearchFrame(AssistedEndpoint endpoint) {
+        if (endpoint == null) {
+            tagStableFrames = 0;
+            return false;
+        }
+        LoopTimestamp timestamp = endpoint.tagEstimate.timestamp;
+        if (Double.isFinite(tagSearchConsumedTimestamp.ageSec(ctx.clock))) {
+            double advance = timestamp.secondsSince(tagSearchConsumedTimestamp);
+            if (!Double.isFinite(advance) || advance < 0.0) {
+                tagStableFrames = 0;
+                assistEvidenceNotice = "Capture timestamp is older than the consumed search frame";
+                return false;
+            }
+            if (advance == 0.0) {
+                assistEvidenceNotice = "Repeated capture frame; waiting for a newer eligible frame";
+                return false;
+            }
+        }
+        tagSearchConsumedTimestamp = timestamp;
+        tagStableFrames++;
+        return tagStableFrames >= cfg.tagSearchStableFrames;
+    }
+
+    /** Match one complete camera observation without substituting delivery-time odometry. */
+    private AssistedEndpoint matchLatestAssistedEndpoint(boolean end) {
+        PoseEstimate tag = latestTagEstimate;
+        if (!aprilTagAssistEnabled() || visionLane == null || tagEstimator == null
+                || assistOdometryHistory == null || !visionReadiness.isReady()) {
+            assistEvidenceNotice = "Selected AprilTag source is not ready";
+            return null;
+        }
+        if (tag == null || !tag.hasPose || tag.timestamp == null
+                || !finitePose(tag.toPose2d()) || !Double.isFinite(tag.quality)
+                || tag.quality < 0.0 || tag.quality > 1.0) {
+            assistEvidenceNotice = "No finite fixed-tag pose with capture evidence";
+            return null;
+        }
+        if (!tag.timestamp.isFresh(ctx.clock, cfg.aprilTags.maxDetectionAgeSec)) {
+            assistEvidenceNotice = "Tag capture is stale, future, unavailable, or from another clock epoch";
+            return null;
+        }
+        if (end && (startAssistEndpoint == null || !assistedStartStillCompatible()
+                || !(tag.timestamp.secondsSince(startAssistEndpoint.tagEstimate.timestamp) > 0.0))) {
+            assistEvidenceNotice = "End capture must follow the start in the same camera/clock/raw trajectory";
+            return null;
+        }
+        PlanarPoseHistory.Lookup lookup = assistOdometryHistory.lookupSource().getAt(ctx.clock, tag.timestamp);
+        if (!lookup.isAvailable()) {
+            assistEvidenceNotice = "Capture-time odometry unavailable: " + lookup.unavailableReason();
+            return null;
+        }
+        if (!finitePose(lookup.fieldToRobotPose())) {
+            assistEvidenceNotice = "Capture-time odometry is non-finite";
+            return null;
+        }
+        assistEvidenceNotice = "Capture matched: " + lookup.kind();
+        return new AssistedEndpoint(tag, lookup, visionLane, tagEstimator,
+                pinpoint.trajectorySegmentId(), assistHistoryGeneration);
+    }
+
+    private static boolean finitePose(Pose2d pose) {
+        return pose != null && Double.isFinite(pose.xInches) && Double.isFinite(pose.yInches)
+                && Double.isFinite(pose.headingRad);
+    }
+
+    /** A frozen start need not remain in the rolling history, but its coordinate identity must. */
+    private boolean assistedStartStillCompatible() {
+        return startAssistEndpoint != null
+                && startAssistEndpoint.cameraOwner == visionLane
+                && startAssistEndpoint.estimator == tagEstimator
+                && startAssistEndpoint.rawTrajectorySegment == pinpoint.trajectorySegmentId()
+                && startAssistEndpoint.historyGeneration == assistHistoryGeneration
+                && Double.isFinite(startAssistEndpoint.tagEstimate.timestamp.ageSec(ctx.clock));
+    }
+
+    private void clearAssistEvidence() {
+        startAssistEndpoint = null;
+        endAssistEndpoint = null;
+        latestTagEstimate = null;
+        assistEvidenceNotice = null;
+        resetSearchAcquisition();
+        resetAssistHistory();
+    }
+
+    private void resetAssistHistory() {
+        previousAssistOdometryEstimate = null;
+        assistHistoryGeneration++;
+        if (assistOdometryHistory != null) assistOdometryHistory.reset();
     }
 
     private void ensureAprilTagAssistReady(boolean initPhase) {
@@ -1361,6 +1540,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void disableIdentityMountAssist() {
+        clearAssistEvidence();
         OwnedAprilTagCamera identityLane = visionLane;
         visionLane = null;
         tagSensor = null;
@@ -1423,6 +1603,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             boolean initPhase,
             boolean suppressedFailureMeansUncertainRollback
     ) {
+        clearAssistEvidence();
         OwnedAprilTagCamera failedLane = visionLane;
         boolean uncertainFactoryRollback = failedLane == null
                 && suppressedFailureMeansUncertainRollback
@@ -1526,16 +1707,56 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private void updateSensors(boolean initPhase) {
         pinpoint.update(ctx.clock);
         latestPinpointPose = pinpoint.getEstimate().toPose2d();
+        recordAssistOdometry();
+        if (motionInhibitedThisCycle() || visionTerminalRequested) return;
 
         refreshAprilTagVisionReadiness(initPhase);
         if (visionReadiness.isReady() && tagSensor != null && tagEstimator != null) {
-            tagEstimator.update(ctx.clock);
-
-            PoseEstimate tagEst = tagEstimator.getEstimate();
-            latestTagPose = tagEst.hasPose ? tagEst.toPose2d() : null;
+            try {
+                tagEstimator.update(ctx.clock);
+                if (!motionInhibitedThisCycle() && !visionTerminalRequested && tagEstimator != null) {
+                    latestTagEstimate = tagEstimator.getEstimate();
+                }
+            } catch (RuntimeException failure) {
+                handleVisionFailure(failure, "Vision observation failed", initPhase);
+            }
         } else {
-            latestTagPose = null;
+            latestTagEstimate = null;
         }
+    }
+
+    /** Record only the already-polled raw owner, rejecting discontinuities before queued actions. */
+    private void recordAssistOdometry() {
+        if (assistOdometryHistory == null || !aprilTagAssistEnabled()) return;
+        PoseEstimate current = pinpoint.getEstimate();
+        long segment = pinpoint.trajectorySegmentId();
+        PoseEstimate previous = previousAssistOdometryEstimate;
+        boolean discontinuity = previous != null && segment != assistHistorySourceSegment;
+        if (previous != null && previous.hasPose && current.hasPose) {
+            double elapsed = current.timestamp.secondsSince(previous.timestamp);
+            boolean sameTimeChangedPose = elapsed == 0.0
+                    && (current.fieldToRobotPose.xInches != previous.fieldToRobotPose.xInches
+                    || current.fieldToRobotPose.yInches != previous.fieldToRobotPose.yInches
+                    || current.fieldToRobotPose.yawRad != previous.fieldToRobotPose.yawRad
+                    || current.quality != previous.quality);
+            discontinuity |= !Double.isFinite(elapsed) || elapsed < 0.0 || sameTimeChangedPose;
+        }
+        boolean unavailable = !pinpointReadyForMotion();
+        if ((discontinuity || unavailable) && isSampleActive() && startAssistEndpoint != null) {
+            failAssistedAttempt(unavailable ? "Pinpoint READY evidence was lost during the assisted attempt"
+                    : "Raw odometry continuity changed during the assisted attempt");
+            return;
+        }
+        if (discontinuity || unavailable) {
+            resetAssistHistory();
+            startAssistEndpoint = null;
+            endAssistEndpoint = null;
+            // A search cannot carry its good streak across incompatible odometry evidence.
+            tagStableFrames = 0;
+        }
+        assistOdometryHistory.recordCurrent(ctx.clock);
+        previousAssistOdometryEstimate = current;
+        assistHistorySourceSegment = segment;
     }
 
     private boolean pinpointReadyForMotion() {
@@ -1614,7 +1835,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         if (phase == Phase.SEARCH_TAG_START || phase == Phase.SEARCH_TAG_END) {
             double turned = Math.abs(tagSearchUnwrapper.getUnwrappedRad() - tagSearchStartUnwrappedRad);
             ctx.telemetry.addData("Tag search turned [deg]", String.format(Locale.US, "%.1f", Math.toDegrees(turned)));
-            ctx.telemetry.addData("Tag search stable", String.format(Locale.US, "%d/%d", tagStableFrames, cfg.tagSearchStableFrames));
+            ctx.telemetry.addData("Tag search distinct captures", String.format(Locale.US, "%d/%d", tagStableFrames, cfg.tagSearchStableFrames));
         }
 
         if (aprilTagAssistEnabled()) {
@@ -1629,7 +1850,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     visionReadiness.isReady() ? "READY" : "WAITING"
             );
             ctx.telemetry.addData("Vision status", visionReadiness.reason());
-            ctx.telemetry.addData("Tag pose", latestTagPose != null ? latestTagPose.toString() : "<none>");
+            ctx.telemetry.addData("Tag pose at capture", latestTagEstimate != null && latestTagEstimate.hasPose
+                    ? latestTagEstimate.toPose2d().toString() : "<none>");
+            if (assistEvidenceNotice != null) ctx.telemetry.addData("Capture evidence", assistEvidenceNotice);
+            if (startAssistEndpoint != null) {
+                ctx.telemetry.addData("Start capture odometry", startAssistEndpoint.odometry.kind());
+            }
             if (fixedTagLayoutPolicySummary != null) {
                 ctx.telemetry.addData("layout.policy", fixedTagLayoutPolicySummary);
             }
@@ -1650,6 +1876,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         // Current pose
         ctx.telemetry.addData("Pinpoint pose", latestPinpointPose.toString());
+        if (isSampleActive()) {
+            ctx.telemetry.addData("Current turn progress [deg]", String.format(Locale.US, "%.1f",
+                    Math.toDegrees(headingUnwrapper.getUnwrappedRad() - startHeadingUnwrappedRad)));
+        }
 
         // Current config offsets
         ctx.telemetry.addData(
@@ -1708,7 +1938,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     ctx.telemetry.addLine("(No drive configured) Manual samples are by hand only.");
                 }
                 if (aprilTagAssistEnabled()) {
-                    ctx.telemetry.addLine("Tip: if a known-pose tag is visible, the tester can align Pinpoint to it.");
+                    ctx.telemetry.addLine("Assist requires a tag capture matched to raw odometry; Pinpoint is not rebased.");
                 }
                 break;
 
@@ -1719,7 +1949,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
             case ROTATING:
                 if (autoSample) {
-                    if (aprilTagAssistEnabled() && cfg.autoComputeAfterAutoSample) {
+                    if (startAssistEndpoint != null && cfg.autoComputeAfterAutoSample) {
                         ctx.telemetry.addLine("Auto sample [Y] is rotating now and will auto-compute at the end.");
                     } else {
                         ctx.telemetry.addLine("Auto sample [Y] is rotating now. Abort [B] if needed.");
@@ -1731,7 +1961,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                         ctx.telemetry.addLine("Rotate the robot by hand, then finish [A].");
                     }
                 }
-                if (autoSample && aprilTagAssistEnabled() && cfg.autoComputeAfterAutoSample) {
+                if (autoSample && startAssistEndpoint != null && cfg.autoComputeAfterAutoSample) {
                     ctx.telemetry.addLine("Tip: with tag assist, results can compute automatically after the turn.");
                 } else if (cfg.enablePostRotateRecenter) {
                     ctx.telemetry.addLine("After rotation you can recenter, then finish [A] to compute.");
@@ -1742,21 +1972,26 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
             case SEARCH_TAG_END:
                 ctx.telemetry.addLine("Trying to reacquire a tag pose for the end of the sample...");
-                ctx.telemetry.addLine("Skip assist [A] | Abort [B]");
+                ctx.telemetry.addLine("Discard assisted attempt [A] | Abort [B]");
                 break;
 
             case POST_RECENTER:
                 ctx.telemetry.addLine("Recenter (optional): translate back to the starting spot, then finish [A].");
+                if (startAssistEndpoint != null) {
+                    ctx.telemetry.addLine("Final A requires an eligible capture-matched tag end; missing evidence discards this assisted attempt.");
+                }
                 if (drive != null) {
                     ctx.telemetry.addLine("Translate [LeftStick] with no rotation.");
                 } else {
                     ctx.telemetry.addLine("(No drive configured) You can physically reposition the robot.");
                 }
-                if (aprilTagAssistEnabled() && startTagPose != null && latestTagPose != null) {
+                if (startAssistEndpoint != null && latestTagEstimate != null && latestTagEstimate.hasPose) {
+                    Pose2d startTagPose = startAssistEndpoint.tagEstimate.toPose2d();
+                    Pose2d latestTagPose = latestTagEstimate.toPose2d();
                     double dxToStart = startTagPose.xInches - latestTagPose.xInches;
                     double dyToStart = startTagPose.yInches - latestTagPose.yInches;
                     ctx.telemetry.addData(
-                            "To start (tag) [in]",
+                            "To start (tag capture field) [in]",
                             String.format(Locale.US, "Δx=%.2f, Δy=%.2f", dxToStart, dyToStart)
                     );
                 }
@@ -1764,15 +1999,15 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         // Results
-        if (lastDxFieldInches != null && lastDyFieldInches != null && lastDeltaHeadingRad != null) {
+        if (lastDxStartBodyInches != null && lastDyStartBodyInches != null && lastDeltaHeadingRad != null) {
             ctx.telemetry.addLine();
             ctx.telemetry.addLine("Last sample:");
             ctx.telemetry.addData(
-                    "  Δx, Δy (field) [in]",
-                    String.format(Locale.US, "%.3f, %.3f", lastDxFieldInches, lastDyFieldInches)
+                    "  Δx, Δy (start-body residual) [in]",
+                    String.format(Locale.US, "%.3f, %.3f", lastDxStartBodyInches, lastDyStartBodyInches)
             );
             ctx.telemetry.addData(
-                    "  Δheading [deg]",
+                    lastHadTagStart ? "  Capture-to-capture Δheading [deg]" : "  Δheading [deg]",
                     String.format(Locale.US, "%.1f", Math.toDegrees(lastDeltaHeadingRad))
             );
 

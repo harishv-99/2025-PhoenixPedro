@@ -1926,6 +1926,26 @@ public final class DocumentationLinksTest {
                 "actively applies those reconstructed defaults",
                 "do not accept a generic offset solve",
                 "fresh robot-configured calibrator");
+        String assistedCalibration = sectionBetween(calibration,
+                "## Optional advanced: powered and vision-assisted pod offsets",
+                "## Optional EKF comparison");
+        assertContainsAll("Assisted calibration explains matched-time evidence", assistedCalibration,
+                "capture time", "delivery time", "raw odometry", "same capture time",
+                "exact", "interpolated", "robot-at-start axes",
+                "search-only", "strictly advancing capture timestamps",
+                "three reads of one frame still count as one",
+                "one matched pair", "missing or unmatched assisted end",
+                "no recommendation", "fresh explicitly unassisted attempt",
+                "cfg.autoComputeAfterAutoSample = false", "final a must select a matched end",
+                "accTitle:", "accDescr:", "**text version:**", "software evidence only");
+        assertContainsAll("Assisted history has visible independent bounds", assistedCalibration,
+                "config.assistOdometryHistory", "PlanarPoseHistory.Config.defaults()",
+                "`retentionSec` | `0.50 s`", "`maxSamples` | `128`",
+                "`maxInterpolationGapSec` | `0.10 s`",
+                "`maxInterpolationTranslationInches` | `12.0 in`",
+                "`maxInterpolationYawRad` | `Math.PI / 2.0`",
+                "before constructing", "without a vision factory", "draft is ignored",
+                "cfg.aprilTags.maxDetectionAgeSec", "does not create missing odometry history");
         assertContainsAll("Generic calibration implementation boundary", standardTestersSource,
                 "calib: camera mount (webcam)", "calib: camera mount (limelight)",
                 "loc: apriltag localization (webcam)",

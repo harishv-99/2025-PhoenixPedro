@@ -771,14 +771,112 @@ and evaluate the recorded loop intervals because per-cycle Logcat output can its
 ## Optional advanced: powered and vision-assisted pod offsets
 
 This is not supplied by the generic `StandardTesters` pod-offset entry. A robot-specific factory
-must deliberately provide a complete mecanum config; an AprilTag lane-factory builder is a second,
-independent option. Review motor names/directions and clear a large floor area before enabling it.
+provides a complete mecanum config to enable powered motion. An AprilTag camera-factory builder
+is a separate option: assist also works with hand rotation and no configured drive. Before using
+assist, verify the camera mount and fixed-tag layout through the configured AprilTag-only check.
+Review motor names/directions and clear a large floor area before enabling powered motion.
+
+### Match the same moment
+
+If the robot moves during a turn, tags can estimate that real translation so the offset solve does
+not mistake all of it for an odometry error. But a picture describes an earlier moment:
+**capture time** is when the image was taken; **delivery time** is when the tester reads its result.
+Comparing that old tag pose with the robot's latest odometry mixes two different moments.
+
+The tester keeps a short **history** of raw odometry: saved Pinpoint poses before any vision
+correction. At each assisted endpoint it pairs the tag pose with odometry at the same capture time.
+It does not write the delayed tag pose into Pinpoint as though the robot were there now.
+
+```mermaid
+sequenceDiagram
+    accTitle: Calibration matches the image time, not its delivery time
+    accDescr: Illustrative times in seconds, not a measured run. The tester retains an odometry sample at 0.10 seconds. A camera frame captured at 0.10 seconds arrives at 0.20 seconds. The tester compares that tag pose with the saved 0.10-second odometry, not the latest pose at delivery.
+    participant Camera
+    participant Tester as Calibration tester
+    Tester->>Tester: Save odometry at 0.10 s
+    Camera->>Camera: Capture image at 0.10 s
+    Camera->>Tester: Deliver that image at 0.20 s
+    Tester->>Tester: Match both poses at 0.10 s
+```
+
+**Text version:** The illustrative image captured at `0.10 s` arrives at `0.20 s`. It is compared
+with odometry at `0.10 s`, not `0.20 s`; the robot may have moved in between. The same matching rule
+applies separately to the start and end of a sample.
+
+An **exact** match uses a saved odometry pose at the requested time. An **interpolated** match
+estimates between two nearby saved poses; it is not a measurement of the missing moment. If the
+history cannot supply either within its limits, the endpoint is unavailable. The tester never
+substitutes the nearest or current pose, or guesses beyond the recorded interval.
+
+The start pair is saved for that attempt, even after it leaves the short history window. The end
+capture must be strictly later, from the same camera and run without a clock reset or change of
+odometry coordinates. Each stream's start-to-end movement is expressed along the robot's starting
+forward/left axes before subtraction, so different field origins or heading zeros are not mixed.
+The remaining difference is the **residual**, reported in those robot-at-start axes. The solve uses
+the matched endpoint headings; the separate turn-progress display tracks the ongoing turn, not
+the image-capture interval. Reset, abort, STOP, or incompatible camera/odometry changes discard
+the attempt's evidence.
+
+### History and motion settings
+
+The tester privately owns and updates that raw history; robot code does not construct another
+history or add an update call.
+[`PinpointPodOffsetCalibrator.Config.assistOdometryHistory`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/calibration/PinpointPodOffsetCalibrator.Config.html#assistOdometryHistory>) starts
+with the existing [`PlanarPoseHistory.Config.defaults()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/localization/PlanarPoseHistory.Config.html#defaults()>) values:
+
+| Field under `cfg.assistOdometryHistory` | Default | What it bounds |
+| --- | --- | --- |
+| `retentionSec` | `0.50 s` | How long a recorded pose remains eligible for a new lookup. |
+| `maxSamples` | `128` | Maximum saved poses; a high sample rate can shorten the retained time span. |
+| `maxInterpolationGapSec` | `0.10 s` | Time between the two poses used for interpolation. |
+| `maxInterpolationTranslationInches` | `12.0 in` | Translation between those two poses. |
+| `maxInterpolationYawRad` | `Math.PI / 2.0` (`90°`) | Shortest turning angle between those two poses. |
+
+Change these fields on the tool's `cfg` before constructing the tester. Active assist requires a
+nonnull, valid history draft, which the tester captures in its own copy; without a vision factory the
+draft is ignored. The separate `cfg.aprilTags.maxDetectionAgeSec`, default `0.50 s`, limits how old
+an accepted camera observation may be. Increasing that limit does not create missing odometry
+history, and increasing history retention does not permit older camera frames. These software
+bounds are not physical accuracy or safety criteria.
 
 When those branches are active, the tester defaults to right-stick manual rotation scale `0.60`,
 automatic omega `0.35`, a `180°` target, and left-stick recenter scale `0.60`. With drive and vision
-assist, start/end tag searches default on at omega `+0.25`, require `3` stable frames, and allow up
-to `4π` radians before the sample and `2π` afterward; automatic compute and post-turn recenter also
-default on. These commands and limits are active powered values, not reviewed safe values.
+assist, start/end tag searches default on at omega `+0.25`, with `cfg.tagSearchStableFrames = 3`,
+and allow up to `4π` radians before the sample and `2π` afterward; automatic compute and post-turn
+recenter also default on. These commands and limits are active powered values, not reviewed safe
+values.
+
+### Acquire frames or discard the attempt
+
+Here a camera **frame** means one processed image, not a robot-loop iteration. The search-only
+`tagSearchStableFrames` setting counts eligible images with strictly advancing capture timestamps.
+Three reads of one frame still count as one. Missing, stale, invalid, or out-of-order evidence
+breaks the streak; an already-counted timestamp cannot be counted again. New images may show the
+same pose and still count. This counts images; it does not measure how much their poses vary or
+prove that the robot is still.
+
+When a suitable tag is already visible, direct start/end acquisition needs one matched pair,
+not the search count. An enabled start search may precede either an A-requested manual sample or
+a Y-requested automatic sample. End search is only for an automatic sample computing when its
+turn finishes. Those searches wait within their angle and time limits.
+Read the reported failure reason if a limit is reached or a required endpoint cannot be matched;
+the tester does not turn a failed assisted attempt into an uncorrected offset recommendation.
+
+A during start-tag search deliberately skips assistance and starts the established no-tag
+workflow. A from idle merely requests a sample; with searches disabled or no drive, it does not
+silently skip missing assisted evidence. After an assisted start has been saved, A during end-tag
+search discards that attempt instead of salvaging it through manual recentering. A missing or
+unmatched assisted end likewise supplies no recommendation. To use manual recentering without
+tags, begin a fresh explicitly unassisted attempt, using the no-vision setup or the start-search
+skip; do not reuse half of a failed assisted sample.
+
+For a manual sample, or an automatic sample with `cfg.autoComputeAfterAutoSample = false`,
+enabled post-turn recentering is not the solve. Entering it does not require or freeze an end pair;
+the final A must select a matched end at its actual capture time. An earlier saved pair is not a
+fallback if that final evidence is missing: this A either matches or discards the attempt; it
+never launches a rotating end search.
+
+### Keep motion bounded
 
 Each automatic rotation phase also has its own elapsed-time limit. Set
 `PinpointPodOffsetCalibrator.Config.automaticPhaseTimeoutSec` on the tool Config before constructing
@@ -804,8 +902,14 @@ configured automatic turn; A begins or advances a manual sample, RightStickX rot
 powered rotation phase, LeftStick translates during recenter, and B aborts to zero. B also discards
 A/Y/X actions queued in that same cycle, so another button cannot restart or advance the aborted
 attempt. Every motion path requires current-cycle Pinpoint `READY` pose and velocity and aborts if
-that evidence disappears. Vision assist disables itself when the opened lane still reports an
-identity mount.
+that evidence disappears. If the opened camera reports an identity mount, successful camera
+cleanup disables assist and leaves the no-tag workflow available; failed cleanup blocks reuse
+until the OpMode is stopped and restarted.
+
+The matched timestamps establish software evidence only. Camera timing estimates, Pinpoint poll
+timing, mount/layout accuracy, physical slip, and the resulting offset accuracy still require
+controlled robot checks against independent observations. Follow the same record -> rebuild ->
+fresh robot-configured tester -> verify handoff as the manual procedure.
 
 ## Optional EKF comparison
 
