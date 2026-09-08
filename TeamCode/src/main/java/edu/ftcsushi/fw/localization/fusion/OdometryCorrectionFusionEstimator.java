@@ -48,6 +48,12 @@ import edu.ftcsushi.fw.localization.PoseResetter;
  * measurement timestamp once, so a single stale frame cannot keep "pulling" the fused pose over
  * several loops.</p>
  *
+ * <p><b>Evidence time:</b> an available result carries the supported time of the composite pose,
+ * not the loop that delivered it. Retained predictor samples cannot refresh that time. A new
+ * coherent stationary motion interval can. Delayed corrections require a continuous recorded
+ * bridge to the supported endpoint; absent alignment is rejection, not a raw-as-current fallback.
+ * Availability, age, and quality are separate facts for action-specific consumer policy.</p>
+ *
  * <p><b>Reported fused quality:</b> an ordinary update that publishes a pose reports the maximum
  * of sanitized current predictor quality and a recent accepted correction's contribution. With a
  * positive {@link Config#correctionConfidenceHoldSec hold}, that contribution is
@@ -125,7 +131,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         public boolean enableInitializeFromCorrection = true;
 
         /**
-         * If true, push the fused pose back into the predictor estimator when it supports resets.
+         * If true, permit pushing a current-time fused pose into a predictor that supports resets.
+         * Historical corrected results remain local because a predictor reset has no capture time.
+         * Manual {@link OdometryCorrectionFusionEstimator#setPose(Pose2d)} assertions are separate.
          */
         public boolean enablePushCorrectedPoseToPredictor = true;
 
@@ -143,7 +151,10 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
         /**
          * If true, accepted correction measurements are corrected at their measurement timestamp and the
-         * stored predictor motion since that timestamp is replayed forward to now.
+         * stored predictor motion since that timestamp is replayed to its supported endpoint.
+         * Missing history rejects a historical correction instead of treating it as current.
+         * When false, only direct measurements at or after the represented state and usable
+         * predictor endpoint are eligible; historical unaligned blending is not supported.
          *
          * <p>This is a lightweight, deterministic form of latency compensation. It intentionally
          * avoids a full state-estimator stack while still fixing the most common AprilTag fusion
@@ -156,8 +167,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
          * How much recent predictor history (seconds) to retain for latency compensation.
          *
          * <p>When latency compensation is enabled, this must be at least as large as
-         * {@link #maxCorrectionAgeSec} so every still-acceptable correction frame can be replayed through
-         * predictor history.</p>
+         * {@link #maxCorrectionAgeSec}. Capacity does not guarantee actual coverage: startup,
+         * eviction, and missing motion can still leave a correction without a usable bridge.</p>
          */
         public double predictorHistorySec = 1.0;
 
@@ -294,6 +305,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     private Pose3d lastPredictorPose = Pose3d.zero();
 
     private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+    // The composite pose's supported endpoint is distinct from when its owner last published.
+    private LoopTimestamp stateEvidenceTimestamp = LoopTimestamp.unavailable();
+    private LoopTimestamp lastPublicationLoopTimestamp = LoopTimestamp.unavailable();
     private final Deque<PredictorSample> predictorHistory = new ArrayDeque<PredictorSample>();
 
     // The corrected trajectory has its own continuity identity. Normal accepted corrections stay
@@ -338,7 +352,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     private LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp = LoopTimestamp.unavailable();
     private LoopTimestamp lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
     private Pose3d lastCorrectionPose = Pose3d.zero();
-    private Pose3d lastLatencyCompensatedCorrectionPose = Pose3d.zero();
+    private Pose3d lastAlignedCorrectionPose = Pose3d.zero();
     private Pose3d lastReplayReferencePose = Pose3d.zero();
     private boolean lastCorrectionUsedReplay = false;
     private int acceptedCorrectionCount = 0;
@@ -346,7 +360,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     private int skippedDuplicateCorrectionCount = 0;
     private int skippedOutOfOrderCorrectionCount = 0;
     private int replayedCorrectionCount = 0;
-    private int projectedCorrectionCount = 0;
+    private int nonReplayedCorrectionCount = 0;
 
     /**
      * Creates a fusion estimator that combines predictor with a separate correction estimator.
@@ -419,7 +433,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     /**
      * Returns whether the most recently accepted correction used measurement-time replay instead of
-     * a simple now-frame projection fallback.
+     * a direct or supported projected update. Rejected frames do not change this accepted status.
      */
     public boolean wasLastCorrectionReplay() {
         return lastCorrectionUsedReplay;
@@ -462,10 +476,11 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     }
 
     /**
-     * Returns how many accepted corrections fell back to a simple now-frame projection.
+     * Returns how many accepted corrections used a direct or supported projected update,
+     * rather than measurement-time replay. This count does not imply that projection was needed.
      */
-    public int getProjectedCorrectionCount() {
-        return projectedCorrectionCount;
+    public int getNonReplayedCorrectionCount() {
+        return nonReplayedCorrectionCount;
     }
 
     /**
@@ -479,7 +494,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 skippedDuplicateCorrectionCount,
                 skippedOutOfOrderCorrectionCount,
                 replayedCorrectionCount,
-                projectedCorrectionCount,
+                nonReplayedCorrectionCount,
                 lastCorrectionAccepted,
                 lastAcceptedCorrectionMeasurementTimestamp,
                 lastEvaluatedCorrectionTimestamp,
@@ -510,9 +525,13 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
      * unavailable, wrong-epoch, and materially future timestamps remain skipped without changing
      * that watermark or the rejection count. Finite x/y/yaw, quality within {@code [0, 1]},
      * inclusive freshness, and configured gates then determine acceptance. If neither a usable
-     * current predictor pose nor a correction accepted in this update exists, retained internal
+     * current-epoch predictor pose nor a correction incorporated in this update exists, retained internal
      * state remains available for later recovery but the published estimate is unavailable rather
-     * than a freshly timestamped frozen pose.</p>
+     * than a freshly timestamped frozen pose. A present retained predictor may instead publish an
+     * available aged pose. An accepted correction with both effective gains zero changes acceptance
+     * metadata, not pose time or availability. A strictly positive gain incorporates evidence even
+     * when the measured pose agrees exactly; one timestamp does not promise independent component
+     * freshness. Historical results are never pushed through a timeless predictor reset.</p>
      */
     @Override
     public void update(LoopClock clock) {
@@ -550,6 +569,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         Pose3d beforeFusedPose = fusedPose;
         Pose3d beforeLastPredictorPose = lastPredictorPose;
         PoseEstimate beforeLastEstimate = lastEstimate;
+        LoopTimestamp beforeStateEvidence = stateEvidenceTimestamp;
+        LoopTimestamp beforePublicationLoop = lastPublicationLoopTimestamp;
         Deque<PredictorSample> beforePredictorHistory =
                 new ArrayDeque<PredictorSample>(predictorHistory);
         LoopTimestamp beforeCoveredMotion = lastCoveredPredictorMotionEndTimestamp;
@@ -564,7 +585,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         LoopTimestamp beforeAcceptedMeasurement = lastAcceptedCorrectionMeasurementTimestamp;
         LoopTimestamp beforeEvaluatedMeasurement = lastEvaluatedCorrectionTimestamp;
         Pose3d beforeCorrectionPose = lastCorrectionPose;
-        Pose3d beforeCompensatedCorrectionPose = lastLatencyCompensatedCorrectionPose;
+        Pose3d beforeAlignedCorrectionPose = lastAlignedCorrectionPose;
         Pose3d beforeReplayReferencePose = lastReplayReferencePose;
         boolean beforeCorrectionUsedReplay = lastCorrectionUsedReplay;
         int beforeAcceptedCount = acceptedCorrectionCount;
@@ -572,7 +593,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         int beforeDuplicateCount = skippedDuplicateCorrectionCount;
         int beforeOutOfOrderCount = skippedOutOfOrderCorrectionCount;
         int beforeReplayedCount = replayedCorrectionCount;
-        int beforeProjectedCount = projectedCorrectionCount;
+        int beforeNonReplayedCount = nonReplayedCorrectionCount;
         boolean beforeAwaitingPredictorEvidence =
                 awaitingPredictorEvidenceAfterDiscontinuity;
 
@@ -583,6 +604,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             fusedPose = beforeFusedPose;
             lastPredictorPose = beforeLastPredictorPose;
             lastEstimate = beforeLastEstimate;
+            stateEvidenceTimestamp = beforeStateEvidence;
+            lastPublicationLoopTimestamp = beforePublicationLoop;
             lastCoveredPredictorMotionEndTimestamp = beforeCoveredMotion;
             predictorHistory.clear();
             predictorHistory.addAll(beforePredictorHistory);
@@ -597,7 +620,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             lastAcceptedCorrectionMeasurementTimestamp = beforeAcceptedMeasurement;
             lastEvaluatedCorrectionTimestamp = beforeEvaluatedMeasurement;
             lastCorrectionPose = beforeCorrectionPose;
-            lastLatencyCompensatedCorrectionPose = beforeCompensatedCorrectionPose;
+            lastAlignedCorrectionPose = beforeAlignedCorrectionPose;
             lastReplayReferencePose = beforeReplayReferencePose;
             lastCorrectionUsedReplay = beforeCorrectionUsedReplay;
             acceptedCorrectionCount = beforeAcceptedCount;
@@ -605,7 +628,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             skippedDuplicateCorrectionCount = beforeDuplicateCount;
             skippedOutOfOrderCorrectionCount = beforeOutOfOrderCount;
             replayedCorrectionCount = beforeReplayedCount;
-            projectedCorrectionCount = beforeProjectedCount;
+            nonReplayedCorrectionCount = beforeNonReplayedCount;
             awaitingPredictorEvidenceAfterDiscontinuity =
                     beforeAwaitingPredictorEvidence;
             retainFailClosedPredictorPushFailure(
@@ -618,7 +641,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     private void updateOnceMutating(LoopClock clock) {
         final LoopTimestamp nowTimestamp = clock.nowTimestamp();
-        final int acceptedCorrectionsBeforeUpdate = acceptedCorrectionCount;
+        boolean incorporatedCorrectionThisUpdate = false;
 
         invalidateHistoryAcrossReset(nowTimestamp);
 
@@ -660,10 +683,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 && isFinitePlanarPose(predictorEst.fieldToRobotPose))
                 ? planarize(predictorEst.fieldToRobotPose)
                 : null;
-        final LoopTimestamp currentPredictorTimestamp = predictorTimestampCurrent
+        final LoopTimestamp currentPredictorTimestamp = currentPredictorPose != null
                 ? predictorEst.timestamp
                 : LoopTimestamp.unavailable();
-        final boolean predictorMotionUsable = isUsablePredictorMotion(predictorDelta, clock);
+        final boolean predictorMotionUsable = currentPredictorPose != null
+                && isUsablePredictorMotion(predictorDelta, clock)
+                && sameTimestamp(predictorDelta.endTimestamp, currentPredictorTimestamp);
         final boolean predictorClaimedInvalidMotion = predictorDelta != null
                 && predictorDelta.hasDelta
                 && !predictorMotionUsable;
@@ -684,23 +709,13 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             return;
         }
 
-        if (predictorClaimedInvalidMotion && initialized) {
-            if (currentPredictorPose != null) {
-                // Keep the independently valid absolute predictor pose, but sever replay and
-                // rebase history so the malformed claimed interval cannot be reconstructed later.
-                resetPredictorHistory(currentPredictorTimestamp, currentPredictorPose);
-                setReplayBase(
-                        currentPredictorTimestamp,
-                        fusedPose,
-                        currentPredictorPose);
-                rememberPredictorMotionRebase(currentPredictorPose);
-            } else {
-                predictorHistory.clear();
-                setReplayBase(LoopTimestamp.unavailable(), fusedPose, Pose3d.zero());
-                awaitPredictorMotionRebase();
-            }
-        } else if (currentPredictorPose != null) {
-            recordPredictorSample(currentPredictorTimestamp, currentPredictorPose);
+        preparePredictorHistory(currentPredictorTimestamp, currentPredictorPose,
+                predictorDelta, predictorMotionUsable, predictorClaimedInvalidMotion);
+        if (initialized && !stateEvidenceTimestamp.isAvailable() && !predictorMotionUsable
+                && predictorMotionRebaseState == PredictorMotionRebaseState.NONE) {
+            // A reset drops temporal identity, not a coherent wholly new-epoch motion interval.
+            // Without such an interval, establish a new baseline before publishing evidence.
+            awaitPredictorMotionRebase();
         }
 
         boolean evaluatedCorrectionThisLoop = false;
@@ -715,36 +730,41 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 evaluatedCorrectionThisLoop = true;
                 if (isCorrectionAcceptable(correctionEst, clock)) {
                     Pose3d correctionPose = planarize(correctionEst.fieldToRobotPose);
-                    Pose3d initialPose = cfg.enableLatencyCompensation
-                            ? projectCorrectionPoseToNow(correctionPose, correctionEst.timestamp, currentPredictorPose)
-                            : correctionPose;
+                    LoopTimestamp endpoint = correctionEndpointTimestamp(
+                            correctionEst.timestamp, currentPredictorTimestamp);
+                    Pose3d initialPose = alignCorrectionPose(correctionPose,
+                            correctionEst.timestamp, endpoint, currentPredictorPose);
                     if (!isFinitePlanarPose(initialPose)) {
                         rejectedCorrectionCount++;
                     } else {
                         // The predictor boundary may reject a finite core pose that its vendor
                         // representation cannot preserve. Let it do so before committing the
                         // candidate locally.
-                        boolean pushedToPredictor = pushPoseToPredictor(initialPose);
+                        boolean pushedToPredictor = endpoint.isFresh(clock, 0.0)
+                                && pushPoseToPredictor(initialPose);
 
                         fusedPose = initialPose;
+                        stateEvidenceTimestamp = endpoint;
                         initialized = true;
                         lastCorrectionPose = correctionPose;
-                        lastLatencyCompensatedCorrectionPose = initialPose;
+                        lastAlignedCorrectionPose = initialPose;
                         lastReplayReferencePose = correctionPose;
                         lastCorrectionAccepted = nowTimestamp;
                         lastAcceptedCorrectionQuality = correctionEst.quality;
                         lastAcceptedCorrectionMeasurementTimestamp = correctionEst.timestamp;
                         lastCorrectionUsedReplay = false;
                         acceptedCorrectionCount++;
-                        projectedCorrectionCount++;
+                        nonReplayedCorrectionCount++;
                         rebaseAfterPoseChange(
-                                nowTimestamp,
-                                currentPredictorPose,
+                                endpoint,
+                                sameTimestamp(endpoint, correctionEst.timestamp)
+                                        ? currentPredictorPose : interpolatePredictorPose(endpoint),
                                 currentPredictorTimestamp,
                                 pushedToPredictor
                         );
                         awaitingPredictorEvidenceAfterDiscontinuity = false;
                         initializedFromCorrection = true;
+                        incorporatedCorrectionThisUpdate = true;
                     }
                 } else {
                     rejectedCorrectionCount++;
@@ -753,6 +773,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
             if (!initialized && currentPredictorPose != null) {
                 fusedPose = currentPredictorPose;
+                stateEvidenceTimestamp = currentPredictorTimestamp;
                 initialized = true;
                 lastPredictorPose = currentPredictorPose;
                 resetPredictorHistory(currentPredictorTimestamp, currentPredictorPose);
@@ -762,7 +783,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 awaitingPredictorEvidenceAfterDiscontinuity = false;
             } else if (!initialized && !initializedFromCorrection) {
                 // No pose from either source yet.
-                lastEstimate = PoseEstimate.noPose(nowTimestamp);
+                publish(PoseEstimate.noPose(nowTimestamp), nowTimestamp);
                 return;
             }
         } else {
@@ -782,11 +803,16 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 Pose3d propagatedPose = planarize(fusedPose.then(predictorMotion));
                 if (isFinitePlanarPose(propagatedPose)) {
                     fusedPose = propagatedPose;
+                    stateEvidenceTimestamp = predictorDelta.endTimestamp;
                     markPredictorMotionCovered(predictorDelta.endTimestamp);
                     clearPredictorMotionRebase();
+                    if (!replayBaseValid) {
+                        setReplayBase(stateEvidenceTimestamp, fusedPose, currentPredictorPose);
+                    }
                 } else if (currentPredictorPose != null) {
                     resetPredictorHistory(currentPredictorTimestamp, currentPredictorPose);
-                    setReplayBase(currentPredictorTimestamp, fusedPose, currentPredictorPose);
+                    setReplayBase(LoopTimestamp.unavailable(), fusedPose, Pose3d.zero());
+                    markPredictorMotionCovered(currentPredictorTimestamp);
                     rememberPredictorMotionRebase(currentPredictorPose);
                 }
             }
@@ -803,21 +829,21 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             if (!isCorrectionAcceptable(correctionEst, clock)) {
                 rejectedCorrectionCount++;
             } else {
-                maybeApplyCorrection(
+                incorporatedCorrectionThisUpdate = maybeApplyCorrection(
                         correctionEst,
                         currentPredictorPose,
                         currentPredictorTimestamp,
-                        nowTimestamp
+                        clock
                 );
             }
         }
 
         // Retain the internal state across a sensor gap for recovery, but do not timestamp that
-        // frozen state as fresh evidence. A correction accepted in this update is independently
-        // current evidence even when the predictor is unavailable.
+        // frozen state as fresh evidence. Only a correction actually incorporated into the pose
+        // can supply independent evidence when the predictor is unavailable.
         if (currentPredictorPose == null
-                && acceptedCorrectionCount == acceptedCorrectionsBeforeUpdate) {
-            lastEstimate = PoseEstimate.noPose(nowTimestamp);
+                && !incorporatedCorrectionThisUpdate) {
+            publish(PoseEstimate.noPose(nowTimestamp), nowTimestamp);
             return;
         }
 
@@ -835,11 +861,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             }
         }
 
-        if (!isFinitePlanarPose(fusedPose) || !Double.isFinite(quality)) {
-            lastEstimate = PoseEstimate.noPose(nowTimestamp);
+        if (!isFinitePlanarPose(fusedPose) || !Double.isFinite(quality)
+                || !isTimestampCurrent(stateEvidenceTimestamp, clock)) {
+            publish(PoseEstimate.noPose(nowTimestamp), nowTimestamp);
             return;
         }
-        lastEstimate = new PoseEstimate(fusedPose, true, quality, nowTimestamp);
+        publish(new PoseEstimate(fusedPose, true, quality, stateEvidenceTimestamp), nowTimestamp);
     }
 
     /**
@@ -860,6 +887,11 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
      *
      * <p>Typical usage is a tester button or a known start-pose initialization path.</p>
      *
+     * <p>The assertion uses this owner's last actual publication loop boundary, not the aged
+     * sensor endpoint carried by that publication. Before the first publication its time is
+     * unavailable. This method does not read or advance a separate clock. A fail-closed publication
+     * establishes a new boundary; a transactional failure without publication retains the old one.</p>
+     *
      * <p>The pose must be non-null with finite x/y/heading. Validation and all derived-state
      * checks precede predictor or local effects. When the configured predictor supports
      * {@link PoseResetter}, a transactional rejection before any child continuity change leaves
@@ -871,9 +903,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     public void setPose(Pose2d pose) {
         requireFiniteAuthoredPose(pose, "OdometryCorrectionFusionEstimator.setPose(pose)");
 
-        final LoopTimestamp nowTimestamp = (lastEstimate != null && lastEstimate.timestamp != null)
-                ? lastEstimate.timestamp
-                : LoopTimestamp.unavailable();
+        final LoopTimestamp nowTimestamp = lastPublicationLoopTimestamp;
 
         Pose3d candidatePose = new Pose3d(
                 pose.xInches,
@@ -906,6 +936,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         // Everything below is a no-effect local commit after the configured PoseResetter accepts
         // the staged finite candidate.
         fusedPose = candidatePose;
+        stateEvidenceTimestamp = nowTimestamp;
         initialized = true;
         awaitingPredictorEvidenceAfterDiscontinuity = false;
         clearRecentCorrectionState();
@@ -921,7 +952,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 : 1.0;
         synchronizePredictorTrajectorySegment();
         trajectorySegmentId++;
-        lastEstimate = new PoseEstimate(fusedPose, true, quality, nowTimestamp);
+        publish(new PoseEstimate(fusedPose, true, quality, nowTimestamp), nowTimestamp);
     }
 
     private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst, LoopClock clock) {
@@ -980,45 +1011,39 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         return true;
     }
 
-    private void maybeApplyCorrection(PoseEstimate correctionEst,
+    /** Applies an eligible observation and reports whether it actually supplied pose evidence. */
+    private boolean maybeApplyCorrection(PoseEstimate correctionEst,
                                       Pose3d currentPredictorPose,
                                       LoopTimestamp currentPredictorTimestamp,
-                                      LoopTimestamp nowTimestamp) {
+                                      LoopClock clock) {
+        LoopTimestamp nowTimestamp = clock.nowTimestamp();
         Pose3d correctionPoseAtMeasurement = planarize(correctionEst.fieldToRobotPose);
-        Pose3d compensatedCorrectionPoseAtNow = cfg.enableLatencyCompensation
-                ? projectCorrectionPoseToNow(correctionPoseAtMeasurement, correctionEst.timestamp, currentPredictorPose)
-                : correctionPoseAtMeasurement;
+        LoopTimestamp endpoint = correctionEndpointTimestamp(
+                correctionEst.timestamp, currentPredictorTimestamp);
+        Pose3d alignedCorrectionPose = alignCorrectionPose(correctionPoseAtMeasurement,
+                correctionEst.timestamp, endpoint, currentPredictorPose);
 
         if (!isFinitePlanarPose(correctionPoseAtMeasurement)
-                || !isFinitePlanarPose(compensatedCorrectionPoseAtNow)) {
+                || !isFinitePlanarPose(alignedCorrectionPose)) {
             rejectedCorrectionCount++;
-            return;
-        }
-
-        if (cfg.enableLatencyCompensation
-                && replayBaseValid
-                && correctionEst.timestamp.secondsSince(replayBaseTimestamp) < -TIMESTAMP_EPS_SEC) {
-            // This frame predates the most recent accepted correction/reset base. Re-applying it
-            // would drag the estimator back across a newer anchor, so reject it.
-            lastCorrectionUsedReplay = false;
-            rejectedCorrectionCount++;
-            return;
+            return false;
         }
 
         final double q = MathUtil.clamp(correctionEst.quality, 0.0, 1.0);
         final double posGain = MathUtil.clamp(cfg.correctionPositionGain * q, 0.0, 1.0);
         final double headingGain = MathUtil.clamp(cfg.correctionHeadingGain * q, 0.0, 1.0);
 
-        Pose3d correctedPoseNow = null;
+        Pose3d correctedPoseAtEndpoint = null;
         boolean usedReplay = false;
         Pose3d replayReferencePose = fusedPose;
 
-        if (cfg.enableLatencyCompensation && currentPredictorPose != null) {
+        if (!sameTimestamp(endpoint, correctionEst.timestamp) && currentPredictorPose != null) {
             Pose3d predictorAtMeasurement = interpolatePredictorPose(correctionEst.timestamp);
-            if (predictorAtMeasurement != null) {
+            Pose3d predictorAtEndpoint = interpolatePredictorPose(endpoint);
+            if (predictorAtMeasurement != null && predictorAtEndpoint != null) {
                 Pose3d fusedAtMeasurement = reconstructFusedPoseAt(correctionEst.timestamp, predictorAtMeasurement);
                 if (fusedAtMeasurement != null) {
-                    Pose3d predictorDeltaSinceMeasurement = predictorAtMeasurement.inverse().then(currentPredictorPose);
+                    Pose3d predictorDeltaSinceMeasurement = predictorAtMeasurement.inverse().then(predictorAtEndpoint);
                     replayReferencePose = fusedAtMeasurement;
                     if (isCorrectionJumpAcceptable(fusedAtMeasurement, correctionPoseAtMeasurement)) {
                         Pose3d correctedAtMeasurement = blendToward(
@@ -1030,44 +1055,53 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                         Pose3d replayedPose = planarize(
                                 correctedAtMeasurement.then(predictorDeltaSinceMeasurement));
                         if (isFinitePlanarPose(replayedPose)) {
-                            correctedPoseNow = replayedPose;
+                            correctedPoseAtEndpoint = replayedPose;
                             usedReplay = true;
+                        } else {
+                            rejectedCorrectionCount++;
+                            return false;
                         }
                     } else {
-                        lastCorrectionUsedReplay = true;
                         rejectedCorrectionCount++;
-                        return;
+                        return false;
                     }
                 }
             }
         }
 
-        if (correctedPoseNow == null) {
-            if (!isCorrectionJumpAcceptable(fusedPose, compensatedCorrectionPoseAtNow)) {
-                lastCorrectionUsedReplay = false;
+        if (correctedPoseAtEndpoint == null) {
+            if (!isCorrectionJumpAcceptable(fusedPose, alignedCorrectionPose)) {
                 rejectedCorrectionCount++;
-                return;
+                return false;
             }
 
-            correctedPoseNow = blendToward(
+            correctedPoseAtEndpoint = blendToward(
                     fusedPose,
-                    compensatedCorrectionPoseAtNow,
+                    alignedCorrectionPose,
                     posGain,
                     headingGain
             );
         }
 
-        if (!isFinitePlanarPose(correctedPoseNow)) {
+        if (!isFinitePlanarPose(correctedPoseAtEndpoint)) {
             rejectedCorrectionCount++;
-            return;
+            return false;
         }
 
-        boolean pushedToPredictor = pushPoseToPredictor(correctedPoseNow);
+        // Acceptance and incorporation are different facts. A zero-weight measurement still
+        // participates in acceptance statistics and the quality hold, but cannot refresh pose
+        // time or cause a predictor reset. Zero innovation with a positive weight is evidence.
+        boolean incorporated = posGain > 0.0 || headingGain > 0.0;
+        boolean pushedToPredictor = incorporated && endpoint.isFresh(clock, 0.0)
+                && pushPoseToPredictor(correctedPoseAtEndpoint);
 
         // Commit only after the configured PoseResetter has accepted the complete finite pose.
-        fusedPose = correctedPoseNow;
+        if (incorporated) {
+            fusedPose = correctedPoseAtEndpoint;
+            stateEvidenceTimestamp = endpoint;
+        }
         lastCorrectionPose = correctionPoseAtMeasurement;
-        lastLatencyCompensatedCorrectionPose = compensatedCorrectionPoseAtNow;
+        lastAlignedCorrectionPose = alignedCorrectionPose;
         lastReplayReferencePose = replayReferencePose;
         lastCorrectionAccepted = nowTimestamp;
         lastAcceptedCorrectionQuality = q;
@@ -1077,15 +1111,16 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         if (usedReplay) {
             replayedCorrectionCount++;
         } else {
-            projectedCorrectionCount++;
+            nonReplayedCorrectionCount++;
         }
 
-        rebaseAfterPoseChange(
-                nowTimestamp,
-                currentPredictorPose,
-                currentPredictorTimestamp,
-                pushedToPredictor
-        );
+        if (incorporated) {
+            Pose3d predictorAtAnchor = sameTimestamp(endpoint, correctionEst.timestamp)
+                    ? currentPredictorPose : interpolatePredictorPose(endpoint);
+            rebaseAfterPoseChange(endpoint, predictorAtAnchor,
+                    currentPredictorTimestamp, pushedToPredictor);
+        }
+        return incorporated;
     }
 
     private boolean isCorrectionJumpAcceptable(Pose3d referencePose, Pose3d targetPose) {
@@ -1168,6 +1203,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
 
         fusedPose = currentPredictorPose;
+        stateEvidenceTimestamp = currentPredictorTimestamp;
         initialized = true;
         awaitingPredictorEvidenceAfterDiscontinuity = false;
         lastPredictorPose = currentPredictorPose;
@@ -1178,7 +1214,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         double quality = predictorEstimate != null
                 ? finiteQualityOrZero(predictorEstimate.quality)
                 : 0.0;
-        lastEstimate = new PoseEstimate(fusedPose, true, quality, nowTimestamp);
+        publish(new PoseEstimate(fusedPose, true, quality, stateEvidenceTimestamp), nowTimestamp);
     }
 
     private void beginTrajectoryFromCurrentPredictorAfterUnexpectedRebase(
@@ -1234,10 +1270,17 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         // segment. Require a strictly newer measurement before correction resumes.
         lastEvaluatedCorrectionTimestamp = nowTimestamp;
         initialized = false;
+        stateEvidenceTimestamp = LoopTimestamp.unavailable();
         awaitingPredictorEvidenceAfterDiscontinuity = true;
         lastPredictorPose = Pose3d.zero();
         awaitPredictorMotionRebase();
-        lastEstimate = PoseEstimate.noPose(nowTimestamp);
+        publish(PoseEstimate.noPose(nowTimestamp), nowTimestamp);
+    }
+
+    /** Publishes evidence and separately retains the owner-loop boundary for manual assertions. */
+    private void publish(PoseEstimate estimate, LoopTimestamp publicationLoopTimestamp) {
+        lastEstimate = estimate;
+        lastPublicationLoopTimestamp = publicationLoopTimestamp;
     }
 
     private void clearRecentCorrectionState() {
@@ -1309,6 +1352,10 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         if (!Double.isFinite(predictorDelta.endTimestamp.ageSec(clock))) {
             return false;
         }
+        if (stateEvidenceTimestamp.isAvailable()
+                && !timestampAtOrAfter(predictorDelta.endTimestamp, stateEvidenceTimestamp)) {
+            return false;
+        }
         if (!lastCoveredPredictorMotionEndTimestamp.isAvailable()) {
             return true;
         }
@@ -1367,6 +1414,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
 
         lastPredictorPose = currentPredictorPose;
+        stateEvidenceTimestamp = predictorTimestamp;
         resetPredictorHistory(predictorTimestamp, currentPredictorPose);
         setReplayBase(predictorTimestamp, fusedPose, currentPredictorPose);
         markPredictorMotionCovered(predictorTimestamp);
@@ -1501,6 +1549,46 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         prunePredictorHistory(timestamp);
     }
 
+    /**
+     * Keeps only observed motion bridges. A newer absolute sample without a spanning delta is a
+     * raw baseline, not evidence that the retained corrected pose has propagated to that time.
+     * Missing pose closes the replay path until an explicit predictor baseline is reacquired.
+     */
+    private void preparePredictorHistory(LoopTimestamp timestamp, Pose3d pose,
+                                         MotionDelta delta, boolean usableMotion,
+                                         boolean invalidClaimedMotion) {
+        if (pose == null) {
+            predictorHistory.clear();
+            setReplayBase(LoopTimestamp.unavailable(), fusedPose, Pose3d.zero());
+            if (initialized) {
+                awaitPredictorMotionRebase();
+            }
+            return;
+        }
+
+        PredictorSample previous = predictorHistory.peekLast();
+        boolean newerSample = previous != null
+                && timestamp.secondsSince(previous.timestamp) > 0.0;
+        boolean spansPrevious = usableMotion && previous != null
+                && timestampAtOrAfter(previous.timestamp, delta.startTimestamp);
+        if (invalidClaimedMotion || (newerSample && !spansPrevious)) {
+            resetPredictorHistory(timestamp, pose);
+            setReplayBase(LoopTimestamp.unavailable(), fusedPose, Pose3d.zero());
+            if (initialized) {
+                if (!lastCoveredPredictorMotionEndTimestamp.isAvailable()
+                        || timestampAtOrAfter(timestamp, lastCoveredPredictorMotionEndTimestamp)) {
+                    markPredictorMotionCovered(timestamp);
+                    rememberPredictorMotionRebase(pose);
+                } else {
+                    // Do not let an old/malformed publication move a manual/camera anchor back.
+                    awaitPredictorMotionRebase();
+                }
+            }
+            return;
+        }
+        recordPredictorSample(timestamp, pose);
+    }
+
     private void prunePredictorHistory(LoopTimestamp nowTimestamp) {
         double keepSec = Math.max(0.0, cfg.predictorHistorySec);
         if (keepSec <= 0.0) {
@@ -1534,23 +1622,51 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
     }
 
-    private Pose3d projectCorrectionPoseToNow(Pose3d correctionPoseAtMeasurement,
-                                              LoopTimestamp measurementTimestamp,
-                                              Pose3d currentPredictorPose) {
-        if (correctionPoseAtMeasurement == null || currentPredictorPose == null) {
+    /** Chooses a supported direct or aligned endpoint, never the measurement's delivery time. */
+    private LoopTimestamp correctionEndpointTimestamp(LoopTimestamp measurementTimestamp,
+                                                       LoopTimestamp predictorTimestamp) {
+        LoopTimestamp target = stateEvidenceTimestamp;
+        if (!target.isAvailable() || timestampAtOrAfter(predictorTimestamp, target)) {
+            target = predictorTimestamp;
+        }
+        if (!target.isAvailable() || timestampAtOrAfter(measurementTimestamp, target)) {
+            return measurementTimestamp;
+        }
+        // An older measurement needs actual predictor history through the selected endpoint.
+        if (!cfg.enableLatencyCompensation || !sameTimestamp(target, predictorTimestamp)) {
+            return LoopTimestamp.unavailable();
+        }
+        return target;
+    }
+
+    /** Returns null when a historical observation cannot be aligned through recorded motion. */
+    private Pose3d alignCorrectionPose(Pose3d correctionPoseAtMeasurement,
+                                       LoopTimestamp measurementTimestamp,
+                                       LoopTimestamp endpoint,
+                                       Pose3d currentPredictorPose) {
+        if (!endpoint.isAvailable()) {
+            return null;
+        }
+        if (sameTimestamp(measurementTimestamp, endpoint)) {
             return correctionPoseAtMeasurement;
         }
-        if (measurementTimestamp == null || !measurementTimestamp.isAvailable()) {
-            return correctionPoseAtMeasurement;
+        if (currentPredictorPose == null) {
+            return null;
         }
 
         Pose3d predictorAtMeasurement = interpolatePredictorPose(measurementTimestamp);
-        if (predictorAtMeasurement == null) {
-            return correctionPoseAtMeasurement;
+        Pose3d predictorAtEndpoint = interpolatePredictorPose(endpoint);
+        if (predictorAtMeasurement == null || predictorAtEndpoint == null) {
+            return null;
         }
 
-        Pose3d predictorDeltaSinceMeasurement = predictorAtMeasurement.inverse().then(currentPredictorPose);
+        Pose3d predictorDeltaSinceMeasurement = predictorAtMeasurement.inverse().then(predictorAtEndpoint);
         return planarize(correctionPoseAtMeasurement.then(predictorDeltaSinceMeasurement));
+    }
+
+    /** Exact sample identity: future-time tolerance does not merge distinct motion endpoints. */
+    private static boolean sameTimestamp(LoopTimestamp first, LoopTimestamp second) {
+        return first != null && second != null && first.secondsSince(second) == 0.0;
     }
 
     private Pose3d interpolatePredictorPose(LoopTimestamp timestamp) {
@@ -1624,6 +1740,10 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     /** Drop only timestamp-dependent state when the shared clock enters a new reset epoch. */
     private void invalidateHistoryAcrossReset(LoopTimestamp nowTimestamp) {
+        if (stateEvidenceTimestamp.isAvailable()
+                && !Double.isFinite(nowTimestamp.secondsSince(stateEvidenceTimestamp))) {
+            stateEvidenceTimestamp = LoopTimestamp.unavailable();
+        }
         PredictorSample lastSample = predictorHistory.peekLast();
         if (lastSample != null) {
             double elapsedSec = nowTimestamp.secondsSince(lastSample.timestamp);
@@ -1681,7 +1801,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 .addData(p + ".skippedDuplicateCorrectionCount", skippedDuplicateCorrectionCount)
                 .addData(p + ".skippedOutOfOrderCorrectionCount", skippedOutOfOrderCorrectionCount)
                 .addData(p + ".replayedCorrectionCount", replayedCorrectionCount)
-                .addData(p + ".projectedCorrectionCount", projectedCorrectionCount)
+                .addData(p + ".nonReplayedCorrectionCount", nonReplayedCorrectionCount)
                 .addData(p + ".lastCorrectionAccepted", lastCorrectionAccepted)
                 .addData(p + ".lastAcceptedCorrectionMeasurementTimestamp", lastAcceptedCorrectionMeasurementTimestamp)
                 .addData(p + ".lastEvaluatedCorrectionTimestamp", lastEvaluatedCorrectionTimestamp)
@@ -1697,9 +1817,11 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 .addData(p + ".cfg.enableLatencyCompensation", cfg.enableLatencyCompensation)
                 .addData(p + ".cfg.predictorHistorySec", cfg.predictorHistorySec)
                 .addData(p + ".fusedPose", fusedPose)
+                .addData(p + ".stateEvidenceTimestamp", stateEvidenceTimestamp)
+                .addData(p + ".lastPublicationLoopTimestamp", lastPublicationLoopTimestamp)
                 .addData(p + ".lastPredictorPose", lastPredictorPose)
                 .addData(p + ".lastCorrectionPose", lastCorrectionPose)
-                .addData(p + ".lastLatencyCompensatedCorrectionPose", lastLatencyCompensatedCorrectionPose)
+                .addData(p + ".lastAlignedCorrectionPose", lastAlignedCorrectionPose)
                 .addData(p + ".lastReplayReferencePose", lastReplayReferencePose)
                 .addData(p + ".lastCorrectionUsedReplay", lastCorrectionUsedReplay)
                 .addData(p + ".replayBaseValid", replayBaseValid)

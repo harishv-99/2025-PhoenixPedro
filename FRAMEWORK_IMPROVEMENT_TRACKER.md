@@ -231,7 +231,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 117 | SPATIAL-02 | Camera observations to field positions | Done | Reviewed fixed-camera closeout, four focused regressions, clarified guides, 2,346 passing tests and strict documentation checks; exact branch/remote/master publication authorized. No production/API changes; turret-camera support remains deferred. |
 | 118 | CAL-05 | Bound powered calibration phases | Done | Per-phase deadlines and Abort precedence reviewed and approved for publication; 65 focused tests pass. Full local suite retains only the 2 recorded pre-existing Windows documentation checks. |
 | 119 | LOCALIZATION-02 | Make correction quality truthful | Done | Reviewed and publication-authorized: accepted-quality-scaled hold, 28 new regressions, and owning-guide explanation. 101 focused tests pass; full local run retains only two known Windows documentation failures. |
-| 120 | LOCALIZATION-03 | Preserve localization evidence freshness | Proposed | Audit frozen predictor timestamps and missing delayed-correction history in both corrected estimators. |
+| 120 | LOCALIZATION-03 | Preserve localization evidence freshness | Done | Reviewed and publication-authorized: 29 new regressions, 121 focused tests pass, and full 2427-test run retains only two known Windows documentation failures. Compile and generated docs pass. |
 | 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Proposed | Retain capture time, count distinct tag frames, and compare compatible-time calibration endpoints. |
 | 122 | CAL-07 | Correct direction recommendations | Proposed | Make Pinpoint encoder-direction advice depend on the current configured direction and observed motion. |
 | 123 | CAL-08 | Verify pod-offset mathematics independently | Proposed | Recover independently known offsets across rotations and starting configurations; fix only proven defects. |
@@ -29582,7 +29582,18 @@ and adopting-robot thresholds remain unverified, and Phoenix remains unchanged.
 
 ### LOCALIZATION-03 - Preserve localization evidence freshness
 
-- **Status:** **Proposed**.
+- **Status:** **Done**. The user approved the reviewed diff with the exact combined
+  LOCALIZATION-03 review/publication authorization recorded below. This records manual-review
+  approval without claiming an agent browser inspection or physical robot validation.
+  The user approved the recorded design with "Yes, proceed with
+  LOCALIZATION-03". Gate 2 re-fetched `origin/master` and confirmed the existing item branch at
+  `ebd5591fb73e9c547058b7cf278122af0f1d994f` before implementation. The earlier combined LOCALIZATION-02 publication authorization
+  explicitly requested moving to the next task. PR #149 merged as
+  `ebd5591fb73e9c547058b7cf278122af0f1d994f` after both required checks passed; its tree exactly
+  matches reviewed commit `f088a2d12eb4615da43f32d356a13b807aef0acf`. Local `master` was safely
+  fast-forwarded to the merge, and `codex/localization-03-evidence-freshness` was created from that
+  freshly fetched `origin/master`. The new approval covers the recorded public timestamp/fallback
+  contract; Phoenix application changes remain out of scope. Publication is now authorized.
 - **Evidence and owners:** both `fw/localization/fusion/OdometryCorrectionFusionEstimator.java`
   and `OdometryCorrectionEkfEstimator.java` accept finite same-epoch predictor timestamps and can
   publish output at now while a predictor keeps returning an older present pose. This is a
@@ -29611,6 +29622,351 @@ and adopting-robot thresholds remain unverified, and Phoenix remains unchanged.
   filter or benchmark to reproduce these paths; complete before `TEST-02`. Defer a vendor-timing-
   dependent claim if it requires unavailable recorded timestamp/device evidence, and name that
   evidence as the reactivation trigger rather than guessing a production threshold.
+
+#### Gate 1 decision record (2026-09-07)
+
+- **Confirmed failure paths:**
+  - Both estimators admit finite current-epoch predictor timestamps without requiring a newly
+    acquired sample. Motion-end deduplication prevents applying the same delta twice, but ordinary
+    publication still constructs `PoseEstimate(..., nowTimestamp)`. A frozen-but-present predictor
+    can therefore produce apparently fresh corrected output without new motion or correction.
+    This is reproducible from the public `MotionPredictor` contract; it does not establish that
+    the production Pinpoint driver detects or experiences a device freeze.
+  - Both `projectCorrectionPoseToNow(...)` helpers return the unmodified capture-time correction
+    when current predictor/history support is absent. Their callers can accept and count that
+    result as projected, stamp it with processing time, and optionally push it into the predictor.
+    EKF can also fall back from failed forward propagation to the intermediate capture-time state
+    while recording replay success. These are unsupported time-alignment claims, not just labels.
+  - Changing only the final output timestamp is insufficient: accepted corrections rebase history
+    and motion-covered watermarks at processing time. A lagged predictor's later-delivered motion
+    can then be mistaken for already-covered motion. Missing motion evidence can also leave an
+    old history bracket eligible to bridge an interval it never observed.
+  - Manual `setPose(...)` currently derives its anchor time from the last published estimate.
+    Evidence-based timestamps must not silently backdate a present manual assertion. Fail-closed
+    publication and transactional rollback have different existing publication semantics.
+  - `projectedCorrectionCount` includes accepted direct/non-replayed corrections, not only
+    projection. Rejection paths can also change `lastCorrectionUsedReplay`, despite its documented
+    meaning being the disposition of the last *accepted* correction.
+
+- **Supported construction paths and distinct-value audit:**
+  - Each core estimator has one public constructor, `(MotionPredictor, AbsolutePoseEstimator,
+    Config)`, returning its own concrete type. Each data-only `Config` has `defaults()`, `copy()`,
+    and `validatedCopy(String)` returning that configuration type; there are no sibling `of`
+    methods, public constructor overloads, or staged builders to complete or duplicate.
+  - `FtcOdometryAprilTagLocalizationLane(HardwareMap, AprilTagVision, TagLayout, Config)` owns its
+    Pinpoint lifecycle. `FtcOdometryAprilTagLocalizationLane.withPredictor(MotionPredictor,
+    AprilTagVision, TagLayout, EstimatorConfig)` returns the same lane while borrowing an existing
+    predictor. These are distinct resource-ownership paths, not redundant construction facades.
+    The latter intentionally requires no irrelevant Pinpoint hardware configuration.
+  - Lane `Config`, `EstimatorConfig`, `CorrectionSourceConfig`, and
+    `AprilTagLocalizationConfig` remain meaningful data values with their existing default,
+    copy, validation, and conversion paths. Profiles/testers store, snapshot, validate, and reuse
+    these values; none is merely an inline-only staged answer warranting another public builder.
+  - `CorrectedPoseEstimator`, `PoseTrajectoryEstimator`, and `MotionPredictor` expose distinct
+    consumer capabilities. Lane accessors for predictor, AprilTag estimator, optional Limelight
+    estimator, active absolute estimator, and corrected estimator retain their separate roles.
+  - `PoseEstimate` keeps its four-argument constructor and `noPose(LoopTimestamp)` factory;
+    `MotionDelta` keeps its five-argument constructor and `none(LoopTimestamp)` factory. Their
+    timestamp values already express the required evidence; no parallel public freshness object
+    or clock parameter is needed.
+  - `CorrectionStats` keeps its ten-argument snapshot constructor and `none()` factory, with one
+    diagnostic parameter/field renamed below. Accepted-loop, accepted-measurement, and evaluated-
+    measurement timestamps answer different questions and must not be combined.
+  - `PlanarPoseHistory(PoseTrajectoryEstimator, Config)` owns retained history, while
+    `lookupSource()` returns the narrower `TimeAwareSource<Lookup>` projection. Its configuration
+    factories/validation and private lookup-result construction add distinct ownership/value;
+    no history API change or additional supported construction layer is proposed.
+
+- **Caller and documentation inventory:**
+  - Production core-estimator construction is inside the FTC lane's private estimator factory.
+    Lane construction occurs in `PhoenixRobot` and the framework
+    `PinpointAprilTagCorrectedLocalizationTester`; `StandardTesters`, `PhoenixRobotTesters`,
+    and `PhoenixCalibrationWalkthrough` supply the tester/configuration paths.
+    No maintained Java example constructs the core estimators directly. All these construction
+    paths remain unchanged, and Phoenix source changes are excluded.
+  - Phoenix consumes corrected pose for anchoring, assistance, targets, and presentation. Its
+    exact-current startup check uses the *raw predictor*, not corrected output. No application
+    caller substitutes acceptance time for pose freshness. The borrowed Pedro predictor and
+    `BasicPedroAuto` lifecycle remain owned by their existing loop/root.
+  - Existing age-sensitive consumers include `AbsolutePoseSpatialSolveLane`,
+    `DriveGuidanceEvaluator`, `PoseLockOverlay`, `GamepadDriveSource`, and the heading projection
+    on `AbsolutePoseEstimator`. `PlanarPoseHistory` deliberately records only current-loop evidence
+    and marks missing/stale intervals as gaps. Preserve these contracts; do not loosen them to
+    accommodate aged corrected output. `Timestamped Adaptive Collection` teaches the borrowed
+    history path and needs consistency review, not a new construction pattern.
+  - Production `PinpointOdometryPredictor` publishes acquisition-loop timestamps. `setPose(...)`
+    preserves its measured timestamp or leaves it unavailable; it is not a new sensor acquisition.
+    `PedroPathingPassiveLocalizer` validates current-cycle ownership and current-epoch time without
+    imposing a universal age-zero requirement. Buffered/custom predictors remain supported.
+    `AprilTagPoseEstimator` and `LimelightFieldPoseEstimator` retain capture timestamps.
+  - Counter migration is limited to both estimators, `CorrectionStats`, the corrected-localization
+    tester, four affected fusion test classes (quality, quality lifecycle, timestamp, cycle
+    safety), and the replay/projected wording in `Robot Calibration Tutorials.md`. Searches found
+    no Phoenix or maintained-example counter caller. Leave the unrelated existing EKF spelling
+    `wasLastCorrectionCorrectionReplay()` unchanged.
+  - Owning documentation is section 7 and the continuity/history section of
+    `fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md`, plus the affected source
+    Javadocs. Its current replay-to-now and guaranteed-history wording needs correction.
+    Retention capacity alone does not establish actual startup or gap coverage.
+    Explicitly update `PoseEstimate.timestamp` and its constructor's timestamp Javadoc to
+    distinguish raw capture time from a supported composite estimate endpoint. Qualify
+    `AbsolutePoseEstimator.getEstimate()`'s current `hasPose`-only guidance/targeting example:
+    availability is not sufficient control evidence; existing action-specific age/quality gates
+    still apply, with no universal threshold introduced.
+
+- **Ordinary call-site comparison and student decisions:**
+  - Current and proposed ordinary assembly are identical. The student supplies one predictor
+    owner, one camera owner, fixed field facts, and one reusable estimator configuration:
+
+    ```java
+    // Before and after: ownership and robot loop wiring do not change.
+    FtcOdometryAprilTagLocalizationLane localization =
+            FtcOdometryAprilTagLocalizationLane.withPredictor(
+                    predictor, vision, fixedTagLayout, estimationConfig);
+    PoseEstimate estimate = localization.globalEstimator().getEstimate();
+    // Existing downstream age/quality gates consume this same estimate.
+    ```
+
+  - Diagnostics make a narrower, truthful statement without another student-selected mode:
+
+    ```java
+    // Before: this name incorrectly promises projection for every counted correction.
+    int projected = stats.projectedCorrectionCount;
+    // After: accepted direct or aligned non-replay updates share this category.
+    int nonReplayed = stats.nonReplayedCorrectionCount;
+    ```
+
+  - Documentation-only and timestamp-only alternatives leave unsupported pose alignment and
+    predictor writes possible. Reject both as incomplete. Requiring every predictor sample to be
+    exactly current would simplify internals but reject legitimate buffered sources; reject that
+    generic gate. Use current-time eligibility only for the optional timeless predictor reset.
+  - An explicit uncompensated historical-update mode plus a replay/projection/fallback enum would
+    expose extra choices while retaining an old-pose-as-current approximation. Prefer aligning or
+    rejecting historical measurements and one accurately named non-replay counter. A new filter,
+    universal maximum age, uncertainty model, history facade, or robot policy is outside this fix.
+
+- **Recommended contract and bounded implementation:**
+  1. Keep a private represented-state timestamp with the committed pose/covariance. Initialize it
+     from the evidence used, and advance it only through a supported motion interval or eligible
+     correction. Repeated loop calls or a retained sample never advance it. Newly measured
+     stationary motion with a coherent positive-duration zero-motion interval is fresh evidence;
+     unchanged coordinates are not proof of stale data. A newer `MotionDelta.none(...)` alone
+     does not propagate an already-corrected state, except through an explicit supported baseline
+     or reacquisition path.
+  2. Publish that represented-state endpoint in available `PoseEstimate` values. A frozen but
+     present predictor may leave an available *aged* estimate for existing consumers to assess.
+     Preserve current missing/invalid-predictor availability behavior: without a newly accepted
+     and incorporated correction the output remains `noPose(now)`. Acceptance metadata alone
+     must not manufacture pose availability. Do not invent an age threshold.
+  3. A direct absolute measurement can initialize a state at capture time or update a state when
+     its capture time is not older than the represented state and usable predictor endpoint.
+     Such a measurement updates a retained prior; it does not establish stationary motion or
+     reconstruct an unobserved interval. A correction-only observation can remain aged rather
+     than being relabeled current. Preserve the normal current-camera/no-predictor path.
+     Distinguish incorporation from acceptance: an ordinary Fusion correction with both effective
+     gains zero still updates its accepted count/time and quality hold, but does not advance the
+     pose endpoint, restore missing-predictor availability, or authorize a newer rebase/push.
+     A positive effective gain can incorporate new evidence even with zero innovation; partial
+     gains update one scalar evidence timestamp, not a per-component accuracy/freshness promise.
+     Initialization copies the measurement pose and therefore uses its capture time, even for an
+     explicitly admitted zero-quality measurement. EKF quality zero still maps to finite
+     measurement uncertainty and is not automatically a zero-weight update.
+  4. A correction older than the target state/predictor endpoint requires continuous usable
+     history to align it to that endpoint. Reject a newly evaluated measurement once when that
+     bridge is unavailable; preserve duplicate/out-of-order treatment. Failed EKF forward replay
+     must not commit its intermediate capture-time state as a successful endpoint result.
+  5. Retain `enableLatencyCompensation` and its default. When enabled, allow supported replay,
+     projection, and eligible direct updates. When disabled, allow eligible direct updates only;
+     do not blend historical unaligned poses. This is an intentional public behavior tightening,
+     not just a diagnostic fix, and requires user approval before implementation.
+  6. Track actual history coverage. A coherent motion delta spanning a delivery interval is a
+     valid bridge; missing/invalid motion or a new unsupported baseline must not create an
+     interpolated bridge across a gap. Do not guess a sensor frequency or add a maximum-gap knob.
+  7. Rebase replay history and motion-covered watermarks at the supported result endpoint, not
+     processing time. Keep correction acceptance time separate for LOCALIZATION-02's quality
+     hold. A historical aligned result can update the estimator locally, but skip an optional
+     predictor push unless its endpoint is current under the existing `LoopTimestamp` tolerance.
+     `PoseResetter` has no historical-time argument; using it must not turn an old result into a
+     present assertion. Existing push configuration grants permission, not timeless eligibility.
+  8. Preserve manual anchor semantics with a private last-publication loop timestamp separate
+     from evidence time. Set it on actual ordinary or fail-closed publications; preserve/restore
+     it when a transactional failure publishes nothing. Cached calls/getters do not advance it.
+     Manual `setPose(...)` uses and retains that publication boundary; before the first
+     publication it remains unavailable. Include both new time fields in rollback/reset logic.
+  9. Preserve same-cycle/reentrant behavior, expected and unexpected predictor rebases, explicit
+     anchor prefix exclusion, and current-epoch validation. A clock reset invalidates temporal
+     evidence without inventing a spatial trajectory break; reestablish temporal baselines from
+     supported new-epoch evidence. Do not swallow valid motion arriving after a lagged correction.
+  10. Rename `projectedCorrectionCount` and concrete getters to `nonReplayedCorrectionCount` and
+      `getNonReplayedCorrectionCount()`, updating snapshot constructor naming, debug labels,
+      testers, tests, and documentation together. Accepted counts partition into replayed and
+      non-replayed; the latter includes direct and supported projected updates without promising
+      a projection. Change last-accepted replay status only on acceptance or lifecycle clear,
+      never on a rejected candidate. No new public disposition enum is needed.
+  11. Preserve LOCALIZATION-02's accepted quality, acceptance-time decay, clear, and rollback
+      semantics. Preserve existing eligible-path EKF covariance/noise equations, including
+      conservative age inflation. `projectedCorrectionPositionStdPerSec` and
+      `projectedCorrectionHeadingStdPerSec` remain meaningful configuration for eligible delayed
+      non-replayed updates; Phoenix profiles currently set them. Correct their overbroad
+      projected-to-now wording, but do not rename them, leave ineffective knobs, or edit Phoenix.
+
+- **Verification and principles plan:**
+  - Existing focused baseline passes: `:TeamCode:testDebugUnitTest` with
+    `edu.ftcsushi.fw.localization.fusion.*` and
+    `edu.ftcsushi.fw.localization.PlanarPoseHistoryTest`: **90 tests, 6 suites, zero failures,
+    errors, or skips**. Those tests protect motion geometry, deduplication, anchors, quality,
+    validation, and history behavior, but do not detect the confirmed evidence-restamping paths.
+    This is a pre-change baseline, not verification of an unimplemented fix.
+  - Add paired Fusion/EKF regressions for retained and lagged predictor time, advancing stationary
+    intervals, zero-duration samples, same-cycle access, direct correction initialization/update,
+    missing predictors, delayed delivery within and outside usable history, startup/eviction/gap
+    cases, disabled compensation, replay failure, push suppression, and post-correction motion.
+    Include admitted zero-quality/zero-gain measurements without conflating acceptance and pose
+    freshness, plus one-axis-effective-gain and positive-gain/zero-innovation cases. Pair advancing
+    positive-duration zero-motion intervals with newer `MotionDelta.none(...)`: some existing
+    quality fixtures publish the latter, which is not stationary-motion evidence. Do not preserve
+    fixture expectations by merely restamping unsupported data. Preserve all LOCALIZATION-02
+    hold and lifecycle semantics while making any necessary fixture evidence coherent.
+  - Exercise manual anchoring after ordinary aged publication, transactional failure, and
+    fail-closed publication; clock resets, trajectory rebases, and reacquisition; accepted replay
+    status across rejected/duplicate frames. Test actual downstream heading/spatial age gates and
+    `PlanarPoseHistory`, so high reported quality cannot bypass age or create a fictitious bridge.
+  - Run targeted tests first, then full TeamCode unit tests/compile, count XML results, and run
+    strict documentation/Javadoc/link verification plus diff/whitespace checks. The known local
+    Windows CRLF-only documentation failures from LOCALIZATION-02 are baseline evidence, not
+    authority for unrelated documentation cleanup; its Linux PR checks passed.
+  - Keep one `LoopClock`, cooperative loop ownership, narrow SDK boundaries, source evidence,
+    and robot-owned policy. No additional clock, thread, hardware loop, age score, or robot action
+    is introduced. Update Javadocs, the owning guide's existing latency diagram and explanation,
+    and tester instructions in the same implementation. Explain capture time, delivery time, and
+    supported composite-pose endpoint before their code, without promising that every coordinate
+    was independently refreshed. Keep advanced details in the existing optional
+    section without adding beginner navigation or assuming filtering knowledge.
+  - Simulation proves software provenance, not camera/odometry clock synchronization, physical
+    accuracy, or safe robot continuation during loss. Adopting teams still validate hardware and
+    choose action-specific age/quality policy. No powered diagnostic or Phoenix change is needed
+    to establish this bounded software contract.
+
+- **Approval boundary at Gate 1:** no implementation, test, or guide edits preceded approval.
+  Independent source/lifecycle, construction/caller, and test/documentation reviews are complete.
+  Their manual-publication-time, zero-weight incorporation, partial-gain, fixture-evidence, and
+  documentation clarifications are incorporated above; no design blocker remains. The user has
+  now approved the public evidence-time, delayed-correction (including disabled compensation),
+  optional-push, and diagnostic naming changes. Implementation proceeds on
+  `codex/localization-03-evidence-freshness`; Android Studio review and destination-specific
+  publication authorization are still required before staging, committing, pushing, or merging.
+
+#### Gate 2 implementation and verification record (2026-09-07)
+
+- **Implemented scope:** both corrected estimators now retain the composite pose's supported
+  evidence endpoint independently of their last actual publication-loop boundary. Ordinary
+  constructor/configuration/ownership paths are unchanged. Available retained predictor evidence
+  stays aged; an independently incorporated correction or a supported motion interval can advance
+  pose time. Positive-duration stationary motion remains evidence; a newer no-delta snapshot alone
+  is not propagation. Missing-predictor availability still fails closed unless a correction is
+  actually incorporated. No Phoenix, vendor, source/history API, or other tracker item was changed.
+- **Alignment and physical-write boundary:** direct corrections are eligible at or after the
+  represented state and usable predictor endpoint. Historical corrections require continuous
+  recorded motion to that endpoint; disabled compensation permits direct updates only. Missing
+  predictor publication conservatively closes replay eligibility and awaits a new baseline, even
+  if an older bracket had previously been usable; frozen-but-present evidence is distinct.
+  Supported historical results may remain local, but cannot be pushed through the predictor's
+  timeless reset. Failed EKF forward replay no longer publishes its capture-time intermediate as
+  a successfully aligned result. Existing EKF process/measurement math and non-replayed capture-
+  age uncertainty settings remain active on eligible paths.
+- **Lifecycle refinements from adversarial review:**
+  - Replay/projection and subsequent no-push rebase use the same cached supported raw endpoint.
+    A same-time raw pose change with no delta cannot leak into a historical correction or make the
+    next positive interval lose part of its movement. Direct/current/manual anchors retain their
+    explicit pre-anchor exclusion behavior.
+  - Unsupported older raw baselines cannot move the motion-covered boundary backward. Lagged
+    accepted corrections rebase at their supported endpoint, not their delivery loop, so later
+    valid motion is not swallowed.
+  - A clock reset invalidates temporal replay evidence without changing the spatial segment or
+    discarding an independently coherent wholly new-epoch motion interval. Without such motion,
+    an explicit new-epoch baseline establishes the retained composite state's time.
+  - Both timestamp fields participate in transactional push rollback. The publication boundary
+    changes only when something is actually published; a fail-closed publication changes it, but
+    a child failure without publication or a clock reset alone does not. Manual assertions use
+    that boundary rather than backdating themselves to an aged estimate.
+  - Zero-effective-weight ordinary Fusion acceptance preserves acceptance counters/time and the
+    LOCALIZATION-02 quality hold without refreshing pose time, availability, coverage, or predictor
+    resets. Positive partial gains and zero innovation remain distinct from ignored evidence.
+- **Diagnostics and synchronized explanation:** renamed the counter/getters to
+  `nonReplayedCorrectionCount` / `getNonReplayedCorrectionCount()` across both estimators,
+  `CorrectionStats`, tester telemetry, tests, and the calibration guide. Last-accepted replay
+  status no longer changes on rejection. The evaluation-boundary Javadoc also names its existing
+  rebase exclusion role rather than implying every value proves an actual captured correction.
+  The owning localization guide and pose-estimator Javadocs explain availability, age, quality,
+  capture/delivery/supported times, disabled-mode eligibility, and current-only automatic pushes.
+  The existing accessible latency timeline was updated; no beginner page or navigation was added.
+- **New regression evidence:** `OdometryCorrectionEstimatorEvidenceTest` adds **29 test methods**,
+  mostly paired across Fusion and EKF. It exercises retained/lagged/direct/replayed timestamps,
+  stationary versus absent motion, unsupported historical intervals, missing-source recovery,
+  current-only pushes, same-time raw changes followed by later movement, clock epochs, manual
+  assertions before first publication and after both failure classes, zero/partial weights,
+  accepted-only diagnostics, real spatial/field-relative-heading age gates, and real
+  `PlanarPoseHistory` gap behavior. A narrow EKF test verifies that nonzero age-noise settings
+  remain effective for eligible delayed direct observations with compensation enabled or disabled:
+  position standard deviation `3`, prior variance `1`, measurement `x=4`, and result `x=0.4`.
+- **Existing-test synchronization:** four test classes migrated the approved diagnostic names.
+  The Validation rollback fixture now retains its pre-failure sample and then supplies the full
+  coherent two-inch interval. Its expected zero-then-two-inch result is unchanged; the previous
+  newer no-delta fixture supplied no evidence for one of those inches. The initial focused run
+  exposed this fixture issue and the valid-new-epoch-motion regression; both were resolved before
+  final verification rather than weakening the intended rollback or reset behavior.
+- **Automated results:**
+  - Focused Fusion/EKF, heading-projection, and planar-history run: **121 tests, 8 suites, zero
+    failures, errors, or skips**, including all 29 new tests. Production and test compilation pass.
+  - Full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`: **2427 tests, 265
+    suites, 2425 passing, 2 failures, zero errors/skips**. The only failures are the recorded
+    Windows CRLF-sensitive `DocumentationLinksTest.everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy`
+    (line 1226, eleven unchanged Build recipes) and
+    `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair` (line 2199, unchanged Tasks guide).
+    These match LOCALIZATION-02's baseline; `git diff --exit-code` confirms those guide inputs and
+    all Phoenix main/test sources are unchanged. No unrelated line-ending fix was included.
+  - Standalone `:TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`: **BUILD SUCCESSFUL**.
+    Existing JDK 21/source-target 8 and FTC deprecation warnings remain; no new warning was found.
+  - Existing `build/docs-venv-win/Scripts/python.exe`: `-m pip check` passes;
+    `-m zensical build --clean --strict` reports **No issues found**. Generated checks verify
+    **969 indexed sections** across all six areas, **176 API links**, and **82 maintained source
+    links across 47 Markdown pages**. Javadocs were generated after the clean narrative build.
+  - `git diff --check` and a trailing-whitespace scan of every changed/untracked file pass.
+    Independent final source/lifecycle, API/construction, caller-scope, documentation, and test
+    reviews found no remaining blocker. Old counter names are absent from maintained code/docs.
+- **Review handoff and evidence limits:** Android Studio review was requested for the two
+  estimators, the new regression suite, tester labels, and synchronized guide. The Browser skill's
+  setup succeeded but its browser list was empty, so wide/narrow and light/dark visual rendering
+  of the updated timeline could not be inspected here; include that in the manual review. No
+  robot hardware was run. These results prove software timing/provenance contracts, not physical
+  sensor freeze detection, clock synchronization accuracy, localization accuracy, or safe motion
+  during loss. Teams still choose and validate their action-specific age/quality policy.
+- **Publication coordinates and stop:** branch `codex/localization-03-evidence-freshness`, exact
+  origin push destination `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`.
+  At the handoff, the reviewed scope remained unstaged and uncommitted pending this combined
+  review/publication reply:
+
+  > LOCALIZATION-03 looks good. Authorize committing the reviewed LOCALIZATION-03 diff on
+  > codex/localization-03-evidence-freshness, pushing that branch to
+  > https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  > master.
+
+#### Gate 3 review approval and publication authorization (2026-09-07)
+
+- The user supplied the exact combined authorization above, approving the reviewed implementation
+  and authorizing its commit on `codex/localization-03-evidence-freshness`, push to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, pull request, and merge into `master`.
+  The tracker item is **Done**; the implementation, documentation, test scope, and evidence limits
+  remain as reviewed. No additional framework or Phoenix changes accompany this closeout.
+- Pre-publication checks confirmed the expected 15-file scope (including the new 29-test
+  `OdometryCorrectionEstimatorEvidenceTest`), no staged/unrelated changes, and `HEAD`, local
+  `master`, and freshly fetched `origin/master` at
+  `ebd5591fb73e9c547058b7cf278122af0f1d994f`. No prior pull request exists for the item branch.
+  The final tracker closeout is the only post-review edit; rerun diff/whitespace checks before
+  staging only the reviewed files. Publication must retain both required hosted checks and verify
+  the resulting merge tree; do not bypass protections or rewrite local/remote history.
+- The user's follow-up "After that, move to next task" authorizes the next decision gate only
+  after this publication is complete. CAL-06 is not included in the LOCALIZATION-03 commit.
 
 ### CAL-06 - Align AprilTag-assisted calibration evidence
 

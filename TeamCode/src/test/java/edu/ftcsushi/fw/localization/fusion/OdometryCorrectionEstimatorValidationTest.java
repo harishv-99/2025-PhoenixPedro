@@ -406,11 +406,14 @@ public final class OdometryCorrectionEstimatorValidationTest {
             fixture.predictor.setPoseFailure = null;
             fixture.time.nextCycle(0.1);
             LoopTimestamp recoveredTime = fixture.time.clock().nowTimestamp();
+            // Retain the real pre-failure sample, not a newer no-delta publication that would
+            // introduce an independent observation gap. Recovery below supplies the complete
+            // measured interval from this original baseline.
             fixture.predictor.publish(
-                    pose(1.0),
+                    pose(0.0),
                     1.0,
-                    recoveredTime,
-                    MotionDelta.none(recoveredTime));
+                    start,
+                    MotionDelta.none(start));
             fixture.correction.publishNone(recoveredTime);
             fixture.estimator.update(fixture.time.clock());
             assertEquals(
@@ -424,7 +427,7 @@ public final class OdometryCorrectionEstimatorValidationTest {
                     pose(2.0),
                     1.0,
                     resumedTime,
-                    motion(1.0, 1.0, recoveredTime, resumedTime));
+                    motion(2.0, 1.0, start, resumedTime));
             fixture.correction.publishNone(resumedTime);
             fixture.estimator.update(fixture.time.clock());
             assertEquals(

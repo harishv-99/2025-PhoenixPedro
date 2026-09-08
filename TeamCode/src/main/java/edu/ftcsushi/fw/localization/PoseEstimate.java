@@ -15,7 +15,7 @@ import edu.ftcsushi.fw.core.time.LoopTimestamp;
  *   <li>The robot's pose in the field coordinate system (if available).</li>
  *   <li>Whether a valid pose is currently available.</li>
  *   <li>A simple quality score (0–1) for selection/fusion/debugging.</li>
- *   <li>The epoch-safe timestamp at which the underlying measurement was taken.</li>
+ *   <li>The epoch-safe time represented by the estimate's incorporated evidence.</li>
  * </ul>
  *
  * <h2>Field coordinate system (FTC)</h2>
@@ -39,8 +39,11 @@ import edu.ftcsushi.fw.core.time.LoopTimestamp;
  * <h2>Time semantics</h2>
  *
  * <p>{@link #timestamp} keeps the originating {@link LoopClock} and reset epoch attached to the
- * measurement time. Consumers derive age with {@link LoopTimestamp#ageSec(LoopClock)} rather than
- * retaining a second age value that can drift from the timestamp.</p>
+ * evidence time. A raw measurement retains capture time; a composite estimate can represent a
+ * later endpoint supported by incorporated correction or motion evidence. Receiving or reading
+ * an old sample does not make that endpoint current. Consumers derive age with
+ * {@link LoopTimestamp#ageSec(LoopClock)} rather than retaining a second age value that can drift
+ * from the timestamp. Availability and quality do not replace an action's freshness check.</p>
  */
 public final class PoseEstimate {
 
@@ -56,7 +59,8 @@ public final class PoseEstimate {
      * True if this estimate contains a valid pose.
      *
      * <p>When {@code hasPose} is {@code false}, the other fields are still defined but represent
-     * a "no pose" condition.</p>
+     * a "no pose" condition. A true value does not imply that the pose is fresh enough or has
+     * sufficient quality for a particular action.</p>
      */
     public final boolean hasPose;
 
@@ -69,7 +73,13 @@ public final class PoseEstimate {
     public final double quality;
 
     /**
-     * Epoch-safe time at which the underlying measurement was taken.
+     * Epoch-safe time represented by this estimate's incorporated evidence.
+     *
+     * <p>A raw observation retains its capture time. A corrected estimate uses the supported
+     * endpoint of its incorporated correction/motion evidence, which may precede the loop that
+     * publishes it. A manual pose assertion uses its owner's documented assertion boundary.
+     * This one composite timestamp does not promise that each coordinate was independently
+     * refreshed, nor does correction acceptance alone advance it.</p>
      *
      * <p>Use {@link LoopTimestamp#ageSec(LoopClock)} or
      * {@link LoopTimestamp#isFresh(LoopClock, double)} to interpret this value. A no-pose result
@@ -84,7 +94,8 @@ public final class PoseEstimate {
      * @param fieldToRobotPose robot pose in the FTC field coordinate system (field→robot; 6DOF)
      * @param hasPose      whether this represents a valid pose
      * @param quality      quality score in [0.0, 1.0]
-     * @param timestamp    epoch-safe time at which the underlying measurement was taken
+     * @param timestamp    epoch-safe capture time or supported composite estimate endpoint;
+     *                     unavailable when no truthful time exists
      */
     public PoseEstimate(Pose3d fieldToRobotPose,
                         boolean hasPose,

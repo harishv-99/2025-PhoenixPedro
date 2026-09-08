@@ -503,7 +503,9 @@ check.
    raw preview between `ANY FIXED` and `SINGLE RAW PREVIEW`; Dpad Left/Right or Y/X changes its tag
    ID.
 3. Press B to disable and re-enable correction while prediction continues. Watch accept/reject and
-   replay/projected counts; do not infer acceptance from a visually smooth number alone.
+   replayed/non-replayed counts. Non-replayed includes direct corrections and supported
+   motion-aligned projections; it does not promise a current pose. Check pose age separately
+   from quality, and do not infer acceptance from a visually smooth number alone.
 4. When the independent physical pose is known, A snaps the corrected estimator to the current
    active correction. RB instead rebases software pose to `(0,0,0)`; neither button claims that the
    robot physically moved.
