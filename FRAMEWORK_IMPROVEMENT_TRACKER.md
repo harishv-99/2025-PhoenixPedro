@@ -230,7 +230,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 116 | VISION-03 | Shared vision targets and approach guidance | Done | Implemented general camera owners, located observations, parallel tag/object selection and approach consumption, and bounded resting-ball pickup examples. Full software checks pass; user review and branch/remote-specific publication authorization received. Physical pickup remains disabled. |
 | 117 | SPATIAL-02 | Camera observations to field positions | Done | Reviewed fixed-camera closeout, four focused regressions, clarified guides, 2,346 passing tests and strict documentation checks; exact branch/remote/master publication authorized. No production/API changes; turret-camera support remains deferred. |
 | 118 | CAL-05 | Bound powered calibration phases | Done | Per-phase deadlines and Abort precedence reviewed and approved for publication; 65 focused tests pass. Full local suite retains only the 2 recorded pre-existing Windows documentation checks. |
-| 119 | LOCALIZATION-02 | Make correction quality truthful | Proposed | Resolve the quality-scaled confidence contract mismatch without unnecessary pose-correction changes. |
+| 119 | LOCALIZATION-02 | Make correction quality truthful | Done | Reviewed and publication-authorized: accepted-quality-scaled hold, 28 new regressions, and owning-guide explanation. 101 focused tests pass; full local run retains only two known Windows documentation failures. |
 | 120 | LOCALIZATION-03 | Preserve localization evidence freshness | Proposed | Audit frozen predictor timestamps and missing delayed-correction history in both corrected estimators. |
 | 121 | CAL-06 | Align AprilTag-assisted calibration evidence | Proposed | Retain capture time, count distinct tag frames, and compare compatible-time calibration endpoints. |
 | 122 | CAL-07 | Correct direction recommendations | Proposed | Make Pinpoint encoder-direction advice depend on the current configured direction and observed motion. |
@@ -29261,7 +29261,13 @@ remain behind the skill's post-verification review gate.
 
 ### LOCALIZATION-02 - Make correction quality truthful
 
-- **Status:** **Proposed**.
+- **Status:** **Done — user review approved and publication authorized**.
+  After the decision gate and robot-impact/odometry-quality explanations, the user explicitly
+  approved implementation with “proceed with LOCALIZATION-02”. The approved change is implemented
+  and automated verification is recorded below. The user accepted the reviewed diff and supplied
+  the exact combined commit/push/PR/merge authorization, followed by “Then move to next task.”
+  Work is isolated on `codex/localization-02-correction-quality`, created from freshly fetched
+  `origin/master` at `abe24d6f224a70afcf4422fdbc15963a9d19646d`.
 - **Evidence and owners:** `fw/localization/fusion/OdometryCorrectionFusionEstimator.java` documents
   a recent-correction confidence boost scaled by accepted correction quality, but its output-quality
   calculation uses `1 - correctionAgeSec / holdSec` without that quality. A newly accepted weak
@@ -29287,6 +29293,292 @@ remain behind the skill's post-verification review gate.
   If callers require a physically calibrated confidence interpretation, defer that expansion with
   representative truth-labeled measurements as its reactivation requirement; do not block or
   relabel a narrower source-proven reporting repair as physical calibration.
+
+#### LOCALIZATION-02 decision gate — 2026-09-07
+
+**Confirmed behavior and scope of the mismatch**
+
+- `OdometryCorrectionFusionEstimator` class Javadoc explicitly promises a recent-correction
+  contribution scaled by the accepted measurement's quality. Its `updateOnceMutating` output
+  instead computes `1 - acceptanceAgeSec / correctionConfidenceHoldSec`, then takes the maximum
+  with sanitized predictor quality. With a positive configured hold, every newly accepted
+  correction therefore contributes `1.0`, even when its accepted quality is low. The default hold
+  is `0.75` seconds; a zero hold already contributes nothing.
+- Actual pose blending already uses `correctionPositionGain * measurementQuality` and
+  `correctionHeadingGain * measurementQuality` in `maybeApplyCorrection`. The reporting repair
+  must not multiply those gains again or alter pose geometry, admission, latency compensation,
+  replay/projection fallback, freshness, timestamps, counters, or trajectory policy.
+- There are two successful sensor-acceptance commits: correction-based initialization and ordinary
+  replay/projected correction. Both commit only after the configured predictor accepts its pose
+  push. The last accepted quality is not currently retained. Reading the correction source again
+  at output time would be wrong: its current frame may have been rejected, skipped, or replaced.
+- `PoseEstimate.quality` is an estimator-dependent `[0, 1]` heuristic, not a probability of physical
+  correctness. Retain the predictor floor: Pinpoint defaults to `0.75`, so a correction with
+  quality `0.2` will not lower that predictor score. Typical guidance/spatial thresholds of `0.10`
+  need not change behavior under those defaults. The fix removes an unjustified correction boost;
+  it does not prove safer movement, repair odometry accuracy, or calibrate a useful robot threshold.
+
+**Construction, supported layers, and distinct value**
+
+| Family / supported public path | Return / role | Disposition |
+| --- | --- | --- |
+| `new OdometryCorrectionFusionEstimator(MotionPredictor, AbsolutePoseEstimator, Config)` | Concrete hardware-neutral gain-based estimator | Retain; sole Fusion constructor, no `of` or convenience overload. |
+| `new OdometryCorrectionEkfEstimator(MotionPredictor, AbsolutePoseEstimator, Config)` | Concrete hardware-neutral covariance-based estimator | Retain unchanged; distinct algorithm, not a duplicate confidence formula. |
+| Each estimator `Config.defaults()`, `copy()`, `validatedCopy(String)`; private Config constructor | Its own Config type | Retain fresh authoring, independent copying, and validated boundary snapshots. These are data operations, not competing estimator constructors. |
+| `CorrectedPoseEstimator` extending `PoseTrajectoryEstimator` and `PoseResetter` | Common borrowed pose/trajectory, correction-toggle, and statistics contract | Retain; no factory or extra construction layer. No new getter or quality-specific interface. |
+| `new FtcOdometryAprilTagLocalizationLane(HardwareMap, AprilTagVision, TagLayout, Config)` | Concrete lane with newly constructed Pinpoint | Retain ordinary FTC ownership path. |
+| `FtcOdometryAprilTagLocalizationLane.withPredictor(MotionPredictor, AprilTagVision, TagLayout, EstimatorConfig)` | Same concrete lane around an integration-owned predictor | Retain; avoids a second Pinpoint owner and cannot accept an ignored hardware subsection. |
+| Lane `Config.defaults()/copy()/validatedCopy(String)`; `EstimatorConfig.defaults()/copy()` | Complete hardware-plus-policy or independently reusable estimation-only draft | Retain; configs are stored and copied in profiles/tools, not throwaway inline stage answers. |
+| Lane `CorrectionSourceConfig.defaults()/copy()` and `AprilTagLocalizationConfig.defaults()/copy()/validatedCopy(String)` | Source-selection draft and shared mount-free raw-tag policy | Retain distinct source/config ownership; `toAprilTagPoseEstimatorConfig(CameraMountConfig)` explicitly combines policy with a borrowed mount. No changes needed. |
+| `new PinpointAprilTagCorrectedLocalizationTester(Config, Function<String, AprilTagCameraFactory>)`; tester `Config.defaults()` | Concrete interactive diagnostic with explicit data/behavior peers | Retain; one constructor/private Config constructor, no quality-specific tool variant. |
+
+There is no additional localization facade, public staged-builder family, or estimator overload to
+remove or extend. The two FTC paths provide genuinely different construction ownership; the common
+core constructors independently support non-FTC sources and deterministic tests. No redundant layer
+is deferred merely for compatibility or expanded for symmetry. Existing policy Configs have real
+storage, copy, and independent validation roles; an inline builder replacement would add migration
+without value for this reporting fix. No new public construction, field, tuning answer, diagnostics
+getter, or `CorrectionStats` member is proposed.
+
+**Complete relevant callers and consumers**
+
+- The FTC lane's private `createGlobalEstimator` is the only main-source caller of the two core
+  constructors. `PhoenixRobot` uses the lane-owned Pinpoint path for TeleOp and `withPredictor`
+  for Auto; `PhoenixLocalizationConfiguration` authors the retained Fusion/EKF profile policies.
+- `PinpointAprilTagCorrectedLocalizationTester` constructs the owned-Pinpoint lane. Generic
+  `StandardTesters` webcam/Limelight factories return `TeleOpTester` via `HardwareSelectingTester`;
+  configured `PhoenixRobotTesters.pinpointAprilTagFusion()` and `pinpointAprilTagEkf()` return
+  `TeleOpTester` through their common private factory and are reused by menus/walkthroughs.
+- The tester's A button reads `correctionEstimator().getEstimate()` and calls
+  `globalEstimator().setPose(correction.toPose2d())` when a pose exists. Right bumper anchors zero.
+  These are explicit operator anchors, not another public `applyCorrection` method or automatic
+  measurement acceptance. Keep those controls and their current admission policy unchanged.
+- No maintained independent example directly constructs the corrected estimators or FTC lane.
+  The canonical advanced guide demonstrates both core choices and both lane ownership paths;
+  no example migration or new production-dependent teaching graph is needed.
+- Direct quality gates are `AbsolutePoseSpatialSolveLane`, `DriveGuidanceEvaluator`'s localized
+  translation solve, `PoseLockOverlay`, and `GamepadDriveSource` through the cached
+  `AbsolutePoseEstimator.getHeadingEstimate()` projection. They can legitimately reject an estimate
+  after the fix if their configured threshold exceeds the supported score. Do not lower thresholds
+  to preserve accidental acceptance. Phoenix's pose-lock and targeting services supply corrected
+  localization to these existing consumers.
+- `PlanarPoseHistory` records valid `[0, 1]` quality and uses the lower interpolation-endpoint
+  quality; it has no minimum-confidence gate. Spatial solutions pass quality onward to
+  `SpatialSolutionGate` and observed Plant-target gates. Tester, estimator, and application
+  telemetry display the score. Field-projected observations retain detector confidence separately;
+  this change does not silently merge detector confidence with historical pose quality.
+
+**Ordinary robot calls and alternatives**
+
+The student still supplies the same four independently meaningful answers: predictor ownership,
+borrowed camera capability, fixed field facts, and retained estimation policy. Both supported calls
+remain exactly the same under the documentation-only and recommended local-fix alternatives:
+
+```java
+// Ordinary FTC: this lane constructs the configured Pinpoint predictor.
+new FtcOdometryAprilTagLocalizationLane(
+        hardwareMap, vision, fixedFieldTagLayout, localizationConfig);
+
+// Existing Auto integration: reuse its predictor; supply only estimation policy.
+FtcOdometryAprilTagLocalizationLane.withPredictor(
+        autoRuntime.motionPredictor(), vision,
+        fixedFieldTagLayout, localizationConfig.estimation);
+```
+
+| Alternative | Call-site / student decisions | Truth, ownership, and implementation tradeoff | Decision |
+| --- | --- | --- | --- |
+| Document the existing unit-height boost | Identical calls above; no new answer | Smallest text change, but preserves weak corrections being reported like strong ones and reverses the existing promise. | Reject. |
+| Retain accepted quality and scale the existing hold | Identical calls above; zero new concepts or configuration | One private scalar follows existing acceptance/reset/rollback ownership. Fixes the documented reporting contract without pose changes. | Choose; leading hypothesis confirmed. |
+| Read the current correction's quality while reporting | Identical calls; superficially fewer retained fields | Current source evidence is not necessarily accepted evidence; rejected/replayed/repeated frames could silently change the old hold. | Reject. |
+| Add a pluggable quality policy or configurable unit/scaled mode | Same lane call plus a new policy answer in estimator Config (hypothetical, unsupported today) | Makes students choose whether reporting is truthful and adds an unnecessary strategy/configuration API. | Reject; one supported formula is enough. |
+| Replace the maximum with a weighted average or change acceptance/pose gains | May retain the call shape but introduces new tuning and behavior | Could reduce trusted predictor quality or change robot pose; neither is required to repair the promised contribution. | Reject as different scope. |
+| Force Fusion and EKF to share one score or add an anchor-quality overload | Adds a shared policy/anchor answer or changes existing anchor meaning | EKF models covariance; manual anchors express a caller assertion. No evidence supports replacing either policy here. | Reject. |
+
+**Selected semantics and lifecycle**
+
+1. Add one private finite scalar for the last successfully accepted correction quality, initialized
+   to zero. Set it from the validated measurement at each of the two existing post-push acceptance
+   commits; use the existing validated/clamped `q` in the ordinary correction branch. A newly
+   accepted weaker frame replaces the earlier value; this is not a maximum-quality history.
+2. Preserve the existing output availability and predictor-quality sanitation. While the acceptance
+   timestamp has a valid current-epoch age less than positive hold `H`, compute the contribution
+   `acceptedQuality * (1 - acceptanceAge / H)` and take its maximum with predictor quality, bounded
+   to `[0, 1]`. At/after expiry, invalid age, or `H == 0`, there is no correction contribution.
+   Hold age starts at acceptance, not image capture; capture time continues to govern existing
+   freshness and replay. Do not create a second timebase or refresh a frame timestamp.
+3. Rejected, duplicate, out-of-order, unavailable, and correction-disabled updates do not replace
+   the stored quality or restart the hold. Disabling corrections preserves the existing policy:
+   the earlier accepted hold may continue to decay while no new correction is accepted. A hold
+   alone cannot create an available pose when the existing output-availability guard says no pose.
+4. Include the scalar in the existing predictor-push save/restore transaction. A failed push that
+   does not change predictor continuity preserves the previous quality and its original deadline;
+   nontransactional continuity changes still fail closed. Same-cycle success/failure caching and
+   reentrancy behavior remain unchanged.
+5. Clear the scalar with `clearRecentCorrectionState`, covering a successful manual `setPose` and
+   unexpected predictor discontinuity. Preserve immediate manual-anchor quality exactly: sanitized
+   predictor quality when its reported `hasPose` is true, otherwise the existing `1.0` fallback.
+   This is not a new accepted camera correction or physical-accuracy claim. Invalid/rejected anchors
+   retain their existing transactional/fail-closed semantics.
+6. A clock reset invalidates the prior acceptance timestamp, so old quality contributes nothing.
+   Keep public historical statistics/timestamps unchanged; there is no need to erase them to clear
+   an inert private value. Preserve the current timestamp/history-reset algorithm; frozen evidence
+   and missing delayed history belong to LOCALIZATION-03.
+7. EKF remains unchanged. It already uses measurement quality in initialization/update covariance,
+   models manual anchors separately, and converts covariance to its output score. Symmetry means
+   shared consumption vocabulary here, not identical algorithms or calibrated score equivalence.
+
+For an illustrative predictor quality of `0.2`, accepted correction quality `0.4`, and the existing
+`0.75`-second hold, the score changes as follows. These are exact software-example assumptions, not
+measured confidence or robot tuning recommendations:
+
+| Seconds since acceptance | Current score | Proposed score |
+| --- | --- | --- |
+| `0.000` | `1.0` | `0.4` |
+| `0.375` | `0.5` | `0.2` |
+| `0.750` | `0.2` | `0.2` |
+
+**Framework Principles, documentation, and bounded verification**
+
+- One obvious path: no new student API, mode, factory, or required tuning. One owner: accepted
+  quality stays with the Fusion owner that accepts, clears, and rolls back the matching evidence.
+  One heartbeat: existing LoopClock/timestamp/cycle semantics remain. One realization path: this
+  changes evidence consumed by existing gates, not Plants, motor writers, or robot strategy.
+  Truthful boundaries: source-defined heuristic only, predictor floor explicit, no physical
+  probability claim. One current story: implementation and owning Javadocs/guide must agree.
+- Implementation scope after approval: `OdometryCorrectionFusionEstimator.java` private state and
+  exact class/hold-setting Javadocs; one focused quality regression suite, reusing/augmenting
+  existing lifecycle fixtures only where needed; the existing section 7 of
+  `AprilTag Localization & Fixed Layouts.md`; and this tracker. No public signature/configuration,
+  production robot, example, EKF implementation, score threshold, or beginner navigation change is
+  expected; the public score's corrected semantics are the reason for the approval gate.
+- Explain quality beside its use in that optional guide section; show the effective `0.75`-second
+  default and its existing Config edit point, predictor maximum, acceptance-versus-capture time,
+  manual-anchor distinction, and EKF's separate score. A compact numeric decay table can show the
+  relationship without a new diagram, page, or required estimator lesson.
+- Required regressions: low/high/zero quality and endpoints (accepting zero explicitly requires
+  `minCorrectionQuality = 0.0`; the default `0.05` must continue rejecting it); correction-only initialization;
+  ordinary replay and projection acceptance; custom/zero hold, half/exact/after expiry, and delayed
+  capture accepted now; predictor dominance; a newer accepted weaker correction; rejected,
+  duplicate, out-of-order, absent, and disabled corrections; manual anchor with/without predictor
+  pose; clock reset; unexpected predictor rebase; transactional/nontransactional push failure;
+  repeated same-cycle updates. Use independently calculated pose expectations to prove gain,
+  geometry, counters, and trajectory behavior remain unchanged. Exercise one existing downstream
+  quality gate with explicit low predictor quality/stricter threshold, not a fabricated physical
+  safety threshold or a claim that every default adopter changes behavior.
+- **Baseline run:** Android Studio JBR with `gradlew.bat --console=plain :TeamCode:testDebugUnitTest`
+  filtered to `edu.ftcsushi.fw.localization.fusion.*`,
+  `FtcOdometryAprilTagLocalizationLaneTest`, `FtcAprilTagLocalizationConfigConversionTest`, and
+  `PinpointAprilTagCorrectedLocalizationTesterConfigTest` passed. XML: **73 tests, 6 suites,
+  0 failures, 0 errors, 0 skips** (core Validation **14**, Timestamp **6**, CycleSafety **25**;
+  FTC lane **18**, shared policy conversion **2**, tool Config **8**). Existing Java-21/source-8
+  and FTC deprecation warnings remain. These tests do not yet cover the correction-quality hold;
+  commonly unit-quality fixtures mask the defect. No new implementation or regression file has
+  been edited during this decision gate.
+- After implementation, rerun targeted and full compile/tests, count XML outcomes, check diff and
+  untracked-test whitespace, and build strict narrative/Javadocs plus generated search/link checks.
+  The two previously recorded Windows CRLF-sensitive documentation assertions are a known baseline;
+  report any recurrence without hiding it through unrelated edits. Hardware is not required to
+  prove the narrower score contract; adopting-robot thresholds and calibrated physical confidence
+  remain separate evidence questions. Independent source/lifecycle, construction/consumer, and
+  test/documentation reviews support the selected local fix.
+
+**Gate-1 approval recorded:** `PoseEstimate.quality` is public evidence used by spatial,
+drive-guidance, pose-lock, and heading gates, so the skill required approval even without signature
+changes. The user approved the selected design with “proceed with LOCALIZATION-02” after reviewing
+robot effects and the distinction between fixed predictor quality, correction-weighted pose gains,
+and EKF uncertainty. This does not authorize adaptive odometry scoring, a different merge strategy,
+or changes to application thresholds.
+
+**Gate-2 start:** freshly fetched `origin/master` still equals branch HEAD at
+`abe24d6f224a70afcf4422fdbc15963a9d19646d`. The existing item branch was confirmed before
+implementation; no local or remote branch was rewritten.
+
+#### LOCALIZATION-02 implementation and automated verification — 2026-09-07
+
+- **Completed scope:** Fusion retains one private `lastAcceptedCorrectionQuality`, commits it at
+  both successful post-push sensor-acceptance points, scales the existing linear hold by that
+  value, saves/restores it with the existing predictor-push transaction, and clears it with the
+  existing recent-correction reset. Pose gains/geometry, correction admission, availability,
+  timestamps, counters, trajectory behavior, manual-anchor scores, correction-disable decay, and
+  EKF remain unchanged. No public construction/signature/configuration, application, example,
+  threshold, or beginner-navigation changes were needed.
+- **Documentation:** class and hold-setting Javadocs state the ordinary-update formula and its
+  limits, including the distinct immediate manual-anchor score. Only section 7 of the owning
+  `AprilTag Localization & Fixed Layouts` guide changed. It defines heuristic quality before use,
+  shows the effective `0.75`-second duration and its Config edit point, explains the predictor
+  maximum and acceptance/capture distinction, and includes an independently calculated three-row
+  decay table. It distinguishes Pinpoint's configured score from measured drift and EKF's modeled
+  uncertainty from physical error. No new lesson or diagram is required for this scalar relation.
+- **Regression scope:** two focused test-only files split score/geometry and lifecycle evidence
+  for independent review: `OdometryCorrectionFusionEstimatorQualityTest` (**14 tests**) and
+  `OdometryCorrectionFusionEstimatorQualityLifecycleTest` (**14 tests**). Both keep the real Fusion
+  owner and LoopClock; only outside observations and the fallible predictor rebase are scripted.
+  Public-seam assertions cover low/high/unit/zero quality; default rejection versus explicitly
+  permitted zero; initialization, replay, and projection; default/custom/zero holds and expiry;
+  predictor dominance; weaker replacement; ten unaccepted-source scenarios; same-cycle effects;
+  anchors, clock reset, and unexpected discontinuity; transactional/nontransactional failures and
+  recovery; and one real spatial-quality gate. Pose oracles independently calculate nonzero
+  x/y/yaw, delayed replay (`20.4` inches), and a successful predictor push (`2.4` inches).
+- **Focused compile/test evidence:** Android Studio JBR with
+  `gradlew.bat --console=plain :TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest`
+  and the decision-gate filters passed: **101 tests, 8 suites, 0 failures, 0 errors, 0 skips**.
+  This includes the prior **73** plus the **28** new tests. The first invocation attached `--tests`
+  to the compile task by mistake and was corrected before this successful run; it made no source
+  change.
+- **Original-defect check:** temporarily replacing only the reporting expression with the original
+  unit-height boost caused **12 failures in the 14-test quality suite**, including the real spatial
+  gate. The fixed expression was restored before final verification. This confirms that the new
+  suite detects the original score defect rather than merely exercising the fixture.
+- **Full repository evidence:** the same JBR command without filters completed compilation and
+  ran **2,398 tests across 264 suites: 2,396 passed, 2 failures, 0 errors, 0 skips**. All **28** new
+  tests pass with the restored fix. The only failures are the already-recorded Windows CRLF-sensitive
+  `DocumentationLinksTest.everyBuildRecipeUsesTheSourceBackedEvidenceAnatomy` at line **1226**
+  (11 unchanged Build recipes' LF-only `Notice` check) and
+  `taskGuidesTeachOutcomeAwareCompositionAndExplicitRepair` at line **2199** (unchanged Tasks
+  guide's LF-only phrase check). The full local suite is therefore **not green**; no unrelated
+  tests, guides, line endings, or Git settings were changed to hide these failures. Existing
+  Java-21/source-8 and FTC deprecation warnings remain.
+- **Documentation artifact evidence:** the existing `build/docs-venv-win/Scripts/python.exe`
+  passed `-m pip check` and `-m zensical build --clean --strict` (**No issues found**).
+  `.github/verify_generated_guide_search.py` verified **969 sections across all six guide areas**.
+  `:TeamCode:sushiJavadocs` passed strict generation; `.github/verify_generated_api_links.py`
+  verified **176 API links and 82 maintained source links across 47 Markdown pages**. Required
+  narrative/search/API artifacts are present and nonempty.
+- **Independent reviews and hygiene:** separate implementation/lifecycle and construction-layer
+  audits confirmed both acceptance paths, reset/rollback ownership, and distinct existing core/FTC
+  construction roles. An independent review of both new suites found no blocking oracle, coverage,
+  scope, or documentation issue. The one Javadoc wording finding (ordinary-update quality versus
+  immediate manual-anchor fallback) was corrected before Javadoc verification. Public failure
+  tests verify retained old quality/deadline; the scalar save/restore itself also received source
+  review because assignments occur after successful pushes. No unsupported reentrant-anchor path
+  was invented for extra test coverage. `git diff --check` and a trailing-whitespace scan including
+  both new files pass. Normalized scope checks confirm all other tracker items, all guide text
+  outside section 7, EKF, and robot application code are unchanged.
+- **Physical evidence boundary:** these tests prove reporting arithmetic and lifecycle, not
+  localization accuracy, measured slip, safe quality thresholds, or better shots. A supervised
+  adopting-robot check is useful for telemetry and existing assistance thresholds, but is not
+  required to establish this software-only contract and has not been performed.
+- **Android Studio review request:** inspect the Fusion diff's two post-push quality commits,
+  scaled hold, rollback/reset state, and unchanged pose-gain expressions; both new regression
+  files' score/pose expectations; and the optional guide's formula, decay table, and limitations.
+  The branch is `codex/localization-02-correction-quality`; the resolved origin push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; the target is `master`. The skill requires
+  the combined review/publication authorization below; the user has now supplied it. No later
+  item starts until the authorized publication and merged-tree verification finish.
+
+**Received combined authorization:**
+
+> LOCALIZATION-02 looks good. Authorize committing the reviewed LOCALIZATION-02 diff on
+> codex/localization-02-correction-quality, pushing that branch to
+> https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into master.
+> Then move to next task.
+
+**Gate-3 closeout:** the user's combined reply records acceptance of the Android Studio review
+handoff and destination-specific publication authority. Final independent review confirmed exactly
+the five reviewed files and the restored quality-scaled expression; the two new suites still
+contain 28 tests. Only this tracker review/status record changes at finalization. Commit, PR, and
+merge identity are verified through Git/GitHub publication state. Physical localization accuracy
+and adopting-robot thresholds remain unverified, and Phoenix remains unchanged.
 
 ### LOCALIZATION-03 - Preserve localization evidence freshness
 
