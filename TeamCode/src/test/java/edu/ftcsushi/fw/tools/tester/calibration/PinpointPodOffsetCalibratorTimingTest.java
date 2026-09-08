@@ -600,7 +600,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
             setField(owner, "ctx", context);
             setField(owner, "clock", clock);
             setField(owner, "gamepads", Gamepads.create(context.gamepad1, context.gamepad2));
-            predictor = device.newPredictor();
+            predictor = device.newPredictor(config.pinpoint);
             setField(owner, "pinpoint", predictor);
             if (powered) {
                 for (int i = 0; i < outputs.length; i++) outputs[i] = new RecordingOutput(commands);
@@ -715,8 +715,11 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         GoBildaPinpointDriver.DeviceStatus status = GoBildaPinpointDriver.DeviceStatus.READY;
         int polls;
         int rebases;
+        double configuredForwardPodOffsetLeftInches;
+        double configuredStrafePodOffsetForwardInches;
 
-        PinpointOdometryPredictor newPredictor() throws Exception {
+        PinpointOdometryPredictor newPredictor(PinpointOdometryPredictor.Config config)
+                throws Exception {
             Class<?> deviceType = Class.forName(PinpointOdometryPredictor.class.getName()
                     + "$PinpointDevice");
             Class<?> lookupType = Class.forName(PinpointOdometryPredictor.class.getName()
@@ -724,6 +727,10 @@ public final class PinpointPodOffsetCalibratorTimingTest {
             Object fake = Proxy.newProxyInstance(deviceType.getClassLoader(),
                     new Class<?>[]{deviceType}, (ignored, method, args) -> {
                         switch (method.getName()) {
+                            case "setOffsetsInches":
+                                configuredForwardPodOffsetLeftInches = (Double) args[0];
+                                configuredStrafePodOffsetForwardInches = (Double) args[1];
+                                return null;
                             case "update": polls++; return null;
                             case "getDeviceStatus": return status;
                             case "getPosition": return pose;
@@ -737,7 +744,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
                     PinpointOdometryPredictor.class.getDeclaredConstructor(
                             lookupType, PinpointOdometryPredictor.Config.class);
             constructor.setAccessible(true);
-            return constructor.newInstance(lookup, PinpointOdometryPredictor.Config.defaults());
+            return constructor.newInstance(lookup, config);
         }
     }
 

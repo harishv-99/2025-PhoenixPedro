@@ -41,9 +41,15 @@ import edu.ftcsushi.fw.input.binding.Bindings;
 /**
  * Calibrates goBILDA Pinpoint odometry pod offsets by observing translation drift while rotating in place.
  *
- * <p>Why this works: if either odometry pod is not located at the robot's true center of rotation,
- * rotating the robot causes a measurable translation ("drift") in the Pinpoint-reported pose. From the
- * measured drift and the known heading change, we can solve for the pod offsets.</p>
+ * <p>Why this works: when configured pod offsets differ from the physical placement relative to the
+ * chosen robot reference point, rotation produces a modeled translation error ("drift") in the
+ * Pinpoint-reported pose. Correct offsets account for off-center pods. Given a heading change and
+ * either a return of that same reference point to its starting position or independent tag-measured
+ * translation, the residual lets us solve for replacement offsets. Unaccounted real translation
+ * contaminates the result; this calculation cannot distinguish every source of slip or noise.</p>
+ *
+ * <p>Recommendations are absolute replacement offsets, not adjustments to add. A repeat with
+ * corrected configuration should recommend little change, not necessarily offsets near zero.</p>
  *
  * <h2>Controls</h2>
  * <ul>
@@ -207,7 +213,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         /**
          * If true, after the rotation portion of a sample finishes, the tester pauses and allows
-         * manual translation to "recenter" back to the starting position before computing results.
+         * manual translation to "recenter" the same chosen robot reference point back to its
+         * starting position before computing results. A software pose reset does not move that point.
          *
          * <p>This is especially useful for auto-turning on imperfect flooring where the robot drifts
          * laterally while rotating. Re-centering reduces bias from real translation during the turn.</p>
@@ -847,6 +854,11 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             renderTelemetry(false);
             return;
         }
+        // Finish the already-active sample's observation before A can compute or X can reset it.
+        // A/Y may start a new software-zero sample below; never feed that sample the pre-reset pose.
+        if (isSampleActive() && pinpointReadyForMotion()) {
+            headingUnwrapper.update(latestPinpointPose.headingRad);
+        }
         consumeControlRequestsAfterCurrentPoll(true);
 
         if (motionInhibitedThisCycle()) {
@@ -858,11 +870,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             abortSample();
             renderTelemetry(false);
             return;
-        }
-
-        // Update heading unwrapper for phases where a sample is active.
-        if (isSampleActive()) {
-            headingUnwrapper.update(latestPinpointPose.headingRad);
         }
 
         switch (phase) {
@@ -1290,19 +1297,14 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             dx0 = displacementForward(rawStart, rawEnd) - displacementForward(tagStart, tagEnd);
             dy0 = displacementLeft(rawStart, rawEnd) - displacementLeft(tagStart, tagEnd);
             deltaHeading = MathUtil.wrapToPi(rawEnd.headingRad - rawStart.headingRad);
-            if (!Double.isFinite(dx0) || !Double.isFinite(dy0) || !Double.isFinite(deltaHeading)) {
-                failAssistedAttempt("Capture-matched displacement or heading is non-finite");
-                return;
-            }
-            lastHadTagEnd = true;
         } else {
             dx0 = displacementForward(startPinpointPose, latestPinpointPose);
             dy0 = displacementLeft(startPinpointPose, latestPinpointPose);
         }
-
-        lastDxStartBodyInches = dx0;
-        lastDyStartBodyInches = dy0;
-        lastDeltaHeadingRad = deltaHeading;
+        if (!Double.isFinite(dx0) || !Double.isFinite(dy0) || !Double.isFinite(deltaHeading)) {
+            failAttempt("Sample displacement or heading is non-finite");
+            return;
+        }
 
         // Solve for offset errors
         double a = Math.sin(deltaHeading);
@@ -1321,10 +1323,11 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             // yError = y_est - y_true (forward pods left offset error)
             double xError = (b * dx0 - a * dy0) / denom;
             double yError = (a * dx0 + b * dy0) / denom;
-            if (startAssistEndpoint != null && (!Double.isFinite(xError) || !Double.isFinite(yError)
-                    || !Double.isFinite(cfg.pinpoint.strafePodOffsetForwardInches - xError)
-                    || !Double.isFinite(cfg.pinpoint.forwardPodOffsetLeftInches - yError))) {
-                failAssistedAttempt("Capture-matched solve or recommended offsets are non-finite");
+            double recommendedX = cfg.pinpoint.strafePodOffsetForwardInches - xError;
+            double recommendedY = cfg.pinpoint.forwardPodOffsetLeftInches - yError;
+            if (!Double.isFinite(xError) || !Double.isFinite(yError)
+                    || !Double.isFinite(recommendedX) || !Double.isFinite(recommendedY)) {
+                failAttempt("Sample solve or recommended offsets are non-finite");
                 return;
             }
 
@@ -1332,12 +1335,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             lastYErrorInches = yError;
 
             // Recommended new offsets = current_est - error
-            lastRecommendedStrafePodOffsetForwardInches = cfg.pinpoint.strafePodOffsetForwardInches - xError;
-            lastRecommendedForwardPodOffsetLeftInches = cfg.pinpoint.forwardPodOffsetLeftInches - yError;
+            lastRecommendedStrafePodOffsetForwardInches = recommendedX;
+            lastRecommendedForwardPodOffsetLeftInches = recommendedY;
 
             lastSolveNote = null;
         }
-
+        // Publish sample diagnostics only after all derived arithmetic has passed validation.
+        lastDxStartBodyInches = dx0;
+        lastDyStartBodyInches = dy0;
+        lastDeltaHeadingRad = deltaHeading;
+        lastHadTagEnd = startAssistEndpoint != null;
     }
 
     /** Forward displacement expressed in the robot's body frame at this stream's start. */
@@ -1354,8 +1361,12 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     /** Reject one assisted attempt before cleanup can call back into the tester. */
     private void failAssistedAttempt(String reason) {
-        lastAttemptFailure = reason + ". Attempt discarded; release controls and retry. "
-                + "Only A during start-tag search explicitly selects a fresh no-tag sample.";
+        failAttempt(reason + ". Only A during start-tag search explicitly selects a fresh no-tag sample");
+    }
+
+    /** Discard invalid evidence/results before publishing the terminal attempt's physical zero. */
+    private void failAttempt(String reason) {
+        lastAttemptFailure = reason + ". Attempt discarded; release controls and retry.";
         clearLastResults();
         abortSample();
     }

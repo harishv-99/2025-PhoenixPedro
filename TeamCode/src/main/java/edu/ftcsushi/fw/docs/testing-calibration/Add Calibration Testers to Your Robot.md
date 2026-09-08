@@ -69,7 +69,8 @@ These are the basic example's active values, not measured recommendations:
 | Camera selection / powered-motion review | `NONE` / `false` | Optional branches remain absent |
 
 `FORWARD` and `REVERSED` are named Java choices for encoder signs, not drive commands. Offsets are
-distances from the robot's center of rotation: forward-pod offset is positive left, strafe-pod
+distances from the chosen robot reference point—the point whose position Pinpoint reports—not
+whichever point the robot happens to turn around. Forward-pod offset is positive left; strafe-pod
 offset is positive forward. The [axis](<Robot Calibration Tutorials.md#pinpoint-axis-directions>)
 and [pod-offset](<Robot Calibration Tutorials.md#pinpoint-pod-offsets>) procedures explain how to
 establish those facts before accepting a result.
