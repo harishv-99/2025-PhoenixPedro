@@ -21,6 +21,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -591,7 +592,10 @@ public final class PositionReferenceValidationTest {
                 () -> runner.update(clock.nextCycle(0.02)));
 
         assertPeriodicOverflow(failure);
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertTrue(task.isComplete());
+        assertSame(failure, expectRuntime(task::getOutcome));
+        assertSame(failure, expectRuntime(() -> task.update(clock.clock())));
+        task.cancel();
         assertTrue(runner.isIdle());
         assertTrue(plant.isReferenced());
         assertEquals(721.5, plant.getMeasurement(), 0.0);
@@ -609,7 +613,11 @@ public final class PositionReferenceValidationTest {
                 ((Number) debug.values.get("plant.lastNativeMeasurement")).doubleValue());
 
         source.value = 722.5;
-        plant.update(clock.nextCycle(0.02));
+        LoopClock recoveryClock = clock.nextCycle(0.02);
+        assertSame(failure, expectRuntime(() -> task.update(recoveryClock)));
+        assertEquals(1, searchOutput.stopCalls);
+        assertEquals(2, source.sampleCalls);
+        plant.update(recoveryClock);
         assertEquals(0, searchOutput.setCalls);
         assertEquals(2, output.setCalls);
         assertEquals(1080.0, output.commanded, 0.0);

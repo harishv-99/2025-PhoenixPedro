@@ -194,8 +194,8 @@ final class PhoenixPedroPreParkTask implements Task {
                 .addData(p + ".complete", isComplete())
                 .addData(p + ".outcome", getOutcome());
         if (activeChild != null) {
-            dbg.addData(p + ".activeChild", activeChild.getDebugName())
-                    .addData(p + ".activeChildOutcome", activeChild.getOutcome());
+            dbg.addData(p + ".activeChild", activeChild.getDebugName());
+            // Delegate diagnostics instead of asking a failed timed child for a policy result.
             activeChild.debugDump(dbg, p + ".active");
         }
     }

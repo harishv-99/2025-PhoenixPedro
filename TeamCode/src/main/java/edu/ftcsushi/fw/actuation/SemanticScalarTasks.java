@@ -3,6 +3,7 @@ package edu.ftcsushi.fw.actuation;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.RunForSecondsTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
@@ -21,6 +22,10 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  * feedback. A timed Task preserves one request identity while uncontested and publishes a fresh
  * occurrence only when reclaiming its request after another writer supersedes it. A feedback Task
  * never reasserts and therefore cannot fight a later request.</p>
+ *
+ * <p>Timed and feedback Tasks advance once per loop cycle. A request superseded after that cycle's
+ * update can be reclaimed only on a later cycle. Lifecycle failures attempt the selected ending
+ * or cancellation policy once and remain exceptions on later updates and outcome reads.</p>
  *
  * <h2>Examples</h2>
  * <pre>{@code
@@ -87,7 +92,10 @@ public final class SemanticScalarTasks {
         /** Leave whichever persistent request is current when the timed Task ends. */
         TimedBuildStep leaveThere();
 
-        /** Publish {@code finalRequest} after natural completion or active cancellation. */
+        /**
+         * Attempt {@code finalRequest} once after natural completion, active cancellation, or an
+         * armed lifecycle failure. A failed ending stays an exception, not normal completion.
+         */
         TimedBuildStep then(S finalRequest);
     }
 
@@ -389,7 +397,8 @@ public final class SemanticScalarTasks {
         }
     }
 
-    private static final class ReachedTask<S> implements Task {
+    /** Waits for one exact semantic request occurrence under the shared Task lifecycle. */
+    private static final class ReachedTask<S> extends AbstractTask {
         private final SemanticScalarCommand<S> command;
         private final SemanticScalarCommand.PreparedRequest<S> request;
         private final Plant plant;
@@ -397,12 +406,8 @@ public final class SemanticScalarTasks {
         private final double stableSec;
         private final double timeoutSec;
         private SemanticScalarCommand.Request<S> startedRequest;
-        private boolean startAttempted;
-        private boolean started;
-        private boolean complete;
         private double startSec;
         private double stableSinceSec;
-        private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
         private ReachedTask(SemanticScalarCommand<S> command,
                             SemanticScalarCommand.PreparedRequest<S> request,
@@ -410,6 +415,7 @@ public final class SemanticScalarTasks {
                             SemanticScalarCommand.PreparedRequest<S> cancellationRequest,
                             double stableSec,
                             double timeoutSec) {
+            super("SemanticScalarTasks.set(...).untilReachedBy(...)");
             this.command = command;
             this.request = request;
             this.plant = plant;
@@ -419,39 +425,24 @@ public final class SemanticScalarTasks {
         }
 
         @Override
-        public void start(LoopClock clock) {
-            if (startAttempted) {
-                throw new IllegalStateException("SemanticScalarTasks.set(" + request.semantic()
-                        + ").untilReachedBy(...) is single-use and cannot be started more than "
-                        + "once. Create a fresh Task by rebuilding SemanticScalarTasks.set(...); "
-                        + "use a Supplier<Task> for repeated scheduling.");
-            }
-            startAttempted = true;
-            started = true;
-            complete = false;
-            startSec = nowSec(clock, 0.0);
+        protected void onStart(LoopClock clock) {
+            startSec = clock.nowSec();
             stableSinceSec = Double.NaN;
-            outcome = TaskOutcome.NOT_DONE;
             startedRequest = command.publish(request);
         }
 
+        /** Evaluate correlated arrival once per eligible cycle, preserving the success-first tie. */
         @Override
-        public void update(LoopClock clock) {
-            if (!started) {
-                throw new IllegalStateException("SemanticScalarTasks.set(" + request.semantic()
-                        + ").untilReachedBy(...) cannot be updated before start(clock). Start it "
-                        + "first, normally by enqueueing it in a TaskRunner.");
-            }
-            if (complete) return;
-
-            double nowSec = nowSec(clock, startSec);
+        protected void onUpdate(LoopClock clock) {
+            double nowSec = clock.nowSec();
             double elapsedSec = elapsedSince(startSec, nowSec);
             PlantTargetResolution resolution = plant.getTargetResolution();
+            if (!isActive()) return;
             boolean reached = command.request() == startedRequest
                     && resolution != null
                     && resolution.satisfiesSemanticCommand(command, startedRequest)
                     && plant.atTarget(resolution.target());
-            if (complete) return;
+            if (!isActive()) return;
 
             boolean stable;
             if (stableSec <= 0.0) {
@@ -465,35 +456,16 @@ public final class SemanticScalarTasks {
             }
 
             // Success deliberately wins an exact tie with timeout.
-            if (stable) finish(TaskOutcome.SUCCESS);
+            if (stable) complete(TaskOutcome.SUCCESS);
             else if (timeoutSec > 0.0 && elapsedSec >= timeoutSec) {
-                finish(TaskOutcome.TIMEOUT);
+                complete(TaskOutcome.TIMEOUT);
             }
         }
 
-        private void finish(TaskOutcome result) {
-            outcome = result;
-            complete = true;
-        }
-
+        /** Restore only the selected semantic cancellation request through its command owner. */
         @Override
-        public void cancel() {
-            if (!started || complete) return;
-
-            // Become terminal before the optional persistent request change.
-            outcome = TaskOutcome.CANCELLED;
-            complete = true;
+        protected void onCancel() {
             if (cancellationRequest != null) command.publish(cancellationRequest);
-        }
-
-        @Override
-        public boolean isComplete() {
-            return complete;
-        }
-
-        @Override
-        public TaskOutcome getOutcome() {
-            return complete ? outcome : TaskOutcome.NOT_DONE;
         }
 
         @Override
@@ -520,10 +492,6 @@ public final class SemanticScalarTasks {
                     + "requires authoritative Plant feedback. Use build() for a write-once "
                     + "request or forSeconds(...) for timed open-loop behavior.");
         }
-    }
-
-    private static double nowSec(LoopClock clock, double fallbackSec) {
-        return clock != null ? clock.nowSec() : fallbackSec;
     }
 
     private static double elapsedSince(double intervalStartSec, double nowSec) {

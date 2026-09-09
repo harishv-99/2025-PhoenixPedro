@@ -11,6 +11,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -88,19 +89,8 @@ public final class ScalarTasksCancellationTest {
                 .build();
 
         move.start(manualClock.clock());
-        try {
-            move.cancel();
-            fail("expected the cancellation target write to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test target"));
-        }
-
-        assertTrue(move.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
-        assertEquals(2, target.setCount());
-
-        move.cancel();
-        move.update(manualClock.clock());
+        assertSame(target.failure, expectRuntime(move::cancel));
+        assertRetainedFailure(move, target.failure, manualClock);
         assertEquals(2, target.setCount());
     }
 
@@ -114,19 +104,92 @@ public final class ScalarTasksCancellationTest {
                 .cancelTo(-2.0)
                 .build();
 
-        try {
-            move.start(manualClock.clock());
-            fail("expected the move request to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test target"));
-        }
-
-        move.cancel();
-        move.cancel();
-        assertTrue(move.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
+        assertSame(target.failure, expectRuntime(() -> move.start(manualClock.clock())));
+        assertRetainedFailure(move, target.failure, manualClock);
         assertEquals(2, target.setCount());
         assertEquals(-2.0, target.get(), 0.0);
+    }
+
+    @Test
+    public void directFeedbackUpdatesSampleOncePerCycleAndIgnoreRecursiveUpdate() {
+        ManualLoopClock time = new ManualLoopClock();
+        CountingFeedbackPlant plant = new CountingFeedbackPlant();
+        Task move = ScalarTasks.set(plant.command, 5.0).untilReachedBy(plant)
+                .leaveRequestOnCancel().build();
+        plant.onAtTarget = () -> move.update(time.clock());
+
+        move.start(time.clock());
+        move.update(time.clock());
+        plant.reached = true;
+        move.update(time.clock());
+
+        assertFalse(move.isComplete());
+        assertEquals(1, plant.atTargetCount);
+        move.update(time.nextCycle(0.02));
+        assertEquals(TaskOutcome.SUCCESS, move.getOutcome());
+        assertEquals(2, plant.atTargetCount);
+        assertEquals(1, plant.command.setCount());
+    }
+
+    @Test
+    public void feedbackFailureKeepsFirstExceptionAndAttemptsCancellationTargetOnce() {
+        ManualLoopClock time = new ManualLoopClock();
+        ThrowingScalarTarget target = new ThrowingScalarTarget(-1.0);
+        CountingFeedbackPlant plant = new CountingFeedbackPlant(target);
+        RuntimeException feedbackFailure = new IllegalStateException("feedback unavailable");
+        plant.feedbackFailure = feedbackFailure;
+        Task move = ScalarTasks.set(target, 5.0).untilReachedBy(plant)
+                .cancelTo(-1.0).build();
+
+        move.start(time.clock());
+        assertSame(feedbackFailure, expectRuntime(() -> move.update(time.clock())));
+        assertRetainedFailure(move, feedbackFailure, time);
+
+        assertEquals(1, feedbackFailure.getSuppressed().length);
+        assertSame(target.failure, feedbackFailure.getSuppressed()[0]);
+        assertEquals(1, plant.atTargetCount);
+        assertEquals(2, target.setCount());
+    }
+
+    @Test
+    public void feedbackFailureRespectsLeaveRequestPolicy() {
+        ManualLoopClock time = new ManualLoopClock();
+        CountingFeedbackPlant plant = new CountingFeedbackPlant();
+        RuntimeException failure = new IllegalStateException("feedback unavailable");
+        plant.feedbackFailure = failure;
+        Task move = ScalarTasks.set(plant.command, 5.0).untilReachedBy(plant)
+                .leaveRequestOnCancel().build();
+
+        move.start(time.clock());
+        assertSame(failure, expectRuntime(() -> move.update(time.clock())));
+        assertRetainedFailure(move, failure, time);
+        assertEquals(1, plant.command.setCount());
+        assertEquals(5.0, plant.command.get(), 0.0);
+    }
+
+    @Test
+    public void timedStartFailureStillAttemptsThenValueOnce() {
+        ManualLoopClock time = new ManualLoopClock();
+        ThrowingScalarTarget target = new ThrowingScalarTarget(5.0);
+        Task timed = ScalarTasks.set(target, 5.0).forSeconds(1.0).then(0.0).build();
+
+        assertSame(target.failure, expectRuntime(() -> timed.start(time.clock())));
+        assertRetainedFailure(timed, target.failure, time);
+        assertEquals(2, target.setCount());
+        assertEquals(0.0, target.get(), 0.0);
+    }
+
+    @Test
+    public void timedEndingFailureCannotBecomeSuccessOrRepeatEndingWrite() {
+        ManualLoopClock time = new ManualLoopClock();
+        ThrowingScalarTarget target = new ThrowingScalarTarget(0.0);
+        Task timed = ScalarTasks.set(target, 5.0).forSeconds(0.1).then(0.0).build();
+
+        timed.start(time.clock());
+        timed.update(time.clock());
+        assertSame(target.failure, expectRuntime(() -> timed.update(time.nextCycle(0.1))));
+        assertRetainedFailure(timed, target.failure, time);
+        assertEquals(4, target.setCount());
     }
 
     @Test
@@ -244,6 +307,27 @@ public final class ScalarTasksCancellationTest {
         }
     }
 
+    /** Failure reads remain diagnostic-only: they must not repeat target or feedback effects. */
+    private static void assertRetainedFailure(Task task, RuntimeException failure,
+                                              ManualLoopClock time) {
+        assertTrue(task.isComplete());
+        assertSame(failure, expectRuntime(task::getOutcome));
+        assertSame(failure, expectRuntime(() -> task.update(time.clock())));
+        assertSame(failure, expectRuntime(() -> task.update(time.nextCycle(0.02))));
+        task.cancel();
+        task.cancel();
+    }
+
+    private static RuntimeException expectRuntime(Runnable action) {
+        try {
+            action.run();
+            fail("expected a lifecycle failure");
+            return null;
+        } catch (RuntimeException expected) {
+            return expected;
+        }
+    }
+
     private static class CountingScalarTarget implements ScalarTarget {
         private int setCount;
         private double value;
@@ -266,6 +350,8 @@ public final class ScalarTasksCancellationTest {
 
     private static final class ThrowingScalarTarget extends CountingScalarTarget {
         private final double throwingValue;
+        private final RuntimeException failure =
+                new IllegalStateException("test target rejected cancellation request");
 
         private ThrowingScalarTarget(double throwingValue) {
             this.throwingValue = throwingValue;
@@ -275,7 +361,7 @@ public final class ScalarTasksCancellationTest {
         public void set(double value) {
             super.set(value);
             if (value == throwingValue) {
-                throw new IllegalStateException("test target rejected cancellation request");
+                throw failure;
             }
         }
     }
@@ -301,6 +387,9 @@ public final class ScalarTasksCancellationTest {
     private static final class CountingFeedbackPlant implements Plant {
         private final CountingScalarTarget command;
         private boolean reached;
+        private int atTargetCount;
+        private Runnable onAtTarget;
+        private RuntimeException feedbackFailure;
 
         private CountingFeedbackPlant() {
             this(new CountingScalarTarget());
@@ -336,6 +425,13 @@ public final class ScalarTasksCancellationTest {
 
         @Override
         public boolean atTarget(double target) {
+            atTargetCount++;
+            if (onAtTarget != null) {
+                onAtTarget.run();
+            }
+            if (feedbackFailure != null) {
+                throw feedbackFailure;
+            }
             return reached;
         }
 

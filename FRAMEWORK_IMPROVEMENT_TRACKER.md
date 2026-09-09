@@ -262,7 +262,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 148 | DOC-20 | Concept-first documentation and visual learning | Done | Concept-first repairs and six diagrams implemented; principles strengthened; 2,254 tests and strict docs/API checks pass. User approved the reviewed diff and exact branch/remote/master publication on 2026-09-06. |
 | 149 | DOC-21 | Integrate calibration testers with a new robot | Done | Independent example and three layered Test & Tune lessons reviewed; user authorized destination-specific commit, PR, and merge on 2026-09-08. Physical adopting-robot validation remains separate. |
 | 150 | MATH-02 | Finite two-dimensional calibration tables | Proposed | Extend finite interpolation to two independent inputs without owning calibration fitting or mechanism meaning. |
-| 151 | TASK-07 | Terminal Task cleanup composition | Proposed | Revisit the earlier exclusion with complete caller evidence for one narrow, outcome-preserving cleanup decorator. |
+| 151 | TASK-07 | Terminal Task cleanup composition | Done | Shared timed lifecycle, cleanup adopters, synchronized guides, and 2,759 passing tests; Android Studio review and destination-specific publication authorized on 2026-09-09. |
 | 152 | RUNTIME-04 | Managed registration ownership transfer | Proposed | Evaluate a stronger existing registration contract that removes adopter cleanup guards without stopping already-owned resources. |
 | 153 | VISION-04 | Bounded recent field-location memory | Proposed | Remember recently observed ball/cluster locations, refresh unambiguous spatial matches, and expire unseen entries without velocity prediction or physical-identity claims. |
 | 154 | SPATIAL-03 | Bounded intake-sweep geometry | Proposed | Answer point coverage for explicitly supported intake corridors without claiming capture or collision clearance. |
@@ -279,6 +279,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 165 | DIAG-05 | Record localization inputs and decisions | Proposed | Capture actual consumed predictor/correction inputs and reset boundaries; limit replay to completely recorded supported calculations. |
 | 166 | DIAG-06 | Record pod-calibration trials | Proposed | Preserve bounded powered/assisted phase and endpoint evidence; evaluate existing offset-calculation replay without physical-motion claims. |
 | 167 | DIAG-07 | Record camera-calibration sample history | Proposed | Preserve bounded fixed-setup sample history and evaluate mount/rotation-mean replay, not image processing or physical acceptance. |
+| 168 | TASK-08 | Attribute queued submissions and withdrawals | Proposed | Compare retained Tasks and owner-local attempt state with a narrow queue result that also observes withdrawal before start and composes truthful outcomes. |
 
 ### Diagnostic follow-up intake (approved 2026-09-08)
 
@@ -32896,7 +32897,222 @@ obtains the skill-required approval before API or major lifecycle changes.
 
 ### TASK-07 - Terminal Task cleanup composition
 
-- **Status:** **Proposed**.
+- **Status:** **Done**.
+- **Manual review and publication authorization (2026-09-09):** the user approved the reviewed
+  expanded TASK-07 diff and explicitly authorized committing it on
+  `codex/task-07-terminal-cleanup`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. This closes the Android Studio review gate, not the separately documented physical
+  validation gates. No next item is authorized by this publication approval.
+- **Expanded design approval:** after a read-only builder/decorator audit, the user selected all
+  timed Task families, approved once-per-cycle updates (including next-cycle reclamation of a
+  superseded semantic request), and approved the shared-lifecycle plan with "Implement the plan."
+  Reopen this item's implementation on the existing branch; the earlier verification below is
+  historical evidence for the narrower decorator change, not verification of the expanded work.
+- **Current public-layer decision:** keep every existing ordinary factory/builder and typed
+  return. Introduce one advanced, publicly visible `fw.task.AbstractTask` implementation base with
+  a protected constructor and final lifecycle methods. Its distinct purpose is cross-package
+  implementation reuse, not another ordinary construction path. `Tasks.withCleanup` consumes the
+  same base; add no universal builder, fluent alias, output-erasing migration, or scheduler.
+  Existing scalar/output builder stages guide required choices; retained commands, Plants, plans,
+  and output factories retain their independent ownership/reuse value.
+- **Current scope:** migrate timed callbacks/waits, constant/gated outputs, numeric/semantic
+  feedback Tasks, calibration searches, exclusive timed drive, guidance, routes and timeout
+  composition. Timed scalar/semantic builders inherit the common callback-task implementation.
+  Preserve the two existing robot adopter changes. Exclude unrelated source/query caches, robot
+  policy, queue admission/results, tester session timers, and non-timed composition redesign.
+- **Current lifecycle decision:** share start guards, clock validation, update-cycle claims,
+  recursive-update suppression, cancellation/finalization, primary/suppressed failures and cached
+  diagnostics. Ending prevents ordinary effects immediately; outcome consumption waits until
+  cleanup and outstanding synchronous acquisition callbacks settle. Failed/pending result reads
+  fail closed. Route status observation has a guarded path independent of update deduplication;
+  late-acquired exact handles are classified/released by their owner before settlement. Preserve
+  domain deadline precedence, output contracts, feedback cancellation choices and route hold-end.
+  Reuse `CleanupActions` for best-effort synchronous actions; persistent direct setters do not
+  acquire an artificial ending boundary.
+- **Current alternatives and simplicity:** per-family manual fixes repeat the failing mechanics;
+  wrapping every leaf with a no-op public cleanup action invents responsibility and obscures typed
+  outputs/status. A universal builder changes spelling without reducing policy. The selected base
+  changes no ordinary robot call site: existing `.forSeconds(...).then(...).build()` and feedback
+  stages gain failure safety internally; whole-attempt cleanup remains one `withCleanup` call.
+- **Current verification gate:** common lifecycle contract tests plus each public family's timing,
+  failure, typed-result and acquisition tests; deliberately migrate old success/cancel-after-error
+  and same-cycle-reclamation expectations. Run full tests/compile, generated API/narrative/link
+  checks and independent reviews. Synchronize principles/Javadocs/guides without new beginner
+  navigation. Return for Android Studio review without staging, committing or publishing.
+- **Expanded implementation result:** `AbstractTask` now owns the common lifetime for every scoped
+  timed family, including both decorators. Leaf classes retain only their domain timing, resource
+  acquisition, ending requests, or status observations. Existing ordinary factories, staged
+  choices, and typed `OutputTask`/`RouteTask` returns are unchanged. Protected completion helpers
+  reject calls outside guarded hooks; remaining-time/result getters fail closed while cached
+  debug views stay readable. Cleanup and timeout wrappers defer cancelled-child outcome validation
+  until any in-flight child start/update returns, without deferring the cancellation request or
+  retrying ending actions. Existing source/output query retry contracts remain unchanged.
+- **Expanded caller closure:** the two approved cleanup adopters remain migrated. The production
+  route routine additionally stops rereading failed typed status in its start-failure catch, and
+  its two phase/root debug views delegate to cached child diagnostics. This preserves the original
+  failure identity and intended abort reason without changing route selection, admission, park,
+  scoring, or hardware policy. Downstream tests retain follower/Plant ownership and no-continuation
+  assertions while adopting retained failures and next-cycle request reclamation.
+- **Expanded independent reviews:** separate lifecycle/adversarial, family/API-construction,
+  caller-closure, and documentation/simplicity reviews completed. Findings corrected include
+  nested real-child cancellation settlement, remaining-time failure guards, unguarded completion
+  misuse, start-versus-update cycle wording, and failure-safe application diagnostics. The final
+  public-layer audit found no redundant ordinary constructors/factories to add or preserve: the
+  existing raw callback constructor is the advanced per-cycle capability, while the protected
+  base serves cross-package implementation reuse. No universal direct-call decorator is needed;
+  `CleanupActions` already aggregates synchronous owner-chosen actions, and persistent setters
+  deliberately do not end when their methods return.
+- **Expanded documentation review:**
+  - `Framework Principles` states shared timed lifecycle and failure boundaries beside existing
+    ownership rules, without changing source-cache or hardware-controller reentry contracts.
+  - `Tasks & Macros Quickstart` explains owned request cleanup before the API, then distinguishes
+    persistent direct setters, synchronous actions, and next-cycle timed reclamation.
+  - `Tasks outcomes and coordination` keeps the new subclass hooks, guarded observation, pending
+    outcomes, and late acquisition in its optional advanced section.
+  - `Output Tasks & Queues` preserves typed output proposals and phase-specific timing; cleanup
+    does not turn a generic Task into an OutputTask or invent submission attribution.
+  - `Drive Guidance`, the Pedro integration guide, and `Robot Calibration Tutorials` retain their
+    own deadline/stop/acquisition policies while naming the shared failure mechanics.
+  - The existing first Pedro software checkpoint and adaptive-collection case study distinguish
+    externally observed route completion, valid abnormal results, and thrown lifecycle failures.
+    Their physical motion gates remain blocked; no beginner navigation or new lesson is added.
+  - Implementation Javadocs and the production architecture remain synchronized; all shared
+    teaching continues to use independent examples, not a production application.
+- **Expanded automated verification (2026-09-09):** the final combined
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` run
+  passed with Android Studio JBR. XML totals: **2,759 tests in 281 suites; zero failures, errors,
+  or skips**. Coverage includes 45 shared-base contract tests, 41 cleanup-wrapper tests, the timed
+  family contract matrix, existing deadline/phase tests, late resource acquisition, and real
+  application/example failure paths. Existing Java 8-on-JDK-21 and FTC deprecation warnings remain;
+  no new compile or Javadoc error remains. The pinned documentation environment passes `pip check`,
+  strict clean Zensical build, and generated search verification (**1,018 sections across six
+  areas**). After final API generation, link verification passes **221 generated API links and
+  93 maintained source links across 54 Markdown pages**. `git diff --check` and the trailing-space
+  scan including untracked Java/Markdown pass. Software checks do not prove physical stop, safe
+  motor output, calibration motion, route power limits, or shooter reliability; all existing
+  adopting-robot and blocked physical gates remain unchanged.
+- **Completed Android Studio / publication gate:** the review covered the shared `AbstractTask` lifecycle,
+  real-child cancellation in both decorators, timed-family ending policies, preserved typed
+  outputs/status, and the two cleanup adopters plus narrow failed-route diagnostic migration.
+  It included advanced guide/Principles wording and regressions for no continuation after failure.
+  Branch: `codex/task-07-terminal-cleanup`; exact origin push destination:
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; target: `master`. The reviewed branch and
+  fetched `origin/master` were based at `6d4e31ecfc531f69669046b4be440edf8d4236cf`; the unrelated
+  EXAMPLE-11 decision stash remains preserved outside this diff.
+  Received combined reply: **"TASK-07 looks good. Authorize committing the reviewed TASK-07 diff
+  on codex/task-07-terminal-cleanup, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master."**
+- **Earlier narrower decision and verification (superseded where expanded above):**
+- **Approved decision (2026-09-09):** the user requested a shooter-queue simplicity audit,
+  selected migration of **both callers with behavior preserved**, and approved the explicit
+  TASK-07 plan with **"Implement the plan."** This is a user-directed priority change ahead of
+  EXAMPLE-11, not permission to implement adjacent queue, sensor, or feeding policy work.
+  Branch `codex/task-07-terminal-cleanup` starts from fetched `origin/master` at `6d4e31e`.
+  The pending EXAMPLE-11 decision-only edit is preserved separately in local stash
+  `d33bab6201773400c6fe443dd57ef6baf39cffa8`, named
+  `Preserve EXAMPLE-11 decision review before TASK-07 implementation`; it is not part of this diff.
+- **Construction-path audit and selected API:** add only
+  `Tasks.withCleanup(Task child, Runnable cleanup) -> Task`, backed by a package-private class.
+  `Tasks` remains the sole public generic construction layer. There is no staged parameter,
+  public concrete wrapper, output-preserving overload, factory alias, scheduler or recovery Task.
+  Existing `sequence`, `sequenceOnCompletion`, `withTimeout`, `branchOnOutcome`, and
+  `repeatWhileSuccessful` own distinct progression, budget, branch, and bounded-admission rules;
+  none guarantees task-terminal cleanup. `CleanupActions` owns exception aggregation, not the
+  lifetime at which its caller must invoke it. Owner `stop()` remains a different terminal resource
+  lifetime and cannot replace request cleanup during an active match.
+- **Equal-contract caller comparison:** the Reference launcher changes from
+  `new LaunchTask(generation)` with manual timeout repair and cleanup-once exception machinery to
+  a generation-guarded shell around `Tasks.withCleanup(Tasks.sequence(spinUp, feed), guardedIdle)`.
+  The production adopter keeps its private phase driver, preserving externally completed phase timing and phase
+  diagnostics, but its package-private factory returns `Tasks.withCleanup(phases, ownedShotCleanup)`.
+  Both still answer what work runs and which owned requests require cleanup. No student supplies
+  another runner, clock, resource list, or generic ownership token. Reference is the larger
+  simplification; the production adopter retains genuine phase policy and its shot-ownership flag.
+- **Approved lifecycle contract:** validate construction inputs without effects; consume one start
+  attempt and validate the clock before arming cleanup immediately before child start. Cleanup is
+  attempted once after natural completion, active cancellation, or a start-attempted lifecycle
+  failure. Pre-start cancellation is inert. Claim termination before callbacks, cancel active child
+  work before cleanup, retain the first `RuntimeException` and suppress distinct later failures;
+  catch no `Error`. Natural outcomes remain exact only after cleanup succeeds. During terminal
+  cleanup, outcome inspection fails closed; after any lifecycle/cleanup failure, outcome and update
+  rethrow the retained failure, so neither sequence form can treat failure as valid completion.
+  Cached diagnostics remain readable. Same-cycle updates deduplicate, recursive active updates
+  coalesce without another child call, and repeated starts reject before effects. Document this
+  narrow recursive-update suppression alongside the stricter effectful-owner reentry rule.
+- **Migrations and explicit exclusions:** migrate Reference launcher and the production scoring attempt
+  only. Preserve Reference generation invalidation, both callbacks' normal timing, production
+  request ownership before side effects, source-driven realization, and all configured behavior.
+  Keep paired readiness, vision pickup, route/cutoff/fallback state machines, constructor rollback,
+  and registration ownership unchanged. Failed-cleanup result inspection is intentionally
+  strengthened from ordinary completion to retained exceptions. Do not fix production queue-empty
+  provenance, counted-request limits, or per-pulse recipe allocation in this item. EXAMPLE-11 will
+  separately adopt its agreed queue-free single-attempt teaching shape. TASK-08 records the narrow
+  submission-attribution design follow-up; it does not authorize a new receipt API now.
+- **Verification and documentation plan:** focused new cleanup tests plus all migrated caller
+  tests; adversarial start/update/completion/outcome/cancel/cleanup failures, callback reentry,
+  pending/outcome publication, success/timeout/cancel/unknown preservation, no continuation after
+  failure, generation invalidation and same-cycle timing. Run TeamCode unit tests/compile, strict
+  narrative/API documentation checks, and whitespace/diff checks. Synchronize Javadocs, Task guides,
+  Framework Principles and independent teaching excerpts; do not expand initial navigation.
+  Software success proves no physical stopping, feed reliability, or recovery safety.
+- **Implemented result:** the one public factory delegates to package-private `CleanupTask`;
+  `Task.getOutcome()` documents retained cleanup failures. The two runtime adopters are net
+  **54 lines shorter**, with fewer local cleanup flags/exception handlers and no new public
+  application API. The source-producing queues, configured timing, readiness, admission policy,
+  generation protection, and production phase timing remain unchanged. Normal child diagnostics
+  remain available through guarded delegation; pre-start, pending-ending, and failed wrappers
+  expose only cached wrapper facts. A child diagnostic-only RuntimeException is reported as
+  unavailable diagnostics rather than changing the lifecycle outcome; `Error` remains uncaught.
+- **Page-by-page concept review:**
+  - `Framework Principles`: maintainer design authority; one owned ending action and the narrow
+    recursive-update suppression are stated beside Task ownership/lifecycle rules; exact edge
+    behavior remains in Javadocs and the advanced Task guide.
+  - `Tasks & Macros Quickstart`: advanced Task authors; explains the robot problem of an unwanted
+    persistent request before defining cleanup/Runnable and displaying the exact Reference
+    excerpt. Explains saved method references, generation ownership, exception versus ordinary
+    outcome, and request-versus-physical-stop evidence beside use. Advanced callback inspection is
+    later optional depth; initial course/navigation stays unchanged.
+  - `Tasks outcomes and coordination`: reference lookup for readers who already know Tasks;
+    one cleanup entry routes to the canonical API/explanation and distinguishes cleanup from
+    recovery and failed results from ordinary cancellation.
+  - `Output Tasks & Queues`: advanced temporary-output authors; explicitly says the new decorator
+    returns `Task`, not `OutputTask`, and owns neither queue submission results nor Plant writes.
+    Existing output-pulse and held-only admission explanations remain the supported queue path.
+- **Independent final reviews:** separate core regression, caller/ownership, and public-construction
+  plus documentation reviews found no remaining blocker. The sole new construction layer is the
+  `Tasks` factory; the implementation has no public constructor and no redundant overload.
+  The supplied maintenance tests retain real clocks, Task compositions and mechanism owners while
+  replacing only child callbacks or hardware. Added **41 cleanup tests**, one API-shape test,
+  and six adopter regressions; all **2681 tests in 279 suites** pass with zero failures/errors/skips.
+  Earlier verification caught and corrected a tracker wording violation; no production boundary
+  rule was weakened. Full TeamCode compilation and API generation pass with existing Java 8/JDK 21
+  and controller deprecation warnings only.
+- **Final automated evidence (2026-09-09):**
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`
+  passes on the final Java/doc changes: **2681 tests, 279 suites, zero failures/errors/skips**.
+  Pinned documentation environment `pip check`, strict clean narrative build, and generated guide
+  search pass (**1017 indexed sections**, all six guide areas). After API generation completes,
+  the link verifier passes **218 generated API links and 93 maintained-source links across 54
+  Markdown pages**. Required narrative/API artifact files are nonempty. `git diff --check` and a
+  trailing-whitespace scan including both untracked Java files pass. Source-link verification
+  required the canonical explicit complete-source filename label; the corrected guide passes
+  without changing the verifier. No hardware experiment or physical reliability claim is included.
+- **Android Studio review gate:** inspect `Tasks.withCleanup`/`CleanupTask`, the independent
+  launcher's generation-guarded cleanup, the production scoring-attempt factory/phase driver, and
+  their cancellation/failure/diagnostic tests. Confirm normal feed behavior is unchanged and that
+  failed cleanup cannot be consumed as success or ordinary cancellation. Inspect the concept-first
+  Task-guide excerpt and the recorded TASK-08 follow-up. The branch is
+  `codex/task-07-terminal-cleanup`, the exact origin push destination is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and the publication target is `master`.
+  Nothing is staged, committed, pushed, or merged at this gate. The requested combined reply is:
+  **"TASK-07 looks good. Authorize committing the reviewed TASK-07 diff on
+  codex/task-07-terminal-cleanup, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master."**
+- **Original intake context:** the following hypothesis is retained as decision history; the
+  approved API, implementation scope, and verification record above supersede its open choices.
 - **Evidence and current callers:** `Tasks.sequenceOnCompletion(...)` explicitly is not `finally`;
   direct cancellation and lifecycle failures do not start later sequence children. The independent
   `ReferenceLauncherMechanism.LaunchTask` and production scoring-attempt code retain analogous
@@ -32924,6 +33140,31 @@ obtains the skill-required approval before API or major lifecycle changes.
   equivalent observable behavior and a smaller complete adopter lifecycle. If ownership differences
   prevent a useful general contract, record a verified no-change result or defer with the specific
   additional equivalent caller needed; do not weaken safety to obtain a shorter macro.
+
+### TASK-08 - Attribute queued submissions and withdrawals
+
+- **Status:** **Proposed**.
+- **Intake authorization (2026-09-09):** recorded as the separate design follow-up in the approved
+  TASK-07 implementation plan. Implementation and a public API remain subject to their own gate.
+- **Confirmed boundary:** a retained started `OutputTask` preserves its terminal outcome, but
+  `TaskRunner.cancelAndClear()` discards never-started Tasks without invoking cancellation.
+  Their `NOT_DONE` outcome cannot distinguish still queued from withdrawn; global queue emptiness
+  also cannot attribute an old request once replacement work arrives. Preserve pre-start Task
+  cancellation as inert; do not invent physical completion or call an unstarted cleanup hook.
+- **Design question:** compare one queue-owning robot attempt/generation record with a narrow
+  queue-owned submission result. The latter is justified only if it removes complete-adopter
+  bookkeeping for queued, started, finished, and withdrawn-before-start work. Decide how existing
+  Task composition observes exact success/non-success without another hand-written wait machine;
+  returning a Boolean completion condition alone is insufficient.
+- **Scope and acceptance:** audit ordinary `TaskRunner` and source-producing `OutputTaskRunner`
+  construction paths and actual callers. Demonstrate smaller complete mechanism/Auto implementations
+  and exact attribution across abort, replacement, partial start, failure, and repeated sampling.
+  Keep child execution outcome separate from submission withdrawal. Add no blanket retry,
+  outcome-dependent queue policy, selective cancellation, or second scheduler without independent
+  caller evidence and approval. A verified no-change conclusion is valid if retained Tasks plus
+  required robot ownership already provide the simpler solution.
+- **Ordering:** research separately after TASK-07 review/publication when the user directs the next
+  task. EXAMPLE-11's queue-free single attempt does not require a submission-result API.
 
 ### RUNTIME-04 - Managed registration ownership transfer
 

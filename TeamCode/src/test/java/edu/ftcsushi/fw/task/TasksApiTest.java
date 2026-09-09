@@ -60,6 +60,23 @@ public final class TasksApiTest {
     }
 
     @Test
+    public void terminalCleanupHasOneFactoryAndNoPublicConcreteConstruction() throws Exception {
+        assertFactory("withCleanup", Task.class, Task.class, Runnable.class);
+        Task decorated = Tasks.withCleanup(Tasks.noop(), () -> { });
+        assertFalse(Modifier.isPublic(decorated.getClass().getModifiers()));
+        assertEquals(0, decorated.getClass().getConstructors().length);
+
+        int overloads = 0;
+        for (Method method : Tasks.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers())
+                    && method.getName().equals("withCleanup")) {
+                overloads++;
+            }
+        }
+        assertEquals(1, overloads);
+    }
+
+    @Test
     public void ambiguousOutputAndLevelTaskBindingPathsRemainAbsent() {
         assertNoPublicMethodNamed(TaskBindings.class, "whileHigh");
         assertNoPublicMethodNamed(TaskBindings.class, "whileLow");

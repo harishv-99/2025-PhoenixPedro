@@ -6,19 +6,21 @@ import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
+import edu.ftcsushi.fw.task.Tasks;
 import edu.ftcsushi.robots.phoenix.PhoenixCapabilities;
 
 /**
  * Runs Phoenix's target-selection, aiming, and single-shot phases without hiding a failed phase.
  *
- * <p>This package-private lifecycle owner exists behind
+ * <p>This private phase driver is constructed only through its cleanup-decorated factory behind
  * {@link PhoenixAutoTasks#aimAndShootOne(PhoenixCapabilities,
  * edu.ftcsushi.fw.drive.DriveCommandSink,
  * edu.ftcsushi.robots.phoenix.PhoenixAutoConfig)} so ordinary robot code keeps one short
  * macro call. A phase must report {@link TaskOutcome#SUCCESS} before the dependent phase begins.
  * Timeout, cancellation, and unknown terminal outcomes remain visible to the autonomous routine.
  * If the attempt has requested a shot, every abnormal ending best-effort cancels that transient
- * request.</p>
+ * request. The framework decorator owns terminal cleanup and retained lifecycle failures; this
+ * child retains Phoenix's phase timing, phase-specific errors, and shot-request ownership.</p>
  */
 final class PhoenixScoringAttemptTask implements Task {
 
@@ -37,9 +39,6 @@ final class PhoenixScoringAttemptTask implements Task {
     private boolean startAttempted;
     private boolean started;
     private boolean shotRequested;
-    private boolean transientCleanupAttempted;
-    private boolean updateInProgress;
-    private boolean advanceInProgress;
     private Phase phase = Phase.WAIT_FOR_TARGET;
     private Task activeTask;
     private TaskOutcome outcome = TaskOutcome.NOT_DONE;
@@ -54,10 +53,20 @@ final class PhoenixScoringAttemptTask implements Task {
      * @throws NullPointerException     if any required role is absent
      * @throws IllegalArgumentException if the same Task instance is assigned to two phase roles
      */
-    PhoenixScoringAttemptTask(PhoenixCapabilities.Scoring scoring,
-                              Task waitForTargetTask,
-                              Task aimTask,
-                              Task waitForShotTask) {
+    static Task create(PhoenixCapabilities.Scoring scoring,
+                       Task waitForTargetTask,
+                       Task aimTask,
+                       Task waitForShotTask) {
+        PhoenixScoringAttemptTask phases = new PhoenixScoringAttemptTask(
+                scoring, waitForTargetTask, aimTask, waitForShotTask);
+        return Tasks.withCleanup(phases, phases::cleanupTransientShotIfOwned);
+    }
+
+    /** Captures and validates the phase graph without exposing an undecorated lifecycle path. */
+    private PhoenixScoringAttemptTask(PhoenixCapabilities.Scoring scoring,
+                                     Task waitForTargetTask,
+                                     Task aimTask,
+                                     Task waitForShotTask) {
         this.scoring = Objects.requireNonNull(
                 scoring,
                 "PhoenixScoringAttemptTask scoring capability is required"
@@ -97,102 +106,85 @@ final class PhoenixScoringAttemptTask implements Task {
             return;
         }
         Objects.requireNonNull(clock, "PhoenixScoringAttemptTask update clock is required");
-        if (updateInProgress || advanceInProgress) {
+        advanceCompletedPhases(clock);
+        if (phase == Phase.DONE) {
             return;
         }
 
-        updateInProgress = true;
-        try {
-            advanceCompletedPhases(clock);
-            if (phase == Phase.DONE) {
-                return;
-            }
-
-            Task task = activeTask;
-            if (task == null) {
-                throw malformedState("active phase " + phase + " has no active Task");
-            }
-            task.update(clock);
-            if (phase == Phase.DONE || activeTask != task) {
-                return;
-            }
-            advanceCompletedPhases(clock);
-        } finally {
-            updateInProgress = false;
+        Task task = activeTask;
+        if (task == null) {
+            throw malformedState("active phase " + phase + " has no active Task");
         }
+        task.update(clock);
+        if (phase == Phase.DONE || activeTask != task) {
+            return;
+        }
+        advanceCompletedPhases(clock);
     }
 
     /** Advance through phase Tasks that completed during start or the current update. */
     private void advanceCompletedPhases(LoopClock clock) {
-        if (advanceInProgress) {
-            return;
-        }
-        advanceInProgress = true;
-        try {
-            while (phase != Phase.DONE) {
-                Task task = activeTask;
-                if (task == null) {
-                    throw malformedState("active phase " + phase + " has no active Task");
-                }
-
-                boolean complete = task.isComplete();
-                if (phase == Phase.DONE || activeTask != task) {
-                    return;
-                }
-                if (!complete) {
-                    return;
-                }
-
-                TaskOutcome phaseOutcome = terminalOutcome(task, phase);
-                if (phase == Phase.DONE || activeTask != task) {
-                    return;
-                }
-                if (phaseOutcome != TaskOutcome.SUCCESS) {
-                    finish(phaseOutcome);
-                    cleanupTransientShotIfOwned();
-                    return;
-                }
-
-                switch (phase) {
-                    case WAIT_FOR_TARGET:
-                        scoring.captureSuggestedShotVelocity();
-                        if (phase == Phase.WAIT_FOR_TARGET && activeTask == task) {
-                            startPhase(Phase.AIM, aimTask, clock);
-                        }
-                        break;
-
-                    case AIM:
-                        // Mark ownership before the call so fail-stop cleanup also covers a
-                        // partially completed capability request that throws.
-                        shotRequested = true;
-                        scoring.requestSingleShot();
-                        if (phase == Phase.AIM && activeTask == task) {
-                            startPhase(Phase.WAIT_FOR_SHOT, waitForShotTask, clock);
-                        }
-                        break;
-
-                    case WAIT_FOR_SHOT:
-                        // The wait's success means the owned request has drained naturally.
-                        shotRequested = false;
-                        finish(TaskOutcome.SUCCESS);
-                        break;
-
-                    case DONE:
-                    default:
-                        return;
-                }
+        while (phase != Phase.DONE) {
+            Task task = activeTask;
+            if (task == null) {
+                throw malformedState("active phase " + phase + " has no active Task");
             }
-        } finally {
-            advanceInProgress = false;
+
+            boolean complete = task.isComplete();
+            if (phase == Phase.DONE || activeTask != task) {
+                return;
+            }
+            if (!complete) {
+                return;
+            }
+
+            TaskOutcome phaseOutcome = terminalOutcome(task, phase);
+            if (phase == Phase.DONE || activeTask != task) {
+                return;
+            }
+            if (phaseOutcome != TaskOutcome.SUCCESS) {
+                finish(phaseOutcome);
+                return;
+            }
+
+            switch (phase) {
+                case WAIT_FOR_TARGET:
+                    scoring.captureSuggestedShotVelocity();
+                    if (phase == Phase.WAIT_FOR_TARGET && activeTask == task) {
+                        startPhase(Phase.AIM, aimTask, clock);
+                    }
+                    break;
+
+                case AIM:
+                    // Mark ownership before the call so fail-stop cleanup also covers a
+                    // partially completed capability request that throws.
+                    shotRequested = true;
+                    scoring.requestSingleShot();
+                    if (phase == Phase.AIM && activeTask == task) {
+                        startPhase(Phase.WAIT_FOR_SHOT, waitForShotTask, clock);
+                    }
+                    break;
+
+                case WAIT_FOR_SHOT:
+                    // The existing queue-drain wait succeeded. Per-submission and physical
+                    // confirmation are separate concerns, not added by terminal cleanup.
+                    shotRequested = false;
+                    finish(TaskOutcome.SUCCESS);
+                    break;
+
+                case DONE:
+                default:
+                    return;
+            }
         }
     }
 
     /**
      * {@inheritDoc}
      *
-     * <p>Active cancellation terminalizes first, then best-effort cancels the current phase and
-     * any transient shot this attempt requested. Pre-start, terminal, and repeated cancellation
-     * are side-effect-free no-ops.</p>
+     * <p>Active cancellation terminalizes this child before cancelling its current phase. The
+     * enclosing cleanup decorator separately attempts transient-shot cleanup even if that phase
+     * cancellation throws. Pre-start, terminal, and repeated cancellation are no-ops.</p>
      */
     @Override
     public void cancel() {
@@ -203,27 +195,8 @@ final class PhoenixScoringAttemptTask implements Task {
         Task taskToCancel = activeTask;
         finish(TaskOutcome.CANCELLED);
 
-        RuntimeException firstFailure = null;
-        try {
-            if (taskToCancel != null) {
-                taskToCancel.cancel();
-            }
-        } catch (RuntimeException ex) {
-            firstFailure = ex;
-        }
-
-        try {
-            cleanupTransientShotIfOwned();
-        } catch (RuntimeException ex) {
-            if (firstFailure == null) {
-                firstFailure = ex;
-            } else if (ex != firstFailure) {
-                firstFailure.addSuppressed(ex);
-            }
-        }
-
-        if (firstFailure != null) {
-            throw firstFailure;
+        if (taskToCancel != null) {
+            taskToCancel.cancel();
         }
     }
 
@@ -258,7 +231,6 @@ final class PhoenixScoringAttemptTask implements Task {
         dbg.addData(p + ".phase", phase)
                 .addData(p + ".outcome", getOutcome())
                 .addData(p + ".shotRequested", shotRequested)
-                .addData(p + ".transientCleanupAttempted", transientCleanupAttempted)
                 .addData(p + ".activeTask", activeTask != null ? activeTask.getDebugName() : "none");
         if (activeTask != null) {
             activeTask.debugDump(dbg, p + ".child");
@@ -278,12 +250,11 @@ final class PhoenixScoringAttemptTask implements Task {
         phase = Phase.DONE;
     }
 
-    /** Cancel this attempt's transient shot at most once after it has been requested. */
+    /** Release ownership before this once-only callback performs the shared cleanup effect. */
     private void cleanupTransientShotIfOwned() {
-        if (!shotRequested || transientCleanupAttempted) {
+        if (!shotRequested) {
             return;
         }
-        transientCleanupAttempted = true;
         shotRequested = false;
         scoring.cancelTransientActions();
     }

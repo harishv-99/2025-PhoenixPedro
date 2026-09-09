@@ -331,6 +331,16 @@ Target visibility is handled inside the routine. The scoring attempt waits for i
 `waitForTargetSec`; timeout is retained truthfully, and `PhoenixPedroPreParkTask` selects the
 explicit return/park fallback. No pre-reset INIT timestamp crosses the START clock epoch.
 
+`PhoenixAutoTasks.aimAndShootOne(...)` returns a `Tasks.withCleanup(...)` Task. Its private
+phase driver retains Phoenix's existing target/aim/shot-wait transition timing and phase-specific
+errors; the framework decorator owns exactly-once terminal cleanup and retained lifecycle failures.
+Phoenix claims transient-shot ownership before requesting a shot, releases that claim before
+cleanup, and clears it when the existing queue-drain wait succeeds. Queue drain is not a per-shot
+receipt or proof that an object was physically scored. A failed lifecycle or cleanup call leaves the
+Task terminal, but later `getOutcome()` and `update(...)` still rethrow the first failure instead of
+reporting an ordinary cancellation. The returned Task reports its cleanup state and retains child
+phase diagnostics when safely available; it does not add a public phase-control path.
+
 `PhoenixTargeting.aimTask(...)` accepts `DriveGuidanceTask.Config` as a mutable construction input,
 but freezes those values when the aim Task is requested. The returned start-time wrapper therefore
 cannot drift if its caller later edits the same Config. The wrapper may start later in the root

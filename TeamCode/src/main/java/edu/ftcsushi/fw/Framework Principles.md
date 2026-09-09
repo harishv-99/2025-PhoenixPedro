@@ -221,7 +221,10 @@ Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one tel
 - An effectful update owner claims the cycle before polling hardware, writing vendor state, or
   advancing an irreversible controller. A repeat after success is a no-op; a repeat after failure
   rethrows the retained failure instead of replaying an uncertain effect. Reentrant update is an
-  error.
+  error for hardware/controller owners. Timed Task families and `Tasks.withCleanup(...)` instead
+  coalesce an active recursive update into a no-op. Their common Task lifecycle prevents duplicate
+  update callbacks and their effects in that cycle without relaxing the underlying owner's reentry rules.
+  A Task's first update may share its start cycle; starting does not consume that update allowance.
 - Bindings observe control contexts and registrations in documented declaration order. This is
   deterministic sequencing, not priority or command arbitration; one robot owner still composes
   competing intent.
@@ -240,10 +243,14 @@ Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one tel
   while any other valid terminal child outcome remains exact. Admission is a soft start policy and
   never interrupts an active child.
 - A timed Task or timed phase starts at its own `clock.nowSec()` boundary. It never consumes the
-  `dtSec()` interval from before it started.
+  `dtSec()` interval from before it started. Bounded durations are finite; an explicitly named
+  unbounded wait/search remains a different supported choice, not an infinity sentinel in a
+  bounded argument. Each family retains its documented condition/deadline precedence.
 - A timed scalar Task owns its request for the interval. It reasserts a superseded numeric request;
   a semantic timed Task retains one exact request identity while uncontested and publishes a fresh
-  occurrence when reclaiming ownership, never an old identity with stale arrival evidence.
+  occurrence when reclaiming ownership, never an old identity with stale arrival evidence. If a
+  request is superseded after the Task's update, reclamation waits for its next cycle; a second
+  same-cycle update does not become another writer.
 - Cancellation before start has no effect. Active cancellation is terminal and idempotent;
   terminal or repeated cancellation does nothing. `Tasks.noop()` is the intentional
   terminal-at-construction exception.
@@ -257,8 +264,29 @@ Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one tel
   result. Direct cancellation never runs a later child. `parallelAll(...)` waits for every child
   and succeeds only when every child succeeds; matching abnormal outcomes remain exact and mixed
   abnormal outcomes become `UNKNOWN`. `parallelDeadline(deadline, companions...)` lets the
-  deadline own group lifetime and cancels started companions. Mandatory cleanup belongs in the
-  active owner's cancellation behavior or persistent capability state.
+  deadline own group lifetime and cancels started companions. Mandatory cleanup belongs to the
+  owner of the temporary request, not an assumed trailing sequence child.
+- Use `Tasks.withCleanup(child, cleanup)` when that owner must run one short synchronous ending
+  action after natural completion, active cancellation, or a lifecycle `RuntimeException`.
+  The wrapper validates its start clock, then arms exactly-once cleanup immediately before child
+  start; the caller still chooses the state to restore through normal capability setters.
+  Pre-start cancellation and a rejected start clock run no cleanup.
+  Normal cleanup preserves the exact natural child outcome; a lifecycle or cleanup failure stays
+  an exception and cannot become a valid `CANCELLED` result that releases a continuation.
+  Cleanup is not asynchronous recovery, a second output writer, physical rollback, or a substitute
+  for terminal owner/Plant stop. Direct persistent setters do not acquire an artificial ending
+  boundary; a Task exists only when the request really has work or a lifetime to coordinate.
+- Timed Task implementations and `withCleanup(...)` share `AbstractTask` as an advanced
+  cross-package implementation base, not another ordinary builder. The base owns start/update
+  guards, exceptional failure retention and terminal publication; implementations own phase
+  timing, cancellation policy, exact resource handles and optional all-ending actions. Ending
+  prevents ordinary work immediately, but the outcome is unavailable until ending actions and
+  the outermost synchronous callback settle, including release/classification of late-acquired
+  resources. Pending outcome inspection fails closed even if its callback catches the exception.
+  After a lifecycle or ending `RuntimeException`, outcome reads and updates rethrow the first
+  failure rather than releasing either kind of sequence; later cleanup failures are suppressed.
+  Java `Error` is not caught. Callbacks must cooperate with cancellation and stop their own later
+  effects; no generic lifecycle helper can undo arbitrary code that resumes after cancellation.
 - A timeout reports an outcome; it does not silently choose recovery. When a required continuation
   must take over at a reserved elapsed boundary, put every preceding Task inside `withTimeout(...)`
   and use `sequenceOnCompletion(...)` for the continuation outside that timeout. The direct timed

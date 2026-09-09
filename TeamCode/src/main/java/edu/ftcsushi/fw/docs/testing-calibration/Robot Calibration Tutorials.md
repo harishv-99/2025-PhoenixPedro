@@ -867,6 +867,18 @@ The mechanism remains the sole Plant heartbeat owner, so its one downstream upda
 the staged search command or returns through the normal target resolver after the Task releases the
 search.
 
+Search advancement is once per shared clock cycle, including direct calls. The first update may
+share the start cycle; repeated or active recursive updates do not resample the cue. If a cue and
+timeout are both satisfied at the sampled boundary, the cue wins. A lifecycle `RuntimeException`
+attempts to stop and release only this Task's owned search, retains the failure, and prevents a
+success continuation. Later updates and outcome reads rethrow that failure rather than retrying
+the search or publishing ordinary cancellation.
+
+For advanced custom adapters: if acquiring the temporary search returns normally after the Task
+was cancelled inside that call, the Task releases that late-acquired search before its start
+callback returns. Its result stays unavailable until this ownership work settles. This does not
+authorize a second Plant heartbeat, rewrite the persistent request, or prove a physical stop.
+
 For an indexer or tray, the condition can be a color detector, magnet sensor, beam break, or custom
 BooleanSource:
 

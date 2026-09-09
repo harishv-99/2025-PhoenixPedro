@@ -23,6 +23,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -260,18 +261,17 @@ public final class AdaptiveCollectionAttemptTest {
         TaskRunner runner = new TaskRunner();
         runner.enqueue(fixture.task);
 
-        try {
-            runner.update(fixture.time.clock());
-            fail("expected start-built collection construction to fail");
-        } catch (IllegalStateException expected) {
-            assertSame(constructionFailure, expected.getCause());
-            assertTrue(expected.getMessage().contains("could not build its route at start"));
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> runner.update(fixture.time.clock()));
+        assertSame(constructionFailure, failure.getCause());
+        assertTrue(failure.getMessage().contains("could not build its route at start"));
 
-        AdaptiveCollectionAttempt.Status failed = fixture.attempt.status();
+        // A failed route's typed result stays exceptional; a presenter cannot turn it into
+        // ordinary route-status evidence. The runner still aborts all work without a return.
+        assertSame(failure, assertThrows(IllegalStateException.class, fixture.attempt::status));
         assertTrue(runner.isIdle());
-        assertEquals(AdaptiveCollectionAttempt.ExitReason.FAILED, failed.exitReason());
-        assertEquals(RouteStatus.FAILED, failed.collectionRouteStatus());
+        assertTrue(fixture.task.isComplete());
+        assertEquals(1, fixture.collectionBuildCount);
         assertEquals(0, fixture.follower.followCount());
         assertEquals(0, fixture.returnBuildCount);
         assertEquals(0.0, fixture.plant.commandTarget().get(), 0.0);
@@ -280,18 +280,16 @@ public final class AdaptiveCollectionAttemptTest {
         nullRoute.collectionBuildReturnsNull = true;
         TaskRunner nullRunner = new TaskRunner();
         nullRunner.enqueue(nullRoute.task);
-        try {
-            nullRunner.update(nullRoute.time.clock());
-            fail("expected a null start-built collection route to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("could not build its route at start"));
-        }
-        AdaptiveCollectionAttempt.Status nullFailed = nullRoute.attempt.status();
+        IllegalStateException nullFailure = assertThrows(IllegalStateException.class,
+                () -> nullRunner.update(nullRoute.time.clock()));
+        assertTrue(nullFailure.getMessage().contains("could not build its route at start"));
+        assertSame(nullFailure, assertThrows(IllegalStateException.class, nullRoute.attempt::status));
         assertTrue(nullRunner.isIdle());
-        assertEquals(AdaptiveCollectionAttempt.ExitReason.FAILED, nullFailed.exitReason());
-        assertEquals(RouteStatus.FAILED, nullFailed.collectionRouteStatus());
+        assertTrue(nullRoute.task.isComplete());
+        assertEquals(1, nullRoute.collectionBuildCount);
         assertEquals(0, nullRoute.follower.followCount());
         assertEquals(0, nullRoute.returnBuildCount);
+        assertEquals(0.0, nullRoute.plant.commandTarget().get(), 0.0);
     }
 
     @Test

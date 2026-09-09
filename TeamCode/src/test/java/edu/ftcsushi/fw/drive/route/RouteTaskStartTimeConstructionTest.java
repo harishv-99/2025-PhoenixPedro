@@ -19,6 +19,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -201,8 +202,8 @@ public final class RouteTaskStartTimeConstructionTest {
 
         assertEquals(1, factoryCalls[0]);
         assertEquals(0, follower.followCount);
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        RuntimeException failure = assertThrows(IllegalStateException.class, task::getRouteStatus);
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertTrue(task.isComplete());
         CapturingDebugSink debug = new CapturingDebugSink();
         task.debugDump(debug, "route");
@@ -233,8 +234,9 @@ public final class RouteTaskStartTimeConstructionTest {
         }
 
         assertEquals(0, follower.followCount);
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        RuntimeException failure = assertThrows(IllegalStateException.class, task::getRouteStatus);
+        assertSame(factoryFailure, failure.getCause());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertTrue(task.isComplete());
     }
 
@@ -269,7 +271,7 @@ public final class RouteTaskStartTimeConstructionTest {
 
         assertEquals(1, factoryCalls[0]);
         assertEquals(0, follower.followCount);
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
+        assertThrows(IllegalStateException.class, task::getRouteStatus);
     }
 
     @Test
@@ -383,7 +385,7 @@ public final class RouteTaskStartTimeConstructionTest {
     }
 
     @Test
-    public void followerFailureAfterReentrantCancelKeepsCancellationTerminal() {
+    public void followerFailureAfterReentrantCancelCannotBeConsumedAsCancellationOutcome() {
         AtomicReference<RouteTask<RouteSnapshot>> taskRef = new AtomicReference<>();
         IllegalStateException followFailure = new IllegalStateException("route start failed closed");
         RouteFollower<RouteSnapshot> follower = route -> {
@@ -404,11 +406,90 @@ public final class RouteTaskStartTimeConstructionTest {
             assertSame(followFailure, actual);
         }
 
-        assertEquals(RouteStatus.CANCELLED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertSame(followFailure, assertThrows(IllegalStateException.class, task::getRouteStatus));
+        assertSame(followFailure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertTrue(task.isComplete());
         task.cancel();
-        assertEquals(RouteStatus.CANCELLED, task.getRouteStatus());
+        assertSame(followFailure, assertThrows(IllegalStateException.class, task::getRouteStatus));
+    }
+
+    @Test
+    public void lateAcquiredHandleWithBrokenStatusIsStillFailedClosedExactlyOnce() {
+        AtomicReference<RouteTask<RouteSnapshot>> taskRef = new AtomicReference<>();
+        RecordingExecution execution = new RecordingExecution();
+        RuntimeException statusFailure = new IllegalStateException("late status failure");
+        RuntimeException cleanupFailure = new IllegalStateException("late cleanup failure");
+        execution.statusFailure = statusFailure;
+        execution.cancelFailure = cleanupFailure;
+        RouteTask<RouteSnapshot> task = RouteTasks.followWithoutTaskTimeout(
+                "lateBrokenHandle", route -> {
+                    taskRef.get().cancel();
+                    return execution;
+                }, new RouteSnapshot(1, "late"));
+        taskRef.set(task);
+
+        RuntimeException failure = assertThrows(IllegalStateException.class,
+                () -> task.start(new ManualLoopClock().clock()));
+
+        assertSame(statusFailure, failure.getCause());
+        assertEquals(1, failure.getSuppressed().length);
+        assertSame(cleanupFailure, failure.getSuppressed()[0]);
+        assertEquals(1, execution.cancelCount);
+        assertEquals(RouteStatus.FAILED, execution.status());
+        assertSame(failure, assertThrows(RuntimeException.class, task::getOutcome));
+        assertSame(failure, assertThrows(RuntimeException.class, task::getRouteStatus));
+        task.cancel();
+        assertEquals(1, execution.cancelCount);
+    }
+
+    @Test
+    public void lateAcquiredActiveHandleCleanupFailureCannotReleaseFollowingSequenceChild() {
+        AtomicReference<RouteTask<RouteSnapshot>> taskRef = new AtomicReference<>();
+        RecordingExecution execution = new RecordingExecution();
+        RuntimeException cleanupFailure = new IllegalStateException("late active cleanup failed");
+        execution.cancelFailure = cleanupFailure;
+        RouteTask<RouteSnapshot> task = RouteTasks.followWithoutTaskTimeout(
+                "lateActiveHandle", route -> {
+                    taskRef.get().cancel();
+                    return execution;
+                }, new RouteSnapshot(1, "late"));
+        taskRef.set(task);
+        AtomicBoolean nextRan = new AtomicBoolean();
+        Task sequence = Tasks.sequence(task, Tasks.runOnce(() -> nextRan.set(true)));
+        ManualLoopClock clock = new ManualLoopClock();
+
+        assertSame(cleanupFailure, assertThrows(RuntimeException.class,
+                () -> sequence.start(clock.clock())));
+
+        assertFalse(nextRan.get());
+        assertEquals(1, execution.cancelCount);
+        assertEquals(RouteStatus.CANCELLED, execution.status());
+        assertSame(cleanupFailure, assertThrows(RuntimeException.class, task::getOutcome));
+        task.cancel();
+        assertEquals(1, execution.cancelCount);
+    }
+
+    @Test
+    public void caughtPendingOutcomeReadCannotMakeLateReturnedHandleEscapeCancellation() {
+        AtomicReference<RouteTask<RouteSnapshot>> taskRef = new AtomicReference<>();
+        AtomicReference<RuntimeException> pendingFailure = new AtomicReference<>();
+        RecordingExecution execution = new RecordingExecution();
+        RouteTask<RouteSnapshot> task = RouteTasks.followWithoutTaskTimeout(
+                "pendingRead", route -> {
+                    taskRef.get().cancel();
+                    pendingFailure.set(assertThrows(IllegalStateException.class,
+                            taskRef.get()::getOutcome));
+                    return execution;
+                }, new RouteSnapshot(1, "pending"));
+        taskRef.set(task);
+
+        RuntimeException failure = assertThrows(IllegalStateException.class,
+                () -> task.start(new ManualLoopClock().clock()));
+
+        assertSame(pendingFailure.get(), failure);
+        assertEquals(1, execution.cancelCount);
+        assertEquals(RouteStatus.CANCELLED, execution.status());
+        assertSame(failure, assertThrows(RuntimeException.class, task::getOutcome));
     }
 
     @Test
@@ -582,9 +663,14 @@ public final class RouteTaskStartTimeConstructionTest {
     private static final class RecordingExecution extends RouteExecution {
         private RouteStatus integrationStatus = RouteStatus.ACTIVE;
         private int cancelCount;
+        private RuntimeException statusFailure;
+        private RuntimeException cancelFailure;
 
         @Override
         protected RouteStatus integrationStatus() {
+            if (statusFailure != null) {
+                throw statusFailure;
+            }
             return integrationStatus;
         }
 
@@ -592,6 +678,9 @@ public final class RouteTaskStartTimeConstructionTest {
         protected void cancelActive() {
             integrationStatus = RouteStatus.CANCELLED;
             cancelCount++;
+            if (cancelFailure != null) {
+                throw cancelFailure;
+            }
         }
     }
 

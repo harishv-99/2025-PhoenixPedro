@@ -45,7 +45,7 @@ import edu.ftcsushi.fw.core.time.LoopClock;
  *
  * <p>Create this leaf Task through the staged {@link Tasks#outputPulse(String)} recipe.</p>
  */
-public final class GatedOutputUntilTask implements OutputTask {
+public final class GatedOutputUntilTask extends AbstractTask implements OutputTask {
 
     private enum Phase {
         WAIT,
@@ -64,15 +64,13 @@ public final class GatedOutputUntilTask implements OutputTask {
     private final double maxRunSec;
     private final double cooldownSec;
 
-    private boolean startAttempted = false;
-    private boolean started = false;
     private Phase phase = Phase.WAIT;
     private double runStartedSec = 0.0;
     private double runElapsedSec = 0.0;
     private double cooldownStartedSec = 0.0;
     private double cooldownElapsedSec = 0.0;
     private double currentOutput = 0.0;
-    private TaskOutcome finalOutcome = TaskOutcome.NOT_DONE;
+    private TaskOutcome runOutcome = TaskOutcome.NOT_DONE;
 
     /**
      * Create a gated output task.
@@ -94,20 +92,21 @@ public final class GatedOutputUntilTask implements OutputTask {
                          double minRunSec,
                          double maxRunSec,
                          double cooldownSec) {
+        super(name == null || name.trim().isEmpty() ? "GatedOutput" : name);
         Objects.requireNonNull(startWhen, "startWhen is required");
         Objects.requireNonNull(doneWhen, "doneWhen is required");
         Objects.requireNonNull(runOutput, "runOutput is required");
-        if (minRunSec < 0.0) {
-            throw new IllegalArgumentException("minRunSec must be >= 0, got " + minRunSec);
+        if (!Double.isFinite(minRunSec) || minRunSec < 0.0) {
+            throw new IllegalArgumentException("minRunSec must be finite and >= 0, got " + minRunSec);
         }
-        if (maxRunSec < minRunSec) {
-            throw new IllegalArgumentException("maxRunSec must be >= minRunSec, got max=" + maxRunSec + " min=" + minRunSec);
+        if (!Double.isFinite(maxRunSec) || maxRunSec < minRunSec) {
+            throw new IllegalArgumentException("maxRunSec must be finite and >= minRunSec, got max=" + maxRunSec + " min=" + minRunSec);
         }
-        if (cooldownSec < 0.0) {
-            throw new IllegalArgumentException("cooldownSec must be >= 0, got " + cooldownSec);
+        if (!Double.isFinite(cooldownSec) || cooldownSec < 0.0) {
+            throw new IllegalArgumentException("cooldownSec must be finite and >= 0, got " + cooldownSec);
         }
 
-        this.name = (name == null || name.isEmpty()) ? "GatedOutput" : name;
+        this.name = (name == null || name.trim().isEmpty()) ? "GatedOutput" : name;
         this.startWhen = startWhen;
         this.doneWhen = doneWhen;
         this.runOutput = runOutput;
@@ -122,26 +121,21 @@ public final class GatedOutputUntilTask implements OutputTask {
      * {@inheritDoc}
      */
     @Override
-    public void start(LoopClock clock) {
-        markStartAttempt();
-        started = true;
+    protected void onStart(LoopClock clock) {
         phase = Phase.WAIT;
         runStartedSec = 0.0;
         runElapsedSec = 0.0;
         cooldownStartedSec = 0.0;
         cooldownElapsedSec = 0.0;
         currentOutput = idleOutput;
-        finalOutcome = TaskOutcome.NOT_DONE;
+        runOutcome = TaskOutcome.NOT_DONE;
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public void update(LoopClock clock) {
-        if (!started) {
-            throw TaskLifecycle.updateBeforeStart(name);
-        }
+    protected void onUpdate(LoopClock clock) {
         switch (phase) {
             case WAIT:
                 currentOutput = idleOutput;
@@ -177,6 +171,7 @@ public final class GatedOutputUntilTask implements OutputTask {
                 cooldownElapsedSec = elapsedSince(cooldownStartedSec, clock);
                 if (cooldownElapsedSec >= cooldownSec) {
                     phase = Phase.DONE;
+                    complete(runOutcome);
                 }
                 break;
             case DONE:
@@ -223,7 +218,7 @@ public final class GatedOutputUntilTask implements OutputTask {
 
     /** End RUN and either begin cooldown or complete immediately. */
     private void finishRun(TaskOutcome outcome, LoopClock clock) {
-        finalOutcome = outcome;
+        runOutcome = outcome;
         currentOutput = idleOutput;
         if (cooldownSec > 0.0) {
             phase = Phase.COOLDOWN;
@@ -231,6 +226,7 @@ public final class GatedOutputUntilTask implements OutputTask {
             cooldownElapsedSec = 0.0;
         } else {
             phase = Phase.DONE;
+            complete(runOutcome);
         }
     }
 
@@ -243,32 +239,13 @@ public final class GatedOutputUntilTask implements OutputTask {
      * {@inheritDoc}
      */
     @Override
-    public void cancel() {
-        if (!started || phase == Phase.DONE) {
+    protected void onCancel() {
+        if (phase == Phase.DONE) {
             return;
         }
         phase = Phase.DONE;
         currentOutput = idleOutput;
-        finalOutcome = TaskOutcome.CANCELLED;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public boolean isComplete() {
-        return phase == Phase.DONE;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public TaskOutcome getOutcome() {
-        if (!isComplete()) {
-            return TaskOutcome.NOT_DONE;
-        }
-        return finalOutcome;
+        runOutcome = TaskOutcome.CANCELLED;
     }
 
     /**
@@ -291,11 +268,8 @@ public final class GatedOutputUntilTask implements OutputTask {
      * {@inheritDoc}
      */
     @Override
-    public void debugDump(DebugSink dbg, String prefix) {
-        if (dbg == null) {
-            return;
-        }
-        String p = (prefix == null || prefix.isEmpty()) ? "gatedOutput" : prefix;
+    protected void debugState(DebugSink dbg, String prefix) {
+        String p = prefix;
         dbg.addData(p + ".name", name)
                 .addData(p + ".phase", phase)
                 .addData(p + ".output", currentOutput)
@@ -306,21 +280,12 @@ public final class GatedOutputUntilTask implements OutputTask {
                 .addData(p + ".minRunSec", minRunSec)
                 .addData(p + ".maxRunSec", maxRunSec)
                 .addData(p + ".cooldownSec", cooldownSec)
-                .addData(p + ".complete", isComplete())
-                .addData(p + ".outcome", getOutcome());
-        startWhen.debugDump(dbg, p + ".startWhen");
-        doneWhen.debugDump(dbg, p + ".doneWhen");
-        runOutput.debugDump(dbg, p + ".runOutput");
+                .addData(p + ".runOutcome", runOutcome);
+        if (!hasFailure() && (!isComplete() || isEndingSettled())) {
+            startWhen.debugDump(dbg, p + ".startWhen");
+            doneWhen.debugDump(dbg, p + ".doneWhen");
+            runOutput.debugDump(dbg, p + ".runOutput");
+        }
     }
 
-    /** Record the single permitted start attempt before resetting task state or sampling sources. */
-    private void markStartAttempt() {
-        if (startAttempted) {
-            throw new IllegalStateException(
-                    name + " is a single-use GatedOutputUntilTask and start(...) was called "
-                            + "more than once. Create a fresh task with its builder or macro "
-                            + "method, a Supplier<Task>, or an OutputTaskFactory.");
-        }
-        startAttempted = true;
-    }
 }

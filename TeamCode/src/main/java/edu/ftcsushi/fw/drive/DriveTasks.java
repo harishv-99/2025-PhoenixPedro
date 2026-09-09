@@ -3,6 +3,7 @@ package edu.ftcsushi.fw.drive;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 
@@ -79,145 +80,70 @@ public final class DriveTasks {
         return new ExclusiveTimedDriveTask(sink, signal, durationSec);
     }
 
-    /** Private lifecycle state machine that enforces the exclusive timed-drive contract. */
-    private static final class ExclusiveTimedDriveTask implements Task {
+    /** Private timing policy; the shared lifecycle owns terminal cleanup and failure retention. */
+    private static final class ExclusiveTimedDriveTask extends AbstractTask {
         private final DriveCommandSink sink;
         private final DriveSignal signal;
         private final double durationSec;
-
-        private boolean startAttempted;
-        private boolean started;
-        private boolean complete;
-        private boolean stopAttempted;
         private boolean commandCycleRecorded;
         private long lastCommandCycle;
         private double startSec;
-        private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
         private ExclusiveTimedDriveTask(DriveCommandSink sink,
                                         DriveSignal signal,
                                         double durationSec) {
+            super("DriveTasks.driveExclusivelyForSeconds(" + durationSec + ")");
             this.sink = sink;
             this.signal = signal;
             this.durationSec = durationSec;
         }
 
         @Override
-        public void start(LoopClock clock) {
-            markStartAttempt();
-            requireClock(clock);
-
-            started = true;
-            complete = false;
-            outcome = TaskOutcome.NOT_DONE;
+        protected void onStart(LoopClock clock) {
             startSec = clock.nowSec();
-
             if (durationSec == 0.0) {
-                finish(TaskOutcome.SUCCESS);
+                complete(TaskOutcome.SUCCESS);
                 return;
             }
-
             publishActiveCycle(clock);
         }
 
         @Override
-        public void update(LoopClock clock) {
-            if (!started) {
-                throw new IllegalStateException(getDebugName() + " cannot be updated before "
-                        + "start(clock). Start it first, normally by enqueueing it in a "
-                        + "TaskRunner.");
-            }
-            if (complete) {
-                return;
-            }
-            requireClock(clock);
+        protected void onUpdate(LoopClock clock) {
             publishActiveCycle(clock);
         }
 
         @Override
-        public void cancel() {
-            if (!started || complete) {
-                return;
-            }
-            finish(TaskOutcome.CANCELLED);
+        protected void onCancel() {
+            // No separate resource: onFinish owns the one terminal sink-stop attempt.
         }
 
         @Override
-        public boolean isComplete() {
-            return complete;
+        protected void onFinish() {
+            sink.stop();
         }
 
-        @Override
-        public TaskOutcome getOutcome() {
-            return complete ? outcome : TaskOutcome.NOT_DONE;
-        }
-
-        @Override
-        public String getDebugName() {
-            return "DriveTasks.driveExclusivelyForSeconds(" + durationSec + ")";
-        }
-
-        /** Refresh the command at most once in this cycle, or finish before an expired write. */
+        /** Refresh once in this cycle, preserving the command already published during start. */
         private void publishActiveCycle(LoopClock clock) {
             long cycle = clock.cycle();
             if (commandCycleRecorded && cycle == lastCommandCycle) {
                 return;
             }
-
-            // Record before callbacks so reentrant Task updates remain same-cycle no-ops.
             commandCycleRecorded = true;
             lastCommandCycle = cycle;
 
             double elapsedSec = Math.max(0.0, clock.nowSec() - startSec);
             if (elapsedSec >= durationSec) {
-                finish(TaskOutcome.SUCCESS);
+                complete(TaskOutcome.SUCCESS);
                 return;
             }
 
             sink.update(clock);
-            // The update hook may reentrantly cancel this Task and stop the sink.
-            if (complete) {
+            // Cancellation from the update callback must not be followed by another drive write.
+            if (!isActive()) {
                 return;
             }
             sink.drive(signal);
-        }
-
-        /** Become terminal before attempting the exactly-once physical stop. */
-        private void finish(TaskOutcome terminalOutcome) {
-            if (complete) {
-                return;
-            }
-            outcome = terminalOutcome;
-            complete = true;
-            stopOnce();
-        }
-
-        /** Attempt the sink stop once even when the stop callback throws or re-enters the Task. */
-        private void stopOnce() {
-            if (stopAttempted) {
-                return;
-            }
-            stopAttempted = true;
-            sink.stop();
-        }
-
-        /** Record the single permitted start attempt before any sink callback can run. */
-        private void markStartAttempt() {
-            if (startAttempted) {
-                throw new IllegalStateException(getDebugName() + " is single-use and "
-                        + "start(clock) was called more than once. Create a fresh Task by "
-                        + "calling DriveTasks.driveExclusivelyForSeconds(...) again or rebuild "
-                        + "the macro; use a Supplier<Task> for repeated scheduling.");
-            }
-            startAttempted = true;
-        }
-
-        /** Reject direct active lifecycle calls that omit Sushi's shared loop clock. */
-        private void requireClock(LoopClock clock) {
-            if (clock == null) {
-                throw new IllegalArgumentException(getDebugName()
-                        + " requires a non-null LoopClock.");
-            }
         }
     }
 }

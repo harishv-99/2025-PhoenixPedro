@@ -28,6 +28,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -317,7 +318,10 @@ public final class AdaptiveCollectionBoundedAutoScenarioTest {
 
         assertTrue(failedCleanup.root.isComplete());
         assertEquals(TaskOutcome.CANCELLED, failedCleanup.root.getOutcome());
-        assertEquals(TaskOutcome.CANCELLED, failedCleanup.boundedPrePark.getOutcome());
+        assertSame(cleanupFailure, assertThrows(RuntimeException.class,
+                failedCleanup.boundedPrePark::getOutcome));
+        assertSame(cleanupFailure, assertThrows(RuntimeException.class,
+                () -> failedCleanup.boundedPrePark.update(failedCleanup.time.clock())));
         assertEquals(RouteStatus.NOT_STARTED, failedCleanup.park.getRouteStatus());
         assertEquals(0, failedCleanup.parkBuildCount);
         assertEquals(1, failedCleanup.preload.cancelCount);

@@ -10,6 +10,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -91,6 +92,23 @@ public final class RouteTaskStatusTest {
     }
 
     @Test
+    public void statusRefreshAfterSameCycleUpdateDoesNotConsumeOrRepeatFollowerUpdate() {
+        ManualLoopClock clock = new ManualLoopClock();
+        RecordingFollower follower = new RecordingFollower();
+        RouteTask<String> task = RouteTasks.followWithoutTaskTimeout("sameCycle", follower, "route");
+        task.start(clock.clock());
+        task.update(clock.clock());
+        task.update(clock.clock());
+        assertEquals(1, follower.updateCount);
+        assertEquals(RouteStatus.ACTIVE, task.getRouteStatus());
+        follower.current.integrationStatus = RouteStatus.COMPLETED;
+        assertEquals(RouteStatus.COMPLETED, task.getRouteStatus());
+        assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
+        assertEquals(1, follower.updateCount);
+        assertEquals(0, follower.current.cancelCount);
+    }
+
+    @Test
     public void followerTerminalStatusWinsAtExactTaskTimeoutBoundary() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
@@ -155,17 +173,13 @@ public final class RouteTaskStatusTest {
                 route -> execution,
                 "route");
 
-        try {
-            task.start(new ManualLoopClock().clock());
-            fail("expected NOT_STARTED execution to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("notStartedContractViolation"));
-            assertTrue(expected.getMessage().contains("synchronously"));
-            assertTrue(expected.getMessage().contains("ACTIVE"));
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> task.start(new ManualLoopClock().clock()));
+        assertTrue(failure.getMessage().contains("notStartedContractViolation"));
+        assertTrue(failure.getMessage().contains("synchronously"));
+        assertTrue(failure.getMessage().contains("ACTIVE"));
 
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertRetainedFailure(task, failure);
         assertTrue(task.isComplete());
         assertEquals(RouteStatus.FAILED, execution.status());
         assertEquals(1, execution.cancelCount);
@@ -256,15 +270,10 @@ public final class RouteTaskStatusTest {
         IllegalStateException statusFailure = new IllegalStateException("cancel status failure");
         execution.statusFailure = statusFailure;
 
-        try {
-            task.cancel();
-            fail("expected cancellation status failure");
-        } catch (IllegalStateException actual) {
-            assertSame(statusFailure, actual.getCause());
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class, task::cancel);
+        assertSame(statusFailure, failure.getCause());
 
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertRetainedFailure(task, failure);
         assertEquals(RouteStatus.FAILED, execution.status());
         assertEquals(1, execution.cancelCount);
     }
@@ -349,13 +358,12 @@ public final class RouteTaskStatusTest {
         }
 
         assertTrue(task.isComplete());
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertRetainedFailure(task, updateFailure);
         assertEquals(0, follower.current.cancelCount);
     }
 
     @Test
-    public void updateFailureDoesNotOverwriteExplicitTerminalCompletion() {
+    public void updateFailureRetainsExecutionCompletionWithoutExposingTaskSuccess() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
         RouteTask<String> task =
@@ -374,8 +382,7 @@ public final class RouteTaskStatusTest {
         }
 
         assertTrue(task.isComplete());
-        assertEquals(RouteStatus.COMPLETED, task.getRouteStatus());
-        assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
+        assertRetainedFailure(task, updateFailure);
         assertEquals(RouteStatus.COMPLETED, execution.status());
         assertEquals(0, execution.cancelCount);
     }
@@ -388,7 +395,7 @@ public final class RouteTaskStatusTest {
                 RouteTasks.followWithoutTaskTimeout("activeUpdateFailure", follower, "route");
         task.start(manualClock.clock());
         RecordingExecution execution = follower.current;
-        execution.taskToObserveDuringCancel = task;
+        execution.observeOwnStatusDuringCancel = true;
         IllegalStateException updateFailure = new IllegalStateException("active update failure");
         follower.updateFailure = updateFailure;
 
@@ -399,10 +406,9 @@ public final class RouteTaskStatusTest {
             assertSame(updateFailure, actual);
         }
 
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertRetainedFailure(task, updateFailure);
         assertTrue(task.isComplete());
-        assertEquals(RouteStatus.FAILED, execution.taskStatusObservedDuringCancel);
+        assertEquals(RouteStatus.FAILED, execution.ownStatusObservedDuringCancel);
         assertEquals(RouteStatus.FAILED, execution.status());
         assertEquals(1, execution.cancelCount);
     }
@@ -426,8 +432,7 @@ public final class RouteTaskStatusTest {
             assertSame(updateFailure, actual);
         }
 
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertRetainedFailure(task, updateFailure);
         assertTrue(task.isComplete());
         assertEquals(1, updateFailure.getSuppressed().length);
         assertSame(statusFailure, updateFailure.getSuppressed()[0].getCause());
@@ -447,16 +452,12 @@ public final class RouteTaskStatusTest {
                 route -> execution,
                 "route");
 
-        try {
-            task.start(new ManualLoopClock().clock());
-            fail("expected initial status failure");
-        } catch (IllegalStateException actual) {
-            assertTrue(actual.getMessage().contains("initialStatusFailure"));
-            assertSame(statusFailure, actual.getCause());
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> task.start(new ManualLoopClock().clock()));
+        assertTrue(failure.getMessage().contains("initialStatusFailure"));
+        assertSame(statusFailure, failure.getCause());
 
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertRetainedFailure(task, failure);
         assertTrue(task.isComplete());
         assertEquals(RouteStatus.FAILED, execution.status());
         assertEquals(1, execution.cancelCount);
@@ -505,7 +506,7 @@ public final class RouteTaskStatusTest {
             assertSame(updateFailure, actual);
         }
 
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
+        assertRetainedFailure(task, updateFailure);
         assertEquals(RouteStatus.FAILED, execution.status());
         assertEquals(1, execution.cancelCount);
         assertEquals(1, updateFailure.getSuppressed().length);
@@ -532,12 +533,12 @@ public final class RouteTaskStatusTest {
         }
 
         assertTrue(task.isComplete());
-        assertEquals(RouteStatus.TASK_TIMEOUT, task.getRouteStatus());
-        assertEquals(TaskOutcome.TIMEOUT, task.getOutcome());
+        assertRetainedFailure(task, cleanupFailure);
         assertEquals(RouteStatus.TASK_TIMEOUT, execution.status());
         assertEquals(1, execution.cancelCount);
 
-        task.update(manualClock.clock());
+        assertSame(cleanupFailure, assertThrows(IllegalStateException.class,
+                () -> task.update(manualClock.clock())));
         task.cancel();
         execution.cancel();
         assertEquals(1, execution.cancelCount);
@@ -584,6 +585,12 @@ public final class RouteTaskStatusTest {
             assertTrue(expected.getMessage().contains("RouteStatus"));
             assertTrue(expected.getMessage().contains("returned null"));
         }
+    }
+
+    private static void assertRetainedFailure(RouteTask<?> task, RuntimeException failure) {
+        assertTrue(task.isComplete());
+        assertSame(failure, assertThrows(RuntimeException.class, task::getRouteStatus));
+        assertSame(failure, assertThrows(RuntimeException.class, task::getOutcome));
     }
 
     private static void assertTerminalMapping(RouteStatus status, TaskOutcome expectedOutcome) {
@@ -647,8 +654,8 @@ public final class RouteTaskStatusTest {
         private int cancelCount;
         private RuntimeException statusFailure;
         private RuntimeException cancelFailure;
-        private RouteTask<?> taskToObserveDuringCancel;
-        private RouteStatus taskStatusObservedDuringCancel;
+        private boolean observeOwnStatusDuringCancel;
+        private RouteStatus ownStatusObservedDuringCancel;
 
         RecordingExecution(RecordingFollower owner) {
             this.owner = owner;
@@ -669,8 +676,9 @@ public final class RouteTaskStatusTest {
                     && integrationStatus != RouteStatus.NOT_STARTED)) {
                 return;
             }
-            if (taskToObserveDuringCancel != null) {
-                taskStatusObservedDuringCancel = taskToObserveDuringCancel.getRouteStatus();
+            if (observeOwnStatusDuringCancel) {
+                // Execution evidence is already latched; the owning Task result is not yet safe.
+                ownStatusObservedDuringCancel = status();
             }
             integrationStatus = RouteStatus.CANCELLED;
             cancelCount++;

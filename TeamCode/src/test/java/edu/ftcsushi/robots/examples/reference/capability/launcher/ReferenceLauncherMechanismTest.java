@@ -3,7 +3,10 @@ package edu.ftcsushi.robots.examples.reference.capability.launcher;
 import org.junit.Test;
 
 import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
 
+import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.task.OutputTask;
 import edu.ftcsushi.fw.task.OutputTaskRunner;
 import edu.ftcsushi.fw.task.Task;
@@ -15,6 +18,7 @@ import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -157,6 +161,36 @@ public final class ReferenceLauncherMechanismTest {
     }
 
     @Test
+    public void directCancellationAfterAbortPreservesTheNewRequestInEveryLaunchPhase() {
+        for (int phase = 0; phase < 3; phase++) {
+            Rig rig = new Rig();
+            Task launch = rig.mechanism.launchOne();
+            primeSpinUp(rig, launch);
+            if (phase >= 1) {
+                reachRelease(rig, launch);
+            }
+            if (phase == 2) {
+                cycle(rig, launch, rig.config.releaseDurationSec);
+                assertTrue(rig.mechanism.status().transferPulseActive());
+            }
+
+            rig.mechanism.abortLaunches();
+            rig.mechanism.flywheels().setVelocityTicksPerSec(600.0);
+            launch.cancel();
+            launch.cancel();
+            cycle(rig, launch, 0.02);
+
+            assertTrue(launch.isComplete());
+            assertEquals(TaskOutcome.CANCELLED, launch.getOutcome());
+            assertEquals(600.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+            assertEquals(600.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
+            assertEquals(0.0, rig.transfer.power(), EPSILON);
+            assertEquals(rig.config.releaseRetractedNativePosition,
+                    rig.release.position(), EPSILON);
+        }
+    }
+
+    @Test
     public void reversedReleaseEndpointsStillUseNormalizedRetractedAndExtendedIntent() {
         ReferenceLauncherMechanism.Config config = testConfig();
         config.releaseRetractedNativePosition = 0.85;
@@ -186,11 +220,40 @@ public final class ReferenceLauncherMechanismTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class, launch::cancel);
 
         assertTrue(failure.getMessage().contains("injected transfer cleanup failure"));
-        assertEquals(TaskOutcome.CANCELLED, launch.getOutcome());
+        assertTrue(launch.isComplete());
+        assertSame(failure, assertThrows(IllegalStateException.class, launch::getOutcome));
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> launch.update(rig.time.clock())));
+        RecordingDebugSink debug = new RecordingDebugSink();
+        launch.debugDump(debug, "launch");
+        assertEquals(Boolean.TRUE, debug.values.get("launch.started"));
+        assertEquals(Boolean.TRUE, debug.values.get("launch.flow.hasLifecycleFailure"));
+        assertEquals(Boolean.FALSE, debug.values.get("launch.flow.outcomeAvailable"));
+        launch.cancel(); // The retained failure must not cause a second cleanup attempt.
         rig.mechanism.update(rig.time.nextCycle(0.02));
         assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
         assertEquals(rig.config.releaseRetractedNativePosition,
                 rig.release.position(), EPSILON);
+    }
+
+    @Test
+    public void invalidActiveClockFailsClosedAndRetainsTheFailureAfterCleanup() {
+        Rig rig = new Rig();
+        Task launch = rig.mechanism.launchOne();
+        primeSpinUp(rig, launch);
+        assertEquals(rig.config.launchVelocityTicksPerSec,
+                rig.left.commandedVelocityTicksPerSec(), EPSILON);
+
+        NullPointerException failure = assertThrows(NullPointerException.class,
+                () -> launch.update(null));
+
+        assertTrue(launch.isComplete());
+        assertSame(failure, assertThrows(NullPointerException.class, launch::getOutcome));
+        assertSame(failure, assertThrows(NullPointerException.class,
+                () -> launch.update(rig.time.clock())));
+        launch.cancel();
+        rig.mechanism.update(rig.time.nextCycle(0.02));
+        assertIdle(rig);
     }
 
     private static void primeSpinUp(Rig rig, Task launch) {
@@ -311,6 +374,21 @@ public final class ReferenceLauncherMechanismTest {
         @Override
         public double getOutput() {
             return 0.2;
+        }
+    }
+
+    private static final class RecordingDebugSink implements DebugSink {
+        private final Map<String, Object> values = new HashMap<>();
+
+        @Override
+        public DebugSink addData(String key, Object value) {
+            values.put(key, value);
+            return this;
+        }
+
+        @Override
+        public DebugSink addLine(String text) {
+            return this;
         }
     }
 }

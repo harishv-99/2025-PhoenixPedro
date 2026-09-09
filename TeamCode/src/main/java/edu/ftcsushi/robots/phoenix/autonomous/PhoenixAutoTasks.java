@@ -62,7 +62,7 @@ public final class PhoenixAutoTasks {
                 auto.waitForShotCompleteSec
         );
 
-        return new PhoenixScoringAttemptTask(
+        return PhoenixScoringAttemptTask.create(
                 scoring,
                 waitForTargetTask,
                 aimTask,

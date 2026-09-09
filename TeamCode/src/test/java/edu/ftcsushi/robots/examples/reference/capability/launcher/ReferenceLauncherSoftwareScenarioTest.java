@@ -90,6 +90,7 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         assertTrue(scenario.launch.isComplete());
         assertEquals(TaskOutcome.SUCCESS, scenario.launch.getOutcome());
         assertActiveMatchIdle(scenario);
+        assertTerminalCleanupDoesNotRepeat(scenario, TaskOutcome.SUCCESS);
     }
 
     @Test
@@ -130,6 +131,26 @@ public final class ReferenceLauncherSoftwareScenarioTest {
         assertTrue(scenario.launch.isComplete());
         assertEquals(TaskOutcome.TIMEOUT, scenario.launch.getOutcome());
         assertActiveMatchIdle(scenario);
+        assertTerminalCleanupDoesNotRepeat(scenario, TaskOutcome.TIMEOUT);
+    }
+
+    private static void assertTerminalCleanupDoesNotRepeat(Scenario scenario,
+                                                          TaskOutcome outcome) {
+        // A later capability request belongs to new robot intent, not the already ended launch.
+        double laterVelocityTicksPerSec = 600.0;
+        scenario.launcher.flywheels().setVelocityTicksPerSec(laterVelocityTicksPerSec);
+        scenario.launch.cancel();
+        scenario.advance(CYCLE_SEC);
+        scenario.launch.cancel();
+        scenario.advance(CYCLE_SEC);
+
+        assertTrue(scenario.launch.isComplete());
+        assertEquals(outcome, scenario.launch.getOutcome());
+        assertEquals(laterVelocityTicksPerSec,
+                scenario.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(laterVelocityTicksPerSec,
+                scenario.right.commandedVelocityTicksPerSec(), EPSILON);
+        assertFeedIdle(scenario);
     }
 
     private static void assertActiveMatchIdle(Scenario scenario) {

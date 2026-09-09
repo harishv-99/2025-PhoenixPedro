@@ -75,7 +75,7 @@ public final class TimeoutTaskTest {
                 expectIllegalState(() -> bounded.start(clock.clock())),
                 "Tasks.withTimeout",
                 "single-use",
-                "fresh task");
+                "fresh Task");
     }
 
     @Test
@@ -188,8 +188,10 @@ public final class TimeoutTaskTest {
             assertContains(thrown, "child was completed", String.valueOf(invalid),
                     "lifecycle contract");
             assertTrue(runner.isIdle());
-            assertEquals(TaskOutcome.CANCELLED, bounded.getOutcome());
-            assertEquals(1, child.cancelCount);
+            assertRetainedFailure(bounded, thrown, clock);
+            // Terminality is proven even though its result is malformed; there is no active
+            // child acquisition left to cancel, and no reason to retry its result getter.
+            assertEquals(0, child.cancelCount);
         }
     }
 
@@ -222,14 +224,15 @@ public final class TimeoutTaskTest {
     }
 
     @Test
-    public void successfulTimeoutPublishesOnlyAfterTerminalCleanupAndIgnoresReentry() {
+    public void successfulTimeoutClaimsEndingBeforeCleanupReturnsAndIgnoresReentry() {
         ManualLoopClock clock = new ManualLoopClock();
         ProbeTask child = new ProbeTask("child");
         AtomicReference<Task> boundedRef = new AtomicReference<>();
         child.cancelHook = () -> {
             Task bounded = boundedRef.get();
-            assertFalse(bounded.isComplete());
-            assertEquals(TaskOutcome.NOT_DONE, bounded.getOutcome());
+            assertTrue(bounded.isComplete());
+            // Ending is already claimed; its outcome must not be inspected until this callback
+            // and the outer update return. Such inspection is tested separately below.
             bounded.cancel();
             bounded.update(clock.clock());
         };
@@ -247,6 +250,31 @@ public final class TimeoutTaskTest {
     }
 
     @Test
+    public void outcomeInspectionDuringTimeoutCleanupFailsClosedEvenWhenCaught() {
+        ManualLoopClock clock = new ManualLoopClock();
+        ProbeTask child = new ProbeTask("child");
+        AtomicReference<Task> boundedRef = new AtomicReference<>();
+        AtomicReference<RuntimeException> pendingInspection = new AtomicReference<>();
+        child.cancelHook = () -> {
+            Task bounded = boundedRef.get();
+            assertTrue(bounded.isComplete());
+            pendingInspection.set(expectIllegalState(bounded::getOutcome));
+        };
+        FailureGraph graph = timeoutFailureGraph(clock, child);
+        boundedRef.set(graph.bounded);
+
+        RuntimeException thrown = expectRuntime(
+                () -> graph.runner.update(clock.nextCycle(0.5)));
+
+        assertSame(pendingInspection.get(), thrown);
+        assertContains(thrown, "outcome is not available", "cleanup");
+        assertRetainedFailure(graph.bounded, thrown, clock);
+        assertTrue(graph.runner.isIdle());
+        assertEquals(0, graph.continuation.startCount);
+        assertEquals(1, child.cancelCount);
+    }
+
+    @Test
     public void throwingTimeoutCleanupFailsClosedAndNeverStartsContinuation() {
         ManualLoopClock clock = new ManualLoopClock();
         ProbeTask child = new ProbeTask("child");
@@ -261,7 +289,7 @@ public final class TimeoutTaskTest {
         assertTrue(graph.runner.isIdle());
         assertEquals(0, graph.continuation.startCount);
         assertEquals(1, child.cancelCount);
-        assertEquals(TaskOutcome.CANCELLED, graph.bounded.getOutcome());
+        assertRetainedFailure(graph.bounded, thrown, clock);
     }
 
     @Test
@@ -278,7 +306,7 @@ public final class TimeoutTaskTest {
         assertTrue(graph.runner.isIdle());
         assertEquals(0, graph.continuation.startCount);
         assertEquals(1, child.cancelCount);
-        assertEquals(TaskOutcome.CANCELLED, graph.bounded.getOutcome());
+        assertRetainedFailure(graph.bounded, thrown, clock);
     }
 
     @Test
@@ -291,11 +319,11 @@ public final class TimeoutTaskTest {
         IllegalStateException thrown =
                 expectIllegalState(() -> graph.runner.update(clock.nextCycle(0.5)));
 
-        assertContains(thrown, "cancelled at the timeout", "NOT_DONE", "lifecycle contract");
+        assertContains(thrown, "cancelled", "NOT_DONE", "lifecycle contract");
         assertTrue(graph.runner.isIdle());
         assertEquals(0, graph.continuation.startCount);
         assertEquals(1, child.cancelCount);
-        assertEquals(TaskOutcome.CANCELLED, graph.bounded.getOutcome());
+        assertRetainedFailure(graph.bounded, thrown, clock);
     }
 
     @Test
@@ -329,8 +357,10 @@ public final class TimeoutTaskTest {
 
             assertSame(failure, thrown);
             assertTrue(runner.isIdle());
-            assertEquals(TaskOutcome.CANCELLED, bounded.getOutcome());
-            assertEquals(1, child.cancelCount);
+            assertRetainedFailure(bounded, thrown, clock);
+            // A failed completion query still leaves active ownership uncertain. A failed
+            // outcome query follows proven terminality, so no active child remains to cancel.
+            assertEquals(point == FailurePoint.OUTCOME ? 0 : 1, child.cancelCount);
         }
     }
 
@@ -376,7 +406,8 @@ public final class TimeoutTaskTest {
         assertEquals(Double.valueOf(0.5), sink.values.get("auto.bounded.timeoutSec"));
         assertEquals(Boolean.TRUE, sink.values.get("auto.bounded.timeoutFired"));
         assertEquals(Boolean.TRUE, sink.values.get("auto.bounded.complete"));
-        assertEquals(TaskOutcome.TIMEOUT, sink.values.get("auto.bounded.outcome"));
+        assertEquals(TaskOutcome.TIMEOUT, sink.values.get("auto.bounded.selectedOutcome"));
+        assertEquals(Boolean.TRUE, sink.values.get("auto.bounded.outcomeAvailable"));
         assertEquals(TaskOutcome.CANCELLED,
                 sink.values.get("auto.bounded.retainedChildOutcome"));
         assertEquals("parkPrelude", sink.values.get("auto.bounded.child.name"));
@@ -538,6 +569,17 @@ public final class TimeoutTaskTest {
                     "Expected message to contain '" + fragment + "' but was: " + message,
                     message != null && message.contains(fragment));
         }
+    }
+
+    /** A wrapper failure remains observable without retrying its child or ending action. */
+    private static void assertRetainedFailure(Task bounded, RuntimeException failure,
+                                              ManualLoopClock clock) {
+        assertTrue(bounded.isComplete());
+        assertSame(failure, expectRuntime(bounded::getOutcome));
+        assertSame(failure, expectRuntime(() -> bounded.update(clock.clock())));
+        assertSame(failure, expectRuntime(() -> bounded.update(clock.nextCycle(0.02))));
+        bounded.cancel();
+        bounded.cancel();
     }
 
     private static NullPointerException expectNullPointer(Runnable action) {

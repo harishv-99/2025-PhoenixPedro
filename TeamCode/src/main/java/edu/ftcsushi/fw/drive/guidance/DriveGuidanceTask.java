@@ -6,6 +6,7 @@ import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.drive.DriveCommandSink;
 import edu.ftcsushi.fw.drive.DriveOverlayMask;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 
@@ -39,7 +40,7 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  * {@link DriveGuidancePlan#task(DriveCommandSink, Config)}, a fresh macro builder, or a
  * {@code Supplier<Task>} each time guidance should run.</p>
  */
-public final class DriveGuidanceTask implements Task {
+public final class DriveGuidanceTask extends AbstractTask {
 
     /**
      * Task-level settings (tolerances/timeouts) independent of controller tuning.
@@ -149,17 +150,14 @@ public final class DriveGuidanceTask implements Task {
         }
     }
 
-    private final String debugName;
     private final DriveCommandSink drivebase;
     private final DriveGuidancePlan plan;
     private final ConfigSnapshot cfg;
 
     private final DriveGuidanceCore core;
 
-    private boolean startAttempted = false;
-    private boolean started = false;
-    private boolean complete = false;
-    private TaskOutcome outcome = TaskOutcome.NOT_DONE;
+    private boolean stopInProgress;
+    private boolean terminalStopAlreadyAttempted;
 
     private double startTimeSec = 0.0;
     private double noGuidanceStartSec = Double.NaN;
@@ -175,7 +173,7 @@ public final class DriveGuidanceTask implements Task {
                       DriveCommandSink drivebase,
                       DriveGuidancePlan plan,
                       Config cfg) {
-        this.debugName = (debugName != null && !debugName.isEmpty()) ? debugName : "DriveGuidanceTask";
+        super(debugName != null && !debugName.trim().isEmpty() ? debugName : "DriveGuidanceTask");
         this.drivebase = Objects.requireNonNull(drivebase, "drivebase");
         this.plan = Objects.requireNonNull(plan, "plan");
         this.cfg = ConfigSnapshot.from(cfg);
@@ -195,91 +193,57 @@ public final class DriveGuidanceTask implements Task {
      * {@inheritDoc}
      */
     @Override
-    public String getDebugName() {
-        return debugName;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void start(LoopClock clock) {
-        if (startAttempted) {
-            throw new IllegalStateException("DriveGuidanceTask '" + debugName
-                    + "' is single-use and has already been started. Create a fresh task with "
-                    + "DriveGuidancePlan.task(...), a fresh macro builder, or a Supplier<Task> "
-                    + "for each run.");
-        }
-        startAttempted = true;
-        started = true;
-        complete = false;
-        outcome = TaskOutcome.NOT_DONE;
-
-        startTimeSec = (clock != null) ? clock.nowSec() : 0.0;
-        noGuidanceStartSec = (clock != null) ? clock.nowSec() : Double.NaN;
+    protected void onStart(LoopClock clock) {
+        startTimeSec = clock.nowSec();
+        noGuidanceStartSec = clock.nowSec();
         noGuidanceSec = 0.0;
         lastTranslationErrorIn = Double.NaN;
         lastOmegaErrorRad = Double.NaN;
 
         core.onEnable();
-        if (complete) {
+        if (!isActive()) {
             return;
         }
-        drivebase.stop();
+        stopDuringActiveGuidance();
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public void update(LoopClock clock) {
-        if (!started) {
-            throw new IllegalStateException("DriveGuidanceTask '" + debugName + "' cannot be "
-                    + "updated before start(clock). Start it first, normally by enqueueing it in "
-                    + "a TaskRunner.");
-        }
-        if (complete) {
-            return;
-        }
-        if (clock == null) {
-            // Defensive: no clock means no safe control.
-            drivebase.stop();
-            return;
-        }
-
+    protected void onUpdate(LoopClock clock) {
         drivebase.update(clock);
-        if (complete) {
+        if (!isActive()) {
             return;
         }
 
         // Hard timeout.
         double elapsed = clock.nowSec() - startTimeSec;
         if (elapsed > cfg.timeoutSec) {
-            complete = true;
-            outcome = TaskOutcome.TIMEOUT;
-            drivebase.stop();
+            complete(TaskOutcome.TIMEOUT);
             return;
         }
 
         DriveOverlayMask requested = (cfg.requestedMask != null) ? cfg.requestedMask : plan.requestedMask();
         DriveGuidanceCore.Step step = core.step(clock, requested);
-        if (complete) {
+        if (!isActive()) {
             return;
         }
 
         // No usable command this loop.
         if (step.out.mask.isNone()) {
-            drivebase.stop();
-            if (complete) {
-                return;
-            }
             if (!Double.isFinite(noGuidanceStartSec)) {
                 noGuidanceStartSec = clock.nowSec();
             }
             noGuidanceSec = Math.max(0.0, clock.nowSec() - noGuidanceStartSec);
+            stopDuringActiveGuidance();
+            if (!isActive()) {
+                return;
+            }
             if (noGuidanceSec > cfg.maxNoGuidanceSec) {
-                complete = true;
-                outcome = TaskOutcome.TIMEOUT;
+                // Preserve cancellation from the just-completed stop before choosing timeout.
+                terminalStopAlreadyAttempted = true;
+                complete(TaskOutcome.TIMEOUT);
             }
             return;
         }
@@ -287,7 +251,7 @@ public final class DriveGuidanceTask implements Task {
         noGuidanceStartSec = Double.NaN;
         noGuidanceSec = 0.0;
         drivebase.drive(step.out.signal);
-        if (complete) {
+        if (!isActive()) {
             return;
         }
 
@@ -306,52 +270,52 @@ public final class DriveGuidanceTask implements Task {
                 || (step.hasOmegaError && Math.abs(lastOmegaErrorRad) <= cfg.headingTolRad);
 
         if (translationOk && omegaOk) {
-            complete = true;
-            outcome = TaskOutcome.SUCCESS;
+            complete(TaskOutcome.SUCCESS);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onCancel() {
+        // Every ending uses the same owned stop policy in onFinish().
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onFinish() {
+        if (!stopInProgress && !terminalStopAlreadyAttempted) {
+            terminalStopAlreadyAttempted = true;
             drivebase.stop();
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void cancel() {
-        if (!started || complete) {
-            return;
+    /** Share an in-flight ordinary stop with any ending it triggers. */
+    private void stopDuringActiveGuidance() {
+        // START and unavailable-guidance loops also stop normally. If that very call causes
+        // cancellation or fails, it is already the terminal stop attempt: do not recurse/retry.
+        stopInProgress = true;
+        try {
+            drivebase.stop();
+        } catch (RuntimeException failure) {
+            terminalStopAlreadyAttempted = true;
+            throw failure;
+        } finally {
+            if (!isActive()) {
+                terminalStopAlreadyAttempted = true;
+            }
+            stopInProgress = false;
         }
-        complete = true;
-        outcome = TaskOutcome.CANCELLED;
-        drivebase.stop();
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public boolean isComplete() {
-        return complete;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public TaskOutcome getOutcome() {
-        return outcome;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void debugDump(DebugSink dbg, String prefix) {
-        Task.super.debugDump(dbg, prefix);
-        if (dbg == null) {
-            return;
-        }
-        String p = (prefix == null || prefix.isEmpty()) ? "task" : prefix;
-
+    protected void debugState(DebugSink dbg, String p) {
         dbg.addData(p + ".mode", core.lastMode());
         dbg.addData(p + ".mask", core.lastStep().out.mask.toString());
         dbg.addData(p + ".axial", core.lastStep().out.signal.axial);

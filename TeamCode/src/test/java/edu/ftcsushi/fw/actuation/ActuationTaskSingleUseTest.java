@@ -12,6 +12,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -158,7 +159,7 @@ public final class ActuationTaskSingleUseTest {
         assertEquals(1, plant.beginSearchCount);
         assertEquals(1, condition.resetCount);
 
-        assertSingleUseFailure(() -> search.start(manualClock.clock()), "PositionCalibrationTasks.search");
+        assertSingleUseFailure(() -> search.start(manualClock.clock()), "PositionCalibrationSearch");
         assertEquals(1, plant.beginSearchCount);
         assertEquals(1, condition.resetCount);
 
@@ -168,7 +169,7 @@ public final class ActuationTaskSingleUseTest {
         search.cancel();
         assertEquals(1, plant.endSearchCount);
 
-        assertSingleUseFailure(() -> search.start(manualClock.clock()), "PositionCalibrationTasks.search");
+        assertSingleUseFailure(() -> search.start(manualClock.clock()), "PositionCalibrationSearch");
         assertEquals(1, plant.beginSearchCount);
         assertEquals(1, plant.endSearchCount);
         assertEquals(1, condition.resetCount);
@@ -199,7 +200,7 @@ public final class ActuationTaskSingleUseTest {
         CountingBooleanSource condition = new CountingBooleanSource();
         Task search = calibrationSearch(plant, condition);
 
-        assertUpdateBeforeStartFailure(search, manualClock.clock(), "PositionCalibrationTasks.search");
+        assertUpdateBeforeStartFailure(search, manualClock.clock(), "PositionCalibrationSearch");
         search.cancel();
         assertEquals(0, plant.endSearchCount);
         assertFalse(search.isComplete());
@@ -220,17 +221,9 @@ public final class ActuationTaskSingleUseTest {
         CountingBooleanSource condition = new CountingBooleanSource();
         Task search = calibrationSearch(plant, condition);
 
-        try {
-            search.start(manualClock.clock());
-            fail("expected calibration start to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test calibration"));
-        }
-
-        search.cancel();
-        search.cancel();
-        assertTrue(search.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
+        RuntimeException failure = expectRuntime(() -> search.start(manualClock.clock()));
+        assertTrue(failure.getMessage().contains("test calibration"));
+        assertRetainedFailure(search, failure, manualClock);
         assertEquals(1, plant.beginSearchCount);
         assertEquals(0, plant.endSearchCount);
     }
@@ -243,17 +236,9 @@ public final class ActuationTaskSingleUseTest {
         condition.throwOnReset = true;
         Task search = calibrationSearch(plant, condition);
 
-        try {
-            search.start(manualClock.clock());
-            fail("expected condition reset to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test condition"));
-        }
-
-        search.cancel();
-        search.cancel();
-        assertTrue(search.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
+        RuntimeException failure = expectRuntime(() -> search.start(manualClock.clock()));
+        assertTrue(failure.getMessage().contains("test condition"));
+        assertRetainedFailure(search, failure, manualClock);
         assertEquals(0, plant.beginSearchCount);
         assertEquals(0, plant.endSearchCount);
     }
@@ -266,16 +251,9 @@ public final class ActuationTaskSingleUseTest {
         Task search = calibrationSearch(plant, new CountingBooleanSource());
         search.start(manualClock.clock());
 
-        try {
-            search.cancel();
-            fail("expected calibration cleanup to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test calibration cleanup"));
-        }
-
-        assertTrue(search.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
-        search.cancel();
+        RuntimeException failure = expectRuntime(search::cancel);
+        assertTrue(failure.getMessage().contains("test calibration cleanup"));
+        assertRetainedFailure(search, failure, manualClock);
         assertEquals(1, plant.endSearchCount);
     }
 
@@ -315,6 +293,27 @@ public final class ActuationTaskSingleUseTest {
                 .establishReferenceAt(0.0)
                 .neverTimeout()
                 .build();
+    }
+
+    private static RuntimeException expectRuntime(Runnable action) {
+        try {
+            action.run();
+            fail("expected a lifecycle failure");
+            return null;
+        } catch (RuntimeException expected) {
+            return expected;
+        }
+    }
+
+    /** A failed search stays terminal without retrying its reset, acquisition, or release. */
+    private static void assertRetainedFailure(Task search, RuntimeException failure,
+                                              ManualLoopClock time) {
+        assertTrue(search.isComplete());
+        assertSame(failure, expectRuntime(search::getOutcome));
+        assertSame(failure, expectRuntime(() -> search.update(time.clock())));
+        assertSame(failure, expectRuntime(() -> search.update(time.nextCycle(0.02))));
+        search.cancel();
+        search.cancel();
     }
 
     private static void assertSingleUseFailure(Runnable action, String expectedTaskName) {

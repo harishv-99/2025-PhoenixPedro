@@ -8,6 +8,7 @@ import edu.ftcsushi.fw.actuation.Plant;
 import edu.ftcsushi.fw.actuation.PlantTargetResolver;
 import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.ScalarTasks;
+import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.core.source.BooleanSource;
@@ -247,26 +248,23 @@ public final class ReferenceLauncherMechanism
     /**
      * One example-local lifecycle wrapper around factory-composed launch phases.
      *
-     * <p>The wrapper adds only the policy generic factories cannot express together: retained
-     * timeout outcome, terminal cleanup, and invalidation of active or queued tasks created before
-     * {@link #abortLaunches()}.</p>
+     * <p>The wrapper owns only invalidation of active or queued tasks created before
+     * {@link #abortLaunches()}. Exact-success sequencing and terminal cleanup belong to the
+     * framework-composed flow. Invalidated work must not overwrite a later shared request.</p>
      */
     private final class LaunchTask implements Task {
         private final long generationAtCreation;
-        private final Task spinUp;
         private final Task launchFlow;
 
         private boolean startAttempted;
         private boolean started;
-        private boolean complete;
-        private boolean cleanupAttempted;
-        private TaskOutcome outcome = TaskOutcome.NOT_DONE;
+        private boolean invalidated;
 
         private LaunchTask(long generationAtCreation) {
             this.generationAtCreation = generationAtCreation;
 
             ReferenceFlywheels.Status[] statusBeforeRequest = {null};
-            spinUp = Tasks.sequence(
+            Task spinUp = Tasks.sequence(
                     Tasks.runOnce(() -> {
                         statusBeforeRequest[0] = flywheels.status();
                         flywheels.setVelocityTicksPerSec(launchVelocityTicksPerSec);
@@ -290,7 +288,9 @@ public final class ReferenceLauncherMechanism
                     Tasks.runOnce(ReferenceLauncherMechanism.this::enqueueTransferPulse),
                     Tasks.waitForSeconds(transferDurationSec));
 
-            launchFlow = Tasks.branchOnOutcome(spinUp, feed, Tasks.noop());
+            launchFlow = Tasks.withCleanup(
+                    Tasks.sequence(spinUp, feed),
+                    this::cleanupIfGenerationStillOwned);
         }
 
         /** {@inheritDoc} */
@@ -301,8 +301,7 @@ public final class ReferenceLauncherMechanism
             started = true;
 
             if (generationAtCreation != launchGeneration) {
-                complete = true;
-                outcome = TaskOutcome.CANCELLED;
+                invalidated = true;
                 return;
             }
 
@@ -317,10 +316,15 @@ public final class ReferenceLauncherMechanism
                         "Reference launch Task cannot be updated before start(clock). Start the "
                                 + "fresh Task returned by ReferenceLauncher.launchOne().");
             }
-            if (complete) {
+            if (invalidated) {
+                // A failed invalidation cleanup remains the decorator's retained failure.
+                launchFlow.getOutcome();
                 return;
             }
-            Objects.requireNonNull(clock, "Reference launch update clock is required");
+            if (launchFlow.isComplete()) {
+                launchFlow.update(clock);
+                return;
+            }
 
             if (generationAtCreation != launchGeneration) {
                 finishInvalidated();
@@ -333,89 +337,61 @@ public final class ReferenceLauncherMechanism
                 finishInvalidated();
                 return;
             }
-
-            if (spinUp.isComplete() && spinUp.getOutcome() == TaskOutcome.TIMEOUT) {
-                finishAndCleanup(TaskOutcome.TIMEOUT, true);
-                return;
-            }
-
-            if (launchFlow.isComplete()) {
-                TaskOutcome flowOutcome = launchFlow.getOutcome();
-                if (flowOutcome != TaskOutcome.SUCCESS
-                        && flowOutcome != TaskOutcome.TIMEOUT
-                        && flowOutcome != TaskOutcome.CANCELLED) {
-                    throw new IllegalStateException(
-                            "Reference launch flow completed with unsupported outcome "
-                                    + flowOutcome + ". Create a fresh launch Task.");
-                }
-                finishAndCleanup(flowOutcome, false);
-            }
         }
 
         /** {@inheritDoc} */
         @Override
         public void cancel() {
-            if (!started || complete) {
+            if (!started || invalidated || launchFlow.isComplete()) {
                 return;
             }
             if (generationAtCreation != launchGeneration) {
                 finishInvalidated();
                 return;
             }
-            finishAndCleanup(TaskOutcome.CANCELLED, true);
+            launchFlow.cancel();
         }
 
         /** {@inheritDoc} */
         @Override
         public boolean isComplete() {
-            return complete;
+            return invalidated || launchFlow.isComplete();
         }
 
         /** {@inheritDoc} */
         @Override
         public TaskOutcome getOutcome() {
-            return complete ? outcome : TaskOutcome.NOT_DONE;
+            // Never hide a failed cleanup behind this shell's invalidated classification.
+            TaskOutcome flowOutcome = launchFlow.getOutcome();
+            return invalidated ? TaskOutcome.CANCELLED : flowOutcome;
         }
 
         /** {@inheritDoc} */
         @Override
         public String getDebugName() {
-            return complete
-                    ? "ReferenceLauncher.launchOne(DONE:" + outcome + ")"
+            return invalidated
+                    ? "ReferenceLauncher.launchOne(DONE:CANCELLED)"
                     : "ReferenceLauncher.launchOne";
         }
 
-        /** Publish terminal state first, then cancel child work and clean every owned request. */
-        private void finishAndCleanup(TaskOutcome terminalOutcome, boolean cancelFlow) {
-            complete = true;
-            outcome = terminalOutcome;
-
-            RuntimeException primaryFailure = null;
-            if (cancelFlow) {
-                try {
-                    launchFlow.cancel();
-                } catch (RuntimeException failure) {
-                    primaryFailure = failure;
-                }
-            }
-
-            if (primaryFailure == null) {
-                cleanupOnce();
-            } else {
-                RuntimeException retainedFailure = CleanupActions.attemptAllAfterFailure(
-                        primaryFailure,
-                        this::cleanupOnce);
-                throw retainedFailure;
-            }
-        }
-
-        /** Run task-terminal request cleanup at most once. */
-        private void cleanupOnce() {
-            if (cleanupAttempted) {
+        /** Report cached shell facts without interpreting a failed or pending cleanup as an outcome. */
+        @Override
+        public void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) {
                 return;
             }
-            cleanupAttempted = true;
-            requestActiveMatchIdle();
+            String p = (prefix == null || prefix.isEmpty()) ? "referenceLaunch" : prefix;
+            dbg.addData(p + ".startAttempted", startAttempted)
+                    .addData(p + ".started", started)
+                    .addData(p + ".invalidated", invalidated);
+            launchFlow.debugDump(dbg, p + ".flow");
+        }
+
+        /** The decorator calls once; robot ownership decides whether shared cleanup is still valid. */
+        private void cleanupIfGenerationStillOwned() {
+            if (generationAtCreation == launchGeneration) {
+                requestActiveMatchIdle();
+            }
         }
 
         /**
@@ -427,8 +403,7 @@ public final class ReferenceLauncherMechanism
          * after {@link #abortLaunches()}; that abort already established the owned cleanup state.</p>
          */
         private void finishInvalidated() {
-            complete = true;
-            outcome = TaskOutcome.CANCELLED;
+            invalidated = true;
             launchFlow.cancel();
         }
 

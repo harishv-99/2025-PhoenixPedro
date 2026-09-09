@@ -26,6 +26,7 @@ import edu.ftcsushi.robots.phoenix.PhoenixCapabilities;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -450,22 +451,51 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         scoringAttempt.completeWith(TaskOutcome.SUCCESS);
         clock.nextCycle(0.01);
 
-        try {
-            runner.update(clock.clock());
-            fail("expected live-return build failure");
-        } catch (IllegalStateException actual) {
-            assertSame(buildFailure, actual.getCause());
-            assertTrue(actual.getMessage().contains("liveReturn"));
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> runner.update(clock.clock()));
+        assertSame(buildFailure, failure.getCause());
+        assertTrue(failure.getMessage().contains("liveReturn"));
 
         assertTrue(runner.isIdle());
         assertEquals(TaskOutcome.CANCELLED, routine.getOutcome());
         assertEquals(0, returnFollower.followCount);
         assertEquals(1, scoring.flywheelDisableCount);
+        assertSame(failure, assertThrows(IllegalStateException.class, liveReturn::getRouteStatus));
+        assertSame(failure, assertThrows(IllegalStateException.class, liveReturn::getOutcome));
         CapturingDebugSink sink = new CapturingDebugSink();
         routine.debugDump(sink, "auto.policy");
         assertEquals("FAILED", sink.values.get("auto.policy.trigger"));
         assertEquals(RouteStatus.FAILED, sink.values.get("auto.policy.lastRouteStatus"));
+        assertEquals(Boolean.TRUE, sink.values.get("auto.policy.active.hasLifecycleFailure"));
+        assertSame(failure, assertThrows(IllegalStateException.class, liveReturn::getOutcome));
+        assertEquals(0, returnFollower.followCount);
+    }
+
+    @Test
+    public void outboundStartFailureStillAllowsCachedRoutineAndChildDiagnostics() {
+        Fixture fixture = new Fixture();
+        TaskRunner runner = new TaskRunner();
+        IllegalStateException failure = new IllegalStateException("outbound start failed");
+        fixture.outboundFollower.followFailure = failure;
+        runner.enqueue(fixture.routine);
+        runner.update(fixture.clock.clock());
+        fixture.clock.nextCycle(0.01);
+
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> runner.update(fixture.clock.clock())));
+
+        assertTrue(runner.isIdle());
+        assertTrue(fixture.routine.isComplete());
+        assertEquals(0, fixture.returnFollower.followCount);
+        assertFullCleanup(fixture);
+        CapturingDebugSink sink = new CapturingDebugSink();
+        fixture.routine.debugDump(sink, "auto.policy");
+        assertEquals(Boolean.TRUE,
+                sink.values.get("auto.policy.prePark.active.hasLifecycleFailure"));
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                fixture.outboundRoute::getRouteStatus));
+        assertEquals(1, fixture.outboundFollower.followCount);
+        assertEquals(0, fixture.returnFollower.followCount);
     }
 
     @Test
@@ -682,7 +712,11 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         for (Object status : malformedRouteStatuses) {
             Fixture fixture = new Fixture();
             TaskRunner runner = startWithRunner(fixture);
-            setPrivate(fixture.outboundRoute, "complete", true);
+            // End through the real lifecycle first. Corrupt only cached route evidence to
+            // exercise Phoenix's defensive role validation, not AbstractTask's private flags.
+            fixture.outboundFollower.finish(RouteStatus.COMPLETED);
+            assertEquals(RouteStatus.COMPLETED, fixture.outboundRoute.getRouteStatus());
+            assertEquals(TaskOutcome.SUCCESS, fixture.outboundRoute.getOutcome());
             setPrivate(fixture.outboundRoute, "routeStatus", status);
             fixture.clock.nextCycle(0.01);
 
