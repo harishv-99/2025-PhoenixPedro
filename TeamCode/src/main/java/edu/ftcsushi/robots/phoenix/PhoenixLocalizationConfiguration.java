@@ -65,7 +65,6 @@ final class PhoenixLocalizationConfiguration {
     }
 
     private static void configureLimelight(LimelightFieldPoseEstimator.Config limelight) {
-        limelight.mode = LimelightFieldPoseEstimator.Config.Mode.BOTPOSE;
         limelight.maxResultAgeSec = 0.25;
         limelight.minVisibleTags = 1;
         limelight.singleTagQuality = 0.55;

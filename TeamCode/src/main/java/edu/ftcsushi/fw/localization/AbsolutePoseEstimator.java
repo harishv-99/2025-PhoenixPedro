@@ -23,10 +23,17 @@ import edu.ftcsushi.fw.core.time.LoopClock;
  * {@link MotionPredictor} for the predictor side and on {@code AbsolutePoseEstimator} for the
  * correction side.</p>
  *
+ * <p><b>Absolute is a coordinate description, not an independence guarantee.</b> Two field-pose
+ * estimates can share the same heading input, camera observations, calibration, or prior
+ * corrections, and therefore share an error. This interface and {@link PoseEstimate} do not
+ * describe those dependencies. An assembler choosing a correction source must check that its
+ * evidence fits the consuming estimator's model; freshness or agreement alone cannot establish
+ * that it provides independent confirmation.</p>
+ *
  * <p>Common examples:</p>
  * <ul>
  *   <li>{@code AprilTagPoseEstimator}: absolute pose from raw AprilTag observations</li>
- *   <li>{@code LimelightFieldPoseEstimator}: absolute pose from Limelight botpose / MegaTag</li>
+ *   <li>{@code LimelightFieldPoseEstimator}: absolute pose from standard Limelight botpose</li>
  *   <li>{@code PinpointOdometryPredictor}: implements {@link MotionPredictor} because it provides
  *       both an absolute odometry pose and incremental motion deltas</li>
  * </ul>

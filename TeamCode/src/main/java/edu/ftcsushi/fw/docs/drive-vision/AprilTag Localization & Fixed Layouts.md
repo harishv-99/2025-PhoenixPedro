@@ -16,9 +16,9 @@ For a first reading, follow [trusted fixed tags](<#1-detectable-tags-vs-trusted-
 [the three estimation roles](<#2-localization-roles-absolute-pose-vs-motion-prediction>),
 [camera ownership](<#3-vision-lane-ownership>), and
 [the webcam/raw-tag baseline](<#51-webcam-raw-apriltag-correction>). **Odometry** estimates movement
-from wheel/rotation measurements; **correction** uses an independent field observation to adjust
+from wheel/rotation measurements; **correction** uses a field observation to adjust
 that estimate. The named `FUSION` baseline adjusts the movement-based estimate using accepted
-independent pose corrections. History, direct Limelight field pose, and the uncertainty-modeling
+field-pose corrections. History, direct Limelight field pose, and the uncertainty-modeling
 EKF alternative
 are optional depth, not extra prerequisites for understanding that baseline. No hardware is needed
 to read the model; physical calibration is a separate gate.
@@ -99,7 +99,9 @@ Sushi defines three distinct localization roles.
 
 ### 2.1 `AbsolutePoseEstimator`
 
-An `AbsolutePoseEstimator` outputs an absolute robot pose in field coordinates.
+An `AbsolutePoseEstimator` outputs an absolute robot pose in field coordinates. **Absolute** names
+that coordinate frame: it does not mean error-free or independent of the movement estimate. For
+example, two estimates can both be wrong because they use the same incorrect camera placement.
 
 Examples:
 
@@ -191,8 +193,9 @@ Both capabilities share the owner's one physical `Config.cameraMount`.
 
 `camera.aprilTags()` returns a stable, non-closeable `AprilTagVision` view. Localization and tag
 selection borrow this view; they cannot close the camera. The Limelight view is specifically
-`FtcLimelightAprilTagVision`, which also exposes confirmed tag results and the narrow field-yaw
-write needed for optional MegaTag2 estimation. The root alone retains and closes `camera`.
+`FtcLimelightAprilTagVision`, which also exposes confirmed tag results and a narrow field-yaw
+write for advanced vendor diagnostics. Ordinary localization does not submit that yaw. The root
+alone retains and closes `camera`.
 
 Those owners preserve the hardware's real differences: webcam processors can coexist, while a
 Limelight runs one pipeline at a time. Configure the Limelight AprilTag pipeline in
@@ -436,6 +439,11 @@ Everything above `AprilTagVision` still consumes the same `AprilTagSensor` seam.
 
 If you want corrected/global localization to trust the Limelight's direct full-field pose instead of Sushi's raw-tag solve:
 
+First configure Full 3D processing and the robot-relative camera placement on the Limelight, and
+verify its field map, as described in the [FTC setup instructions](<https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming>).
+The device's placement must agree with Sushi's `CameraMountConfig`; assigning that Java Config
+does not upload camera-placement settings to the device.
+
 ```java
 FtcOdometryAprilTagLocalizationLane.Config locCfg =
         FtcOdometryAprilTagLocalizationLane.Config.defaults();
@@ -444,8 +452,6 @@ locCfg.estimation.correctionSource.mode =
         FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
 locCfg.estimation.correctedEstimatorMode =
         FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
-locCfg.estimation.correctionSource.limelightFieldPose.mode =
-        LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
 locCfg.estimation.correctionSource.limelightFieldPose.maxResultAgeSec = 0.20;
 locCfg.estimation.correctionSource.limelightFieldPose.minVisibleTags = 2;
 locCfg.estimation.correctionSource.limelightFieldPose.degradeWhenMoving = true;
@@ -457,6 +463,12 @@ This gives you two absolute pose views side by side:
 - `localization.limelightFieldPoseEstimator()` — Limelight's direct device field pose
 
 and the corrected/global estimator will use the configured correction source.
+
+The direct source uses only Limelight's standard `botpose` (MegaTag1). There is no second pose-mode
+choice or automatic heading submission. An unavailable standard botpose stays unavailable even
+when a raw MegaTag2 result exists. The two pose views can share image or calibration errors; their
+agreement is not an independent accuracy check. See [shared evidence](<#check-whether-two-estimates-share-evidence>)
+when interpreting that comparison.
 
 ### 5.4 Reusing an external Auto predictor
 
@@ -597,6 +609,11 @@ That shared policy is used by:
 - guidance paths that temporarily solve a field pose from tags
 
 That keeps guidance and localization from drifting into subtly different AprilTag policies.
+
+When an observation already supplies a field pose, agreement with explicit camera/tag geometry
+allows the solver to select that candidate; it does not count the two alternatives as independent
+measurements. They can share the same image, mount, and field-layout mistakes. Compare against
+independently known robot placement before treating agreement as evidence of physical accuracy.
 
 ### Sharing solver tuning cleanly
 
@@ -856,7 +873,8 @@ Sushi's direct Limelight field-pose estimator is intentionally conservative:
 - visible-tag gating (`minVisibleTags`)
 - optional motion-aware quality degradation (`degradeWhenMoving`)
 - optional hard reject thresholds (`rejectWhenMovingTooFast`)
-- optional predictor yaw feed for MegaTag2-style direct pose modes when the active SDK supports it. Limelight's FTC API exposes both direct botpose access and a robot-orientation update hook for the MT2 path.
+- standard botpose only; the optional predictor supplies cached motion for these gates, not
+  heading for the camera's pose solve
 
 The FTC SDK returns an exact all-zero `Pose3D` when a Limelight pose array is absent. The Sushi
 owner treats that sentinel as unavailable, rather than accepting it as a confident field-origin or
@@ -864,9 +882,9 @@ camera-to-tag measurement.
 
 A usable SDK botpose also requires a non-null position, distance unit, and orientation, with all
 six components finite after conversion to inches/radians. Missing or non-finite structure publishes
-no pose. For MT2, Sushi wraps a finite predictor yaw before translating it to vendor degrees; a
-non-finite yaw publishes no pose and performs no orientation write. Invalid optional predictor
-motion is treated as unavailable rather than fabricated into a quality gate.
+no pose; a raw MT2 result cannot replace it. A claimed but invalid optional predictor motion delta
+also publishes no pose rather than being converted into a quality score. The direct estimator
+reads that cached motion; it does not advance the predictor or use its absolute heading.
 
 If direct Limelight field pose is unstable while moving:
 
@@ -879,6 +897,57 @@ If direct Limelight field pose is unstable while moving:
 One important ownership note: Sushi assumes the Limelight device is configured with a field map
 that matches the trusted `TagLayout` you intend to use. Keep those aligned whenever you use direct
 device field pose.
+
+### Check whether two estimates share evidence
+
+Suppose odometry thinks the robot faces slightly left of its true direction. If a camera solve
+borrows that heading, its answer can contain the same error. Feeding that answer back as a separate
+full-pose correction does not provide a second check on heading. The borrowed angle can also move
+the calculated X/Y position; discarding only the returned heading need not remove its influence.
+These related errors are called **correlated errors**. This diagram explains the dependency, not
+a supported Sushi correction recipe:
+
+```mermaid
+flowchart LR
+    accTitle: A borrowed heading can return the same error as a correction
+    accDescr: The movement estimate supplies its possibly biased heading to a camera solve. The camera combines that heading with an image and calibration facts. Treating its returned pose as an independent correction of the same movement estimate can reuse the original error.
+    P["Movement estimate<br/>possibly biased heading"] -->|borrowed heading| V["Camera solve<br/>using that heading"]
+    I["Tag image, field map<br/>and camera mount"] --> V
+    P --> C["Attempt to correct<br/>the movement estimate"]
+    V -->|returned full pose| C
+```
+
+Both paths into the final comparison depend on the original movement estimate. The diagram does
+not claim a measured error size or which submitted heading belongs to a particular image.
+Limelight's [FTC programming guide](<https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming>)
+shows the external orientation input used by MegaTag2. Sushi's `LimelightFieldPoseEstimator` uses
+standard botpose instead and never supplies predictor yaw, including when the localization lane
+updates it only as a diagnostic view. This is a boundary on the supported correction path, not
+evidence that MegaTag2 is physically inaccurate.
+
+Sharing a heading is only one way to share error. A direct camera pose and a raw-tag solve can
+agree because they use the same image, incorrect field map, or incorrect camera mount. Even
+several fresh images can retain that setup error. Freshness answers **when** evidence was acquired,
+not whether it provides an independent check. A high quality score or small modeled uncertainty
+likewise does not establish physical accuracy.
+
+Lower gains or quality can reduce an update's influence; they do not make its input independent.
+Setting Fusion's heading gain to zero also does not restrict its full-pose initialization or
+remove heading-dependent X/Y error. Limelight's
+[MegaTag2 guide](<https://docs.limelightvision.io/docs/docs-limelight/pipeline-apriltag/apriltag-robot-localization-megatag2>)
+gives returned heading negligible weight in an FRC example using a different estimator, WPILib.
+Those numbers are not a correlation fix to copy into Sushi's full-pose Fusion or EKF. A custom
+correction source needs a justified measurement model; neither core estimator automatically
+discovers what its source borrowed.
+
+For advanced investigation, the existing `FtcLimelightVisionLane.aprilTags()` view is a borrowed
+`FtcLimelightAprilTagVision`. Its `confirmedAprilTagResult(clock).botposeMt2()` exposes the raw
+vendor pose when available, and `updateRobotFieldYawRad(...)` explicitly submits field yaw through
+the same camera owner. The returned pose and orientation-write acceptance do not identify which
+heading formed which camera frame; calling the write before the read in one loop cannot establish
+that connection. These are diagnostic access points, not an MT2 full-correction recipe. Retain the
+existing camera owner and shared clock; physical validation needs paired observations and an
+independently measured pose, not just agreement between these software views.
 
 ---
 
@@ -937,10 +1006,12 @@ reading comes from the estimator being tested.
 
 - **Question:** how do movement-only, gain-fusion, and EKF estimates behave under these known faults?
 - **Keep real:** the gain-fusion and EKF implementations, their admission/replay rules, and one real
-  framework clock advanced by the test.
-- **Replace:** physical movement, odometry, and camera-derived poses with explicit scripted values
-  and capture/delivery times. Three independent predictors and two independent correction sources
-  prevent one comparison branch from changing another's input.
+  framework clock advanced by the test. The named field-map cases also run the real fixed-tag solver.
+- **Replace:** physical movement, odometry, and camera inputs with scripted values and capture/delivery
+  times. Most correction poses are authored directly; the field-map cases compute them with the
+  real solver from authored tag observations. Three separate predictor instances and two separate
+  correction-source instances prevent one comparison branch from changing another's input;
+  separate objects do not remove shared measurement errors.
 - **Observe:** geometry error, evidence age and availability, recovery, correction counters, and
   EKF's modeled uncertainty.
 - **Cannot conclude:** real camera performance, odometry calibration, physical accuracy, or which
@@ -959,7 +1030,10 @@ Each cycle publishes the scheduled input, updates the real owners, then records 
 delayed camera result retains its capture time; repeatedly reading it does not make it a new frame.
 The scenarios cover clean movement/turns/holds, accumulated drift and a slip-like jump, delayed or
 missing corrections, isolated outliers and persistent bias, frozen readings, reset/history
-boundaries, and different sampling schedules.
+boundaries, and different sampling schedules. Shared-evidence cases additionally compare authored
+borrowed-heading and common-bias inputs with independently authored correction controls. These
+inputs illustrate dependence between measurements; they do not emulate native MegaTag2 processing
+or measure a physical camera's correlation.
 
 The estimator comparison starts from the framework's numeric defaults, with correction age
 admission set to 0.60 seconds and corrected-pose pushback disabled; retained predictor replay history
@@ -968,9 +1042,11 @@ limit and the default 0.50-second retention; those observers do not supply estim
 These are explicit software-fixture choices, not recommended hardware settings. Scoring checkpoints
 are 0.10 seconds apart. The illustrative recovery rule requires present-time error no greater than
 0.75 inches and 4 degrees (about 0.0698 radians), with evidence no older than 0.15 seconds, for a
-0.20-second window of passing sampled observations after the named fault ends. This does not
-establish behavior between samples. The test constants are the place to inspect or deliberately
-change these comparison criteria.
+0.20-second window of passing sampled observations after the named recovery-start boundary.
+For the correction comparisons, that boundary marks the first correction or reacquisition being
+evaluated; the shared-bias cases deliberately keep their bias present afterward. A passing window
+does not establish behavior between samples. The test constants are the place to inspect or deliberately change these
+comparison criteria.
 
 | Reported fact | Meaning and limit |
 |---|---|
@@ -978,7 +1054,7 @@ change these comparison criteria.
 | Present-time error | Compare with truth at the current loop; this includes the effect of old information. A pose can be accurate for its old timestamp yet wrong for where the robot is now. |
 | Availability, age, and coverage | Report missing estimates and missing truth separately. Neither is a zero-error sample. Coverage says how many scoring points actually support the error summary. |
 | RMS and maximum error | RMS is the square root of the average squared error; it summarizes error over the scored points. Maximum is the worst scored error. Comparisons use common physical-time checkpoints, not unequal counts of loop samples. |
-| Recovery time | After a named fault-end boundary, require a sustained window of available, sufficiently recent estimates within illustrative error bounds. Missing or out-of-bound evidence interrupts that window; an uncompleted requested window is `not-recovered`, not zero seconds. |
+| Recovery time | After the named recovery-start boundary, require a sustained window of available, sufficiently recent estimates within illustrative error bounds. Missing or out-of-bound evidence interrupts that window; an uncompleted requested window is `not-recovered`, not zero seconds. |
 | Correction counters | Acceptance, rejection, replay, duplicate skips, and out-of-order skips describe software classifications. Authored fault names are not rejection reasons reported by the estimator. Duplicate counts depend on polling frequency and are not unique image counts. |
 | EKF modeled uncertainty | Its reported standard deviations describe its internal uncertainty model, not independently measured accuracy or calibrated probability. Position standard deviation is `sqrt((Pxx + Pyy) / 2)`, not a radial confidence bound. |
 

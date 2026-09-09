@@ -11,11 +11,15 @@ import java.util.Locale;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
+import edu.ftcsushi.fw.field.SimpleTagLayout;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.MotionDelta;
 import edu.ftcsushi.fw.localization.MotionPredictor;
 import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.PoseEstimate;
+import edu.ftcsushi.fw.localization.apriltag.FixedTagFieldPoseSolver;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -41,6 +45,7 @@ public final class LocalizationRobustnessScenarioTest {
     private static final double RECOVERY_HEADING_RAD = Math.toRadians(4.0);
     private static final double RECOVERY_MAX_AGE_SEC = 0.15;
     private static final double RECOVERY_HOLD_SEC = 0.20;
+    private static final double SHARED_YAW_BIAS_RAD = Math.toRadians(10.0);
     private static final String[] BRANCHES = {"RAW", "FUSION", "EKF"};
 
     @Test
@@ -386,8 +391,159 @@ public final class LocalizationRobustnessScenarioTest {
         result.print();
     }
 
+    @Test
+    public void reusedHeadingCanIncreaseConfidenceWithoutRemovingItsKnownBias() {
+        Run shared = run(periodic("shared-yaw-bias", Path.STILL, 2000, 50, 50, 200, 0,
+                Fault.SHARED_YAW, 0.2), false, true);
+        Run independent = run(periodic("independent-yaw-control", Path.STILL, 2000, 50, 50, 200, 0,
+                Fault.INDEPENDENT_YAW, 0.2), false, true);
+        assertEquals(shared.signature(), run(periodic("shared-yaw-bias", Path.STILL,
+                2000, 50, 50, 200, 0, Fault.SHARED_YAW, 0.2), true, true).signature());
+        for (int branch = 0; branch < 3; branch++) {
+            assertEquals(SHARED_YAW_BIAS_RAD, shared.last().samples[branch].headingError, EPS);
+            assertTrue("repeated agreement with borrowed yaw cannot recover actual heading",
+                    Double.isNaN(shared.metrics(branch).recoverySec));
+        }
+        for (int branch = 1; branch <= 2; branch++) {
+            assertEquals("ordinary updates follow a predictor-only initial anchor", 0,
+                    shared.at(0).samples[branch].counts.accepted);
+            assertEquals(10, shared.last().samples[branch].counts.accepted);
+            assertTrue("independent yaw observations correct this deliberately simple bias",
+                    independent.last().samples[branch].headingError < Math.toRadians(1));
+            assertTrue(Double.isFinite(independent.metrics(branch).recoverySec));
+        }
+        assertEquals("Fusion can report maximum heuristic quality despite the shared error", 1.0,
+                shared.last().samples[1].quality, EPS);
+        assertTrue("zero heading innovation still reduces EKF modeled uncertainty",
+                shared.at(200).samples[2].headingStd < shared.at(150).samples[2].headingStd);
+        assertTrue("modeled spread is not the known ten-degree error",
+                shared.last().samples[2].headingStd < shared.last().samples[2].headingError / 4);
+        assertEquals("the independent control has the same faulty raw heading",
+                SHARED_YAW_BIAS_RAD, independent.last().samples[0].headingError, EPS);
+        shared.print();
+        independent.print();
+    }
+
+    @Test
+    public void freshSharedFramesDifferFromDuplicatesThroughDelayDropoutAndReacquisition() {
+        Point borrowed = new Point(0, 0, SHARED_YAW_BIAS_RAD);
+        Run fresh = run(periodic("shared-yaw-fresh-frames", Path.STILL, 2000, 50, 50, 200, 0,
+                Fault.SHARED_YAW, 0.2), false, true);
+        Run retained = run(scheduled("shared-yaw-one-retained-frame", Path.STILL,
+                2000, 50, 50, Fault.SHARED_YAW,
+                Collections.singletonList(frame("one-capture", 200, 200, borrowed)), 0.2), false, true);
+        List<Frame> delayed = new ArrayList<>();
+        for (int capture : new int[]{200, 400, 1200, 1400, 1600, 1800})
+            delayed.add(frame("shared-capture-" + capture, capture, capture + 100, borrowed));
+        Run dropout = run(scheduled("shared-yaw-delayed-dropout", Path.STILL,
+                2000, 50, 50, Fault.SHARED_YAW, delayed, 1.3), false, true);
+        for (int branch = 1; branch <= 2; branch++) {
+            assertEquals(1, retained.last().samples[branch].counts.accepted);
+            assertTrue(retained.last().samples[branch].counts.duplicate > 0);
+            assertEquals(0.2, retained.last().samples[branch].counts.lastAcceptedCaptureSec, EPS);
+            assertEquals(2, dropout.at(500).samples[branch].counts.accepted);
+            assertEquals(2, dropout.at(1250).samples[branch].counts.accepted);
+            assertEquals(3, dropout.at(1300).samples[branch].counts.accepted);
+            assertEquals(1.2, dropout.at(1300).samples[branch].counts.lastAcceptedCaptureSec, EPS);
+            assertTrue(dropout.at(1300).samples[branch].counts.replayed > 0);
+            assertEquals(0, dropout.last().samples[branch].counts.rejected);
+            assertEquals(SHARED_YAW_BIAS_RAD, dropout.last().samples[branch].headingError, EPS);
+            assertTrue(Double.isNaN(dropout.metrics(branch).recoverySec));
+        }
+        assertTrue("new correlated frames repeatedly tighten the independent-noise model",
+                fresh.last().samples[2].headingStd < retained.last().samples[2].headingStd);
+        assertTrue("reacquisition raises quality without fixing the borrowed heading",
+                dropout.at(1300).samples[1].quality > dropout.at(1250).samples[1].quality);
+        assertTrue("reacquisition also reduces modeled heading spread, not the actual bias",
+                dropout.at(1300).samples[2].headingStd < dropout.at(1250).samples[2].headingStd);
+        fresh.print();
+        retained.print();
+        dropout.print();
+    }
+
+    @Test
+    public void borrowedYawCanBiasPositionEvenWhenTheHeadingResidualIsZero() {
+        Run result = run(periodic("borrowed-yaw-dependent-position", Path.STILL,
+                2000, 50, 50, 200, 0, Fault.BORROWED_YAW_POSITION, 0.2), false, true);
+        // Authored geometry: actual robot at origin, landmark sixty inches directly ahead.
+        // Reusing yaw +10 degrees rotates that correct relative vector into the wrong field vector.
+        double wrongX = 60 * (1 - Math.cos(SHARED_YAW_BIAS_RAD));
+        double wrongY = -60 * Math.sin(SHARED_YAW_BIAS_RAD);
+        assertEquals(0.0, result.last().samples[0].positionError, EPS);
+        assertEquals(0.25 * wrongX, result.at(200).samples[1].pose.x, EPS);
+        assertEquals(0.25 * wrongY, result.at(200).samples[1].pose.y, EPS);
+        for (int branch = 1; branch <= 2; branch++) {
+            assertEquals(10, result.last().samples[branch].counts.accepted);
+            assertEquals(0, result.last().samples[branch].counts.rejected);
+            assertEquals(SHARED_YAW_BIAS_RAD, result.last().samples[branch].headingError, EPS);
+            assertTrue("position starts accurate but is pulled toward heading-dependent error",
+                    result.last().samples[branch].positionError > 5.0);
+            assertTrue(result.last().samples[branch].quality > 0.75);
+        }
+        assertTrue(result.last().samples[2].positionStd < result.last().samples[2].positionError / 4);
+        result.print();
+    }
+
+    @Test
+    public void realSolverCommonLayoutErrorFeedsTheSameComparisonPipeline() {
+        List<Frame> mistakenFrames = new ArrayList<>();
+        List<Frame> correctFrames = new ArrayList<>();
+        for (int capture = 200; capture <= 2000; capture += 200) {
+            // The same observed tag geometry and robot truth are used in both solves. Only the
+            // authored map is shifted by (3,4) inches in the mistaken case; this is not SDK output.
+            FixedTagFieldPoseSolver.Result mistaken = solveAuthoredLayout(3, 4);
+            FixedTagFieldPoseSolver.Result correct = solveAuthoredLayout(0, 0);
+            assertEquals(3.0, mistaken.fieldToRobotPose.xInches, EPS);
+            assertEquals(4.0, mistaken.fieldToRobotPose.yInches, EPS);
+            assertEquals(0.0, correct.fieldToRobotPose.xInches, EPS);
+            assertEquals(0.0, correct.fieldToRobotPose.yInches, EPS);
+            assertEquals("common displacement does not reduce within-frame agreement quality",
+                    correct.quality, mistaken.quality, EPS);
+            mistakenFrames.add(solvedFrame("shifted-map-" + capture, capture, mistaken));
+            correctFrames.add(solvedFrame("correct-map-" + capture, capture, correct));
+        }
+        Run mistaken = run(scheduled("real-solver-shared-layout-error", Path.STILL,
+                2000, 50, 50, Fault.CLEAN, mistakenFrames, Double.NaN), false, true);
+        Run correct = run(scheduled("real-solver-correct-layout-control", Path.STILL,
+                2000, 50, 50, Fault.CLEAN, correctFrames, Double.NaN), false, true);
+        for (int branch = 1; branch <= 2; branch++) {
+            assertEquals(10, mistaken.last().samples[branch].counts.accepted);
+            assertEquals(0, mistaken.last().samples[branch].counts.rejected);
+            assertTrue(mistaken.last().samples[branch].positionError > 3.0);
+            assertEquals(0.0, correct.last().samples[branch].positionError, EPS);
+        }
+        assertEquals(0.0, mistaken.last().samples[0].positionError, EPS);
+        mistaken.print();
+        correct.print();
+    }
+
+    /** Real geometry-only solver with independent, explicit tag coordinates and planar truth. */
+    private static FixedTagFieldPoseSolver.Result solveAuthoredLayout(double shiftX, double shiftY) {
+        SimpleTagLayout layout = new SimpleTagLayout();
+        List<AprilTagObservation> observations = new ArrayList<>();
+        double[][] tags = {{24, -6}, {30, 0}, {24, 6}};
+        for (int i = 0; i < tags.length; i++) {
+            layout.addPose(i + 1, new Pose3d(tags[i][0] + shiftX, tags[i][1] + shiftY, 0, 0, 0, 0));
+            observations.add(AprilTagObservation.target(i + 1,
+                    new Pose3d(tags[i][0], tags[i][1], 0, 0, 0, 0)));
+        }
+        FixedTagFieldPoseSolver.Result result = new FixedTagFieldPoseSolver(
+                FixedTagFieldPoseSolver.Config.defaults()).solve(observations, layout, CameraMountConfig.identity());
+        assertTrue(result.hasPose);
+        assertEquals(3, result.acceptedCount);
+        return result;
+    }
+
+    /** Preserve the real solver's quality instead of replacing it with the scripted unit score. */
+    private static Frame solvedFrame(String id, int capture, FixedTagFieldPoseSolver.Result solved) {
+        return new Frame(id, capture, capture,
+                new Point(solved.fieldToRobotPose.xInches, solved.fieldToRobotPose.yInches,
+                        solved.fieldToRobotPose.yawRad), solved.quality);
+    }
+
     private enum Fault { CLEAN, DRIFT_SLIP_JITTER, SLIP_THEN_REACQUIRE, OUTLIER,
-        BIASED_CORRECTION, FROZEN_CAMERA, FROZEN_PREDICTOR }
+        BIASED_CORRECTION, FROZEN_CAMERA, FROZEN_PREDICTOR, SHARED_YAW,
+        INDEPENDENT_YAW, BORROWED_YAW_POSITION }
 
     /** Authored field coordinates; linear pieces are the declared synthetic truth, not physics. */
     private enum Path {
@@ -438,9 +594,15 @@ public final class LocalizationRobustnessScenarioTest {
         final String id;
         final int captureMs, deliveryMs;
         final Point point;
+        final double quality;
         Frame(String id, int captureMs, int deliveryMs, Point point) {
+            this(id, captureMs, deliveryMs, point, 1.0);
+        }
+        Frame(String id, int captureMs, int deliveryMs, Point point, double quality) {
             assertTrue("a delivered observation cannot be captured afterward", captureMs <= deliveryMs);
-            this.id = id; this.captureMs = captureMs; this.deliveryMs = deliveryMs; this.point = point;
+            assertTrue(Double.isFinite(quality) && quality >= 0 && quality <= 1);
+            this.id = id; this.captureMs = captureMs; this.deliveryMs = deliveryMs;
+            this.point = point; this.quality = quality;
         }
     }
 
@@ -462,12 +624,12 @@ public final class LocalizationRobustnessScenarioTest {
         final String name;
         final Path truth;
         final List<Step> steps;
-        final double faultEndSec;
-        Scenario(String name, Path truth, List<Step> steps, double faultEndSec) {
+        final double recoveryStartSec;
+        Scenario(String name, Path truth, List<Step> steps, double recoveryStartSec) {
             assertTrue("scenario has a fixed bounded number of loop rows", steps.size() <= 400);
             this.name = name; this.truth = truth;
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
-            this.faultEndSec = faultEndSec;
+            this.recoveryStartSec = recoveryStartSec;
         }
     }
 
@@ -479,28 +641,32 @@ public final class LocalizationRobustnessScenarioTest {
 
     /** Schedules captures separately from loop and predictor sampling; no random draws during polling. */
     private static Scenario periodic(String name, Path path, int endMs, int loopMs, int predictorMs,
-                                     int cameraMs, int delayMs, Fault fault, double faultEndSec) {
+                                     int cameraMs, int delayMs, Fault fault, double recoveryStartSec) {
         List<Frame> frames = new ArrayList<>();
         if (cameraMs > 0) for (int capture = 0; capture <= endMs; capture += cameraMs) {
             if (fault == Fault.SLIP_THEN_REACQUIRE && capture > 200 && capture < 1000) continue;
             if (fault == Fault.FROZEN_CAMERA && capture > 1000) continue;
             if (fault == Fault.BIASED_CORRECTION && capture == 0) continue;
+            if (hasBiasedPredictorYaw(fault) && capture == 0) continue;
             Point truth = path.at(capture / 1000.0);
             Point observation = truth;
             if (fault == Fault.OUTLIER && capture == 1000)
                 observation = new Point(truth.x + 100, truth.y, truth.yaw);
             if (fault == Fault.BIASED_CORRECTION)
                 observation = new Point(truth.x + 2, truth.y, truth.yaw + Math.toRadians(5));
+            if (fault == Fault.SHARED_YAW)
+                observation = new Point(truth.x, truth.y, truth.yaw + SHARED_YAW_BIAS_RAD);
+            if (fault == Fault.BORROWED_YAW_POSITION) observation = locateUsingBorrowedYaw(truth);
             int delay = delayMs;
             if (fault == Fault.DRIFT_SLIP_JITTER) delay += new int[]{0, 100, 50}[capture / cameraMs % 3];
             frames.add(frame("capture-" + capture, capture, capture + delay, observation));
         }
-        return scheduled(name, path, endMs, loopMs, predictorMs, fault, frames, faultEndSec);
+        return scheduled(name, path, endMs, loopMs, predictorMs, fault, frames, recoveryStartSec);
     }
 
     /** Freezes the observed raw path and latest-delivered-frame rule before any owner is polled. */
     private static Scenario scheduled(String name, Path path, int endMs, int loopMs, int predictorMs,
-                                      Fault fault, List<Frame> frames, double faultEndSec) {
+                                      Fault fault, List<Frame> frames, double recoveryStartSec) {
         List<Frame> deliveries = new ArrayList<>(frames);
         // Stable sort preserves authored last-arrival order for equal delivery times.
         deliveries.sort((a, b) -> Integer.compare(a.deliveryMs, b.deliveryMs));
@@ -516,6 +682,8 @@ public final class LocalizationRobustnessScenarioTest {
                         1.03 * truth.y - 0.10 * ms / 1000.0, truth.yaw + 0.01 * ms / 1000.0);
                 if (fault == Fault.SLIP_THEN_REACQUIRE && ms >= 500)
                     measured = new Point(truth.x + 3, truth.y, truth.yaw);
+                if (hasBiasedPredictorYaw(fault))
+                    measured = new Point(truth.x, truth.y, truth.yaw + SHARED_YAW_BIAS_RAD);
                 predictor = sample(ms, measured);
             }
             List<Frame> arrived = new ArrayList<>();
@@ -523,11 +691,29 @@ public final class LocalizationRobustnessScenarioTest {
                 arrived.add(deliveries.get(nextFrame++));
             steps.add(step(ms, predictor, arrived));
         }
-        return new Scenario(name, path, steps, faultEndSec);
+        return new Scenario(name, path, steps, recoveryStartSec);
+    }
+
+    private static boolean hasBiasedPredictorYaw(Fault fault) {
+        return fault == Fault.SHARED_YAW || fault == Fault.INDEPENDENT_YAW
+                || fault == Fault.BORROWED_YAW_POSITION;
+    }
+
+    /** Scalar landmark geometry only: no claim about a vendor's image-processing algorithm. */
+    private static Point locateUsingBorrowedYaw(Point truth) {
+        double landmarkX = 60, landmarkY = 0;
+        double trueC = Math.cos(truth.yaw), trueS = Math.sin(truth.yaw);
+        double fieldX = landmarkX - truth.x, fieldY = landmarkY - truth.y;
+        double observedForward = trueC * fieldX + trueS * fieldY;
+        double observedLeft = -trueS * fieldX + trueC * fieldY;
+        double borrowedYaw = truth.yaw + SHARED_YAW_BIAS_RAD;
+        double c = Math.cos(borrowedYaw), s = Math.sin(borrowedYaw);
+        return new Point(landmarkX - (c * observedForward - s * observedLeft),
+                landmarkY - (s * observedForward + c * observedLeft), borrowedYaw);
     }
 
     private static Run run(Scenario scenario, boolean reverse, boolean repeatSameCycle) {
-        Fixture fixture = new Fixture(scenario.name, scenario.truth, scenario.faultEndSec);
+        Fixture fixture = new Fixture(scenario.name, scenario.truth, scenario.recoveryStartSec);
         for (Step step : scenario.steps) fixture.apply(step, reverse, repeatSameCycle);
         return new Run(fixture);
     }
@@ -536,7 +722,7 @@ public final class LocalizationRobustnessScenarioTest {
     private static final class Fixture {
         final String name;
         final Path truth;
-        final double faultEndSec;
+        final double recoveryStartSec;
         final ManualLoopClock time = new ManualLoopClock();
         final ScriptedPredictor[] predictors = {new ScriptedPredictor(), new ScriptedPredictor(), new ScriptedPredictor()};
         final ScriptedCorrection[] corrections = {new ScriptedCorrection(), new ScriptedCorrection()};
@@ -546,8 +732,8 @@ public final class LocalizationRobustnessScenarioTest {
         int previousMs;
         String deliveredFrame = "none";
 
-        Fixture(String name, Path truth, double faultEndSec) {
-            this.name = name; this.truth = truth; this.faultEndSec = faultEndSec;
+        Fixture(String name, Path truth, double recoveryStartSec) {
+            this.name = name; this.truth = truth; this.recoveryStartSec = recoveryStartSec;
             OdometryCorrectionFusionEstimator.Config fusion = OdometryCorrectionFusionEstimator.Config.defaults();
             fusion.enablePushCorrectedPoseToPredictor = false;
             fusion.maxCorrectionAgeSec = 0.60;
@@ -665,7 +851,7 @@ public final class LocalizationRobustnessScenarioTest {
         void publish(Frame frame, LoopClock clock) {
             LoopTimestamp capture = capturedAt(clock, frame.captureMs / 1000.0);
             estimate = frame.point == null ? PoseEstimate.noPose(capture)
-                    : new PoseEstimate(frame.point.pose(), true, 1.0, capture);
+                    : new PoseEstimate(frame.point.pose(), true, frame.quality, capture);
         }
         @Override public void update(LoopClock clock) {
             if (cycle == clock.cycle()) return;
@@ -760,18 +946,22 @@ public final class LocalizationRobustnessScenarioTest {
         }
     }
 
-    /** Aggregates only common actual 100ms checkpoints; no estimator-output interpolation. */
+    /**
+     * Aggregates actual 100ms error checkpoints and sampled recovery, without output interpolation.
+     * The explicit recoveryStartSec is an assessment boundary, such as first correction delivery
+     * or reacquisition; it does not assert that an injected bias ended. NaN omits recovery scoring.
+     */
     private static final class Metrics {
         int checkpoints, available, scored, undefinedTruth, presentScored;
         double squaredPosition, squaredHeading, maxPosition, maxHeading, squaredPresent, maxPresent;
         double squaredPresentHeading, maxPresentHeading;
         double recoverySec = Double.NaN;
-        Metrics(List<Row> rows, int branch, double faultEndSec) {
+        Metrics(List<Row> rows, int branch, double recoveryStartSec) {
             double goodSince = Double.NaN;
             for (Row row : rows) {
                 Snapshot s = row.samples[branch];
                 double now = row.ms / 1000.0;
-                if (Double.isFinite(faultEndSec) && now >= faultEndSec - EPS) {
+                if (Double.isFinite(recoveryStartSec) && now >= recoveryStartSec - EPS) {
                     boolean good = s.hasPose && Double.isFinite(s.positionError)
                             && s.presentPositionError <= RECOVERY_POSITION_IN
                             && s.presentHeadingError <= RECOVERY_HEADING_RAD
@@ -779,7 +969,7 @@ public final class LocalizationRobustnessScenarioTest {
                     if (!good) goodSince = Double.NaN;
                     else if (!Double.isFinite(goodSince)) goodSince = now;
                     if (good && !Double.isFinite(recoverySec) && now - goodSince >= RECOVERY_HOLD_SEC - EPS)
-                        recoverySec = now - faultEndSec;
+                        recoverySec = now - recoveryStartSec;
                 }
                 if (!row.checkpoint) continue;
                 checkpoints++;
@@ -812,7 +1002,7 @@ public final class LocalizationRobustnessScenarioTest {
             for (Row row : rows) if (row.ms == ms) return row;
             throw new AssertionError("Missing actual checkpoint " + ms);
         }
-        Metrics metrics(int branch) { return new Metrics(rows, branch, fixture.faultEndSec); }
+        Metrics metrics(int branch) { return new Metrics(rows, branch, fixture.recoveryStartSec); }
         String signature() {
             StringBuilder text = new StringBuilder();
             for (Row row : rows) text.append(row.signature()).append('\n');
@@ -838,7 +1028,7 @@ public final class LocalizationRobustnessScenarioTest {
                         m.rms(m.squaredPresentHeading, m.presentScored),
                         m.presentScored == 0 ? Double.NaN : m.maxPresentHeading,
                         Double.isFinite(m.recoverySec) ? String.format(Locale.US, "%.6f", m.recoverySec)
-                                : Double.isFinite(fixture.faultEndSec) ? "not-recovered" : "not-requested",
+                                : Double.isFinite(fixture.recoveryStartSec) ? "not-recovered" : "not-requested",
                         last.ageSec, last.quality, last.counts.counters(), last.counts.lastAcceptedCaptureSec,
                         last.positionError, last.headingError,
                         last.positionStd, last.headingStd, last.innovation);

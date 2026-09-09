@@ -64,6 +64,13 @@ import edu.ftcsushi.fw.localization.PoseResetter;
  * and a hold alone cannot make an unavailable pose available. This is a heuristic score, not a
  * probability or measured accuracy. Predictor quality does not set the pose-blending gains.</p>
  *
+ * <p><b>Shared evidence:</b> this blender does not detect a correction that reuses predictor
+ * heading or shares calibration error. Small gains limit one correction's influence, not a
+ * persistent shared bias. A zero heading gain affects ordinary blending only: correction-based
+ * initialization still adopts the full pose, and an accepted correction can still contribute to
+ * the quality hold. None of those tuning choices establishes independent evidence. The assembler
+ * must select a source whose dependencies fit the intended correction policy.</p>
+ *
  * <p>Manual {@link #setPose(Pose2d)} anchors and unexpected predictor rebases clear the
  * recent-correction hold. An immediate manual anchor uses sanitized predictor quality when that
  * source reports a pose, otherwise {@code 1.0} for the caller's assertion. A clock reset invalidates

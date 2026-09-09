@@ -542,6 +542,17 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
                         FtcOdometryAprilTagLocalizationLane.EstimatorConfig.class
                 )
         );
+        assertEquals(
+                Arrays.asList("limelightFieldPose", "mode"),
+                publicFieldNames(FtcOdometryAprilTagLocalizationLane.CorrectionSourceConfig.class)
+        );
+        assertEquals("choosing a correction source does not reintroduce an unsupported device mode",
+                Arrays.asList("degradeWhenMoving", "maxResultAgeSec", "maxTranslationSpeedInPerSec",
+                        "maxYawRateRadPerSec", "minVisibleTags", "multiTagQuality",
+                        "rejectWhenMovingTooFast", "singleTagQuality",
+                        "translationSpeedForZeroQualityInPerSec", "yawRateForZeroQualityRadPerSec"),
+                publicFieldNames(LimelightFieldPoseEstimator.Config.class));
+        assertEquals(0, LimelightFieldPoseEstimator.Config.class.getDeclaredClasses().length);
 
         Method aprilTagValidatedCopy =
                 FtcOdometryAprilTagLocalizationLane.AprilTagLocalizationConfig.class.getMethod(

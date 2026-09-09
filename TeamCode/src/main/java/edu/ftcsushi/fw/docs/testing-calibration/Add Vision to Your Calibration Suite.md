@@ -185,9 +185,11 @@ uses the same authored mount, field facts and backend recipe in these factories:
 | --- | --- | --- |
 | `cameraMount(profile)` | [`CameraMountCalibrator`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/calibration/CameraMountCalibrator.html>) | A candidate mount from known robot placement and fixed-tag observations |
 | `aprilTagLocalization(profile)` | [`AprilTagLocalizationTester`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/localization/AprilTagLocalizationTester.html>) | Detection evidence and the robot field pose computed using the rebuilt mount/layout |
-| `correctedLocalization(profile)` | [`PinpointAprilTagCorrectedLocalizationTester`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/localization/PinpointAprilTagCorrectedLocalizationTester.html>) | Pinpoint motion plus accepted independent AprilTag pose corrections |
+| `correctedLocalization(profile)` | [`PinpointAprilTagCorrectedLocalizationTester`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/tools/tester/localization/PinpointAprilTagCorrectedLocalizationTester.html>) | Pinpoint motion plus accepted AprilTag field-pose corrections |
 
-**Correction** means using an independent field observation to adjust the movement-based estimate.
+**Correction** means using a field observation to adjust the movement-based estimate. A pose in
+field coordinates is not automatically an independent check: estimates can share the same wrong
+camera-mount or field-layout facts.
 The profile's `localization()` maps its own `pinpoint()` and `aprilTags()` settings into
 [`FtcOdometryAprilTagLocalizationLane.Config`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/localization/FtcOdometryAprilTagLocalizationLane.Config.html>).
 The example uses `APRILTAG_POSE` correction and the ordinary `FUSION` estimator for both backends.
@@ -273,6 +275,11 @@ are `18.0 in` of position difference and `25.0°` of heading difference from its
 An **outlier** is a candidate that disagrees too much with that estimate. Those software thresholds
 are not robot accuracy guarantees or recommended driving tolerances. Change them in the canonical
 `aprilTags()` mapping only after an evidence-backed decision.
+
+Agreement can hide a shared mistake: two tag solves or a raw-tag/direct-camera comparison may use
+the same image, mount, or field map. Compare their results against independently known robot
+placements, not only against each other. The optional [shared-evidence explanation](<../drive-vision/AprilTag Localization & Fixed Layouts.md#check-whether-two-estimates-share-evidence>)
+covers that distinction; this example keeps the ordinary raw-tag/Fusion path.
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/calibration/CalibrationRobotProfile.java -->
 ```java

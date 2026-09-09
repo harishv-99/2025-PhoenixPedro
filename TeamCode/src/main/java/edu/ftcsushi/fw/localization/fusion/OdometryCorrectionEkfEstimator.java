@@ -35,6 +35,14 @@ import edu.ftcsushi.fw.localization.PoseResetter;
  *       dynamically sized measurement covariance derived from the correction estimate's quality.</li>
  * </ul>
  *
+ * <p>The full-pose measurement update does not model error shared between the predictor and
+ * correction, or between distinct correction frames. A correction that reuses predictor heading
+ * can report zero heading innovation while still reducing modeled heading variance. Position
+ * innovations can also change heading through state covariance cross-terms. Omitting a heading
+ * residual or choosing large measurement uncertainty does not, by itself, model those
+ * dependencies. Assemblers must check the correction source's inputs; this owner neither detects
+ * shared evidence nor certifies statistical independence.</p>
+ *
  * <h2>Calibration and reliability notes</h2>
  *
  * <p>This estimator is more sophisticated than the lightweight fusion localizer, but it is also more
@@ -50,6 +58,11 @@ import edu.ftcsushi.fw.localization.PoseResetter;
  * <p>If those inputs are wrong, an EKF can produce a very smooth but still-wrong pose. That is why
  * Sushi keeps this estimator optional and documents it separately instead of silently replacing the
  * simpler fusion implementation.</p>
+ *
+ * <p>Reported standard deviations describe this model, not measured error bounds or calibrated
+ * probabilities. Agreement, freshness, and high quality cannot rule out shared image, camera-mount,
+ * field-layout, or prior-correction error. Smaller measurement weights can reduce individual
+ * influence without resolving that shared bias.</p>
  *
  * <h2>Latency compensation</h2>
  *

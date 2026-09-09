@@ -238,7 +238,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 124 | CAL-09 | Strengthen camera-mount sample evidence | Done | Fresh fixed-setup captures and rotation-aware mean reviewed; 96 focused tests pass. Manual review and exact-destination publication authorized 2026-09-08. |
 | 125 | CAL-10 | Make calibration acceptance reproducible | Done | Reviewed lab-card extension and independent camera-validation examples; 2542 tests and strict docs/API checks pass; user approved exact branch publication and merge. |
 | 126 | TEST-02 | Add deterministic localization robustness scenarios | Done | Reviewed and approved: 13 deterministic tests, maintainer instructions, and 2555 passing tests. |
-| 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Proposed | Use the robustness benchmark to evaluate bounded policy for predictor-yaw reuse and shared vision assumptions. |
+| 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Done | Reviewed standard-botpose restriction, shared-evidence regressions, and synchronized docs; 2566 tests pass and publication is authorized. |
 | 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Proposed | Evaluate bounded timestamped trial capture and offline replay using existing diagnostics; keep results off the Robot Controller. |
 | 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Proposed | Prove paired-wheel settling, staged-object evidence, bounded departure confirmation, and explicit recovery in an independent example. |
 | 130 | EXAMPLE-12 | Demonstrate graceful assist degradation | Proposed | Evaluate existing robot-owned manual fallback and teach bounded evidence-loss behavior and explicit reacquisition. |
@@ -31926,7 +31926,29 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### LOCALIZATION-04 - Handle shared measurement evidence explicitly
 
-- **Status:** **Proposed**.
+- **Status:** **Done**; reviewed implementation accepted and publication explicitly authorized.
+- **Gate 2 approval/start (2026-09-08):** the user replied `Proceed with task` to the complete
+  LOCALIZATION-04 design handoff. This authorizes the bounded standard-botpose source restriction,
+  mechanical caller migration, regression tests, and synchronized documentation recorded below.
+  A fresh fetch confirms `origin/master` and this item branch remain at
+  `5f350c19c597a6756a7c661d2d1cbbe3ffc4654b`. Preserve the existing Gate 1 tracker changes on
+  `codex/localization-04-shared-evidence`; do not stage, commit, or publish before the separate
+  Android Studio review and combined publication authorization.
+- **Mechanical caller follow-through:** the whole-tree removal search also found the generic
+  corrected-localization tester's `Direct Limelight mode` telemetry row. Remove that now-obsolete
+  field read with the other mode spellings; preserve all tester controls, selected-source pose
+  snapping, sampling, and safety behavior. This is caller synchronization, not new diagnostic
+  tooling or a change to its correction policy.
+- **Gate 1 start (2026-09-08):** the user requested the next task after TEST-02 publication.
+  PR #158 merged reviewed commit `8cc7bac1d60cedbf1cdbbbea985179b9316ebe2a` as
+  `5f350c19c597a6756a7c661d2d1cbbe3ffc4654b`; the commit is an ancestor and its tree
+  `df820fe27ba6922d41231060cde3094ede576a1c` exactly matches the merge. Both required hosted
+  checks passed (run `34304136017`). Local master was fast-forwarded without rewriting history;
+  `codex/localization-04-shared-evidence` starts at fetched origin/master at that merge. Only this
+  tracker decision record may change now. Inventory actual sources, estimator contracts, callers,
+  and construction paths; compare documentation/configuration restrictions and narrow trust
+  policies before proposing runtime changes. No LOCALIZATION-04 implementation or publication
+  is authorized by starting this decision gate.
 - **Approved comparison amendment (2026-09-08):** retain the current predictor/vision investigation
   and schedule. Later LOCALIZATION-05 must consume its supported evidence contract when wall
   geometry reuses predictor heading; this task does not wait for that new range consumer and does
@@ -31956,6 +31978,231 @@ The setup fragments below compare the recommendation design, not standalone robo
   `LOCALIZATION-02`/`LOCALIZATION-03` contracts. If a production choice cannot be justified without
   representative paired predictor/correction and independent-pose data, record a deferral and
   reactivate on that dataset or explicit approval of a narrower software contract.
+- **Gate 1 decision (2026-09-08): choose the narrower software contract.** Make
+  `LimelightFieldPoseEstimator` a standard `botpose` (MegaTag1) source only. Remove its public
+  `Config.Mode` enum and `mode` field, automatic predictor-yaw submission, and MT2-to-botpose
+  fallback. Keep its existing constructor and optional predictor solely for the existing motion
+  gates/quality adjustment. Keep raw AprilTag correction, standard botpose correction, both core
+  estimators, their tuning defaults, and the lane's default raw-AprilTag/Fusion selection unchanged.
+  This closes Sushi's known predictor-fed MT2 full-correction path at the source, including direct
+  construction outside the FTC aggregate. It is a supported-capability restriction, not a claim
+  that MT2 is physically inaccurate or that every remaining measurement is independent.
+- **Confirmed current failure/model path:** the MT2 branch submits the same predictor's yaw and
+  returns a complete `PoseEstimate` through `AbsolutePoseEstimator`. The core EKF uses a full-pose
+  measurement update: a zero heading innovation still reduces modeled heading variance, and
+  position innovations can change heading through covariance cross-terms created by prediction.
+  The source checks submitted yaw for finiteness but not age/epoch, ignores the orientation-write
+  boolean, permits missing predictor heading, and has no capture-to-submitted-yaw provenance. Its
+  fallback changes the actual pose mode without representing that change in the estimate. These
+  are traced software/model facts, not observed robot instability or measured vendor correlation.
+- **Common assumptions remain visible:** `FixedTagFieldPoseSolver` compares an observation's
+  field pose with explicit camera/tag geometry, then selects one candidate; it does not fuse those
+  alternatives as two independent observations. Both can share image, mount, and field-layout
+  error. Within-frame agreement and a high quality score therefore do not establish accuracy.
+  A fresh timestamp prevents stale evidence from masquerading as current; it does not make newly
+  delivered evidence independent of another source. The current `AbsolutePoseEstimator` contract
+  describes coordinates/availability, not statistical independence. Custom correction sources
+  remain the assembler's modeling responsibility; no runtime generic correlation detector is
+  promised by this item.
+- **Primary-source check (2026-09-08):** Limelight's
+  [FTC programming guide](https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming)
+  supplies robot orientation for MT2. Its
+  [MegaTag2 localization example](https://docs.limelightvision.io/docs/docs-limelight/pipeline-apriltag/apriltag-robot-localization-megatag2)
+  gives the returned heading negligible measurement weight in a WPILib estimator. That FRC example
+  supports caution about reusing heading; it is not a drop-in FTC/Sushi policy, evidence that MT2
+  position is independent of supplied heading, or proof of which yaw sample formed a returned
+  frame. Do not infer capabilities of the installed FTC hardware/firmware from another model's
+  internal-IMU documentation.
+- **Public construction / distinct-capability audit:**
+  - `new FtcOdometryAprilTagLocalizationLane(HardwareMap, AprilTagVision, TagLayout, Config)`
+    returns the concrete stable graph and constructs its Pinpoint after effect-free preflight.
+    `withPredictor(MotionPredictor, AprilTagVision, TagLayout, EstimatorConfig)` returns the same
+    graph while borrowing an existing predictor, without a dormant Pinpoint configuration. Retain
+    both; their resource ownership differs. A Limelight backend also activates the direct-pose
+    diagnostic configuration when raw tags are selected, so its contract is not a dormant branch.
+  - `new LimelightFieldPoseEstimator(FtcLimelightAprilTagVision, MotionPredictor, Config)` returns
+    the concrete `AbsolutePoseEstimator`; the optional predictor still adds motion gating.
+    `new AprilTagPoseEstimator(AprilTagSensor, TagLayout, Config)` adds raw-frame sensor lifecycle.
+    `new FixedTagFieldPoseSolver(Config)` instead returns a stateless configured solver whose
+    `solve(...)` returns `Result`; geometry consumers reuse it without a sensor owner. Retain these
+    distinct roles, with no new factory, alias, overload, wrapper, or staged-builder parameter.
+  - Each core correction estimator retains its single public constructor
+    `(MotionPredictor, AbsolutePoseEstimator, Config)`, returning its concrete
+    `CorrectedPoseEstimator` implementation. Fusion and EKF have distinct blend/model policies;
+    neither gains a vendor dependency, measurement-component selector, or covariance API.
+  - Existing Config `defaults()`, `copy()`, and supported validation methods retain authoring,
+    snapshot, and validation roles. The complete lane Config and estimator-only Config are stored
+    and reused by robot composition and testers; the solver Config is independently captured by
+    localization and guidance. They are not inline-only stage answers or redundant public layers.
+  - Camera `webcam(...)`/`limelight(...)` factories return deferred `AprilTagCameraFactory` owners;
+    `open(HardwareMap)` returns `OwnedAprilTagCamera`. `FtcLimelightVisionLane.aprilTags()` returns
+    the borrowed concrete `FtcLimelightAprilTagVision`. Camera ownership is separate from pose
+    interpretation. Existing `updateRobotFieldYawRad(...)` and
+    `confirmedAprilTagResult(clock).botposeMt2()` remain advanced raw vendor/diagnostic access,
+    with no new loop, camera owner, full-correction promise, or frame-to-yaw acknowledgment claim.
+- **Caller inventory / application boundary:** current production TeleOp uses owned Pinpoint and
+  Auto uses the borrowed-predictor lane. Its recipe chooses raw tags/Fusion and explicitly sets
+  standard botpose for the direct diagnostic view. Shared `StandardTesters`, the configured
+  `PinpointAprilTagCorrectedLocalizationTester`, and the independent calibration example also use
+  existing lane construction; no maintained main Java caller explicitly selects MT2 correction.
+  The configured tester's A-button pose snap consumes its selected correction, so it must not
+  acquire an alternate MT2 bypass. The localization guide section 5.3 and the application-local
+  calibration guide do currently teach MT2 correction and must migrate. Application edits are
+  limited to deleting the redundant standard-mode assignment/profile assertion and synchronizing
+  that local guide; no production policy, hardware facts, defaults, or loop changes. Shared
+  teaching continues to use independent examples, not the production application.
+- **Ordinary robot call-site comparison:** students already supply the camera/layout/predictor
+  facts and choose a correction source. No new confidence or correlation concept is added to the
+  ordinary setup. For the optional direct Limelight path, the selection remains
+  `cfg.estimation.correctionSource.mode = CorrectionSourceMode.LIMELIGHT_FIELD_POSE;`:
+
+  | Candidate | Additional student answer | Distinct value / decision |
+  | --- | --- | --- |
+  | Selected standard-botpose source | None; normal age/tag/motion policy stays available. | Removes the extra mode decision and the known heading-feedback path. |
+  | Keep MT2 with a tuning recipe | Mode plus heading gain, initialization, and quality-hold choices. | Obscures a source dependency with several knobs; no independence guarantee. |
+  | New partial/correlated measurement API | Component selection, initialization, covariance/replay policy, and provenance. | Could support a future capability, but adds unproven policy and many concepts now. |
+
+- **Rejected alternatives and reasons:**
+  - No change or warnings alone leave the public MT2 full-pose route usable without a supported
+    model. Restricting only the FTC lane leaves the standalone source constructor as a bypass.
+  - Keeping `BOTPOSE_MT2` only to throw during validation offers a discoverable but unusable option.
+    Retaining a one-value `Mode` enum asks a question with only one answer. Remove both spellings
+    and migrate current callers rather than adding a compatibility path.
+  - Zero Fusion heading gain is not a complete restriction: default initialization still takes
+    the correction's full pose and accepted corrections can raise its quality hold. Disabling
+    both as an advanced recipe would still leave heading-dependent XY error. Zero EKF heading
+    residual or a very large heading variance is not a general correlation solution.
+  - Lower quality, finite inflated measurement uncertainty, and smaller gains reduce individual
+    influence but cannot establish independence or a bound on persistent shared bias. Do not pick
+    an arbitrary numerical discount and label it calibrated trust.
+  - A genuine partial-measurement EKF needs initialization, measurement geometry, cross-covariance,
+    replay, and reported-quality rules; explicit correlation modeling also needs unavailable
+    input/cross-covariance evidence. Neither a new filter nor a generic metadata framework is
+    justified for the current callers. Future LOCALIZATION-05 must not disguise predictor-derived
+    wall geometry as an independent full correction; that task must obtain approval for any new
+    contract it actually requires rather than treating this restriction as that implementation.
+- **Bounded implementation / teaching scope, after approval:**
+  - Runtime removal is confined to `fw/ftc/localization/LimelightFieldPoseEstimator.java` and the
+    mechanical application recipe migration. Remove the obsolete mode copy/validation/debug rows
+    as well as the enum/field and dead MT2 helpers. Preserve all supported standard-botpose validity,
+    freshness, motion, immutable-config, and per-cycle lifecycle behavior.
+  - Synchronize that class, the FTC localization lane and raw Limelight capability Javadocs;
+    clarify the evidence/model responsibilities in `AbsolutePoseEstimator`, Fusion, EKF, and
+    `FixedTagFieldPoseSolver` Javadocs only. Do not change those core runtime algorithms.
+  - Update `fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md`, the relevant independence
+    wording in `fw/docs/testing-calibration/Add Vision to Your Calibration Suite.md`, and the
+    application-local calibration guide. Explain borrowed heading in plain language before
+    correlation/uncertainty terminology; use one small source-flow diagram where it clarifies the
+    feedback relationship. Keep the raw-tags/Fusion introduction, existing navigation, and advanced
+    placement; update the existing scenario explanation without creating another beginner lesson.
+  - Extend `FtcLimelightVisionLaneTest`, relevant `FtcOdometryAprilTagLocalizationLaneTest`
+    coverage, `LocalizationRobustnessScenarioTest`, and a focused raw-solver regression where
+    needed. Update the application profile assertion and existing documentation inventory checks
+    only where the removed field or changed teaching contract requires it. No new runtime test
+    harness, diagnostic OpMode, on-controller logging, or public replay format.
+- **Verification plan / acceptance:**
+  - Fake-device tests must prove standard botpose is the only full-pose result; an MT2-only frame
+    or valid MT2 paired with malformed standard botpose yields no pose, not a silent fallback.
+    Distinct valid standard/MT2 poses must demonstrate standard selection. No full-pose estimator
+    update submits predictor yaw or reads the predictor's absolute pose; motion-delta gates remain.
+    Exercise standalone construction and both FTC lane paths, active versus diagnostic source,
+    missing/invalid results, optional-predictor motion gating, source timestamps, config capture,
+    duplicate cycles, reentrancy, and retained failures. Preserve these lifecycle tests using
+    supported callbacks after removing their former MT2 orientation-callback setup. Existing raw
+    MT2 snapshots and explicit orientation access remain usable and separately tested.
+  - Extend TEST-02's private deterministic scenarios with known shared heading bias, XY error
+    induced by borrowed heading, shared camera/layout bias, and independent correction controls.
+    Show error and reported quality/uncertainty separately, including repeated fresh correlated
+    evidence, duplicate/delayed delivery, dropout, and reacquisition. Test solver agreement with
+    common error using real solver behavior, not two identical labels masquerading as two solves.
+    Existing baseline scenarios remain regressions; deterministic sensor schedules and synthetic
+    truth do not claim native image processing or actual MT2 firmware behavior.
+  - Run focused source/lane/solver/scenario/config/doc tests, then the complete TeamCode unit suite
+    and Java compile; review deterministic scenario output across reruns. Build strict MkDocs,
+    Javadocs, and published API/source links. Search maintained callers/docs for stale removed-mode
+    spellings, keeping historical Done records as history. Check whitespace and item-only scope.
+  - Physical vendor correlation, actual orientation/capture timing, measurement accuracy, safe
+    trust thresholds, and robot adoption are not software acceptance claims. A future MT2
+    correction proposal needs a specified FTC device/firmware/SDK stack, known orientation-input
+    behavior, paired source captures, independent pose reference, and an approved bounded model.
+    Retain that evidence gate; this narrower change does not waive it or reactivate SOURCE-03.
+- **Approval stop:** the hypothesis's conservative configuration/source restriction is retained,
+  but removing `Config.Mode` is a public API change. The execution skill requires explicit user
+  approval before Gate 2. Only this tracker item/queue row has changed during Gate 1; no Java,
+  guide, example, or application implementation has been edited for LOCALIZATION-04.
+- **Gate 1 verification (2026-09-08):** independent read-only source/math/caller and final-design
+  reviews found no blocker to this narrower contract. The focused
+  `DocumentationLinksTest.currentTrackerGuidanceDoesNotDependOnTheProductionApplication` passed;
+  unrelated tracker text is unchanged after normalizing line endings and excluding this row/section;
+  `git diff --check` passed. The existing JDK 21/source-target 8 and SDK deprecation warnings remain.
+  These checks validate the decision record, not the proposed runtime changes or physical behavior.
+- **Implemented result (2026-09-08):** `LimelightFieldPoseEstimator` now reads only standard botpose;
+  `Config.Mode`, the mode field/copy/validation/debug row, automatic predictor-yaw submission, and
+  the MT2 fallback helper are removed. Its existing constructor and optional cached-motion gating
+  remain. The generic corrected-localization tester drops its obsolete mode telemetry row; the
+  application recipe and profile test drop only the redundant standard-mode assignment/assertion.
+  No core filter/solver algorithm, numeric default, camera lifetime, owned/borrowed graph, tester
+  control, pose-snap policy, hardware configuration, or production behavior selection changed.
+- **Test and teaching result:** four added FTC test methods plus migrated existing tests cover
+  distinct standard/MT2 results, MT2-only and malformed-standard rejection, no source-side predictor
+  absolute reads or orientation writes, active/diagnostic selection with both Fusion and EKF,
+  independent motion-gate arithmetic, immutable configuration, raw MT2/explicit-yaw access, and
+  retained same-cycle/failure/reentry behavior through real result/motion callbacks. Existing
+  owned-Pinpoint tests retain effect-free preflight coverage; the real post-construction aggregate
+  matrix uses its borrowed-predictor seam, not a simulated complete hardware-owned construction.
+  Four new TEST-02 scenario methods add eight named schedules through the existing comparison;
+  three real-solver tests prove agreement under shared layout/mount error and rejection of a
+  disagreeing supplied alternative without inventing independent accuracy. Solver-computed
+  correction quality is retained rather than replaced by a unit score. The private recovery
+  parameter is named `recoveryStartSec`: a first-correction/reacquisition assessment boundary does
+  not claim a persistent bias stopped. Existing scenario values and output fields are unchanged.
+  Three guides and owning Javadocs describe this same contract, with an accessible four-node
+  dependency diagram and nearby text explanation; the ordinary raw-tags/Fusion teaching path and
+  navigation stay intact. Shared documentation does not teach from the production application.
+- **Independent review:** separate production/API, test-validity, and teaching reviews found no
+  unresolved blocker. The construction audit reconfirmed the distinct standalone source,
+  owned-Pinpoint lane, borrowed-predictor lane, raw solver, and camera owner/capability roles; there
+  is no added wrapper or redundant mode choice. Static comparison after removing Javadocs confirms
+  six shared API/solver files have no executable changes. The broad maintained-code/guide search
+  finds no stale removed-mode spellings. The 18-file diff remains confined to this item, including
+  the new solver test; whitespace checks include untracked files. Other tracker items are unchanged.
+- **Automated evidence:** the focused source/lane/solver/scenario/application/tester/documentation
+  selection passed **8 suites / 153 tests**, with zero failures, errors, or skips. The complete
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed **273 suites / 2566 tests**,
+  again with zero failures, errors, or skips. The 17 scenario tests emit 84 summary lines identical
+  across focused and full runs (LF-normalized output SHA-256
+  `E67CF0798EE59A4613B8EB5E01743F927687167EB74471192393B867A5EDE503`). Excluding the eight new
+  schedules leaves the original 60 TEST-02 lines exactly unchanged, including final newline:
+  `ABCB31CEEECD667FDACB223A9B00E47821187754568E0DF9B06C5A1C30B76171`.
+  The first compile exposed the now-fixed tester mode-field read; final compile/test checks pass.
+  After recording completion evidence, the focused tracker-guidance check passed again
+  (1 test, zero failures/errors/skips); final whitespace and item-only scope checks also passed.
+- **Documentation evidence:** the final strict Zensical build and generated search check passed
+  with **1005 indexed sections / six areas**. `:TeamCode:sushiJavadocs` passed, followed by
+  **214 API links / 91 maintained source links / 53 Markdown pages**. Combined artifact entry,
+  identity, API search, and no-reparse-point checks passed; the removed mode has no generated API
+  page. Existing JDK 21/source-target 8 and SDK deprecation warnings remain, with no new build
+  failure. Browser setup/discovery returned no available browser, so rendered desktop/mobile
+  layout and diagram legibility were not visually verified. Source accessibility/text equivalents
+  were reviewed; build/link success is not a substitute for that visual check.
+- **Human/evidence boundary:** inspect the source restriction, raw diagnostic access, migrated
+  lifecycle tests, and shared-bias scenarios in Android Studio; preview the guide's shared-evidence
+  diagram on desktop and a narrow viewport. No robot-hardware or native MT2 processing run was
+  performed. This software restriction does not prove physical accuracy, useful trust levels,
+  orientation-to-frame provenance, or statistical independence of arbitrary correction sources.
+  The already-recorded future shared-evidence/MT2 physical-adoption gate remains in force.
+- **Publication handoff:** item branch `codex/localization-04-shared-evidence`; resolved origin push
+  destination `https://github.com/harishv-99/2025-PhoenixPedro.git`; target `master`. The execution
+  skill requires the user's combined review-and-publication authorization before staging,
+  committing, pushing, opening a pull request, or merging. Do not begin DIAG-01 during this stop.
+- **Gate 3 approval (2026-09-08):** the user accepted the reviewed LOCALIZATION-04 diff and
+  explicitly authorized committing `codex/localization-04-shared-evidence`, pushing it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. This records manual-review acceptance, not an unreported browser or hardware run.
+  Publish only the 18 reviewed files with this completion record; rerun the tracker-sensitive
+  documentation check and whitespace/scope checks before commit. Preserve the full-suite and
+  documentation evidence above. Git/GitHub will retain the actual commit, check, pull-request,
+  and merge identities. This authorization does not start the next tracker item.
 
 ### DIAG-01 - Correlate experiment evidence for offline analysis
 
