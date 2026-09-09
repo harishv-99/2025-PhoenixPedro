@@ -19,6 +19,12 @@ tags:
 exposes low-level command channels. Ordinary mechanism code keeps its final hardware writer inside
 the Plant built by `FtcActuators`.
 
+**Custom tester reports:** use the host-supplied
+[`ResultDownloads`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/ResultDownloads.html>)
+through `TesterContext.downloads` to publish already-frozen text. Existing tools wire it internally;
+see the [extension and lifetime contract](<../maintainers/Result Downloads and Recordings.md>) before
+adding a custom producer. No new server or ordinary robot setup is required.
+
 ## Remember
 
 Defaults establish coherent software, not reviewed physical safety. Software tests prove software

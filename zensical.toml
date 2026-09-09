@@ -49,6 +49,7 @@ nav = [
     { "Actuator bring-up" = "docs/testing-calibration/Actuator Bring-up.md" },
     { "Robot calibration" = "docs/testing-calibration/Robot Calibration Tutorials.md" },
     { "Control tuning" = "docs/testing-calibration/Control Tuning Workflow.md" },
+    { "Download experiment results" = "docs/testing-calibration/Download and Inspect Experiment Results.md" },
     { "Testing philosophy" = "docs/testing-calibration/How to test a Sushi component.md" },
     { "Add your robot's testers" = [
       { "Add calibration testers" = "docs/testing-calibration/Add Calibration Testers to Your Robot.md" },
@@ -109,6 +110,7 @@ nav = [
       { "Maintainers home" = "docs/maintainers/README.md" },
       { "Framework Principles" = "Framework Principles.md" },
       { "Maintainer Notes" = "docs/maintainers/Maintainer Notes.md" },
+      { "Results and recording format" = "docs/maintainers/Result Downloads and Recordings.md" },
     ] },
   ] },
   { "Reference" = [

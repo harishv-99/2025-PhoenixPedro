@@ -179,6 +179,9 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
     private DraftPort draft;
     private ControlTuningModel.Parameters controllerSchema;
     private List<ControlTuningModel.Readback> lastReadbacks;
+    private List<ControlTuningModel.Readback> initialReadbacks;
+    private String controllerTopology;
+    private ControlExperimentRecording recording;
     private Candidate lastAcceptedCandidate;
     private PendingCapture pendingCapture;
     private String pendingHoldReason;
@@ -301,6 +304,8 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
             throw new IllegalStateException("Controller initial candidate is invalid: " + schemaError);
         }
         lastReadbacks = checkedReadbacks(controller.readbacks(), controllerSchema);
+        initialReadbacks = lastReadbacks;
+        controllerTopology = controller.topology();
 
         LinkedHashMap<String, Double> experiment = new LinkedHashMap<String, Double>();
         experiment.put(FIELD_ENDPOINT_A, allowedPhysicalTargetRange.minValue);
@@ -330,6 +335,7 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
             return;
         }
         started = true;
+        recording = new ControlExperimentRecording(ctx.downloads);
         statusMessage = plant.isReferenced()
                 ? "PREPARING HOLD: A remains inert until current-position hold is proven"
                 : referenceTaskFactory == null
@@ -351,6 +357,7 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
                     activeSegment.realizedByPlantUpdate = true;
                 }
                 refreshEvidence();
+                recording.publishAfterOutput(clock);
             }
             renderTelemetry();
         } catch (RuntimeException failure) {
@@ -641,6 +648,10 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
                 lastReadbacks,
                 nowSec,
                 startingMeasurement);
+        recording.begin(clock, history.sessionId(), activeSegment.id, "POSITION",
+                controllerTopology, allowedPhysicalTargetRange, initialReadbacks, activeSegment.readbacks,
+                candidate.controller, candidate.experimentRequest(), candidate.selectedTarget(),
+                startingMeasurement);
         statusMessage = transition + " ACCEPTED: session " + history.sessionId()
                 + ", segment " + activeSegment.id + ", leg to endpoint "
                 + (candidate.selectsEndpointA ? "A" : "B");
@@ -730,13 +741,16 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
                 controller.evidence(clock), "controller evidence");
         if (!measurementAvailable) {
             activeSegment.metrics.retainEvidence(evidence);
+            recording.evidenceOnly(clock, evidence);
             return;
         }
+        boolean atTarget = plant.atTarget(activeSegment.candidate.selectedTarget());
         activeSegment.metrics.update(
                 clock.nowSec(),
                 measurement,
-                plant.atTarget(activeSegment.candidate.selectedTarget()),
+                atTarget,
                 evidence);
+        recording.sample(clock, measurement, atTarget, evidence);
     }
 
     private void endActiveSegment(String reason) {
@@ -749,7 +763,7 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
         ending.metrics.finish(clock.nowSec());
         Map<String, Double> metrics = new LinkedHashMap<String, Double>(ending.metrics.snapshot());
         addFinalPlantFacts(metrics, finalSnapshot);
-        history.add(new ControlExperimentHistory.Record(
+        ControlExperimentHistory.Record result = new ControlExperimentHistory.Record(
                 history.sessionId(),
                 ending.id,
                 "POSITION",
@@ -761,7 +775,9 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
                 ending.metrics.evidence(),
                 ending.startSec,
                 clock.nowSec(),
-                reason));
+                reason);
+        history.add(result);
+        if (recording != null) recording.finish(clock, result);
         if (activeSegment == ending) {
             activeSegment = null;
         }
@@ -799,6 +815,7 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
             return;
         }
         cleanupClaimed = true;
+        if (recording != null) recording.stop();
         pendingCapture = null;
         pendingHoldReason = null;
         final Task cancelling = referenceTask;
@@ -864,6 +881,11 @@ final class FtcPositionControlPanelsTester extends BaseTeleOpTester {
                 measurementAvailable ? measurement : "UNAVAILABLE");
         ctx.telemetry.addData("Next leg", nextEndpointA ? "ENDPOINT_A" : "ENDPOINT_B");
         ctx.telemetry.addData("History records", historyRecords().size());
+        if (recording != null) {
+            ctx.telemetry.addData("Result recording", recording.status());
+            String url = recording.url();
+            if (url != null) ctx.telemetry.addData("Download completed result", url);
+        }
 
         Map<String, Double> metrics = Collections.emptyMap();
         if (activeSegment == null) {

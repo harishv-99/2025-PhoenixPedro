@@ -455,6 +455,12 @@ without pretending the physical target changed or rewriting that target. The rec
 telemetry; the full in-memory history ends with the OpMode. It is not a production profile, an
 on-device database, or a persisted optimizer history.
 
+The latest completed segment can also supply a bounded download: its original metric inputs and
+frozen result, not the whole-session history. A new accepted segment clears that download; an
+invalid draft does not. The [download runbook](<Download and Inspect Experiment Results.md>) explains
+how to save it and optionally repeat the response-metric calculation on the laptop. Recording
+limits are explicit, and omitted inputs make replay incomplete rather than changing the experiment.
+
 Velocity metrics include first truthful `atTarget` time, settling time, post-settled directional
 droop, overshoot,
 output-limited duration when observable, and post-settled disturbance peak/recovery. Position adds

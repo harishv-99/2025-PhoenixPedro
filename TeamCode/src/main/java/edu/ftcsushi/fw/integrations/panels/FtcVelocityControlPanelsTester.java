@@ -175,6 +175,9 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
     private DraftPort draft;
     private ControlTuningModel.Parameters controllerSchema;
     private List<ControlTuningModel.Readback> lastReadbacks;
+    private List<ControlTuningModel.Readback> initialReadbacks;
+    private String controllerTopology;
+    private ControlExperimentRecording recording;
     private Candidate lastAcceptedCandidate;
     private PendingCapture pendingCapture;
     private PendingReconfiguration pendingReconfiguration;
@@ -271,6 +274,8 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
             throw new IllegalStateException("Controller initial candidate is invalid: " + schemaError);
         }
         lastReadbacks = checkedReadbacks(controller.readbacks(), controllerSchema);
+        initialReadbacks = lastReadbacks;
+        controllerTopology = controller.topology();
 
         // Establish the inactive safe request without advancing the Plant during FTC INIT.
         plant.commandTarget().set(0.0);
@@ -301,6 +306,7 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
             return;
         }
         started = true;
+        recording = new ControlExperimentRecording(ctx.downloads);
         statusMessage = "ZERO REQUESTED: verify the active draft, then press A";
     }
 
@@ -316,6 +322,7 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
                 }
                 refreshEvidence();
                 processPendingReconfiguration();
+                recording.publishAfterOutput(clock);
             }
             renderTelemetry();
         } catch (RuntimeException failure) {
@@ -548,6 +555,10 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
                 lastReadbacks,
                 nowSec,
                 measurementAvailable ? measurement : Double.NaN);
+        recording.begin(clock, history.sessionId(), activeSegment.id, "VELOCITY",
+                controllerTopology, testTargetRange, initialReadbacks, activeSegment.readbacks,
+                candidate.controller, candidate.experimentRequest(), candidate.target,
+                measurementAvailable ? measurement : Double.NaN);
         statusMessage = transition + " ACCEPTED: session " + history.sessionId()
                 + ", segment " + activeSegment.id;
     }
@@ -593,14 +604,17 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
                 controller.evidence(clock), "controller evidence");
         if (!measurementAvailable) {
             activeSegment.metrics.retainEvidence(evidence);
+            recording.evidenceOnly(clock, evidence);
             return;
         }
+        boolean atTarget = controller.experimentAtTarget(
+                plant.atTarget(activeSegment.candidate.target), clock);
         activeSegment.metrics.update(
                 clock.nowSec(),
                 measurement,
-                controller.experimentAtTarget(
-                        plant.atTarget(activeSegment.candidate.target), clock),
+                atTarget,
                 evidence);
+        recording.sample(clock, measurement, atTarget, evidence);
     }
 
     private void endActiveSegment(String reason) {
@@ -613,7 +627,7 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         ending.metrics.finish(clock.nowSec());
         Map<String, Double> metrics = new LinkedHashMap<String, Double>(ending.metrics.snapshot());
         addFinalPlantFacts(metrics, finalSnapshot);
-        history.add(new ControlExperimentHistory.Record(
+        ControlExperimentHistory.Record result = new ControlExperimentHistory.Record(
                 history.sessionId(),
                 ending.id,
                 "VELOCITY",
@@ -625,7 +639,9 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
                 ending.metrics.evidence(),
                 ending.startSec,
                 clock.nowSec(),
-                reason));
+                reason);
+        history.add(result);
+        if (recording != null) recording.finish(clock, result);
         if (activeSegment == ending) {
             activeSegment = null;
         }
@@ -663,6 +679,7 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
             return;
         }
         cleanupClaimed = true;
+        if (recording != null) recording.stop();
         pendingCapture = null;
         pendingReconfiguration = null;
         if (activeSegment != null) {
@@ -697,6 +714,11 @@ final class FtcVelocityControlPanelsTester extends BaseTeleOpTester {
         ctx.telemetry.addData("Velocity feedback",
                 measurementAvailable ? measurement : "UNAVAILABLE");
         ctx.telemetry.addData("History records", historyRecords().size());
+        if (recording != null) {
+            ctx.telemetry.addData("Result recording", recording.status());
+            String url = recording.url();
+            if (url != null) ctx.telemetry.addData("Download completed result", url);
+        }
 
         Map<String, Double> metrics = Collections.emptyMap();
         if (activeSegment == null) {

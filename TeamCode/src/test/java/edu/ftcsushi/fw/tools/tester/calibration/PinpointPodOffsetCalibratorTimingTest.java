@@ -561,6 +561,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
         final Gamepad gamepad = new Gamepad();
         final List<Double> commands = new ArrayList<>();
         final List<String> telemetry = new ArrayList<>();
+        final CalibrationReportTest.Downloads downloads = new CalibrationReportTest.Downloads();
         final RecordingOutput[] outputs = new RecordingOutput[4];
         final FakePinpoint device = new FakePinpoint();
         final PinpointOdometryPredictor predictor;
@@ -596,7 +597,7 @@ public final class PinpointPodOffsetCalibratorTimingTest {
                         }
                         return defaultValue(method.getReturnType());
                     });
-            TesterContext context = new TesterContext(null, sink, gamepad, new Gamepad(), clock);
+            TesterContext context = new TesterContext(null, sink, gamepad, new Gamepad(), clock, downloads);
             setField(owner, "ctx", context);
             setField(owner, "clock", clock);
             setField(owner, "gamepads", Gamepads.create(context.gamepad1, context.gamepad2));

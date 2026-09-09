@@ -32,6 +32,124 @@ public final class PinpointPodOffsetCalibratorEvidenceTest {
     private static final double EPS = 1e-8;
 
     @Test
+    public void solvedDownloadPreservesAbsoluteOffsetsAndCannotSurviveAFailedReplacement()
+            throws Exception {
+        Fixture f = new Fixture(false, true, config -> {
+            config.enablePostRotateRecenter = false;
+            config.pinpoint.forwardPodOffsetLeftInches = -3.0;
+            config.pinpoint.strafePodOffsetForwardInches = 6.0;
+        });
+        f.downloads.beforePublish = f::assertStopped;
+        f.queueAuto();
+        f.owner.loop(0.0);
+        f.poseAt(1.0, new Pose2d(4.0, -2.0, Math.PI / 2.0));
+        f.poseAt(2.0, new Pose2d(8.0, -4.0, Math.PI));
+        assertResult(f);
+        String result = f.downloads.text;
+        assertNotNull(result);
+        assertTrue(result, result.contains("Absolute replacement offsets, NOT increments"));
+        assertEquals(2.0, assignment(result, "cfg.pinpoint.strafePodOffsetForwardInches"), EPS);
+        assertEquals(-1.0, assignment(result, "cfg.pinpoint.forwardPodOffsetLeftInches"), EPS);
+        assertTrue(result, result.contains("Start assisted endpoint: UNAVAILABLE"));
+        assertTrue(result, result.contains("acquisition times: UNRECORDED"));
+        int polls = f.device.polls;
+        f.owner.loop(0.0);
+        assertEquals(polls, f.device.polls);
+        assertEquals(result, f.downloads.text);
+        f.queueAuto();
+        f.loopAt(3.0);
+        assertNull(f.downloads.text);
+        f.loopAt(13.0); // Exact elapsed deadline, not a physical-motion assertion.
+        assertTrue(f.downloads.text, f.downloads.text.contains("timed out"));
+        assertFalse(f.downloads.text.contains("cfg.pinpoint.strafePodOffsetForwardInches ="));
+        f.assertStopped();
+        f.owner.stop();
+        assertNull(f.downloads.text);
+    }
+
+    @Test
+    public void abortedAssistedReportFreezesMatchedStartBeforeCleanup() throws Exception {
+        Fixture f = new Fixture(true, true);
+        f.startAutoWithTag();
+        assertNotNull(field(f.owner, "startAssistEndpoint"));
+        f.downloads.beforePublish = f::assertStopped;
+        invoke(f.owner, "abortSample");
+        assertNull(field(f.owner, "startAssistEndpoint"));
+        assertTrue(f.downloads.text, f.downloads.text.contains("ABORTED"));
+        assertTrue(f.downloads.text, f.downloads.text.contains("Start history lookup: EXACT"));
+        assertTrue(f.downloads.text, f.downloads.text.contains("Start tag fieldToRobotPose at capture"));
+        assertTrue(f.downloads.text, f.downloads.text.contains("End assisted endpoint: UNAVAILABLE"));
+        assertFalse(f.downloads.text.contains("cfg.pinpoint.strafePodOffsetForwardInches ="));
+        f.owner.stop();
+    }
+
+    @Test
+    public void unavailableOrThrowingDownloadsCannotPreventTimeoutZeroAndStop() throws Exception {
+        for (int failure = 0; failure < 4; failure++) {
+            Fixture f = new Fixture(false, true);
+            f.downloads.throwPublish = failure == 0;
+            f.downloads.throwClear = failure == 1;
+            f.downloads.throwUrl = failure == 2;
+            f.downloads.unavailable = failure == 3;
+            f.queueAuto();
+            f.owner.loop(0.0);
+            f.assertPowered();
+            int polls = f.device.polls;
+            f.loopAt(10.0);
+            assertEquals("deadline still wins before sensor polling", polls, f.device.polls);
+            f.assertRejected();
+            f.owner.stop();
+            f.assertStopped();
+        }
+    }
+
+    @Test
+    public void cameraFailureReportRetainsTheMatchedStartButPublishesAfterCameraCleanup()
+            throws Exception {
+        Fixture f = new Fixture(true, true);
+        f.startAutoWithTag();
+        f.camera.failure = new IllegalStateException("scripted camera failure");
+        f.downloads.beforePublish = () -> {
+            f.assertStopped();
+            assertEquals(1, f.camera.closes);
+        };
+        f.loopAt(0.10);
+        assertTrue(f.downloads.text, f.downloads.text.contains("scripted camera failure"));
+        assertTrue(f.downloads.text, f.downloads.text.contains("Start history lookup: EXACT"));
+        assertNull(field(f.owner, "startAssistEndpoint"));
+        assertFalse(f.downloads.text.contains("cfg.pinpoint.forwardPodOffsetLeftInches ="));
+        f.owner.stop();
+    }
+
+    @Test
+    public void missingRawPoseAtAbortIsReportedUnavailableRatherThanAsZero() throws Exception {
+        Fixture f = new Fixture(false, true);
+        f.queueAuto();
+        f.owner.loop(0.0);
+        f.device.pose = null;
+        int polls = f.device.polls;
+        f.loopAt(0.10);
+        assertEquals(polls + 1, f.device.polls);
+        assertEquals("IDLE", f.phase());
+        assertTrue(f.downloads.text, f.downloads.text.contains(
+                "Latest raw fieldToRobotPose (not a tag-aligned substitute) (x in, y in, yaw rad): UNAVAILABLE"));
+        assertFalse(f.downloads.text.contains("cfg.pinpoint.forwardPodOffsetLeftInches ="));
+        f.assertStopped();
+        f.owner.stop();
+    }
+
+    /** Parse the published assignment; expected values come from independently authored geometry. */
+    private static double assignment(String report, String field) {
+        String prefix = field + " = ";
+        for (String line : report.split("\\n")) {
+            if (line.startsWith(prefix)) {
+                return Double.parseDouble(line.substring(prefix.length(), line.length() - 1));
+            }
+        }
+        throw new AssertionError("Missing assignment " + field + " in " + report);
+    }
+
+    @Test
     public void bothSearchesCountDistinctCaptureTimesNotLoopsObjectsOrChangedCoordinates()
             throws Exception {
         for (boolean end : new boolean[]{false, true}) {

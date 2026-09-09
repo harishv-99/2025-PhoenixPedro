@@ -8,6 +8,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.tools.tester.TeleOpTester;
+import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcsushi.fw.tools.tester.TesterContext;
 import edu.ftcsushi.fw.tools.tester.TesterSuite;
 
@@ -23,10 +24,11 @@ import edu.ftcsushi.fw.tools.tester.TesterSuite;
  *   <li>{@link #init()} → console sample → {@link TeleOpTester#init(TesterContext)}</li>
  *   <li>{@link #init_loop()} → clock update → console sample →
  *       {@link TeleOpTester#initLoop(double)}</li>
- *   <li>{@link #start()} → clock reset → console sample → {@link TeleOpTester#start()}</li>
+ *   <li>{@link #start()} → invalidate result → clock reset → console sample →
+ *       {@link TeleOpTester#start()}</li>
  *   <li>{@link #loop()} → clock update → console sample →
  *       {@link TeleOpTester#loop(double)} with {@code dtSec}</li>
- *   <li>{@link #stop()} → {@link TeleOpTester#stop()}</li>
+ *   <li>{@link #stop()} → revoke downloads → {@link TeleOpTester#stop()}</li>
  * </ul>
  *
  * <h2>One loop, one heartbeat</h2>
@@ -43,6 +45,12 @@ import edu.ftcsushi.fw.tools.tester.TesterSuite;
  * terminal, detaches the tester, attempts {@link TeleOpTester#stop()} exactly once, and rethrows the
  * original failure. A cleanup failure is attached to the original failure as a suppressed
  * exception. Later FTC lifecycle callbacks do nothing. {@link Error Errors} are not caught.</p>
+ *
+ * <p>Optional frozen result downloads are wired automatically for {@link BaseTeleOpTester}
+ * implementations, whose START hook renews the download lease. Direct custom implementations of
+ * {@link TeleOpTester} still run normally but receive unavailable downloads because they lack that
+ * reset-lifetime hook. An explicitly custom host can supply its own capability through the
+ * advanced {@link TesterContext} constructor and owns its reset/STOP invalidation.</p>
  */
 public abstract class FtcTeleOpTesterOpMode extends OpMode {
 
@@ -80,12 +88,24 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
     }
 
     private final LoopClock clock = new LoopClock();
+    private final FtcResultDownloads.Store testDownloadStore;
 
     private TesterContext ctx;
     private TesterConsole console;
     private TeleOpTester tester;
     private boolean initAttempted;
     private boolean terminal;
+    private FtcResultDownloads.Session resultDownloads;
+
+    /** Construct the ordinary SDK host; its result-download wiring is automatic. */
+    public FtcTeleOpTesterOpMode() {
+        this(null);
+    }
+
+    /** Package-private socket-free host test seam, not an alternative robot construction path. */
+    FtcTeleOpTesterOpMode(FtcResultDownloads.Store testDownloadStore) {
+        this.testDownloadStore = testDownloadStore;
+    }
 
     /**
      * Return the tester to run. Most commonly this is a {@code TesterSuite} that
@@ -141,14 +161,6 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         }
 
         console = createdConsole;
-        // Build shared tester context with stable console objects and the one shared loop clock.
-        ctx = new TesterContext(
-                hardwareMap,
-                createdConsole.telemetry(),
-                createdConsole.gamepad1(),
-                createdConsole.gamepad2(),
-                clock);
-
         TeleOpTester created;
         try {
             created = createTester();
@@ -181,6 +193,18 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         if (terminal) {
             return;
         }
+
+        // Open no new server: retain one private publication lifetime on the SDK-owned server.
+        resultDownloads = testDownloadStore == null
+                ? FtcResultDownloads.openSession() : testDownloadStore.openSession();
+        // Direct custom TeleOpTester implementations lack Base's reset-lease renewal hook, so
+        // their automatic capability is unavailable. Explicit custom hosts can supply their own
+        // transport through TesterContext's advanced constructor and own those reset semantics.
+        ctx = created instanceof BaseTeleOpTester
+                ? new TesterContext(hardwareMap, createdConsole.telemetry(),
+                        createdConsole.gamepad1(), createdConsole.gamepad2(), clock, resultDownloads)
+                : new TesterContext(hardwareMap, createdConsole.telemetry(),
+                        createdConsole.gamepad1(), createdConsole.gamepad2(), clock);
 
         // Retain ownership before any tester lifecycle callback can acquire resources or fail.
         tester = created;
@@ -223,6 +247,7 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         if (terminal || active == null) return;
 
         try {
+            resultDownloads.clear();
             // Reset dt at transition to RUNNING so loop dt is clean.
             clock.reset(getRuntime());
             console.sampleInputs();
@@ -262,6 +287,10 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         terminal = true;
         TeleOpTester active = tester;
         tester = null;
+        // Revoke before callbacks: even reentrant/failed child cleanup cannot publish again.
+        FtcResultDownloads.Session closing = resultDownloads;
+        resultDownloads = null;
+        if (closing != null) closing.close();
         return active;
     }
 

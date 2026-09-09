@@ -49,6 +49,64 @@ public final class CameraMountCalibratorEvidenceTest {
     private static final double EPS = 1e-9;
 
     @Test
+    public void downloadFreezesAcceptedBatchNotLaterPreviewOrWaitingResidual() {
+        Fixture f = new Fixture();
+        f.gamepad.a = true;
+        f.observeAt(0.02, observation(24.0));
+        assertEquals(1, f.sampleCount());
+        String first = f.downloads.text;
+        assertTrue(first, first.contains("Distinct captured frames: 1"));
+        String assignment = first.substring(first.indexOf("CameraMountConfig.of(")
+                + "CameraMountConfig.of(".length());
+        String[] coordinates = assignment.substring(0, assignment.indexOf(')')).split(", ");
+        assertEquals(6, coordinates.length);
+        double[] expected = {6.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        for (int i = 0; i < expected.length; i++) {
+            // Transform decomposition may retain -0.0; that is not a different physical angle.
+            assertEquals(expected[i], Double.parseDouble(coordinates[i]), EPS);
+        }
+        assertTrue(first, first.contains("Known fieldToRobotPose"));
+        assertTrue(first, first.contains("Live residual/range and independent held-out errors: UNRECORDED"));
+        assertEquals("camera-mount.txt", f.downloads.filename);
+        f.releaseA();
+        int reads = f.camera.reads;
+        f.observeAt(0.05, observation(20.0));
+        assertEquals(reads + 1, f.camera.reads);
+        assertEquals(first, f.downloads.text);
+        f.camera.readiness = VisionReadiness.notReady("warming up");
+        f.pressA();
+        assertEquals(first, f.downloads.text);
+        assertEquals(1, f.downloads.publishes);
+        f.owner.stop();
+        assertNull(f.downloads.text);
+    }
+
+    @Test
+    public void downloadClearsWithBatchControlsAndNeverRepollsOnPublicationFailure() {
+        for (int failure = 0; failure < 4; failure++) {
+            Fixture f = new Fixture();
+            f.downloads.throwPublish = failure == 0;
+            f.downloads.throwClear = failure == 1;
+            f.downloads.throwUrl = failure == 2;
+            f.downloads.unavailable = failure == 3;
+            int reads = f.camera.reads;
+            f.gamepad.a = true;
+            f.observeAt(0.02, observation(24.0));
+            assertEquals(reads + 1, f.camera.reads);
+            assertEquals(1, f.sampleCount());
+            f.owner.stop();
+            assertEquals(1, f.camera.closes);
+        }
+        Fixture f = capturedFixture();
+        assertNotNull(f.downloads.text);
+        f.gamepad.b = true;
+        f.loopAt(0.10);
+        assertNull(f.downloads.text);
+        assertEquals(0, f.sampleCount());
+        f.owner.stop();
+    }
+
+    @Test
     public void captureUsesThisFrameInsteadOfThePreviousPreview() {
         Fixture f = new Fixture();
         f.observeAt(0.02, observation(24.0));
@@ -106,6 +164,7 @@ public final class CameraMountCalibratorEvidenceTest {
         f.pressA();
         f.releaseA();
         f.startRun();
+        assertNull(f.downloads.text);
         f.gamepad.a = true;
         f.loopAt(0.01);
 
@@ -227,6 +286,7 @@ public final class CameraMountCalibratorEvidenceTest {
             f.gamepad.a = true;
             f.observeAt(0.05, observation(20.0));
             assertEquals(0, f.sampleCount());
+            assertNull(f.downloads.text);
             assertNull(field(f.owner, "lastRobotToCameraSample"));
             neutral(f.gamepad);
             f.loopAt(0.06);
@@ -535,6 +595,9 @@ public final class CameraMountCalibratorEvidenceTest {
         f.observeAt(0.05, new Pose3d(0.0, 0.0, 0.0, Math.PI, 0.0, 0.0));
         assertEquals(2, f.sampleCount());
         assertNull(f.mean());
+        assertTrue(f.downloads.text, f.downloads.text.contains("Distinct captured frames: 2"));
+        assertTrue(f.downloads.text, f.downloads.text.contains("Candidate UNAVAILABLE:"));
+        assertFalse(f.downloads.text.contains("Candidate (not applied): CameraMountConfig.of("));
         assertTrue(f.telemetry.stream().anyMatch(line -> line.startsWith("Average unavailable:")));
         assertTrue(f.telemetry.stream().anyMatch(line -> line.contains("ambiguous")));
         assertFalse(f.telemetry.stream().anyMatch(line -> line.startsWith("CameraMountConfig.")));
@@ -589,6 +652,7 @@ public final class CameraMountCalibratorEvidenceTest {
         final LoopClock clock = new LoopClock();
         final Gamepad gamepad = new Gamepad();
         final List<String> telemetry = new ArrayList<>();
+        final CalibrationReportTest.Downloads downloads = new CalibrationReportTest.Downloads();
         final CameraMountCalibrator owner;
         ScriptedCamera camera = new ScriptedCamera();
         ScriptedCamera nextCamera;
@@ -644,7 +708,7 @@ public final class CameraMountCalibratorEvidenceTest {
                         return defaultValue(method.getReturnType());
                     });
             beforeInit.accept(this);
-            owner.init(new TesterContext(hardware, sink, gamepad, new Gamepad(), clock));
+            owner.init(new TesterContext(hardware, sink, gamepad, new Gamepad(), clock, downloads));
             loopAt(0.01); // A neutral cycle arms the real REARM_AFTER_NEUTRAL control context.
         }
 

@@ -14,17 +14,108 @@ import java.util.Arrays;
 import java.util.List;
 
 import edu.ftcsushi.fw.tools.tester.TeleOpTester;
+import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcsushi.fw.tools.tester.TesterContext;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Verifies the FTC tester host's one-shot, fail-stop lifecycle ownership. */
 public final class FtcTeleOpTesterOpModeTest {
+
+    @Test
+    public void automaticBaseDownloadsRenewAtStartAndRevokeBeforeReentrantStop() {
+        FtcResultDownloads.Store store = new FtcResultDownloads.Store();
+        store.setBaseUrl("http://robot.test:8080");
+        TestOpMode mode = new TestOpMode(store);
+        mode.telemetry = new RecordingTelemetry().proxy();
+        mode.hardwareMap = new HardwareMap(null, null);
+        mode.gamepad1 = new Gamepad();
+        mode.gamepad2 = new Gamepad();
+        DownloadTester tester = new DownloadTester();
+        mode.created = tester;
+        mode.init();
+        TesterContext before = tester.current();
+        assertTrue(before.downloads.publish("init.txt", "init"));
+        String initUrl = before.downloads.url();
+        mode.start();
+        TesterContext running = tester.current();
+        assertNotSame(before, running);
+        assertSame(before.clock, running.clock);
+        assertSame(before.hw, running.hw);
+        assertSame(before.telemetry, running.telemetry);
+        assertSame(before.gamepad1, running.gamepad1);
+        assertSame(before.gamepad2, running.gamepad2);
+        assertNull(running.downloads.url());
+        assertFalse(before.downloads.publish("late-init.txt", "late"));
+        assertTrue(running.downloads.publish("running.txt", "run"));
+        assertFalse(initUrl.equals(running.downloads.url()));
+        before.downloads.clear();
+        assertTrue(running.downloads.url().contains("?result="));
+        tester.stopAction = () -> {
+            assertNull(running.downloads.url());
+            assertFalse(running.downloads.publish("during-stop.txt", "late"));
+            mode.stop();
+        };
+        mode.stop();
+        mode.stop();
+        assertEquals(1, tester.stopCalls);
+        assertFalse(running.downloads.publish("after-stop.txt", "late"));
+    }
+
+    @Test
+    public void rootFailureRevokesDownloadsBeforeAttemptingFailingHardwareCleanup() {
+        FtcResultDownloads.Store store = new FtcResultDownloads.Store();
+        store.setBaseUrl("http://robot.test:8080");
+        TestOpMode mode = new TestOpMode(store);
+        mode.telemetry = new RecordingTelemetry().proxy();
+        mode.gamepad1 = new Gamepad();
+        mode.gamepad2 = new Gamepad();
+        DownloadTester tester = new DownloadTester();
+        mode.created = tester;
+        mode.init();
+        assertTrue(tester.current().downloads.publish("trial.txt", "frozen"));
+        RuntimeException primary = new IllegalStateException("loop failed");
+        RuntimeException cleanup = new IllegalArgumentException("hardware cleanup failed");
+        tester.loopAction = () -> { throw primary; };
+        tester.stopAction = () -> {
+            assertNull(tester.current().downloads.url());
+            assertFalse(tester.current().downloads.publish("late.txt", "late"));
+            throw cleanup;
+        };
+        assertSame(primary, expectRuntimeException(mode::loop));
+        assertArrayEquals(new Throwable[]{cleanup}, primary.getSuppressed());
+        mode.stop();
+        mode.loop();
+        assertEquals(1, tester.stopCalls);
+    }
+
+    @Test
+    public void directCustomRootReceivesUnavailableAutomaticDownloads() {
+        FtcResultDownloads.Store store = new FtcResultDownloads.Store();
+        store.setBaseUrl("http://robot.test:8080");
+        TestOpMode mode = new TestOpMode(store);
+        mode.telemetry = new RecordingTelemetry().proxy();
+        mode.gamepad1 = new Gamepad();
+        mode.gamepad2 = new Gamepad();
+        RecordingTester tester = new RecordingTester();
+        mode.created = tester;
+        mode.init();
+        assertFalse(tester.ctx.downloads.publish("custom.txt", "not retained"));
+        assertNull(tester.ctx.downloads.url());
+        mode.start();
+        mode.loop();
+        mode.stop();
+        assertEquals(1, tester.startCalls);
+        assertEquals(1, tester.loopCalls);
+        assertEquals(1, tester.stopCalls);
+    }
 
     @Test
     public void nullFactoryResultIsActionableAndTerminal() {
@@ -625,6 +716,10 @@ public final class FtcTeleOpTesterOpModeTest {
     }
 
     private static final class TestOpMode extends FtcTeleOpTesterOpMode {
+        TestOpMode() { }
+
+        TestOpMode(FtcResultDownloads.Store store) { super(store); }
+
         TeleOpTester created;
         TesterConsole createdConsole;
         RuntimeException createFailure;
@@ -726,6 +821,21 @@ public final class FtcTeleOpTesterOpModeTest {
             if (sampleFailure != null) {
                 throw sampleFailure;
             }
+        }
+    }
+
+    private static final class DownloadTester extends BaseTeleOpTester {
+        int stopCalls;
+        Runnable loopAction;
+        Runnable stopAction;
+        TesterContext current() { return ctx; }
+        @Override public String name() { return "Downloads"; }
+        @Override protected void onLoop(double dtSec) {
+            if (loopAction != null) loopAction.run();
+        }
+        @Override protected void onStop() {
+            stopCalls++;
+            if (stopAction != null) stopAction.run();
         }
     }
 

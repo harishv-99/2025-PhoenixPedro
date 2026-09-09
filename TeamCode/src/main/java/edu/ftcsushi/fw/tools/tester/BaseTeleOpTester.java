@@ -83,6 +83,13 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
     /** {@inheritDoc} */
     @Override
     public final void start() {
+        // A fresh immutable context preserves runtime identities but revokes pre-START download
+        // aliases. Nested children retain owner lifetimes and refresh their own lease at START.
+        if (ctx != null) {
+            TesterContext running = ctx.forStart();
+            if (running == null) return; // A custom clear callback stopped this owner.
+            ctx = running;
+        }
         onStart();
     }
 
@@ -128,6 +135,12 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
 
     /**
      * Optional hook called once when the OpMode transitions from INIT to RUN.
+     *
+     * <p>Before this hook, the base replaces {@link #ctx} with a fresh immutable context that
+     * preserves every runtime object but revokes its old result-download lease. Use the current
+     * {@code ctx.downloads}; a cached pre-START lease stays unavailable. An optional download
+     * failure disables that capability without suppressing this hook. A reentrant owner STOP
+     * during renewal wins and prevents the hook from running after cleanup.</p>
      */
     protected void onStart() {
         // Default: no-op.

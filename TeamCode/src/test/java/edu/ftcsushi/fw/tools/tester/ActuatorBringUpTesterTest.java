@@ -49,7 +49,7 @@ public final class ActuatorBringUpTesterTest {
         hardware.addMotor("alphaMotor");
 
         Rig rig = new Rig(hardware);
-        ActuatorBringUpTester tester = new ActuatorBringUpTester(message -> { });
+        ActuatorBringUpTester tester = new ActuatorBringUpTester();
         tester.init(rig.context());
         rig.initCycle(tester);
 
@@ -92,7 +92,7 @@ public final class ActuatorBringUpTesterTest {
         TestHardwareMap hardware = new TestHardwareMap();
         MotorProbe motor = hardware.addMotor("lift");
         Rig rig = new Rig(hardware);
-        ActuatorBringUpTester tester = new ActuatorBringUpTester(message -> { });
+        ActuatorBringUpTester tester = new ActuatorBringUpTester();
         tester.init(rig.context());
         rig.initCycle(tester);
 
@@ -206,7 +206,7 @@ public final class ActuatorBringUpTesterTest {
     }
 
     @Test
-    public void motorExtremeEndpointSpanLogsExactlyOnceWithoutResettingEncoder() throws Exception {
+    public void motorExtremeEndpointSpanDownloadsExactlyOnceWithoutResettingEncoder() throws Exception {
         TestHardwareMap hardware = new TestHardwareMap();
         MotorProbe motor = hardware.addMotor("slide");
         List<String> logs = new ArrayList<String>();
@@ -231,6 +231,9 @@ public final class ActuatorBringUpTesterTest {
         assertTrue(logs.get(0).contains("signedSafeTravelTicks=4294967295"));
         assertTrue(logs.get(0).contains("absoluteSafeTravelTicks=4294967295"));
         assertTrue(rig.telemetry.contains(".bounded(0.0, 4294967295.0)"));
+        assertEquals(logs.get(0), rig.downloadedText);
+        assertTrue(rig.telemetry.contains("http://test/result"));
+        assertTrue(rig.downloadedText.contains("sensorAcquisitionTime=UNRECORDED"));
 
         rig.runCycle(tester);
         rig.gamepad1.y = true;
@@ -238,6 +241,29 @@ public final class ActuatorBringUpTesterTest {
         assertEquals(1, logs.size());
         assertFalse(motor.modeWrites.contains(DcMotor.RunMode.STOP_AND_RESET_ENCODER));
 
+        tester.stop();
+        assertNull(rig.downloadedText);
+        assertEquals(0.0, motor.power, EPSILON);
+        assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, motor.mode);
+    }
+
+    @Test
+    public void failedDownloadCannotPreventDisarmedResultOrStop() throws Exception {
+        TestHardwareMap hardware = new TestHardwareMap();
+        MotorProbe motor = hardware.addMotor("intake");
+        Rig rig = new Rig(hardware);
+        ActuatorBringUpTester tester = readyRunningTester(hardware, rig, "DC_MOTOR:intake");
+        arm(tester, rig);
+        rig.gamepad1.right_bumper = true;
+        rig.runCycle(tester);
+        rig.gamepad1.right_bumper = false;
+        rig.runCycle(tester);
+        pressB(tester, rig);
+        rig.failDownload = true;
+        tapY(tester, rig);
+        assertEquals(0.0, motor.power, EPSILON);
+        assertTrue(rig.telemetry.contains("unavailable; copy the on-screen result"));
+        assertTrue(rig.reports.isEmpty());
         tester.stop();
         assertEquals(0.0, motor.power, EPSILON);
         assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, motor.mode);
@@ -380,7 +406,7 @@ public final class ActuatorBringUpTesterTest {
         TestHardwareMap hardware = new TestHardwareMap();
         ServoProbe servo = hardware.addServo("newServo", Double.NaN);
         Rig rig = new Rig(hardware);
-        ActuatorBringUpTester tester = new ActuatorBringUpTester(message -> { });
+        ActuatorBringUpTester tester = new ActuatorBringUpTester();
         tester.init(rig.context());
         rig.initCycle(tester);
         selectDuringInit(tester, rig, "SERVO:newServo", false);
@@ -486,7 +512,7 @@ public final class ActuatorBringUpTesterTest {
             TestHardwareMap hardware = new TestHardwareMap();
             ServoProbe servo = hardware.addServo("invalidServo", invalidState);
             Rig rig = new Rig(hardware);
-            ActuatorBringUpTester tester = new ActuatorBringUpTester(message -> { });
+            ActuatorBringUpTester tester = new ActuatorBringUpTester();
             tester.init(rig.context());
             rig.initCycle(tester);
             selectDuringInit(tester, rig, "SERVO:invalidServo", false);
@@ -584,7 +610,7 @@ public final class ActuatorBringUpTesterTest {
         CrServoProbe crServo = hardware.addCrServo("wheel");
         ServoProbe servo = hardware.addServo("claw", 0.5);
         Rig rig = new Rig(hardware);
-        ActuatorBringUpTester tester = new ActuatorBringUpTester(message -> { });
+        ActuatorBringUpTester tester = new ActuatorBringUpTester();
         tester.init(rig.context());
         rig.initCycle(tester);
 
@@ -615,7 +641,8 @@ public final class ActuatorBringUpTesterTest {
                                                             Rig rig,
                                                             String stableId,
                                                             List<String> logs) throws Exception {
-        ActuatorBringUpTester tester = new ActuatorBringUpTester(logs::add);
+        rig.reports = logs;
+        ActuatorBringUpTester tester = new ActuatorBringUpTester();
         tester.init(rig.context());
         rig.initCycle(tester);
         selectDuringInit(tester, rig, stableId, false);
@@ -628,7 +655,7 @@ public final class ActuatorBringUpTesterTest {
         TestHardwareMap hardware = new TestHardwareMap();
         ServoProbe servo = hardware.addServo("newServo", Double.NaN);
         Rig rig = new Rig(hardware);
-        ActuatorBringUpTester tester = new ActuatorBringUpTester(message -> { });
+        ActuatorBringUpTester tester = new ActuatorBringUpTester();
         TesterChildSession session = new TesterChildSession();
         session.retain(tester);
         assertNull(session.init(rig.context()));
@@ -662,12 +689,12 @@ public final class ActuatorBringUpTesterTest {
             assertFalse(session.canActivate());
             assertThrows(
                     IllegalStateException.class,
-                    () -> session.retain(new ActuatorBringUpTester(message -> { })));
+                    () -> session.retain(new ActuatorBringUpTester()));
         } else {
             assertEquals(0, failure.getSuppressed().length);
             assertFalse(session.cleanupBlocked());
             assertTrue(session.canActivate());
-            session.retain(new ActuatorBringUpTester(message -> { }));
+            session.retain(new ActuatorBringUpTester());
         }
     }
 
@@ -677,7 +704,7 @@ public final class ActuatorBringUpTesterTest {
         TestHardwareMap hardware = new TestHardwareMap();
         ServoProbe servo = hardware.addServo("wrist", 0.4);
         Rig rig = new Rig(hardware);
-        ActuatorBringUpTester tester = new ActuatorBringUpTester(message -> { });
+        ActuatorBringUpTester tester = new ActuatorBringUpTester();
         TesterChildSession session = new TesterChildSession();
         session.retain(tester);
         assertNull(session.init(rig.context()));
@@ -706,7 +733,7 @@ public final class ActuatorBringUpTesterTest {
         assertFalse(session.canActivate());
         assertThrows(
                 IllegalStateException.class,
-                () -> session.retain(new ActuatorBringUpTester(message -> { })));
+                () -> session.retain(new ActuatorBringUpTester()));
     }
 
     private static void selectDuringInit(ActuatorBringUpTester tester,
@@ -792,6 +819,9 @@ public final class ActuatorBringUpTesterTest {
     }
 
     private static final class Rig {
+        List<String> reports = new ArrayList<String>();
+        String downloadedText;
+        boolean failDownload;
         final Gamepad gamepad1 = new Gamepad();
         final RecordingTelemetry telemetry = new RecordingTelemetry();
         final LoopClock clock = new LoopClock();
@@ -805,7 +835,23 @@ public final class ActuatorBringUpTesterTest {
                     telemetry.proxy(),
                     gamepad1,
                     new Gamepad(),
-                    clock);
+                    clock,
+                    new edu.ftcsushi.fw.ftc.ResultDownloads() {
+                        @Override public boolean publish(String filename, String text) {
+                            if (failDownload) throw new IllegalStateException("download failure");
+                            reports.add(text);
+                            downloadedText = text;
+                            return true;
+                        }
+                        @Override public String url() {
+                            if (failDownload) throw new IllegalStateException("download failure");
+                            return downloadedText == null ? null : "http://test/result";
+                        }
+                        @Override public void clear() {
+                            if (failDownload) throw new IllegalStateException("download failure");
+                            downloadedText = null;
+                        }
+                    });
         }
 
         TesterContext context() {

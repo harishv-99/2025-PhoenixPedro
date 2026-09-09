@@ -334,6 +334,98 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
         rig.tester.stop();
     }
 
+    @Test
+    public void abortPublishesFrozenReportAfterZeroAndNewTrialClearsIt() {
+        Rig rig = new Rig();
+        rig.startActive();
+        rig.gamepad1.a = true;
+        rig.activeCycle(0.02);
+        rig.gamepad1.a = false;
+        rig.activeCycle(0.02);
+        rig.left.setMeasuredVelocityTicksPerSec(123.45678901234567);
+        rig.activeCycle(0.02);
+        rig.gamepad1.b = true;
+        rig.activeCycle(0.02);
+        assertEquals(1, rig.reports.size());
+        String frozen = rig.downloadedText;
+        assertTrue(frozen.contains("trialNumber=1\n"));
+        assertTrue(frozen.contains("trialState=ABORTED\n"));
+        assertTrue(frozen.contains("leftMeasuredVelocityTicksPerSec=123.45678901234567\n"));
+        assertTrue(frozen.contains("sensorAcquisitionTime=UNRECORDED"));
+        rig.gamepad1.b = false;
+        rig.left.setMeasuredVelocityTicksPerSec(0.0);
+        rig.activeCycle(0.02);
+        assertEquals(frozen, rig.downloadedText);
+        assertEquals(1, rig.reports.size());
+        rig.gamepad1.a = true;
+        rig.activeCycle(0.02);
+        assertEquals(null, rig.downloadedText);
+        rig.tester.stop();
+        assertEquals(1, rig.reports.size());
+    }
+
+    @Test
+    public void simultaneousStartAbortDoesNotRelabelPretrialFeedback() {
+        Rig rig = new Rig();
+        rig.startActive();
+        rig.gamepad1.a = true;
+        rig.gamepad1.b = true;
+        rig.activeCycle(0.02);
+        assertEquals(1, rig.reports.size());
+        assertTrue(rig.downloadedText.contains("authoredTargetVelocityTicksPerSec=1000.0"));
+        assertTrue(rig.downloadedText.contains("evidenceRequestMatchesTrial=false"));
+        assertTrue(rig.downloadedText.contains("leftAtTarget=false"));
+        rig.tester.stop();
+        assertEquals(null, rig.downloadedText);
+    }
+
+    @Test
+    public void downloadFailureCannotPreventAbortOrStop() {
+        Rig rig = new Rig();
+        rig.startActive();
+        rig.gamepad1.a = true;
+        rig.activeCycle(0.02);
+        rig.failDownload = true;
+        rig.gamepad1.b = true;
+        rig.activeCycle(0.02);
+        assertEquals(0.0, rig.left.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(0.0, rig.right.commandedVelocityTicksPerSec(), EPSILON);
+        assertEquals(ReferenceFlywheelSpinUpExperiment.TrialState.ABORTED,
+                rig.telemetry.value("trialState"));
+        rig.tester.stop();
+        assertTrue(rig.reports.isEmpty());
+    }
+
+    @Test
+    public void stoppingUnfinishedTrialDoesNotInventCompletedReport() {
+        Rig rig = new Rig();
+        rig.startActive();
+        rig.gamepad1.a = true;
+        rig.activeCycle(0.02);
+        rig.tester.stop();
+        assertTrue(rig.reports.isEmpty());
+        assertEquals(null, rig.downloadedText);
+    }
+
+    @Test
+    public void stoppedOwnerCannotPublishPendingTerminalReport() {
+        Rig rig = new Rig();
+        rig.startActive();
+        rig.gamepad1.a = true;
+        rig.activeCycle(0.02);
+        rig.left.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.right.setMeasuredVelocityTicksPerSec(rig.criteria.targetVelocityTicksPerSec);
+        rig.activeCycle(0.10);
+        assertEquals(ReferenceFlywheelSpinUpExperiment.TrialState.TARGET_REACHED,
+                rig.telemetry.value("trialState"));
+        assertTrue("terminal zero has not yet had a downstream heartbeat", rig.reports.isEmpty());
+        rig.tester.stop();
+        // Exercise a surviving post-output publication path after terminal owner invalidation.
+        rig.activeCycle(0.02);
+        assertTrue(rig.reports.isEmpty());
+        assertEquals(null, rig.downloadedText);
+    }
+
     private static void assertMinimalTelemetry(RecordingTelemetry telemetry) {
         for (String key : telemetry.values.keySet()) {
             String lower = key.toLowerCase(Locale.ROOT);
@@ -399,6 +491,9 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
     }
 
     private static final class Rig {
+        private final List<String> reports = new ArrayList<String>();
+        private String downloadedText;
+        private boolean failDownload;
         private final ReferenceFlywheelMechanism.Config config = testConfig();
         private final ReferenceFlywheelSpinUpCriteria criteria = reviewedCriteria();
         private final FtcTestHardware hardware = new FtcTestHardware();
@@ -418,7 +513,26 @@ public final class ReferenceFlywheelSpinUpExperimentTest {
                     telemetry.telemetry,
                     gamepad1,
                     new Gamepad(),
-                    clock));
+                    clock,
+                    new edu.ftcsushi.fw.ftc.ResultDownloads() {
+                        @Override public boolean publish(String filename, String text) {
+                            assertEquals("spin-up-result.txt", filename);
+                            assertEquals(0.0, left.commandedVelocityTicksPerSec(), EPSILON);
+                            assertEquals(0.0, right.commandedVelocityTicksPerSec(), EPSILON);
+                            if (failDownload) throw new IllegalStateException("download failure");
+                            reports.add(text);
+                            downloadedText = text;
+                            return true;
+                        }
+                        @Override public String url() {
+                            if (failDownload) throw new IllegalStateException("download failure");
+                            return downloadedText == null ? null : "http://test/result";
+                        }
+                        @Override public void clear() {
+                            if (failDownload) throw new IllegalStateException("download failure");
+                            downloadedText = null;
+                        }
+                    }));
         }
 
         private void startActive() {
