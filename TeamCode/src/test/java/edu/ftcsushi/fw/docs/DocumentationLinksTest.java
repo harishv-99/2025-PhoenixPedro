@@ -45,7 +45,7 @@ public final class DocumentationLinksTest {
             "https://github.com/harishv-99/2025-PhoenixPedro/";
     private static final String FENCE =
             String.valueOf((char) 96) + (char) 96 + (char) 96;
-    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 28;
+    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 29;
 
     private static final List<String> GUIDE_AREAS = Arrays.asList(
             "Get Started",
@@ -3263,7 +3263,7 @@ public final class DocumentationLinksTest {
         counts.put("docs/examples/Subsystem Experiments.md", 1);
         counts.put("docs/getting-started/Build and Run.md", 3);
         counts.put("docs/getting-started/First Software Tour.md", 3);
-        counts.put("docs/maintainers/Maintainer Notes.md", 4);
+        counts.put("docs/maintainers/Maintainer Notes.md", 5);
         counts.put("docs/testing-calibration/Control Tuning Workflow.md", 1);
         counts.put("docs/testing-calibration/Add Calibration Testers to Your Robot.md", 1);
         counts.put("docs/troubleshooting/Common Problems.md", 1);

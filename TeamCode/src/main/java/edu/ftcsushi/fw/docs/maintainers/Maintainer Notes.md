@@ -311,6 +311,38 @@ contracts. They do not prove robot wiring, motor or sensor direction, physical m
 camera readiness, or safe stop behavior. Use the on-robot testers and calibration walkthroughs for
 those facts.
 
+#### Run the localization robustness scenarios
+
+Use this targeted check when maintaining localization; no assembled robot is required. It feeds
+the real gain-fusion and EKF estimators scripted sensor readings and compares them with independently
+authored movement. See [how to interpret the results](<../drive-vision/AprilTag Localization & Fixed Layouts.md#check-localization-software-without-a-robot>)
+before treating an error, recovery time, or uncertainty value as evidence.
+
+Run from the repository root. `--tests` selects the supplied class; `--rerun-tasks` requests a fresh
+execution even when Gradle would otherwise reuse an up-to-date result.
+
+=== "Windows"
+
+    ```powershell
+    .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests 'edu.ftcsushi.fw.localization.fusion.LocalizationRobustnessScenarioTest' --rerun-tasks
+    ```
+
+=== "macOS"
+
+    ```bash
+    ./gradlew --console=plain :TeamCode:testDebugUnitTest --tests 'edu.ftcsushi.fw.localization.fusion.LocalizationRobustnessScenarioTest' --rerun-tasks
+    ```
+
+Alternatively, run `LocalizationRobustnessScenarioTest` using its Android Studio gutter icon.
+The bounded scenario summaries are test standard output, available in the class's **Standard output**
+section under `TeamCode/build/reports/tests/testDebugUnitTest/index.html` and in the JUnit XML under
+`TeamCode/build/test-results/testDebugUnitTest`. The summaries are not necessarily printed in the
+ordinary Gradle console. Later test runs may replace these reports; retain the relevant report
+off-robot when comparing a framework revision. No results are written to a Robot Controller.
+
+The full framework command above already includes this class. Passing it checks synthetic software
+cases, not actual calibration or filter suitability on a particular robot.
+
 ### 1.7 Documentation integrity check
 
 Run the focused Markdown link and fence check from the repository root with:
