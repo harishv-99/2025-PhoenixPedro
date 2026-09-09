@@ -43,7 +43,18 @@ public final class FtcLimelightAprilTagVision implements AprilTagVision {
         this.tagSensor = new LimelightAprilTagSensor();
     }
 
-    /** Publishes finite field yaw through the existing owner for MegaTag2 estimation. */
+    /**
+     * Submits finite field yaw through the existing owner for advanced raw MegaTag2 use.
+     *
+     * <p>This explicit vendor operation does not update a predictor or turn MT2 into a supported
+     * full-pose correction source. An accepted write and a subsequent result read do not identify
+     * which submitted yaw formed that camera frame.</p>
+     *
+     * @param fieldYawRad robot heading on the field, in radians, counter-clockwise positive
+     * @return the owner's orientation-write result, not a frame-to-yaw acknowledgment
+     * @throws IllegalArgumentException if yaw is non-finite
+     * @throws IllegalStateException if the camera owner is no longer usable
+     */
     public boolean updateRobotFieldYawRad(double fieldYawRad) {
         return owner.updateRobotFieldYawRad(fieldYawRad);
     }
@@ -78,6 +89,9 @@ public final class FtcLimelightAprilTagVision implements AprilTagVision {
 
     /**
      * Returns a confirmed result only while the configured AprilTag pipeline is selected and ready.
+     * Raw MT2 access through this snapshot remains vendor/diagnostic evidence, not a promise of
+     * independence from a supplied heading or suitability as a full-pose correction. Its frame
+     * timestamp does not identify the orientation input used by the device.
      *
      * @param clock shared loop clock
      * @return confirmed AprilTag-pipeline result, or an unavailable snapshot

@@ -24,19 +24,27 @@ import edu.ftcsushi.fw.localization.MotionPredictor;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 
 /**
- * Direct absolute field-pose estimator backed by Limelight botpose / MegaTag results.
+ * Direct absolute field-pose estimator backed only by Limelight's standard botpose (MegaTag1).
  *
  * <p>This estimator intentionally sits beside the raw AprilTag path rather than replacing it. A
- * Limelight-backed robot can now choose between:</p>
+ * Limelight-backed robot can choose between:</p>
  * <ul>
  *   <li>{@link edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator}: solve a pose from raw tag observations</li>
- *   <li>{@code LimelightFieldPoseEstimator}: trust the Limelight's own full-field pose estimate</li>
+ *   <li>{@code LimelightFieldPoseEstimator}: consume Limelight's standard full-field pose estimate</li>
  * </ul>
  *
  * <p>The direct-pose path is convenient, but it should still be treated like an absolute correction
- * source: freshness, tag count, and robot motion all matter. Teams have reported degraded direct
- * pose quality while the robot is moving quickly. This estimator therefore includes lightweight
- * motion-aware quality gating using an optional {@link MotionPredictor}.</p>
+ * source: freshness, tag count, and robot motion all matter. The optional {@link MotionPredictor}
+ * supplies cached motion deltas for configurable quality/gating policy only. This owner does not
+ * update that predictor, read its absolute pose, or submit its heading to the camera.</p>
+ *
+ * <p>MegaTag2 can reuse a supplied predictor heading. Its returned position and heading therefore
+ * cannot simply be counted as independent confirmation of that same predictor. This estimator
+ * never selects an MT2 result or falls back to it when standard botpose is absent. Advanced raw
+ * access remains on {@link FtcLimelightAprilTagVision#confirmedAprilTagResult(LoopClock)}, but it
+ * is not a supported full-pose correction recipe. Standard botpose and raw tag solves can still
+ * share image, mount, or field-layout errors; this source restriction does not certify statistical
+ * independence, physical accuracy, or calibrated confidence.</p>
  */
 public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator {
 
@@ -44,25 +52,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      * Configuration for {@link LimelightFieldPoseEstimator}.
      */
     public static final class Config {
-
-        /**
-         * Direct-pose mode to request from the Limelight.
-         */
-        public enum Mode {
-            /**
-             * Use the standard botpose / MegaTag 1 result.
-             */
-            BOTPOSE,
-            /**
-             * Use the IMU-fused MegaTag 2 result when available.
-             */
-            BOTPOSE_MT2
-        }
-
-        /**
-         * Which direct-pose mode to request from the Limelight.
-         */
-        public Mode mode = Mode.BOTPOSE;
 
         /** Reject results whose estimated camera-exposure age exceeds this positive number of seconds. */
         public double maxResultAgeSec = 0.25;
@@ -127,7 +116,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
          */
         public Config copy() {
             Config c = new Config();
-            c.mode = this.mode;
             c.maxResultAgeSec = this.maxResultAgeSec;
             c.minVisibleTags = this.minVisibleTags;
             c.singleTagQuality = this.singleTagQuality;
@@ -147,9 +135,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             String p = (context != null && !context.trim().isEmpty())
                     ? context.trim()
                     : "LimelightFieldPoseEstimator.Config";
-            if (c.mode == null) {
-                throw new IllegalArgumentException(p + ".mode must not be null, got null");
-            }
             requirePositive(c.maxResultAgeSec, p + ".maxResultAgeSec");
             if (c.minVisibleTags < 1) {
                 throw new IllegalArgumentException(
@@ -200,7 +185,8 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      * {@link Config#defaults()} explicitly to select the framework baseline.</p>
      *
      * @param lane      borrowed Limelight tag capability; camera lifetime stays with its physical owner
-     * @param predictor optional motion predictor used for MegaTag 2 yaw input and motion-aware gating
+     * @param predictor optional borrowed predictor; its owner updates before this estimator, which
+     *                  reads cached motion deltas for motion-aware gating only
      * @param config    non-null estimator policy draft
      * @throws NullPointerException if {@code lane} is null
      * @throws IllegalArgumentException if {@code config} is null or invalid
@@ -225,7 +211,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      * <p>Typical usage is to call this once per loop from a localization owner, then inspect
      * {@link #getEstimate()} for the most recent accepted direct pose.</p>
      *
-     * <p>The estimator claims the cycle before publishing MT2 yaw or reading a vendor result. A
+     * <p>The estimator claims the cycle before reading a vendor result or borrowed motion. A
      * repeated successful call in that cycle is a no-op, a repeated call after failure rethrows
      * the exact first {@link RuntimeException}, and recursive entry fails before another vendor
      * effect. Pipeline changes after the update become visible on the next cycle, preserving one
@@ -234,9 +220,9 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      * <p>A direct botpose is usable only when its {@link Pose3D}, {@link Position}, position unit,
      * and {@link YawPitchRollAngles} are non-null and all converted x/y/z/yaw/pitch/roll components
      * are finite. A claimed predictor motion delta must have finite planar components, quality in
-     * {@code [0, 1]}, coherent current-epoch timestamps, and positive duration. Invalid motion or
-     * predictor yaw publishes no pose for that cycle; non-finite yaw is never sent to Limelight and
-     * no invalid motion value is converted into a quality score.</p>
+     * {@code [0, 1]}, coherent current-epoch timestamps, and positive duration. Invalid motion
+     * publishes no pose for that cycle; no invalid motion value is converted into a quality score.
+     * Missing or malformed standard botpose also publishes no pose, even if MT2 is available.</p>
      */
     @Override
     public void update(LoopClock clock) {
@@ -255,7 +241,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             return;
         }
 
-        // Claim the attempt before MT2 yaw or result access can cause vendor-side effects.
+        // Claim the attempt before result access or borrowed motion can invoke collaborators.
         lastUpdateCycle = cycle;
         updateInProgress = true;
         lastUpdateFailure = null;
@@ -269,7 +255,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         }
     }
 
-    /** Perform the one yaw publication, result sample, and pose evaluation for this cycle. */
+    /** Perform the one result sample and standard-pose evaluation for this cycle. */
     private void updateCurrentCycle(LoopClock clock) {
         final LoopTimestamp nowTimestamp = clock.nowTimestamp();
         lastRejectReason = "none";
@@ -278,14 +264,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         lastMotionScale = 1.0;
         lastTranslationSpeedInPerSec = 0.0;
         lastYawRateRadPerSec = 0.0;
-
-        if (cfg.mode == Config.Mode.BOTPOSE_MT2) {
-            if (!maybePushPredictorYawToLimelight()) {
-                lastRejectReason = "predictor reported a non-finite field yaw";
-                lastEstimate = PoseEstimate.noPose(nowTimestamp);
-                return;
-            }
-        }
 
         FtcLimelightVisionLane.ResultSnapshot result = lane.confirmedAprilTagResult(clock);
         if (!result.hasResult()) {
@@ -322,7 +300,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             return;
         }
 
-        Pose3D botpose = readBotpose(result, cfg.mode);
+        Pose3D botpose = result.botpose();
         if (botpose == null) {
             lastRejectReason = "direct botpose was unavailable or malformed: require non-null "
                     + "position, position unit, orientation, and finite x/y/z/yaw/pitch/roll";
@@ -422,8 +400,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "limelightFieldPose" : prefix;
-        dbg.addData(p + ".mode", cfg.mode)
-                .addData(p + ".hasPose", lastEstimate.hasPose)
+        dbg.addData(p + ".hasPose", lastEstimate.hasPose)
                 .addData(p + ".quality", lastEstimate.quality)
                 .addData(p + ".timestampAvailable", lastEstimate.timestamp.isAvailable())
                 .addData(p + ".fieldToRobotPose", lastEstimate.fieldToRobotPose)
@@ -443,26 +420,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
                 .addData(p + ".cfg.rejectWhenMovingTooFast", cfg.rejectWhenMovingTooFast)
                 .addData(p + ".cfg.maxTranslationSpeedInPerSec", cfg.maxTranslationSpeedInPerSec)
                 .addData(p + ".cfg.maxYawRateRadPerSec", cfg.maxYawRateRadPerSec);
-    }
-
-    private boolean maybePushPredictorYawToLimelight() {
-        if (predictor == null) {
-            return true;
-        }
-        PoseEstimate predictorEst = predictor.getEstimate();
-        if (predictorEst == null || !predictorEst.hasPose) {
-            return true;
-        }
-        if (predictorEst.fieldToRobotPose == null
-                || !Double.isFinite(predictorEst.fieldToRobotPose.yawRad)) {
-            return false;
-        }
-        double wrappedYawRad = MathUtil.wrapToPi(predictorEst.fieldToRobotPose.yawRad);
-        if (!Double.isFinite(wrappedYawRad)) {
-            return false;
-        }
-        lane.updateRobotFieldYawRad(wrappedYawRad);
-        return true;
     }
 
     private static Pose3d sushiFieldPose(Pose3D botpose) {
@@ -501,20 +458,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
                 pitchRad,
                 rollRad
         );
-    }
-
-    private static Pose3D readBotpose(FtcLimelightVisionLane.ResultSnapshot result,
-                                      Config.Mode mode) {
-        if (result == null || !result.hasResult()) {
-            return null;
-        }
-        if (mode == Config.Mode.BOTPOSE_MT2) {
-            Pose3D mt2 = result.botposeMt2();
-            if (mt2 != null) {
-                return mt2;
-            }
-        }
-        return result.botpose();
     }
 
     private static boolean isUsablePredictorMotion(MotionDelta delta, LoopClock clock) {

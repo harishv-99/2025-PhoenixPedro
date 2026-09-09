@@ -30,6 +30,11 @@ import edu.ftcsushi.fw.spatial.Region2d;
  *   <li>Allow FTC SDK {@code robotPose} observations when available, but fall back to Sushi's
  *       explicit geometry chain when they disagree or are unavailable.</li>
  * </ul>
+ *
+ * <p>The observation-provided field pose and explicit geometry are alternatives for one
+ * candidate, not independent measurements. They can share the image, camera mount, and field
+ * layout, so both can agree while being wrong. The cross-check and within-frame quality describe
+ * consistency under those assumptions; neither establishes independently measured accuracy.</p>
  */
 public final class FixedTagFieldPoseSolver {
 

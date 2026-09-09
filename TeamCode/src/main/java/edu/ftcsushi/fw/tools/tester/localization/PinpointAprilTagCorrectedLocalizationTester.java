@@ -702,12 +702,6 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
         telemetry.addData("Zero pose [RB]", "field pose -> (0,0,0)");
         telemetry.addData("AprilTag MaxAge", "%.0f ms", aprilTagMaxAgeSec() * 1000.0);
 
-        if (limelightEstimator != null) {
-            telemetry.addData(
-                    "Direct Limelight mode",
-                    localizationConfig.estimation.correctionSource.limelightFieldPose.mode
-            );
-        }
         if (fixedTagLayoutPolicySummary != null) {
             telemetry.addData("Layout policy", fixedTagLayoutPolicySummary);
         } else {

@@ -461,10 +461,10 @@ keep that policy in its realization: webcam maps activities to processor enablem
 to one pipeline request at each transition. Consumers use borrowed tag evidence or the shared
 located-target source rather than FTC or Limelight result types.
 
-Phoenix can use Limelight's direct device field pose as an **optional** correction source through
+Phoenix can use Limelight's standard botpose as an **optional** correction source through
 `PhoenixLocalizationConfiguration.current()`, while the raw AprilTag path remains
-available.
-Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2 pose access.
+available. Raw MegaTag2 access is an advanced diagnostic capability, not the supported direct
+full-pose correction path.
 
 ### Phoenix notes
 
@@ -696,9 +696,11 @@ public Backend backend = Backend.LIMELIGHT;
 // In PhoenixLocalizationConfiguration.current():
 config.estimation.correctionSource.mode =
         FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
-config.estimation.correctionSource.limelightFieldPose.mode =
-        LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
 ```
+
+This selects standard botpose only. The source never sends Pinpoint heading to Limelight, and a
+missing standard botpose remains unavailable even if a raw MegaTag2 result exists. Pinpoint motion
+can still reduce its quality or trigger the configured motion gate.
 
 Start conservatively:
 
@@ -708,7 +710,11 @@ Start conservatively:
 - keep motion-aware degradation enabled
 
 Phoenix's direct Limelight path assumes the Limelight field map matches the field/tag layout you
-intend to use.
+intend to use. The raw-tag and direct-pose views may share image, mount, or map errors, so their
+agreement is not independent validation. Compare at independently measured robot placements;
+neither a high quality score nor small EKF modeled uncertainty proves accuracy. See the framework's
+[shared-evidence explanation](<../../fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md#check-whether-two-estimates-share-evidence>)
+for the supported correction boundary and the separate raw diagnostic access.
 
 ---
 

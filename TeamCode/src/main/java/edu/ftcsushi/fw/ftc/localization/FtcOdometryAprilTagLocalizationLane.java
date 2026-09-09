@@ -41,6 +41,11 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
  * owns the estimation strategy built on top of those resources: predictor wiring, AprilTag-only
  * field solving, optional direct Limelight field pose, correction-source selection, corrected/global
  * estimator selection, and per-loop updates.</p>
+ *
+ * <p>The direct Limelight view consumes standard botpose only, both as the selected correction
+ * and as a diagnostic beside raw tags. Neither use submits predictor heading to the camera.
+ * Side-by-side agreement is a consistency check, not independent truth: these views can share
+ * image, camera-mount, and field-layout errors.</p>
  */
 public final class FtcOdometryAprilTagLocalizationLane {
 
@@ -63,7 +68,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
          */
         APRILTAG_POSE,
         /**
-         * Use the Limelight's own direct field pose (botpose / MegaTag) when the backend supports it.
+         * Use Limelight's standard botpose (MegaTag1), not heading-assisted MT2, when supported.
          */
         LIMELIGHT_FIELD_POSE
     }

@@ -610,7 +610,6 @@ public final class PhoenixProfileConfigurationTest {
             FtcOdometryAprilTagLocalizationLane.Config config) {
         LimelightFieldPoseEstimator.Config limelight =
                 config.estimation.correctionSource.limelightFieldPose;
-        assertEquals(LimelightFieldPoseEstimator.Config.Mode.BOTPOSE, limelight.mode);
         assertRawDouble(0.25, limelight.maxResultAgeSec);
         assertEquals(1, limelight.minVisibleTags);
         assertRawDouble(0.55, limelight.singleTagQuality);
