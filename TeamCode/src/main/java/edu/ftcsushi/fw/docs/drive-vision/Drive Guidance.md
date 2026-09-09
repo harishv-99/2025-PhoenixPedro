@@ -276,6 +276,19 @@ These checks prove only that the software configuration is coherent. They do not
 tolerances or time budgets are appropriate for a particular drivetrain, that guidance is tuned
 safely, or that the robot will physically reach its target.
 
+A guidance Task advances once per shared clock cycle; its first update may share its start cycle,
+and repeated or active recursive updates do not issue another command. Its Task budget starts at
+that Task's start time, while the consecutive no-guidance timer starts when usable guidance is
+lost. Each deadline expires when elapsed time is greater than its configured limit. Success,
+timeout, active cancellation and an armed lifecycle failure all attempt the owned drive-stop path.
+Stopping here ends this drive command lifetime, not the robot's broader service ownership.
+
+A lifecycle or ending `RuntimeException` remains a failure: later Task updates and outcome reads
+rethrow it rather than publishing successful arrival or ordinary cancellation. This effectful Task
+contract differs from a retryable query/value observation described above. It does not retry a
+possibly executed drive command. The robot still owns whether to retry with a fresh Task, fall
+back, or abort; software terminality is not evidence that the chassis physically stopped.
+
 ## Known-clear rectangular parking assist
 
 A robot-owned parking assist can reuse the ordinary field-relative Go-to-Pose Task. It must own an

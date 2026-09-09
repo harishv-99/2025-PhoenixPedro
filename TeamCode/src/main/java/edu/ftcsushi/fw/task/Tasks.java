@@ -119,7 +119,7 @@ public final class Tasks {
      * <p>The duration begins when the returned task starts; it does not include the loop interval
      * immediately before scheduling.</p>
      *
-     * @param seconds duration in seconds; must be {@code >= 0}
+     * @param seconds finite duration in seconds; must be {@code >= 0}
      */
     public static Task waitForSeconds(double seconds) {
         return new RunForSecondsTask(seconds, null, null, null);
@@ -156,7 +156,7 @@ public final class Tasks {
      * becomes {@code true}.</p>
      *
      * @param condition  condition to wait for; must not be {@code null}
-     * @param timeoutSec timeout in seconds; must be {@code >= 0.0}
+     * @param timeoutSec finite timeout in seconds; must be {@code >= 0.0}; omit it for an unbounded wait
      */
     public static Task waitUntil(BooleanSource condition, double timeoutSec) {
         return new WaitUntilTask(condition, timeoutSec);
@@ -482,6 +482,11 @@ public final class Tasks {
      *
      * <p>A positive duration remains observable for at least its start cycle; zero duration remains
      * idle.</p>
+     *
+     * @param name diagnostic name
+     * @param output constant scalar proposal selected by the output queue while this Task is active
+     * @param durationSec finite duration in seconds, greater than or equal to zero
+     * @return a fresh single-use output Task retaining its scalar interface
      */
     public static OutputTask outputForSeconds(String name, double output, double durationSec) {
         return new OutputForSecondsTask(name, output, durationSec);
@@ -569,6 +574,11 @@ public final class Tasks {
      * timeout wins before another child update. Direct cancellation reports
      * {@link TaskOutcome#CANCELLED}. The returned Task and its child are both single-use.</p>
      *
+     * <p>Ending is claimed before cancellation callbacks, but the result is unavailable until
+     * those callbacks and any in-flight child call return. A lifecycle or cancellation failure
+     * remains an exception through later update/outcome inspection, not an ordinary TIMEOUT or
+     * CANCELLED result. Repeated cancellation does not retry failed ending actions.</p>
+     *
      * @param task       fresh child Task to run; must not be {@code null}
      * @param timeoutSec finite, nonnegative hard budget in seconds
      * @return a fresh single-use timeout decorator
@@ -577,6 +587,54 @@ public final class Tasks {
      */
     public static Task withTimeout(Task task, double timeoutSec) {
         return new TimeoutTask(task, timeoutSec);
+    }
+
+    /**
+     * Decorate one fresh Task with synchronous, exactly-once terminal cleanup.
+     *
+     * <p>Cleanup is armed immediately before entering the child's {@code start(clock)}. It is
+     * attempted after natural completion, active cancellation, or a child lifecycle failure,
+     * including a partially failed start. Construction, cancellation before start, and rejected
+     * pre-start updates invoke neither the child nor cleanup. Active cancellation and lifecycle
+     * failure best-effort cancel the started child before cleanup; completed children are not
+     * cancelled again. Cleanup itself must be quick and non-blocking.</p>
+     *
+     * <p>A natural child outcome is retained exactly only after cleanup returns successfully.
+     * Direct cancellation reports {@code CANCELLED}. The wrapper claims termination before any
+     * terminal callbacks, so {@code isComplete()} is already true during cleanup, but inspecting
+     * {@code getOutcome()} before cleanup and the outer child call settle is a lifecycle error.
+     * This includes a child acquisition that returns after reentrant cancellation. The error is retained even
+     * if the callback catches it. No pending success can release a dependent sequence.</p>
+     *
+     * <p>The first lifecycle or cleanup {@link RuntimeException} remains primary; subsequent
+     * cancellation/cleanup failures are suppressed. After failure, {@code getOutcome()} and
+     * {@code update(clock)} rethrow the retained exception instead of publishing an ordinary
+     * terminal enum. Consequently neither {@link #sequence(Task...)} nor
+     * {@link #sequenceOnCompletion(Task...)} can treat failed cleanup as valid completion.
+     * Diagnostics report cached state without querying that failing outcome. Before a child starts,
+     * during terminal cleanup, and after failure, child diagnostics are skipped. Otherwise the
+     * child's normal non-advancing debug view is included; a diagnostic-only RuntimeException is
+     * reported as unavailable child diagnostics without changing the lifecycle result. {@link Error}
+     * is not caught and interrupts cleanup immediately.</p>
+     *
+     * <p>The returned wrapper is single-use. Same-cycle updates deduplicate; a recursive update
+     * during an active lifecycle callback is a no-op and never advances the child. A retained
+     * failure is rethrown before either suppression rule. Repeated starts reject before effects
+     * without changing the original attempt. Repeated/terminal cancellation is inert.</p>
+     *
+     * <p>The caller chooses what is still owned and which requests to restore. For several cleanup
+     * actions, the callback can use {@link edu.ftcsushi.fw.core.lifecycle.CleanupActions}.
+     * An old attempt must not clear a replacement's request. Cleanup is not another Task,
+     * automatic recovery, a direct hardware write, or evidence that the robot physically stopped.
+     * The result is a {@link Task}, not an output-producing {@link OutputTask}.</p>
+     *
+     * @param child fresh child Task whose terminal lifetime owns this cleanup
+     * @param cleanup caller-owned synchronous cleanup action, guarded by request ownership as needed
+     * @return one fresh single-use terminal-cleanup decorator
+     * @throws NullPointerException if either argument is null
+     */
+    public static Task withCleanup(Task child, Runnable cleanup) {
+        return new CleanupTask(child, cleanup);
     }
 
     /**

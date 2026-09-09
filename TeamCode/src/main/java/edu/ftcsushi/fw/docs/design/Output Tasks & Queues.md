@@ -73,6 +73,15 @@ preceding loop's `dtSec()`. When a positive-duration pulse's start gate opens, i
 available to the downstream overlay/Plant phase in that loop before the pulse can finish. A
 zero-duration run is an immediate no-output operation; any configured cooldown still follows it.
 
+The timed output implementations advance at most once per clock cycle, including when called
+directly: a second update cannot resample a gate or change the output again. Their first update may
+share the start cycle. An active recursive update does no work. A gate or run-source exception
+during lifecycle advancement is retained, aborts the pulse to its configured idle proposal, and
+is rethrown by later updates and outcome reads; it is not retried like a `getOutput()` value read.
+The queue still owns selecting its idle output when no Task is active. In particular, the low-level
+constant-output Task's getter remains its constant value even outside its active lifetime; that
+getter is not an active/idle selector.
+
 Common examples:
 
 - feed one game piece into a shooter
@@ -201,6 +210,12 @@ OutputTaskFactory feedOne = Tasks.outputPulse("feedOne")
 
 The max-run cap is required for sensor-ended pulses so a failed or disconnected sensor cannot leave an output running forever.
 
+That cap begins only when the start gate opens. WAIT has no built-in timeout; the larger operation
+that owns the queue must supply a budget/abort policy when it must also bound waiting. Once RUN
+starts, a satisfied done condition wins
+an exact max-run tie if the minimum run time is met. Cooldown starts at the end of RUN and has its
+own elapsed interval. These are distinct decisions, not one timer for the entire queued attempt.
+
 ### Timed fallback
 
 When there is no reliable done sensor, use a timed pulse:
@@ -323,6 +338,22 @@ Typical abort situations:
 - the driver released the trigger that requested repeated pulses
 - the robot switched modes and a queued pulse is no longer safe
 - a supervisor detected that the mechanism is jammed and wants the active task to stop cleanly
+
+### Cleanup of a larger operation
+
+**Cleanup** is a short action that restores the owning operation's chosen request when that
+operation ends. A larger ordinary Task can use `Tasks.withCleanup(child, cleanup)` to invoke that
+action once on natural completion, active cancellation, or lifecycle failure. If clearing this
+queue is part of that operation's policy, the action calls the owner's existing
+`cancelTransientActions()` method; it does not become another queue or Plant heartbeat.
+
+The result of `withCleanup(...)` is a `Task`, not an `OutputTask`: it does not forward
+`getOutput()` and cannot be enqueued as an output pulse. Keep pulses and their ending rules in
+their existing output factory, and keep queue shutdown with its owner. The scalar proposal,
+resolver, Plant update and terminal hardware stop are unchanged. Read the
+[cleanup example and failure rules](<Tasks & Macros Quickstart.md#35-restore-a-request-when-work-ends>)
+before adopting it; cleanup does not launch recovery or turn a throwing cancellation into a
+successful continuation.
 
 ---
 

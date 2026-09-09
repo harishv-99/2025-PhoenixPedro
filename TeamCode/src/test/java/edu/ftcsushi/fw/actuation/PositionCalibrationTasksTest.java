@@ -510,7 +510,7 @@ public final class PositionCalibrationTasksTest {
         assertEquals(Arrays.asList("cue.reset"), resetEvents);
         assertEquals(0, resetPlant.beginCount);
         assertEquals(0, resetPlant.endCount);
-        assertEquals(TaskOutcome.CANCELLED, resetTask.getOutcome());
+        assertRetainedFailure(resetTask, resetFailure);
         assertTrue(resetRunner.isIdle());
 
         RuntimeException beginFailure = new IllegalStateException("begin failed");
@@ -532,7 +532,7 @@ public final class PositionCalibrationTasksTest {
         assertEquals(1, beginPlant.beginCount);
         assertEquals(0, beginPlant.endCount);
         assertFalse(beginPlant.searchActive);
-        assertEquals(TaskOutcome.CANCELLED, beginTask.getOutcome());
+        assertRetainedFailure(beginTask, beginFailure);
         assertTrue(beginRunner.isIdle());
     }
 
@@ -560,7 +560,7 @@ public final class PositionCalibrationTasksTest {
         ), events);
         assertEquals(1, plant.endCount);
         assertFalse(plant.searchActive);
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
+        assertRetainedFailure(search, cueFailure);
     }
 
     @Test
@@ -587,7 +587,7 @@ public final class PositionCalibrationTasksTest {
         ), events);
         assertEquals(1, plant.endCount);
         assertFalse(plant.searchActive);
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
+        assertRetainedFailure(search, referenceFailure);
     }
 
     @Test
@@ -608,7 +608,7 @@ public final class PositionCalibrationTasksTest {
         assertSame(endFailure, observed);
         assertEquals(1, plant.endCount);
         assertFalse(plant.searchActive);
-        assertEquals(TaskOutcome.SUCCESS, search.getOutcome());
+        assertRetainedFailure(search, endFailure);
         assertEquals(TaskOutcome.CANCELLED, sequence.getOutcome());
         assertEquals(0, continuationStarts.get());
         assertTrue(runner.isIdle());
@@ -636,7 +636,7 @@ public final class PositionCalibrationTasksTest {
         assertEquals(1, observed.getSuppressed().length);
         assertSame(endFailure, observed.getSuppressed()[0]);
         assertEquals(1, plant.endCount);
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
+        assertRetainedFailure(search, cueFailure);
     }
 
     @Test
@@ -720,7 +720,7 @@ public final class PositionCalibrationTasksTest {
         assertEquals(0, searchOutput.setCalls);
         assertEquals(0, searchOutput.stopCalls);
         assertEquals(TaskOutcome.NOT_DONE, first.getOutcome());
-        assertEquals(TaskOutcome.CANCELLED, second.getOutcome());
+        assertRetainedFailure(second, overlap);
 
         plant.update(clock.clock());
         assertEquals(1, searchOutput.setCalls);
@@ -760,7 +760,7 @@ public final class PositionCalibrationTasksTest {
         LoopClock cancelClock = clock.nextCycle(0.10);
         RuntimeException observed = expectRuntime(runner::cancelCurrent);
         assertSame(stopFailure, observed);
-        assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
+        assertRetainedFailure(search, stopFailure);
         assertEquals(1, searchOutput.stopCalls);
         search.cancel();
         assertEquals(1, searchOutput.stopCalls);
@@ -812,6 +812,53 @@ public final class PositionCalibrationTasksTest {
         assertEquals(2, nativeMeasurement.sampleCount);
         assertEquals(0, searchOutput.setCalls);
         assertEquals(1081.5, position.commanded, EPSILON);
+    }
+
+    @Test
+    public void directUpdatesAndRecursiveCueSampleConsumeOnlyOneCuePerCycle() {
+        List<String> events = new ArrayList<>();
+        LifecyclePlant plant = new LifecyclePlant(events, 0.0);
+        ScriptedCondition cue = new ScriptedCondition(events, false, true);
+        ManualLoopClock time = new ManualLoopClock();
+        Task search = searchTask(plant, cue, 1.0);
+        cue.onSample = () -> search.update(time.clock());
+
+        search.start(time.clock());
+        search.update(time.clock());
+        search.update(time.clock());
+        assertEquals(1, cue.index);
+        assertFalse(search.isComplete());
+        assertEquals(0, plant.updateCount);
+
+        search.update(time.nextCycle(0.02));
+        assertEquals(2, cue.index);
+        assertEquals(TaskOutcome.SUCCESS, search.getOutcome());
+        assertTrue(plant.referenced);
+        assertEquals(1, plant.endCount);
+        assertEquals(0, plant.updateCount);
+        assertEquals(0, plant.stopCount);
+    }
+
+    @Test
+    public void lateAcquiredSearchReleaseFailureRemainsFailureAfterNestedCancellation() {
+        List<String> events = new ArrayList<>();
+        LifecyclePlant plant = new LifecyclePlant(events, 0.0);
+        ScriptedCondition cue = new ScriptedCondition(events, false);
+        RuntimeException releaseFailure = new IllegalStateException("late release failed");
+        plant.endFailure = releaseFailure;
+        Task search = searchTask(plant, cue, 1.0);
+        plant.onBegin = search::cancel;
+
+        assertSame(releaseFailure, expectRuntime(
+                () -> search.start(new ManualLoopClock().clock())));
+        assertRetainedFailure(search, releaseFailure);
+
+        assertEquals(Arrays.asList("cue.reset", "plant.begin.enter(-0.2)",
+                "plant.begin.exit", "plant.end"), events);
+        assertEquals(1, plant.beginCount);
+        assertEquals(1, plant.endCount);
+        assertEquals(0, cue.index);
+        assertFalse(plant.searchActive);
     }
 
     private static void runOwnerCycle(TaskRunner runner, LifecyclePlant plant, LoopClock clock) {
@@ -916,6 +963,16 @@ public final class PositionCalibrationTasksTest {
         }
     }
 
+    /** Later diagnostic outcome reads and update attempts must not replay failed effects. */
+    private static void assertRetainedFailure(Task task, RuntimeException expected) {
+        assertTrue(task.isComplete());
+        assertSame(expected, expectRuntime(task::getOutcome));
+        ManualLoopClock later = new ManualLoopClock();
+        assertSame(expected, expectRuntime(() -> task.update(later.clock())));
+        assertSame(expected, expectRuntime(() -> task.update(later.nextCycle(0.01))));
+        task.cancel();
+    }
+
     private static final class RecordingRegulator implements ScalarRegulator {
         private final double output;
         private int updateCalls;
@@ -943,6 +1000,7 @@ public final class PositionCalibrationTasksTest {
         private int index;
         private RuntimeException resetFailure;
         private RuntimeException sampleFailure;
+        private Runnable onSample;
 
         private ScriptedCondition(List<String> events, boolean... values) {
             this.events = events;
@@ -960,6 +1018,7 @@ public final class PositionCalibrationTasksTest {
                     : values[Math.min(index, values.length - 1)];
             index++;
             events.add("cue.sample(" + value + ")");
+            if (onSample != null) onSample.run();
             return value;
         }
 

@@ -424,6 +424,11 @@ debug snapshot records whether the hard timeout fired; `park.getRouteStatus()` r
 park execution. The completion-continuing sequence preserves its first abnormal Task outcome, but
 that scheduling result still must not replace those domain facts.
 
+Those result getters remain available after valid abnormal results, such as a follower timeout.
+An exception from construction, lifecycle work, or cleanup is different: it remains a retained
+failure, and affected result getters rethrow it. After such a failure, use the failed Task's cached
+`debugDump(...)` view instead of treating a result getter as diagnostic-only polling.
+
 ## What software tests cannot establish
 
 The hardware-free tests prove copying, frame timestamp gates, exact and interpolated history

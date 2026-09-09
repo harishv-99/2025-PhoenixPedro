@@ -15,6 +15,8 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -33,7 +35,7 @@ public final class DriveGuidanceTaskSingleUseTest {
 
         IllegalStateException failure = expectSecondStartFailure(task, manualClock.clock());
 
-        assertActionable(failure, "autoAlign", "DriveGuidancePlan.task");
+        assertActionable(failure, "autoAlign", "factory");
         assertEquals(1, drive.stopCount);
         assertEquals(0, drive.driveCount);
         assertFalse(task.isComplete());
@@ -55,7 +57,7 @@ public final class DriveGuidanceTaskSingleUseTest {
 
         IllegalStateException failure = expectSecondStartFailure(task, manualClock.clock());
 
-        assertActionable(failure, "cancelledAlign", "Supplier<Task>");
+        assertActionable(failure, "cancelledAlign", "fresh");
         assertEquals(2, drive.stopCount);
         assertEquals(0, drive.driveCount);
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
@@ -126,25 +128,24 @@ public final class DriveGuidanceTaskSingleUseTest {
     }
 
     @Test
-    public void failedStartStillAllowsExactlyOneDriveCleanupAttempt() {
+    public void failedStartStopIsRetainedWithoutRetryingThatSameStopAttempt() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink drive = new RecordingDriveSink();
         drive.throwOnStopNumber = 1;
         DriveGuidanceTask task = new DriveGuidanceTask(
                 "failedStart", drive, unavailablePlan(manualClock.clock().nowTimestamp()), config());
 
-        try {
-            task.start(manualClock.clock());
-            fail("expected start stop to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test stop"));
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> task.start(manualClock.clock()));
+        assertTrue(failure.getMessage().contains("test stop"));
 
         task.cancel();
         task.cancel();
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
-        assertEquals(2, drive.stopCount);
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> task.update(manualClock.clock())));
+        assertEquals(1, drive.stopCount);
     }
 
     @Test
@@ -156,15 +157,11 @@ public final class DriveGuidanceTaskSingleUseTest {
                 "throwingCancel", drive, unavailablePlan(manualClock.clock().nowTimestamp()), config());
         task.start(manualClock.clock());
 
-        try {
-            task.cancel();
-            fail("expected cancellation stop to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test stop"));
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class, task::cancel);
+        assertTrue(failure.getMessage().contains("test stop"));
 
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertEquals(2, drive.stopCount);
         task.cancel();
         assertEquals(2, drive.stopCount);

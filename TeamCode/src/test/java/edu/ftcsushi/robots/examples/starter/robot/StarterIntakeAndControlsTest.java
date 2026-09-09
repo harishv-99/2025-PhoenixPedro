@@ -265,7 +265,7 @@ public final class StarterIntakeAndControlsTest {
         assertEquals(0.65, motor.power(), 0.0);
         assertFalse(first.isComplete());
 
-        first.update(time.nextCycle(0.49));
+        first.update(time.nextCycle(0.375));
         intake.update(time.clock());
         assertFalse(first.isComplete());
         assertEquals(0.65, motor.power(), 0.0);
@@ -273,9 +273,14 @@ public final class StarterIntakeAndControlsTest {
         intake.setMode(StarterIntake.Mode.EJECT);
         assertStatus(intake, StarterIntake.Mode.EJECT, -0.45, 0.65);
         first.update(time.clock());
+        assertStatus(intake, StarterIntake.Mode.EJECT, -0.45, 0.65);
+
+        // The timed request can reclaim on the next eligible cycle, not twice in one cycle.
+        first.update(time.nextCycle(0.0625));
+        assertFalse(first.isComplete());
         assertStatus(intake, StarterIntake.Mode.COLLECT, 0.65, 0.65);
 
-        first.update(time.nextCycle(0.01));
+        first.update(time.nextCycle(0.0625));
         assertTrue(first.isComplete());
         assertEquals(TaskOutcome.SUCCESS, first.getOutcome());
         assertStatus(intake, StarterIntake.Mode.STOPPED, 0.0, 0.65);

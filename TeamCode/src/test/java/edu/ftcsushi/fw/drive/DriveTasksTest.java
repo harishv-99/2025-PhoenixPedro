@@ -16,6 +16,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -158,7 +159,7 @@ public final class DriveTasksTest {
     }
 
     @Test
-    public void throwingZeroDurationStopLeavesSuccessTerminalAndIsNeverRetried() {
+    public void throwingZeroDurationStopRetainsFailureAndIsNeverRetried() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink sink = new RecordingDriveSink();
         sink.throwOnStopNumber = 1;
@@ -171,13 +172,14 @@ public final class DriveTasksTest {
 
         assertEquals(0, failure.getSuppressed().length);
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertEquals(Arrays.asList("stop"), sink.events);
         assertEquals(1, sink.stopCount);
         assertTrue(runner.isIdle());
 
         task.cancel();
-        task.update(manualClock.clock());
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> task.update(manualClock.clock())));
         assertEquals(1, sink.stopCount);
     }
 
@@ -258,23 +260,24 @@ public final class DriveTasksTest {
     }
 
     @Test
-    public void throwingActiveCancellationLeavesCancelledTerminalAndIsNeverRetried() {
+    public void throwingActiveCancellationRetainsFailureAndIsNeverRetried() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink sink = new RecordingDriveSink();
         Task task = DriveTasks.driveExclusivelyForSeconds(sink, DriveSignal.zero(), 1.0);
         task.start(manualClock.clock());
         sink.throwOnStopNumber = 1;
 
-        expectIllegalState(task::cancel, "test stop failure");
+        IllegalStateException failure = expectIllegalState(task::cancel, "test stop failure");
 
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertEquals(Arrays.asList("update", "drive", "stop"), sink.events);
         assertEquals(1, sink.stopCount);
 
         task.cancel();
         manualClock.nextCycle(0.1);
-        task.update(manualClock.clock());
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> task.update(manualClock.clock())));
         assertEquals(1, sink.stopCount);
     }
 
@@ -346,7 +349,7 @@ public final class DriveTasksTest {
     }
 
     @Test
-    public void sinkUpdateFailureMakesTaskCancelledAndRunnerStopsOnce() {
+    public void sinkUpdateFailureIsRetainedAndRunnerStopsOnce() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink sink = new RecordingDriveSink();
         sink.throwOnUpdateNumber = 1;
@@ -359,7 +362,7 @@ public final class DriveTasksTest {
 
         assertEquals(0, failure.getSuppressed().length);
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertEquals(Arrays.asList("update", "stop"), sink.events);
         assertEquals(1, sink.stopCount);
         assertTrue(runner.isIdle());
@@ -381,7 +384,7 @@ public final class DriveTasksTest {
         assertEquals(1, failure.getSuppressed().length);
         assertTrue(failure.getSuppressed()[0].getMessage().contains("test stop failure"));
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertEquals(Arrays.asList("update", "drive", "stop"), sink.events);
         assertEquals(1, sink.stopCount);
         assertTrue(runner.isIdle());
@@ -391,7 +394,7 @@ public final class DriveTasksTest {
     }
 
     @Test
-    public void throwingNormalStopLeavesSuccessTerminalAndIsNeverRetried() {
+    public void throwingNormalStopRetainsFailureAndIsNeverRetried() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink sink = new RecordingDriveSink();
         sink.throwOnStopNumber = 1;
@@ -406,14 +409,53 @@ public final class DriveTasksTest {
 
         assertEquals(0, failure.getSuppressed().length);
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertEquals(Arrays.asList("update", "drive", "stop"), sink.events);
         assertEquals(1, sink.stopCount);
         assertTrue(runner.isIdle());
 
         task.cancel();
-        task.update(manualClock.clock());
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> task.update(manualClock.clock())));
         assertEquals(1, sink.stopCount);
+    }
+
+    @Test
+    public void directLaterUpdateFailureStopsWithoutDependingOnRunnerCleanup() {
+        ManualLoopClock clock = new ManualLoopClock();
+        RecordingDriveSink sink = new RecordingDriveSink();
+        Task task = DriveTasks.driveExclusivelyForSeconds(sink, DriveSignal.zero(), 1.0);
+        task.start(clock.clock());
+        sink.throwOnUpdateNumber = 2;
+        clock.nextCycle(0.1);
+
+        RuntimeException failure = assertThrows(IllegalStateException.class,
+                () -> task.update(clock.clock()));
+
+        assertTrue(task.isComplete());
+        assertEquals(Arrays.asList("update", "drive", "update", "stop"), sink.events);
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> task.update(clock.clock())));
+        task.cancel();
+        assertEquals(1, sink.stopCount);
+    }
+
+    @Test
+    public void missingActiveClockFailsClosedAndStopsOnce() {
+        ManualLoopClock clock = new ManualLoopClock();
+        RecordingDriveSink sink = new RecordingDriveSink();
+        Task task = DriveTasks.driveExclusivelyForSeconds(sink, DriveSignal.zero(), 1.0);
+        task.start(clock.clock());
+
+        NullPointerException failure = assertThrows(NullPointerException.class,
+                () -> task.update(null));
+
+        assertTrue(task.isComplete());
+        assertSame(failure, assertThrows(NullPointerException.class, task::getOutcome));
+        task.cancel();
+        assertEquals(1, sink.stopCount);
+        assertEquals(1, sink.driveCount);
     }
 
     @Test

@@ -121,6 +121,17 @@ Rules:
   `start(...)` and must not be counted as task runtime. The advanced `RunForSecondsTask.onUpdate`
   callback receives that unchanged clock too, so callback-owned timers follow the same rule.
 
+Timed factories advance at most once in each shared clock cycle. Starting does not use up that
+cycle's update: `start(clock)` followed by `update(clock)` is allowed. A second update in that
+cycle does not repeat a sensor check, command, or callback. Their bounded time arguments must be
+finite; use an explicitly unbounded overload such as `waitUntil(condition)` when that is the
+intended policy, rather than passing infinity as a timeout.
+
+If a timed Task's lifecycle or ending action throws a `RuntimeException`, it attempts its owned
+abort/ending policy and retains the failure. Later updates and outcome reads rethrow that same
+failure; they do not retry uncertain effects or report a normal result that could start the next
+step. The runner and mechanism still own their broader shutdown responsibilities.
+
 ### 2.2 `TaskRunner`
 
 `TaskRunner` is a simple scheduler:
@@ -222,13 +233,17 @@ Common factories (high‑level view):
       while one named Task is active; that deadline determines completion and outcome.
     * `Tasks.withTimeout(Task task, double timeoutSec)` – impose one hard outer time budget on a
       complete Task or Task graph.
+    * Cleanup is a short caller-chosen action that restores the operation's request when work
+      ends. `Tasks.withCleanup(Task child, Runnable cleanup)` runs that action once after natural
+      completion, active cancellation, or lifecycle failure. `Runnable` is Java's no-input,
+      no-result action; this does not start another recovery Task.
     * `Tasks.branchOnOutcome(Task move, Task onSuccess, Task onTimeout)` – select only the exact
       success or timeout branch; cancellation and unknown outcomes fail closed.
 
 > `Tasks.*` is the one public construction layer for generic composition and ordinary leaf Tasks,
 > including `runOnce(...)`, `waitUntil(...)`, `sequence(...)`, `sequenceOnCompletion(...)`,
 > `parallelAll(...)`,
-> `parallelDeadline(...)`, `repeatWhileSuccessful(...)`, `withTimeout(...)`, and
+> `parallelDeadline(...)`, `repeatWhileSuccessful(...)`, `withTimeout(...)`, `withCleanup(...)`, and
 > `branchOnOutcome(...)`.
 > `RunForSecondsTask` remains directly constructible because its start/update/finish callback
 > capability is distinct from a fixed wait.
@@ -263,8 +278,9 @@ Task attemptParkAfterBoundedWork = Tasks.sequenceOnCompletion(boundedPrePark, pa
 This form runs later children after `SUCCESS`, `TIMEOUT`, natural `CANCELLED`, or `UNKNOWN`, then
 retains the first non-success outcome after the later work settles. Direct cancellation of the
 outer graph and lifecycle failures remain terminal and never start a later child. It is not Java
-`finally`; mandatory safety still belongs in the active Task's cancellation path, a persistent safe
-request, or owner `stop()`.
+`finally`. Use [an explicit cleanup action](<#35-restore-a-request-when-work-ends>) for a short
+request restoration that must also run when started work is cancelled or fails. Terminal hardware
+safety still belongs to owner `stop()`; neither kind of sequence replaces it.
 
 Both sequence factories receive eagerly constructed, single-use child Tasks. Use
 `Tasks.buildAtStart(...)` when construction itself needs a live pose, vision result, earlier outcome,
@@ -296,8 +312,9 @@ early does not end the route.
 
 Each companion must already make active cancellation safe. Do not use
 `Tasks.sequence(enable, wait, disable)` as a companion: cancelling that sequence skips `disable`.
-Build a bounded robot macro whose own `cancel()` restores its caller-selected state, or keep a
-long-lived flywheel/intake/aim request as ordinary capability or service state.
+Wrap the bounded work with [the owner's cleanup action](<#35-restore-a-request-when-work-ends>)
+when it must restore that state on every ending, or keep a long-lived flywheel/intake/aim request
+as ordinary capability or service state.
 
 Route failure policy is still outside generic composition. `Tasks.sequence(...)` now stops unless a
 child reports exact `SUCCESS`, but broad `TaskOutcome` values do not replace a route's precise
@@ -405,6 +422,81 @@ can time only its RUN phase. `withTimeout(...)` instead uses the child's normal 
 so the wrapper may report `TIMEOUT` while the retained child reports `CANCELLED`. Keep both when
 they protect different scopes, but do not configure two copies of the same policy.
 
+### 3.5 Restore a request when work ends
+
+Suppose an operation requests flywheel speed, then waits and feeds. Cancelling during the wait
+must not leave an unwanted request running. A final `runOnce(...)` step cannot guarantee the reset:
+ordinary sequences skip later steps on failure, and both sequence forms skip them on direct
+cancellation or a lifecycle exception.
+
+**Cleanup** is the owner's short action to restore its chosen request or release temporary state
+when that operation ends. `Tasks.withCleanup(child, cleanup)` keeps the child and adds this ending
+action; it returns one fresh, single-use `Task`. Calling the factory runs neither argument. The
+`Runnable` argument is a no-input, no-result action saved for later; it runs synchronously inside
+the lifecycle call that ends started work, not on a new thread or over future loops.
+
+In the independent launcher, `spinUp` and `feed` are already-built steps. This exact constructor
+excerpt joins them, then registers the owner's ending action:
+
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java -->
+```java
+launchFlow = Tasks.withCleanup(
+        Tasks.sequence(spinUp, feed),
+        this::cleanupIfGenerationStillOwned);
+```
+
+`this::cleanupIfGenerationStillOwned` means "call this method when cleanup is due," not "call it
+now." It compares the launch's saved version with the owner's current version, which changes on
+abort. That check prevents an old launch from changing a newer request after an abort.
+The inner sequence still skips feeding unless spin-up reports exact success.
+
+When the launch still owns those requests, `ReferenceLauncherMechanism` calls its normal
+`requestActiveMatchIdle()` method: clear the temporary transfer queue, request the release
+retracted, and request zero flywheel speed. Those requests still reach the Plants through the
+ordinary output phase.
+The method does not terminally stop the Plants; later reviewed launches can use the same mechanism.
+The launcher still owns launch admission, invalidation of old queued requests, and feed policy;
+generic cleanup cannot make those decisions for it.
+
+| Event | Action and result |
+| --- | --- |
+| Child naturally reports `SUCCESS`, `TIMEOUT`, `CANCELLED`, or `UNKNOWN` | Run cleanup once, then retain that exact child outcome |
+| Caller actively cancels the wrapper | Best-effort cancel the started child, run cleanup once, then report `CANCELLED` only if child terminal validation and cleanup succeed |
+| Child lifecycle or cleanup throws a `RuntimeException` | Attempt cleanup at most once, retain and rethrow the first failure; later failures are suppressed |
+| Cancellation before start, or repeated calls after a normal ending | No cleanup action or child work is repeated |
+
+The wrapper validates the start clock, then arms cleanup immediately before starting its child.
+A rejected start clock runs no cleanup but still consumes the single start attempt. An
+already-complete child still needs its new wrapper to start before the ending action can run.
+Never put asynchronous recovery, sleeps, Plant updates, or another scheduler in cleanup. Use the
+mechanism's normal setters; a request of zero is not proof of physical stop or rollback. A bounded
+recovery sequence belongs in explicit robot policy after a valid result. If cleanup itself fails,
+`getOutcome()` and later `update(...)` rethrow the retained exception: the failure cannot masquerade
+as a normal `CANCELLED` outcome and release `sequenceOnCompletion(...)` work.
+
+For advanced callback authors: during ending, `isComplete()` already reports true so reentrant
+cancellation cannot repeat the ending. `getOutcome()` before the outer lifecycle callback and
+cleanup return throws rather than
+publishing an unfinished result; that inspection error stays retained even if the callback catches
+it. Wait for the original lifecycle call to return normally before inspecting its outcome.
+The wrapper's own debug rows always use cached facts. It includes the child's normal, non-advancing
+debug view only after the child starts, when no lifecycle failure is retained and ending is not
+still in progress. If that child debug view alone throws a `RuntimeException`, the wrapper reports
+child diagnostics as unavailable without changing the Task's lifecycle result. These
+failure-handling rules do not catch Java `Error`.
+
+The cleanup wrapper also coalesces an active recursive `update(...)` into a no-op, so it cannot
+advance the child twice.
+That means a callback's attempt to update the wrapper again before its outer call returns does
+no additional work.
+Timed Task families use this same recursive-update convention and run at most one update per
+cycle. Other composition helpers retain their own documented rules. None of this permits
+reentrant hardware/controller updates or retrying an effectful callback after failure.
+
+See [Complete source: `ReferenceLauncherMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
+for its request restoration and retained robot-specific policy. Cleanup changes neither
+`repeatWhileSuccessful(...)` admission nor its requirement to create fresh children.
+
 ---
 
 ## 4. Mechanisms: scalar Task builders for common patterns
@@ -459,6 +551,18 @@ a fresh single-use Task, so retain the Plant and rebuild the Task or macro for e
 a separately named `ScalarTarget` only when it is standalone, shared, owned by target-only policy,
 or useful while assembling a composed target graph. If that target is the Plant's complete exact
 graph, bind it through `targetFromResolver(PlantTargets.exact(target))`.
+
+A direct setter changes a persistent request now; it has no built-in finish time. Automatically
+cleaning up when the setter returns would undo the request before the Plant's later output phase.
+A timed Task adds an explicit lifetime and ending choice, such as `.then(0.0)` or `.leaveThere()`.
+For synchronous owner cleanup,
+[`CleanupActions`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/core/lifecycle/CleanupActions.html>)
+already attempts an ordered set of actions while retaining failures; its caller decides when
+cleanup is due. The shared Task lifecycle supplies that boundary for work over time, not for every
+ordinary method call. Numeric and named timed requests can reclaim a superseded request on their next update. If
+another owner changes it after that update, a repeat in the same cycle does not reclaim it again;
+reclamation waits for the next cycle. Named requests publish a fresh occurrence when reclaiming,
+so old arrival evidence cannot belong to the new request.
 
 This direct path is for a scalar-complete request: the number itself is the public meaning. If a
 capability instead names intent with `Height`, `Mode`, or another semantic value, its mechanism
@@ -746,7 +850,8 @@ The sequence's outcome and its held requests are different facts:
 
 Use this composition only when those persistent requests match the mechanism's declared policy.
 If a larger operation must stop every owned request on any ending, that operation needs a
-coordinated cancellation/cleanup owner like the maintained launcher. A later `spinDown` child is
+coordinated policy like the maintained launcher, expressed with
+[`withCleanup(...)`](<#35-restore-a-request-when-work-ends>) around its started work. A later `spinDown` child is
 not cleanup, and changing to `sequenceOnCompletion(...)` alone still cannot make it run on direct
 cancellation. Physical coast-down and feed clearance remain separate hardware observations.
 
@@ -815,9 +920,15 @@ implementation class. One public generic leaf remains because it exposes a disti
 
 Even inside a team-specific helper factory, compose child Tasks through `Tasks.*`, such as
 `sequence(...)`, `sequenceOnCompletion(...)`, `parallelAll(...)`, `parallelDeadline(...)`,
-`repeatWhileSuccessful(...)`, `withTimeout(...)`, or `branchOnOutcome(...)`. Implement
-`Task` directly only when the behavior genuinely needs a new state machine rather than another
-spelling of existing composition.
+`repeatWhileSuccessful(...)`, `withTimeout(...)`, `withCleanup(...)`, or `branchOnOutcome(...)`.
+Implement new behavior only when it genuinely needs a new state machine rather than another
+spelling of existing composition. For that advanced implementation case,
+[`AbstractTask`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/AbstractTask.html>)
+is a base class: a subclass supplies its behavior in protected hooks while the base owns the
+single-use, per-cycle, failure and ending guards. Its protected constructor is an extension seam,
+not an alternative to the factories above. See the
+[advanced implementation contract](<../reference/Tasks outcomes and coordination.md#advanced-task-implementations>)
+before writing hooks, especially when a callback can acquire a resource or cancel its own Task.
 
 A good rule of thumb:
 
@@ -951,7 +1062,7 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
   they are rethrown.
 * **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`,
   `sequenceOnCompletion`, `parallelAll`, `parallelDeadline`, `repeatWhileSuccessful`,
-  `withTimeout`, `noop`, ...)
+  `withTimeout`, `withCleanup`, `noop`, ...)
   are the main building blocks you should reach for first. Normal prerequisite chains use
   `sequence`; only intentional recovery/repair continuation uses `sequenceOnCompletion`.
 * **`ScalarTasks.set(target, value)`** is the direct deferred-write path when the request itself is

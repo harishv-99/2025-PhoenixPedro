@@ -5,6 +5,7 @@ import org.junit.Test;
 import edu.ftcsushi.fw.core.hal.PositionOutput;
 import edu.ftcsushi.fw.core.hal.PowerOutput;
 import edu.ftcsushi.fw.core.hal.VelocityOutput;
+import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
@@ -355,6 +356,80 @@ public final class SemanticScalarTasksFeedbackTest {
         });
     }
 
+    @Test
+    public void directAndRecursiveFeedbackUpdatesObserveOncePerCycleWithoutRepublishing() {
+        SemanticScalarCommand<Mode> command = command();
+        double[] measurement = {0.0};
+        PositionPlant actual = nonPeriodicPlant(
+                PlantTargets.exact(command), measurement, -1.0, 1.0);
+        FeedbackObserver plant = new FeedbackObserver(actual);
+        Task move = SemanticScalarTasks.set(command, Mode.ACTIVE).untilReachedBy(plant)
+                .leaveRequestOnCancel().build();
+        ManualLoopClock time = new ManualLoopClock();
+        plant.onAtTarget = () -> move.update(time.clock());
+
+        move.start(time.clock());
+        SemanticScalarCommand.Request<Mode> started = command.request();
+        actual.update(time.clock());
+        move.update(time.clock());
+        move.update(time.clock());
+        assertFalse(move.isComplete());
+        assertEquals(1, plant.atTargetCount);
+
+        measurement[0] = 0.75;
+        actual.update(time.nextCycle(0.02));
+        move.update(time.clock());
+        assertEquals(TaskOutcome.SUCCESS, move.getOutcome());
+        assertEquals(2, plant.atTargetCount);
+        assertSame(started, command.request());
+    }
+
+    @Test
+    public void feedbackFailurePublishesSelectedCancellationRequestOnceAndRetainsFailure() {
+        SemanticScalarCommand<Mode> command = command();
+        PositionPlant actual = nonPeriodicPlant(
+                PlantTargets.exact(command), new double[]{0.0}, -1.0, 1.0);
+        FeedbackObserver plant = new FeedbackObserver(actual);
+        RuntimeException failure = new IllegalStateException("semantic feedback unavailable");
+        plant.failure = failure;
+        Task move = SemanticScalarTasks.set(command, Mode.ACTIVE).untilReachedBy(plant)
+                .cancelTo(Mode.IDLE).build();
+        ManualLoopClock time = new ManualLoopClock();
+
+        move.start(time.clock());
+        SemanticScalarCommand.Request<Mode> started = command.request();
+        actual.update(time.clock());
+        assertSame(failure, expectRuntime(() -> move.update(time.clock())));
+        SemanticScalarCommand.Request<Mode> cancelled = command.request();
+        assertNotSame(started, cancelled);
+        assertEquals(Mode.IDLE, cancelled.semantic());
+        assertEquals(0.0, cancelled.commandTarget(), EPSILON);
+        assertRetainedFailure(move, failure, time);
+        assertSame(cancelled, command.request());
+        assertEquals(1, plant.atTargetCount);
+    }
+
+    @Test
+    public void feedbackFailureWithLeavePolicyRetainsItsSemanticRequestOccurrence() {
+        SemanticScalarCommand<Mode> command = command();
+        PositionPlant actual = nonPeriodicPlant(
+                PlantTargets.exact(command), new double[]{0.0}, -1.0, 1.0);
+        FeedbackObserver plant = new FeedbackObserver(actual);
+        RuntimeException failure = new IllegalStateException("semantic feedback unavailable");
+        plant.failure = failure;
+        Task move = SemanticScalarTasks.set(command, Mode.ACTIVE).untilReachedBy(plant)
+                .leaveRequestOnCancel().build();
+        ManualLoopClock time = new ManualLoopClock();
+
+        move.start(time.clock());
+        SemanticScalarCommand.Request<Mode> started = command.request();
+        actual.update(time.clock());
+        assertSame(failure, expectRuntime(() -> move.update(time.clock())));
+        assertRetainedFailure(move, failure, time);
+        assertSame(started, command.request());
+        assertEquals(1, plant.atTargetCount);
+    }
+
     private static PositionPlant nonPeriodicPlant(PlantTargetResolver resolver,
                                                    double[] measurement,
                                                    double min,
@@ -397,6 +472,26 @@ public final class SemanticScalarTasksFeedbackTest {
         }
     }
 
+    private static RuntimeException expectRuntime(Runnable action) {
+        try {
+            action.run();
+            fail("expected a lifecycle failure");
+            return null;
+        } catch (RuntimeException expected) {
+            return expected;
+        }
+    }
+
+    private static void assertRetainedFailure(Task task, RuntimeException failure,
+                                              ManualLoopClock time) {
+        assertTrue(task.isComplete());
+        assertSame(failure, expectRuntime(task::getOutcome));
+        assertSame(failure, expectRuntime(() -> task.update(time.clock())));
+        assertSame(failure, expectRuntime(() -> task.update(time.nextCycle(0.02))));
+        task.cancel();
+        task.cancel();
+    }
+
     private static void assertFailure(Runnable action,
                                       Class<? extends RuntimeException> expectedType,
                                       String messagePart) {
@@ -406,6 +501,69 @@ public final class SemanticScalarTasksFeedbackTest {
         } catch (RuntimeException expected) {
             assertTrue("wrong exception: " + expected, expectedType.isInstance(expected));
             assertTrue(expected.getMessage().contains(messagePart));
+        }
+    }
+
+    /**
+     * Maintainer fault seam around a real semantic Plant/resolver. Only the cached feedback
+     * accessor is intercepted; the owner, not the Task, still updates the actual Plant.
+     */
+    private static final class FeedbackObserver implements Plant {
+        private final Plant actual;
+        private int atTargetCount;
+        private Runnable onAtTarget;
+        private RuntimeException failure;
+
+        private FeedbackObserver(Plant actual) {
+            this.actual = actual;
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            throw new AssertionError("the Task must not update its feedback Plant");
+        }
+
+        @Override
+        public double getRequestedTarget() {
+            return actual.getRequestedTarget();
+        }
+
+        @Override
+        public double getAppliedTarget() {
+            return actual.getAppliedTarget();
+        }
+
+        @Override
+        public PlantTargetStatus getTargetStatus() {
+            return actual.getTargetStatus();
+        }
+
+        @Override
+        public PlantTargetResolution getTargetResolution() {
+            return actual.getTargetResolution();
+        }
+
+        @Override
+        public boolean carriesSemanticCommand(SemanticScalarCommand<?> command) {
+            return actual.carriesSemanticCommand(command);
+        }
+
+        @Override
+        public boolean hasFeedback() {
+            return actual.hasFeedback();
+        }
+
+        @Override
+        public boolean atTarget(double target) {
+            atTargetCount++;
+            if (onAtTarget != null) onAtTarget.run();
+            if (failure != null) throw failure;
+            return actual.atTarget(target);
+        }
+
+        @Override
+        public void stop() {
+            throw new AssertionError("the Task must not stop its feedback Plant");
         }
     }
 

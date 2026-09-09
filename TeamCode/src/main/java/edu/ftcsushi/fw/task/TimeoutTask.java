@@ -6,40 +6,29 @@ import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.time.LoopClock;
 
 /**
- * Internal hard-time-limit decorator exposed through {@link Tasks#withTimeout(Task, double)}.
+ * Hard-time-limit decorator created through Tasks.withTimeout, using the shared Task lifecycle.
  *
- * <p>The timeout belongs to this wrapper, not to the wrapped operation. When the limit is reached,
- * this Task invokes the child's ordinary active {@link Task#cancel()} path and reports
- * {@link TaskOutcome#TIMEOUT} only after that cancellation returns and the child exposes a valid
- * terminal lifecycle. A task-specific timeout may intentionally behave differently; for example,
- * it may retain a more precise status or apply timeout-specific mechanism requests.</p>
- *
- * <p>This implementation is package-private so generic Task construction has one supported public
- * surface in {@link Tasks}.</p>
+ * <p>The wrapper observes an already-completed child first; otherwise it enforces the budget
+ * before another child update. Its TIMEOUT uses the child's ordinary cancellation policy, unlike
+ * an operation-owned timeout. Zero duration starts no child. Failed cancellation or malformed
+ * terminal evidence remains an exception and cannot release either sequence policy.</p>
  */
-final class TimeoutTask implements Task {
-
+final class TimeoutTask extends AbstractTask {
     private final Task child;
     private final double timeoutSec;
-
-    private boolean startAttempted;
-    private boolean started;
-    private boolean startInProgress;
-    private boolean updateInProgress;
     private boolean childStartAttempted;
     private boolean childCancellationAttempted;
-    private boolean timeoutCancellationInProgress;
-    private boolean complete;
+    private boolean childTerminalObserved;
+    private boolean childCallbackInProgress;
+    private boolean childCancellationValidationPending;
     private boolean timeoutFired;
     private double startSec;
     private double elapsedSec;
-    private long lastUpdatedCycle = Long.MIN_VALUE;
-    private TaskOutcome outcome = TaskOutcome.NOT_DONE;
     private TaskOutcome retainedChildOutcome = TaskOutcome.NOT_DONE;
-    private RuntimeException retainedLifecycleFailure;
 
-    /** Create one single-use timeout decorator. */
+    /** Validate the finite non-negative budget without invoking the child. */
     TimeoutTask(Task child, double timeoutSec) {
+        super("Tasks.withTimeout(...)");
         this.child = Objects.requireNonNull(child,
                 "Tasks.withTimeout requires a child Task; task must not be null.");
         if (!Double.isFinite(timeoutSec) || timeoutSec < 0.0) {
@@ -49,268 +38,136 @@ final class TimeoutTask implements Task {
         this.timeoutSec = timeoutSec;
     }
 
-    /**
-     * Start the wrapper timer and, for a positive limit, start the child at the same clock
-     * boundary. A zero limit completes without starting or cancelling the child.
-     */
+    /** Start this budget at its own boundary; an empty budget never starts the child. */
     @Override
-    public void start(LoopClock clock) {
-        markStartAttempt();
-        requireClock(clock);
-
-        started = true;
-        startInProgress = true;
+    protected void onStart(LoopClock clock) {
         startSec = clock.nowSec();
-        elapsedSec = 0.0;
-        outcome = TaskOutcome.NOT_DONE;
-        retainedChildOutcome = TaskOutcome.NOT_DONE;
-
-        try {
-            if (timeoutSec == 0.0) {
-                timeoutFired = true;
-                outcome = TaskOutcome.TIMEOUT;
-                complete = true;
-                return;
-            }
-
-            childStartAttempted = true;
-            try {
-                child.start(clock);
-            } catch (RuntimeException failure) {
-                throw retainLifecycleFailure(failure);
-            }
-            if (complete) {
-                return;
-            }
+        if (timeoutSec == 0.0) {
+            timeoutFired = true;
+            complete(TaskOutcome.TIMEOUT);
+            return;
+        }
+        childStartAttempted = true;
+        invokeChild(() -> child.start(clock));
+        checkFailure();
+        if (isActive()) {
             finishNaturallyIfChildComplete();
-        } finally {
-            startInProgress = false;
         }
     }
 
-    /**
-     * Observe an already-terminal child first, then enforce the limit before allowing another
-     * child update. This gives a child that completed between cycles precedence at the exact
-     * boundary while preventing new child work once the hard budget has elapsed.
-     */
+    /** Preserve natural-completion-before-budget and budget-before-next-update precedence. */
     @Override
-    public void update(LoopClock clock) {
-        if (!started) {
-            throw TaskLifecycle.updateBeforeStart("Task returned by Tasks.withTimeout(...)");
-        }
-        if (complete || startInProgress || updateInProgress) {
+    protected void onUpdate(LoopClock clock) {
+        elapsedSec = Math.max(0.0, clock.nowSec() - startSec);
+        if (finishNaturallyIfChildComplete() || !isActive()) {
             return;
         }
-        requireClock(clock);
-
-        long cycle = clock.cycle();
-        if (cycle == lastUpdatedCycle) {
+        if (elapsedSec >= timeoutSec) {
+            timeoutFired = true;
+            complete(TaskOutcome.TIMEOUT);
             return;
         }
-        lastUpdatedCycle = cycle;
-
-        updateInProgress = true;
-        try {
-            if (retainedLifecycleFailure != null) {
-                throw retainedLifecycleFailure;
-            }
-            elapsedSec = Math.max(0.0, clock.nowSec() - startSec);
-            if (finishNaturallyIfChildComplete()) {
-                return;
-            }
-
-            if (elapsedSec >= timeoutSec) {
-                finishByTimeout();
-                return;
-            }
-
-            try {
-                child.update(clock);
-            } catch (RuntimeException failure) {
-                throw retainLifecycleFailure(failure);
-            }
-            if (complete) {
-                return;
-            }
+        invokeChild(() -> child.update(clock));
+        checkFailure();
+        if (isActive()) {
             finishNaturallyIfChildComplete();
-        } finally {
-            updateInProgress = false;
         }
     }
 
-    /**
-     * Direct active cancellation is terminal and uses the child's ordinary cancellation path at
-     * most once. A reentrant cancellation during timeout cleanup cannot relabel the already-chosen
-     * timeout ending.
-     */
+    /** Abort the exact started child, without selecting a timeout on direct cancellation/failure. */
     @Override
-    public void cancel() {
-        if (!started || complete || timeoutCancellationInProgress) {
-            return;
+    protected void onCancel() {
+        cancelChildOnce();
+    }
+
+    /** A timeout's ending policy cancels the child before a TIMEOUT result can become consumable. */
+    @Override
+    protected void onFinish() {
+        if (timeoutFired) {
+            cancelChildOnce();
         }
-
-        outcome = TaskOutcome.CANCELLED;
-        complete = true;
-        if (!childStartAttempted || childCancellationAttempted) {
-            return;
-        }
-
-        childCancellationAttempted = true;
-        child.cancel();
     }
 
-    @Override
-    public boolean isComplete() {
-        return complete;
-    }
-
-    @Override
-    public TaskOutcome getOutcome() {
-        return complete ? outcome : TaskOutcome.NOT_DONE;
-    }
-
-    @Override
-    public String getDebugName() {
-        return "Tasks.withTimeout(...)";
-    }
-
-    /** Retain wrapper timing and the child snapshot even after terminal completion. */
-    @Override
-    public void debugDump(DebugSink dbg, String prefix) {
-        if (dbg == null) {
-            return;
-        }
-        String p = (prefix == null || prefix.isEmpty()) ? "withTimeout" : prefix;
-        dbg.addData(p + ".timeoutSec", timeoutSec)
-                .addData(p + ".startAttempted", startAttempted)
-                .addData(p + ".started", started)
-                .addData(p + ".childStartAttempted", childStartAttempted)
-                .addData(p + ".childCancellationAttempted", childCancellationAttempted)
-                .addData(p + ".timeoutFired", timeoutFired)
-                .addData(p + ".startSec", startSec)
-                .addData(p + ".elapsedSec", elapsedSec)
-                .addData(p + ".complete", complete)
-                .addData(p + ".outcome", getOutcome())
-                .addData(p + ".retainedChildOutcome", retainedChildOutcome)
-                .addData(p + ".hasLifecycleFailure", retainedLifecycleFailure != null);
-        child.debugDump(dbg, p + ".child");
-    }
-
-    /** Capture and validate the child's natural terminal outcome. */
+    /** Retain one already-terminal natural result without querying after callback cancellation. */
     private boolean finishNaturallyIfChildComplete() {
-        final boolean childComplete;
-        try {
-            childComplete = child.isComplete();
-        } catch (RuntimeException failure) {
-            throw retainLifecycleFailure(failure);
-        }
-        if (complete) {
+        boolean terminal = child.isComplete();
+        checkFailure();
+        if (!isActive()) {
             return true;
         }
-        if (!childComplete) {
+        if (!terminal) {
             return false;
         }
-
-        TaskOutcome capturedOutcome = readTerminalChildOutcome("completed");
-        if (complete) {
-            return true;
+        childTerminalObserved = true;
+        TaskOutcome captured = child.getOutcome();
+        checkFailure();
+        if (isActive()) {
+            retainedChildOutcome = requireChildOutcome(captured, "completed");
+            complete(retainedChildOutcome);
         }
-        retainedChildOutcome = capturedOutcome;
-        outcome = capturedOutcome;
-        complete = true;
         return true;
     }
 
-    /**
-     * Attempt timeout cancellation once and publish TIMEOUT only after valid terminal cleanup.
-     * Any failure remains latched and nonterminal until an outer fail-stop owner directly cancels
-     * this wrapper, preventing a sequence continuation from being released after failed cleanup.
-     */
-    private void finishByTimeout() {
-        if (childCancellationAttempted) {
-            throw retainedLifecycleFailure != null
-                    ? retainedLifecycleFailure
-                    : retainLifecycleFailure(new IllegalStateException(
-                            "Tasks.withTimeout cannot retry child cancellation after a failed "
-                                    + "timeout cleanup attempt."));
+    /** Stop only owned work, recording the attempt before callbacks and validating terminality. */
+    private void cancelChildOnce() {
+        if (!childStartAttempted || childTerminalObserved || childCancellationAttempted) {
+            return;
         }
-
-        timeoutFired = true;
         childCancellationAttempted = true;
-        timeoutCancellationInProgress = true;
+        child.cancel();
+        childCancellationValidationPending = true;
+        if (!childCallbackInProgress) {
+            validateChildCancellation();
+        }
+    }
+
+    /** Let a reentrantly cancelled child's outer callback settle before reading its result. */
+    private void invokeChild(Runnable action) {
+        childCallbackInProgress = true;
         try {
-            try {
-                child.cancel();
-            } catch (RuntimeException failure) {
-                throw retainLifecycleFailure(failure);
-            }
-
-            final boolean childComplete;
-            try {
-                childComplete = child.isComplete();
-            } catch (RuntimeException failure) {
-                throw retainLifecycleFailure(failure);
-            }
-            if (!childComplete) {
-                throw retainLifecycleFailure(new IllegalStateException(
-                        "Tasks.withTimeout reached its limit, but child cancel() returned without "
-                                + "making the child terminal. Active Task cancellation must make "
-                                + "isComplete() return true."));
-            }
-
-            retainedChildOutcome = readTerminalChildOutcome("cancelled at the timeout");
-            outcome = TaskOutcome.TIMEOUT;
-            complete = true;
+            action.run();
         } finally {
-            timeoutCancellationInProgress = false;
+            childCallbackInProgress = false;
+        }
+        if (childCancellationValidationPending) {
+            validateChildCancellation();
         }
     }
 
-    /** Read one child outcome and reject null/NOT_DONE after terminal completion. */
-    private TaskOutcome readTerminalChildOutcome(String ending) {
-        final TaskOutcome capturedOutcome;
-        try {
-            capturedOutcome = child.getOutcome();
-        } catch (RuntimeException failure) {
-            throw retainLifecycleFailure(failure);
-        }
-        if (complete) {
-            return capturedOutcome;
-        }
-        if (capturedOutcome == null || capturedOutcome == TaskOutcome.NOT_DONE) {
-            throw retainLifecycleFailure(new IllegalStateException(
-                    "Tasks.withTimeout child was " + ending + " but reported " + capturedOutcome
-                            + ". A terminal child Task must report SUCCESS, TIMEOUT, CANCELLED, or "
-                            + "UNKNOWN from getOutcome(). Fix the child Task's lifecycle contract."));
-        }
-        return capturedOutcome;
-    }
-
-    /** Preserve the first lifecycle failure so repeated direct updates cannot release a child. */
-    private RuntimeException retainLifecycleFailure(RuntimeException failure) {
-        if (retainedLifecycleFailure == null) {
-            retainedLifecycleFailure = failure;
-        }
-        return retainedLifecycleFailure;
-    }
-
-    /** Consume the one permitted wrapper start before invoking the child. */
-    private void markStartAttempt() {
-        if (startAttempted) {
+    /** Validate deferred cancellation without retrying a child's cancellation action. */
+    private void validateChildCancellation() {
+        childCancellationValidationPending = false;
+        if (!child.isComplete()) {
             throw new IllegalStateException(
-                    "The Task returned by Tasks.withTimeout(...) is single-use and start(...) was "
-                            + "called more than once. Create a fresh task with its builder or "
-                            + "macro method, a Supplier<Task>, or an OutputTaskFactory.");
+                    "Tasks.withTimeout child cancel() returned without making the child terminal. "
+                            + "Active Task cancellation must make isComplete() return true.");
         }
-        startAttempted = true;
+        childTerminalObserved = true;
+        retainedChildOutcome = requireChildOutcome(child.getOutcome(), "cancelled");
     }
 
-    /** Require the real shared loop clock used by TaskRunner. */
-    private static void requireClock(LoopClock clock) {
-        if (clock == null) {
-            throw new IllegalArgumentException(
-                    "Tasks.withTimeout requires a non-null LoopClock; start and update it through "
-                            + "the owning TaskRunner.");
+    /** Reject a child that calls itself complete without a valid terminal outcome. */
+    private static TaskOutcome requireChildOutcome(TaskOutcome outcome, String ending) {
+        if (outcome == null || outcome == TaskOutcome.NOT_DONE) {
+            throw new IllegalStateException("Tasks.withTimeout child was " + ending
+                    + " but reported " + outcome + ". A terminal child Task must report SUCCESS, "
+                    + "TIMEOUT, CANCELLED, or UNKNOWN from getOutcome(). Fix its lifecycle contract.");
+        }
+        return outcome;
+    }
+
+    /** Publish cached timing and child evidence without inspecting failed/pending outcomes. */
+    @Override
+    protected void debugState(DebugSink dbg, String prefix) {
+        dbg.addData(prefix + ".timeoutSec", timeoutSec)
+                .addData(prefix + ".childStartAttempted", childStartAttempted)
+                .addData(prefix + ".childCancellationAttempted", childCancellationAttempted)
+                .addData(prefix + ".timeoutFired", timeoutFired)
+                .addData(prefix + ".startSec", startSec)
+                .addData(prefix + ".elapsedSec", elapsedSec)
+                .addData(prefix + ".retainedChildOutcome", retainedChildOutcome);
+        if (isStarted() && !hasFailure() && (!isComplete() || isEndingSettled())) {
+            child.debugDump(dbg, prefix + ".child");
         }
     }
 }

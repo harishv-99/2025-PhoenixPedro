@@ -5,6 +5,7 @@ import java.util.Objects;
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 
@@ -52,6 +53,11 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  * owner and must update the Plant once in the normal downstream Plant phase after its
  * {@code TaskRunner} advances this task. Any success-only semantic request, such as selecting a
  * named stowed height, belongs in a following Task that calls the mechanism's normal setter.</p>
+ *
+ * <p>Direct updates advance at most once per loop cycle. A lifecycle failure best-effort releases
+ * only this Task's acquired search, then remains an exception on later updates and outcome reads.
+ * A cancelled acquisition that returns afterward is still released once before start returns;
+ * neither an unacquired nor another Task's search is released.</p>
  *
  * <p>For periodic plants, {@code establishReferenceAt(x)} establishes reference {@code x} modulo
  * the plant period and preserves the nearest equivalent unwrapped position when the plant is already
@@ -209,24 +215,22 @@ public final class PositionCalibrationTasks {
         }
     }
 
-    private static final class SearchTask implements Task {
+    /** Owns only the acquired search; the shared Task lifecycle owns termination and failures. */
+    private static final class SearchTask extends AbstractTask {
         private final PositionPlant plant;
         private final double power;
         private final BooleanSource condition;
         private final double reference;
         private final double timeoutSec;
-        private boolean startAttempted;
-        private boolean started;
         private boolean searchAcquired;
-        private boolean complete;
         private double startSec;
-        private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
         private SearchTask(PositionPlant plant,
                            double power,
                            BooleanSource condition,
                            double reference,
                            double timeoutSec) {
+            super("PositionCalibrationTasks.search(...)");
             this.plant = plant;
             this.power = power;
             this.condition = condition;
@@ -235,61 +239,44 @@ public final class PositionCalibrationTasks {
         }
 
         @Override
-        public void start(LoopClock clock) {
-            if (startAttempted) {
-                throw new IllegalStateException("PositionCalibrationTasks.search(...) is single-use "
-                        + "and cannot be started more than once. Create a fresh Task by rebuilding "
-                        + "the calibration search; use a Supplier<Task> for repeated scheduling.");
-            }
-            startAttempted = true;
-            started = true;
-            searchAcquired = false;
-            complete = false;
-            startSec = clock != null ? clock.nowSec() : 0.0;
-            outcome = TaskOutcome.NOT_DONE;
+        protected void onStart(LoopClock clock) {
+            startSec = clock.nowSec();
             condition.reset();
-            if (complete) return;
+            if (!isActive()) return;
             plant.beginCalibrationSearch(power);
             // A normally returning begin transfers this search to the Task. A throwing begin must
             // leave no newly acquired search, so ownership is recorded only after return.
             searchAcquired = true;
             // Cancellation may have re-entered while the Plant was acquiring the search. In that
             // case the terminal Task must release the newly returned acquisition exactly once.
-            if (complete) releaseSearch();
+            if (!isActive()) releaseSearch();
         }
 
+        /** A newly observed cue wins an exact timeout tie; the Plant still updates downstream. */
         @Override
-        public void update(LoopClock clock) {
-            if (!started) {
-                throw new IllegalStateException("PositionCalibrationTasks.search(...) cannot be "
-                        + "updated before start(clock). Start it first, normally by enqueueing it "
-                        + "in a TaskRunner.");
-            }
-            if (complete) return;
+        protected void onUpdate(LoopClock clock) {
             boolean referenceFound = condition.getAsBoolean(clock);
-            if (complete) return;
+            if (!isActive()) return;
             if (referenceFound) {
                 plant.establishReferenceAt(reference, clock);
-                if (complete) return;
-                outcome = TaskOutcome.SUCCESS;
-                complete = true;
-                releaseSearch();
+                if (!isActive()) return;
+                complete(TaskOutcome.SUCCESS);
                 return;
             }
-            if (Double.isFinite(timeoutSec) && clock != null && clock.nowSec() - startSec >= timeoutSec) {
-                outcome = TaskOutcome.TIMEOUT;
-                complete = true;
-                releaseSearch();
+            if (Double.isFinite(timeoutSec) && clock.nowSec() - startSec >= timeoutSec) {
+                complete(TaskOutcome.TIMEOUT);
             }
         }
 
+        /** Cancellation has no persistent-command write; all endings release only our acquisition. */
         @Override
-        public void cancel() {
-            if (!started || complete) return;
+        protected void onCancel() {
+            // The common onFinish hook owns acquired-search release for every ending.
+        }
 
-            // Mark terminal before external cleanup so a throwing Plant cleanup is not repeated.
-            outcome = TaskOutcome.CANCELLED;
-            complete = true;
+        /** Release once after success, timeout, cancellation, or an armed lifecycle failure. */
+        @Override
+        protected void onFinish() {
             releaseSearch();
         }
 
@@ -301,31 +288,16 @@ public final class PositionCalibrationTasks {
         }
 
         @Override
-        public boolean isComplete() {
-            return complete;
-        }
-
-        @Override
-        public TaskOutcome getOutcome() {
-            return complete ? outcome : TaskOutcome.NOT_DONE;
-        }
-
-        @Override
         public String getDebugName() {
             return "PositionCalibrationSearch";
         }
 
         @Override
-        public void debugDump(DebugSink dbg, String prefix) {
-            if (dbg == null) return;
-            String p = (prefix == null || prefix.isEmpty()) ? "positionCalibrationSearch" : prefix;
+        protected void debugState(DebugSink dbg, String p) {
             dbg.addData(p + ".power", power)
                     .addData(p + ".reference", reference)
                     .addData(p + ".timeoutSec", timeoutSec)
-                    .addData(p + ".started", started)
                     .addData(p + ".searchAcquired", searchAcquired)
-                    .addData(p + ".complete", complete)
-                    .addData(p + ".outcome", getOutcome())
                     .addData(p + ".plantReferenced", plant.isReferenced())
                     .addData(p + ".plantReferenceStatus", plant.referenceStatus());
         }

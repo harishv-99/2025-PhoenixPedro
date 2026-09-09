@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.core.source.ScalarTarget;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.RunForSecondsTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
@@ -17,6 +18,10 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  * staged entry point when that same request should be made at Task start, retained for a duration,
  * or observed through a feedback-capable {@link Plant}. Builder calls are side-effect free: the
  * target is not written until the built Task starts.</p>
+ *
+ * <p>Timed and feedback Tasks advance once per loop cycle and retain lifecycle failures. An armed
+ * failure attempts the timed ending or selected feedback cancellation request once; later updates
+ * and outcome reads rethrow that failure rather than reporting a usable terminal outcome.</p>
  *
  * <p>If a mechanism exposes richer named intent such as {@code Height}, {@code Mode}, or a semantic
  * pose, its owner must map and publish that semantic/numeric request through one authoritative
@@ -90,7 +95,10 @@ public final class ScalarTasks {
         /** Perform no terminal write; leave whichever target value is current when the Task ends. */
         TimedBuildStep leaveThere();
 
-        /** Write {@code finalValue} after natural completion or active cancellation. */
+        /**
+         * Attempt {@code finalValue} once after natural completion, active cancellation, or an armed
+         * lifecycle failure. A failed ending stays an exception, not a successful completion.
+         */
         TimedBuildStep then(double finalValue);
     }
 
@@ -361,7 +369,8 @@ public final class ScalarTasks {
         }
     }
 
-    private static final class ReachedTask implements Task {
+    /** Publishes once and evaluates correlated feedback under the shared Task lifecycle. */
+    private static final class ReachedTask extends AbstractTask {
         private final Plant plant;
         private final ScalarTarget target;
         private final double requestedValue;
@@ -369,12 +378,8 @@ public final class ScalarTasks {
         private final double cancellationTarget;
         private final double stableSec;
         private final double timeoutSec;
-        private boolean startAttempted;
-        private boolean started;
-        private boolean complete;
         private double startSec;
         private double stableSinceSec;
-        private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
         private ReachedTask(Plant plant,
                             ScalarTarget target,
@@ -383,6 +388,7 @@ public final class ScalarTasks {
                             double cancellationTarget,
                             double stableSec,
                             double timeoutSec) {
+            super("ScalarTasks.set(" + requestedValue + ").untilReachedBy(...)");
             this.plant = plant;
             this.target = target;
             this.requestedValue = requestedValue;
@@ -393,47 +399,34 @@ public final class ScalarTasks {
         }
 
         @Override
-        public void start(LoopClock clock) {
-            if (startAttempted) {
-                throw new IllegalStateException("ScalarTasks.set(" + requestedValue
-                        + ").untilReachedBy(...) is single-use and cannot be started more than once. "
-                        + "Create a fresh Task by rebuilding ScalarTasks.set(...); use a "
-                        + "Supplier<Task> for repeated scheduling.");
-            }
-            startAttempted = true;
-            started = true;
-            complete = false;
-            startSec = nowSec(clock, 0.0);
+        protected void onStart(LoopClock clock) {
+            startSec = clock.nowSec();
             stableSinceSec = Double.NaN;
-            outcome = TaskOutcome.NOT_DONE;
             target.set(requestedValue);
         }
 
+        /** Sample each observer once per eligible cycle; exact stable success wins a timeout tie. */
         @Override
-        public void update(LoopClock clock) {
-            if (!started) {
-                throw new IllegalStateException("ScalarTasks.set(" + requestedValue
-                        + ").untilReachedBy(...) cannot be updated before start(clock). Start it "
-                        + "first, normally by enqueueing it in a TaskRunner.");
-            }
-            if (complete) return;
-
-            double nowSec = nowSec(clock, startSec);
+        protected void onUpdate(LoopClock clock) {
+            double nowSec = clock.nowSec();
             double elapsedSec = elapsedSince(startSec, nowSec);
             PlantTargetResolution resolution = plant.getTargetResolution();
+            if (!isActive()) return;
             boolean reached;
             if (resolution != null && resolution.reportsCommandResolutionFor(target)) {
-                reached = resolution.satisfiesCommand(target, requestedValue)
-                        && target.get() == requestedValue
-                        && plant.atTarget(resolution.target());
+                boolean selected = resolution.satisfiesCommand(target, requestedValue);
+                boolean current = selected && target.get() == requestedValue;
+                if (!isActive()) return;
+                reached = current && plant.atTarget(resolution.target());
             } else {
                 // Custom Plants that do not publish framework command provenance retain their
                 // exact requested-value completion contract. The live command must still be this
                 // Task's request; a shared target may have been changed by another owner.
-                reached = target.get() == requestedValue
-                        && plant.atTarget(requestedValue);
+                boolean current = target.get() == requestedValue;
+                if (!isActive()) return;
+                reached = current && plant.atTarget(requestedValue);
             }
-            if (complete) return;
+            if (!isActive()) return;
 
             boolean stable;
             if (stableSec <= 0.0) {
@@ -447,34 +440,14 @@ public final class ScalarTasks {
             }
 
             // Success deliberately wins an exact tie with timeout.
-            if (stable) finish(TaskOutcome.SUCCESS);
-            else if (timeoutSec > 0.0 && elapsedSec >= timeoutSec) finish(TaskOutcome.TIMEOUT);
+            if (stable) complete(TaskOutcome.SUCCESS);
+            else if (timeoutSec > 0.0 && elapsedSec >= timeoutSec) complete(TaskOutcome.TIMEOUT);
         }
 
-        private void finish(TaskOutcome result) {
-            outcome = result;
-            complete = true;
-        }
-
+        /** Apply only the caller-selected cancellation request; never update the Plant. */
         @Override
-        public void cancel() {
-            if (!started || complete) return;
-
-            // Become terminal before the optional external write so a throwing target is not
-            // written again by repeated cancellation or runner failure cleanup.
-            outcome = TaskOutcome.CANCELLED;
-            complete = true;
+        protected void onCancel() {
             if (hasCancellationTarget) target.set(cancellationTarget);
-        }
-
-        @Override
-        public boolean isComplete() {
-            return complete;
-        }
-
-        @Override
-        public TaskOutcome getOutcome() {
-            return complete ? outcome : TaskOutcome.NOT_DONE;
         }
 
         @Override
@@ -504,10 +477,6 @@ public final class ScalarTasks {
                     + "authoritative Plant feedback. Use build() for a write-once request or "
                     + "forSeconds(...) for timed open-loop behavior.");
         }
-    }
-
-    private static double nowSec(LoopClock clock, double fallbackSec) {
-        return clock != null ? clock.nowSec() : fallbackSec;
     }
 
     private static double elapsedSince(double intervalStartSec, double nowSec) {

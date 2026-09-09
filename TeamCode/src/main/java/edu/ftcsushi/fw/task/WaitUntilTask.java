@@ -7,174 +7,90 @@ import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
 
 /**
- * A {@link Task} that runs until a condition becomes true, optionally with a timeout.
+ * Condition wait created through Tasks.waitUntil, with shared lifecycle/failure handling.
  *
- * <p>This is the "wait until X" primitive for Sushi tasks. It is intentionally expressed in
- * terms of {@link BooleanSource}, not a raw boolean supplier, so it composes naturally with the
- * clocked signal pipeline: debounce, hysteresis, memoization, edges, and related helpers.</p>
- *
- * <p>Ordinary managed Auto usage:</p>
- * <pre>{@code
- * // Wait until a sensor gate is ready, but give up after 2 seconds.
- * program.rootTask(Tasks.waitUntil(ready, 2.0));
- * }</pre>
- *
- * <p>Use {@link Tasks#waitUntil(BooleanSource)} when the wait intentionally has no timeout.</p>
- *
- * <p>Active cancellation ends the wait immediately and reports
- * {@link TaskOutcome#CANCELLED}; pre-start and terminal cancellation are no-ops.</p>
- *
- * <p>Timeout elapsed time is measured from the {@link LoopClock#nowSec()} captured at task start,
- * so the loop interval before scheduling is never charged to the wait. The condition is sampled
- * before the timeout comparison, including at the exact timeout boundary.</p>
+ * <p>The condition is sampled before the optional timeout comparison, including at the exact
+ * deadline. The no-timeout factory explicitly selects an unbounded wait. Condition exceptions
+ * inside Task updates are lifecycle failures, not retryable Task updates. Independent source
+ * consumers retain their own source-cache contract.</p>
  */
-public final class WaitUntilTask implements Task {
-
+public final class WaitUntilTask extends AbstractTask {
     private final BooleanSource condition;
     private final double timeoutSec;
+    private double startSec;
+    private double elapsedSec;
+    private boolean lastCondition;
+    private boolean timedOut;
 
-    private boolean startAttempted = false;
-    private boolean started = false;
-    private boolean finished = false;
-    private boolean timedOut = false;
-    private boolean cancelled = false;
-    private double startSec = 0.0;
-    private double elapsedSec = 0.0;
-    /**
-     * Last observed condition value, sampled during {@link #update(LoopClock)}.
-     */
-    private boolean lastCondition = false;
-
-    /**
-     * Create a wait-until task with no timeout.
-     */
+    /** Select the explicitly unbounded factory form. */
     WaitUntilTask(BooleanSource condition) {
-        this(condition, Double.POSITIVE_INFINITY);
+        this(condition, Double.POSITIVE_INFINITY, false);
     }
 
-    /**
-     * Create a wait-until task with a timeout.
-     *
-     * @param condition  condition to wait for; task completes when this becomes true
-     * @param timeoutSec timeout in seconds; must be {@code >= 0}
-     */
+    /** Select a finite non-negative timeout in seconds. */
     WaitUntilTask(BooleanSource condition, double timeoutSec) {
+        this(condition, timeoutSec, true);
+    }
+
+    /** Validate authored timing without sampling the borrowed condition. */
+    private WaitUntilTask(BooleanSource condition, double timeoutSec, boolean bounded) {
+        super("WaitUntilTask");
         this.condition = Objects.requireNonNull(condition, "condition is required");
-        if (timeoutSec < 0.0) {
-            throw new IllegalArgumentException("timeoutSec must be >= 0, got " + timeoutSec);
+        if (bounded && (!Double.isFinite(timeoutSec) || timeoutSec < 0.0)) {
+            throw new IllegalArgumentException(
+                    "timeoutSec must be finite and >= 0; use Tasks.waitUntil(condition) "
+                            + "for an unbounded wait, got " + timeoutSec);
         }
         this.timeoutSec = timeoutSec;
     }
 
-    /** {@inheritDoc} */
+    /** Anchor this wait without charging time from before it started. */
     @Override
-    public void start(LoopClock clock) {
-        markStartAttempt();
-        started = true;
-        finished = false;
-        timedOut = false;
-        cancelled = false;
+    protected void onStart(LoopClock clock) {
         startSec = clock.nowSec();
-        elapsedSec = 0.0;
-        lastCondition = false;
     }
 
-    /** {@inheritDoc} */
+    /** Observe once in the eligible update, allowing condition success to win the deadline tie. */
     @Override
-    public void update(LoopClock clock) {
-        if (!started) {
-            throw TaskLifecycle.updateBeforeStart("WaitUntilTask");
-        }
-        if (finished) {
+    protected void onUpdate(LoopClock clock) {
+        boolean value = condition.getAsBoolean(clock);
+        if (!isActive()) {
             return;
         }
-        boolean cond = condition.getAsBoolean(clock);
-        if (finished) {
-            return;
-        }
-        lastCondition = cond;
-        if (cond) {
-            finished = true;
+        lastCondition = value;
+        if (value) {
+            complete(TaskOutcome.SUCCESS);
             return;
         }
         elapsedSec = Math.max(0.0, clock.nowSec() - startSec);
         if (elapsedSec >= timeoutSec) {
-            finished = true;
             timedOut = true;
+            complete(TaskOutcome.TIMEOUT);
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** Waiting owns no resource or persistent request to restore. */
     @Override
-    public void cancel() {
-        if (!started || finished) {
-            return;
-        }
-        finished = true;
-        cancelled = true;
-        timedOut = false;
+    protected void onCancel() {
     }
 
-    /** {@inheritDoc} */
-    @Override
-    public boolean isComplete() {
-        return finished;
-    }
-
-    /**
-     * {@inheritDoc}
-     *
-     * <p>Returns {@link TaskOutcome#TIMEOUT} if the timeout elapsed before the condition became
-     * true, or {@link TaskOutcome#CANCELLED} if the wait was ended early through
-     * {@link #cancel()}.</p>
-     */
-    @Override
-    public TaskOutcome getOutcome() {
-        if (!finished) {
-            return TaskOutcome.NOT_DONE;
-        }
-        if (cancelled) {
-            return TaskOutcome.CANCELLED;
-        }
-        return timedOut ? TaskOutcome.TIMEOUT : TaskOutcome.SUCCESS;
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public void debugDump(DebugSink dbg, String prefix) {
-        if (dbg == null) {
-            return;
-        }
-        String p = (prefix == null || prefix.isEmpty()) ? "waitUntil" : prefix;
-
-        dbg.addData(p + ".finished", finished)
-                .addData(p + ".timedOut", timedOut)
-                .addData(p + ".cancelled", cancelled)
-                .addData(p + ".condition", lastCondition)
-                .addData(p + ".startSec", startSec)
-                .addData(p + ".elapsedSec", elapsedSec)
-                .addData(p + ".timeoutSec", timeoutSec);
-
-        condition.debugDump(dbg, p + ".cond");
-    }
-
-    /**
-     * @return true if the task completed due to timeout rather than the condition.
-     */
+    /** Return timeout evidence only when the Task's result is safe to consume. */
     public boolean isTimedOut() {
+        requireOutcomeAvailable();
         return timedOut;
     }
 
-    /** Record the single permitted start attempt before resetting task state. */
-    private void markStartAttempt() {
-        if (startAttempted) {
-            throw new IllegalStateException(
-                    "WaitUntilTask is single-use and start(...) was called more than once. "
-                            + "Create a fresh task with its builder or macro method, a "
-                            + "Supplier<Task>, or an OutputTaskFactory.");
+    /** Expose cached observation/timing facts; borrowed diagnostics remain non-advancing. */
+    @Override
+    protected void debugState(DebugSink dbg, String prefix) {
+        dbg.addData(prefix + ".finished", isComplete())
+                .addData(prefix + ".timedOut", timedOut)
+                .addData(prefix + ".condition", lastCondition)
+                .addData(prefix + ".startSec", startSec)
+                .addData(prefix + ".elapsedSec", elapsedSec)
+                .addData(prefix + ".timeoutSec", timeoutSec);
+        if (isStarted() && !hasFailure() && (!isComplete() || isEndingSettled())) {
+            condition.debugDump(dbg, prefix + ".cond");
         }
-        startAttempted = true;
     }
 }

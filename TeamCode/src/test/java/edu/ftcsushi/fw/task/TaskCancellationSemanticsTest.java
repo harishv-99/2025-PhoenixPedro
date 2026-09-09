@@ -502,7 +502,10 @@ public final class TaskCancellationSemanticsTest {
 
         assertSame(cleanupFailure, observed);
         assertTrue(timed.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, timed.getOutcome());
+        assertSame(cleanupFailure, expectRuntime(timed::getOutcome));
+        assertSame(cleanupFailure, expectRuntime(() -> timed.update(manualClock.clock())));
+        assertSame(cleanupFailure, expectRuntime(
+                () -> timed.update(manualClock.nextCycle(0.02))));
         timed.cancel();
         assertEquals(1, finishCalls.get());
     }

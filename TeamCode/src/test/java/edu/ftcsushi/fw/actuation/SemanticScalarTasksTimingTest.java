@@ -78,6 +78,10 @@ public final class SemanticScalarTasksTimingTest {
 
         SemanticScalarCommand.Request<Mode> override = command.set(Mode.OVERRIDE);
         timed.update(time.clock());
+        assertSame("a repeated update cannot reclaim a later same-cycle request",
+                override, command.request());
+        time.nextCycle(0.02);
+        timed.update(time.clock());
         SemanticScalarCommand.Request<Mode> reclaimed = command.request();
 
         assertNotSame(firstActive, override);

@@ -18,6 +18,7 @@ import edu.ftcsushi.robots.phoenix.PhoenixCapabilities;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -68,7 +69,7 @@ public final class PhoenixAutoTasksTest {
         CompleteInStartTask target = new CompleteInStartTask(TaskOutcome.SUCCESS);
         CompleteInStartTask aim = new CompleteInStartTask(TaskOutcome.SUCCESS);
         CompleteInStartTask shot = new CompleteInStartTask(TaskOutcome.SUCCESS);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 target,
                 aim,
@@ -87,11 +88,105 @@ public final class PhoenixAutoTasksTest {
     }
 
     @Test
+    public void phaseAlreadyCompleteOnEntryStartsAndUpdatesSuccessorInThatCall() {
+        FakeScoring scoring = new FakeScoring();
+        ControlledTask target = ControlledTask.finishingAfterUpdates(TaskOutcome.SUCCESS, 10);
+        ControlledTask aim = ControlledTask.finishingAfterUpdates(TaskOutcome.SUCCESS, 10);
+        Task attempt = PhoenixScoringAttemptTask.create(
+                scoring, target, aim, ControlledTask.finishingWith(TaskOutcome.SUCCESS));
+        LoopClock clock = clockAt(0.0);
+        attempt.start(clock);
+
+        // The private phase seam can become terminal between serviced updates. Its successor
+        // still receives this call's update; replacing the phase driver with sequence would differ.
+        target.complete = true;
+        target.actualOutcome = TaskOutcome.SUCCESS;
+        tick(attempt, clock, 0.1);
+
+        assertEquals(0, target.updateCount);
+        assertEquals(1, scoring.captureCount);
+        assertEquals(1, aim.startCount);
+        assertEquals(1, aim.updateCount);
+        assertEquals(0, scoring.requestCount);
+        assertFalse(attempt.isComplete());
+    }
+
+    @Test
+    public void repeatedSameCycleUpdateDoesNotAdvanceTheNewlyStartedPhase() {
+        FakeScoring scoring = new FakeScoring();
+        ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
+        Task attempt = PhoenixScoringAttemptTask.create(
+                scoring, ControlledTask.finishingWith(TaskOutcome.SUCCESS), aim,
+                ControlledTask.finishingWith(TaskOutcome.SUCCESS));
+        LoopClock clock = clockAt(0.0);
+        attempt.start(clock);
+        tick(attempt, clock, 0.1);
+
+        attempt.update(clock);
+
+        assertEquals(1, scoring.captureCount);
+        assertEquals(1, aim.startCount);
+        assertEquals(0, aim.updateCount);
+        assertEquals(0, scoring.requestCount);
+        tick(attempt, clock, 0.2);
+        assertEquals(1, aim.updateCount);
+        assertEquals(1, scoring.requestCount);
+    }
+
+    @Test
+    public void cancellationInsideCaptureDoesNotStartAimOrAcquireShotOwnership() {
+        FakeScoring scoring = new FakeScoring();
+        ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
+        ControlledTask shotWait = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
+        Task attempt = PhoenixScoringAttemptTask.create(
+                scoring, ControlledTask.finishingWith(TaskOutcome.SUCCESS), aim, shotWait);
+        LoopClock clock = clockAt(0.0);
+        scoring.onCapture = attempt::cancel;
+
+        attempt.start(clock);
+        tick(attempt, clock, 0.1);
+        attempt.cancel();
+        tick(attempt, clock, 0.2);
+
+        assertEquals(TaskOutcome.CANCELLED, attempt.getOutcome());
+        assertEquals(1, scoring.captureCount);
+        assertEquals(0, aim.startCount);
+        assertEquals(0, shotWait.startCount);
+        assertEquals(0, scoring.requestCount);
+        assertEquals(0, scoring.cancelTransientCount);
+        assertNoHeldIntentWrites(scoring);
+    }
+
+    @Test
+    public void cancellationInsideShotRequestCleansOwnedIntentWithoutStartingWait() {
+        FakeScoring scoring = new FakeScoring();
+        ControlledTask shotWait = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
+        Task attempt = PhoenixScoringAttemptTask.create(
+                scoring, ControlledTask.finishingWith(TaskOutcome.SUCCESS),
+                ControlledTask.finishingWith(TaskOutcome.SUCCESS), shotWait);
+        LoopClock clock = clockAt(0.0);
+        scoring.onRequest = attempt::cancel;
+
+        attempt.start(clock);
+        tick(attempt, clock, 0.1);
+        tick(attempt, clock, 0.2);
+        attempt.cancel();
+        tick(attempt, clock, 0.3);
+
+        assertEquals(TaskOutcome.CANCELLED, attempt.getOutcome());
+        assertEquals(1, scoring.requestCount);
+        assertEquals(1, scoring.cancelTransientCount);
+        assertEquals(0, shotWait.startCount);
+        assertFalse(scoring.pendingShots);
+        assertNoHeldIntentWrites(scoring);
+    }
+
+    @Test
     public void reentrantUpdateFromVelocityCaptureDoesNotRepeatActionOrAimStart() {
         FakeScoring scoring = new FakeScoring();
         ControlledTask target = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
         ControlledTask aim = ControlledTask.finishingAfterUpdates(TaskOutcome.SUCCESS, 10);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 target,
                 aim,
@@ -115,7 +210,7 @@ public final class PhoenixAutoTasksTest {
         FakeScoring scoring = new FakeScoring();
         ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
         ControlledTask shotWait = ControlledTask.finishingAfterUpdates(TaskOutcome.SUCCESS, 10);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 aim,
@@ -239,7 +334,7 @@ public final class PhoenixAutoTasksTest {
         FakeScoring scoring = new FakeScoring();
         ControlledTask target = ControlledTask.finishingAfterUpdates(TaskOutcome.SUCCESS, 10);
         ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 target,
                 aim,
@@ -263,7 +358,7 @@ public final class PhoenixAutoTasksTest {
     public void directCancellationWhileAimingCancelsOnlyAimAndSkipsShot() {
         FakeScoring scoring = new FakeScoring();
         ControlledTask aim = ControlledTask.finishingAfterUpdates(TaskOutcome.SUCCESS, 10);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 aim,
@@ -288,7 +383,7 @@ public final class PhoenixAutoTasksTest {
         FakeScoring scoring = new FakeScoring();
         ControlledTask target = ControlledTask.finishingWith(TaskOutcome.UNKNOWN);
         ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 target,
                 aim,
@@ -309,7 +404,7 @@ public final class PhoenixAutoTasksTest {
     public void cancelledAimOutcomeRemainsCancelledAndSkipsShot() {
         FakeScoring scoring = new FakeScoring();
         ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.CANCELLED);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 aim,
@@ -330,7 +425,7 @@ public final class PhoenixAutoTasksTest {
     @Test
     public void unknownShotWaitOutcomeRemainsUnknownAndCleansTransientShot() {
         FakeScoring scoring = new FakeScoring();
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
@@ -486,7 +581,7 @@ public final class PhoenixAutoTasksTest {
     @Test
     public void lifecycleGuardsAreActiveOnlyAndSingleUse() {
         FakeScoring scoring = new FakeScoring();
-        PhoenixScoringAttemptTask attempt = successfulDirectAttempt(scoring);
+        Task attempt = successfulDirectAttempt(scoring);
         LoopClock clock = clockAt(0.0);
 
         attempt.cancel();
@@ -498,7 +593,7 @@ public final class PhoenixAutoTasksTest {
             fail("Expected update-before-start rejection");
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("before start"));
-            assertTrue(expected.getMessage().contains("PhoenixAutoTasks.aimAndShootOne"));
+            assertTrue(expected.getMessage().contains("withCleanup"));
         }
 
         attempt.start(clock);
@@ -512,7 +607,7 @@ public final class PhoenixAutoTasksTest {
             fail("Expected second-start rejection");
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("single-use"));
-            assertTrue(expected.getMessage().contains("aimAndShootOne"));
+            assertTrue(expected.getMessage().contains("withCleanup"));
         }
         assertEquals(1, scoring.requestCount);
     }
@@ -523,7 +618,7 @@ public final class PhoenixAutoTasksTest {
         ControlledTask shared = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
 
         try {
-            new PhoenixScoringAttemptTask(
+            PhoenixScoringAttemptTask.create(
                     scoring,
                     shared,
                     shared,
@@ -549,7 +644,7 @@ public final class PhoenixAutoTasksTest {
         );
         shotWait.cancelFailure = childFailure;
         scoring.cancelFailure = cleanupFailure;
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
@@ -570,7 +665,7 @@ public final class PhoenixAutoTasksTest {
             assertSame(cleanupFailure, actual.getSuppressed()[0]);
         }
 
-        assertEquals(TaskOutcome.CANCELLED, attempt.getOutcome());
+        assertRetainedFailure(attempt, clock, childFailure);
         assertEquals(1, shotWait.cancelCount);
         assertEquals(1, scoring.cancelTransientCount);
     }
@@ -585,7 +680,7 @@ public final class PhoenixAutoTasksTest {
         );
         shotWait.cancelFailure = sharedFailure;
         scoring.cancelFailure = sharedFailure;
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
@@ -605,7 +700,7 @@ public final class PhoenixAutoTasksTest {
             assertEquals(0, actual.getSuppressed().length);
         }
 
-        assertEquals(TaskOutcome.CANCELLED, attempt.getOutcome());
+        assertRetainedFailure(attempt, clock, sharedFailure);
         assertEquals(1, scoring.cancelTransientCount);
     }
 
@@ -614,7 +709,7 @@ public final class PhoenixAutoTasksTest {
         FakeScoring scoring = new FakeScoring();
         RuntimeException requestFailure = new IllegalStateException("shot request failed");
         scoring.requestFailure = requestFailure;
-        PhoenixScoringAttemptTask attempt = successfulDirectAttempt(scoring);
+        Task attempt = successfulDirectAttempt(scoring);
         TaskRunner runner = new TaskRunner();
         LoopClock clock = clockAt(0.0);
         runner.enqueue(attempt);
@@ -628,7 +723,7 @@ public final class PhoenixAutoTasksTest {
         }
 
         assertTrue(runner.isIdle());
-        assertEquals(TaskOutcome.CANCELLED, attempt.getOutcome());
+        assertRetainedFailure(attempt, clock, requestFailure);
         assertEquals(1, scoring.requestCount);
         assertEquals(1, scoring.cancelTransientCount);
         assertFalse(scoring.pendingShots);
@@ -640,7 +735,7 @@ public final class PhoenixAutoTasksTest {
         FakeScoring scoring = new FakeScoring();
         RuntimeException startFailure = new IllegalArgumentException("shot wait start failed");
         StartFailureTask shotWait = new StartFailureTask(startFailure);
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
@@ -659,7 +754,7 @@ public final class PhoenixAutoTasksTest {
         }
 
         assertTrue(runner.isIdle());
-        assertEquals(TaskOutcome.CANCELLED, attempt.getOutcome());
+        assertRetainedFailure(attempt, clock, startFailure);
         assertEquals(1, shotWait.startCount);
         assertEquals(1, shotWait.cancelCount);
         assertEquals(1, scoring.requestCount);
@@ -671,7 +766,7 @@ public final class PhoenixAutoTasksTest {
     @Test
     public void completedChildMustReportUsableTerminalOutcome() {
         FakeScoring scoring = new FakeScoring();
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 new InvalidCompletedOutcomeTask(TaskOutcome.NOT_DONE),
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
@@ -695,7 +790,7 @@ public final class PhoenixAutoTasksTest {
     @Test
     public void completedChildNullOutcomeIsRejectedWithPhaseContext() {
         FakeScoring scoring = new FakeScoring();
-        PhoenixScoringAttemptTask attempt = new PhoenixScoringAttemptTask(
+        Task attempt = PhoenixScoringAttemptTask.create(
                 scoring,
                 new InvalidCompletedOutcomeTask(null),
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
@@ -716,8 +811,8 @@ public final class PhoenixAutoTasksTest {
         assertEquals(0, scoring.requestCount);
     }
 
-    private static PhoenixScoringAttemptTask successfulDirectAttempt(FakeScoring scoring) {
-        return new PhoenixScoringAttemptTask(
+    private static Task successfulDirectAttempt(FakeScoring scoring) {
+        return PhoenixScoringAttemptTask.create(
                 scoring,
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
                 ControlledTask.finishingWith(TaskOutcome.SUCCESS),
@@ -772,6 +867,15 @@ public final class PhoenixAutoTasksTest {
         assertEquals(0, scoring.flywheelSetCount);
         assertEquals(0, scoring.shootingSetCount);
         assertEquals(0, scoring.ejectSetCount);
+    }
+
+    private static void assertRetainedFailure(Task task,
+                                              LoopClock clock,
+                                              RuntimeException expected) {
+        assertTrue(task.isComplete());
+        assertSame(expected, assertThrows(RuntimeException.class, task::getOutcome));
+        assertSame(expected, assertThrows(RuntimeException.class, () -> task.update(clock)));
+        task.cancel(); // A repeated cancellation must not repeat failed cleanup.
     }
 
     private static PhoenixCapabilities.TargetingStatus targetingStatus(boolean hasSelection) {

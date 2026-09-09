@@ -3,6 +3,7 @@ package edu.ftcsushi.fw.task;
 import org.junit.Test;
 
 import java.lang.reflect.Modifier;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -115,6 +116,7 @@ public final class TaskSingleUseContractTest {
         assertEquals(1, instantCalls.get());
 
         AtomicInteger runCalls = new AtomicInteger();
+        AtomicInteger runCleanupCalls = new AtomicInteger();
         RunForSecondsTask run = new RunForSecondsTask(
                 1.0,
                 () -> {
@@ -122,11 +124,16 @@ public final class TaskSingleUseContractTest {
                     throw new ExpectedStartFailure();
                 },
                 null,
-                null);
-        expectStartFailure(() -> run.start(clock));
+                runCleanupCalls::incrementAndGet);
+        ExpectedStartFailure runFailure = expectStartFailure(() -> run.start(clock));
         assertEquals(1, runCalls.get());
+        assertEquals(1, runCleanupCalls.get());
+        assertTrue(run.isComplete());
+        assertSame(runFailure, expectStartFailure(run::getOutcome));
+        assertSame(runFailure, expectStartFailure(() -> run.update(clock)));
         assertSingleUseStartRejected(run, clock, "RunForSecondsTask");
         assertEquals(1, runCalls.get());
+        assertEquals(1, runCleanupCalls.get());
     }
 
     @Test
@@ -652,9 +659,10 @@ public final class TaskSingleUseContractTest {
 
     private static void assertActionable(IllegalStateException error, String expectedName) {
         assertTrue(error.getMessage(), error.getMessage().contains(expectedName));
-        assertTrue(error.getMessage(), error.getMessage().contains("fresh task"));
-        assertTrue(error.getMessage(), error.getMessage().contains("Supplier<Task>"));
-        assertTrue(error.getMessage(), error.getMessage().contains("OutputTaskFactory"));
+        assertTrue(error.getMessage(), error.getMessage().toLowerCase(Locale.ROOT)
+                .contains("fresh task"));
+        assertTrue(error.getMessage(), error.getMessage().contains("builder"));
+        assertTrue(error.getMessage(), error.getMessage().contains("macro"));
     }
 
     private static IllegalStateException expectIllegalState(Runnable action) {
@@ -677,12 +685,13 @@ public final class TaskSingleUseContractTest {
         }
     }
 
-    private static void expectStartFailure(Runnable action) {
+    private static ExpectedStartFailure expectStartFailure(Runnable action) {
         try {
             action.run();
             fail("Expected test start failure");
+            return null;
         } catch (ExpectedStartFailure expected) {
-            // Expected test fixture failure.
+            return expected;
         }
     }
 

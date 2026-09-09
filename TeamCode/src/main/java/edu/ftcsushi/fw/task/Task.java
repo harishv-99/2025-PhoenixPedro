@@ -46,15 +46,14 @@ import edu.ftcsushi.fw.core.time.LoopClock;
  * <pre>{@code
  * Task task = Tasks.sequence(
  *         Tasks.waitUntil(driverReady),
- *         new RunForSecondsTask(
- *                 0.4,
- *                 shooter::startFeed,
- *                 null,
- *                 shooter::stopFeed)
+ *         intake.collectForSeconds(0.4)
  * );
  *
  * program.rootTask(task);
  * }</pre>
+ * <p>The intake capability owns its timed request and ending policy, as in the maintained Starter
+ * intake. Implementations use {@link AbstractTask} to share lifecycle/failure mechanics; ordinary
+ * callers need no extra wrapper to make a built-in timed Task handle failure.</p>
  */
 public interface Task {
 
@@ -129,6 +128,13 @@ public interface Task {
      *       or {@code NOT_DONE} after completion is a lifecycle contract violation.</li>
      * </ul>
      *
+     * <p>A retained lifecycle failure is not a normal terminal outcome. The timed Task families and
+     * {@link Tasks#withCleanup(Task, Runnable)} share {@link AbstractTask}: they rethrow retained
+     * failures here rather than letting failed cleanup release a dependent continuation. Their
+     * irreversible ending is observable through {@link #isComplete()}, but the outcome must not
+     * be inspected during terminal cleanup or before an outstanding synchronous acquisition has
+     * returned and its ownership has been settled. Cached diagnostics remain available.</p>
+     *
      * @return the current outcome for this task
      */
     TaskOutcome getOutcome();
@@ -137,7 +143,9 @@ public interface Task {
      * Debug helper: emit a compact summary of this task.
      *
      * <p>This is intentionally lightweight and safe to call every loop. Tasks with meaningful
-     * internal state should override this method to provide richer telemetry.</p>
+     * internal state that implement Task directly should override this method for richer telemetry.
+     * Subclasses of {@link AbstractTask} instead implement its protected {@code debugState} hook;
+     * the base's final method keeps lifecycle diagnostics readable after failure.</p>
      *
      * @param dbg    debug sink (may be {@code null}; if null, no output is produced)
      * @param prefix base key prefix, e.g. {@code "auto.task"}

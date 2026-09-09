@@ -9,6 +9,8 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -27,7 +29,7 @@ public final class RouteTaskSingleUseTest {
 
         IllegalStateException failure = expectSecondStartFailure(task, manualClock.clock());
 
-        assertActionable(failure, "outbound", "RouteTasks factory");
+        assertActionable(failure, "outbound", "factory");
         assertEquals(1, follower.followCount);
         assertEquals(0, follower.current.cancelCount);
         assertFalse(task.isComplete());
@@ -50,7 +52,7 @@ public final class RouteTaskSingleUseTest {
 
         IllegalStateException failure = expectSecondStartFailure(task, manualClock.clock());
 
-        assertActionable(failure, "return", "Supplier<Task>");
+        assertActionable(failure, "return", "fresh");
         assertEquals(1, follower.followCount);
         assertEquals(1, follower.current.cancelCount);
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
@@ -124,20 +126,17 @@ public final class RouteTaskSingleUseTest {
         RouteTask<String> task =
                 RouteTasks.followWithoutTaskTimeout("failedStart", follower, "route");
 
-        try {
-            task.start(manualClock.clock());
-            fail("expected follow to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test follow"));
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> task.start(manualClock.clock()));
+        assertTrue(failure.getMessage().contains("test follow"));
 
         assertTrue(task.isComplete());
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getRouteStatus));
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         task.cancel();
         task.cancel();
         assertTrue(task.isComplete());
-        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getRouteStatus));
         assertEquals(1, follower.followCount);
         assertEquals(0, follower.totalCancelCount());
     }
@@ -151,15 +150,11 @@ public final class RouteTaskSingleUseTest {
                 RouteTasks.followWithoutTaskTimeout("throwingCancel", follower, "route");
         task.start(manualClock.clock());
 
-        try {
-            task.cancel();
-            fail("expected cancel to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("test cancel"));
-        }
+        IllegalStateException failure = assertThrows(IllegalStateException.class, task::cancel);
+        assertTrue(failure.getMessage().contains("test cancel"));
 
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertSame(failure, assertThrows(IllegalStateException.class, task::getOutcome));
         assertEquals(RouteStatus.CANCELLED, follower.current.status());
         assertEquals(1, follower.current.cancelCount);
         task.cancel();

@@ -193,8 +193,8 @@ final class PhoenixPedroAutoRoutineTask implements Task {
                 .addData(p + ".outcome", getOutcome());
 
         if (activeChild != null) {
-            dbg.addData(p + ".activeChild", activeChild.getDebugName())
-                    .addData(p + ".activeChildOutcome", activeChild.getOutcome());
+            dbg.addData(p + ".activeChild", activeChild.getDebugName());
+            // The child's diagnostic view remains readable when its policy outcome throws.
             activeChild.debugDump(dbg, p + ".active");
         }
         prePark.debugDump(dbg, p + ".prePark");
@@ -292,13 +292,11 @@ final class PhoenixPedroAutoRoutineTask implements Task {
         try {
             returnOrParkRoute.start(clock);
         } catch (RuntimeException startFailure) {
-            // RouteTask terminalizes itself before rethrowing a construction/follower-start
-            // failure. Terminalize this root too so TaskRunner's fail-stop cancellation cannot
-            // overwrite the exact B-phase reason retained for telemetry.
-            RouteStatus status = returnOrParkRoute.getRouteStatus();
-            lastRouteStatus = status;
-            String failureTrigger = status == null ? "RETURN_OR_PARK_START_FAILURE" : status.name();
-            finish(TaskOutcome.CANCELLED, Decision.ABORT, failureTrigger);
+            // A thrown RouteTask start is failure evidence, not an inspectable typed result.
+            // Keep the root's existing failure reason without querying that failed outcome;
+            // TaskRunner's fail-stop cancellation must not relabel it as a direct cancellation.
+            lastRouteStatus = RouteStatus.FAILED;
+            finish(TaskOutcome.CANCELLED, Decision.ABORT, "FAILED");
             throw startFailure;
         }
     }

@@ -160,8 +160,9 @@ assertEquals(RouteStatus.ACTIVE, routeTask.getRouteStatus());
 assertEquals(TaskOutcome.NOT_DONE, routeTask.getOutcome());
 ```
 
-The test then injects one completion fact. Only the following Task heartbeat can make the retained
-status and outcome observations terminal:
+The test then injects one completion fact. In this test, the following Task heartbeat observes that
+fact and makes the retained status and outcome terminal. A call to `getRouteStatus()` can also
+observe externally published completion without advancing the follower:
 
 <!-- source-excerpt: TeamCode/src/test/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroRouteSoftwareScenarioTest.java -->
 ```java

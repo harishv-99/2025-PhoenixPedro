@@ -98,6 +98,23 @@ Each route start returns a per-start execution. Completion remains attached to t
 is classified as endpoint success, timeout/stall, interruption, replacement, failure, or unknown.
 Never infer success solely from Pedro becoming idle.
 
+Retain the returned `RouteTask` when robot policy needs its exact `getRouteStatus()`. That getter
+observes the same owned execution without advancing the follower. It can recognize a terminal
+status published by the root's heartbeat after a Task update in the same cycle; it does not spend
+or repeat the Task's once-per-cycle effectful update. Generic `isComplete()` is the Task's cached
+ending claim, so use the typed route status when inspecting newly published execution evidence.
+Normal cancellation also checks that exact execution first, preserving an already-terminal
+completion or replacement instead of relabeling it. Normal route completion does not stop a
+follower intentionally retaining its endpoint through hold-end behavior.
+
+If a follow call returns an execution after cancellation occurred inside that call, the Task
+classifies and, when needed, cancels that exact returned handle. Its final outcome remains
+unavailable until the outer start callback and that ownership work settle. A lifecycle or cleanup
+`RuntimeException` remains exceptional: `getOutcome()`, `getRouteStatus()` and later updates rethrow
+the first failure, even if cached execution evidence says completed. A valid returned
+`RouteStatus.FAILED` is different from a thrown exception: it retains that precise status and maps
+to the broad `TaskOutcome.CANCELLED` result. Neither fact invents a recovery action.
+
 ## Cleanup
 
 `RobotProgram` cancels the root first, stops downstream mechanism outputs, then stops services in
