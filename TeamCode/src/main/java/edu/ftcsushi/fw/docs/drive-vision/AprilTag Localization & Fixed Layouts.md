@@ -921,3 +921,89 @@ The intended tester progression is:
 
 - `Loc: AprilTag Localization` first
 - then `Loc: Pinpoint + Field Corrections` once camera mount and predictor calibration are trustworthy
+
+### Check localization software without a robot
+
+This optional **maintainer regression** checks the existing localization algorithms on a
+development computer, before or after a robot is built. It is not a calibration TeleOp, does not
+connect to hardware, and does not change robot settings. Read the estimation roles and evidence-time
+rules above before interpreting it; the beginner robot course does not require this check.
+
+The supplied `LocalizationRobustnessScenarioTest` uses **synthetic truth**: an independently authored
+table or equation for where an imaginary robot is and which way it faces at each time. **Fault
+injection** means deliberately changing the supplied sensor readings, for example making odometry
+report too much movement or delivering a camera reading late. Neither the truth nor the next sensor
+reading comes from the estimator being tested.
+
+- **Question:** how do movement-only, gain-fusion, and EKF estimates behave under these known faults?
+- **Keep real:** the gain-fusion and EKF implementations, their admission/replay rules, and one real
+  framework clock advanced by the test.
+- **Replace:** physical movement, odometry, and camera-derived poses with explicit scripted values
+  and capture/delivery times. Three independent predictors and two independent correction sources
+  prevent one comparison branch from changing another's input.
+- **Observe:** geometry error, evidence age and availability, recovery, correction counters, and
+  EKF's modeled uncertainty.
+- **Cannot conclude:** real camera performance, odometry calibration, physical accuracy, or which
+  filter a particular robot should use. Corrected-pose pushback into the predictor is explicitly
+  disabled, so this is not a benchmark of the complete default FTC localization stack.
+
+Use the [targeted maintainer command](<../maintainers/Maintainer Notes.md#run-the-localization-robustness-scenarios>)
+or run the class in Android Studio. **Complete source:**
+[`LocalizationRobustnessScenarioTest.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/test/java/edu/ftcsushi/fw/localization/fusion/LocalizationRobustnessScenarioTest.java>).
+The class is supplied test infrastructure to inspect, not a template students need to copy into
+their robot package.
+
+#### Read the comparison correctly
+
+Each cycle publishes the scheduled input, updates the real owners, then records their output. A
+delayed camera result retains its capture time; repeatedly reading it does not make it a new frame.
+The scenarios cover clean movement/turns/holds, accumulated drift and a slip-like jump, delayed or
+missing corrections, isolated outliers and persistent bias, frozen readings, reset/history
+boundaries, and different sampling schedules.
+
+The estimator comparison starts from the framework's numeric defaults, with correction age
+admission set to 0.60 seconds and corrected-pose pushback disabled; retained predictor replay history
+remains 1.0 second. Separate as-published pose-history observers use a 0.20-second interpolation gap
+limit and the default 0.50-second retention; those observers do not supply estimator replay history.
+These are explicit software-fixture choices, not recommended hardware settings. Scoring checkpoints
+are 0.10 seconds apart. The illustrative recovery rule requires present-time error no greater than
+0.75 inches and 4 degrees (about 0.0698 radians), with evidence no older than 0.15 seconds, for a
+0.20-second window of passing sampled observations after the named fault ends. This does not
+establish behavior between samples. The test constants are the place to inspect or deliberately
+change these comparison criteria.
+
+| Reported fact | Meaning and limit |
+|---|---|
+| Evidence-time position/heading error | Compare the estimate with synthetic truth at the time its pose represents, in inches and wrapped radians. Wrapping uses the shortest angular difference across the full-turn boundary. |
+| Present-time error | Compare with truth at the current loop; this includes the effect of old information. A pose can be accurate for its old timestamp yet wrong for where the robot is now. |
+| Availability, age, and coverage | Report missing estimates and missing truth separately. Neither is a zero-error sample. Coverage says how many scoring points actually support the error summary. |
+| RMS and maximum error | RMS is the square root of the average squared error; it summarizes error over the scored points. Maximum is the worst scored error. Comparisons use common physical-time checkpoints, not unequal counts of loop samples. |
+| Recovery time | After a named fault-end boundary, require a sustained window of available, sufficiently recent estimates within illustrative error bounds. Missing or out-of-bound evidence interrupts that window; an uncompleted requested window is `not-recovered`, not zero seconds. |
+| Correction counters | Acceptance, rejection, replay, duplicate skips, and out-of-order skips describe software classifications. Authored fault names are not rejection reasons reported by the estimator. Duplicate counts depend on polling frequency and are not unique image counts. |
+| EKF modeled uncertainty | Its reported standard deviations describe its internal uncertainty model, not independently measured accuracy or calibrated probability. Position standard deviation is `sqrt((Pxx + Pyy) / 2)`, not a radial confidence bound. |
+
+Each `TEST02_SUMMARY` output line names its scenario and estimator branch. RMS and maximum errors
+use the common checkpoints; recovery examines every serviced loop. Fields labeled `last` and the
+reported EKF standard deviations/innovation describe the final snapshot, not a time average.
+`NaN` means unavailable or not applicable; the raw and gain-fusion branches have no EKF uncertainty
+model. `not-recovered` means a requested recovery window never completed; `not-requested` means
+that scenario defined no recovery question.
+
+For example, suppose the script places the robot at 10 inches when an estimate's evidence was
+captured, and at 14 inches now. An estimate of 10 inches has zero evidence-time position error but
+4 inches of present-time error. Reporting only the first number would conceal the lag; reporting
+only the second would conceal that the old geometry was correct.
+
+Fusion's heuristic quality and EKF's covariance-derived quality are not equivalent accuracy
+probabilities. A persistent small bias can produce a smooth, high-quality, still-wrong pose. The
+suite does not require correction, or EKF, to win every comparison. It also distinguishes extra loop
+polls from new sensor samples: EKF adds process variance per incorporated motion delta, including
+a stationary floor, so changing actual sample frequency need not preserve modeled uncertainty.
+
+**Proves:** passing assertions protect the authored clean geometry, repeatability, evidence
+provenance, correction classifications, and deliberately bounded recovery cases. The scenario
+summaries are descriptive software evidence, not physical tuning recommendations.
+
+**Next gate:** rerun this suite when localization changes. For an assembled robot, use the
+[calibration acceptance procedure](<../testing-calibration/Robot Calibration Tutorials.md>) and
+independently measured physical trials; synthetic success cannot replace that evidence.

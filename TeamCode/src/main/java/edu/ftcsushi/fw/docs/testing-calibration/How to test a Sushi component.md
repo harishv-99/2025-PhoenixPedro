@@ -82,5 +82,10 @@ API checks, dynamic proxies, bytecode or annotation checks, and custom Task fixt
 the smallest way to protect the framework. Those are regression evidence to run and inspect—not a
 template a beginner must reverse engineer.
 
+For localization, maintainers can run the supplied
+[computer-only robustness scenarios](<../drive-vision/AprilTag Localization & Fixed Layouts.md#check-localization-software-without-a-robot>).
+They compare real estimators with independently authored motion and deliberately faulty sensor
+readings. They do not calibrate a robot or replace physical validation after assembly.
+
 Continue with the [software-device scenario index](<../examples/Hardware-free Reference Scenarios.md>)
 or cross to [actuator bring-up](<Actuator Bring-up.md>) when the software question is answered.

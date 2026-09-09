@@ -237,7 +237,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 123 | CAL-08 | Verify pod-offset mathematics independently | Done | Local heading-order/finite-result repair, 15 independent geometry tests, and teaching corrections reviewed and publication authorized; 153 focused checks pass. Physical adoption remains unverified. |
 | 124 | CAL-09 | Strengthen camera-mount sample evidence | Done | Fresh fixed-setup captures and rotation-aware mean reviewed; 96 focused tests pass. Manual review and exact-destination publication authorized 2026-09-08. |
 | 125 | CAL-10 | Make calibration acceptance reproducible | Done | Reviewed lab-card extension and independent camera-validation examples; 2542 tests and strict docs/API checks pass; user approved exact branch publication and merge. |
-| 126 | TEST-02 | Add deterministic localization robustness scenarios | Proposed | Exercise real estimators against independent synthetic truth and report error and recovery metrics. |
+| 126 | TEST-02 | Add deterministic localization robustness scenarios | Done | Reviewed and approved: 13 deterministic tests, maintainer instructions, and 2555 passing tests. |
 | 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Proposed | Use the robustness benchmark to evaluate bounded policy for predictor-yaw reuse and shared vision assumptions. |
 | 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Proposed | Evaluate bounded timestamped trial capture and offline replay using existing diagnostics; keep results off the Robot Controller. |
 | 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Proposed | Prove paired-wheel settling, staged-object evidence, bounded departure confirmation, and explicit recovery in an independent example. |
@@ -31688,7 +31688,17 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### TEST-02 - Add deterministic localization robustness scenarios
 
-- **Status:** **Proposed**.
+- **Status:** **Done**; user review and destination-specific publication authorization received.
+- **Gate 1 start (2026-09-08):** the user requested the next task after CAL-10 publication. PR #157
+  merged the reviewed `33a720df6c1a4b0ba24d35fe301057ef71c3d464` as
+  `a96e7e699cea79c65658f1ea0298e47147a0590f`; the head is an ancestor and its tree
+  `ce9c58044051c6a20b70c00f102bde3db3fdde0a` exactly matches the merge. Hosted framework and
+  documentation checks both passed (run `34286868683`). Local master was fast-forwarded without
+  rewriting history, then `codex/test-02-localization-scenarios` was created from fetched
+  origin/master at that merge. Inspect existing estimator contracts, callers, deterministic tests,
+  and the owning localization/testing guides before selecting the benchmark scope. Only this
+  tracker decision record may change now; no TEST-02 implementation, production tuning, hardware
+  run, or publication is authorized by starting its gate.
 - **Approved comparison amendment (2026-09-08):** keep the baseline scoped to localization; do not
   delay it for field-location memory, a range adapter, or a new simulator. LOCALIZATION-05 may later
   add independent known-wall range/partial-observability scenarios through the established seams.
@@ -31719,6 +31729,200 @@ The setup fragments below compare the recommendation design, not standalone robo
   reuse its replay seams without being a prerequisite. Defer only claims requiring representative
   recorded truth, reactivating those claims when the missing datasets arrive; synthetic traces do
   not satisfy `SOURCE-03`'s production-filter evidence gate.
+- **Gate 1 decision (2026-09-08):** recommend one maintainer-only
+  `LocalizationRobustnessScenarioTest` under `src/test/java/edu/ftcsushi/fw/localization/fusion`,
+  with private immutable trace rows, independent truth evaluation, scripted source leaves, and a
+  result accumulator. These roles respectively own reproducible input, the external oracle,
+  production-interface publication, and comparisons; do not introduce a reusable simulator or
+  extract existing private fixtures speculatively. No TEST-02 Java or guide edit has started.
+- **Current coverage:** static inspection found 102 fusion tests covering validation, timestamp
+  alignment, cycle safety, evidence freshness, quality, and quality lifecycle, plus 17
+  `PlanarPoseHistory` tests. Existing tests already cover individual delayed, duplicate, reset,
+  frozen, and missing-history cases. The gap is a reproducible multi-step fault comparison against
+  independent motion, not an absence of those contracts. These counts are an inventory, not a new
+  execution result.
+- **Construction / observation audit:** both concrete corrected estimators have one public
+  `(MotionPredictor, AbsolutePoseEstimator, Config)` constructor; each Config retains meaningful
+  `defaults()`, `copy()`, and `validatedCopy(String)` paths and is captured defensively by its owner.
+  Scripted leaves can publish through the existing `PoseEstimate` / `MotionDelta` constructors and
+  `noPose(...)` / `none(...)` factories. `CorrectedPoseEstimator` supplies pose, segment, enablement,
+  reset, and `CorrectionStats`; EKF adds public modeled standard-deviation and innovation getters.
+  The ordinary FTC lane constructor owns Pinpoint construction; `withPredictor(...)` intentionally
+  accepts an externally owned predictor and estimator-only configuration; `globalEstimator()`
+  returns the shared corrected contract. Current application, tester, and independent calibration
+  example callers retain those distinct roles. No public constructor, factory, staged builder,
+  return type, overload, robot call site, or migration is proposed; normal robot code stays unchanged.
+- **Alternatives:** no change or documentation-only leaves the trajectory-comparison gap open.
+  Adding unrelated long scenarios to each existing contract fixture duplicates orchestration and
+  obscures their focused assertions. Choose one bounded test class; reject a production simulator,
+  a new diagnostic/covariance API, native camera/device emulation, and a second robot implementation.
+  Keep existing contract tests intact and reuse real estimator behavior through existing interfaces.
+- **Input isolation and heartbeat:** author simple planar move/hold/turn paths and a yaw-wrap case
+  independently of estimator outputs, with explicit event times and fault values. Compute scripted
+  body-frame increments with explicit scalar rotation arithmetic, not production pose-composition
+  helpers as the expected oracle. Each run has one real `LoopClock`, three separate predictors, and
+  two separate correction publishers over the same immutable input data. Explicitly disable
+  corrected-pose pushback in both configurations; ordinary scripted predictors do not implement
+  `PoseResetter`. This isolates estimator comparison, not device rebasing; existing lifecycle tests
+  remain authoritative for pushback. Advance the clock once, publish scheduled source snapshots,
+  update the baseline and corrected owners, then observe. Polling never consumes a shared queue or
+  draws fresh random noise. Check repeatability, reversed branch order, and repeated same-cycle calls.
+  Order independence concerns estimator/scenario execution, not shuffled measurement arrivals;
+  older delivered frames intentionally follow the current out-of-order policy.
+- **Time and reset design:** preserve capture time separately from delivery time, with an explicit
+  latest-delivered-frame rule when several frames arrive before one loop. Retained frames keep
+  their original timestamps. Zero elapsed time has no usable motion delta; positive stationary
+  intervals may have zero geometry. Preserve actual old-epoch timestamp objects across a clock
+  reset; use the existing manual clock at its current numeric time so its controller remains
+  synchronized. Exercise unexpected predictor segment changes separately from epoch reset and
+  replay-history gaps/expiry. Never interpolate truth or evidence across an undefined reset frame.
+  Compute and freeze each numerical score/age while its clock epoch is valid, not after a reset.
+- **Bounded scenario matrix:** clean translation/turn/hold and wrapped heading; gradual odometry
+  scale/yaw drift and slip-like displacement; delayed corrections with explicit jitter; correction
+  dropout and reacquisition; an isolated clearly gated outlier versus persistent admissible bias;
+  separately frozen correction and predictor timestamps; history gaps/expiry and reset boundaries;
+  and matched physical-time sampling variations. Establish an initial valid anchor before testing
+  ordinary outlier admission. Keep common/shared-evidence policy work in LOCALIZATION-04.
+- **Metrics and assertions:** compare horizontal inches and wrapped heading radians to authored
+  truth at each estimate's supported evidence endpoint. Report present-time tracking error
+  separately because it includes lag; also retain availability, age, and quality. Missing estimates
+  or undefined truth are not zero-error samples or successful recovery. Summarize RMS/maximum error
+  at common physical-time checkpoints, with explicit coverage, and sustained recovery using named
+  illustrative error/freshness bounds; unrecovered remains distinct. Attribute counter deltas to
+  authored events: accepted, rejected, duplicate, out-of-order, replayed, and non-replayed are not
+  interchangeable, and acceptance does not by itself prove geometry incorporation. Assert clean
+  analytic geometry, finite supported values, determinism, provenance/classification, and bounded
+  recovery in deliberately constructed cases. Broader ranking, recovery speed, and model/error
+  agreement remain descriptive; no requirement that correction or EKF wins every fault scenario.
+  Emit bounded scenario summaries through test output retained in the normal JUnit reports, not a
+  new reporting framework or runtime API. Authored fault labels are not estimator-reported rejection
+  reasons; the shared stats do not expose those reasons. Duplicate counts are loop observations,
+  not unique image counts, and must not be ranked across different polling rates as unique evidence.
+  Recovery starts at the named fault-end boundary; missing or out-of-bound observations interrupt
+  its required sustained window. Pushback-disabled trials do not benchmark the complete default
+  FTC localization stack.
+- **Uncertainty and rate limits:** EKF's public position standard deviation is
+  `sqrt((Pxx + Pyy) / 2)`, not a radial confidence bound; full covariance is not exposed. Report
+  modeled spread and available innovation diagnostics without calibrated-probability or full-state
+  consistency claims. Fusion and EKF quality scores have different meanings and are not equivalent
+  accuracy probabilities. EKF adds motion-based process variance per incorporated delta, including
+  a stationary floor. Separate extra loop polls, actual predictor sampling, correction capture
+  rate, and delivery latency; hold configuration fixed and characterize differences without
+  asserting covariance invariance, silently retuning defaults, or preselecting a filter repair.
+  Change only the named rate dimension per comparison; retain the same authored physical path,
+  other source schedules, and common-time scoring points.
+- **Documentation / Principles fit:** keep this optional maintainer work out of the beginner
+  navigation and ordinary robot examples. Add a focused run/interpretation section to
+  `docs/drive-vision/AprilTag Localization & Fixed Layouts.md`, with a small discoverability link
+  from `docs/testing-calibration/How to test a Sushi component.md` and the targeted command in
+  `docs/maintainers/Maintainer Notes.md`. Define truth, fault injection, evidence-time error, and
+  descriptive modeled uncertainty where introduced; explain what this software test cannot prove.
+  Preserve core/FTC boundaries, one heartbeat, cached reads, frame/unit names, and independent
+  examples. No production runtime/API/default, application, build-system, navigation, or hardware
+  change is in scope. A discovered issue needing such a change requires a separate decision.
+- **Planned implementation verification:** run the new scenario class repeatedly, its built-in
+  reversed-order/common-checkpoint checks, existing fusion/history regressions, and relevant
+  documentation tests; then the full framework unit suite and Java compile. Build/check the strict
+  documentation artifact and links after guide edits. Report exact outcomes and any environment
+  limitations; synthetic success cannot establish camera processing, physical calibration,
+  hardware accuracy, or production filter adoption. Finish with the normal local review gate;
+  committing, pushing, opening a PR, and merging require later explicit publication approval.
+- **Approval boundary:** the user's next-task request authorized this decision record only. Pause
+  here for approval of the test-only implementation and accompanying maintainer documentation.
+- **Gate 1 verification:** independent read-only coverage/API audits and a scope critique found no
+  need for a new public seam or production change. The tracker-sensitive documentation regression
+  passed; whitespace and an exact outside-TEST-02 comparison confirmed this branch changes only
+  this item's priority row and decision detail. No new scenario tests or hardware trials were run.
+- **Gate 2 approval (2026-09-08):** the user clarified that these are development-computer tests,
+  not calibration TeleOps or assembled-robot validation, then explicitly requested
+  `Proceed with test-02`. Implement the approved scenario class and maintainer documentation only.
+  A fresh fetch confirms `codex/test-02-localization-scenarios` still starts at origin/master
+  `a96e7e699cea79c65658f1ea0298e47147a0590f`. Preserve the completed decision record;
+  publication remains gated on the later combined review-and-publication authorization.
+- **Documentation implementation scope:** the localization guide owns the optional scenario
+  explanation and metric interpretation; the testing guide adds one discoverability link;
+  Maintainer Notes owns one native Windows/macOS command pair and the ordinary JUnit report path.
+  `DocumentationLinksTest` changes only its exact command-pair inventory (28 to 29 total,
+  Maintainer Notes 4 to 5), required by that new documented command. No navigation change or new
+  teaching fixture is needed. The existing 56 documentation tests and 119 fusion/history tests
+  pass during implementation; these are baseline checks, not a claim that the new scenarios pass.
+- **Page-level concept review:** the localization section targets maintainers evaluating software
+  faults, inherits estimation/evidence-time concepts from its owning guide, defines synthetic truth
+  and fault injection before use, then explains error, coverage, sampled recovery, counters, and
+  modeled uncertainty at their first reported values. Its optional depth is the complete test
+  source; physical adoption points to calibration acceptance. The testing-guide link introduces no
+  required beginner concept. Maintainer Notes explains the selector, forced rerun, and report
+  location beside the command and links metric interpretation to its single canonical home.
+  A review changed recovery wording to passing sampled observations rather than claiming behavior
+  between samples. All three pages keep computer-only evidence separate from assembled-robot facts.
+- **Implemented result:** one new `LocalizationRobustnessScenarioTest` supplies 13 test methods,
+  immutable authored inputs, scalar geometry truth, three isolated predictor branches, two isolated
+  correction sources, real Fusion/EKF and as-published history owners, and 60 bounded
+  `TEST02_SUMMARY` lines in ordinary JUnit reports. The cases cover clean moves/holds/turns/yaw wrap;
+  scale/yaw drift, slip and jitter; moving dropout after earlier accepted sightings and reacquisition;
+  isolated outlier versus persistent admissible bias; separately frozen camera/predictor timestamps;
+  latest-arrival batching and older captures; missing/expired history; real clock-epoch and
+  predictor-segment boundaries; single-variable sampling comparisons; missing truth/availability;
+  interrupted sampled recovery; and hand-computed nonzero position/heading RMS arithmetic.
+- **Retained scope:** six files only: this tracker, the new scenario class, the three owning guides,
+  and the two-line command inventory update in `DocumentationLinksTest`. There are no production
+  Java, calibration tester/calculation, application, public API, configuration-default, navigation,
+  build-system, or shared test-fixture changes. Existing direct constructors and FTC lane paths
+  retain their previously audited distinct capabilities. SOURCE-03 remains deferred; neither a
+  physical filter choice nor LOCALIZATION-04's shared-evidence policy has been implemented.
+- **Adversarial review and fixes:** independent test-validity and documentation reviews plus root
+  source review corrected five initial test calls to the existing `getAt(...)` history API before
+  the successful compile. They strengthened a frozen-history probe with an in-retention control,
+  changed first acquisition into genuine moving dropout/reacquisition, placed a missing-history
+  correction behind the represented state, required clean-rate scoring coverage and headings,
+  proved that missing evidence interrupts recovery, and checked RMS with independent 5/0-inch and
+  3/4-degree arithmetic. Counter labels separate six classifications from last capture time; final
+  model spread is paired with final evidence-time error. No production defect or repair was inferred
+  from a mistaken test premise. Final independent rereviews found no remaining blocker.
+- **Automated evidence (2026-09-08):** focused new-class run passes **13 tests**, zero failures,
+  errors, or skips. The canonical `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest`
+  run passes **272 suites / 2555 tests**, zero failures, errors, or skips, including existing
+  fusion/history and documentation regressions. The focused and full runs emit byte-identical
+  scenario output (60 lines; SHA-256
+  `ABCB31CEEECD667FDACB223A9B00E47821187754568E0DF9B06C5A1C30B76171`). Repeat/reversed branch and
+  scenario order plus repeated same-cycle calls are checked within the class, not assumed from
+  similar final poses. Existing JDK 21 / Java 8 and SDK deprecation warnings remain; no new warning
+  category was introduced. Rerun the tracker-sensitive regression after this review record.
+- **Descriptive outcomes, not tuning advice:** the authored dropout trial reports Fusion recovery
+  at 0.60 seconds and EKF at 0.70 seconds after reacquisition; raw odometry retains its 3-inch slip
+  and reports not-recovered. This is not a universal ranking. In the persistent-bias trial, final
+  EKF error is about 2.00 inches while modeled position standard deviation is about 0.48 inches
+  and quality about 0.98. That is an intentional illustration that modeled confidence is not
+  independently measured accuracy, not evidence about a real camera or robot.
+- **Documentation artifact evidence:** dependency check passes in the existing local
+  `build/docs-venv-win` environment. The final strict narrative build reports **No issues found**;
+  guide search verifies **1004 indexed sections across six areas**. Javadocs rebuilt successfully
+  after that clean narrative build; generated checks verify **214 API links / 91 maintained source
+  links across 53 Markdown pages**, all required combined-artifact entries, and no reparse points.
+  Source scope and whitespace checks pass, including the untracked scenario class and an exact
+  comparison proving no tracker changes outside TEST-02. Browser layout inspection and physical
+  robot trials were not performed; this computer-only change does not require hardware to verify
+  its software claims and cannot establish physical calibration or default-stack performance.
+- **Manual review handoff:** in Android Studio inspect/run
+  `src/test/java/edu/ftcsushi/fw/localization/fusion/LocalizationRobustnessScenarioTest.java`,
+  especially independent inputs, sampled recovery, frozen/history/reset cases, and the report
+  labels. Review the localization guide's `Check localization software without a robot` section,
+  the Maintainer Notes command/report instructions, the testing-guide link, and the mechanical
+  command inventory update. The six-file diff remains unstaged and uncommitted.
+  Publication coordinates are `codex/test-02-localization-scenarios` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, targeting `master`.
+  Await the combined TEST-02 review-and-publication authorization; do not publish or start the next
+  item from this implementation approval alone.
+- **Gate 3 approval (2026-09-08):** the user accepted the reviewed TEST-02 diff and explicitly
+  authorized committing `codex/test-02-localization-scenarios`, pushing it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. This records manual-review approval, not an unreported hardware or browser run. Publish
+  only the six reviewed files with this completion record; preserve the 2555-test and documentation
+  evidence above and rerun the tracker-sensitive check and whitespace/scope checks before commit.
+  Git and GitHub will retain the actual commit, check, pull-request, and merge identities.
+- The user appended `merge and then move to next task`. Complete and verify TEST-02 publication
+  first, then start only LOCALIZATION-04's decision gate from fetched origin/master on a separate
+  item branch. This does not approve that next item's eventual design or implementation.
 
 ### LOCALIZATION-04 - Handle shared measurement evidence explicitly
 
