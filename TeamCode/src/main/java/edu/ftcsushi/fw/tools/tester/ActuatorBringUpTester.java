@@ -4,7 +4,6 @@ import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
@@ -13,9 +12,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.SortedSet;
-import java.util.function.Consumer;
 
 import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.core.source.BooleanSource;
@@ -50,10 +47,6 @@ import edu.ftcsushi.fw.input.binding.Bindings;
  * retain its last request; they do not prove that the shaft has stopped moving.</p>
  */
 final class ActuatorBringUpTester extends BaseTeleOpTester {
-
-    static final String LOG_TAG = "SushiActuatorBringUp";
-
-    private final Consumer<String> resultLogSink;
 
     private static final double POWER_MIN = 0.05;
     private static final double POWER_MAX = 0.30;
@@ -155,16 +148,7 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
     private String pickerNotice;
     private String activeNotice;
     private List<String> resultLines = Collections.emptyList();
-    private String resultLog;
-
-    ActuatorBringUpTester() {
-        this(message -> RobotLog.ii(LOG_TAG, message));
-    }
-
-    /** Package-private deterministic seam for exactly-once result logging tests. */
-    ActuatorBringUpTester(Consumer<String> resultLogSink) {
-        this.resultLogSink = Objects.requireNonNull(resultLogSink, "resultLogSink");
-    }
+    private boolean reportPublished;
 
     @Override
     public String name() {
@@ -216,6 +200,7 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
 
     @Override
     protected void onStart() {
+        clearDownload();
         opModeStarted = true;
         armed = false;
         negativeHeld = false;
@@ -249,6 +234,7 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
         }
 
         DeviceKind previousKind = selected.kind;
+        clearDownload();
         cleanupSelectedDevice();
         screen = Screen.PICKER;
         pickerNotice = previousKind == DeviceKind.SERVO
@@ -262,6 +248,7 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         opModeStarted = false;
+        clearDownload();
         if (selected != null) {
             cleanupSelectedDevice();
         }
@@ -400,7 +387,6 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
         powerCommandSubmitted = false;
         clearCaptures();
         resultLines = Collections.emptyList();
-        resultLog = null;
         servoCommandSubmittedInRun = false;
         servoBootstrapConfirmed = false;
         nonzeroJogSubmitted = false;
@@ -750,9 +736,20 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
         }
 
         resultLines = Collections.unmodifiableList(lines);
-        resultLog = log.toString();
-        resultLogSink.accept(resultLog);
+        String frozenReport = log.append('\n')
+                .append("reportType=FROZEN_CANDIDATE_NOT_ACCEPTANCE\n")
+                .append("recordedProcessingSec=").append(clock.nowSec()).append('\n')
+                .append("sensorAcquisitionTime=UNRECORDED\n")
+                .append("robotConfigurationRevision=UNRECORDED\n")
+                .append("physicalClearanceAndAcceptance=UNRECORDED; use the external lab card\n")
+                .append(String.join("\n", lines)).append('\n').toString();
         screen = Screen.RESULT;
+        // Finalization already realized disarmed output. Optional transfer never controls it.
+        try {
+            reportPublished = ctx.downloads.publish("actuator-bring-up.txt", frozenReport);
+        } catch (RuntimeException unavailable) {
+            reportPublished = false;
+        }
     }
 
     private void appendMotorResult(List<String> lines, StringBuilder log) {
@@ -814,8 +811,8 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
         lines.add("Controller PWM mapping and servo programming determine physical travel.");
         lines.add("The map is linear in command space; it does not prove linkage linearity.");
 
-        log.append(",nativeAtPlantMin=").append(nativeMin)
-                .append(",nativeAtPlantMax=").append(nativeMax);
+        log.append(",nativeAtPlantMin=").append(servoNativeAtPlantMin)
+                .append(",nativeAtPlantMax=").append(servoNativeAtPlantMax);
     }
 
     /** Marker caught at the local result boundary so semantic capture errors remain retryable. */
@@ -997,7 +994,6 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
         nonzeroJogSubmitted = false;
         clearCaptures();
         resultLines = Collections.emptyList();
-        resultLog = null;
     }
 
     private void renderCurrentScreen() {
@@ -1121,13 +1117,31 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
             telemetry.addLine(line);
         }
         telemetry.addLine("");
-        telemetry.addLine("Logcat tag: " + LOG_TAG);
+        String downloadUrl = null;
+        try {
+            downloadUrl = ctx.downloads.url();
+        } catch (RuntimeException unavailable) {
+            // The existing on-screen result remains useful without a download host.
+        }
+        telemetry.addData("Result download", reportPublished && downloadUrl != null
+                ? downloadUrl : "unavailable; copy the on-screen result");
+        telemetry.addLine("Download before BACK or FTC STOP; never delay an emergency stop.");
         telemetry.addLine("No code, profile, preference, or hardware-programmer setting was changed.");
         telemetry.addLine("BACK: restore temporary Direction/settings and choose another device.");
         if (selected.kind == DeviceKind.SERVO) {
             telemetry.addLine("Servo request is retained on BACK; the shaft may still be moving.");
         }
         telemetry.update();
+    }
+
+    /** Discard optional evidence without allowing an injected exporter to prevent cleanup. */
+    private void clearDownload() {
+        reportPublished = false;
+        try {
+            ctx.downloads.clear();
+        } catch (RuntimeException unavailable) {
+            // Output cleanup is mandatory even if an advanced host's exporter fails.
+        }
     }
 
     private String directionCode() {

@@ -95,6 +95,13 @@ raw detections, but it cannot produce a fixed-layout mount sample or field-pose 
 
 ## Keep one calibration record
 
+Supported axis, pod-offset and camera-mount testers can provide a frozen text report through the
+host's [result download](<Download and Inspect Experiment Results.md>). Save it on the laptop and
+attach it to this record. Axis reports contain completed movement evidence, pod reports identify
+the completed or failed attempt, and camera reports describe an accepted fixed-setup batch—not a
+completed calibration. No profile, verification flag or human acceptance changes automatically.
+Unrecorded configuration revisions and independent physical observations still belong in the card.
+
 **Question:** which value was tested, and what evidence justifies using it on this robot?
 
 Copy the [shared lab card](<../examples/Subsystem Experiments.md#copyable-lab-card-and-results-sheet>)

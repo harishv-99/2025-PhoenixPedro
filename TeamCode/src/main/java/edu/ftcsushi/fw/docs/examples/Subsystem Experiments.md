@@ -105,6 +105,15 @@ Do not print `PASS` merely because a controller reached target. `TARGET_REACHED`
 trial outcome; the lab card's complete criteria and operator observations determine accept, revise,
 or reject. Do not persist trial results on the Robot Controller.
 
+A frozen report may instead be retained in bounded memory and
+[downloaded to the laptop](<../testing-calibration/Download and Inspect Experiment Results.md>).
+The Reference spin-up experiment demonstrates this at its existing terminal boundary, after the
+normal output heartbeat has had the opportunity to realize zero. A result first observed after
+the output update becomes downloadable on the next ordinary heartbeat. Save before a new trial,
+BACK or FTC STOP; STOP never waits for export or invents a completed result for an unfinished trial.
+The report keeps its original measurements and request-match flags, not later deceleration
+readings. It is not a sample recording or physical acceptance decision.
+
 ## Worked locked card: Reference flywheel spin-up
 
 ### Critical code
@@ -215,6 +224,11 @@ generic experiment framework:
    `createTester()`.
 8. Record external observations outside the Robot Controller and promote configuration only after
    the reviewed decision accepts it.
+
+For an optional custom report, publish already-frozen text through the current `ctx.downloads`
+after mandatory output realization. Do not retain an INIT download lease through START or make
+cleanup depend on export success. The [result extension reference](<../maintainers/Result Downloads and Recordings.md>)
+shows the maintained two-line publication point and its lifecycle obligations.
 
 For a complete configuration → fresh factory → suite → thin OpMode example, use
 [Add calibration testers to your robot](<../testing-calibration/Add Calibration Testers to Your Robot.md>).

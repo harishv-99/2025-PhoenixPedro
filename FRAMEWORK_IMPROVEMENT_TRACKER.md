@@ -239,7 +239,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 125 | CAL-10 | Make calibration acceptance reproducible | Done | Reviewed lab-card extension and independent camera-validation examples; 2542 tests and strict docs/API checks pass; user approved exact branch publication and merge. |
 | 126 | TEST-02 | Add deterministic localization robustness scenarios | Done | Reviewed and approved: 13 deterministic tests, maintainer instructions, and 2555 passing tests. |
 | 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Done | Reviewed standard-botpose restriction, shared-evidence regressions, and synchronized docs; 2566 tests pass and publication is authorized. |
-| 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Proposed | Evaluate bounded timestamped trial capture and offline replay using existing diagnostics; keep results off the Robot Controller. |
+| 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Done | Shared read-only downloads, bounded controller recording/replay, and initial frozen reports implemented and reviewed; automated checks pass; publication to master authorized. |
 | 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Proposed | Prove paired-wheel settling, staged-object evidence, bounded departure confirmation, and explicit recovery in an independent example. |
 | 130 | EXAMPLE-12 | Demonstrate graceful assist degradation | Proposed | Evaluate existing robot-owned manual fallback and teach bounded evidence-loss behavior and explicit reacquisition. |
 | 131 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
@@ -273,6 +273,24 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 159 | AUDIT-02 | Cuttlefish/Worlds capability and simplicity closure | Proposed | Close the separately pinned 2026-09-08 comparison after its implementation candidates reach terminal dispositions. |
 | 160 | VISION-05 | Learned-detector observation adapter | Deferred | Resume with a selected backend/model, licensing, annotated scenes, target-point interpretation, and measured latency. |
 | 161 | DRIVE-04 | Range-based approach-speed limiting | Deferred | Resume after truthful range evidence and representative sensor/drivetrain braking measurements; reduction-only assistance is not collision avoidance. |
+| 162 | DIAG-02 | Download bounded motor diagnostic recordings | Proposed | Reuse DIAG-01 for existing power/encoder capture while preserving command/sample ordering, setup, missingness, and errors; do not reactivate SOURCE-03. |
+| 163 | DIAG-03 | Export trustworthy color-sensor samples | Proposed | Freeze color measurements with acquisition-time settings and available timing, without relabeling older readings after gain changes. |
+| 164 | DIAG-04 | Export AprilTag measurement reports | Proposed | Preserve sampled pose provenance and distinguish repeated frames, statistical spread, and independent accuracy evidence. |
+| 165 | DIAG-05 | Record localization inputs and decisions | Proposed | Capture actual consumed predictor/correction inputs and reset boundaries; limit replay to completely recorded supported calculations. |
+| 166 | DIAG-06 | Record pod-calibration trials | Proposed | Preserve bounded powered/assisted phase and endpoint evidence; evaluate existing offset-calculation replay without physical-motion claims. |
+| 167 | DIAG-07 | Record camera-calibration sample history | Proposed | Preserve bounded fixed-setup sample history and evaluate mount/rotation-mean replay, not image processing or physical acceptance. |
+
+### Diagnostic follow-up intake (approved 2026-09-08)
+
+The user requested explicit later tasks for worthwhile deferred integrations, then approved the
+combined DIAG-01 implementation and backlog plan with **"Implement the plan."** Add DIAG-02 through
+DIAG-07 as **Proposed**, not evidence-blocked **Deferred**: each still needs its own decision gate,
+design approval, implementation branch, and review. Their common dependency is DIAG-01's shared
+download capability. Preserve the existing execution order and both AUDIT-01/AUDIT-02 scopes and
+prerequisites; none of these follow-ups blocks DIAG-01 or becomes the next task automatically.
+SOURCE-03 remains Deferred until its recorded evidence/approval trigger is met. The current
+DIAG-01 implementation adds only its approved initial report/recording integrations and these
+tracker entries, not the six later implementations.
 
 ### Current Cuttlefish/Worlds follow-up order (approved 2026-09-08)
 
@@ -32206,7 +32224,375 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### DIAG-01 - Correlate experiment evidence for offline analysis
 
-- **Status:** **Proposed**.
+- **Status:** **Done**; implementation and manual review accepted. Hardware and browser-validation
+  limits below remain explicit; approval does not supply physical evidence.
+- **Manual review and publication authorization (2026-09-08):** the user replied **"DIAG-01 looks
+  good. Authorize committing the reviewed DIAG-01 diff on codex/diag-01-experiment-evidence,
+  pushing that branch to https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull
+  request, and merging it into master."** This closes Gate 2 and authorizes Gate 3 for exactly
+  the reviewed 42-file diff plus this completion record. No next-item implementation is authorized.
+- **Implementation and verification record (2026-09-08):**
+  - Added `ResultDownloads` and its private FTC-server implementation: one latest bounded UTF-8
+    attachment, read-only page/download routes, immutable HTTP snapshots, one non-waiting transfer
+    permit, safe filenames, stale-link rejection, and revocable host/child/START lifetimes. The
+    installed SDK server owns networking; no new server, filesystem persistence, hardware poll,
+    clock, control route, or telemetry commit was introduced.
+  - Both existing Panels controller tuners now record the actual metric calls and original ending
+    through a package-private bounded helper. The laptop-only `ControlExperimentReplay` runs the
+    real accumulators through `:TeamCode:replayControlExperiment`; complete agreement, incomplete
+    capture, mismatch, and malformed input remain distinct. All three public tuner facade
+    signatures and the existing control/output/claim behavior are unchanged.
+  - Added frozen reports to Pinpoint axis directions, Pinpoint pod offsets, camera mount,
+    actuator bring-up, and the independent Reference flywheel experiment. Bring-up replaces its
+    finalized-result Logcat payload with the shared transfer and retains screen evidence. The
+    other owners retain their existing sampling, motion locks, acceptance, and reset rules.
+    Reports preserve available values at full precision with units/frames and explicit missing
+    facts; they do not become calibration adoption, physical acceptance, or replay recordings.
+  - Added DIAG-02 through DIAG-07 as **Proposed** with scoped evidence, dependencies, decision
+    gates, and verification requirements. SOURCE-03 stays **Deferred**; existing priorities and
+    AUDIT-01/02 prerequisites are unchanged. No follow-up runtime feature was implemented.
+- **Adversarial review and resolved findings:** independent agents reviewed the transport/API,
+  controller recording/reader, calibration owners, and the Reference/documentation integration;
+  the main agent reviewed their combined diff and test validity. Fixes include child-owner versus
+  START-lease separation, revocation before cleanup, reentrant STOP during renewal, unavailable
+  injected transport not suppressing ordinary START, no delayed Reference publication after STOP,
+  no fabricated pod pose from an unavailable zero sentinel, and no retry of unavailable ending
+  snapshots. Optional export catches runtime failures, not Java `Error`s. Strict replay checks
+  include exact integral fields, malformed Unicode, nonfinite values, resealed invalid input,
+  per-record/footer quotas, omissions, and irregular byte chunks. Tests exercise actual owner
+  hooks and SDK response streams rather than substitute response equations or HTTP algorithms.
+  The independent final public-layer audit found no outstanding construction/lifecycle mismatch;
+  the disposition below remains the supported API, with no duplicate ordinary construction path.
+- **Documentation concept checklist:**
+  - The optional Test & Tune lesson teaches saving one finished answer first, defines report and
+    frozen at first use, distinguishes processing/acquisition/download time, and leaves recording
+    and response-metric replay at the end. Its accessible transfer diagram has equivalent prose.
+  - Existing runbooks link that one operational home and describe only their own result boundary.
+    The separate advanced maintainer page documents the three-method capability, current-context
+    lifecycle, bounds/trust, format, and a verified independent-example source excerpt.
+  - Get Started and Build a Robot navigation are unchanged. The Test & Tune home, tester-console
+    lesson, and controller first-pass section pass their beginner word-budget checks. There is
+    no production-application teaching dependency, new ordinary robot setup, or required replay
+    knowledge before using a tester. Javadocs, maintained examples, navigation, and shell-command
+    equivalence/source-excerpt tests are synchronized.
+- **Automated evidence:** using the installed Android Studio JBR, the combined
+  `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest :TeamCode:sushiJavadocs` run
+  passes: **2,633 tests in 278 suites, zero failures/errors/skips** (67 added tests). The pinned
+  documentation environment's `zensical build --clean --strict` passes. Generated guide search
+  verifies **1,015 indexed sections across six guide areas**; authored-link verification checks
+  **217 API links and 92 maintained source links across 54 Markdown pages**. Required landing,
+  search and API artifacts are nonempty with their expected markers and no reparse points.
+  The actual Gradle replay command succeeds on the generated complete-position software fixture
+  (`COMPLETE_MATCH`, six retained operations), returns exit 1 for the quota fixture (`INCOMPLETE`,
+  1,024 retained/one omitted), and returns exit 1 for malformed JSONL. These generated files are
+  ignored laptop-test fixtures, not physical captures. `git diff --check` and a trailing-whitespace
+  scan including all 42 changed/new files pass. Existing JDK 21/source-target 8 and SDK deprecation
+  warnings remain; no new dependency or generated artifact is included in the diff.
+- **Review and adopting-robot limits:** no connected in-app browser was available, so interactive
+  rendering, narrow-screen/dark-mode appearance, and actual browser download behavior were not
+  visually verified. No robot was available: SDK-advertised URL reachability, download interruption,
+  capture/publication loop cost, and physical zero/hold/STOP behavior remain adopting-robot checks.
+  No network throughput, camera/odometry accuracy, or physical-success claim follows from tests.
+  In Android Studio inspect the host/context reset and child cleanup paths, both tuner ending
+  hooks/recorder, the five report owners, and the new lesson/reference. Check that an accepted new
+  result invalidates its predecessor, BACK/STOP never wait for export, missing facts remain missing,
+  and candidate reports are not confused with human acceptance.
+- **Publication coordinates / closed review gate:** branch `codex/diag-01-experiment-evidence`, created
+  from fetched `origin/master` at `323727e99b06463e47d163850bdb284f54fa2e8e`; origin push destination
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; target `master`. The authorization above
+  permits staging, committing, pushing, opening a pull request, and merging under Gate 3 of
+  `execute-framework-improvements`. Git/GitHub record the final commit, pull request, and merge
+  identity. Stop after publication; do not start another tracker item.
+- **Approved integration/backlog revision (2026-09-08):** after reviewing current calibration,
+  experiment, and diagnostic owners, the user approved **"Implement the plan."** Retain the
+  shared transport and controller recording/replay design below, and add lightweight frozen
+  UTF-8 text reports to the three calibration tools, actuator bring-up, and the independent
+  Reference flywheel experiment. This supersedes the initial exclusion of that experiment's
+  report integration; its behavior/state-machine policy and motion lock remain unchanged.
+  Axis reports follow completed samples; pod reports preserve completed/failed/aborted attempt
+  facts before cleanup; camera reports are accepted fixed-batch snapshots, not completed
+  calibration. Bring-up replaces its finalized-result Logcat transport and keeps telemetry.
+  Preserve existing controls, result/reset semantics, full-precision values/units, explicit
+  unrecorded facts, and the external human acceptance record. Format/publish only after required
+  output realization/cleanup opportunities; optional failures never prevent safe cleanup.
+  No universal report schema, public calibration-result API, extra hardware polling, profile
+  adoption, production-robot changes, or richer calibration/localization replay is included.
+  Record DIAG-02 through DIAG-07 as Proposed follow-ups with independent decision gates.
+- **Construction/lifecycle implementation disposition:** the shared host retains automatic wiring
+  with no ordinary factory change. `BaseTeleOpTester.start()` replaces only its protected immutable
+  context with a fresh download lease; hardware, telemetry, gamepads, clock and owner lifetimes
+  remain unchanged. This revokes pre-START aliases without exposing a public refresh/token API.
+  Nested child lifetimes remain linked to the parent owner, not its expired lease. Every maintained
+  concrete tester uses this base. Automatically hosted direct `TeleOpTester` implementations are
+  conservatively download-unavailable because they have no equivalent context-renewal hook;
+  advanced six-argument custom hosts own reset/STOP invalidation themselves. A failed optional
+  injected clear disables that download lifetime but does not prevent the normal START hook.
+  The SDK URL is read at host INIT because registrar discovery may precede the web server starting.
+- **Implementation approval:** the user explicitly replied **"Approve the DIAG-01 design and
+  proceed with implementation"**. Implement the selected design below on
+  `codex/diag-01-experiment-evidence`; stop for Android Studio review before any staging,
+  commit, push, pull request, or merge. Physical results and publication remain unapproved.
+- **User direction and resolved decision gate (2026-09-08):** after the initial audit, the user
+  asked how downloads would reach a laptop, agreed that experimentation results and debugging
+  data should share the transfer mechanism, and directed: **"Proceed with DIAG-01"**. This closes
+  the earlier operational-direction question: use a reusable read-only browser download of
+  bounded frozen in-memory results, with file persistence only on the laptop. The detailed
+  construction/lifecycle and first replay contract below are now selected for the skill's
+  design-approval checkpoint. This is not publication authority or approval of hardware results.
+- **Selected first producer and replay boundary:**
+  - Integrate the existing velocity and position Panels workflows through one package-private
+    recording helper. Keep all three `FtcPanelsTuners` signatures and their declared
+    `TeleOpTester` return type unchanged. The existing independent Reference Panels host remains
+    the teaching/verification caller; no production application, Reference spin-up state machine,
+    controller algorithm, Plant behavior, or localization runtime changes are required.
+  - Record actual `ControlResponseMetrics` constructor inputs and its ordered `update(...)`,
+    `retainEvidence(...)`, and `finish(...)` calls. Missing measurement takes the existing
+    `retainEvidence` branch; replay must not substitute `update(NaN)`. Include the actual
+    completion boolean, numeric/text evidence, and both `outputLimitedAvailable` and
+    `outputLimited`. Copying the evidence maps alone is insufficient.
+  - A laptop-only reader invokes those same real package-private accumulators, not copied metric
+    equations. It checks reconstructed metrics against the retained result. This is explicitly
+    **response-metric replay**, not controller acceptance, Plant/robot control replay, localization
+    replay, native images, simulation, or physical-success evidence. `TEST-02` stays independent;
+    its timing/missingness lessons inform this format, but it gains no export dependency.
+- **Shared transfer API and public-layer disposition:**
+  - Add one small host-supplied `ResultDownloads` capability at the FTC boundary, exposed as
+    `TesterContext.downloads`. Its proposed public methods are
+    `boolean publish(String filename, String frozenUtf8Text)`, `String url()` (unavailable when
+    no current result can be downloaded), and idempotent `void clear()`. This first seam serves
+    bounded UTF-8 text attachments such as JSON/CSV/reports; binary media and streaming are not
+    implied. The producer owns its filename and prepared content; transfer never interprets
+    experiment fields or creates a recording by sampling suppliers.
+  - Retain the existing five-argument `TesterContext` constructor as the explicit offline/custom
+    host seam with downloads unavailable. Add one six-argument advanced host/test injection
+    constructor accepting the capability. These paths represent different available host
+    support, not two ordinary robot recipes. Keep the unavailable implementation private; do not
+    add a public `unavailable()` factory or duplicate direct-context publication methods.
+  - The SDK bridge has only the public registrar required for automatic annotation discovery;
+    its constructor, live-session factory, store, and HTTP handlers remain implementation details.
+    Do not expose ordinary robot `open/register/server` APIs, a download builder, a generic
+    capture framework, or a service registry. No staged parameter object is introduced.
+  - Ordinary tuner construction remains `FtcPanelsTuners.velocityControl(name, reviewedRange,
+    freshPlantFactory)`. A custom exporter may use
+    `ctx.downloads.publish("experiment-results.jsonl", frozenText)` and add `url()` to its own
+    telemetry frame. Those two arguments answer distinct questions (download filename and
+    prepared text); it never repeats motors, controllers, clocks, routes, or transport settings.
+    Ready-made tuners hide even this call inside their existing owner.
+- **Selected web mechanism and ownership:**
+  - Reuse the installed FTC web server through `WebHandlerRegistrar` and
+    `WebHandlerManager.register(...)`; the maintained controller already invokes that hook.
+    `NanoHTTPD` can serve an immutable in-memory response with an attachment header. Use only
+    the advertised server URL from the SDK, never a guessed address/port or a serialized
+    connection-information object (which also contains private network information).
+  - The existing tester host owns one active download lifetime. Child contexts borrow a revocable,
+    generation-scoped publication capability. Invalidate before child cleanup/replacement,
+    INIT-to-START clock reset, root failure, and FTC STOP. Old publication or cleanup cannot
+    change a newer selected tester's result. All hardware cleanup remains best-effort even if a
+    custom injected publication implementation fails.
+  - Keep one latest completed result. Clear it only on another **accepted** segment start, not
+    for rejected/unstable drafts or a pending A press. Clear on leaving the selected tester or
+    stopping the host. A late completion cannot republish an older segment after its replacement
+    has started. Download after B or automatic completion/hold and before the next accepted
+    segment, BACK, or FTC STOP; never delay an emergency stop to save a file.
+  - HTTP requests read only safely published immutable content, never live tester objects,
+    hardware, sources, the clock, or telemetry. Copy/publication happens outside network locks;
+    no OpMode callback waits for a client. Admit at most one attachment response at a time,
+    rejecting additional requests without waiting and releasing its permit on EOF/close.
+    An already-admitted response may finish its old snapshot after clear; bytes already sent
+    cannot be retracted. New requests after invalidation must fail, not obtain replacement data
+    under an old result link. Response creation is not proof of laptop receipt.
+  - Use fixed read-only routes, session/result identity in links, safe bounded filenames,
+    `Content-Disposition: attachment`, `no-store`, `nosniff`, and a small page with restrictive
+    content/referrer policy. No filesystem access, uploads, CORS permission, live configuration,
+    browser-triggered recording, or actuator commands. An opaque link is not encrypted
+    authentication; restrict use to the trusted local robot network and explicitly published
+    non-secret results. The download page does not connect another Panels control client.
+- **Capture bounds, timing, and evidence:**
+  - Retain at most **1,024 sample/evidence-only operations** and **512 KiB of encoded UTF-8** per
+    segment. Reserve up to 64 KiB each for start/configuration and finish/omission records; sample
+    records consume the remaining budget. Bound individual records and reject oversized metadata
+    as capture-unavailable. These are finite software limits, not measured performance targets.
+  - Drop new capture operations when a quota is reached, retaining total attempted/omitted
+    counts and first/last omitted processing times. Preserve the final outcome and omission
+    report within the reserved budget. Quota exhaustion does not change the target, timer,
+    controller, or normal experiment result. A failed optional export reports unavailability;
+    it may not prevent zero/hold realization or terminal hardware cleanup.
+  - Freeze original ending facts through the existing `pendingEndingSnapshot` and completed
+    history record before any request/readback mutation; do not retry an unavailable snapshot.
+    Defer final encoding/publication until pending ordinary output realization has run, and do
+    not encode/publish a stopped or superseded generation. Avoid a large final serialization
+    pass by retaining bounded per-operation encoding as the trial advances.
+  - New retained payload is bounded independently of existing summary history. At most one
+    latest payload plus one older in-flight response is retained by the web owner; an active
+    capture and temporary encoding storage have their own bounded budgets. Do not describe this
+    as a bound on total JVM memory or silently change the existing all-session summary history.
+  - Keep loop cycle and processing time distinct from acquisition time. This metric seam does not
+    expose original sensor acquisition timestamps: record them explicitly as **UNRECORDED**.
+    Initial measurement may belong to a preceding update, not the new segment's start. Preserve
+    separate observation/publication availability rather than refreshing retained readings.
+    A clock reset invalidates an open span; do not join it across epochs or invent a finish in the
+    new time coordinate. Start a fresh segment/recording for supported later work.
+  - Export session/segment identity, exact accepted candidate, captured initial/accepted
+    readbacks, known topology, experiment range/request, known target mappings, and known units.
+    Native tick units remain named where actually known; a custom Plant's physical unit name
+    stays unrecorded when its contract does not supply one. Full robot configuration and code
+    revision stay explicitly unrecorded, with the external lab card joined by session/segment.
+    A captured controller tuple is not an identity for the entire robot build.
+- **Selected format and laptop workflow:** one versioned, bounded UTF-8 JSON-lines format owned
+  by the private control recording helper; reuse the existing Gson dependency at the integration
+  edge rather than write a generic JSON library. Preserve round-trip numeric values and explicit
+  non-finite/unrecorded states. Include ordered sequence numbers, start/finish boundaries,
+  omission metadata, and an integrity check over the recorded payload. The strict bounded reader
+  rejects malformed UTF-8, unexpected schema, invalid ordering, duplicate/conflicting records,
+  truncation, and oversized input. It must not convert missing records into no-observation events.
+  Any omitted required operation makes exact replay incomplete. Whole-stream, one-byte, and
+  irregular chunk delivery must produce the same decoded events and decisions.
+  A laptop-only Java entry under test sources uses the real accumulators and existing dependency
+  classpath through one Gradle replay task; no reader/CLI is added to the Android production
+  artifact and no new dependency is needed. It compares the current implementation with recorded
+  inputs; unknown original code identity remains unknown even when results agree.
+- **Documentation and verification decision:** add one optional **Download and inspect experiment
+  results** lesson in Test & Tune, keeping the beginner opening path unchanged. It teaches the
+  familiar finished trial, then defines a frozen recording and response-metric replay beside the
+  exact download/command steps. Link from the existing controller workflow and tester-console
+  runbook; keep exact format/extension details in a separate maintainer reference. Use a small
+  labeled owner-to-memory-to-browser-to-laptop diagram with nearby equivalent prose if it helps.
+  Keep the shared external lab card authoritative for physical observations and human acceptance.
+  Verify real velocity/position output equivalence; missing-feedback operation semantics;
+  full-precision/Unicode/chunking; quota/metadata/terminal-record limits; reset and child/root
+  lifecycle; stale links; concurrent/interrupted downloads; no extra polls, controller claims,
+  telemetry commits, or cleanup changes; and unchanged facade construction. Then run full
+  compile/tests, strict narrative/Javadocs and artifact checks, and browser review where available.
+  Real-controller download reachability, loop cost, network usability, and physical results remain
+  explicit adopting-robot checks; a mocked HTTP response or replay fixture does not prove them.
+- **Independent decision review:** separate reviews covered tuner input/ending hooks, the shared
+  download construction/ownership family, and the replay boundary. Their required corrections
+  are incorporated above: no public unavailable factory, reset invalidation, exact
+  `retainEvidence` handling and output-limiting flags, generation-scoped cleanup, and incomplete
+  rather than successful replay when operations are omitted. The original source audit below is
+  retained as evidence; its open export question is superseded by this selected design.
+- **Decision review opened (2026-09-08):** selected after `LOCALIZATION-04` merged in
+  PR #159 (`323727e`). The item branch is `codex/diag-01-experiment-evidence`, created from
+  fetched `origin/master`. This review changes only the tracker; no diagnostic implementation,
+  public API, transport, or production adoption is approved by the request to move to the next item.
+- **Confirmed current behavior:**
+  - `ControlExperimentHistory` freezes complete controller candidates/readbacks, experiment
+    requests, response metrics, evidence, session/segment identity, start/end seconds, and
+    termination reason. It is package-private and holds completed summaries in an uncapped list,
+    not a bounded sample stream. The two Panels testers display six recent records, not the
+    entire retained history or a full-precision export of every input.
+  - `FtcVelocityControlPanelsTester.refreshEvidence()` and its position counterpart consume
+    evidence after the owned Plant update. Standard-controller evidence is cached; FTC member
+    evidence uses the successful same-cycle Plant's memoized sources. Controller claim,
+    apply/readback, restore, and position-hold preparation are not passive capture operations.
+    A recorder must not call those operations to obtain a diagnostic view.
+  - `Plant.snapshot()` supplies immutable cached facts but no observation time. Standard control
+    evidence has an evaluation cycle; the current internal adapter does not retain that cycle in
+    its numeric/text maps. `ReferenceFlywheelSpinUpExperiment` freezes its latest numbered trial
+    before requesting zero; its Status has neither an acquisition timestamp nor a session or
+    configuration revision. Later stopped/status reads must not refresh old wheel measurements.
+  - Optional Panels numeric values require their `.available` companions. A presentation zero
+    is not a measured zero. `DebugSink` deliberately has no frame/sequence contract, and
+    `FtcTelemetryDebugSink` formats primitive doubles to three decimals. Existing debug text and
+    `TEST02_SUMMARY` output cannot serve as exact replay input.
+  - `CorrectionStats` supplies cached aggregate acceptance, rejection, duplicate/out-of-order,
+    replay counters, and timestamp boundaries, not a complete per-candidate reason ledger.
+    `LoopTimestamp` intentionally hides raw epoch/seconds and becomes temporally invalid after
+    reset. Record a valid observation's time relationship before reset; an unavailable age after
+    reset cannot reconstruct an unknown capture time or identify its old epoch.
+- **Caller and public-layer audit:**
+  - The sole tuner facade exposes `velocityControl(name, range, Function<HardwareMap, Plant>)`
+    returning `TeleOpTester`, and `positionControl(name, range,
+    Function<HardwareMap, PositionPlant>)` returning `TeleOpTester`, with one additional overload
+    taking `BiFunction<HardwareMap, PositionPlant, Task>`. That overload supplies genuinely
+    different reference behavior. The concrete testers, histories, models, and fixture constructors
+    remain package-private; do not expose another public tuner or mutable history surface.
+  - Velocity's maintained main-source callers are `ReferencePanelsTuningOpMode` and the
+    production application's exclusive tuning host. There is no main-source position-tuner
+    caller. `ReferenceTestersOpMode` reaches the independent spin-up experiment through
+    `ReferenceExperimentTesters.create()` returning `TesterSuite` and a deferred fresh supplier.
+  - The Panels host's protected constructors select input ownership and optional client-count
+    policy, not experiment behavior. `TesterContext` has one public constructor receiving the
+    hardware map, host-selected telemetry, two gamepads, and the borrowed shared clock. Its host
+    selects transport; individual testers do not create transports or another telemetry commit.
+  - Existing standard/FTC tuning claim factories provide exclusive live configuration and
+    restoration capabilities. Cached Plant snapshots provide a distinct observation capability;
+    neither is a redundant sibling of the other. Retain those ownership distinctions rather than
+    claiming tuning handles merely to record values. No new staged parameter or builder is
+    selected; the ordinary tuner must not repeat motor, controller, target, or Plant answers.
+  - The corrected-localization lane already constructs Fusion/EKF from `MotionPredictor` and
+    `AbsolutePoseEstimator`. Existing estimator constructors and test-only scripted sources can
+    replay selected complete numeric input sequences without a generic public replay framework.
+- **Alternatives and student simplicity:**
+  - **No change / documentation-only:** the shared lab card plus session/segment rows already
+    correlate terminal software results with external observations. This remains the ordinary
+    starting point, but cannot recover omitted samples, export the complete history, or reproduce
+    the sequence of decisions that produced a result.
+  - **Small local export:** serialize already-frozen experiment records through the existing
+    owner and a confirmed off-robot path. This adds no ordinary robot concepts and is the first
+    transport candidate to establish, but completed summaries alone must not be labeled replay.
+  - **Leading bounded-capture direction:** accept explicitly pushed, already-published facts at
+    the existing owner's update boundary; retain separate processing/publication and available
+    original observation times, immutable configuration identity, ordered session/trial events,
+    and explicit omissions. Keep persistence and analysis on a computer. Public types and exact
+    volume/export policy remain unselected until the export comparison closes.
+  - **Rejected:** a new general tuner, source-polling logger, global diagnostic registry, background
+    hardware loop, automatic configuration adoption, or universal robot/physics/image replay.
+    Each adds ownership or concepts without resolving the actual missing evidence. Do not assume
+    Logcat satisfies the no-Robot-Controller-results rule or ask students to reconstruct exact
+    values from rounded display rows. Many manually copied chunks are not presumed a usable export.
+  - Ordinary robot code should keep `FtcPanelsTuners.velocityControl(name, reviewedRange,
+    freshPlantFactory)` unchanged. An independent custom experiment may need one explicit
+    capture call after its existing update, using the same frozen facts it presents. Such a
+    call is a design illustration, not an approved or currently available API. It adds recording
+    intent only; the experiment continues to own trial state, motion, time, and terminal cleanup.
+- **Bounded replay comparison:** start a fresh real estimator and feed complete, ordered numeric
+  inputs through the existing hardware-neutral seams. For the current no-predictor-pushback
+  test boundary, that means serviced loop time/order, actual predictor pose and motion delta,
+  trajectory segment identity, the selected correction estimate, configuration/code identity,
+  and supported enable/rebase/reset events in their original order. Native image processing,
+  unrecorded inputs, and unknown pre-capture estimator state remain outside the claim. Missing
+  records make a span incomplete, not an implicit no-observation event; transport chunking must
+  not change loop time, observation identity, or the replay decision sequence.
+  In the normal pushing stack, Fusion/EKF may rebase the predictor during update; the Pinpoint
+  predictor then replaces its cached pose and clears its delta. A later tester snapshot is useful
+  presentation, not necessarily the exact input the estimator consumed. Either record at that
+  consumed boundary or explicitly limit replay to the declared non-pushing seam. Do not infer an
+  unavailable per-candidate rejection reason from aggregate counter changes.
+- **Open decision before Ready:** establish a practical off-robot receiver/export route, then
+  choose retained-record/encoded-byte bounds, overflow and final-summary behavior, supported
+  reset/capture-start boundaries, and the smallest owner adapter. The repository currently has
+  no maintained Sushi off-robot capture reader. Inspect the locally pinned Panels capture and
+  telemetry integration before proposing another transport. Do not mark a format-only prototype
+  as completion of live capture. Any narrower software-only delivery contract or material
+  diagnostic prototype requires explicit user approval under the skill's decision/evidence gate.
+- **Export investigation and proposed user decision:** the locally installed Panels capture
+  `1.0.3` widget samples browser-local plugin state every 50 ms with browser sample time. Its
+  bundled controls provide display playback, not original robot-input recording, bounded
+  retention, or a file-download path. The pinned FTC `11.1.0` startup enables Logcat-to-disk;
+  trial rows emitted through `RobotLog` would enter the controller log. Exclude that route rather
+  than disabling SDK logging. No vendor behavior was executed and no transport rate was measured.
+  The recommended operational direction is one bounded in-memory trial recording, frozen for
+  download to a computer before the tester session ends. The computer alone saves the file;
+  capture/export may never delay STOP, and leaving the session may discard unsaved evidence.
+  Ask the user to confirm this download-before-session-end workflow before selecting a new
+  receiver integration or changing diagnostic tooling. A small format/reader fixture is a useful
+  possible first implementation slice, not a substitute for that complete export workflow.
+- **Planned verification once a design is approved:** immutable session/trial/configuration joins;
+  full-precision values with units/frames and explicit missingness; duplicate/reset/time ordering;
+  record/byte overflow and missing final chunks; chunk-independent decoding and deterministic
+  selected-input replay; unchanged hardware-poll count, heartbeat, output, cleanup, and telemetry
+  commit ownership. Reuse the controller-tuner, Plant-snapshot, independent spin-up, and
+  localization regression seams. Source/fixture checks prove contracts only: transport usability,
+  capture cost on the target controller, and physical experiment outcomes need adopting-robot
+  evidence. Keep the first lesson/lab card simple and place export/replay mechanics in optional
+  test-and-tune or maintainer material.
+- **Historical decision-review verification (before implementation):** only this queue row and item record changed; no Java,
+  maintained guide, example, or runtime behavior changed. `git diff --check` and the focused
+  `DocumentationLinksTest.currentTrackerGuidanceDoesNotDependOnTheProductionApplication` check
+  passed. At that checkpoint the item was **Ready** for the concrete design-approval review above,
+  with no implementation started or publication authorized. The current implementation evidence
+  and completed review status are recorded at the start of this item.
 - **Approved comparison amendment (2026-09-08):** preserve original observation time separately
   from processing time, configuration identity, omitted/dropped records, and supported reset
   boundaries. Once VISION-04 exists, its owner may contribute remembered field locations, original
@@ -32242,6 +32628,100 @@ The setup fragments below compare the recommendation design, not standalone robo
   Record `LOCALIZATION-04` limitations rather than infer independent evidence. Defer any transport
   or timing claim needing unavailable representative captures, with exact setup/volume/run evidence
   as the trigger. Real later traces may help `SOURCE-03`; this intake does not reactivate it.
+
+### DIAG-02 - Download bounded motor diagnostic recordings
+
+- **Status:** **Proposed**; depends on DIAG-01. Preserve the established execution order.
+- **Evidence and owner:** `DcMotorPowerTester` already owns opt-in power/encoder capture with
+  metadata, data, skipped, error, and ending rows. Its Logcat path differs from DIAG-01's
+  in-memory downloads. Position/velocity diagnostic screens have no frozen trial boundary.
+- **Decision gate / leading scope:** migrate that existing capture to the shared download port,
+  preserving command-before-sample versus newly issued command, cycle/processing time, available
+  acquisition evidence, direct/derived measurements, units/setup, coherent-bulk eligibility,
+  warnings, and missing/error rows. Compare keeping the existing capture and a smaller report.
+  Extend other motor screens only if a concrete question cannot use the existing Panels tuner.
+- **Checks / completion:** opt-in controls retain their meanings (ending capture does not stop
+  motor motion); bounded rows/bytes and explicit omissions; full precision; start/reset/abort/STOP;
+  no extra polling or competing writer; synchronized runbook and software fixtures. Representative
+  recordings and controller cost remain adopting-robot evidence, not a claim from test data.
+- **Exclusions:** no generic telemetry recorder or implicit filter. SOURCE-03 remains Deferred;
+  this task can supply future evidence but neither selects nor validates production filtering.
+
+### DIAG-03 - Export trustworthy color-sensor samples
+
+- **Status:** **Proposed**; depends on DIAG-01, with no reprioritization of existing items.
+- **Evidence and owner:** `NormalizedColorSensorTester` freezes raw/normalized color on A but
+  does not retain acquisition-time settings; gain can change while frozen and setter failure is
+  not proof that a requested gain took effect.
+- **Decision gate / leading scope:** extend the existing frozen sample with available timing and
+  acquisition-time settings, then download a small report. Keep requested/applied/verified facts
+  distinct and preserve unavailable values; do not call two reads an atomic measurement pair.
+  Compare the smallest owner-local report against a time trace before selecting an API.
+- **Checks / completion:** exact frozen values after later gain edits, failed gain writes,
+  reset/unfreeze/replacement, nonfinite/missing readings, bounded text and optional export failure;
+  no new sensor loop, color classifier, extra poll, or physical classification claim. Explain
+  the capture/setup relationship beside the existing tool controls.
+
+### DIAG-04 - Export AprilTag measurement reports
+
+- **Status:** **Proposed**; depends on DIAG-01, independent of DIAG-05's richer recording.
+- **Evidence and owner:** `AprilTagLocalizationTester` captures a published estimate into running
+  statistics; the aggregates currently discard timestamp/quality and repeated frames can increase
+  the count. A finished report must not label those presses independent camera observations.
+- **Decision gate / leading scope:** preserve original observation provenance versus capture-action
+  time, available quality, selected tag, configured mount/layout and aggregate statistics in an
+  owner-local sampled report. Compare reporting current semantics explicitly with admitting only
+  distinct frames; any changed sampling policy requires the normal design approval.
+- **Checks / completion:** repeated/stale/out-of-order frames, source/epoch and geometry changes,
+  reset, exact summary values, unavailable evidence and no extra polling; synchronize operational
+  instructions. Agreement/spread is not accuracy; independent reference and physical validation
+  remain external. No raw image history or automatic calibration acceptance.
+
+### DIAG-05 - Record localization inputs and decisions
+
+- **Status:** **Proposed**; depends on DIAG-01 and reuses completed LOCALIZATION-02/03/04 facts.
+- **Evidence and owners:** the corrected-localization tester exposes cached estimates and
+  `CorrectionStats`, not a complete input/decision ledger. Estimators may push a correction into
+  the predictor during update, so a later screen snapshot can differ from the consumed input.
+- **Decision gate / leading scope:** compare a diagnostic report with bounded opt-in recording at
+  the actual consumed predictor/correction boundary. Preserve processing versus observation time,
+  configuration, rebase/reset/enable events and supported classifications without inventing
+  unavailable per-rejection reasons. Select one explicit real-calculation replay boundary only
+  when all required inputs and initial state can be retained; use the existing algorithms.
+- **Checks / completion:** deterministic complete-input replay, missing/omitted spans, reset epochs,
+  pushback ordering, repeated frames, chunk-independent reading, memory limits and unchanged
+  runtime outputs/polling. Preserve existing tester controls. No native-image replay, synthetic
+  physical truth, new localization policy, or unsupported reconstruction of hidden vendor state.
+
+### DIAG-06 - Record pod-calibration trials
+
+- **Status:** **Proposed**; depends on DIAG-01, reusing CAL-05/06/08 and its initial result report.
+- **Evidence and owner:** the pod calibrator owns bounded powered phases and capture-matched
+  assisted endpoints, but resets/aborts discard useful intermediate evidence. A terminal report
+  cannot explain every phase or reproduce all decisions.
+- **Decision gate / leading scope:** preserve a bounded useful phase/endpoint stream with actual
+  settings, requests, timing, matching provenance and available failure facts. Compare that with
+  DIAG-01's simpler report. Evaluate replay of the existing offset solve from complete supplied
+  inputs; do not promise acquisition/validation-decision replay from endpoints alone.
+- **Checks / completion:** manual versus assisted evidence, timeout/abort precedence, zero before
+  optional export, missing matched endpoints, degenerate solves, reset/omissions and unchanged
+  recommendations; real math replay and synchronized optional instructions. No replayed physical
+  movement, automated recentering claim, acceptance flag, or configuration adoption.
+
+### DIAG-07 - Record camera-calibration sample history
+
+- **Status:** **Proposed**; depends on DIAG-01, reusing CAL-09 and its accepted-batch report.
+- **Evidence and owner:** the camera calibrator retains a fixed-setup count/rotation mean and last
+  accepted timestamp, not every accepted solved mount. Its live preview must not become evidence
+  retroactively attached to an older batch.
+- **Decision gate / leading scope:** capture a bounded numeric sample history with original frame
+  evidence, fixed reference geometry, batch identity and clear boundaries. Compare this with the
+  existing report. Evaluate replay of the actual mount solve/rotation-aware mean from complete
+  supplied inputs; rejection-admission replay would separately need its full decision inputs.
+- **Checks / completion:** duplicate/stale/out-of-order samples, source/epoch/setup resets, ambiguous
+  rotation means, history omission and exact retained/replayed values; no fresh sensor reads for
+  export and synchronized optional documentation. Exclude image processing, intrinsics, shooter
+  alignment and physical-accuracy/acceptance claims.
 
 ### EXAMPLE-11 - Demonstrate feedback-confirmed feeding
 

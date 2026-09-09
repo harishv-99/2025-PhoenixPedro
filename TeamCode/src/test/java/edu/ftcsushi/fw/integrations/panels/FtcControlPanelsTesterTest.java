@@ -6,6 +6,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -28,6 +30,7 @@ import edu.ftcsushi.fw.actuation.ScalarRange;
 import edu.ftcsushi.fw.core.hal.PowerOutput;
 import edu.ftcsushi.fw.core.source.ScalarTarget;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.ftc.ResultDownloads;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.tools.tester.TeleOpTester;
@@ -37,6 +40,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -1034,6 +1038,172 @@ public final class FtcControlPanelsTesterTest {
         assertUnsupported(() -> record.controllerReadbacks.clear());
     }
 
+    @Test
+    public void velocityDownloadReplaysRealCallsAndPublishesOnlyAfterZeroOutput() throws Exception {
+        VelocityFixture fixture = new VelocityFixture(ControlTuningModel.ReconfigurationPolicy.HOT);
+        assertEquals(0, fixture.downloads.publishes);
+        fixture.startAtZeroWith(2.0, 20.0);
+        fixture.plant.measurement = 19.8;
+        fixture.tick(0.5, false, false, false);
+        fixture.tick(0.72, false, false, false);
+        fixture.downloads.beforePublish = () -> assertEquals(0.0, fixture.plant.applied, 0.0);
+        fixture.pressB(0.8);
+        assertEquals(1, fixture.downloads.publishes);
+        ControlExperimentReplay.Report report = replay(fixture.downloads);
+        assertEquals("COMPLETE_MATCH", report.status);
+        assertEquals(fixture.tester.sessionId(), report.sessionId);
+        assertEquals(20.0, report.finalPlantFacts.get("finalRequestedTarget"), 0.0);
+        assertEquals(20.0, report.finalPlantFacts.get("finalAppliedTarget"), 0.0);
+        assertEquals(19.8, report.finalPlantFacts.get("finalMeasurement"), 0.0);
+        assertTrue(fixture.downloads.text.contains("\"initialReadbacks\":[{\"owner\":\"fake\",\"parameters\":{\"kP\":1.0}"));
+        assertTrue(fixture.downloads.text.contains("\"acceptedReadbacks\":[{\"owner\":\"fake\",\"parameters\":{\"kP\":2.0}"));
+        assertEquals(0, fixture.session.restoreCount);
+    }
+
+    @Test
+    public void positionDownloadRetainsPreHoldFactsAndPublishesAfterActualHoldOutput() throws Exception {
+        PositionFixture fixture = new PositionFixture(true, null);
+        fixture.startHeldAt(50.0);
+        fixture.draft.values = positionDraft(1.0, 20.0, 80.0, 0.0);
+        fixture.pressA(0.1);
+        fixture.plant.measurement = 19.8;
+        fixture.tick(0.5, false, false, false);
+        fixture.tick(0.72, false, false, false);
+        fixture.downloads.beforePublish = () -> assertEquals(19.8, fixture.plant.applied, 0.0);
+        fixture.pressB(0.8);
+        assertEquals(1, fixture.downloads.publishes);
+        ControlExperimentReplay.Report report = replay(fixture.downloads);
+        assertEquals("COMPLETE_MATCH", report.status);
+        assertEquals("POSITION", report.domain);
+        assertEquals(20.0, report.finalPlantFacts.get("finalRequestedTarget"), 0.0);
+        assertEquals(19.8, report.finalPlantFacts.get("finalMeasurement"), 0.0);
+        assertEquals(1, fixture.session.recoveryCount);
+    }
+
+    @Test
+    public void bothWorkflowMissingFeedbackBranchesRecordEvidenceOnly() throws Exception {
+        VelocityFixture velocity = new VelocityFixture(ControlTuningModel.ReconfigurationPolicy.HOT);
+        velocity.startAtZeroWith(1.0, 20.0);
+        velocity.plant.measurement = Double.NaN;
+        velocity.tick(0.5, false, false, false);
+        velocity.pressB(0.6);
+        assertTrue(velocity.downloads.text.contains("EVIDENCE_ONLY"));
+        assertEquals("COMPLETE_MATCH", replay(velocity.downloads).status);
+        PositionFixture position = new PositionFixture(true, null);
+        position.startHeldAt(50);
+        position.draft.values = positionDraft(1, 20, 80, 0);
+        position.pressA(0.1);
+        position.plant.measurement = Double.NaN;
+        position.tick(0.5, false, false, false);
+        position.plant.measurement = 21;
+        position.pressB(0.6);
+        assertTrue(position.downloads.text.contains("EVIDENCE_ONLY"));
+        assertEquals("COMPLETE_MATCH", replay(position.downloads).status);
+    }
+
+    @Test
+    public void rejectedAndPendingDraftsKeepDownloadUntilAnAcceptedReplacementStarts() {
+        VelocityFixture fixture = new VelocityFixture(ControlTuningModel.ReconfigurationPolicy.HOT);
+        fixture.startAtZeroWith(1, 20);
+        fixture.pressB(0.6);
+        String old = fixture.downloads.text;
+        assertNotNull(old);
+        fixture.draft.values = velocityDraft(1, Double.NaN, 0);
+        fixture.pressA(0.8);
+        assertEquals(old, fixture.downloads.text);
+        fixture.draft.values = velocityDraft(1, 30, 0);
+        fixture.plant.measurement = 0;
+        fixture.tick(1.0, true, false, false);
+        assertEquals(old, fixture.downloads.text);
+        fixture.tick(1.02, false, false, false);
+        assertEquals(old, fixture.downloads.text);
+        fixture.tick(1.14, false, false, false);
+        assertNull(fixture.downloads.text);
+        assertEquals(1, fixture.downloads.publishes);
+    }
+
+    @Test
+    public void automaticEndingsAlsoWaitForTheirOrdinaryOutputAndFreezeOriginalFacts() throws Exception {
+        VelocityFixture velocity = new VelocityFixture(ControlTuningModel.ReconfigurationPolicy.HOT);
+        velocity.startAtZeroWith(1, 20);
+        velocity.draft.values = velocityDraft(1, 20, 0.25);
+        velocity.pressA(0.5);
+        velocity.downloads.beforePublish = () -> assertEquals(0, velocity.plant.applied, 0);
+        velocity.tick(1.0, false, false, false);
+        assertEquals("COMPLETE_MATCH", replay(velocity.downloads).status);
+        assertTrue(velocity.downloads.text.contains("AUTO_STOP_TIMEOUT"));
+        PositionFixture position = new PositionFixture(true, null);
+        position.startHeldAt(50);
+        position.draft.values = positionDraft(1, 20, 80, 0.25);
+        position.pressA(0.1);
+        position.plant.measurement = 25;
+        position.downloads.beforePublish = () -> assertEquals(25, position.plant.applied, 0);
+        position.tick(0.6, false, false, false);
+        assertEquals("COMPLETE_MATCH", replay(position.downloads).status);
+        assertTrue(position.downloads.text.contains("AUTO_HOLD_TIMEOUT"));
+    }
+
+    @Test
+    public void optionalDownloadFailuresCannotPreventZeroHoldOrTerminalCleanup() {
+        for (RuntimeException failure : Arrays.asList(new IllegalStateException("download failed"),
+                new IllegalArgumentException("download failed"))) {
+            VelocityFixture velocity = new VelocityFixture(ControlTuningModel.ReconfigurationPolicy.HOT);
+            velocity.startAtZeroWith(1, 20);
+            velocity.downloads.failure = failure;
+            velocity.pressB(0.6);
+            assertEquals(0, velocity.plant.applied, 0);
+            velocity.tester.stop();
+            assertEquals(1, velocity.plant.stopCount);
+            assertEquals(1, velocity.session.restoreCount);
+            PositionFixture position = new PositionFixture(true, null);
+            position.startHeldAt(50);
+            position.draft.values = positionDraft(1, 20, 80, 0);
+            position.pressA(0.1);
+            position.downloads.failure = failure;
+            position.plant.measurement = 30;
+            position.pressB(0.6);
+            assertEquals(30, position.plant.applied, 0);
+            position.tester.stop();
+            assertEquals(1, position.plant.stopCount);
+            assertEquals(1, position.session.restoreCount);
+        }
+    }
+
+    @Test
+    public void failedEndingSnapshotStaysMissingInDownloadWithoutASecondAttempt() throws Exception {
+        VelocityFixture fixture = new VelocityFixture(ControlTuningModel.ReconfigurationPolicy.HOT);
+        fixture.startAtZeroWith(1, 20);
+        fixture.plant.snapshotRequestedFailuresRemaining = 1;
+        fixture.pressB(0.6);
+        assertEquals(1, fixture.plant.snapshotRequestedQueries);
+        ControlExperimentReplay.Report report = replay(fixture.downloads);
+        for (Double fact : report.finalPlantFacts.values()) assertTrue(Double.isNaN(fact));
+        assertEquals("COMPLETE_MATCH", report.status);
+    }
+
+    @Test
+    public void stopAndSupersedingSegmentsNeverPublishOldPendingEndings() {
+        VelocityFixture fixture = new VelocityFixture(ControlTuningModel.ReconfigurationPolicy.HOT);
+        fixture.startAtZeroWith(1, 20);
+        fixture.draft.values = velocityDraft(1, 30, 0);
+        fixture.pressA(0.5);
+        assertEquals(0, fixture.downloads.publishes);
+        fixture.tester.stop();
+        assertEquals(0, fixture.downloads.publishes);
+        assertNull(fixture.downloads.text);
+        PositionFixture position = new PositionFixture(true, null);
+        position.startHeldAt(50);
+        position.draft.values = positionDraft(1, 20, 80, 0);
+        position.pressA(0.1);
+        position.tester.stop();
+        assertEquals(0, position.downloads.publishes);
+    }
+
+    private static ControlExperimentReplay.Report replay(RecordingDownloads downloads) throws Exception {
+        assertNotNull(downloads.text);
+        return ControlExperimentReplay.replay(new ByteArrayInputStream(downloads.text.getBytes(StandardCharsets.UTF_8)));
+    }
+
     private static ControlTuningModel.Parameters parameters(String name, double value) {
         LinkedHashMap<String, Double> values = new LinkedHashMap<String, Double>();
         values.put(name, value);
@@ -1085,6 +1255,7 @@ public final class FtcControlPanelsTesterTest {
         final RecordingTelemetry telemetry = new RecordingTelemetry();
         final Gamepad gamepad = new Gamepad();
         final LoopClock clock = new LoopClock();
+        final RecordingDownloads downloads = new RecordingDownloads();
         final FtcVelocityControlPanelsTester tester;
 
         VelocityFixture(ControlTuningModel.ReconfigurationPolicy policy) {
@@ -1092,7 +1263,7 @@ public final class FtcControlPanelsTesterTest {
             tester = new FtcVelocityControlPanelsTester(
                     "Velocity", ScalarRange.bounded(-80.0, 80.0), plant, session, draft);
             clock.reset(0.0);
-            tester.init(context(gamepad, telemetry, clock));
+            tester.init(context(gamepad, telemetry, clock, downloads));
         }
 
         void start() {
@@ -1137,6 +1308,7 @@ public final class FtcControlPanelsTesterTest {
         final RecordingTelemetry telemetry = new RecordingTelemetry();
         final Gamepad gamepad = new Gamepad();
         final LoopClock clock = new LoopClock();
+        final RecordingDownloads downloads = new RecordingDownloads();
         final FtcPositionControlPanelsTester tester;
 
         PositionFixture(boolean referenced,
@@ -1160,7 +1332,7 @@ public final class FtcControlPanelsTesterTest {
                     draft,
                     referenceFactory);
             clock.reset(0.0);
-            tester.init(context(gamepad, telemetry, clock));
+            tester.init(context(gamepad, telemetry, clock, downloads));
         }
 
         void start() {
@@ -1203,6 +1375,30 @@ public final class FtcControlPanelsTesterTest {
                 gamepad,
                 new Gamepad(),
                 clock);
+    }
+
+    private static TesterContext context(Gamepad gamepad, RecordingTelemetry telemetry,
+                                         LoopClock clock, ResultDownloads downloads) {
+        return new TesterContext(new HardwareMap(null, null), telemetry.proxy, gamepad,
+                new Gamepad(), clock, downloads);
+    }
+
+    private static final class RecordingDownloads implements ResultDownloads {
+        String text;
+        int publishes;
+        Throwable failure;
+        Runnable beforePublish;
+        @Override public boolean publish(String filename, String frozenText) {
+            check();
+            if (beforePublish != null) beforePublish.run();
+            text = frozenText; publishes++; return true;
+        }
+        @Override public String url() { check(); return text == null ? null : "http://example.invalid/result"; }
+        @Override public void clear() { check(); text = null; }
+        private void check() {
+            if (failure instanceof RuntimeException) throw (RuntimeException) failure;
+            if (failure instanceof Error) throw (Error) failure;
+        }
     }
 
     private static final class VelocityDraft

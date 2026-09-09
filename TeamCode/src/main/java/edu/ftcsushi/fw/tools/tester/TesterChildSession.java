@@ -39,6 +39,7 @@ final class TesterChildSession {
 
     private State state = State.EMPTY;
     private TeleOpTester active;
+    private TesterContext activeContext;
     private boolean terminalRequested;
     private RuntimeException lastFailure;
 
@@ -80,7 +81,10 @@ final class TesterChildSession {
     }
 
     RuntimeException init(TesterContext ctx) {
-        return invoke(child -> child.init(ctx));
+        return invoke(child -> {
+            activeContext = ctx == null ? null : ctx.forChild(child instanceof BaseTeleOpTester);
+            child.init(activeContext);
+        });
     }
 
     RuntimeException initLoop(double dtSec) {
@@ -172,7 +176,9 @@ final class TesterChildSession {
      */
     private RuntimeException detachAndStop(RuntimeException primaryFailure, boolean terminal) {
         TeleOpTester stopping = active;
+        TesterContext stoppingContext = activeContext;
         active = null;
+        activeContext = null;
         state = State.CLEANING;
         if (terminal) {
             terminalRequested = true;
@@ -181,8 +187,22 @@ final class TesterChildSession {
         RuntimeException result = primaryFailure;
         boolean cleanupReturned = false;
         try {
-            stopping.stop();
-            cleanupReturned = true;
+            // Invalidate publication before child cleanup, even when an injected clear fails.
+            // The hardware cleanup below is always attempted and preserves the first failure.
+            RuntimeException downloadFailure = null;
+            try {
+                if (stoppingContext != null) stoppingContext.revokeDownloads();
+            } catch (RuntimeException failure) {
+                downloadFailure = failure;
+            }
+            try {
+                stopping.stop();
+                cleanupReturned = downloadFailure == null;
+            } catch (RuntimeException stopFailure) {
+                if (downloadFailure == null) throw stopFailure;
+                if (downloadFailure != stopFailure) downloadFailure.addSuppressed(stopFailure);
+            }
+            if (downloadFailure != null) throw downloadFailure;
         } catch (RuntimeException cleanupFailure) {
             if (result == null) {
                 result = cleanupFailure;

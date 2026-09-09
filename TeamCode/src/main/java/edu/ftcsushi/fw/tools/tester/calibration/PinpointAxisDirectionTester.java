@@ -31,6 +31,12 @@ import edu.ftcsushi.fw.tools.tester.BaseTeleOpTester;
  * values select encoder signs, not drive commands. The tester only displays advice: record it,
  * rebuild with accepted configuration, and verify with a fresh robot-configured tester.</p>
  *
+ * <p>A download-capable tester host also freezes the captured configuration, retained completed
+ * deltas and the same advice after each completed sample. An unfinished replacement does not
+ * replace that historical report. X, START and tester stop withdraw the link. Acquisition times
+ * and physical hand-motion evidence are not recorded; the report does not apply or accept a
+ * configuration and does not add another sensor poll.</p>
+ *
  * <p>Wait still for current-cycle Pinpoint READY pose evidence, then X zero. Translate straight
  * forward and left without changing facing; perform the CCW check last. Before repeating
  * translations after a turn, stop and X reset again. The tester compares field-coordinate deltas;
@@ -109,6 +115,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     private SampleResult forwardResult = null;
     private SampleResult leftResult = null;
     private SampleResult rotateResult = null;
+    private final CalibrationReport report = new CalibrationReport();
 
     /**
      * Creates the tester from one explicit, owner-local configuration snapshot.
@@ -226,6 +233,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         forwardResult = null;
         leftResult = null;
         rotateResult = null;
+        report.clear(ctx);
 
         if (rebasePose && pinpoint != null) {
             pinpoint.setPose(Pose2d.zero());
@@ -311,7 +319,60 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
                 // no-op
                 break;
         }
+        report.publish(ctx, "pinpoint-axis-directions.txt", this::completedSampleReport);
     }
+
+    /** Export retained samples, never the unfinished replacement or invented capture times. */
+    private String completedSampleReport() {
+        StringBuilder text = CalibrationReport.begin(ctx, "Pinpoint axis directions");
+        CalibrationReport.pinpoint(text, cfg.pinpoint);
+        text.append("minTranslationInches: ").append(cfg.minTranslationInches)
+                .append("; minRotationDeg: ").append(cfg.minRotationDeg).append('\n')
+                .append("LAST COMPLETED SAMPLES: historical, not the current attempt.\n")
+                .append("Per-sample acquisition/start/end timestamps: UNRECORDED.\n")
+                .append("Actual hand-pushed direction and distance: UNRECORDED.\n");
+        appendSampleReport(text, "Forward", forwardResult, true);
+        appendSampleReport(text, "Left", leftResult, false);
+        appendSampleReport(text, "Rotate CCW", rotateResult, null);
+        return text.toString();
+    }
+
+    /** Use the same finite, threshold and sign predicates as the on-screen advice. */
+    private void appendSampleReport(StringBuilder text, String name, SampleResult result,
+                                    Boolean forward) {
+        text.append(name).append(": ");
+        if (result == null) {
+            text.append("UNAVAILABLE (no completed sample)\n");
+            return;
+        }
+        text.append("dx in = ").append(result.dxIn).append("; dy in = ").append(result.dyIn)
+                .append("; dHeading rad = ").append(result.dHeadingRad).append('\n');
+        if (!finiteSample(result)) {
+            text.append("UNAVAILABLE: non-finite sample delta; no direction recommendation.\n");
+            return;
+        }
+        if (forward == null) {
+            double degrees = Math.toDegrees(result.dHeadingRad);
+            if (Math.abs(degrees) < cfg.minRotationDeg) text.append("Rotate more; no recommendation.\n");
+            else if (degrees > 0) text.append("OK: heading is CCW-positive.\n");
+            else text.append("WRONG SIGN: check mounting, firmware axis settings and IMU alignment; yawScalar must remain positive.\n");
+            return;
+        }
+        double delta = forward ? result.dxIn : result.dyIn;
+        if (Math.abs(delta) < cfg.minTranslationInches) {
+            text.append("Move farther; no direction recommendation.\n");
+            return;
+        }
+        text.append(directionAdvice(forward ? "cfg.pinpoint.forwardPodDirection"
+                        : "cfg.pinpoint.strafePodDirection", forward ? cfg.pinpoint.forwardPodDirection
+                        : cfg.pinpoint.strafePodDirection, delta > 0)).append('\n');
+    }
+
+    /** A host time/reset boundary withdraws the link without altering existing sample controls. */
+    @Override protected void onStart() { report.clear(ctx); }
+
+    /** Reports are not retained beyond this tester lifetime. */
+    @Override protected void onStop() { report.clear(ctx); }
 
     private Pose2d latestPose() {
         if (pinpoint == null) {
@@ -411,6 +472,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         ctx.telemetry.addLine("");
         ctx.telemetry.addLine("Advice only: record, rebuild, then verify with a fresh robot-configured tester.");
         ctx.telemetry.addLine("Controls: Forward [A] | Left [Y] | Rotate CCW [B] | Reset [X]");
+        report.render(ctx);
         telemUpdate();
     }
 
@@ -489,9 +551,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
 
     /** Reject invalid derived sample arithmetic before any OK, sign advice, or assignment. */
     private boolean renderUnavailableIfNonFinite(SampleResult result) {
-        if (Double.isFinite(result.dxIn) && Double.isFinite(result.dyIn)
-                && Double.isFinite(result.dHeadingRad)
-                && Double.isFinite(Math.toDegrees(result.dHeadingRad))) {
+        if (finiteSample(result)) {
             return false;
         }
         ctx.telemetry.addLine("  -> UNAVAILABLE: non-finite sample delta; no direction recommendation.");
@@ -502,14 +562,28 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     private void renderDirectionAdvice(String configField,
                                        GoBildaPinpointDriver.EncoderDirection currentDirection,
                                        boolean signAgrees) {
+        ctx.telemetry.addLine("     " + directionAdvice(configField, currentDirection, signAgrees));
+    }
+
+    /** One validity predicate for live presentation and the frozen report. */
+    private static boolean finiteSample(SampleResult result) {
+        return Double.isFinite(result.dxIn) && Double.isFinite(result.dyIn)
+                && Double.isFinite(result.dHeadingRad)
+                && Double.isFinite(Math.toDegrees(result.dHeadingRad));
+    }
+
+    /** Format the existing keep/opposite recommendation without applying configuration. */
+    private static String directionAdvice(String configField,
+                                          GoBildaPinpointDriver.EncoderDirection currentDirection,
+                                          boolean signAgrees) {
         GoBildaPinpointDriver.EncoderDirection recommended = currentDirection;
         if (!signAgrees) {
             recommended = currentDirection == GoBildaPinpointDriver.EncoderDirection.FORWARD
                     ? GoBildaPinpointDriver.EncoderDirection.REVERSED
                     : GoBildaPinpointDriver.EncoderDirection.FORWARD;
         }
-        ctx.telemetry.addLine("     " + (signAgrees ? "Keep: " : "Change: ") + configField
-                + " = GoBildaPinpointDriver.EncoderDirection." + recommended + ";");
+        return (signAgrees ? "Keep: " : "Change: ") + configField
+                + " = GoBildaPinpointDriver.EncoderDirection." + recommended + ";";
     }
 
     private static String fmt(double v) {

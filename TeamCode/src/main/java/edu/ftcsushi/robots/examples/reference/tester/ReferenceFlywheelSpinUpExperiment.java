@@ -50,6 +50,8 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
     private double startedAtSec = Double.NaN;
     private ReferenceFlywheels.Status trialStartStatus;
     private TerminalResult terminalResult;
+    private TerminalResult publishedResult;
+    private boolean reportPublished;
 
     /** Defensively snapshots the focused flywheel recipe and the team's experiment card. */
     ReferenceFlywheelSpinUpExperiment(
@@ -101,6 +103,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
     /** Arm experiment controls only at the tester's explicit ACTIVE transition. */
     @Override
     protected void onStart() {
+        clearDownload();
         active = true;
     }
 
@@ -127,6 +130,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
                     finishTrial(TrialState.TIME_LIMIT_REACHED, status, elapsedSec);
                 }
             }
+            TerminalResult resultBeforeOutput = terminalResult;
             flywheels.update(clock);
             if (trialState == TrialState.RUNNING) {
                 ReferenceFlywheels.Status status = flywheels.status();
@@ -137,6 +141,12 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
                             runningElapsedSec());
                 }
             }
+            if (active && resultBeforeOutput != null && resultBeforeOutput == terminalResult
+                    && publishedResult != terminalResult) {
+                // The ordinary heartbeat has now realized the terminal zero request. A result
+                // first frozen after this update waits until the next ordinary heartbeat.
+                publishResult();
+            }
         }
         present();
     }
@@ -145,6 +155,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         active = false;
+        clearDownload();
         if (flywheels != null) {
             flywheels.stop();
         }
@@ -164,6 +175,7 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         trialStartStatus = flywheels.status();
         terminalResult = null;
         flywheels.setVelocityTicksPerSec(targetVelocityTicksPerSec);
+        clearDownload();
     }
 
     /** Retain an active B-button abort without relabeling an already terminal trial. */
@@ -187,6 +199,61 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
                 elapsedSec);
         trialState = terminalState;
         flywheels.setVelocityTicksPerSec(0.0);
+    }
+
+    /** Export only the frozen trial, after zero had its normal output realization opportunity. */
+    private void publishResult() {
+        publishedResult = terminalResult;
+        try {
+            String frozenReport = formatReport(terminalResult);
+            reportPublished = ctx.downloads.publish("spin-up-result.txt", frozenReport);
+        } catch (RuntimeException unavailable) {
+            reportPublished = false;
+        }
+    }
+
+    /** Retain measured facts and their request match; this is not a physical acceptance result. */
+    private String formatReport(TerminalResult result) {
+        ReferenceFlywheels.Status status = result.status;
+        boolean requestMatches = status != trialStartStatus
+                && Double.compare(status.requestedVelocityTicksPerSec(),
+                result.authoredTargetVelocityTicksPerSec) == 0;
+        return "Sushi Reference flywheel spin-up report v1\n"
+                + "trialNumber=" + trialNumber + "\n"
+                + "trialState=" + trialState + "\n"
+                + "authoredTargetVelocityTicksPerSec="
+                + result.authoredTargetVelocityTicksPerSec + "\n"
+                + "elapsedSec=" + result.elapsedSec + "\n"
+                + "maximumPoweredRunSec=" + maximumPoweredRunSec + "\n"
+                + "requestedVelocityTicksPerSec=" + status.requestedVelocityTicksPerSec() + "\n"
+                + "leftMeasuredVelocityTicksPerSec="
+                + status.leftMeasuredVelocityTicksPerSec() + "\n"
+                + "rightMeasuredVelocityTicksPerSec="
+                + status.rightMeasuredVelocityTicksPerSec() + "\n"
+                + "evidenceRequestMatchesTrial=" + requestMatches + "\n"
+                + "leftAtTarget=" + (requestMatches && status.leftAtTarget()) + "\n"
+                + "rightAtTarget=" + (requestMatches && status.rightAtTarget()) + "\n"
+                + "leftMotorName=" + flywheelConfig.leftMotorName + "\n"
+                + "leftMotorDirection=" + flywheelConfig.leftMotorDirection + "\n"
+                + "rightMotorName=" + flywheelConfig.rightMotorName + "\n"
+                + "rightMotorDirection=" + flywheelConfig.rightMotorDirection + "\n"
+                + "maximumVelocityTicksPerSec=" + flywheelConfig.maximumVelocityTicksPerSec + "\n"
+                + "velocityToleranceTicksPerSec=" + flywheelConfig.velocityToleranceTicksPerSec + "\n"
+                + "sensorAcquisitionTime=UNRECORDED; retained readings may precede this ending\n"
+                + "robotConfigurationRevision=UNRECORDED\n"
+                + "physicalAcceptance=UNRECORDED; join trialNumber to the external lab card\n"
+                + "This is a frozen result report, not a sample recording or replay input.\n";
+    }
+
+    /** Clear optional transfer state without making output or STOP depend on the download host. */
+    private void clearDownload() {
+        publishedResult = null;
+        reportPublished = false;
+        try {
+            ctx.downloads.clear();
+        } catch (RuntimeException unavailable) {
+            // A custom host may not support downloads; mechanism behavior is unchanged.
+        }
     }
 
     /** Draw only the locked gate or the computed per-wheel evidence needed by this experiment. */
@@ -260,6 +327,16 @@ final class ReferenceFlywheelSpinUpExperiment extends BaseTeleOpTester {
         ctx.telemetry.addData("elapsedSec", displayedElapsedSec);
         if (trialState == TrialState.TARGET_REACHED) {
             ctx.telemetry.addData("spinUpSec", displayedResult.elapsedSec);
+        }
+        if (terminal) {
+            String url = null;
+            try {
+                url = ctx.downloads.url();
+            } catch (RuntimeException unavailable) {
+                // Present retained evidence even if optional transport fails.
+            }
+            ctx.telemetry.addData("resultDownload", reportPublished && url != null
+                    ? url : "unavailable or waiting for terminal zero heartbeat");
         }
         telemHint("A: begin | B: abort");
         telemUpdate();

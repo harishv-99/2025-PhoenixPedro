@@ -57,6 +57,12 @@ import edu.ftcsushi.fw.input.binding.Bindings;
  * also clear the batch. Temporary WAITING retains only historical results, never a capture request.
  * UI step/mode/field selection does not change the batch.</p>
  *
+ * <p>On a download-capable tester host, each accepted capture freezes a text report of the
+ * historical batch, reference geometry, and full-precision mean. Rejected captures leave that
+ * report unchanged; every batch clear withdraws it. Live preview residuals are not attached to
+ * the old average. The report is candidate evidence for the external calibration record, not
+ * physical acceptance, a full image trace, or replay input. Download support never polls vision.</p>
+ *
  * <p>The equal-weight mean averages translations and complete rotations, not separate Euler
  * angles. Finite but conflicting rotations remain counted; an ambiguous rotation mean has no
  * printable recommendation. This estimates mount extrinsics relative to the chosen fixed robot
@@ -178,6 +184,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     private Pose3d lastObservedCameraToTag = null;
 
     private final PoseAverager avg = new PoseAverager();
+    private final CalibrationReport report = new CalibrationReport();
     private boolean captureRequested;
     private long batchGeneration;
     private LoopTimestamp batchBoundary = LoopTimestamp.unavailable();
@@ -518,6 +525,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         batchBoundary = ctx == null ? LoopTimestamp.unavailable() : ctx.clock.nowTimestamp();
         captureInhibitedCycle = ctx == null ? Long.MIN_VALUE : ctx.clock.cycle();
         captureStatus = "Batch cleared; wait for an image captured after this setup boundary.";
+        report.clear(ctx);
     }
 
     private boolean sameBatch(OwnedAprilTagCamera owner, long generation) {
@@ -808,6 +816,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             t.addLine(visionInitError);
         }
 
+        report.render(ctx);
         t.update();
     }
 
@@ -866,6 +875,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                         } else if (avg.add(candidate.mountPose)) {
                             lastAcceptedFrame = candidate.timestamp;
                             captureStatus = "Captured one new, fresh frame.";
+                            report.publish(ctx, "camera-mount.txt", this::capturedBatchReport);
                         } else {
                             captureStatus = "Capture rejected: finite aggregation could not be preserved.";
                         }
@@ -878,6 +888,38 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             captureStatus = "Capture unavailable: observed geometry is non-finite.";
         }
         renderCalibrationTelemetry();
+    }
+
+    /** Report the fixed captured batch, not a later preview or its live residual/range. */
+    private String capturedBatchReport() {
+        StringBuilder text = CalibrationReport.begin(ctx, "Camera mount captured batch");
+        text.append("Camera selection: ").append(selectedCameraName).append('\n')
+                .append("Backend description: ").append(activeVisionDescription == null
+                        ? "UNRECORDED" : activeVisionDescription).append('\n')
+                .append("Layout policy description: ").append(layoutPolicySummary == null
+                        ? "UNRECORDED; configured tag transform retained below" : layoutPolicySummary).append('\n')
+                .append("maxDetectionAgeSec: ").append(maxDetectionAgeSec).append('\n')
+                .append("Batch generation: ").append(batchGeneration).append('\n')
+                .append("Selected fixed tag ID: ").append(selectedTagId).append('\n')
+                .append("Distinct captured frames: ").append(avg.count()).append('\n')
+                .append("Historical batch; not current camera readiness or a full capture trace.\n");
+        CalibrationReport.pose(text, "Known fieldToRobotPose", fieldToRobotPose);
+        CalibrationReport.pose(text, "Configured fieldToTagPose", layout.getFieldToTagPose(selectedTagId));
+        CalibrationReport.captureAge(text, "Last accepted image", lastAcceptedFrame, ctx);
+        text.append("Earlier per-frame transforms/times: UNRECORDED.\n")
+                .append("Live residual/range and independent held-out errors: UNRECORDED.\n")
+                .append("Intrinsics/lens distortion, object projection and shooter/intake alignment: NOT measured.\n");
+        Pose3d mean = avg.meanOrNull();
+        CalibrationReport.pose(text, "Captured mean robotToCameraPose", mean);
+        if (mean == null) {
+            text.append("Candidate UNAVAILABLE: ").append(avg.unavailableReason()).append('\n');
+        } else {
+            text.append("Candidate (not applied): CameraMountConfig.of(")
+                    .append(mean.xInches).append(", ").append(mean.yInches).append(", ")
+                    .append(mean.zInches).append(", ").append(mean.yawRad).append(", ")
+                    .append(mean.pitchRad).append(", ").append(mean.rollRad).append(");\n");
+        }
+        return text.toString();
     }
 
     /** Immutable provenance for this loop's solve; never retained as a future A-button sample. */
@@ -1060,6 +1102,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             ));
         }
 
+        report.render(ctx);
         t.update();
     }
 

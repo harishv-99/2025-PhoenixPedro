@@ -45,7 +45,7 @@ public final class DocumentationLinksTest {
             "https://github.com/harishv-99/2025-PhoenixPedro/";
     private static final String FENCE =
             String.valueOf((char) 96) + (char) 96 + (char) 96;
-    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 29;
+    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 30;
 
     private static final List<String> GUIDE_AREAS = Arrays.asList(
             "Get Started",
@@ -114,6 +114,7 @@ public final class DocumentationLinksTest {
             "docs/testing-calibration/Actuator Bring-up.md",
             "docs/testing-calibration/Robot Calibration Tutorials.md",
             "docs/testing-calibration/Control Tuning Workflow.md",
+            "docs/testing-calibration/Download and Inspect Experiment Results.md",
             "docs/testing-calibration/How to test a Sushi component.md",
             "docs/testing-calibration/Add Calibration Testers to Your Robot.md",
             "docs/testing-calibration/Add Vision to Your Calibration Suite.md",
@@ -320,8 +321,8 @@ public final class DocumentationLinksTest {
         for (Integer count : PUBLISHED_SHELL_PAIRS_BY_PAGE.values()) {
             approvedPairs += count;
         }
-        assertEquals("The approved inventory must cover exactly 20 published pages",
-                20, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
+        assertEquals("The approved inventory must cover exactly 21 published pages",
+                21, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
         assertEquals("The per-page inventory must account for every approved pair",
                 PUBLISHED_SHELL_COMMAND_PAIR_COUNT, approvedPairs);
 
@@ -1819,7 +1820,7 @@ public final class DocumentationLinksTest {
                 "within `0.05..0.30`", "in `0.05` steps",
                 "within `0.01..0.25`", "in `0.01` steps",
                 "at most `0.005`", "two fresh a presses", "logical command `0.5`",
-                "sushiactuatorbringup");
+                "frozen text report", "no result file or result payload");
         assertContainsAll("Actuator implementation defaults", actuatorSource,
                 "power_min = 0.05", "power_max = 0.30", "power_step = 0.05",
                 "servo_jog_rate_initial_per_sec = 0.05",
@@ -3265,6 +3266,7 @@ public final class DocumentationLinksTest {
         counts.put("docs/getting-started/First Software Tour.md", 3);
         counts.put("docs/maintainers/Maintainer Notes.md", 5);
         counts.put("docs/testing-calibration/Control Tuning Workflow.md", 1);
+        counts.put("docs/testing-calibration/Download and Inspect Experiment Results.md", 1);
         counts.put("docs/testing-calibration/Add Calibration Testers to Your Robot.md", 1);
         counts.put("docs/troubleshooting/Common Problems.md", 1);
         return Collections.unmodifiableMap(counts);

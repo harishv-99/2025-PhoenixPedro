@@ -8,6 +8,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
@@ -50,6 +51,14 @@ import edu.ftcsushi.fw.input.binding.Bindings;
  *
  * <p>Recommendations are absolute replacement offsets, not adjustments to add. A repeat with
  * corrected configuration should recommend little change, not necessarily offsets near zero.</p>
+ *
+ * <p>A download-capable tester host freezes a full-precision text report after a solve or an
+ * active attempt's discard. It preserves available capture-aligned endpoints before cleanup;
+ * formatting/publication follows the existing zero attempt. Failure reports never carry a prior
+ * candidate. A new admitted attempt, reset, or stop withdraws the old report. These are bounded
+ * candidate facts for an external calibration record, not a raw trace, physical acceptance,
+ * proof that a zero reached hardware, or replay input. Optional transport failures do not alter
+ * calibration calculations or prevent cleanup.</p>
  *
  * <h2>Controls</h2>
  * <ul>
@@ -394,6 +403,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     // If the last sample couldn't be solved (too little rotation / degenerate rotation), this
     // is a short, driver-facing note explaining why.
     private String lastSolveNote = null;
+    private final CalibrationReport report = new CalibrationReport();
 
     private boolean lastHadTagStart = false;
     private boolean lastHadTagEnd = false;
@@ -1034,6 +1044,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         if (!motionInhibitedThisCycle()) {
             lastAttemptFailure = null;
         }
+        report.clear(ctx);
 
         if (rebasePinpoint && pinpoint != null) {
             pinpoint.setPose(Pose2d.zero());
@@ -1129,12 +1140,25 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void abortSample() {
+        abortSample(phase == Phase.IDLE ? null : snapshotReport(
+                lastAttemptFailure == null ? "ABORTED: active attempt discarded" : lastAttemptFailure,
+                false));
+    }
+
+    /** Freeze before evidence clears, but give the existing physical zero precedence over export. */
+    private void abortSample(Supplier<String> frozenReport) {
         if (ctx != null) {
             motionInhibitedCycle = ctx.clock.cycle();
         }
         clearPendingMotionIntent();
-        if (started && drive != null) {
-            drive.drive(DriveSignal.zero());
+        try {
+            if (started && drive != null) {
+                drive.drive(DriveSignal.zero());
+            }
+        } finally {
+            if (frozenReport != null && started && !visionTerminalRequested) {
+                report.publish(ctx, "pinpoint-pod-offsets.txt", frozenReport);
+            }
         }
     }
 
@@ -1158,6 +1182,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 || !pinpointReadyForMotion()) return;
 
         autoSample = auto;
+        report.clear(ctx);
         clearLastResults();
         lastAttemptFailure = null;
         startAssistEndpoint = null;
@@ -1345,6 +1370,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         lastDyStartBodyInches = dy0;
         lastDeltaHeadingRad = deltaHeading;
         lastHadTagEnd = startAssistEndpoint != null;
+        report.publish(ctx, "pinpoint-pod-offsets.txt", snapshotReport(
+                lastSolveNote == null ? "SOLVED: candidate, not applied" : "REJECTED: " + lastSolveNote,
+                true));
     }
 
     /** Forward displacement expressed in the robot's body frame at this stream's start. */
@@ -1368,7 +1396,105 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private void failAttempt(String reason) {
         lastAttemptFailure = reason + ". Attempt discarded; release controls and retry.";
         clearLastResults();
-        abortSample();
+        abortSample(snapshotReport(lastAttemptFailure, false));
+    }
+
+    /**
+     * Copy only retained immutable facts before cleanup; encoding runs after the existing zero.
+     * This is a report, not the missing sequence of raw samples needed for replay.
+     */
+    private Supplier<String> snapshotReport(String outcome, boolean includeResult) {
+        try {
+            final double processingTime = ctx.clock.nowSec();
+            final long cycle = ctx.clock.cycle();
+            final Phase endedPhase = phase;
+            final AssistedEndpoint start = startAssistEndpoint;
+            final AssistedEndpoint end = endAssistEndpoint;
+            final double startAge = start == null ? Double.NaN : start.tagEstimate.timestamp.ageSec(ctx.clock);
+            final double endAge = end == null ? Double.NaN : end.tagEstimate.timestamp.ageSec(ctx.clock);
+            final Pose2d rawStart = start == null && (includeResult || isSampleActive())
+                    ? startPinpointPose : null;
+            final PoseEstimate rawEstimate = pinpoint == null ? null : pinpoint.getEstimate();
+            final Pose2d rawEnd = rawEstimate != null && rawEstimate.hasPose
+                    ? rawEstimate.toPose2d() : null;
+            final double rawAge = rawEstimate == null ? Double.NaN
+                    : rawEstimate.timestamp.ageSec(ctx.clock);
+            final String notice = assistEvidenceNotice;
+            final String camera = selectedVisionDeviceName;
+            final String backend = activeVisionDescription;
+            final Double[] values = includeResult ? new Double[] {lastDxStartBodyInches,
+                    lastDyStartBodyInches, lastDeltaHeadingRad, lastXErrorInches, lastYErrorInches,
+                    lastRecommendedStrafePodOffsetForwardInches,
+                    lastRecommendedForwardPodOffsetLeftInches} : new Double[7];
+            return () -> {
+                StringBuilder text = CalibrationReport.begin(processingTime, cycle, "Pinpoint pod offsets");
+                CalibrationReport.pinpoint(text, cfg.pinpoint);
+                text.append("Outcome: ").append(outcome).append('\n')
+                        .append("Phase at report boundary: ").append(endedPhase).append('\n')
+                        .append("Configured powered drive: ").append(cfg.mecanum != null).append('\n')
+                        .append("targetTurnRad: ").append(cfg.targetTurnRad)
+                        .append("; automaticPhaseTimeoutSec: ").append(cfg.automaticPhaseTimeoutSec).append('\n')
+                        .append("manualOmegaScale: ").append(cfg.manualOmegaScale)
+                        .append("; autoOmegaCmd: ").append(cfg.autoOmegaCmd)
+                        .append("; recenterTranslationScale: ").append(cfg.recenterTranslationScale).append('\n')
+                        .append("autoComputeAfterAutoSample: ").append(cfg.autoComputeAfterAutoSample)
+                        .append("; enablePostRotateRecenter: ").append(cfg.enablePostRotateRecenter).append('\n')
+                        .append("Actual hand motion/recenter and no-assist acquisition times: UNRECORDED.\n")
+                        .append("Unaccounted real translation contaminates a no-assist solve; software zero is not motion.\n")
+                        .append("Camera selection: ").append(camera == null ? "UNAVAILABLE" : camera).append('\n')
+                        .append("Backend description: ").append(backend == null ? "UNAVAILABLE" : backend).append('\n')
+                        .append("Layout policy description: ").append(fixedTagLayoutPolicySummary == null
+                                ? "UNRECORDED" : fixedTagLayoutPolicySummary).append('\n')
+                        .append("Assisted evidence notice: ").append(notice == null ? "none" : notice).append('\n');
+                if (cfg.aprilTags != null) {
+                    text.append("maxDetectionAgeSec: ").append(cfg.aprilTags.maxDetectionAgeSec).append('\n')
+                            .append("Start/end search enabled: ").append(cfg.enableAutoTagSearchAtStart)
+                            .append(" / ").append(cfg.enableAutoTagSearchAtEnd)
+                            .append("; distinct search frames: ").append(cfg.tagSearchStableFrames).append('\n')
+                            .append("Start/end search limits rad: ").append(cfg.tagSearchMaxTurnRad)
+                            .append(" / ").append(cfg.tagEndSearchMaxExtraTurnRad)
+                            .append("; search omega command: ").append(cfg.tagSearchOmegaCmd).append('\n');
+                }
+                CalibrationReport.pose(text, "Raw start fieldToRobotPose (no-assist start)", rawStart);
+                CalibrationReport.pose(text, "Latest raw fieldToRobotPose (not a tag-aligned substitute)", rawEnd);
+                text.append("Latest raw estimate age at report sec: ")
+                        .append(Double.isFinite(rawAge) ? Double.toString(rawAge) : "UNAVAILABLE").append('\n');
+                appendEndpointReport(text, "Start", start, startAge);
+                appendEndpointReport(text, "End", end, endAge);
+                String[] labels = {"Start-body residual dx in", "Start-body residual dy in",
+                        "Solve delta heading rad", "Strafe offset error in", "Forward offset error in"};
+                for (int i = 0; i < labels.length; i++) text.append(labels[i]).append(": ")
+                        .append(values[i] == null ? "UNAVAILABLE" : values[i]).append('\n');
+                if (values[5] != null && values[6] != null) {
+                    text.append("Absolute replacement offsets, NOT increments (candidate only):\n")
+                            .append("cfg.pinpoint.strafePodOffsetForwardInches = ").append(values[5]).append(";\n")
+                            .append("cfg.pinpoint.forwardPodOffsetLeftInches = ").append(values[6]).append(";\n");
+                } else text.append("Candidate offsets: UNAVAILABLE; no prior candidate carried forward.\n");
+                text.append("Raw sample sequence, tag IDs used by estimator, full camera/drive/solver setup,\n")
+                        .append("intrinsics and hardware readback: UNRECORDED; retain source configuration externally.\n");
+                return text.toString();
+            };
+        } catch (RuntimeException unavailable) {
+            return null;
+        }
+    }
+
+    /** Format existing capture-aligned endpoints and lookup provenance without polling or solving. */
+    private static void appendEndpointReport(StringBuilder text, String label,
+                                             AssistedEndpoint endpoint, double ageSec) {
+        if (endpoint == null) {
+            text.append(label).append(" assisted endpoint: UNAVAILABLE\n");
+            return;
+        }
+        text.append(label).append(" capture age at report sec: ")
+                .append(Double.isFinite(ageSec) ? Double.toString(ageSec) : "UNAVAILABLE").append('\n')
+                .append(label).append(" history lookup: ").append(endpoint.odometry.kind())
+                .append("; quality: ").append(endpoint.odometry.quality())
+                .append("; history generation: ").append(endpoint.historyGeneration)
+                .append("; raw trajectory segment: ").append(endpoint.rawTrajectorySegment).append('\n')
+                .append(label).append(" tag estimate quality: ").append(endpoint.tagEstimate.quality).append('\n');
+        CalibrationReport.pose(text, label + " tag fieldToRobotPose at capture", endpoint.tagEstimate.toPose2d());
+        CalibrationReport.pose(text, label + " raw fieldToRobotPose matched to capture", endpoint.odometry.fieldToRobotPose());
     }
 
     private void resetSearchAcquisition() {
@@ -1614,6 +1740,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             boolean initPhase,
             boolean suppressedFailureMeansUncertainRollback
     ) {
+        Supplier<String> failedReport = !initPhase && phase != Phase.IDLE
+                ? snapshotReport("FAILED: " + context + ": " + primaryFailureSummary(failure), false)
+                : null;
         clearAssistEvidence();
         OwnedAprilTagCamera failedLane = visionLane;
         boolean uncertainFactoryRollback = failedLane == null
@@ -1632,7 +1761,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             try {
                 // An active assist failure is terminal for this tester activation. Do not let a
                 // previously armed calibration phase continue moving without its selected evidence.
-                abortSample();
+                abortSample(null);
             } catch (RuntimeException driveZeroFailure) {
                 if (driveZeroFailure != failure) {
                     failure.addSuppressed(driveZeroFailure);
@@ -1685,6 +1814,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         visionFailure = failure;
         aprilTagAssistNotice = context + ": " + failureSummary(failure) + "; " + recovery;
         visionReadiness = VisionReadiness.notReady(aprilTagAssistNotice);
+        if (failedReport != null && started && !visionTerminalRequested) {
+            report.publish(ctx, "pinpoint-pod-offsets.txt", failedReport);
+        }
     }
 
     private static String failureSummary(RuntimeException failure) {
@@ -2049,6 +2181,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 ctx.telemetry.addLine("Copy these into your PinpointOdometryPredictor.Config / RobotConfig.");
             }
         }
+        report.render(ctx);
     }
 
     private static boolean isLikelyIdentity(CameraMountConfig mount) {
@@ -2080,7 +2213,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         tagEstimator = null;
         activeVisionDescription = null;
         selectedVisionDeviceName = null;
-        CleanupActions.attemptAll(
+        try {
+            CleanupActions.attemptAll(
                 () -> {
                     if (ownedDrive != null) {
                         ownedDrive.stop();
@@ -2102,7 +2236,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                         throw cleanupFailure;
                     }
                 }
-        );
+            );
+        } finally {
+            report.clear(ctx);
+        }
     }
 
     /**

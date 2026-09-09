@@ -54,6 +54,63 @@ public final class PinpointAxisDirectionTesterTest {
             "UNAVAILABLE: non-finite sample delta; no direction recommendation.";
 
     @Test
+    public void downloadKeepsHistoricalFullPrecisionSamplesUntilCompletionOrClear() throws Exception {
+        Fixture f = new Fixture(configured(Axis.FORWARD, REVERSED), false);
+        f.complete(Axis.FORWARD, -8.123456789);
+        String first = f.downloads.text;
+        assertTrue(first, first.contains("dx in = -8.123456789"));
+        assertTrue(first, first.contains("Change: cfg.pinpoint.forwardPodDirection = GoBildaPinpointDriver.EncoderDirection.FORWARD;"));
+        assertTrue(first, first.contains("timestamps: UNRECORDED"));
+        assertTrue(first, first.contains("historical, not the current attempt"));
+        assertEquals("pinpoint-axis-directions.txt", f.downloads.filename);
+        int polls = f.device.polls;
+        f.queue("SAMPLE_FORWARD");
+        f.tick();
+        assertEquals(polls + 1, f.device.polls);
+        assertEquals(first, f.downloads.text);
+        f.queue("SAMPLE_LEFT"); // Cancels the incomplete replacement, not its completed predecessor.
+        f.tick();
+        assertEquals(first, f.downloads.text);
+        f.assertNoConfigurationWritesAfterConstruction();
+        setField(f.owner, "resetRequested", true);
+        f.tick();
+        assertNull(f.downloads.text);
+        assertEquals(f.constructedEffects.size() + 1, f.device.configurationEffects.size());
+        assertEquals("setPosition", f.device.configurationEffects.get(f.constructedEffects.size()));
+    }
+
+    @Test
+    public void optionalDownloadFailuresDoNotChangeSamplingAndStop() throws Exception {
+        for (int failure = 0; failure < 4; failure++) {
+            Fixture f = new Fixture(configured(Axis.LEFT, FORWARD), false);
+            f.downloads.throwPublish = failure == 0;
+            f.downloads.throwClear = failure == 1;
+            f.downloads.throwUrl = failure == 2;
+            f.downloads.unavailable = failure == 3;
+            int polls = f.device.polls;
+            f.complete(Axis.LEFT, 9.0);
+            assertEquals(polls + 2, f.device.polls);
+            assertNotNull(f.result(Axis.LEFT));
+            f.assertNoConfigurationWritesAfterConstruction();
+            f.owner.stop();
+        }
+    }
+
+    @Test
+    public void nonfiniteRetainedArithmeticCannotCarryTheOldAssignmentIntoANewReport() throws Exception {
+        // Defensive maintainer probe, not a claim that the SDK supplied a reachable bad motion.
+        Fixture f = new Fixture(configured(Axis.FORWARD, FORWARD), false);
+        f.complete(Axis.FORWARD, 8.0);
+        assertTrue(f.downloads.text.contains("Keep: cfg.pinpoint.forwardPodDirection ="));
+        setField(f.owner, "forwardResult", completedResult(Double.NaN, 0.0, 0.0));
+        f.complete(Axis.LEFT, 9.0); // Real completion republishes the retained aggregate.
+        assertTrue(f.downloads.text, f.downloads.text.contains(UNAVAILABLE));
+        assertFalse(f.downloads.text.contains("cfg.pinpoint.forwardPodDirection ="));
+        assertTrue(f.downloads.text.contains("cfg.pinpoint.strafePodDirection ="));
+        f.owner.stop();
+    }
+
+    @Test
     public void bothAxesDirectionsAndSignsNameTheExactKeepOrOppositeAssignment() throws Exception {
         for (boolean initPhase : new boolean[]{false, true}) {
             for (Axis axis : Axis.values()) {
@@ -429,6 +486,7 @@ public final class PinpointAxisDirectionTesterTest {
         final LoopClock clock = new LoopClock();
         final List<String> lines = new ArrayList<>();
         final Device device = new Device();
+        final CalibrationReportTest.Downloads downloads = new CalibrationReportTest.Downloads();
         final PinpointAxisDirectionTester owner;
         final PinpointAxisDirectionTester.Config captured;
         final PinpointOdometryPredictor predictor;
@@ -457,7 +515,7 @@ public final class PinpointAxisDirectionTesterTest {
                         }
                         return defaultValue(method.getReturnType());
                     });
-            TesterContext context = new TesterContext(null, telemetry, new Gamepad(), new Gamepad(), clock);
+            TesterContext context = new TesterContext(null, telemetry, new Gamepad(), new Gamepad(), clock, downloads);
             setField(owner, "ctx", context);
             setField(owner, "clock", clock);
             setField(owner, "gamepads", Gamepads.create(context.gamepad1, context.gamepad2));

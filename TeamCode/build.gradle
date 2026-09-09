@@ -31,6 +31,23 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
 }
 
+// Laptop-only replay reuses the debug unit-test runtime, never the Robot Controller artifact.
+tasks.register('replayControlExperiment', JavaExec) {
+    group = 'verification'
+    description = 'Replays downloaded control-response metrics; supply -Precording=/path/to/file.jsonl.'
+    dependsOn('compileDebugUnitTestJavaWithJavac')
+    mainClass = 'edu.ftcsushi.fw.integrations.panels.ControlExperimentReplay'
+    doFirst {
+        def recordingPath = providers.gradleProperty('recording').orNull
+        if (recordingPath == null || recordingPath.trim().isEmpty()) {
+            throw new GradleException('Supply -Precording=/path/to/downloaded/control-N.jsonl')
+        }
+        def unitTests = tasks.named('testDebugUnitTest').get()
+        classpath = unitTests.classpath + unitTests.testClassesDirs
+        args(rootProject.file(recordingPath).absolutePath)
+    }
+}
+
 def sushiAndroidComponents = androidComponents
 sushiAndroidComponents.onVariants(
         sushiAndroidComponents.selector().withName('debug')) { variant ->

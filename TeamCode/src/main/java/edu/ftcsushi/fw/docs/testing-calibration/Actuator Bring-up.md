@@ -276,9 +276,13 @@ load, flex, or linkage geometry stays inside the physical interval.
 
 ## What to copy, and what to verify next
 
-The copy-ready candidate remains on the final Driver Station/Panels screen until BACK and is also
-written to Logcat under the `SushiActuatorBringUp` tag. Copy it from either location into the
-data-only robot configuration or mechanism builder; the tool does not modify either one.
+The copy-ready candidate remains on the final Driver Station/Panels screen until BACK. When the
+host provides downloads, that screen also shows a URL for a frozen text report. Use
+[Download and inspect experiment results](<Download and Inspect Experiment Results.md>) to save
+it on the laptop before BACK or FTC STOP. No result file or result payload is written to the
+controller log. If downloading is unavailable, copy the on-screen facts manually when safe.
+After review, copy the candidate into data-only robot configuration or the mechanism builder;
+the tool does not modify either one or certify physical acceptance.
 
 Then verify the production owner:
 

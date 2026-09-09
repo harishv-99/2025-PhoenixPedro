@@ -10,10 +10,10 @@ tags:
 **Outcome:** open the ready Sushi tester home, use exactly one control source, and know how to stop
 or recover before any hardware experiment. No Java source lookup or custom tester OpMode is needed.
 
-**Before this page:** read the first
+**Before this page:** read the
 [hardware-free software experiment](<../examples/Hardware-free Reference Scenarios.md>). Before
-pressing START for a hardware tester, also read the runbook for that one experiment.
-Running the software experiment is optional; reading these instructions does not require hardware.
+hardware START, read your selected experiment's runbook. Running the software experiment is
+optional; reading needs no hardware.
 
 ## Choose one input owner
 
@@ -113,3 +113,5 @@ Continue with one question:
   [Robot calibration](<Robot Calibration Tutorials.md>); or
 - after bring-up, evaluate one controller with the
   [Control tuning workflow](<Control Tuning Workflow.md>).
+
+Optional: [save a finished result on your laptop](<Download and Inspect Experiment Results.md>).
