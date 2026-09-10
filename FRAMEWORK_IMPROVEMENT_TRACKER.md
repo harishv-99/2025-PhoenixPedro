@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-08
+Last updated: 2026-09-10
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -242,7 +242,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Done | Shared read-only downloads, bounded controller recording/replay, and initial frozen reports implemented and reviewed; automated checks pass; publication to master authorized. |
 | 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Done | Reviewed and approved: sampled settling/departure, queue-free feeding, recovery acknowledgement, locked clients, lesson, and 2810 passing tests; publication to master authorized. |
 | 130 | EXAMPLE-12 | Demonstrate graceful assist degradation | Done | Explicit reacquisition, aligned/lost text and pulses, gesture-bound permission, and guarded failure; 2,864 tests plus compile/docs checks pass; user approved the reviewed diff and exact branch/remote/master publication on 2026-09-09. |
-| 131 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
+| 131 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Done | Reviewed and publication-authorized: all 16 frozen capabilities classified against Sushi 161241e, one Proposed teaching follow-up (DOC-22), 2,864 passing tests, and unchanged evidence gates. |
 | 132 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
 | 133 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
 | 134 | CAL-04 | Mechanism-owned semantic request consistency | Done | The reviewed command-preserving search API, mechanism-owned lift request snapshots, semantic move/home composition, maintained caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete. |
@@ -280,6 +280,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 166 | DIAG-06 | Record pod-calibration trials | Proposed | Preserve bounded powered/assisted phase and endpoint evidence; evaluate existing offset-calculation replay without physical-motion claims. |
 | 167 | DIAG-07 | Record camera-calibration sample history | Proposed | Preserve bounded fixed-setup sample history and evaluate mount/rotation-mean replay, not image processing or physical acceptance. |
 | 168 | TASK-08 | Attribute queued submissions and withdrawals | Proposed | Compare retained Tasks and owner-local attempt state with a narrow queue result that also observes withdrawal before start and composes truthful outcomes. |
+| 169 | DOC-22 | Align capability guidance with outcome-aware sequences | Proposed | Correct the confirmed stale sequence-success explanation; teach deliberate completion continuation separately from ordinary success gating, without adding robot guards or changing Task behavior. |
 
 ### Diagnostic follow-up intake (approved 2026-09-08)
 
@@ -33333,6 +33334,36 @@ cached status supplies the selected drive mode and next operator action to a pre
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 
+- **Current status (2026-09-10): Done.** The tracker-only audit is complete: all 16 frozen
+  capabilities have a disposition, with no new runtime feature justified by this comparison.
+  DOC-22 is the one new Proposed teaching follow-up, not an implemented fix. Automated evidence
+  passes; the user completed tracker review and supplied the exact combined commit/push/PR/merge
+  authorization recorded below. Existing physical-evidence gates remain unchanged.
+- **Research start (2026-09-09): Researching.** The user said **"proceed with AUDIT-01"** after
+  EXAMPLE-12 merged. This authorizes the recorded tracker-only audit, not new runtime features,
+  changes to lessons, publication, or another item's implementation. All 26 named prerequisites
+  have terminal dispositions: 25 Done; SOURCE-03 Deferred with its recorded evidence/approval
+  trigger. The fetched Sushi comparison base is `161241efcdf420ad5fb152796abef35b8f85ae37`.
+  Work is isolated on `codex/audit-01-capability-closure`; existing master and saved work are preserved.
+- **Bounded decision gate:** re-read the original frozen source snapshots and trace every listed
+  capability into current APIs, complete application owners, examples and deterministic tests.
+  Compare documentation-only closure with reopening the original implementation program or
+  expanding to newer repositories. Choose the tracker-only evidence matrix: prior completed work
+  must not be reopened merely for different spelling, and AUDIT-02 owns the later comparison.
+  No public API or lifecycle change is proposed, so this scope needs no additional design stop.
+  Report concrete new capability/teaching gaps as separately Proposed items only, without fixing
+  them here. Record construction-layer distinctions, full robot-code costs and physical limits;
+  then run full compile/tests, scoped/static checks and the normal review handoff.
+- **Ready / execution decision:** the bounded decision record required no API, lifecycle, new
+  tooling or physical-evidence decision. Proceeded through Ready and In progress for tracker
+  assembly only under the user's instruction above, then stopped at Verifying. Reopening runtime
+  implementation or refreshing the benchmark would materially enlarge this item and was rejected.
+- **Source provenance re-established:** clean cached Cubelib, FTC_Decode and IntoTheDeep23641
+  checkouts match their exact original pins. The clean Decode checkout currently points at
+  `205af900f9f64b267cc908b785247512d7187086`; its required
+  `2c0c6726cbb742096f8062fedb0f335500c11fbc` commit exists and is inspected using `git show`, not
+  assumed from that worktree. No benchmark repository is modified or updated to newer evidence.
+
 - **Tracker-only intake status (2026-08-22):** **Proposed and deliberately last.** No re-audit has
   started. This item is a closure gate, not a container for implementing another capability.
 - **Start condition:** SAFE-04, SENSOR-01, PERF-01, EXAMPLE-09, EXAMPLE-10, LOCALIZATION-01, AUTO-01,
@@ -33383,6 +33414,292 @@ cached status supplies the selected drive mode and next operator action to a pre
   gap, create one separate **Proposed** item with its own later branch and decision gate; do not edit
   teaching material or implement that gap under AUDIT-01. A zero-new-item result is successful
   closure.
+
+#### AUDIT-01 closure evidence (2026-09-10)
+
+**Scope:** Sushi `161241efcdf420ad5fb152796abef35b8f85ae37`, after EXAMPLE-12, against the four
+original pins below. This is source and deterministic software evidence, not a claim of current
+upstream behavior, event deployment, team ranking, physical reliability, or demonstrated speed.
+The original intake and its limitations remain historical records; this section supplies the
+completed re-audit rather than rewriting their then-current findings.
+
+| Evidence key | Exact source snapshot and inspected behavior |
+|---|---|
+| B1 | [FTC_Decode BlueFar30](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/BlueFar30.java) and [RedFar30](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/opmode/comp/RedFar30.java): fixed/live geometry, progress thresholds, inventory-aware exit, count/time branching and park. |
+| B2 | [ArtifactVision](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/subsystems/ArtifactVision.java), [Intake](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/subsystems/Intake.java), and [SOTMUtil](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/SOTMUtil.java): field projection/band selection, sensor-derived inventory, and a coordinated shot tuple. |
+| B3 | [BulkRead](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/lib/util/BulkRead.java), [CurrentRobot](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode2026/CurrentRobot.java), and [CachedMotor](https://github.com/kleongf/FTC_Decode/blob/6aa84a87eaa09c862eb707c4f604191bbcedb1d1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/util/decodeutil/CachedMotor.java): manual-cache lifecycle, explicit amps, and similar-write suppression. |
+| B4 | [Decode/v3 Intake](https://github.com/kleongf/Decode/blob/2c0c6726cbb742096f8062fedb0f335500c11fbc/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/robot/subsystems/Intake.java) and [IntakeCurrentSpeedTest](https://github.com/kleongf/Decode/blob/2c0c6726cbb742096f8062fedb0f335500c11fbc/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/test/IntakeCurrentSpeedTest.java): a sample-count/6 A mechanism policy and live current/velocity telemetry, inspected from the pinned commit object. |
+| B5 | [Cubelib PIDSVGController](https://github.com/kleongf/Cubelib/blob/4c2c1e5eeabbf0ac61208240bb5a73f9fb8e6566/Cubelib/src/main/java/io/github/kleongf/cubelib/controllers/PIDSVGController.java) and [library build](https://github.com/kleongf/Cubelib/blob/4c2c1e5eeabbf0ac61208240bb5a73f9fb8e6566/Cubelib/build.gradle.kts): the exact controller law and Android-library publication configuration, not proof of an adopter or a published artifact. |
+| B6 | [IntoTheDeep23641](https://github.com/kleongf/IntoTheDeep23641/tree/5a3d175604b806fb180cada53f06557e4d8a92c1): Pedro/library source, with no robot TeamCode at this pin. It establishes no exact Worlds robot capability. |
+
+In the following matrix, Java names resolve under `TeamCode/src/main/java/edu/ftcsushi/`; tests
+resolve under the parallel `TeamCode/src/test/java/edu/ftcsushi/` tree. The evidence groups immediately
+below identify the exact test classes and representative passing methods. Classification is of the
+frozen capability, not a promise that every detail of either robot is built into Sushi.
+
+| # / frozen capability | Primary disposition | Current call path / ownership, evidence and retained limit |
+|---|---|---|
+| 1. Fixed and start-built routes | **Implemented** | B1 geometry maps to `fw/drive/route/RouteTasks.follow(...)` or `followBuiltAtStart(...)`; `robots/examples/pedro/basic/BasicPedroAuto` and `pedro/adaptive/AdaptiveCollectionAttempt` use those paths. ROUTE-01/03; E1 verifies eager versus exactly-once actual-start sampling and no follower mutation after construction failure. Robot path code owns geometry; no generic route DSL. |
+| 2. Truthful route outcomes | **Implemented** | `fw/integrations/pedro/PedroPathingDriveAdapter` returns a retained per-start execution; `RouteTask` maps only COMPLETED to SUCCESS, route/task timeouts to TIMEOUT, other valid abnormal terminal causes to CANCELLED. E1 covers exact status, replacement, failure and cleanup. B1's idle checks are not copied as success proof. `Tasks.sequence(route, positionDependentStep)` already gates exact success; DOC-22 fixes the stale contrary explanation later. |
+| 3. Semantic route milestones | **Already supported** | `AdaptiveCollectionPaths` publishes fresh attempt-local `safeToLeave`/`nearEnd` facts from native Pedro callbacks; `AdaptiveCollectionAttempt` interprets terminal-route, near-end, then safe-and-full precedence. E2 demonstrates the B1 requirement. EXAMPLE-10 needed no ROUTE-04 or public raw-progress language; threshold meanings remain robot/path policy. |
+| 4. Route-plus-mechanism lifetime | **Already supported** | `AdaptiveCollectionAttempt` uses `Tasks.parallelDeadline(exit, collectionRoute, intake.collectTask(timeout))`; `AdaptiveCollectionIntake` uses the existing timed scalar builder. E2 proves companion cleanup before live return construction. TASK-04/07 own lifecycle; an intentional policy exit and its resulting exact route cancellation remain separate facts. |
+| 5. Adaptive bounded fresh attempts and park | **Implemented** | AUTO-01 supplies fresh bounded `Tasks.repeatWhileSuccessful(...)`; `AdaptiveCollectionBoundedAutoScenarioTest` composes repetition, one hard pre-park timeout, and deliberate `sequenceOnCompletion` into start-built park. E2 exercises admission/count bounds, shared preload budget, collection/return takeover and cancellation/failure suppression. Robot policy selects admission and park eligibility; B1's between-cycle time check is not itself a hard deadline. |
+| 6. Multi-object vision-to-field selection | **Implemented** | `fw/sensing/vision/FloorTargetProjection`, `ObservationSources.inField(...)` and `TargetSelections` support located fresh observations and deterministic policies; `AdaptiveCollectionVisionService` demonstrates B2's band strategy, while `robots/examples/visionpickup` demonstrates bounded selected-target pickup planning. EXAMPLE-10/VISION-03/SPATIAL-02; E3 covers capture-time projection, absent-history failure and deterministic multi-target decisions. Selection is not identity tracking, field memory or capture/clearance proof; later VISION-04/SPATIAL-03 scope is unchanged. |
+| 7. Optional timestamped pose history | **Implemented** | LOCALIZATION-01's `fw/localization/PlanarPoseHistory` records through one owner and exposes a read-only trajectory view; `AdaptiveCollectionVisionService` queries at image capture time, unlike B2's current-pose projection. E3 checks interpolation, bounds, missing evidence, continuity and reset. History is as-published, not retrospective smoothing, extrapolation or recovery from an unreported reset. |
+| 8. Sensor-derived inventory | **Implemented** | EXAMPLE-09's robot-owned `ReferenceInventoryStatusService` samples conditioned active-low switches and publishes one immutable pattern/count/full/order-issue snapshot, including removals. E4 covers all patterns, debounce boundaries, failed reads and STOP. Framework sources/lifecycle are reused; no core inventory/capacity type or automatic transfer of B2's latched-full policy. |
+| 9. Coordinated timestamped mechanism targets/intents | **Implemented** | EXAMPLE-03's `ReferenceCoordinatedShotService` produces one timestamped solution; `ReferenceTurretMechanism` owns resolver/Plant realization and equivalent-position policy. E4 covers cotemporal motion, degradation, unavailable evidence and sibling gate agreement. B2's tuple becomes explicit software dataflow, not a validated projectile model: flywheel/hood values are intents, not a complete physically proven moving launcher. |
+| 10. Explicit motor current | **Implemented** | SENSOR-01 exposes `FtcSensors.motorCurrentAmps(existingMotor)` and `(hardwareMap, name)` as a raw `ScalarSource`; E5 checks one normally returned read/source/cycle, reset, same-cycle retry after exceptions, and no motor configuration effects. B3/B4's jam/full response remains robot policy. No maintained robot caller currently adopts this source; passing API tests, not invented adoption, establish this row. |
+| 11. Opt-in bulk-cache ownership | **Implemented** | PERF-01's sole public entry `FtcBulkCaching.manual(hardwareMap)` yields one managed service, registered first. E5 verifies capture-before-mutation, periodic attempts, failure/reentrant STOP, final invalidation and prior-mode restoration. This replaces B3's local owner mechanics, not hardware validation. No installed robot adopter/performance result was found; explicit bulk reads or another vendor cache owner require conflict review. |
+| 12. Write suppression | **Evidence-gated** | Keep PERF-03 Deferred. B3 suppresses initial zero and caches before SDK success; source presence does not prove safe watchdog/reconnect/reset/mode behavior or worthwhile savings. SAFE-04 instead makes `FtcHardware`/grouped `FtcActuators` command-cache truth and fail-stop handling explicit (E5). Those are not write deduplication. Require the recorded per-adapter measurements and invalidation/failure evidence before omitting transactions. |
+| 13. Field symmetry | **Robot-specific** | Keep FIELD-01 Deferred until real authored route pairs demonstrate common and deliberately side-specific geometry. B1 Red/Blue differ in headings, interpolation, timing and callbacks despite their `Flipper` helper. The application routes inspected for FIELD-01 remain explicitly integration placeholders; `PedroFieldTransform` converts coordinate conventions, not alliances. E1 proves that conversion; FIELD-01 retains the separate application evidence, not reusable mirrored-route parity. |
+| 14. Diagnostics and software-bench evidence | **Implemented** | DIAG-01 supplies frozen `ResultDownloads`, host-owned tester leases, initial calibration/experiment reports and bounded controller metric recording/replay. Real mechanism tests use `FtcTestHardware` plus `ManualLoopClock`; E6 verifies lifecycle, quotas, missing evidence and exact metric replay. B4's hardware telemetry is useful but not deterministic software testing. DIAG-02 through DIAG-07 already own broader histories; no duplicate follow-up. |
+| 15. Reusable library distribution | **Evidence-gated** | B5 has a separate Android-library module with publication configuration. Sushi `settings.gradle` includes only `FtcRobotController` and `TeamCode`; package boundaries/tests are not a published reusable artifact. Reconsider packaging when a separate adopting project establishes installation, upgrade, dependency, versioning and licensing requirements. No automatic task, build migration, credential access or publication attempt is justified by this frozen comparison. |
+| 16. Cubelib weighted-setpoint/controller variation | **Deliberately rejected** | The inspected B5 law uses `kS * sign(error) + kV * target + kG` with a private wall clock; it is not a demonstrated two-degree-of-freedom weighted-setpoint controller. Sushi standard typed control already composes PID/profile/feedforward with one `LoopClock` (E7), but its velocity-sign feedforward is not gain-for-gain equivalent. No concrete PIDSVG adopter was found. Keep the distinct `ScalarRegulator` complete-law seam; reconsider a built-in variant only for an actual adopter and comparative trace, not name parity. |
+
+**Matrix result:** 16/16 classified: 10 implemented, 2 already supported, 1 robot-specific,
+2 evidence-gated, 1 deliberately rejected; zero unclassified rows. Existing gates are preserved,
+not converted into completed hardware capabilities.
+
+**Compiling regression ledger.** Every named class below is part of the fresh passing test run;
+representative method names distinguish actual behavior evidence from a source-presence claim.
+The matrix's deliberately rejected/robot-specific/evidence-gated portions do not manufacture a
+new runtime artifact just to obtain a test.
+
+- **E1 — routes:** `fw/drive/route/RouteTasksApiTest`,
+  `RouteTaskStartTimeConstructionTest`, `RouteTaskStatusTest`, and
+  `fw/integrations/pedro/PedroPathingDriveAdapterTest` cover the four factories, actual-start
+  sampling, exact execution identity, timeout/failure and stable heartbeat/physical-zero requests.
+  Representative method: `RouteTaskStartTimeConstructionTest.directStartSamplesLatestPoseAndVisionExactlyOnce`.
+  `fw/integrations/pedro/PedroFieldTransformTest` verifies conversion/inverse. FIELD-01's
+  separate application audit retains the integration-placeholder finding; shared teaching and
+  positive framework capability evidence do not depend on a production application.
+- **E2 — composition:** `robots/examples/pedro/adaptive/AdaptiveCollectionPathsTest`,
+  `AdaptiveCollectionAttemptTest`, and `AdaptiveCollectionBoundedAutoScenarioTest` exercise the real
+  path/attempt owners and whole bounded composition. Representative methods:
+  `hardTakeoverCancelsTheLaterAttemptsReturnBeforeBuildingPark` and
+  `directCancellationAndFailedCleanupBothSuppressPark` in the bounded scenario class.
+- **E3 — spatial evidence:** `robots/examples/pedro/adaptive/AdaptiveCollectionVisionServiceTest`
+  includes `zeroOneAndManyDetectionsPublishTypedDeterministicDecisions` and
+  `historyFailuresRetainExactTypedLookupForExplicitFallback`;
+  `fw/sensing/observation/TargetSelectionsTest` includes
+  `geometricTiesDoNotDependOnListOrderOrAssignIds`.
+  `robots/examples/visionpickup/VisionPickupSoftwareScenarioTest` includes
+  `projectedRayWithoutCaptureHistoryCannotUseCurrentPoseOrStartPickup`.
+  `fw/localization/PlanarPoseHistoryTest` includes
+  `exactAndShortestYawInterpolationPreserveTimestampAndConservativeQuality` and
+  `sourceSegmentAndUnavailableObservationBreakInterpolation`. Its managed ownership/order evidence
+  is `fw/ftc/PlanarPoseHistoryManagedLifecycleTest`.
+- **E4 — robot-owned status/intents:** `ReferenceInventoryStatusServiceTest` and
+  `ReferenceInventorySoftwareScenarioTest` cover snapshot/debounce/removal behavior;
+  `ReferenceCoordinatedShotServiceTest`, `ReferenceTurretMechanismTest`, and
+  `ReferenceCoordinatedShotSoftwareScenarioTest` cover shared timestamped intents and realization.
+  All are under `robots/examples/reference/capability/` (inventory or targeting respectively).
+  Representative methods: `allBitPatternsPublishExactCountFullAndOrderIssue`,
+  `oneImmutableSolutionIsPublishedOncePerCycle`, and
+  `acceptedMovingQualityCannotBeRejectedByTheSiblingPlannerGate` in their respective owner tests.
+- **E5 — hardware boundaries:** `fw/ftc/FtcSensorsMotorCurrentTest` includes
+  `derivedConsumersShareOneAmpsReadAndNextCycleReadsAgain` and
+  `returnedZeroNegativeAndNonFiniteValuesAreForwardedAndMemoized`;
+  `FtcBulkCachingTest` and `FtcBulkCachingManagedLifecycleTest` include the latter's
+  `firstServiceStartsAndUpdatesBeforeSensingAndStopsAfterIt`.
+  `FtcPowerOutputFailStopTest` and `FtcGroupedPowerOutputFailStopTest` cover cache uncertainty,
+  exceptional fanout and best-effort zero requests, not physical command receipt.
+- **E6 — diagnostics/bench:** `fw/ftc/FtcResultDownloadsTest`,
+  `fw/integrations/panels/ControlExperimentRecordingTest`,
+  `robots/examples/reference/tester/ReferenceFlywheelSpinUpExperimentTest`, and
+  `robots/examples/starter/robot/StarterMechanismLessonTest` cover transport/lifetime, bounded
+  evidence, replay, optional export failure and real mechanism code with substituted hardware.
+  Representative method: `ControlExperimentRecordingTest.bothRealAccumulatorsReplayExactInputsAcrossEveryChunkBoundary`.
+  `fw/core/debug/LoopPhaseProfilerTest` covers existing optional diagnostic elapsed-time measurement,
+  not a second behavior clock.
+- **E7 — existing controls:** `fw/actuation/StandardControlTest` includes
+  `motionLiftAndArmFeedforwardUseOneSetpointSnapshot`;
+  `StandardControlPlantIntegrationTest` includes
+  `directPositionComposesPidGravityAndFinalOutputPolicyInline` and
+  `accelerationLimitedVelocityFeedsOneSharedVelocityAccelerationSnapshot`.
+  `SystematicControlApiShapeTest` checks the supported staged grammar and removed legacy factories.
+  These prove the existing typed contract, not equivalence to the rejected B5 formula.
+
+#### AUDIT-01 robot-code simplicity and public-layer decision
+
+The student supplies robot meaning; the framework supplies reusable timing/lifecycle/evidence
+mechanics. The following are call-shape comparisons, not new compiled snippets or claims that a
+whole robot consists of the displayed expression.
+
+| Robot decision | Benchmark spelling / responsibility | Current Sushi spelling / responsibility |
+|---|---|---|
+| Follow a fixed or live route | B1 builds a path, invokes the follower and separately checks idle in a mutable FSM. | `RouteTasks.follow(name, follower, fixedRoute, timeout)` or `followBuiltAtStart(name, follower, paths::buildFromCurrentPose, timeout)`; student supplies geometry and timeout, not another deferred wrapper or route state machine. |
+| Continue only after reaching the route endpoint | B1's next state can be released by `!isBusy()`. | `Tasks.sequence(route, positionDependentStep)` supplies the generic exact-success gate. Robot code inspects precise statuses only when choosing differentiated fallback/abort policy. |
+| Collect while moving, then stop companions | B1 retains intake commands alongside follower updates. | `Tasks.parallelDeadline(exit, collectionRoute, intake.collectTask(timeout))`; student supplies exit meaning and intake intent; framework settles companions before the next phase. |
+| Reserve time for park | B1 checks time/count between cycles. | Fresh bounded `repeatWhileSuccessful`, one pre-park `withTimeout`, and deliberate `sequenceOnCompletion` express park after any valid natural outcome. That wrapper does not filter outcomes: narrower park eligibility needs robot policy. Admission and prior-attempt eligibility remain explicit; outer cancellation/STOP or lifecycle/cleanup exceptions suppress continuation. |
+| Own optional bulk caching | B3 has a local helper plus construction/update calls. | One first `program.service(FtcBulkCaching.manual(hardwareMap))` declaration; managed lifecycle owns capture, invalidation attempts and restoration. The adopter still checks SDK/vendor conflicts. |
+| Export a finished experiment | B4 displays live readings; no equivalent frozen-download contract is established. | Tester consumes host-owned `ctx.downloads` after freezing evidence and safe-ending realization. Per-robot server/lease plumbing disappears; criteria, experiment policy, mechanism and presentation do not. |
+
+**Whole-owner source accounting:** physical Java lines including comments, imports and blanks,
+not executable LOC. Robot code means everything in `edu.ftcsushi.robots`, including nested config,
+status, helpers, composition and presenters; robot tests count separately rather than disappearing
+behind framework fixtures. These are explicitly bounded bundles, not equivalent-feature totals.
+Overlapping bundles must not be added together.
+
+| Measured scope | Main Java files / physical lines | Robot test files / physical lines | What remains outside the bundle |
+|---|---:|---:|---|
+| B1 two Auto entries | 2 / 609 | No committed `src/test` evidence in that snapshot | Their robot root alone is another 129 lines; subsystems, commands, helpers and configuration are not free. |
+| B1 static project-import/reference closure from both Autos | 45 / 3,758 | No committed `src/test` evidence | Includes referenced local config/helpers and possibly unused imports; excludes SDK/vendor/library internals. Broader season + decode utilities contain 71 Java files / 10,282 lines; neither number establishes physical testing or whole-team code size. |
+| Sushi Basic Pedro complete managed entry | 1 / 189 | 1 / 112 | Includes nested config/heartbeat and inline presenter; framework/vendor implementation and tests are separate. This is not the equivalent of a competition robot. |
+| Sushi adaptive collection maintained case-study owners | 5 / 1,678 | 6 / 2,994 | Includes config, status, projection and lifecycle helpers, but is explicitly not a complete OpMode. The adopter must also provide inventory, localization/history/Pedro root ownership and presentation. |
+| Sushi vision-pickup maintained case-study package | 4 / 1,369 | 7 / 2,227 | Owns bounded pickup/selection policy; adopting camera, drive, intake, localization, composition and physical qualification still count. |
+| Sushi standalone inventory service | 1 / 247 | 2 / 364 | Includes config/status/source/reset behavior; adopting root registration and sensor hardware facts remain. |
+| Sushi coordinated-shot service + turret mechanism | 2 / 738 | 3 / 1,249 | Includes model/config/solution and turret realization; not a full moving shooter or its whole robot root. |
+| Sushi spin-up tester's complete main graph | 6 / 1,026 | 1 / 621 | Includes tester host, menu factory, criteria, experiment/presentation/report, mechanism and capability/status. Shared fake hardware/clock add 610 test-support lines outside robot packages. |
+| Existing production application's autonomous subtree (audit-only) | 9 / 2,403 | 4 / 3,344 | Does not include shared robot root, scoring, localization, readiness, presenters or their config/tests; it is not a total-robot size claim or a shared teaching dependency. |
+
+The optional history implementation contributes another 884 framework lines (`PlanarPoseHistory`
+plus `PoseTrajectoryEstimator`), with 1,019 lines in its focused history/lifecycle tests; it is not
+hidden robot code. The evidence supports removing copied scheduling, interpolation, memoization,
+cleanup and transport mechanics. It does **not** support a blanket claim that Sushi's whole robot
+is shorter, nor moving robot strategy into shared code merely to improve a line-count ratio.
+
+**Supported public construction paths and distinct value:**
+
+- Route Tasks have exactly four facade factories: eager/start-built crossed with timed/no Task
+  timeout, all returning `RouteTask`; no public implementation constructor or legacy Config.
+  `PedroPathingRuntime.create(HardwareMap, Config)` owns ordinary FTC assembly; constructing a
+  `PedroPathingDriveAdapter` from a completed follower is a distinct advanced custom-host seam.
+  Config defaults, draft copy and validated copy author, preserve and explicitly preflight facts;
+  they are not three competing runtime constructors.
+- History has one owner constructor and a read-only trajectory projection with different authority.
+  Vision angle/ray inputs describe different evidence; field conversion and selection do different
+  work. Example owner constructors capture their inputs/config; package-private substitution seams
+  support tests. `attempt.task()` returns one stable single-use graph, not a restartable scheduler.
+- Inventory owns sensing/status, while coordinated solution and turret realization have distinct
+  compute-versus-final-writer responsibilities. Nested config/status are useful retained snapshots,
+  not public builder parameter objects introduced solely for one inline answer.
+- Current's two overloads distinguish an existing device from eager named lookup, both returning
+  `ScalarSource`. Bulk caching has one public `manual(HardwareMap)` service factory and no public
+  concrete owner/builder/enable flag. Ordinary mechanisms use `FtcActuators.plant(...)`; lower-level
+  `FtcHardware.motorPower(...)` is a raw `PowerOutput` seam, not a second ordinary mechanism model.
+- Tester context's ordinary host-owned download lease differs from the unavailable/offline path
+  and explicit custom-host injection; custom hosts own lifetime. SDK registrar/recording internals
+  are infrastructure, not a new robot-facing server builder.
+- Standard control's inline stages express unit/setpoint/feedback/feedforward/output decisions;
+  the advanced custom `ScalarRegulator` supplies a complete law with no fabricated kinematic facts.
+  No new control-stage value type or parallel public construction layer is added by this audit.
+
+No scoped construction layer was found redundant enough to justify migration in this tracker-only
+audit. No new Cubelib-style mutable string-transition execution engine was introduced: existing
+`fw/supervisor/EnumStateMachine` is small enum/time bookkeeping predating this program (history
+reaches `0486f11`, 2026-01-30), not a Task scheduler; no Java adopters outside its own class were
+found. Do not misreport this as "Sushi has no FSM." Route milestones remain native integration
+facts, inventory and shot meaning remain robot-owned, and no arbitrary vision-result map, core
+projectile model, second scheduler, or speculative write optimization was added.
+
+#### AUDIT-01 retained evidence gates and new finding
+
+- **Physical motion:** current Pedro integration and Basic/Adaptive guides already block physical
+  route qualification pending a reviewed persistent follower-power cap; drivetrain `maxPower`
+  configuration does not establish `Follower.globalMaxPower`. Retain this existing gate, not a
+  raw-follower bypass. Software route/task closure does not prove stopping distance or safe motion.
+- **Acquisition/localization/vision:** timestamp/history tests do not establish camera calibration,
+  field accuracy, target identity, ball capture, corner/wall clearance, shot accuracy or sensor
+  performance. Adopting robots need measured mounts/timestamps, independent reference positions,
+  representative scenes/motion/occlusion, explicit acceptance tolerances and recorded outcomes.
+  SOURCE-03 remains Deferred for its concrete sensor-trace gate or a separately approved narrower
+  contract; this audit neither imports current thresholds nor substitutes synthetic samples for it.
+- **Hardware I/O:** current returns raw amps without native timestamp/validity proof; SDK fallback
+  zero cannot be distinguished from true zero and unusual values remain unmodified. Cache ownership
+  does not count all SDK transactions, include current/battery ADC in the bulk packet, or prove
+  faster loops. Measure actual device cadence/availability and installed-graph timing before claims.
+  Preserve PERF-03's watchdog, reconnect, mode/configuration, reset, failed-write and benefit tests.
+  SAFE-04 is command/cache truth and documented best-effort cleanup, not suppression or proof that
+  every finite raw leaf-write exception itself immediately sends zero.
+- **Strategy and representation:** preserve FIELD-01, DRIVE-02 and CHECK-01 triggers for real route
+  duplication, actual PTO topology and an authored staged whole-robot check. Distribution and the
+  alternate controller have the concrete adopter/evidence triggers in rows 15/16, not new tasks.
+  MATH-02 and the remaining later Cuttlefish/Worlds candidates still belong to AUDIT-02; this frozen
+  closure does not declare their different opportunities implemented or deprioritize them.
+- **Diagnostics:** publication exposes bounded latest frozen evidence, not a historical archive,
+  proof of download receipt or encrypted/authenticated transport. Controller replay reproduces
+  recorded response-metric calculations, not motor physics, image processing or localization
+  replay. Missing acquisition/configuration/code facts remain UNRECORDED. DIAG-02 through DIAG-07
+  retain their own approval gates; no duplicate download/history tasks are added.
+- **One new confirmed teaching gap:** the route-outcome paragraph in
+  [Robot Capabilities & Mode Clients](TeamCode/src/main/java/edu/ftcsushi/fw/docs/design/Robot%20Capabilities%20%26%20Mode%20Clients.md)
+  tells readers not to rely on a generic sequence to short-circuit. Current `Tasks.sequence(...)`
+  already continues only on exact SUCCESS, while `RouteTask` preserves abnormal outcomes. DOC-22
+  below records the narrow repair; no Java or lesson changes are part of this diff.
+
+#### AUDIT-01 verification and historical review gate
+
+- Fresh `:TeamCode:cleanTestDebugUnitTest :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` completed successfully with Android
+  Studio JBR 21 and Gradle 8.9. XML recount: **2,864 tests / 289 suites, zero failures, errors or
+  skips**. The full test/compile/Javadoc command also passed after assembling the tracker diff,
+  including the tracker-dependent documentation checks. Existing Java 8 source/target and
+  deprecated SDK warnings are not new failures.
+- No new regression test is appropriate for a tracker-only closure; the fresh suite compiles and
+  runs the cited current contracts. No runtime, Javadoc, guide, example, generated or benchmark
+  source is edited. Site content/navigation is unchanged; this run does not claim a new site build.
+- Independent route/composition, spatial/robot-owner and hardware/diagnostic reviews checked the
+  pinned evidence, public-layer distinctions and whole-owner accounting. Controller/distribution
+  classifications and the pre-existing enum helper were separately cross-checked.
+- Static closure checks confirm 16 matrix rows with the stated disposition counts, 169 unique
+  consecutive queue IDs, one DOC-22 definition, and all 26 prerequisite dispositions. Named ledger
+  test classes/methods resolve to passing XML. All 13 benchmark links resolve to objects at their
+  stated locally cached pins; the guide link exists. This is not a new remote-availability check.
+  Source/API-path and park-continuation wording findings from final review were corrected. Shared
+  guidance remains independent of a production application; its separate size audit is not a
+  teaching dependency. `git diff --check` and the whole-tracker trailing-whitespace scan pass;
+  only this tracker is modified and nothing is staged.
+- Android Studio review: inspect this matrix, its software-versus-physical limits, complete-owner
+  accounting and the Proposed DOC-22 record. No robot run is required for this tracker-only review;
+  none of the adopting-robot gates above is discharged by approving it.
+- Publication coordinates: `codex/audit-01-capability-closure`, origin push destination
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`. Only the tracker is in scope;
+  do not stage, commit, push, merge, implement DOC-22 or begin the next item before the appropriate
+  user authorization.
+
+#### AUDIT-01 Gate 3 authorization (2026-09-10)
+
+- The user approved the reviewed AUDIT-01 diff and explicitly authorized committing it on
+  `codex/audit-01-capability-closure`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. This closes the Android Studio review/publication gate above, not any hardware gate.
+- Only `FRAMEWORK_IMPROVEMENT_TRACKER.md` is authorized. This Done/authorization closeout is the
+  only change after review; the approved matrix, evidence, classifications, deferrals and Proposed
+  DOC-22 scope remain unchanged. Rerun tracker-dependent checks and whitespace/structure checks
+  before staging that exact file. Verify and report publication identities from Git/GitHub rather
+  than recording speculative commit or merge SHAs in this commit.
+- This authorization does not start DOC-22, MATH-02 or another item. Stop after publishing and
+  verifying the merge; preserve unrelated saved work and any divergent local target history.
+
+### DOC-22 - Align capability guidance with outcome-aware sequences
+
+- **Status / intake authority:** **Proposed** by AUDIT-01's expressly allowed new-finding path.
+  This records a future documentation repair, not approval to edit teaching or behavior now.
+- **Confirmed problem:** the route-outcome section of `Robot Capabilities & Mode Clients.md`
+  retains the pre-outcome-aware instruction to avoid relying on a generic sequence to short-circuit.
+  `Tasks.java` documents exact-success continuation; `SequenceTask` implements it; `RouteTask`
+  maps route completion versus timeout/cancellation-like causes accordingly. The old explanation
+  can lead beginners to invent a redundant guard or assume that reaching idle means success.
+- **Leading hypothesis / bounded scope:** correct that paragraph and any directly related stale
+  statements found in an affected-reference search. Show the existing ordinary
+  `Tasks.sequence(route, positionDependentStep)` gate first; explain precise route-status policy
+  only when it changes fallback/abort behavior. Contrast deliberate `sequenceOnCompletion`
+  continuation without teaching it as an exception, direct-cancel or STOP recovery mechanism.
+  Preserve one central teaching point, explain outcomes before using them, and use maintained
+  independent examples rather than a production-robot dependency. No new navigation is presumed.
+- **Decision gate:** inspect current APIs/Javadocs, affected guides and maintained callers; compare
+  one local wording/example correction with a broader rewrite. Prefer the smallest truthful fix.
+  Do not alter core sequencing, add a guard abstraction, reopen TASK-05/07, or repair unrelated
+  teaching under this ID. If behavior is newly found wrong, stop and seek separate authority.
+- **Verification / completion:** use existing sequence/route/cleanup outcome tests and maintained
+  source excerpts to prove each claim; distinguish natural non-success, lifecycle exception,
+  active root cancellation and STOP. Run relevant documentation/source checks, compilation,
+  generated API/site checks where affected, and the normal Android Studio review gate. No hardware
+  accuracy or route safety claim is added. Complete only after reviewed documentation is published.
+- **Dependencies / ordering:** current TASK-05/07 and ROUTE-02 contracts already exist. Keep this
+  new order-169 task in the backlog without preempting the recorded MATH-02 onward execution chain
+  or changing AUDIT-02's frozen scope/prerequisites. Its own later branch/decision gate is required.
 
 ### Cuttlefish/Worlds intake implementation records (2026-09-08)
 
