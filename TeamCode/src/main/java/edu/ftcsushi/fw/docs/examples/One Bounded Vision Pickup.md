@@ -74,10 +74,17 @@ sensor feedback.
 
 [`VisionPickupControls`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/visionpickup/VisionPickupControls.html>)
 assigns three operator meanings. Holding aim enables heading assistance while the driver's
-translation remains intact. Pressing pickup creates one fresh Task. Releasing pickup or asserting
-driver override cancels it, including rejecting permission for a request still queued at start.
+translation remains intact. If required evidence fails, assistance returns to manual control and
+requires release/repress; holding the button while evidence returns does not restart it. An aligned
+heading remains actively assisted, not a completed pickup. Pressing pickup creates one fresh Task.
+Releasing pickup or asserting driver override cancels it, including permanently withdrawing that
+gesture's queued permission. A newer press cannot revive an older released request. Presses made
+while overridden are ignored, and releasing override alone cannot restart held aim.
 Define `driverOverride` from your robot's explicit operator policy—for example, a cancel button or
 a reviewed stick threshold. Do not assume a universal FTC control mapping.
+Starting pickup invalidates an earlier aim session; pickup completion or cancellation does not
+silently hand control back to that old held aim. Request aim again deliberately after pickup.
+Use a robot-centric manual source that does not itself require the unavailable localization.
 
 An Auto client uses the same factory instead of the TeleOp button bindings:
 
@@ -99,8 +106,11 @@ normal output and the one drive output. The relevant managed order is:
 
 Services consume the one clock; none advances it. Held-aim changes made by Bindings are evaluated
 by the next Services phase; releasing aim removes the override at the current downstream drive
-read. Task requests reach outputs in the same cycle. A presenter reads `pickup.status()` to show
-phase, outcome, reason, frozen approach, and the selected template. STOP cancels work and physically
+read. A new request waits for its own Services-phase check, never reuses the previous aim command.
+Task requests reach outputs in the same cycle. A presenter reads `pickup.status()` to show
+current assist state/reason separately from pickup phase, outcome, reason, frozen approach, and the
+selected template. The optional [driver-feedback lesson](<When Aim Assistance Stops.md>) supplies
+the additive presenter and distinct alignment/loss pulses. STOP cancels work and physically
 stops the declared output owners; this example service also becomes terminal and publishes zero
 drive intent. There is no need for another loop to write physical zero through the real sink.
 
@@ -140,6 +150,11 @@ zero motion limits. It can be constructed for inspection but cannot start assist
 `allowWallContact` and `allowUnconfirmedCapture` also default to false. Freshness software defaults
 are `0.20 s` for target captures and `0.10 s` each for pose and capture feedback. Changing these
 values changes accepted evidence age, not the age of the evidence itself.
+`minPoseQuality` is unset (`NaN`) in the motion-disabled defaults. Before enabling motion, explicitly
+choose a finite score floor in `[0,1]` for your estimator and action. A score is the estimator's
+rating, not a measured accuracy probability. Explicit `0` imposes no positive floor, but malformed
+published quality still fails closed. Pose age, finite geometry and score must pass independently
+in aim and every pickup phase; fresh pose evidence cannot refresh a target capture.
 
 Before enabling motion, supply measured intake geometry, the envelope, field interior, templates,
 reviewed guidance tuning, staging/arrival/recheck values, and final/whole-attempt command, time,
@@ -155,6 +170,45 @@ If `allowUnconfirmedCapture` is deliberately enabled, missing feedback may permi
 attempt, but cannot produce `SUCCESS`. Its natural bounded final-stage finish is unconfirmed
 (`UNKNOWN`); earlier cancellation or whole-attempt expiry may still produce `CANCELLED` or
 `TIMEOUT`. Read the outcome and reason, not just “Task complete.”
+
+An unexpected source, Task or cleanup exception is not a normal evidence-loss outcome. The private
+pickup Task uses the existing guarded lifecycle and once-only cleanup; later outcome reads retain
+the failure instead of reporting `CANCELLED`. The example then requests zero and cannot restart.
+Cached status marks the failure without inventing a normal outcome. An explicitly chosen
+`sequenceOnCompletion(...)` may recover from a child's ordinary cancellation, but not an exception
+or cancellation of the containing recovery sequence/root. Managed STOP never launches recovery.
+
+### Software fixture values
+
+The supplied degradation checks use `VisionPickupTestRig.configured()`, a complete **synthetic**
+configuration. These values explain the software results, not a robot profile to deploy. The
+original broader pickup scenarios retain their separately authored setup. The example remains
+hardware-neutral: no FTC OpMode in this example enables these values on motors.
+
+| Configuration answer | Synthetic value and meaning |
+| --- | --- |
+| `enableMotion` | `true` only inside the software fixture |
+| `allowWallContact`, `allowUnconfirmedCapture` | Both `false` |
+| `robotToIntake` | `(3, 0, 0)` inches/radians: intake three inches forward |
+| `robotEnvelope` | Centered rectangle, four inches wide and long |
+| `fieldInterior` | X and Y each from `-50` to `50` inches |
+| `templates` | One open-floor region: X/Y `-40` to `40` inches, heading `0`, contact `NONE` |
+| `guidanceTuning` | Default translation gain `0.05` and turn gain `2.5`; translation and turn caps each `0.20`; turn deadband `1°`, minimum turn command `0` |
+| `stagingStandOffInches`, `stagingWallMarginInches` | `5` inches stand-off, `1` inch wall margin |
+| `contactCommandExtensionInches` | `0`; no commanded wall extension |
+| `finalTranslateCommand` | `0.10` normalized magnitude |
+| `maxAttemptTravelInches`, `maxFinalTravelInches` | `30` and `6` inches of accumulated observed travel |
+| `maxAttemptSec`, `maxFinalSec` | `3.0` and `0.50` seconds |
+| `recheckTimeoutSec`, `recheckRadiusInches` | `0.30` seconds to obtain a new frame; `1` inch neighborhood |
+| `finalCorridorHalfWidthInches` | `0.50` inches |
+| `arrivalToleranceInches`, `headingToleranceRad` | `0.10` inches and `0.10` radians |
+| `maxObservationAgeSec`, `maxPoseAgeSec`, `maxCaptureAgeSec` | `0.20`, `0.10`, `0.10` seconds |
+| `minPoseQuality` | `0.50`, an illustrative action rule |
+
+The fixture advances one real clock and publishes authored pose, camera and sensor observations;
+it does not integrate commands into fake physical motion. `step(...)` changes that outside-world
+evidence; the tests still explicitly run Services, Bindings, Tasks and Outputs in their documented
+order. A named fault scenario may override one value and explains that variation in its test.
 
 ## Software checkpoint and hardware gate
 
@@ -177,7 +231,8 @@ robot. The regression suite supplies software evidence; the
 [full verification command](<../maintainers/Maintainer Notes.md#16-automated-framework-verification>)
 includes it.
 
-Next, inspect the policy and run its software checks. Physical adoption remains a separate
+Next, optionally [add explicit alignment/loss feedback](<When Aim Assistance Stops.md>), inspect
+the policy, and run its software checks. Physical adoption remains a separate
 supervised gate: validate each camera fact from the vision lesson, localization timing and resets,
 sensor empty/occupied meaning, drive/intake direction and STOP, envelope, staging clearance,
 travel/command limits, and each specifically permitted wall/corner maneuver. Keep automatic motion

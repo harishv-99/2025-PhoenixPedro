@@ -124,7 +124,8 @@ public final class VisionPickupSoftwareScenarioTest {
         task.start(fixture.clock());
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
         assertEquals(VisionPickup.Phase.DONE, fixture.pickup.status().phase);
-        assertEquals("fresh field target unavailable", fixture.pickup.status().reason);
+        assertTrue(fixture.pickup.status().reason.contains("no field position"));
+        assertTrue(fixture.pickup.status().reason.contains("BEFORE_FIRST"));
         assertFalse(fixture.pickup.status().approach.hasApproach());
         assertTrue(fixture.intakeRequests.isEmpty());
         DriveSignal command = fixture.pickup.driveSource().get(fixture.clock());
@@ -382,7 +383,9 @@ public final class VisionPickupSoftwareScenarioTest {
             });
             task.start(fixture.clock());
             assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
-            assertEquals(VisionPickup.Phase.DONE, fixture.pickup.status().phase);
+            // Permission cancellation precedes ownership; it must not replace current assist status.
+            assertEquals(cancellationSite == 0 ? VisionPickup.Phase.IDLE : VisionPickup.Phase.DONE,
+                    fixture.pickup.status().phase);
             assertTrue(fixture.intakeRequests.isEmpty());
             assertEquals(0, fixture.pickup.driveSource().get(fixture.clock()).axial, 0);
         }
@@ -407,7 +410,10 @@ public final class VisionPickupSoftwareScenarioTest {
         thrown.step(0.05, new Pose2d(2, 0, 0), 10, 0);
         try { failed.update(thrown.clock()); fail("request failure"); }
         catch (IllegalStateException expected) { assertEquals("mutated then failed", expected.getMessage()); }
-        assertEquals(TaskOutcome.CANCELLED, failed.getOutcome());
+        try { failed.getOutcome(); fail("failure must remain exceptional"); }
+        catch (IllegalStateException expected) { assertEquals("mutated then failed", expected.getMessage()); }
+        assertTrue(thrown.pickup.status().hasFailure);
+        assertEquals(TaskOutcome.NOT_DONE, thrown.pickup.status().outcome);
         assertEquals(Arrays.asList(true, false), thrown.intakeRequests);
     }
 
@@ -455,7 +461,10 @@ public final class VisionPickupSoftwareScenarioTest {
         };
         try { task.cancel(); fail("cleanup failure"); }
         catch (IllegalStateException expected) { assertEquals("stop request failed", expected.getMessage()); }
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        try { task.getOutcome(); fail("cleanup failure must remain exceptional"); }
+        catch (IllegalStateException expected) { assertEquals("stop request failed", expected.getMessage()); }
+        assertTrue(fixture.pickup.status().hasFailure);
+        assertEquals(TaskOutcome.NOT_DONE, fixture.pickup.status().outcome);
         assertEquals(0, fixture.pickup.driveSource().get(fixture.clock()).axial, 0);
         Task replacement = fixture.pickup.createPickupTask(clock -> true);
         replacement.start(fixture.clock());
@@ -510,7 +519,9 @@ public final class VisionPickupSoftwareScenarioTest {
         fixture.step(0.05, Pose2d.zero(), 10, 0);
         bindings.update(fixture.clock());
         runner.update(fixture.clock());
-        assertEquals(TaskOutcome.CANCELLED, fixture.pickup.status().outcome);
+        // The obsolete queued Task cancels without acquiring this capability's status or drive.
+        assertEquals(TaskOutcome.NOT_DONE, fixture.pickup.status().outcome);
+        assertEquals(VisionPickup.Phase.IDLE, fixture.pickup.status().phase);
         assertTrue(fixture.intakeRequests.isEmpty());
 
         // An Auto client deliberately provides continuing permission to this same factory.
@@ -520,10 +531,36 @@ public final class VisionPickupSoftwareScenarioTest {
         auto.cancel();
     }
 
+    @Test
+    public void priorClockEpochPickupCannotDisarmANewerAimSession() {
+        Fixture fixture = new Fixture(configured(), Pose2d.zero(), 10, 4);
+        fixture.pickup.update(fixture.clock());
+        Task obsolete = fixture.pickup.createPickupTask(clock -> true);
+        fixture.clock().reset(0);
+        fixture.step(0.05, Pose2d.zero(), 10, 4);
+        fixture.pickup.update(fixture.clock()); // Observe the reset before the new deliberate request.
+        fixture.pickup.setAimEnabled(true);
+        fixture.step(0.05, Pose2d.zero(), 10, 4);
+        fixture.pickup.update(fixture.clock());
+        long session = fixture.pickup.status().aimSessionId;
+        assertEquals(VisionPickup.AssistState.AIMING, fixture.pickup.status().assistState);
+
+        obsolete.start(fixture.clock());
+
+        assertEquals(TaskOutcome.CANCELLED, obsolete.getOutcome());
+        assertEquals(VisionPickup.AssistState.AIMING, fixture.pickup.status().assistState);
+        assertEquals(session, fixture.pickup.status().aimSessionId);
+        assertEquals(VisionPickup.Phase.IDLE, fixture.pickup.status().phase);
+        assertEquals(0, fixture.pickup.status().assistLossCount);
+        assertTrue(fixture.pickup.driveSource().get(fixture.clock()).omega > 0);
+        assertTrue(fixture.intakeRequests.isEmpty());
+    }
+
     /** Complete synthetic configuration, intentionally confined to tests rather than robot defaults. */
     private static VisionPickup.Config configured() {
         VisionPickup.Config c = VisionPickup.Config.defaults();
         c.enableMotion = true;
+        c.minPoseQuality = 0.0; // Explicit permissive software fixture, not a physical safety score.
         c.robotToIntake = new Pose2d(3, 0, 0);
         c.robotEnvelope = RobotFrameRectangle2d.centeredInches(4, 4);
         c.fieldInterior = new AxisAlignedBoxRegion2d(-50, 50, -50, 50);

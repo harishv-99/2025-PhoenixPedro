@@ -241,7 +241,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Done | Reviewed standard-botpose restriction, shared-evidence regressions, and synchronized docs; 2566 tests pass and publication is authorized. |
 | 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Done | Shared read-only downloads, bounded controller recording/replay, and initial frozen reports implemented and reviewed; automated checks pass; publication to master authorized. |
 | 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Done | Reviewed and approved: sampled settling/departure, queue-free feeding, recovery acknowledgement, locked clients, lesson, and 2810 passing tests; publication to master authorized. |
-| 130 | EXAMPLE-12 | Demonstrate graceful assist degradation | Proposed | Evaluate existing robot-owned manual fallback and teach bounded evidence-loss behavior and explicit reacquisition. |
+| 130 | EXAMPLE-12 | Demonstrate graceful assist degradation | Done | Explicit reacquisition, aligned/lost text and pulses, gesture-bound permission, and guarded failure; 2,864 tests plus compile/docs checks pass; user approved the reviewed diff and exact branch/remote/master publication on 2026-09-09. |
 | 131 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 | 132 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
 | 133 | TASK-05 | Outcome-aware Task composition | Done | The reviewed outcome-aware composition implementation, caller/docs migrations, automated verification, Android Studio review, and destination-specific publication authorization are complete; requirements arbitration and TaskSlot remain deferred. |
@@ -32975,7 +32975,8 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### EXAMPLE-12 - Demonstrate graceful assist degradation
 
-- **Status:** **Proposed**.
+- **Status:** **Done**; implementation and automated verification complete; the user approved the
+  reviewed diff and destination-specific publication on 2026-09-09. Physical adoption remains separate.
 - **Approved comparison amendment (2026-09-08):** preserve the current example's schedule and
   evidence-loss behavior without waiting for VISION-04. Any later memory integration must
   distinguish a fresh sighting, a recently remembered field location, and a committed destination.
@@ -33012,6 +33013,323 @@ The setup fragments below compare the recommendation design, not standalone robo
   hardware-dependent continuation rules until the robot's safe fallback and evidence criteria are
   supplied, or explicitly approve a narrower software teaching contract. Turret support remains
   outside scope.
+
+#### EXAMPLE-12 decision gate (2026-09-09)
+
+- **Implementation approval and driver-feedback refinement (2026-09-09):** after reviewing the
+  proposed design, the user asked how the driver distinguishes successful alignment from failed
+  assistance and then approved: **"Yes, let us go ahead and include the pulses as part of the
+  example. Proceed."** This authorizes the scoped implementation, including existing HAPTIC-01
+  integration, not publication or another item. The item branch was created from fetched
+  `origin/master` at `16a1a5b581e0a537832a97f28595ab4b649ba562`.
+  Refine the broad drive-mode proposal below to one `AssistState`: `IDLE`, `REQUESTED`, `AIMING`,
+  `ALIGNED`, `LOST`, `PICKUP`, `STOPPED`. `ALIGNED` requires accepted evidence and solved angular
+  error within the existing reviewed `headingToleranceRad`; zero output or lack of motion is not
+  alignment. Held aim remains active after alignment. Publish current assist reason separately
+  from retained pickup result, with session/loss occurrence identities for notification deduplication.
+  One robot-owned feedback output reads that cached status and uses existing `HapticSink`:
+  one short pulse on first alignment per aim session and one distinct longer pulse on rejected/lost
+  assistance (including a naturally failed pickup), with loss precedence. Intentional release,
+  override and STOP are not loss alarms. Use illustrative single pulses, initially full strength
+  for `0.10 s` alignment and `0.50 s` loss; emit once per event, not every loop. A text presenter
+  keeps state, cause and required release/repress visible. Feedback STOP calls the sink's best-
+  effort stop; no extra clock, thread, pulse queue, double-buzz recipe, or new core API. Physical
+  support, delivery, distinguishability and driver recognition remain adopting-robot checks, so
+  visible status is required even when pulses are configured. Exceptions remain failed/STOPPED
+  rather than a valid cancellation result in both Task and displayed status.
+
+- **Authority and current state:** the user requested the next task after EXAMPLE-11 merged, then
+  said **"proceed"** with the scope review. This authorizes this decision record, not an unpresented
+  lifecycle/API change or publication. Inspected master at
+  `16a1a5b581e0a537832a97f28595ab4b649ba562`; only this tracker is edited at this gate. Framework
+  Principles, the bounded-pickup lesson, Vision Targets, Drive Guidance, and the corrected-localization
+  guide govern the design. Independent read-only reviews checked controls/Task lifecycle and
+  localization/target evidence. No production robot or core runtime change is proposed.
+
+##### Confirmed behavior and bounded gaps
+
+1. `VisionPickup.readDriveIntent(...)` already preserves driver translation while aiming and returns
+   the complete supplied manual intent when aim is unavailable. `update(...)` retries aim each
+   service cycle while enabled, so returning evidence can resume rotation while the button remains
+   held. `Status` currently reports pickup phase/result, not the current assist or its fallback
+   reason; it can still say "no pickup requested" after aim loss.
+2. `VisionPickupControls.bind(...)` mirrors `aimHeld && !driverOverride`. Releasing override while
+   aim stays held therefore synthesizes a new enabled transition. Pickup completion also leaves the
+   old held aim enabled, permitting an implicit return to aiming on the next service cycle.
+3. `currentPose(...)` checks availability, evidence age and finite planar pose, but not quality.
+   Both guidance builders hardcode `minQuality(0.0)`; the final-intake phase bypasses even that
+   guidance gate. Aim relies on the selector's age limit without independently applying the
+   capability's observation-age bound or its known trajectory-change boundary.
+4. Pickup permission currently reads only the present held/override levels. A queued press can be
+   released and then regain permission when a later press occurs before it starts. The existing
+   release-before-start regression does not cover release-then-repress before start.
+5. The private `Attempt implements Task` predates TASK-07. `failWithCleanup(...)` selects a consumable
+   `CANCELLED` outcome before propagating a callback failure, and a cleanup failure similarly leaves
+   a valid cancellation result. The current tests explicitly accept that result. A caught failure
+   followed by outcome-aware continuation must instead remain exceptional under current principles.
+6. Existing pickup safeguards remain useful: one frozen staging destination, newer unique nearby
+   recheck, bounded final camera occlusion, capture-feedback transition, time/travel/corridor/envelope
+   limits, trajectory invalidation, release/override cancellation and terminal STOP. EXAMPLE-12 does
+   not claim to add the first fallback, first bounded attempt, or first deliberate pickup request.
+
+##### Complete affected caller and public-layer audit
+
+- The only policy construction path is the six-dependency hardware-neutral `new VisionPickup(...)`.
+  `Config.defaults()` is its sole public Config factory; the private snapshot copies mutable data.
+  `new Template(...)` is the sole template path. `CaptureFeedback.observed(...)` and `.unavailable()`
+  name distinct evidence states, not interchangeable construction layers. Status construction is
+  private. `createPickupTask(BooleanSource)` returns `Task`; its concrete Attempt remains private.
+- `new VisionPickupControls(...)` retains the three borrowed inputs, and
+  `bind(CallbackBindings, TaskBindings, VisionPickup)` is its sole registration path. Retain these
+  signatures, `setAimEnabled(...)`, `cancelPickup()`, `driveSource()` and `status()`; add no aliases,
+  public Task builder, separate acknowledgement API, or overlapping facade.
+- Repository-wide searches found only `VisionPickupSoftwareScenarioTest` constructing these owners
+  and `One Bounded Vision Pickup.md` teaching their wiring. `Vision Targets.md` links its projection
+  scenarios; Drive Guidance links the pickup policy. There is no Phoenix, other production robot,
+  framework tool, or enabled FTC OpMode caller. The test's `configured()` method is the only current
+  enabled configuration. All new fixtures/presenters stay inside the independent example bubble.
+- Existing `PoseTrajectoryEstimator` is sufficient; predictor-only, Fusion and EKF remain possible
+  adopters. `PoseEstimate` cannot identify which sensor failed. `CorrectionStats` has counts and
+  accepted/evaluated times, not rejection reasons. The FTC lane already exposes separate borrowed
+  predictor/correction/global diagnostics; do not add those as mandatory pickup dependencies.
+- Existing guidance plans have distinct `query()`, `overlay()` and `task(...)` runtimes. This example
+  needs a query because its own policy selects the one final drive intent. Its Config retains and
+  shares immutable `DriveGuidancePlan.Tuning` across aim and per-attempt staging; `.driveTuning().use(...)`
+  therefore has a real complete-value role. No staged-builder parameter is newly introduced and no
+  redundant public construction layer needs expansion or compatibility retention.
+
+##### Alternatives and complete robot-code simplicity
+
+| Alternative | Ordinary adopter's decisions/call shape | Disposition |
+| --- | --- | --- |
+| Documentation/tests only | Existing six-dependency owner and three inputs, with automatic aim return | Insufficient: cannot teach deliberate reacquisition or truthful missing status as existing behavior |
+| Controls-only recovery latch | Same outer wiring, but direct `setAimEnabled(true)` bypasses the policy | Reject split ownership of the capability's permission |
+| Extend existing owner; release/repress to reacquire | Same owner/controls/bind/drive calls; one explicit quality setting | Chosen: no new runtime owner, dependency, button, or student-facing recovery protocol |
+| Separate acknowledgement method/button | Existing request plus acknowledgement input and ordering rules | Reject: no distinct value over a new aim gesture in this example |
+| Auto-resume after good samples | Extra recovery interval/hysteresis settings and implicit steering resumption | Reject for this explicit-reacquisition lesson; no physical threshold evidence supplied |
+| Extra health/evidence source or mandatory corrected-estimator type | Another snapshot/policy dependency, sampling order and absent-policy semantics | Reject: final evidence already supports the bounded action rule; raw faults are not inferable from it |
+| Framework-wide supervisor, sensor voting or memory integration | New ownership/state and additional concepts throughout robot code | Out of scope; VISION-04 remains separately proposed |
+
+The supported outer wiring stays parallel and unchanged:
+
+```java
+// Configuration: the adopting robot chooses its own action-specific score floor.
+reviewedConfig.minPoseQuality = reviewedMinimumPoseQuality;
+VisionPickup pickup = program.service(new VisionPickup(
+        reviewedConfig, selected, localization, captureFeedback,
+        intake::setCollecting, idleDrive));
+// TeleOp: the same three operator meanings and one drive connection.
+controls.bind(program.callbackBindings(), program.taskBindings(), pickup);
+program.drive(pickup.driveSource(), driveSink);
+// Auto: instead of those TeleOp bindings, one fresh bounded attempt.
+program.rootTask(pickup.createPickupTask(clock -> true));
+```
+
+This comparison is not complete hardware wiring or permission to move. `idleDrive` is robot-centric
+manual input for TeleOp and zero intent for Auto; a fallback that itself requires the failed
+localization does not meet this example's manual-control claim. The unchanged six construction
+answers select limits, target source, authoritative localization, capture evidence, intake intent,
+and idle drive. Controls add the existing three operator meanings; the final sink remains one root
+connection. The only added authoring answer is the score floor, not another policy object. One
+cached status supplies the selected drive mode and next operator action to a presenter.
+
+##### Chosen implementation contract
+
+- **One action-specific evidence gate:** add `Config.minPoseQuality`, unset (`NaN`) in the valid
+  motion-disabled defaults. Enabling motion requires an explicitly supplied finite value in
+  `[0,1]`; `0` deliberately imposes no positive score floor. Independently reject non-finite or
+  out-of-range published quality. Use the same availability, finite pose/quality, age and score
+  rules for aim, pickup admission, staging, recheck and final intake, including both guidance
+  builders. Do not manufacture a universal safe score or infer measured drift from it.
+- **Target evidence remains separate:** aiming and admission honor both selector and capability
+  age limits, capture-time field projection and known trajectory boundaries. Preserve meaningful
+  upstream absence/projection reasons; distinguish no frame, observed-empty/no eligible target,
+  stale/reset evidence, absent field coordinates and unavailable guidance where actually known.
+  Repeated reads or fresh localization never refresh a target capture. Do not add live visibility
+  to committed staging/final phases or let memory relax their current rules.
+- **Deliberate aim reacquisition:** one false-to-true request authorizes one aim session. Loss of
+  required evidence withdraws rotation assistance and latches release/repress; repeated true calls
+  and later good frames do not clear it. An initial request with bad evidence is rejected, not
+  parked for automatic activation. A new request withdraws old cached aim immediately and waits for
+  its own Services-phase evaluation. Request identity guards callbacks so an old evaluation cannot
+  publish into a newer session. Known clock/trajectory reset invalidates the prior authorization.
+- **Operator and ownership transitions:** controls observe the original aim input, applying
+  override inhibition separately in declaration order. Override release alone cannot synthesize
+  reacquisition. A pickup takeover invalidates old aim; requests made while pickup owns drive are
+  not banked for later. Ending pickup returns to the configured idle/manual path, not the old held
+  aim. Another deliberate aim gesture after pickup is required. STOP is terminal zero intent;
+  recovery never resets borrowed localization, history or camera owners.
+- **Queued permission belongs to one gesture:** controls capture a small local request identity
+  when constructing the fresh pickup Task. Release, override or a newer gesture permanently
+  invalidates old permission; pressing while inhibited cannot create future authorization. Keep
+  edge detection on the original button. No second runner, queue erasure, generic submission
+  receipt or TASK-08 work is needed. `cancelPickup()` remains active-only capability cancellation;
+  older queued Tasks fail their own permission instead of borrowing a later press.
+- **Truthful public status:** extend the existing immutable `Status` with selected drive mode
+  (`IDLE`, `AIM`, `PICKUP`, `STOPPED`), an assist decision reason, and whether a new aim gesture is
+  required. `IDLE` means this capability uses its supplied manual/zero source, not that the chassis
+  is stationary. Preserve last pickup phase/outcome/reason independently. A latched reason describes the
+  last rejected decision, not a claim that unsampled current evidence is still bad. Status reads
+  and presenters are cached/read-only. Show a short presenter integration and test that its mode
+  matches the actual selected intent, including current-cycle release, override and STOP.
+- **One guarded Task lifecycle:** migrate only this touched private Attempt to existing
+  `AbstractTask`. Keep its genuinely necessary capture/recheck/contact phase policy; share start,
+  update, terminality and failure retention instead of maintaining parallel guards. Intake/drive
+  cleanup runs once through the ending hook and existing intent path. Unexpected dependency,
+  lifecycle or cleanup exceptions stay failures with zero selected output, never an ordinary
+  evidence-loss cancellation that releases Auto continuation. Preserve primary failures and
+  best-effort cleanup, old-task isolation, and callback cancellation/STOP defenses. No core changes.
+- **TeleOp/Auto distinction:** normal evidence loss returns TeleOp to the supplied independent
+  manual source; Auto supplies zero idle intent and its current attempt terminates or its existing
+  bounded recheck expires. No blind retry, retreat, alternative drive owner, or automatic restart.
+  Success-only sequencing still requires confirmed capture; explicit ordinary-outcome recovery
+  remains a caller decision. `sequenceOnCompletion(...)` may intentionally continue after a child's
+  ordinary `CANCELLED` result, but not after an exception, cancellation of that containing recovery
+  sequence/root, or managed STOP. Preserve that existing distinction; do not change core composition.
+- **Localization scenarios, not another fusion policy:** connect real Fusion to the real pickup
+  owner with scripted predictor/correction inputs. Show missing corrections with fresh adequate
+  predictor-supported pose, loss/aging of final evidence, and an authored correction exceeding
+  `maxCorrectionPositionJumpIn`. A rejected correction is not automatically an assist veto and a
+  count alone does not identify contradiction. Final availability/age/quality decide; a known
+  scenario can explain why a particular correction was rejected. Retain the shared-evidence
+  caution: agreement, fresh timestamps and high quality do not prove independence or accuracy.
+
+##### Verification, teaching and next gate
+
+- **Baseline actually run:** the existing `VisionPickupSoftwareScenarioTest` passes **22 tests,
+  zero failures/errors/skips**, using `:TeamCode:testDebugUnitTest --tests
+  'edu.ftcsushi.robots.examples.visionpickup.VisionPickupSoftwareScenarioTest'`. The unchanged
+  Java-8-under-JBR-21 deprecation warnings remain. Passing old tests does not cover the new gaps or
+  constitute physical validation. No new implementation/regression test has been written yet.
+- Add scenarios for target loss/empty/unavailable/projection loss; stale target with fresh pose;
+  selector-versus-capability age limits; low/invalid pose quality in every motion phase; missing,
+  stale and contradictory localization inputs under the named software rule; initial bad aim,
+  intermittent/continuous returning evidence and repeated true; explicit release/repress; override
+  release while held; service-binding-output order and same-cycle request replacement; pickup
+  takeover/completion; press-release-repress before queued start; reset; reentrant cancellation,
+  dependency failure and STOP; and non-sampling status/presenter reads.
+- Preserve existing staging commitment, newer unique recheck, final occlusion, capture, contact,
+  travel, deadline and permission regressions. Prove exceptional outcomes cannot release either
+  sequence family, cleanup is once-only, and normal Auto loss uses zero idle without claiming
+  success. Use fresh identities and one real shared clock; retain all supported construction paths.
+- Keep the existing bounded-pickup lesson canonical for collection. Add one focused optional
+  example lesson about losing assistance and explicitly requesting it again, linked from that page
+  and the existing examples index/navigation. Define evidence age, score versus accuracy, fallback
+  and reacquisition beside their first use. Show the new required setting and actual effective
+  illustrative scenario values; a compact sampled timeline can show held input, evidence, selected
+  mode and release/repress, with a nearby text equivalent. No new beginner tab or production-robot
+  teaching dependency. Complete configuration and retained/replaced test boundaries must be visible
+  or supplied by declared prerequisites, not hidden by `reviewedConfig` or a full-source link.
+- After approval, branch from fetched `origin/master` as
+  `codex/example-12-graceful-assist-degradation`, implement only the example, controls, necessary
+  tests/presenter/lesson/navigation and this record. Run targeted example and affected Task/spatial/
+  localization tests, then full TeamCode unit tests/compile, docs-link/boundary checks, Javadocs,
+  strict site/search/API-link validation, and whitespace checks including new files. Request the
+  normal Android Studio review before any commit/push/PR/merge.
+- **Approval requested:** approve the above release/repress behavior, required action-specific
+  quality answer, gesture-bound queued permission, status extension and scoped `AbstractTask`
+  migration. This changes public example semantics and failure behavior, so the skill requires a
+  design stop before implementation. Motion/contact permissions remain disabled by default;
+  representative thresholds, safe driving, clearance, physical STOP and capture remain adopting-
+  robot validation. AUDIT-01 and all later items remain untouched.
+
+#### EXAMPLE-12 implementation and verification (2026-09-09)
+
+- **Delivered boundary:** only the existing independent `robots/examples/visionpickup` policy,
+  controls, example-owned feedback/presenter, tests, two related lessons, existing example index/
+  navigation and this tracker changed. No protected-core API, production robot, enabled OpMode,
+  generic health owner, second scheduler, memory integration, or TASK-08 work. Existing motion and
+  wall-contact defaults remain disabled. Construction retains the same six capability dependencies
+  and three operator inputs; the only new required enabled-motion configuration is `minPoseQuality`.
+- **Implemented behavior:** the final `AssistState` contract in the approved pulse refinement
+  supersedes the earlier broad drive-mode sketch. Current alignment/loss is separate from the last
+  pickup result. Alignment uses fresh accepted solved heading error, never zero command. Loss
+  requires release/repress even after evidence returns; intentional override release and pickup
+  completion cannot restore old held aim. All pickup phases and both guidance queries apply the
+  same pose quality/age gate. Target checks honor capture time, projection provenance, known
+  trajectory boundaries and the stricter selector/capability age. Raw correction rejection or loss
+  is not an invented veto on a usable final pose.
+- **Driver feedback:** one output requests the illustrative full-strength `0.10 s` first-alignment
+  and `0.50 s` natural-loss/rejection pulses through existing `HapticSink`. It reads cached status,
+  emits once, retains unexpected effect failure, and owns terminal recipient stop. The additive
+  presenter names state, selected control, reason and next request without sampling behavior or
+  committing telemetry. Loss wins simultaneous visible alignment. A final observed `IDLE` or
+  `STOPPED` consumes an earlier unobserved loss without a late alarm after intentional handoff.
+- **Lifecycle and queue review fixes:** a gesture token prevents old queued work from borrowing a
+  later press. Admission checks that token and any known prior clock epoch before taking drive or
+  status ownership, so an obsolete queued pickup cannot disarm a newer aim. A private synchronous
+  admission handle preserves cancellation/STOP safety without another queue. The touched private
+  Attempt now uses `AbstractTask` and its one ending hook. Dependency/cleanup exceptions, including
+  a callback that cancels then throws or catches an illegal unsettled outcome read, retain failure
+  and select terminal zero. Ordinary cancelled children may release explicitly chosen recovery;
+  exceptional children and directly cancelled roots may not.
+- **Independent adversarial review:** separate reviews examined controls/feedback, localization/
+  test evidence, and lifecycle implementation. Findings led to obsolete-admission isolation,
+  same-loop handoff cue suppression, and explicit labeling of the unsupplied stationary hardware
+  feedback setup. The initial test run also exposed one stale baseline reason assertion and an
+  incorrect wrapper replay expectation. Regressions now exercise a caught child failure before
+  either sequence family observes it, rather than incorrectly requiring a terminal sequence's
+  later inert update to throw. No core semantic change was used to satisfy that test.
+- **Repeated public-layer/simplicity audit:** one `VisionPickup` constructor; one data-only Config
+  factory/snapshot; immutable authored Template; distinct observed/unavailable CaptureFeedback;
+  direct aim request versus fresh bounded pickup Task; one controls registration; one read-only
+  status/drive connection. Feedback owns effects and Presenter owns formatting, so each new owner
+  has a distinct job. There is no redundant builder, compatibility alias or public concrete Task.
+
+##### Documentation concept review
+
+- **One Bounded Vision Pickup:** retain its central point that arrival/contact/capture differ.
+  Explain the new quality answer as an estimator rating rather than accuracy probability; keep
+  pose/target age independent; state deliberate handoff and exception-versus-outcome rules. The
+  complete synthetic fixture table exposes values and units without implying a deployable profile.
+  Existing prerequisites and source links remain the reconstruction path. Production ownership,
+  one clock, one drive writer, and the independent manual/Auto-zero inputs remain explicit.
+- **Know when aim assistance stops:** optional next lesson after bounded pickup, not an added
+  beginner tab. Its central point is aligned versus lost assistance. Alignment, fallback,
+  reacquisition, quality, evidence age and haptic feedback are explained before reliance on them.
+  The small sampled-time table labels seconds and illustrative observations; nearby prose gives
+  the same loss/manual/release-repress sequence without assuming continuous physical behavior.
+  Pulse meanings do not depend on color or vibration alone. The two new wiring lines explain
+  setup, ownership, phase order, telemetry, unchanged prerequisites and no-actuation limitations.
+  Software experiments label what stays real, what is replaced, what is observed and what cannot
+  be concluded. The required stationary no-actuator controller setup is explicitly not supplied;
+  its adopting-robot gate remains pending rather than guessing how to enable motion to test cues.
+- **Discovery and authority:** the existing six-area navigation gains only an optional example
+  link. Class links resolve to generated Javadocs and complete-source links remain separately
+  labeled. Narrative, Javadocs, maintained example and assertions agree on the final contract.
+  Existing Framework Principles already cover these requirements; no duplicate principle was added.
+
+##### Exact automated evidence and remaining gate
+
+- Final `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac
+  :TeamCode:sushiJavadocs` succeeded with Android Studio JBR 21.0.8 and Gradle 8.9.
+  Generated XML: **2,864 tests / 289 suites / 0 failures / 0 errors / 0 skips**. The example subset
+  is **76 tests**: 23 baseline scenarios, 13 evidence, 7 real-Fusion localization, 10 controls,
+  6 failure and 17 feedback/display tests. An earlier focused run passed 73 tests before the final
+  three handoff/reset regressions; the final full run includes them all.
+- `python -m zensical build --clean --strict` passed before final Javadocs generation.
+  `verify_generated_guide_search.py` passed: **1,035 indexed sections / all six guide areas**.
+  `verify_generated_api_links.py` passed: **228 generated API links and 99 maintained source links
+  across 56 Markdown pages**. `git diff --check` and the explicit trailing-whitespace scan of all
+  **16** changed/new files passed. Repository-wide caller search found no production robot caller.
+- Existing Java 8 source/target warnings under JBR 21 and the controller SDK deprecation note
+  remain; there were no new compile or documentation errors. The host PowerShell launcher is
+  unavailable, so verification used `cmd.exe` and an ignored local build helper selecting the same
+  JBR; no environment repair or generated artifact belongs to the reviewed diff.
+- **Android Studio review accepted (2026-09-09):** the user approved the reviewed EXAMPLE-12 diff
+  after the handoff covering `VisionPickup`, `VisionPickupControls`,
+  `VisionPickupFeedback`, `VisionPickupPresenter`, the six example test classes/shared fixture,
+  and both lessons: alignment versus zero output, release/repress, old queued work, same-loop
+  release/override cue suppression, pickup handoff, exceptional endings and terminal STOP. Hardware
+  checks remain separate: stationary cue delivery/recognition first, then measured geometry,
+  freshness/quality choices, manual takeover, drive/intake STOP and supervised pickup clearance.
+  No physical motion, localization accuracy, capture or controller delivery was verified here.
+- **Publication coordinates verified:** `codex/example-12-graceful-assist-degradation` ->
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` -> `master`.
+  The user explicitly authorized committing the reviewed diff on that branch, pushing to that
+  exact destination, opening a pull request and merging it into `master` on 2026-09-09.
+  This combined approval closes the manual-review/publication gate, not the hardware-adoption
+  checks. Publish only this reviewed item and stop before another tracker item.
 
 ### AUDIT-01 - Cuberobot/DECODE capability closure re-audit
 

@@ -30,6 +30,7 @@ import edu.ftcsushi.fw.spatial.ReferenceFrame2d;
 import edu.ftcsushi.fw.spatial.References;
 import edu.ftcsushi.fw.spatial.RobotFrameRectangle2d;
 import edu.ftcsushi.fw.spatial.SpatialControlFrames;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 
@@ -40,6 +41,11 @@ import edu.ftcsushi.fw.task.TaskOutcome;
  * must supply measured geometry, reviewed command/travel/contact limits, current localization, and
  * mechanism-owned capture feedback. A downstream program wires {@link #driveSource()} to its one
  * drive sink; the intake callback changes the mechanism's request, never hardware directly.</p>
+ *
+ * <p>Held aim preserves driver translation. Losing required evidence returns to the supplied idle
+ * source and requires release/repress, even if evidence returns. Solved ALIGNED status remains
+ * assisted; a zero command alone never establishes alignment. TeleOp supplies independent manual
+ * intent for idle; Auto supplies zero. A software exception or STOP selects terminal zero.</p>
  *
  * <p>A fresh Task freezes one resting-target staging goal, reobserves a finite neighborhood before
  * final intake, then permits expected vision occlusion only during a bounded straight maneuver.
@@ -137,12 +143,17 @@ public final class VisionPickup implements RobotProgram.Service {
         public double finalCorridorHalfWidthInches;
         /** Translation arrival tolerance at staging, inches. */
         public double arrivalToleranceInches;
-        /** Heading arrival/deviation tolerance, radians. */
+        /** Solved aim alignment and staging/final heading tolerance, radians; not physical accuracy. */
         public double headingToleranceRad;
         /** Maximum age of target captures used for admission/recheck, seconds. */
         public double maxObservationAgeSec = 0.20;
         /** Maximum age of the current published robot pose, seconds. */
         public double maxPoseAgeSec = 0.10;
+        /**
+         * Explicit action-specific published pose-quality floor in [0,1]. Required before enabling
+         * motion; NaN leaves that authoring answer unset. Zero is explicitly permissive, not safe.
+         */
+        public double minPoseQuality = Double.NaN;
         /** Maximum age of a capture-feedback sample, seconds. */
         public double maxCaptureAgeSec = 0.10;
 
@@ -177,10 +188,16 @@ public final class VisionPickup implements RobotProgram.Service {
             c.headingToleranceRad = headingToleranceRad;
             c.maxObservationAgeSec = maxObservationAgeSec;
             c.maxPoseAgeSec = maxPoseAgeSec;
+            c.minPoseQuality = minPoseQuality;
             c.maxCaptureAgeSec = maxCaptureAgeSec;
             positive("maxObservationAgeSec", c.maxObservationAgeSec);
             positive("maxPoseAgeSec", c.maxPoseAgeSec);
             positive("maxCaptureAgeSec", c.maxCaptureAgeSec);
+            if ((!Double.isNaN(c.minPoseQuality) || c.enableMotion)
+                    && (!Double.isFinite(c.minPoseQuality)
+                    || c.minPoseQuality < 0.0 || c.minPoseQuality > 1.0)) {
+                throw new IllegalArgumentException("configure minPoseQuality explicitly in [0,1] before enabling motion");
+            }
             if (!c.enableMotion) return c;
             requirePose("robotToIntake", c.robotToIntake);
             Objects.requireNonNull(c.robotEnvelope, "configure robotEnvelope before enabling motion");
@@ -243,25 +260,47 @@ public final class VisionPickup implements RobotProgram.Service {
     /** Arrival and final-intake phases remain visible independently of the Task's outcome. */
     public enum Phase { IDLE, STAGING, RECHECK, FINAL_INTAKE, DONE }
 
-    /** Immutable robot status; approach intent is not a safe path or measured contact. */
+    /**
+     * Selected assistance, not measured robot motion. IDLE, REQUESTED and LOST select the supplied
+     * idle source (manual TeleOp intent or Auto zero); ALIGNED still owns assisted rotation.
+     */
+    public enum AssistState { IDLE, REQUESTED, AIMING, ALIGNED, LOST, PICKUP, STOPPED }
+
+    /** Immutable robot status; approach intent and solved alignment are not measured physical success. */
     public static final class Status {
         public final Phase phase;
+        /** NOT_DONE while an ending is unsettled or has failed; use the Task for outcome composition. */
         public final TaskOutcome outcome;
         public final String reason;
         public final ApproachResult2d approach;
         public final String templateName;
         public final Contact permittedContact;
         public final double observedTravelInches;
+        public final AssistState assistState;
+        /** Last assist decision, not an assertion that unsampled evidence is still bad. */
+        public final String assistReason;
+        /** One occurrence for each accepted false-to-true aim request, including a rejected request. */
+        public final long aimSessionId;
+        /** Monotonic natural loss/rejection occurrences; intentional cancellation and STOP add none. */
+        public final long assistLossCount;
+        /** A lifecycle failure, never an ordinary consumable cancellation outcome. */
+        public final boolean hasFailure;
 
         private Status(Phase phase, TaskOutcome outcome, String reason, ApproachResult2d approach,
-                       Template template, double travel) {
+                       String templateName, Contact contact, double travel, AssistState assistState,
+                       String assistReason, long aimSessionId, long assistLossCount, boolean hasFailure) {
             this.phase = phase;
             this.outcome = outcome;
             this.reason = reason;
             this.approach = approach;
-            this.templateName = template == null ? "" : template.name;
-            this.permittedContact = template == null ? Contact.NONE : template.contact;
+            this.templateName = templateName;
+            this.permittedContact = contact;
             this.observedTravelInches = travel;
+            this.assistState = assistState;
+            this.assistReason = assistReason;
+            this.aimSessionId = aimSessionId;
+            this.assistLossCount = assistLossCount;
+            this.hasFailure = hasFailure;
         }
     }
 
@@ -275,20 +314,32 @@ public final class VisionPickup implements RobotProgram.Service {
     private final DriveSource finalDrive = this::readDriveIntent;
     private boolean stopped;
     private boolean aimEnabled;
+    private boolean aimAuthorized;
     private boolean aimAvailable;
     private double aimOmega;
+    private long aimRevision;
+    private long aimSessionId;
+    private long assistLossCount;
+    private TargetSelectionResult aimSelection;
     private Attempt active;
+    /** Synchronous start admission only; never owns drive, intake, or published pickup status. */
+    private Attempt admitting;
+    private Attempt reportedAttempt;
     private DriveSignal pickupIntent = DriveSignal.zero();
     private Status status = new Status(Phase.IDLE, TaskOutcome.NOT_DONE, "no pickup requested",
-            ApproachResult2d.unavailable("no target committed"), null, 0.0);
+            ApproachResult2d.unavailable("no target committed"), "", Contact.NONE, 0.0,
+            AssistState.IDLE, "configured idle source; no aim requested", 0, 0, false);
     private LoopClock ownerClock;
     private long serviceCycle = Long.MIN_VALUE;
     private RuntimeException serviceFailure;
+    private RuntimeException ownerFailure;
+    private boolean latchingFailure;
     private boolean updatingService;
     private boolean terminalCleanup;
     private boolean trajectoryKnown;
     private long observedSegment;
     private LoopTimestamp trajectoryChangedAt = LoopTimestamp.unavailable();
+    private LoopTimestamp lastObservedTime = LoopTimestamp.unavailable();
 
     /**
      * Creates a hardware-neutral policy owner; does not sample dependencies or request motion.
@@ -306,11 +357,13 @@ public final class VisionPickup implements RobotProgram.Service {
         this.captureFeedback = Objects.requireNonNull(captureFeedback, "captureFeedback");
         this.requestIntake = Objects.requireNonNull(requestIntake, "requestIntake");
         this.manualDrive = Objects.requireNonNull(manualDrive, "manualDrive");
+        aimSelection = TargetSelectionResult.none(TargetObservations2d.unavailable("aim not evaluated"),
+                this.config.maxObservationAgeSec, "aim not evaluated");
         aimQuery = this.config.enableMotion ? DriveGuidance.plan()
-                .faceTo().point(References.observedPoint(selection))
+                .faceTo().point(References.observedPoint(Source.of(ignored -> aimSelection)))
                 .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(this.config.robotToIntake))
                 .solveWith().localizationOnly().localization(localization)
-                .maxAgeSec(this.config.maxPoseAgeSec).minQuality(0.0)
+                .maxAgeSec(this.config.maxPoseAgeSec).minQuality(this.config.minPoseQuality)
                 .onLoss(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT).doneLocalizationOnly()
                 .driveTuning().use(this.config.guidanceTuning).doneDriveTuning().build().query() : null;
     }
@@ -318,31 +371,77 @@ public final class VisionPickup implements RobotProgram.Service {
     /** The one downstream drive source; Tasks only change its private selected intent. */
     public DriveSource driveSource() { return finalDrive; }
 
-    /** Enables heading-only assistance; it never takes the driver's translation channels. */
-    public void setAimEnabled(boolean enabled) { if (!stopped) aimEnabled = enabled; }
+    /**
+     * Requests one heading-only aim session on a false-to-true transition. Loss latches this
+     * session off: repeated true calls never retry. Release then request again for a new evaluation
+     * in the next Services phase. Release immediately withdraws cached aim. Pickup takeover also
+     * disarms aim; requests during pickup are not banked for afterward. No dependency is sampled.
+     */
+    public void setAimEnabled(boolean enabled) {
+        if (stopped || aimEnabled == enabled) return;
+        aimEnabled = enabled;
+        withdrawAim();
+        if (!enabled) {
+            if (active == null && !terminalCleanup) {
+                publishAssist(AssistState.IDLE, "aim released; configured idle source");
+            }
+            return;
+        }
+        aimSessionId++;
+        if (active != null || terminalCleanup) {
+            publishAssist(active != null ? AssistState.PICKUP : AssistState.IDLE,
+                    "pickup owns this handoff; release and press aim after pickup");
+            return;
+        }
+        aimAuthorized = true;
+        publishAssist(AssistState.REQUESTED, "waiting for this aim request's next Services evaluation");
+    }
 
-    /** Captured status only: does not resample vision, sensors, localization, or guidance. */
-    public Status status() { return status; }
+    /**
+     * Read-only view of cached state. No source, controller, hardware or Task outcome is sampled.
+     * An immutable copy may hide an unsettled/failed Task ending as NOT_DONE; identity is not stable.
+     */
+    public Status status() {
+        boolean failed = ownerFailure != null || (reportedAttempt != null && reportedAttempt.failed());
+        if (failed || (reportedAttempt != null && !reportedAttempt.outcomeSettled())) {
+            return copyStatus(TaskOutcome.NOT_DONE, status.assistState, status.assistReason, failed);
+        }
+        return status;
+    }
 
     /**
      * Builds one fresh attempt shared by TeleOp and Auto. The permission is checked at start and
-     * on active cycles, so a queued TeleOp request released before start cannot execute later.
+     * on active cycles. Controls supply gesture-bound permission so a released queued request
+     * cannot borrow a later press; a bare live boolean alone does not preserve that identity.
      * An Auto client deliberately supplies a constant true source and retains normal cancellation.
+     * Tasks constructed after this owner has a clock also reject a subsequent reset before start.
      */
     public Task createPickupTask(BooleanSource permission) {
         return new Attempt(Objects.requireNonNull(permission, "permission"));
     }
 
-    /** Cancels only this capability's active transient attempt, not unrelated program work. */
-    public void cancelPickup() { if (active != null) active.cancel(); }
+    /**
+     * Cancels only this capability's active transient attempt, including an in-flight permission
+     * callback during its start. It neither erases the shared queue nor changes unrelated work.
+     */
+    public void cancelPickup() {
+        if (active != null) active.cancel();
+        else if (admitting != null) admitting.cancel();
+    }
 
     /** Computes cached heading assistance once per cycle; never updates the borrowed localizer. */
     @Override
     public void update(LoopClock clock) {
         requireClock(clock);
+        if (ownerFailure != null) throw ownerFailure;
         if (stopped) return;
         if (serviceCycle == clock.cycle()) {
-            if (updatingService) throw new IllegalStateException("VisionPickup service update is reentrant");
+            if (updatingService) {
+                RuntimeException failure = new IllegalStateException("VisionPickup service update is reentrant");
+                serviceFailure = failure;
+                latchFailure(failure);
+                throw failure;
+            }
             if (serviceFailure != null) throw serviceFailure;
             return;
         }
@@ -354,24 +453,40 @@ public final class VisionPickup implements RobotProgram.Service {
         try {
             observeTrajectoryBoundary(clock);
             if (stopped) return;
-            if (active != null && localization.trajectorySegmentId() != active.segment) {
-                active.finish(TaskOutcome.CANCELLED, "localization trajectory changed");
+            if (active != null && (observedSegment != active.segment
+                    || !Double.isFinite(active.startedAt.ageSec(clock)))) {
+                active.rejectExternal("localization trajectory or clock reset invalidated pickup");
             }
-            if (config.enableMotion && active == null && aimEnabled) {
-                PoseEstimate pose = currentPose(clock);
-                if (stopped || active != null) return;
-                if (pose != null && config.robotEnvelope.fullyInside(interiorWithMargin(config), pose.toPose2d())) {
-                    DriveGuidanceStatus aim = aimQuery.get(clock);
-                    if (stopped || active != null) return;
-                    if (aim.hasOmegaError) {
-                        aimOmega = aim.signal.omega;
-                        aimAvailable = true;
-                    }
-                }
+            if (active != null || !aimEnabled || !aimAuthorized) return;
+            long evaluating = aimRevision;
+            if (!config.enableMotion) { loseAim("motion is disabled; review configuration before aiming"); return; }
+            PoseEstimate pose = currentPose(clock);
+            if (!sameAim(evaluating)) return;
+            String problem = poseProblem(pose, clock);
+            if (problem != null) { loseAim(problem); return; }
+            if (!config.robotEnvelope.fullyInside(interiorWithMargin(config), pose.toPose2d())) {
+                loseAim("current robot envelope violates the configured wall margin"); return;
             }
+            TargetSelectionResult selected = Objects.requireNonNull(selection.get(clock), "selection");
+            if (!sameAim(evaluating)) return;
+            problem = targetProblem(selected, clock);
+            if (problem != null) { loseAim(problem); return; }
+            aimSelection = selected; // The query consumes this checked capture, not another selection.
+            DriveGuidanceStatus aim = aimQuery.get(clock);
+            if (!sameAim(evaluating)) return;
+            if (!aim.hasOmegaError || !Double.isFinite(aim.omegaErrorRad)
+                    || !Double.isFinite(aim.signal.omega)) {
+                loseAim("aim guidance unavailable"); return;
+            }
+            aimOmega = aim.signal.omega;
+            aimAvailable = true;
+            boolean aligned = aim.omegaWithin(config.headingToleranceRad);
+            publishAssist(aligned ? AssistState.ALIGNED : AssistState.AIMING,
+                    aligned ? "aligned within configured heading tolerance; assistance remains active"
+                            : "aiming from current accepted evidence; driver keeps translation");
         } catch (RuntimeException failure) {
             serviceFailure = failure;
-            try { cancelPickup(); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+            latchFailure(failure);
             throw failure;
         } finally {
             updatingService = false;
@@ -384,28 +499,43 @@ public final class VisionPickup implements RobotProgram.Service {
         if (stopped) return;
         stopped = true;
         aimEnabled = false;
-        aimOmega = 0.0;
-        aimAvailable = false;
+        withdrawAim();
         pickupIntent = DriveSignal.zero();
-        cancelPickup();
+        publishAssist(AssistState.STOPPED, "stopped; zero intent; no restart");
+        try { cancelPickup(); }
+        catch (RuntimeException failure) { latchFailure(failure); throw failure; }
     }
 
     private DriveSignal readDriveIntent(LoopClock clock) {
         requireClock(clock);
         if (stopped) return DriveSignal.zero();
         if (active != null) return pickupIntent;
-        DriveSignal manual = Objects.requireNonNull(manualDrive.get(clock), "manual drive signal");
-        if (stopped) return DriveSignal.zero();
-        if (active != null) return pickupIntent;
-        return aimEnabled && aimAvailable && config.enableMotion
-                ? new DriveSignal(manual.axial, manual.lateral, aimOmega) : manual;
+        try {
+            DriveSignal manual = Objects.requireNonNull(manualDrive.get(clock), "manual drive signal");
+            if (stopped) return DriveSignal.zero();
+            if (active != null) return pickupIntent;
+            return aimEnabled && aimAuthorized && aimAvailable && config.enableMotion
+                    ? new DriveSignal(manual.axial, manual.lateral, aimOmega) : manual;
+        } catch (RuntimeException failure) {
+            latchFailure(failure);
+            throw failure;
+        }
     }
 
     private void observeTrajectoryBoundary(LoopClock clock) {
+        boolean reset = lastObservedTime.isAvailable() && !Double.isFinite(lastObservedTime.ageSec(clock));
         long current = localization.trajectorySegmentId();
-        if (trajectoryKnown && current != observedSegment) trajectoryChangedAt = clock.nowTimestamp();
+        if (stopped) return;
+        boolean changed = trajectoryKnown && current != observedSegment;
+        if (reset) trajectoryChangedAt = LoopTimestamp.unavailable();
+        if (changed) trajectoryChangedAt = clock.nowTimestamp();
         observedSegment = current;
         trajectoryKnown = true;
+        lastObservedTime = clock.nowTimestamp();
+        if ((changed || reset) && aimAuthorized) {
+            loseAim(changed ? "localization trajectory changed; request aim again"
+                    : "clock reset invalidated aim; request aim again");
+        }
     }
 
     private boolean afterKnownTrajectoryChange(LoopTimestamp timestamp) {
@@ -426,21 +556,122 @@ public final class VisionPickup implements RobotProgram.Service {
         if (before != localization.trajectorySegmentId()) {
             throw new IllegalStateException("localization changed trajectory while its snapshot was read");
         }
-        return pose.hasPose && pose.timestamp.isFresh(clock, config.maxPoseAgeSec)
-                && finitePose(pose.toPose2d()) ? pose : null;
+        return pose;
+    }
+
+    /** One action-specific gate applies in every phase, including camera-unseen final intake. */
+    private String poseProblem(PoseEstimate pose, LoopClock clock) {
+        if (!pose.hasPose) return "current localization unavailable";
+        if (!finitePose(pose.toPose2d())) return "current localization pose is not finite";
+        if (!Double.isFinite(pose.quality) || pose.quality < 0.0 || pose.quality > 1.0) {
+            return "current localization quality is not finite in [0,1]";
+        }
+        if (!Double.isFinite(pose.timestamp.ageSec(clock))) return "current localization timestamp unavailable or reset";
+        if (!pose.timestamp.isFresh(clock, config.maxPoseAgeSec)) return "current localization is stale";
+        if (pose.quality < config.minPoseQuality) return "current localization quality below configured minPoseQuality";
+        return null;
+    }
+
+    /** Preserve capture/selection absence reasons instead of relabeling missing frames as empty. */
+    private String targetProblem(TargetSelectionResult selected, LoopClock clock) {
+        String problem = frameProblem(selected, clock);
+        if (problem != null) return problem;
+        TargetObservations2d frame = selected.frame();
+        if (!selected.hasSelection()) return "no eligible target: " + frame.reason() + "; " + selected.reason();
+        if (!selected.observation().hasFieldPosition()) {
+            return "selected target has no field position: " + selected.observation().fieldProjectionReason();
+        }
+        if (!selected.isUsable(clock) || !selected.observation().isFresh(clock, config.maxObservationAgeSec)) {
+            return "selected target capture stale or reset: " + selected.reason();
+        }
+        return null;
+    }
+
+    /** Recheck may use all frame candidates even when the ordinary selector did not choose one. */
+    private String frameProblem(TargetSelectionResult selected, LoopClock clock) {
+        TargetObservations2d frame = selected.frame();
+        if (!frame.isAvailable()) return "target frame unavailable: " + frame.reason() + "; " + selected.reason();
+        if (!frame.isFresh(clock, Math.min(config.maxObservationAgeSec, selected.maxAgeSec()))) {
+            return "target capture stale or reset: " + selected.reason();
+        }
+        if (!afterKnownTrajectoryChange(frame.timestamp())) return "target capture predates localization trajectory change";
+        return null;
+    }
+
+    /** Do not publish an old callback's evidence into a replaced, cancelled or failed session. */
+    private boolean sameAim(long revision) {
+        if (ownerFailure != null) throw ownerFailure;
+        return !stopped && active == null && aimEnabled && aimAuthorized && aimRevision == revision;
+    }
+
+    /** Invalidate cached authorization synchronously without fabricating an input release. */
+    private void withdrawAim() {
+        aimRevision++;
+        aimAuthorized = false;
+        aimAvailable = false;
+        aimOmega = 0.0;
+    }
+
+    private void loseAim(String reason) {
+        if (!aimAuthorized || stopped) return;
+        withdrawAim();
+        assistLossCount++;
+        publishAssist(AssistState.LOST, reason + "; configured idle source; release and press aim again");
+    }
+
+    private Status copyStatus(TaskOutcome outcome, AssistState state, String reason, boolean failed) {
+        return new Status(status.phase, outcome, status.reason, status.approach, status.templateName,
+                status.permittedContact, status.observedTravelInches, state, reason,
+                aimSessionId, assistLossCount, failed);
+    }
+
+    private void publishAssist(AssistState state, String reason) {
+        status = copyStatus(ownerFailure == null ? status.outcome : TaskOutcome.NOT_DONE,
+                state, reason, ownerFailure != null);
+    }
+
+    /** A dependency exception is an owner failure, not an invitation to continue from manual fallback. */
+    private void latchFailure(RuntimeException failure) {
+        if (ownerFailure == null) ownerFailure = failure;
+        stopped = true;
+        aimEnabled = false;
+        withdrawAim();
+        pickupIntent = DriveSignal.zero();
+        publishAssist(AssistState.STOPPED, "software failure; zero intent; stop the owning robot: "
+                + ownerFailure.getClass().getSimpleName());
+        if (latchingFailure) return;
+        latchingFailure = true;
+        try {
+            if (active != null && !active.isComplete()) {
+                try { active.failFromOwner(ownerFailure); }
+                catch (RuntimeException cleanup) {
+                    if (cleanup != ownerFailure && !containsSuppressed(ownerFailure, cleanup)) {
+                        ownerFailure.addSuppressed(cleanup);
+                    }
+                }
+            }
+        } finally {
+            latchingFailure = false;
+        }
+    }
+
+    private static boolean containsSuppressed(RuntimeException primary, RuntimeException candidate) {
+        for (Throwable suppressed : primary.getSuppressed()) if (suppressed == candidate) return true;
+        return false;
     }
 
     /** New robot policy state is needed for capture evidence, recheck association, and contact bounds. */
-    private final class Attempt implements Task {
+    private final class Attempt extends AbstractTask {
         private final BooleanSource permission;
-        private boolean started;
-        private boolean complete;
-        private boolean updating;
+        private final LoopTimestamp createdAt;
+        private boolean claimed;
         private boolean intakeClaimed;
         private boolean canConfirm;
         private TaskOutcome outcome = TaskOutcome.NOT_DONE;
+        private String endingReason = "pickup cancelled";
+        private boolean naturalLoss;
+        private String recheckWaitReason = "no newer recheck frame observed";
         private Phase phase = Phase.IDLE;
-        private long lastCycle = Long.MIN_VALUE;
         private long segment;
         private LoopTimestamp startedAt = LoopTimestamp.unavailable();
         private LoopTimestamp phaseStartedAt = LoopTimestamp.unavailable();
@@ -454,39 +685,66 @@ public final class VisionPickup implements RobotProgram.Service {
         private ApproachResult2d approach = ApproachResult2d.unavailable("no target committed");
         private DriveGuidanceQuery stagingQuery;
 
-        Attempt(BooleanSource permission) { this.permission = permission; }
+        Attempt(BooleanSource permission) {
+            super("VisionPickup attempt");
+            this.permission = permission;
+            createdAt = ownerClock == null ? LoopTimestamp.unavailable() : ownerClock.nowTimestamp();
+        }
 
         @Override
-        public void start(LoopClock clock) {
-            if (started) throw new IllegalStateException("pickup Tasks are single-use; create a fresh Task");
-            started = true;
+        protected void onStart(LoopClock clock) {
             requireClock(clock);
-            if (active != null || terminalCleanup) {
-                complete = true;
+            if (active != null || admitting != null || terminalCleanup || stopped) {
                 outcome = TaskOutcome.CANCELLED;
+                complete(outcome);
                 return; // Another attempt retains its own drive/intake requests.
             }
+            if (createdAt.isAvailable() && !Double.isFinite(createdAt.ageSec(clock))) {
+                outcome = TaskOutcome.CANCELLED;
+                complete(outcome);
+                return; // A prior-epoch queued request cannot take over newer assistance.
+            }
+            // An obsolete queued gesture must not disarm newer aim or replace its status.
+            // Retain only an admission handle so reentrant cancel/STOP can end this started Task.
+            boolean permitted;
+            admitting = this;
+            try {
+                permitted = permission.getAsBoolean(clock);
+                checkFailure();
+                if (ownerFailure != null) throw ownerFailure;
+            } catch (RuntimeException failure) {
+                latchFailure(failure);
+                throw failure;
+            } finally {
+                if (admitting == this) admitting = null;
+            }
+            if (!isActive()) return;
+            if (!permitted || stopped) {
+                outcome = TaskOutcome.CANCELLED;
+                complete(outcome);
+                return;
+            }
             active = this;
+            reportedAttempt = this;
+            claimed = true;
+            withdrawAim();
+            publishAssist(AssistState.PICKUP, "pickup owns drive; prior aim is disarmed");
             startedAt = clock.nowTimestamp();
+            publish("checking one pickup request's admission evidence");
             try {
                 if (stopped || !config.enableMotion) { finish(TaskOutcome.CANCELLED, "pickup is physically unconfigured or stopped"); return; }
                 observeTrajectoryBoundary(clock);
                 if (!isLive()) return;
                 segment = localization.trajectorySegmentId();
                 if (!isLive()) return;
-                boolean permitted = permission.getAsBoolean(clock);
-                if (!isLive()) return;
-                if (!permitted) { finish(TaskOutcome.CANCELLED, "pickup permission released"); return; }
                 PoseEstimate pose = currentPose(clock);
                 if (!isLive()) return;
-                if (pose == null) { finish(TaskOutcome.CANCELLED, "current localization unavailable"); return; }
+                String problem = poseProblem(pose, clock);
+                if (problem != null) { finish(TaskOutcome.CANCELLED, problem); return; }
                 TargetSelectionResult selected = Objects.requireNonNull(selection.get(clock), "selection");
                 if (!isLive()) return;
-                if (!selected.isUsable(clock) || !selected.observation().hasFieldPosition()
-                        || !selected.observation().isFresh(clock, config.maxObservationAgeSec)
-                        || !afterKnownTrajectoryChange(selected.observation().timestamp)) {
-                    finish(TaskOutcome.CANCELLED, "fresh field target unavailable"); return;
-                }
+                problem = targetProblem(selected, clock);
+                if (problem != null) { finish(TaskOutcome.CANCELLED, problem); return; }
                 CaptureFeedback feedback = Objects.requireNonNull(captureFeedback.get(clock), "capture feedback");
                 if (!isLive()) return;
                 canConfirm = feedback.available && feedback.timestamp.isFresh(clock, config.maxCaptureAgeSec);
@@ -503,15 +761,15 @@ public final class VisionPickup implements RobotProgram.Service {
                 ReferenceFrame2d goal = References.approachFrame(Source.of(ignored -> approach));
                 stagingQuery = DriveGuidance.plan().translateTo().point(References.framePoint(goal))
                         .andFaceTo().frameHeading(goal).solveWith().localizationOnly()
-                        .localization(localization).maxAgeSec(config.maxPoseAgeSec).minQuality(0.0)
+                        .localization(localization).maxAgeSec(config.maxPoseAgeSec).minQuality(config.minPoseQuality)
                         .onLoss(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT).doneLocalizationOnly()
                         .driveTuning().use(config.guidanceTuning).doneDriveTuning().build().query();
                 phase = Phase.STAGING;
                 phaseStartedAt = clock.nowTimestamp();
                 publish("approaching one frozen resting-target goal; path safety is not established");
-                update(clock);
+                stage(clock); // Immediate admission/staging intent; its own later update remains available.
             } catch (RuntimeException failure) {
-                failWithCleanup(failure);
+                latchFailure(failure);
                 throw failure;
             }
         }
@@ -537,18 +795,12 @@ public final class VisionPickup implements RobotProgram.Service {
         }
 
         @Override
-        public void update(LoopClock clock) {
-            if (!started) throw new IllegalStateException("start pickup Task before update");
+        protected void onUpdate(LoopClock clock) {
             requireClock(clock);
-            if (complete) return;
-            if (updating) throw new IllegalStateException("pickup Task update is reentrant");
-            if (lastCycle == clock.cycle()) return;
-            lastCycle = clock.cycle();
-            updating = true;
             try {
                 boolean permitted = permission.getAsBoolean(clock);
                 if (!isLive()) return;
-                if (!permitted) { finish(TaskOutcome.CANCELLED, "pickup permission released"); return; }
+                if (!permitted) { finishIntentional("pickup permission released"); return; }
                 double elapsed = startedAt.ageSec(clock);
                 if (Double.isFinite(elapsed) && elapsed >= config.maxAttemptSec) {
                     finish(TaskOutcome.TIMEOUT, "whole pickup attempt timed out"); return;
@@ -561,7 +813,8 @@ public final class VisionPickup implements RobotProgram.Service {
                 }
                 PoseEstimate estimate = currentPose(clock);
                 if (!isLive()) return;
-                if (estimate == null) { finish(TaskOutcome.CANCELLED, "current localization unavailable"); return; }
+                String problem = poseProblem(estimate, clock);
+                if (problem != null) { finish(TaskOutcome.CANCELLED, problem); return; }
                 currentSegment = localization.trajectorySegmentId();
                 if (!isLive()) return;
                 if (currentSegment != segment) {
@@ -590,10 +843,8 @@ public final class VisionPickup implements RobotProgram.Service {
                 else if (phase == Phase.RECHECK) recheck(clock, pose);
                 else if (phase == Phase.FINAL_INTAKE) finalIntake(clock, pose);
             } catch (RuntimeException failure) {
-                failWithCleanup(failure);
+                latchFailure(failure);
                 throw failure;
-            } finally {
-                updating = false;
             }
         }
 
@@ -615,20 +866,24 @@ public final class VisionPickup implements RobotProgram.Service {
 
         private void recheck(LoopClock clock, Pose2d pose) {
             if (phaseStartedAt.ageSec(clock) >= config.recheckTimeoutSec) {
-                finish(TaskOutcome.TIMEOUT, "no qualifying fresh recheck before deadline"); return;
+                finish(TaskOutcome.TIMEOUT, "no qualifying fresh recheck before deadline: " + recheckWaitReason); return;
             }
             TargetSelectionResult reobserved = Objects.requireNonNull(selection.get(clock), "selection");
             if (!isLive()) return;
             TargetObservations2d frame = reobserved.frame();
-            if (!frame.isFresh(clock, Math.min(config.maxObservationAgeSec, reobserved.maxAgeSec()))
-                    || !(frame.timestamp().secondsSince(phaseStartedAt) > 0.0)
-                    || !afterKnownTrajectoryChange(frame.timestamp())) return;
+            String problem = frameProblem(reobserved, clock);
+            if (problem != null || !(frame.timestamp().secondsSince(phaseStartedAt) > 0.0)) {
+                recheckWaitReason = problem != null ? problem : "recheck frame is not newer than staging arrival";
+                publish("waiting within bounded recheck: " + recheckWaitReason);
+                return;
+            }
             int nearby = 0;
             TargetObservation2d soleNearby = null;
             TargetObservation2d frozen = approach.observation();
             for (TargetObservation2d candidate : frame.observations()) {
                 if (!candidate.hasFieldPosition()) {
-                    finish(TaskOutcome.CANCELLED, "recheck candidate has no field position"); return;
+                    finish(TaskOutcome.CANCELLED, "recheck candidate has no field position: "
+                            + candidate.fieldProjectionReason()); return;
                 }
                 if (Math.hypot(candidate.fieldXInches - frozen.fieldXInches,
                         candidate.fieldYInches - frozen.fieldYInches) <= config.recheckRadiusInches) {
@@ -732,52 +987,96 @@ public final class VisionPickup implements RobotProgram.Service {
             return true;
         }
 
-        private void failWithCleanup(RuntimeException failure) {
-            try { finish(TaskOutcome.CANCELLED, "pickup failed: " + failure.getClass().getSimpleName()); }
-            catch (RuntimeException cleanup) { if (cleanup != failure) failure.addSuppressed(cleanup); }
-        }
-
         private boolean isLive() {
-            return !complete && !stopped && active == this;
+            checkFailure(); // A callback may have caught an illegal pending-ending outcome read.
+            if (ownerFailure != null) throw ownerFailure;
+            return isActive() && !stopped && active == this;
         }
 
         private void finish(TaskOutcome ending, String reason) {
-            if (complete) return;
-            complete = true;
+            if (!isActive()) return;
             outcome = ending;
+            endingReason = reason;
+            naturalLoss = ending != TaskOutcome.SUCCESS;
+            complete(ending);
+        }
+
+        private void finishIntentional(String reason) {
+            if (!isActive()) return;
+            outcome = TaskOutcome.CANCELLED;
+            endingReason = reason;
+            naturalLoss = false;
+            complete(outcome);
+        }
+
+        /** Service evidence enters the same guarded Task boundary without consuming an update. */
+        private void rejectExternal(String reason) {
+            observe(() -> finish(TaskOutcome.CANCELLED, reason));
+        }
+
+        private void failFromOwner(RuntimeException failure) {
+            observe(() -> { throw failure; });
+        }
+
+        @Override
+        protected void onCancel() {
+            outcome = TaskOutcome.CANCELLED;
+            endingReason = "pickup cancelled";
+            naturalLoss = false;
+        }
+
+        @Override
+        protected void onFailure(RuntimeException failure) {
+            outcome = TaskOutcome.NOT_DONE;
+            endingReason = "pickup failed: " + failure.getClass().getSimpleName();
+            naturalLoss = false;
+            if (claimed) latchFailure(failure);
+        }
+
+        /** Withdraw intent before calling intake cleanup; no replacement may start during cleanup. */
+        @Override
+        protected void onFinish() {
+            if (!claimed) return;
             phase = Phase.DONE;
             if (active == this) {
                 pickupIntent = DriveSignal.zero();
-                aimOmega = 0;
-                aimAvailable = false;
+                withdrawAim();
                 active = null;
-                publish(reason);
             }
-            if (intakeClaimed) {
-                intakeClaimed = false;
-                terminalCleanup = true;
-                try { requestIntake.accept(false); }
-                catch (RuntimeException failure) {
-                    stopped = true;
-                    aimEnabled = false;
-                    aimAvailable = false;
-                    pickupIntent = DriveSignal.zero();
-                    outcome = TaskOutcome.CANCELLED;
-                    publish("intake cleanup failed; stop the owning robot");
-                    throw failure;
-                } finally {
-                    terminalCleanup = false;
+            terminalCleanup = true;
+            try {
+                if (intakeClaimed) {
+                    intakeClaimed = false;
+                    requestIntake.accept(false);
                 }
+                checkFailure(); // Do not let a swallowed pending-ending failure restore idle/manual.
+                if (!stopped) {
+                    if (naturalLoss) assistLossCount++;
+                    publishAssist(naturalLoss ? AssistState.LOST : AssistState.IDLE,
+                            endingReason + "; configured idle source; no automatic retry or return to aim");
+                }
+            } catch (RuntimeException failure) {
+                outcome = TaskOutcome.NOT_DONE;
+                endingReason = "intake cleanup failed; stop the owning robot";
+                latchFailure(failure);
+                throw failure;
+            } finally {
+                publish(endingReason);
+                terminalCleanup = false;
             }
         }
 
         private void publish(String reason) {
-            status = new Status(phase, outcome, reason, approach, template, travel);
+            if (reportedAttempt != this) return;
+            status = new Status(phase, ownerFailure == null ? outcome : TaskOutcome.NOT_DONE,
+                    reason, approach, template == null ? "" : template.name,
+                    template == null ? Contact.NONE : template.contact, travel,
+                    status.assistState, status.assistReason, aimSessionId, assistLossCount,
+                    ownerFailure != null);
         }
 
-        @Override public void cancel() { if (started && !complete) finish(TaskOutcome.CANCELLED, "pickup cancelled"); }
-        @Override public boolean isComplete() { return complete; }
-        @Override public TaskOutcome getOutcome() { return outcome; }
+        private boolean failed() { return hasFailure(); }
+        private boolean outcomeSettled() { return isEndingSettled(); }
     }
 
     private static AxisAlignedBoxRegion2d interiorWithMargin(Config c) {
