@@ -142,6 +142,14 @@ cancel Tasks -> clear bindings -> stop outputs in declaration order -> stop serv
 The first failure remains primary and later cleanup failures are suppressed. Repeated or reentrant
 STOP is inert. `Error` is not caught.
 
+During configuration, register each completed exclusive service, output, or drive sink immediately.
+Once `service(...)`, `output(...)`, or `drive(...)` receives a fresh non-null owner, it either accepts
+it or attempts its stop once on a `RuntimeException` rejection. An identity already known to the
+program is rejected without an extra stop. This setup boundary adds no loop phase; construction
+failures before method entry remain outside it. See
+[`registration and cleanup ownership`](<../design/Recommended Robot Design.md#coordinated-cleanup-is-automatic-for-declared-program-owners>)
+for reentrant cleanup, borrowed roles, and constructor-local responsibilities.
+
 If a selected root depends on data frozen at START, use
 `Tasks.buildAtStart(name, taskSupplier)`. It defers only one Task graph; hardware/resource owners
 still belong in `configure(program)`. A typed `program.stopHandoff(capture, publish, invalidate)`

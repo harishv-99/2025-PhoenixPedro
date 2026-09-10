@@ -46,16 +46,18 @@ Do not silently paste Sushi-frame coordinates into this route. The runtime's con
 `PedroFieldTransform` converts localization facts between Sushi's FTC field convention and Pedro;
 the advanced integration guide owns that runtime choice.
 
-The setup helper `registerServiceOrStop(...)` makes sure the acquired Pedro heartbeat has a
-cleanup owner, or stops it if registration fails. That heartbeat remains active outside the route
-Task because the follower has lifecycle work of its own.
+The **heartbeat owner** updates Pedro each active cycle and stops it when the program ends.
+`program.service(...)` accepts that completed owner or calls its stop method if registration rejects
+it. That heartbeat remains active outside the route Task because the follower has lifecycle work of
+its own. Construction failures before registration remain a separate responsibility, explained in
+the [integration cleanup contract](<../../integrations/pedro/README.md#cleanup>).
 
 <!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/pedro/basic/BasicPedroAuto.java -->
 ```java
 Pose startPose = new Pose(START_X_INCHES, START_Y_INCHES, HEADING_RAD);
 
 // Register lifecycle ownership before later route construction can fail.
-registerServiceOrStop(program, new PedroHeartbeat(runtime, startPose));
+program.service(new PedroHeartbeat(runtime, startPose));
 ```
 
 The fixed route then uses that same authored start pose and the visible end coordinates.

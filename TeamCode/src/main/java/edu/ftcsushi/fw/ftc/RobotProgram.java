@@ -38,6 +38,26 @@ import edu.ftcsushi.fw.task.TaskRunner;
  * runner, telemetry commit, and fail-stop cleanup. The declaration graph freezes when
  * {@code configure(...)} returns.</p>
  *
+ * <p>{@link #service(Service)}, {@link #output(Output)}, and
+ * {@link #drive(DriveSource, DriveCommandSink)} take cleanup responsibility when they receive a
+ * completed, exclusively owned, non-null resource whose exact identity is not already known to
+ * this program. If registration throws a {@link RuntimeException}, the program attempts that
+ * owner's stop once before rethrowing the original exception, with cleanup failures suppressed.
+ * A rejected identity is remembered before cleanup: it cannot be registered later or stopped again
+ * by registration or host teardown, even if that cleanup fails. An already-known identity in any
+ * role is rejected without stopping it; an uncaught declaration failure still triggers the host's
+ * ordinary cleanup of accepted owners. {@link Error Errors} are not caught.</p>
+ *
+ * <p>Rejected-owner stop callbacks must be short and non-blocking. During those callbacks all
+ * declarations, including bindings and stop handoffs, are rejected. A distinct new resource offered
+ * reentrantly is itself rejected and stopped once; STOP remains allowed but invalidates any handoff
+ * because a registration failure is pending. Cleanup is one stop attempt, not a promise of physical
+ * zero or rollback. A null owner, constructor or argument evaluation failure before method entry,
+ * and a call on a null program transfer nothing. Hidden
+ * shared hardware or ownership by another program cannot be detected by this identity check.
+ * Borrowed drive sources, data-only roles, and unstarted Tasks do not acquire resource stop
+ * ownership through registration.</p>
+ *
  * <p>The active order is:</p>
  *
  * <pre>
@@ -49,6 +69,8 @@ import edu.ftcsushi.fw.task.TaskRunner;
  * stop owner.</p>
  */
 public final class RobotProgram {
+
+    private static final String REJECTED_OWNER = "rejected resource owner";
 
     /** Result of freezing the program's optional INIT-only policy at FTC START. */
     public enum StartDisposition {
@@ -123,8 +145,9 @@ public final class RobotProgram {
      * the cycle are visible to their final actuator owner. They stop in that same declaration
      * order. An owner of several Plants keeps their internal update and stop order private.</p>
      *
-     * <p>An output must tolerate {@link Output#stop()} before its first update when a later
-     * configuration step fails, and should make its own repeated cleanup harmless.</p>
+     * <p>An output must tolerate {@link Output#stop()} before its first update, including when its
+     * own registration is rejected or a later configuration step fails, and should make its own
+     * repeated cleanup harmless.</p>
      */
     public interface Output {
 
@@ -181,6 +204,7 @@ public final class RobotProgram {
     private Task rootTask;
     private StopHandoff<?> stopHandoff;
     private boolean driveDeclared;
+    private boolean rejectingOwner;
     private boolean bindingsUpdating;
     private boolean bindingCleanupPending;
     private boolean bindingHandoffEligible;
@@ -194,8 +218,9 @@ public final class RobotProgram {
      * Return the callback-binding surface backed by this program's one binding graph.
      *
      * <p>Retaining this view is safe, but every declaration after
-     * {@link FtcRobotOpMode#configure(RobotProgram)} returns fails with an actionable lifecycle
-     * error. Callbacks must be short and non-blocking because they finish in the binding phase.
+     * {@link FtcRobotOpMode#configure(RobotProgram)} returns or during rejected-owner cleanup fails
+     * with an actionable lifecycle error. Callbacks must be short and non-blocking because they
+     * finish in the binding phase.
      * Use {@link #taskBindings()} when input should create work that continues over later cycles.
      * The view deliberately exposes neither the binding heartbeat nor clearing.</p>
      */
@@ -220,8 +245,9 @@ public final class RobotProgram {
      * @param <T> concrete prestart type
      * @return the exact supplied prestart owner
      * @throws NullPointerException if {@code prestart} is null
-     * @throws IllegalStateException if configuration has ended, a prestart owner already exists,
-     *                               or this object identity is already registered
+     * @throws IllegalStateException if configuration has ended, rejection cleanup is in progress,
+     *                               a prestart owner already exists, or this object identity was
+     *                               already accepted or rejected
      */
     public <T extends Prestart> T prestart(T prestart) {
         requireConfiguring("declare prestart policy");
@@ -239,39 +265,56 @@ public final class RobotProgram {
     /**
      * Declare an upstream service and return that exact object.
      *
-     * @param service service to retain immediately
+     * <p>A fresh non-null service transfers cleanup responsibility on entry, even if registration
+     * is rejected. Rejection attempts {@link Service#stop()} once immediately and makes that
+     * identity unusable for later declarations. Already-known identities are never stopped by
+     * rejection. See the class contract for failure and reentrancy rules.</p>
+     *
+     * @param service completed, exclusively owned service to retain immediately
      * @param <T> concrete service type
      * @return the exact supplied service
      * @throws NullPointerException if {@code service} is null
-     * @throws IllegalStateException if configuration has ended or this object identity is already
-     *                               registered
+     * @throws IllegalStateException if configuration has ended, rejection cleanup is in progress,
+     *                               or this object identity was already accepted or rejected
      */
     public <T extends Service> T service(T service) {
-        requireConfiguring("declare a service");
-        T required = Objects.requireNonNull(service, "service is required");
-        reserveIdentity(required, "service");
-        services.add(required);
-        return required;
+        try {
+            requireConfiguring("declare a service");
+            T required = Objects.requireNonNull(service, "service is required");
+            reserveIdentity(required, "service");
+            services.add(required);
+            return required;
+        } catch (RuntimeException failure) {
+            throw rejectOwnerAfterFailure(service, failure, () -> service.stop());
+        }
     }
 
     /**
      * Declare a downstream output and return that exact object.
      *
-     * <p>Register the mechanism or subsystem that privately owns its Plants, not a raw Plant.</p>
+     * <p>Register the mechanism or subsystem that privately owns its Plants, not a raw Plant.
+     * A fresh non-null output transfers cleanup responsibility on entry, even if registration is
+     * rejected. Rejection attempts {@link Output#stop()} once immediately and makes that identity
+     * unusable for later declarations. Already-known identities are never stopped by rejection.
+     * See the class contract for failure and reentrancy rules.</p>
      *
-     * @param output realization owner to retain immediately
+     * @param output completed, exclusively owned realization to retain immediately
      * @param <T> concrete output type
      * @return the exact supplied output
      * @throws NullPointerException if {@code output} is null
-     * @throws IllegalStateException if configuration has ended or this object identity is already
-     *                               registered
+     * @throws IllegalStateException if configuration has ended, rejection cleanup is in progress,
+     *                               or this object identity was already accepted or rejected
      */
     public <T extends Output> T output(T output) {
-        requireConfiguring("declare an output");
-        T required = Objects.requireNonNull(output, "output is required");
-        reserveIdentity(required, "output");
-        outputs.add(required);
-        return required;
+        try {
+            requireConfiguring("declare an output");
+            T required = Objects.requireNonNull(output, "output is required");
+            reserveIdentity(required, "output");
+            outputs.add(required);
+            return required;
+        } catch (RuntimeException failure) {
+            throw rejectOwnerAfterFailure(output, failure, () -> output.stop());
+        }
     }
 
     /**
@@ -283,29 +326,40 @@ public final class RobotProgram {
      * {@link DriveCommandSink#stop()} immediately, including when configuration fails before the
      * first drive update.</p>
      *
-     * @param source final composed robot-centric drive source
-     * @param sink final drive command owner
+     * <p>A fresh non-null sink transfers cleanup responsibility on entry, including when the source
+     * is null or a drive already exists. Rejection attempts its stop once immediately and makes that
+     * identity unusable for later declarations. Already-known identities are never stopped by
+     * rejection. The source is borrowed: rejection does not sample or reset it. See the class
+     * contract for failure and reentrancy rules.</p>
+     *
+     * @param source borrowed final composed robot-centric drive source
+     * @param sink completed, exclusively owned final drive command owner
      * @param <T> concrete sink type
      * @return the exact supplied sink
      * @throws NullPointerException if an argument is null
-     * @throws IllegalStateException if configuration has ended, a drive was already declared, or
-     *                               the sink identity is already registered
+     * @throws IllegalStateException if configuration has ended, rejection cleanup is in progress,
+     *                               a drive was already declared, or the sink identity was already
+     *                               accepted or rejected
      */
     public <T extends DriveCommandSink> T drive(DriveSource source, T sink) {
-        requireConfiguring("declare drive");
-        DriveSource requiredSource = Objects.requireNonNull(source, "drive source is required");
-        T requiredSink = Objects.requireNonNull(sink, "drive sink is required");
-        if (driveDeclared) {
-            throw new IllegalStateException(
-                    "RobotProgram already has a drive declaration; compose one final DriveSource "
-                            + "and declare one final DriveCommandSink");
-        }
-        requireIdentityAvailable(requiredSink, "drive sink");
+        try {
+            requireConfiguring("declare drive");
+            DriveSource requiredSource = Objects.requireNonNull(source, "drive source is required");
+            T requiredSink = Objects.requireNonNull(sink, "drive sink is required");
+            if (driveDeclared) {
+                throw new IllegalStateException(
+                        "RobotProgram already has a drive declaration; compose one final DriveSource "
+                                + "and declare one final DriveCommandSink");
+            }
+            requireIdentityAvailable(requiredSink, "drive sink");
 
-        driveDeclared = true;
-        registrations.put(requiredSink, "drive sink");
-        outputs.add(new SourceDrivenDriveOutput(requiredSource, requiredSink));
-        return requiredSink;
+            driveDeclared = true;
+            registrations.put(requiredSink, "drive sink");
+            outputs.add(new SourceDrivenDriveOutput(requiredSource, requiredSink));
+            return requiredSink;
+        } catch (RuntimeException failure) {
+            throw rejectOwnerAfterFailure(sink, failure, () -> sink.stop());
+        }
     }
 
     /**
@@ -316,8 +370,9 @@ public final class RobotProgram {
      *
      * @param task fresh single-use root Task
      * @throws NullPointerException if {@code task} is null
-     * @throws IllegalStateException if configuration has ended, a root already exists, or this
-     *                               identity is already registered
+     * @throws IllegalStateException if configuration has ended, rejection cleanup is in progress,
+     *                               a root already exists, or this identity was already accepted
+     *                               or rejected
      */
     public void rootTask(Task task) {
         requireConfiguring("declare a root Task");
@@ -336,8 +391,8 @@ public final class RobotProgram {
      *
      * @param presenter read-only frame contributor
      * @throws NullPointerException if {@code presenter} is null
-     * @throws IllegalStateException if configuration has ended or this object identity is already
-     *                               registered
+     * @throws IllegalStateException if configuration has ended, rejection cleanup is in progress,
+     *                               or this object identity was already accepted or rejected
      */
     public void presenter(Presenter presenter) {
         requireConfiguring("declare a presenter");
@@ -361,7 +416,8 @@ public final class RobotProgram {
      * @param invalidate clears any previously published value on non-publication paths
      * @param <T> captured value type
      * @throws NullPointerException if an argument is null
-     * @throws IllegalStateException if configuration has ended or a handoff already exists
+     * @throws IllegalStateException if configuration has ended, rejection cleanup is in progress,
+     *                               or a handoff already exists
      */
     public <T> void stopHandoff(
             Supplier<? extends T> captureBeforeCleanup,
@@ -528,7 +584,9 @@ public final class RobotProgram {
     void stop() {
         State previousState = state;
         boolean abortBindingTraversal = bindingsUpdating && previousState != State.TERMINAL;
-        boolean handoffEligible = previousState == State.ACTIVE;
+        // A rejected-owner callback runs with a registration failure already pending. Its STOP
+        // may clean accepted owners, but must not publish a successful match handoff.
+        boolean handoffEligible = previousState == State.ACTIVE && !rejectingOwner;
         Runnable[] actions = claimCleanupActions(handoffEligible);
         if (actions.length != 0) {
             finishNormalStop(handoffEligible, actions);
@@ -700,6 +758,11 @@ public final class RobotProgram {
 
     private void requireIdentityAvailable(Object candidate, String role) {
         String existingRole = registrations.get(candidate);
+        if (REJECTED_OWNER.equals(existingRole)) {
+            throw new IllegalStateException(
+                    "RobotProgram already rejected this exact resource owner and claimed its stop; "
+                            + "create a fresh " + role + " instead of reusing a rejected owner");
+        }
         if (existingRole != null) {
             throw new IllegalStateException(
                     "RobotProgram already registered this exact object as " + existingRole
@@ -708,11 +771,32 @@ public final class RobotProgram {
         }
     }
 
+    /** Claim rejection before invoking user cleanup, without adding it to any active role. */
+    private RuntimeException rejectOwnerAfterFailure(
+            Object candidate, RuntimeException failure, Runnable stop) {
+        if (candidate == null || registrations.containsKey(candidate)) {
+            return failure;
+        }
+        registrations.put(candidate, REJECTED_OWNER);
+        boolean alreadyRejectingOwner = rejectingOwner;
+        rejectingOwner = true;
+        try {
+            return CleanupActions.attemptAllAfterFailure(failure, stop);
+        } finally {
+            rejectingOwner = alreadyRejectingOwner;
+        }
+    }
+
     private void requireConfiguring(String operation) {
         if (state != State.CONFIGURING) {
             throw new IllegalStateException(
                     "RobotProgram cannot " + operation + " after configure(program) returns; "
                             + "declare the complete graph inside that one configuration callback");
+        }
+        if (rejectingOwner) {
+            throw new IllegalStateException(
+                    "RobotProgram cannot " + operation + " during rejected-owner cleanup; "
+                            + "stop callbacks must release resources without declaring new work");
         }
     }
 

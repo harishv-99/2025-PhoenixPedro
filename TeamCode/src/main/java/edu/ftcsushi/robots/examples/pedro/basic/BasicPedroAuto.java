@@ -9,7 +9,6 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
 import java.util.Objects;
 
-import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.drive.route.RouteFollower;
 import edu.ftcsushi.fw.drive.route.RouteTask;
@@ -57,7 +56,7 @@ public final class BasicPedroAuto extends FtcRobotOpMode {
         Pose startPose = new Pose(START_X_INCHES, START_Y_INCHES, HEADING_RAD);
 
         // Register lifecycle ownership before later route construction can fail.
-        registerServiceOrStop(program, new PedroHeartbeat(runtime, startPose));
+        program.service(new PedroHeartbeat(runtime, startPose));
 
         PathChain route = runtime.pathBuilder()
                 .addPath(new BezierLine(
@@ -134,18 +133,6 @@ public final class BasicPedroAuto extends FtcRobotOpMode {
                             + "routes cannot yet set Pedro's persistent Follower power limit. Add "
                             + "and review that control, then review the drivetrain, Pinpoint, "
                             + "follower tuning, route, clear space, and STOP plan before motion."
-            );
-        }
-    }
-
-    /** Register the sole heartbeat owner, stopping its drive if registration itself fails. */
-    private static void registerServiceOrStop(RobotProgram program, PedroHeartbeat heartbeat) {
-        try {
-            Objects.requireNonNull(program, "program").service(heartbeat);
-        } catch (RuntimeException registrationFailure) {
-            throw CleanupActions.attemptAllAfterFailure(
-                    registrationFailure,
-                    heartbeat::stop
             );
         }
     }

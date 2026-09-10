@@ -60,9 +60,10 @@ never polls the device through a second owner.
 
 The maintained `BasicPedroAuto` keeps one fixed route, one runtime, and the service that owns its
 heartbeat in one focused composition root. It deliberately has no unrelated intake, aggregate
-profile, or robot wrapper. The root constructs the runtime and immediately registers one private
-service. That service applies the declared start pose at START, updates `motionPredictor()` before
-`driveAdapter()` every active cycle, and owns final drive stop. A larger robot may move reviewed
+profile, or robot wrapper. The root constructs the runtime and immediately gives its completed
+private heartbeat owner to `program.service(...)`. That service applies the declared start pose at
+START, updates `motionPredictor()` before `driveAdapter()` every active cycle, and owns final drive
+stop. A larger robot may move reviewed
 data into its own profile; cross-owner hardware relationships remain robot policy, not a generic
 Pedro requirement.
 
@@ -121,6 +122,16 @@ to the broad `TaskOutcome.CANCELLED` result. Neither fact invents a recovery act
 reverse declaration order. The Pedro service makes `stop()` write physical zero immediately,
 including after reentrant callbacks. The adapter's stop and same-cycle deduplication are
 idempotent.
+
+Registration also owns rejection cleanup: once `program.service(...)` receives the fresh completed
+heartbeat owner, it either accepts that owner or immediately calls its `stop()` once on a
+`RuntimeException` rejection. The same failure stays primary and a cleanup failure is suppressed.
+An already-known identity is rejected without an extra stop. Register the one heartbeat owner, not
+its borrowed views as peer lifecycle owners; no caller-side registration cleanup helper is needed.
+See the
+[`managed ownership boundary`](<../../docs/design/Recommended Robot Design.md#coordinated-cleanup-is-automatic-for-declared-program-owners>)
+for declaration reentry and failures before method entry. This does not replace cleanup inside
+`PedroPathingRuntime.create(...)` while the runtime is still being constructed.
 
 After validation succeeds, an SDK or vendor constructor can still fail after partial hardware
 effects. Construction creates the stoppable Mecanum drivetrain first and best-effort breaks it if a

@@ -48,6 +48,16 @@ public abstract class FtcRobotOpMode extends OpMode {
      * later construction failure participates in fail-stop cleanup. Make declarations only inside
      * this callback; the graph freezes when it returns.</p>
      *
+     * <p>For {@link RobotProgram#service(RobotProgram.Service) service},
+     * {@link RobotProgram#output(RobotProgram.Output) output}, and
+     * {@link RobotProgram#drive(edu.ftcsushi.fw.drive.DriveSource,
+     * edu.ftcsushi.fw.drive.DriveCommandSink) drive}, receiving a completed, exclusively owned new
+     * resource transfers cleanup responsibility even if registration throws a
+     * {@code RuntimeException}: the program attempts that owner's stop once immediately. Do not add
+     * a second caller-side registration cleanup guard or reuse a rejected owner. Construction and
+     * argument evaluation that fail before method entry remain outside that transfer boundary;
+     * constructors must clean their own partial resource graphs.</p>
+     *
      * @param program framework-created declaration surface
      */
     protected abstract void configure(RobotProgram program);

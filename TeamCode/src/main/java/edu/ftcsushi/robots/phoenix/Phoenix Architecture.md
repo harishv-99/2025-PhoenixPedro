@@ -93,6 +93,21 @@ An ordinary Phoenix mechanism constructor receives `HardwareMap` plus data-only 
 defensively snapshots that configuration, constructs and privately owns its final resolver/Plant
 graph, and owns update/stop. The OpMode does not prebuild or inject Plants.
 
+Pass each completed, exclusively owned lifecycle role directly to `program.service(owner)`,
+`program.output(owner)`, or `program.drive(source, sink)`. Successful registration retains the role
+for its managed phase; it does not start or update the owner during configuration. If registration
+receives a new owner but rejects it with a `RuntimeException`, the program attempts that owner's
+complete `stop()` once before rethrowing. That rejected identity cannot be reused. Rejecting an
+already-known identity does not stop it again; if the failure escapes configuration, ordinary host
+teardown still cleans every accepted owner. The drive source is borrowed, not a cleanup owner.
+
+Phoenix's lifecycle wrappers remain the registered identities. They own start/phase policy,
+profiling, startup-zero gating, or aggregate cleanup; the program cannot discover shared hardware
+hidden behind different wrappers. Constructor failures and failures before the registration method
+receives the owner remain outside this transfer boundary. Keep each constructor's partial-resource
+cleanup and the Auto program's `registerMatchHandoffOrStopPedro` guard: that handoff registration
+occurs after Pedro construction but before `declareAuto` offers its service to the managed program.
+
 `PhoenixTeleOpControls` constructs its stable driver and operator sources without registering
 behavior. After `PhoenixCapabilities` exists, `PhoenixRobot` calls
 `controls.bind(program.callbackBindings(), capabilities)` exactly once. This explicit boundary keeps

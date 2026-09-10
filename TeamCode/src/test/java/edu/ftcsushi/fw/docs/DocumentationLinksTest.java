@@ -2410,25 +2410,130 @@ public final class DocumentationLinksTest {
         List<String> lines = Files.readAllLines(
                 repositoryRoot.resolve("FRAMEWORK_IMPROVEMENT_TRACKER.md"),
                 StandardCharsets.UTF_8);
-        Pattern applicationReference = Pattern.compile("(?i)phoenix");
+        List<String> failures = currentTrackerApplicationReferences(
+                lines, Pattern.compile("(?i)phoenix"));
+
+        assertTrue("Production application references remain in current tracker guidance: "
+                + failures, failures.isEmpty());
+    }
+
+    @Test
+    public void trackerApplicationScanProtectsGuidanceWithoutAbsorbingOtherItemInventories() {
+        Pattern syntheticApplicationReference = Pattern.compile("(?i)demobot");
+        List<String> openingGuidance = Arrays.asList(
+                "## Design authority and goal",
+                "Use DemoBot as the framework teaching example.",
+                "### Nested opening guidance",
+                "DemoBot is still a teaching dependency.",
+                "## Current plan",
+                "DemoBot remains inside the protected opening guidance.",
+                "| 1 | OLD-01 | Historical item | Done | DemoBot caller |",
+                "## External competition capability benchmark",
+                "Historical caller inventory: DemoBotOwner.");
+        assertEquals(Arrays.asList(
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:2: DemoBot",
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:4: DemoBot",
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:6: DemoBot"),
+                currentTrackerApplicationReferences(openingGuidance, syntheticApplicationReference));
+
+        for (String guidanceSection : Arrays.asList(
+                "## Explicitly deferred architectural ideas",
+                "## Recommended Codex workflow")) {
+            List<String> globalGuidance = Arrays.asList(
+                    guidanceSection,
+                    "DemoBot is a required dependency.",
+                    "### Nested global guidance",
+                    "DemoBot remains a protected reference.",
+                    "## Separate item evidence",
+                    "Caller inventory: DemoBotOwner.");
+            assertEquals(guidanceSection, Arrays.asList(
+                            "FRAMEWORK_IMPROVEMENT_TRACKER.md:2: DemoBot",
+                            "FRAMEWORK_IMPROVEMENT_TRACKER.md:4: DemoBot"),
+                    currentTrackerApplicationReferences(globalGuidance, syntheticApplicationReference));
+        }
+
+        for (String nextSection : Arrays.asList(
+                "### RUNTIME-04 - managed registration ownership",
+                "## Another decision group",
+                "# Another tracker section")) {
+            List<String> auditSection = Arrays.asList(
+                    "### AUDIT-01 - final capability audit",
+                    "DemoBot is required by this guidance.",
+                    "#### Nested audit evidence",
+                    "DemoBot remains a protected reference.",
+                    "##### Deeper audit evidence",
+                    "DemoBot is still inside AUDIT-01.",
+                    "| 1 | OLD-01 | Historical item | Done | DemoBot caller |",
+                    nextSection,
+                    "Caller inventory: DemoBotOwner.");
+            assertEquals(nextSection, Arrays.asList(
+                            "FRAMEWORK_IMPROVEMENT_TRACKER.md:2: DemoBot",
+                            "FRAMEWORK_IMPROVEMENT_TRACKER.md:4: DemoBot",
+                            "FRAMEWORK_IMPROVEMENT_TRACKER.md:6: DemoBot"),
+                    currentTrackerApplicationReferences(auditSection, syntheticApplicationReference));
+        }
+
+        List<String> queueOutsideProtectedSections = Arrays.asList(
+                "### RUNTIME-04 - separate item record",
+                "Caller inventory: DemoBotOwner.",
+                "| 1 | ITEM-01 | Example | Proposed | DemoBot dependency |",
+                "| 2 | ITEM-02 | Example | Researching | DemoBot dependency |",
+                "| 3 | ITEM-03 | Example | Ready | DemoBot dependency |",
+                "| 4 | ITEM-04 | Example | In progress | DemoBot dependency |",
+                "| 5 | ITEM-05 | Example | Verifying | DemoBot dependency |",
+                "| 6 | ITEM-06 | Example | Deferred | DemoBot dependency |",
+                "| 7 | ITEM-07 | Example | Done | DemoBot historical caller |");
+        assertEquals(Arrays.asList(
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:3: DemoBot",
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:4: DemoBot",
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:5: DemoBot",
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:6: DemoBot",
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:7: DemoBot",
+                        "FRAMEWORK_IMPROVEMENT_TRACKER.md:8: DemoBot"),
+                currentTrackerApplicationReferences(
+                        queueOutsideProtectedSections, syntheticApplicationReference));
+
+        assertTrue("The repository name is not a production-application dependency",
+                currentTrackerApplicationReferences(Collections.singletonList(
+                                "| 8 | ITEM-08 | Example | Proposed | 2025-PhoenixPedro repository |"),
+                        Pattern.compile("(?i)phoenix")).isEmpty());
+    }
+
+    /** Keep current guidance protected without treating later item evidence as teaching policy. */
+    private static List<String> currentTrackerApplicationReferences(
+            List<String> lines, Pattern applicationReference) {
         Pattern nonTerminalQueueRow = Pattern.compile(
                 "^\\| \\d+ \\|.*\\| (?:Proposed|Researching|Ready|In progress|Verifying|Deferred)"
                         + " \\|.*$");
         Pattern completedQueueRow = Pattern.compile(
                 "^\\| \\d+ \\|.*\\| Done \\|.*$");
         List<String> failures = new ArrayList<String>();
-        boolean inspectBlock = false;
+        boolean inspectOpeningGuidance = false;
+        boolean inspectGlobalGuidance = false;
+        boolean inspectAuditSection = false;
 
         for (int index = 0; index < lines.size(); index++) {
             String line = lines.get(index);
-            if (line.startsWith("## Design authority and goal")
-                    || line.startsWith("### AUDIT-01 - ")) {
-                inspectBlock = true;
+            if (line.startsWith("## Design authority and goal")) {
+                inspectOpeningGuidance = true;
             } else if (line.startsWith("## External competition capability benchmark")) {
-                inspectBlock = false;
+                inspectOpeningGuidance = false;
+            }
+            if (line.startsWith("## Explicitly deferred architectural ideas")
+                    || line.startsWith("## Recommended Codex workflow")) {
+                inspectGlobalGuidance = true;
+            } else if (line.startsWith("# ") || line.startsWith("## ")) {
+                inspectGlobalGuidance = false;
+            }
+            if (line.startsWith("### AUDIT-01 - ")) {
+                inspectAuditSection = true;
+            } else if (line.startsWith("# ") || line.startsWith("## ")
+                    || line.startsWith("### ")) {
+                inspectAuditSection = false;
             }
 
-            if ((inspectBlock || nonTerminalQueueRow.matcher(line).matches())
+            if ((inspectOpeningGuidance || inspectGlobalGuidance || inspectAuditSection
+                    || nonTerminalQueueRow.matcher(line).matches())
                     && !completedQueueRow.matcher(line).matches()) {
                 String semanticText = line.replace("2025-PhoenixPedro", "");
                 Matcher match = applicationReference.matcher(semanticText);
@@ -2439,8 +2544,7 @@ public final class DocumentationLinksTest {
             }
         }
 
-        assertTrue("Production application references remain in current tracker guidance: "
-                + failures, failures.isEmpty());
+        return failures;
     }
 
     @Test

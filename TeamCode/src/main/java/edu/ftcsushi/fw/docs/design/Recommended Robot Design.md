@@ -332,10 +332,37 @@ opaque drive sink must enforce its own exclusive hardware ownership.
 
 ### Coordinated cleanup is automatic for declared program owners
 
-An ordinary program immediately owns each registered service, output, drive sink, and root Task.
-Its terminal cleanup order is fixed: cancel Tasks, clear bindings, stop outputs in declaration
-order, then stop services in reverse declaration order. If later configuration or a runtime phase
-fails, already registered siblings are still cleaned and the exact primary failure is retained.
+Register each completed, exclusively owned service, output, or drive sink immediately through
+`program.service(...)`, `program.output(...)`, or `program.drive(source, sink)`. Exclusive ownership
+means no other lifecycle owner shares responsibility for the object's underlying resources. The
+program's identity check cannot detect shared hardware hidden behind other wrappers or programs.
+Once one of these methods receives a fresh non-null owner, it either accepts it or, if registration
+rejects it with a `RuntimeException`, calls its `stop()` immediately once. A rejected owner never
+joins the active graph. The same registration failure is rethrown, with any cleanup failure
+suppressed onto it; `Error` is not caught. Ordinary callers need no registration cleanup wrapper.
+
+Identity matters: an object already known to this program is rejected without an extra stop call,
+even if it was first declared in another role. This avoids prematurely stopping an accepted owner.
+A newly rejected owner's identity is recorded before its cleanup runs, so a callback cannot
+reaccept it or cause another rejection-stop attempt. That identity remains unusable for later
+declarations and receives no second stop attempt from registration or teardown, even if its cleanup
+throws. During that cleanup, all declaration changes are blocked, including bindings and handoff
+registration; another fresh owner submitted from a callback is also rejected and receives one stop
+attempt. Reentrant STOP remains allowed; because a registration failure is pending, that STOP
+invalidates any handoff instead of publishing successful
+match state. Cleanup callbacks must not try to extend the program graph.
+
+This transfer boundary starts at method entry. A constructor that throws, another argument that
+fails while Java evaluates the call, or a null program receiver is still the caller's responsibility;
+the program cannot clean an owner it never received. A constructor/factory still owns cleanup of
+its partially built private graph. Borrowed drive sources and data-only roles are not transferred
+resource owners. Declaring an unstarted root Task likewise does not acquire its future resources:
+Task cancellation remains active-only and has no effect before start.
+
+After acceptance, terminal cleanup order remains fixed: cancel Tasks, clear bindings, stop outputs
+in declaration order, then stop services in reverse declaration order. If later configuration or a
+runtime phase fails, already registered siblings are still cleaned and the exact primary failure
+is retained. A stop attempt is best-effort software cleanup, not proof of physical stop or rollback.
 
 Coordinated cleanup remains explicit in a deliberate custom host or inside one owner with several
 private resources. Such an owner marks itself terminal or detaches its references first, then lists
