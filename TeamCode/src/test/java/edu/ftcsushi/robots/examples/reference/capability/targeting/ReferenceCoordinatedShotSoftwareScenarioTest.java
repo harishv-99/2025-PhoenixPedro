@@ -158,9 +158,11 @@ public final class ReferenceCoordinatedShotSoftwareScenarioTest {
         config.minimumModelDistanceInches = 0.0;
         config.maximumModelDistanceInches = 200.0;
         config.flywheelVelocityTicksPerSecByDistance =
-                InterpolatingTable1D.ofSortedPairs(0.0, 1000.0, 200.0, 3000.0);
+                InterpolatingTable1D.ofSorted(
+                        new double[]{0.0, 200.0}, new double[]{1000.0, 3000.0});
         config.hoodPositionByDistance =
-                InterpolatingTable1D.ofSortedPairs(0.0, 0.20, 200.0, 0.80);
+                InterpolatingTable1D.ofSorted(
+                        new double[]{0.0, 200.0}, new double[]{0.20, 0.80});
         config.minimumFlywheelVelocityTicksPerSec = 0.0;
         config.maximumFlywheelVelocityTicksPerSec = 3000.0;
         config.minimumHoodPosition = 0.0;

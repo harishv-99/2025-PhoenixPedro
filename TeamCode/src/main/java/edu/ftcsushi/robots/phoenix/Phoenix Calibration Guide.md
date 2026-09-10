@@ -309,14 +309,15 @@ distance and replace the `CURRENT` rows in `PhoenixShotVelocityCalibration`; its
 
 ```java
 private static final InterpolatingTable1D CURRENT =
-        InterpolatingTable1D.ofSortedPairs(
-                28.0, 1500.0,
-                36.0, 1430.0,
-                50.0, 1450.0);
+        InterpolatingTable1D.ofSorted(
+                new double[]{28.0, 36.0, 50.0},
+                new double[]{1500.0, 1430.0, 1450.0});
 ```
 
-Each adjacent pair is `(rangeInches, flywheelVelocityNative)`. The table constructor validates every
-finite value and rejects duplicate or out-of-order distances while loading the checked-in recipe;
+The first array lists ranges in inches; the second lists the matching flywheel velocities in native
+units. Entries at the same index form one calibration row. The table factory copies both arrays,
+requires equal nonzero lengths and finite values, and rejects duplicate or out-of-order distances
+while loading the checked-in recipe;
 do not add a duplicate robot-local validation loop. During a match, a fresh tag alone does not prove
 that its derived range is finite. Phoenix publishes a shot suggestion only when the table result is
 finite, so unavailable live geometry cannot masquerade as a clamped endpoint shot.
