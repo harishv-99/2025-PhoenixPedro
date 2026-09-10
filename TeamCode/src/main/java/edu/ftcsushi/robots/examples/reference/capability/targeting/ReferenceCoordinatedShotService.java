@@ -76,15 +76,13 @@ public final class ReferenceCoordinatedShotService implements RobotProgram.Servi
             config.minimumModelDistanceInches = 24.0;
             config.maximumModelDistanceInches = 120.0;
             config.flywheelVelocityTicksPerSecByDistance =
-                    InterpolatingTable1D.ofSortedPairs(
-                            24.0, 1200.0,
-                            72.0, 1800.0,
-                            120.0, 2400.0
+                    InterpolatingTable1D.ofSorted(
+                            new double[]{24.0, 72.0, 120.0},
+                            new double[]{1200.0, 1800.0, 2400.0}
                     );
-            config.hoodPositionByDistance = InterpolatingTable1D.ofSortedPairs(
-                    24.0, 0.25,
-                    72.0, 0.50,
-                    120.0, 0.75
+            config.hoodPositionByDistance = InterpolatingTable1D.ofSorted(
+                    new double[]{24.0, 72.0, 120.0},
+                    new double[]{0.25, 0.50, 0.75}
             );
             config.minimumFlywheelVelocityTicksPerSec = 0.0;
             config.maximumFlywheelVelocityTicksPerSec = 3000.0;
@@ -362,8 +360,8 @@ public final class ReferenceCoordinatedShotService implements RobotProgram.Servi
             return unavailable(Reason.MODEL_DISTANCE_OUT_OF_DOMAIN, timestamp);
         }
 
-        double flywheel = flywheelVelocityTicksPerSecByDistance.applyAsDouble(distance);
-        double hood = hoodPositionByDistance.applyAsDouble(distance);
+        double flywheel = flywheelVelocityTicksPerSecByDistance.interpolate(distance);
+        double hood = hoodPositionByDistance.interpolate(distance);
         if (!inside(flywheel,
                 minimumFlywheelVelocityTicksPerSec,
                 maximumFlywheelVelocityTicksPerSec)

@@ -499,30 +499,46 @@ A practical shooter workflow is:
 5. Mark `accepted` only after the team's external success criterion is met.
 
 After review, copy only the accepted finite distance/velocity rows into checked-in configuration.
-Sort them by strictly increasing distance, then declare the table directly:
+Sort them by strictly increasing distance. **Interpolation** estimates between stored samples;
+it does not decide which trials count as accepted. Use the optional
+[calibration-table lesson](<Interpolate Calibration Measurements.md>) to learn the array syntax,
+distance-only and two-input alternatives, and a calculation-only software checkpoint.
 
 ### Critical code
 
-Replace these demonstration rows with accepted experiment evidence.
+The following exact declaration from the independent example is illustrative, not accepted
+experiment evidence. An **array** is an ordered list: matching positions pair each distance in
+inches with its speed in encoder ticks/second. `new double[]` creates that numeric list;
+`ofSorted(...)` copies and validates the data. `private static final` keeps one table inside the
+example class, initialized once and reused by its immediate calculation methods.
 
-In checked-in robot configuration, construct the accepted table with
-`InterpolatingTable1D.ofSortedPairs(24.0, 3500.0, 30.0, 3600.0, 36.0, 3700.0)`.
+<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/calibration/ShotSpeedCalibration.java -->
+```java
+private static final InterpolatingTable1D DISTANCE_TO_SPEED = InterpolatingTable1D.ofSorted(
+        new double[] {24.0, 48.0},
+        new double[] {3000.0, 3400.0});
+```
+
+Replace both arrays with your accepted distance/speed pairs in robot configuration. At distance
+36 this illustrative table returns 3200 ticks/second; it performs no sensing or hardware command.
 
 **What to notice**
 
 - Only externally accepted trials become checked-in robot configuration.
 - Distance keys must be finite and strictly increasing; construction rejects duplicate or unordered rows.
-- Runtime sensor availability still must be checked before using a lookup result to command hardware.
+- Runtime sensor availability, freshness and the accepted operating range still need separate checks.
 
 **Key APIs**
 
-- `InterpolatingTable1D.ofSortedPairs(...)` — constructs and validates a finite, ordered calibration table.
+- [`InterpolatingTable1D.ofSorted(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/core/math/InterpolatingTable1D.html>) — constructs and validates a finite, ordered calibration table.
+- [`InterpolatingTable2D.ofSorted(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/core/math/InterpolatingTable2D.html>) — the alternative when two independent inputs justify a complete measured grid; the linked lesson defines its row/column order.
 
-`ofSortedPairs(...)` owns the authored-data check: every distance and velocity must be finite, and
+`ofSorted(...)` owns the authored-data check: every distance and velocity must be finite, and
 duplicate or out-of-order distances are rejected during construction. Robot code does not need a
-second validation loop. A live sensor range is runtime evidence, so gate on the finite lookup
-result before commanding hardware; an unavailable range must remain unavailable rather than
-select an endpoint.
+second validation loop. A non-finite runtime input returns `NaN`; a finite input outside an axis
+clamps to its endpoint. Neither a finite result nor that numerical clamp proves that the observed
+position is fresh, within the accepted operating range, or safe to use for a shot. The robot owns
+those checks before a lookup result can become a mechanism request.
 
 This keeps exact controller evidence correlated without pretending Sushi can infer success.
 

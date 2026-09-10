@@ -49,6 +49,7 @@ nav = [
     { "Actuator bring-up" = "docs/testing-calibration/Actuator Bring-up.md" },
     { "Robot calibration" = "docs/testing-calibration/Robot Calibration Tutorials.md" },
     { "Control tuning" = "docs/testing-calibration/Control Tuning Workflow.md" },
+    { "Interpolate calibration measurements" = "docs/testing-calibration/Interpolate Calibration Measurements.md" },
     { "Download experiment results" = "docs/testing-calibration/Download and Inspect Experiment Results.md" },
     { "Testing philosophy" = "docs/testing-calibration/How to test a Sushi component.md" },
     { "Add your robot's testers" = [

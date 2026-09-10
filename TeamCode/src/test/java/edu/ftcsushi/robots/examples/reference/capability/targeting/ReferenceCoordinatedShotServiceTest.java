@@ -53,8 +53,9 @@ public final class ReferenceCoordinatedShotServiceTest {
         config.spatialMaxAgeSec = 0.0;
         config.spatialMinQuality = 1.0;
         config.flywheelVelocityTicksPerSecByDistance =
-                InterpolatingTable1D.ofSortedPairs(0.0, 9999.0);
-        config.hoodPositionByDistance = InterpolatingTable1D.ofSortedPairs(0.0, 0.99);
+                InterpolatingTable1D.ofSorted(new double[]{0.0}, new double[]{9999.0});
+        config.hoodPositionByDistance =
+                InterpolatingTable1D.ofSorted(new double[]{0.0}, new double[]{0.99});
         config.unavailableFlywheelVelocityTicksPerSec = 500.0;
         config.unavailableHoodPosition = 0.90;
         assertNotSame(originalFlywheel, config.flywheelVelocityTicksPerSecByDistance);
@@ -309,7 +310,8 @@ public final class ReferenceCoordinatedShotServiceTest {
 
         ReferenceCoordinatedShotService.Config badModel = testConfig();
         badModel.flywheelVelocityTicksPerSecByDistance =
-                InterpolatingTable1D.ofSortedPairs(0.0, 4000.0, 200.0, 4000.0);
+                InterpolatingTable1D.ofSorted(
+                        new double[]{0.0, 200.0}, new double[]{4000.0, 4000.0});
         Fixture invalidModel = new Fixture(badModel);
         invalidModel.predictor.publishStationary(
                 pose(0.0, 0.0, 0.0), 0.80, invalidModel.time.clock());
@@ -436,9 +438,11 @@ public final class ReferenceCoordinatedShotServiceTest {
         config.minimumModelDistanceInches = 0.0;
         config.maximumModelDistanceInches = 200.0;
         config.flywheelVelocityTicksPerSecByDistance =
-                InterpolatingTable1D.ofSortedPairs(0.0, 1000.0, 100.0, 2000.0);
+                InterpolatingTable1D.ofSorted(
+                        new double[]{0.0, 100.0}, new double[]{1000.0, 2000.0});
         config.hoodPositionByDistance =
-                InterpolatingTable1D.ofSortedPairs(0.0, 0.20, 100.0, 0.60);
+                InterpolatingTable1D.ofSorted(
+                        new double[]{0.0, 100.0}, new double[]{0.20, 0.60});
         config.minimumFlywheelVelocityTicksPerSec = 0.0;
         config.maximumFlywheelVelocityTicksPerSec = 3000.0;
         config.minimumHoodPosition = 0.0;

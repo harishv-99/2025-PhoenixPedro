@@ -261,7 +261,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 147 | DOC-19 | Windows and macOS command tabs | Done | The reviewed 26-pair Windows/macOS migration, linked selection, maintainer contract, hardened regressions, verification, manual approval, and destination-specific publication authorization are complete. |
 | 148 | DOC-20 | Concept-first documentation and visual learning | Done | Concept-first repairs and six diagrams implemented; principles strengthened; 2,254 tests and strict docs/API checks pass. User approved the reviewed diff and exact branch/remote/master publication on 2026-09-06. |
 | 149 | DOC-21 | Integrate calibration testers with a new robot | Done | Independent example and three layered Test & Tune lessons reviewed; user authorized destination-specific commit, PR, and merge on 2026-09-08. Physical adopting-robot validation remains separate. |
-| 150 | MATH-02 | Finite two-dimensional calibration tables | Proposed | Extend finite interpolation to two independent inputs without owning calibration fitting or mechanism meaning. |
+| 150 | MATH-02 | Finite two-dimensional calibration tables | Done | Parallel immutable 1D/2D tables, migrated callers, and optional beginner lesson reviewed; 2,891 tests and strict docs/API checks pass. User authorized the exact branch/repository/master publication on 2026-09-10. |
 | 151 | TASK-07 | Terminal Task cleanup composition | Done | Shared timed lifecycle, cleanup adopters, synchronized guides, and 2,759 passing tests; Android Studio review and destination-specific publication authorized on 2026-09-09. |
 | 152 | RUNTIME-04 | Managed registration ownership transfer | Proposed | Evaluate a stronger existing registration contract that removes adopter cleanup guards without stopping already-owned resources. |
 | 153 | VISION-04 | Bounded recent field-location memory | Proposed | Remember recently observed ball/cluster locations, refresh unambiguous spatial matches, and expire unseen entries without velocity prediction or physical-identity claims. |
@@ -33712,7 +33712,131 @@ obtains the skill-required approval before API or major lifecycle changes.
 
 ### MATH-02 - Finite two-dimensional calibration tables
 
-- **Status:** **Proposed**.
+- **Current status (2026-09-10): Done.** Read-only design research followed the user's
+  request for parallel 1D/2D APIs and permission to improve the 1D structure. After reviewing
+  paired robot-code examples, the user said **"Proceed with this design"**. That approves this
+  implementation, not publication. The Researching/Ready decision below is complete; work is
+  on `codex/math-02-parallel-calibration-tables` from fetched `origin/master` at `62dc509`.
+- **Manual review and publication authorization (2026-09-10):** the user approved the reviewed
+  MATH-02 diff and explicitly authorized committing it on
+  `codex/math-02-parallel-calibration-tables`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. This closes the Android Studio review gate, not physical calibration acceptance.
+  The appended "Then move to next task" authorizes only the next item's decision gate after the
+  approved merge is verified; it does not bypass that item's design or publication gates.
+- **Confirmed pre-change surface and callers:** 1D offered `ofSorted`, `ofUnsorted`, and
+  `ofSortedPairs`, all returning one immutable table with a private constructor. It exposes
+  `interpolate`, the `DoubleUnaryOperator` adapter and passive diagnostics; no builder exists.
+  Three maintained declarations use pairs (the application-local velocity calibration and two
+  Reference coordinated-shot tables), seven Reference test declarations do likewise, and no
+  maintained consumer calls either array factory outside the table tests. Two direct Reference
+  queries use `applyAsDouble`. The tuning and application calibration guides teach pairs.
+  Existing tests lock these factories, diagnostics, exact calibration rows and numerical behavior.
+- **Alternatives / chosen API:** documentation-only and composing 1D tables leave grid validation,
+  two-axis bracketing and interpolation in every adopter. A robot-local calculation avoids a core
+  type but repeats the same dimension-independent finite arithmetic. A builder/sample/row wrapper
+  adds mutable authoring state and more nouns without protecting an additional required choice.
+  Choose one `ofSorted(double[] xs, double[] values)` factory for 1D and
+  `ofSorted(double[] xs, double[] ys, double[][] values)` for 2D. Query with `interpolate(x)` or
+  `interpolate(x, y)`; rows are first-axis indices, columns second-axis indices. Standard unary and
+  binary Java function adapters have distinct interoperability value, not a second taught verb.
+- **Construction-layer disposition:** consolidate the old 1D pair convenience and currently
+  unadopted unsorted-input path into the approved sorted-axis path; migrate callers rather than
+  add unused 2D siblings or legacy aliases. Unsorted input previously provided real sorting, but
+  no maintained adopter requires it; authored calibration axes must now be supplied in order.
+  Arrays are the actual retained data contract, not staged-builder parameter wrappers. No public
+  base class, generic dimension, grid wrapper, mutable config, automatic fitting or output vector.
+- **Parallel numerical contract:** defensively copy every axis and grid row; require nonempty,
+  finite, strictly increasing axes (signed zeros count as duplicates) and a complete finite
+  rectangular grid. Reject configuration with indexed actionable errors. Permit singleton axes:
+  one dimension reduces to 1D; two reduce to a constant. Finite queries clamp independently to each
+  axis, exact nodes return their authored value, and other queries use finite convex interpolation.
+  Any non-finite query is unavailable (`NaN`), even on singleton axes. Share internal robust
+  fraction/blending arithmetic, retain allocation-free pure queries, and use no clock or hardware.
+- **Robot scope / simplicity:** preserve every existing calibrated value and targeting/feeding
+  policy while migrating declaration/query spelling. Demonstrate both alternatives in one small
+  independent calculation-only example: distance -> flywheel ticks/second, or robot-relative
+  forward/left inches -> flywheel ticks/second. The example owns illustrative tables and unit/axis
+  meaning; Sushi owns validation and interpolation. It is not a complete shooter/OpMode, automatic
+  calibration, freshness check or command writer, and does not require every robot to retain both
+  tables. No application is a shared teaching dependency.
+- **Documentation and verification plan:** one optional Test & Tune lesson explains interpolation
+  before the first query, Java array/grid indexing before 2D construction, a 3200/3250 ticks/second
+  prediction, and software-versus-physical limits. Show a labeled grid/table beside matching code;
+  no new opening tabs or renderer. Synchronize tuning/application guides and API docs. Tests cover
+  construction/mutation, exact nodes, asymmetric grid orientation, independent axis clamps,
+  singleton equivalence, unavailable queries, finite extrema/subnormals, bilinear cross terms and
+  exact public-layer parallelism. Preserve original 1D numerical regressions and application table
+  evidence. Run focused/full tests, compilation, strict narrative/Javadocs and generated-link
+  checks; stop at Verifying for Android Studio review. No physical accuracy claim is added.
+- **Implemented API and arithmetic:** both final immutable types now have exactly one public
+  `ofSorted` factory and the parallel `interpolate` methods. The 1D output parameter is `values`,
+  matching 2D's output vocabulary; 2D `ys` denotes its second input axis. Removed `ofSortedPairs`
+  and `ofUnsorted`; only tests forbidding those names and historical tracker records retain them.
+  `InterpolationMath` is package-private and shares sorted-order validation, allocation-free
+  binary bracketing, overflow-safe fractions and convex blending. 2D interpolates along its second
+  axis first, then the first; singleton and clamping paths preserve the same numerical contract.
+  Both Java functional adapters and passive diagnostics remain, with no public constructor,
+  builder, aliases, mutable accessors or new lifecycle. The 2D diagnostic total is explicitly boxed
+  as a long so the sink's double overload cannot change its exact count representation.
+- **Intentional 1D refinement:** exact-node returns now also preserve the authored output's raw
+  signed-zero bits when an interior zero input is queried with the opposite zero sign. Previously
+  `xs={-1,+0,1}`, outputs `{1,-0,1}`, query `-0` could lose the output sign through arithmetic.
+  Endpoint short-circuits fix that case. Tests cover both authored/query zero signs in 1D and on
+  both 2D axes; this is an explicit strengthening, not a claim of bit-identical historical results
+  for every possible finite query. Ordinary calibrated robot values and acceptance policy remain
+  unchanged.
+- **Migration and whole-code cost:** all ten former pair declarations (three main, seven test)
+  now use aligned sorted arrays; structural comparison preserved all 38 original sample rows,
+  including all 20 application calibration rows. Two ordinary Reference lookups now say
+  `interpolate`; targeting, feeding, freshness, range gates and test assertions are unchanged.
+  Counting complete files including comments/blanks, the old 342-line 1D type becomes 144 lines;
+  2D adds 191 and the internal helper 54, for 389 framework lines total (net +47). The complete
+  independent `ShotSpeedCalibration` example is 62 lines, with two alternative declarations and
+  immediate one-line queries, not hidden per-loop grid plumbing or a second shooter graph.
+- **Concept-first documentation checklist:** the new optional Test & Tune lesson teaches one
+  outcome: estimating between accepted samples. Calibration, interpolation, encoder ticks,
+  arrays, finite numbers and immutable/static ownership precede 1D construction. Robot-relative
+  forward/left meaning, rows, columns, indices and axes precede 2D construction. A labeled grid
+  augments the matching code; the 3050/3450 -> 3250 walkthrough follows actual evaluation order.
+  Clamping, unavailable input, stale-but-finite evidence and physical acceptance are adjacent to
+  use. The optional software checkpoint names Question/Keep real/Replace/Observe/Cannot conclude,
+  then the causal chain, limits and next physical gate. Five lesson and two tuning-guide excerpts
+  remain source-backed; two example tests exercise the real private tables. The section home is
+  444 words under its unchanged 450-word budget; the new page occupies only existing Test & Tune
+  navigation. No opening tab, renderer, production-application teaching dependency or physical
+  fixture was introduced. Principles already require this design; no principle exception needed.
+- **Independent review and resolved findings:** separate reviewers audited arithmetic, indexing,
+  mutation, exact nodes, unavailable inputs, public construction layers, distinct capabilities,
+  robot-code cost and documentation truth. They confirmed one necessary factory per dimension,
+  distinct standard Java interoperability and no justification for a builder or duplicate authoring
+  layer. The signed-zero test gap and public output naming were resolved. Initial focused checks
+  additionally caught the diagnostic boxing mismatch, the new shell-page/pair inventory totals,
+  and the section-home word budget. Fixes preserved the substantive tests and budget; all checks
+  were rerun. New coverage includes an independent asymmetric bilinear cross-term equation,
+  deterministic evaluation order, finite extrema/subnormals, exact 1D reductions and deep copies.
+- **Automated verification (2026-09-10):** the focused math/calibration/docs/Reference-targeting/
+  application-scoring selection passed **177 tests in 14 suites**, zero failures/errors/skips.
+  A fresh `:TeamCode:cleanTestDebugUnitTest :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` passed; final XML recount is
+  **2,891 tests in 292 suites**, zero failures/errors/skips. Strict Javadocs use doclint/Werror.
+  `zensical build --clean --strict` passed; generated search verified **1,041 indexed sections**
+  across six guide areas; generated-link verification passed **233 API links and 101 maintained
+  source links across 57 Markdown pages**. Published shell inventory now truthfully covers 31
+  equivalent Windows/macOS pairs on 22 pages. `git diff --check`, a trailing-whitespace scan of
+  all 19 tracked/untracked changed files, and full affected-caller/retired-factory searches passed.
+  Only the existing Java-8-on-JDK-21 and FTC sample deprecation warnings remained.
+- **Closed review/publication gate:** review covered the two table APIs and numerical edge tests, unchanged
+  calibration rows, independent example and optional lesson in Android Studio. Software proves
+  table behavior, not sensor freshness, accepted measurements, model accuracy or shot success;
+  adopting robots still require controlled physical validation. Publication coordinates are
+  `codex/math-02-parallel-calibration-tables` -> origin push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` -> `master`. The combined reviewed-diff and
+  destination-specific authorization above permits that publication. Independent publication
+  preflight confirmed exactly 19 in-scope changed/new files and the recorded passing XML counts;
+  the unrelated existing stash remains preserved. Finish and verify this merge before starting
+  the next item's research.
+- **Original intake status:** **Proposed** before the approved decision above.
 - **Evidence and current callers:** the pinned RevAmped map uses two goal-relative displacement
   inputs for RPM/hood/flight-time outputs. Sushi provides immutable `fw/core/math/InterpolatingTable1D`
   with finite authored samples, endpoint clamping, and unavailable non-finite queries, but no

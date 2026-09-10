@@ -25,83 +25,55 @@ import static org.junit.Assert.fail;
 public final class InterpolatingTable1DTest {
 
     @Test
-    public void factoriesRejectNullEmptyAndIncompleteInputs() {
+    public void factoryRejectsNullEmptyAndMismatchedInputs() {
         assertContains(assertThrows(NullPointerException.class,
                 () -> InterpolatingTable1D.ofSorted(null, new double[]{1.0})),
                 "xs", "required");
         assertContains(assertThrows(NullPointerException.class,
                 () -> InterpolatingTable1D.ofSorted(new double[]{1.0}, null)),
-                "ys", "required");
-        assertContains(assertThrows(NullPointerException.class,
-                () -> InterpolatingTable1D.ofUnsorted(null, new double[]{1.0})),
-                "xs", "required");
-        assertContains(assertThrows(NullPointerException.class,
-                () -> InterpolatingTable1D.ofUnsorted(new double[]{1.0}, null)),
-                "ys", "required");
-        assertContains(assertThrows(NullPointerException.class,
-                () -> InterpolatingTable1D.ofSortedPairs((double[]) null)),
-                "xsAndYs", "required");
+                "values", "required");
 
         assertContains(assertThrows(IllegalArgumentException.class,
                 () -> InterpolatingTable1D.ofSorted(new double[]{1.0}, new double[]{1.0, 2.0})),
                 "same length");
         assertContains(assertThrows(IllegalArgumentException.class,
-                () -> InterpolatingTable1D.ofUnsorted(new double[]{1.0}, new double[0])),
-                "same length");
-        assertContains(assertThrows(IllegalArgumentException.class,
                 () -> InterpolatingTable1D.ofSorted(new double[0], new double[0])),
                 "at least one point");
-        assertContains(assertThrows(IllegalArgumentException.class,
-                () -> InterpolatingTable1D.ofUnsorted(new double[0], new double[0])),
-                "at least one point");
-        assertContains(assertThrows(IllegalArgumentException.class,
-                InterpolatingTable1D::ofSortedPairs),
-                "even number", "x0, y0");
-        assertContains(assertThrows(IllegalArgumentException.class,
-                () -> InterpolatingTable1D.ofSortedPairs(1.0, 2.0, 3.0)),
-                "even number", "x0, y0");
     }
 
     @Test
-    public void everyFactoryRejectsEveryNonFiniteAuthoredSampleWithItsOriginalIndex() {
+    public void factoryRejectsEveryNonFiniteAuthoredSampleWithItsIndex() {
         double[] invalidValues = {Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY};
 
-        for (NamedFactory factory : FACTORIES) {
-            for (int component = 0; component < 2; component++) {
-                for (int authoredIndex = 0; authoredIndex < 3; authoredIndex++) {
-                    for (double invalidValue : invalidValues) {
-                        double[] xs = factory.xs.clone();
-                        double[] ys = {100.0, 200.0, 300.0};
-                        if (component == 0) {
-                            xs[authoredIndex] = invalidValue;
-                        } else {
-                            ys[authoredIndex] = invalidValue;
-                        }
-
-                        IllegalArgumentException failure = assertThrows(
-                                factory.name + " must reject non-finite authored samples",
-                                IllegalArgumentException.class,
-                                () -> factory.factory.create(xs, ys));
-                        assertContains(failure,
-                                component == 0 ? "x" : "y",
-                                "authored index " + authoredIndex,
-                                Double.toString(invalidValue),
-                                "finite");
+        for (int component = 0; component < 2; component++) {
+            for (int authoredIndex = 0; authoredIndex < 3; authoredIndex++) {
+                for (double invalidValue : invalidValues) {
+                    double[] xs = {10.0, 20.0, 30.0};
+                    double[] ys = {100.0, 200.0, 300.0};
+                    if (component == 0) {
+                        xs[authoredIndex] = invalidValue;
+                    } else {
+                        ys[authoredIndex] = invalidValue;
                     }
+
+                    IllegalArgumentException failure = assertThrows(
+                            IllegalArgumentException.class,
+                            () -> InterpolatingTable1D.ofSorted(xs, ys));
+                    assertContains(failure,
+                            component == 0 ? "x" : "value",
+                            "authored index " + authoredIndex,
+                            Double.toString(invalidValue),
+                            "finite");
                 }
             }
         }
     }
 
     @Test
-    public void sortedFactoriesReportConflictingAdjacentAuthoredSamples() {
+    public void factoryReportsConflictingAdjacentAuthoredSamples() {
         assertSortedConflict(
                 () -> InterpolatingTable1D.ofSorted(
                         new double[]{10.0, 30.0, 20.0}, new double[]{1.0, 2.0, 3.0}),
-                "index 2", "20.0", "index 1", "30.0");
-        assertSortedConflict(
-                () -> InterpolatingTable1D.ofSortedPairs(
-                        10.0, 1.0, 30.0, 2.0, 20.0, 3.0),
                 "index 2", "20.0", "index 1", "30.0");
         assertSortedConflict(
                 () -> InterpolatingTable1D.ofSorted(
@@ -114,49 +86,23 @@ public final class InterpolatingTable1DTest {
     }
 
     @Test
-    public void unsortedFactoryReportsDuplicateOriginalAuthoredIndices() {
-        IllegalArgumentException duplicate = assertThrows(IllegalArgumentException.class,
-                () -> InterpolatingTable1D.ofUnsorted(
-                        new double[]{30.0, 10.0, 30.0}, new double[]{3.0, 1.0, 4.0}));
-        assertContains(duplicate, "duplicate", "authored indices", "0 (30.0)", "2 (30.0)",
-                "unique");
-
-        IllegalArgumentException signedZero = assertThrows(IllegalArgumentException.class,
-                () -> InterpolatingTable1D.ofUnsorted(
-                        new double[]{10.0, 0.0, -0.0}, new double[]{3.0, 1.0, 2.0}));
-        assertContains(signedZero, "duplicate", "1 (0.0)", "2 (-0.0)", "unique");
-    }
-
-    @Test
-    public void everyFactoryCapturesItsInputsAndUnsortedFactoryPreservesPairs() {
+    public void factoryCapturesBothArraysWithoutMutatingThem() {
         double[] sortedXs = {10.0, 20.0, 30.0};
         double[] sortedYs = {100.0, 200.0, 300.0};
         InterpolatingTable1D sorted = InterpolatingTable1D.ofSorted(sortedXs, sortedYs);
+        assertTrue(Arrays.equals(new double[]{10.0, 20.0, 30.0}, sortedXs));
+        assertTrue(Arrays.equals(new double[]{100.0, 200.0, 300.0}, sortedYs));
         Arrays.fill(sortedXs, -1.0);
         Arrays.fill(sortedYs, -1.0);
         assertEquals(150.0, sorted.interpolate(15.0), 0.0);
 
-        double[] unsortedXs = {30.0, 10.0, 20.0};
-        double[] unsortedYs = {300.0, 100.0, 200.0};
-        InterpolatingTable1D unsorted = InterpolatingTable1D.ofUnsorted(unsortedXs, unsortedYs);
-        Arrays.fill(unsortedXs, -1.0);
-        Arrays.fill(unsortedYs, -1.0);
-        assertEquals(100.0, unsorted.interpolate(10.0), 0.0);
-        assertEquals(150.0, unsorted.interpolate(15.0), 0.0);
-        assertEquals(300.0, unsorted.interpolate(30.0), 0.0);
-
-        double[] pairs = {10.0, 100.0, 20.0, 200.0, 30.0, 300.0};
-        InterpolatingTable1D paired = InterpolatingTable1D.ofSortedPairs(pairs);
-        Arrays.fill(pairs, -1.0);
-        assertEquals(250.0, paired.interpolate(25.0), 0.0);
+        assertEquals(250.0, sorted.interpolate(25.0), 0.0);
     }
 
     @Test
     public void finiteQueriesClampMatchAndInterpolateNonMonotonicYValues() {
-        InterpolatingTable1D table = InterpolatingTable1D.ofSortedPairs(
-                10.0, 100.0,
-                20.0, 0.0,
-                40.0, 80.0);
+        InterpolatingTable1D table = InterpolatingTable1D.ofSorted(
+                new double[]{10.0, 20.0, 40.0}, new double[]{100.0, 0.0, 80.0});
 
         assertEquals(100.0, table.interpolate(-Double.MAX_VALUE), 0.0);
         assertEquals(100.0, table.interpolate(10.0), 0.0);
@@ -169,15 +115,30 @@ public final class InterpolatingTable1DTest {
     }
 
     @Test
+    public void eitherSignedZeroQueryPreservesNegativeZeroAtAnInteriorZeroNode() {
+        for (double authoredZero : new double[]{-0.0, 0.0}) {
+            InterpolatingTable1D table = InterpolatingTable1D.ofSorted(
+                    new double[]{-1.0, authoredZero, 1.0}, new double[]{1.0, -0.0, 1.0});
+            for (double queryZero : new double[]{-0.0, 0.0}) {
+                assertEquals(Double.doubleToRawLongBits(-0.0),
+                        Double.doubleToRawLongBits(table.interpolate(queryZero)));
+                assertEquals(Double.doubleToRawLongBits(-0.0),
+                        Double.doubleToRawLongBits(table.applyAsDouble(queryZero)));
+            }
+        }
+    }
+
+    @Test
     public void nonFiniteQueriesAreUnavailableForOneAndManyPointTables() {
-        InterpolatingTable1D onePoint = InterpolatingTable1D.ofSortedPairs(-0.0, -0.0);
+        InterpolatingTable1D onePoint = InterpolatingTable1D.ofSorted(
+                new double[]{-0.0}, new double[]{-0.0});
         assertEquals(Double.doubleToRawLongBits(-0.0),
                 Double.doubleToRawLongBits(onePoint.interpolate(-Double.MAX_VALUE)));
         assertEquals(Double.doubleToRawLongBits(-0.0),
                 Double.doubleToRawLongBits(onePoint.interpolate(Double.MAX_VALUE)));
 
-        InterpolatingTable1D manyPoints = InterpolatingTable1D.ofSortedPairs(
-                10.0, 100.0, 20.0, 200.0);
+        InterpolatingTable1D manyPoints = InterpolatingTable1D.ofSorted(
+                new double[]{10.0, 20.0}, new double[]{100.0, 200.0});
         double[] unavailableQueries = {
                 Double.NaN,
                 Double.POSITIVE_INFINITY,
@@ -193,9 +154,8 @@ public final class InterpolatingTable1DTest {
 
     @Test
     public void extremeFiniteXSpanUsesStableFractions() {
-        InterpolatingTable1D table = InterpolatingTable1D.ofSortedPairs(
-                -Double.MAX_VALUE, 0.0,
-                Double.MAX_VALUE, 100.0);
+        InterpolatingTable1D table = InterpolatingTable1D.ofSorted(
+                new double[]{-Double.MAX_VALUE, Double.MAX_VALUE}, new double[]{0.0, 100.0});
 
         assertEquals(25.0, table.interpolate(-Double.MAX_VALUE / 2.0), 0.0);
         assertEquals(50.0, table.interpolate(0.0), 0.0);
@@ -204,12 +164,10 @@ public final class InterpolatingTable1DTest {
 
     @Test
     public void oppositeExtremeFiniteYValuesRemainFiniteAndConvex() {
-        InterpolatingTable1D increasing = InterpolatingTable1D.ofSortedPairs(
-                0.0, -Double.MAX_VALUE,
-                1.0, Double.MAX_VALUE);
-        InterpolatingTable1D decreasing = InterpolatingTable1D.ofSortedPairs(
-                0.0, Double.MAX_VALUE,
-                1.0, -Double.MAX_VALUE);
+        InterpolatingTable1D increasing = InterpolatingTable1D.ofSorted(
+                new double[]{0.0, 1.0}, new double[]{-Double.MAX_VALUE, Double.MAX_VALUE});
+        InterpolatingTable1D decreasing = InterpolatingTable1D.ofSorted(
+                new double[]{0.0, 1.0}, new double[]{Double.MAX_VALUE, -Double.MAX_VALUE});
 
         assertEquals(0.0, increasing.interpolate(0.5), 0.0);
         assertEquals(0.0, decreasing.interpolate(0.5), 0.0);
@@ -232,9 +190,8 @@ public final class InterpolatingTable1DTest {
 
     @Test
     public void sameSignNearMaximumYUsesTheNearerEndpointCalculation() {
-        InterpolatingTable1D table = InterpolatingTable1D.ofSortedPairs(
-                0.0, Double.MAX_VALUE / 2.0,
-                1.0, Double.MAX_VALUE);
+        InterpolatingTable1D table = InterpolatingTable1D.ofSorted(
+                new double[]{0.0, 1.0}, new double[]{Double.MAX_VALUE / 2.0, Double.MAX_VALUE});
 
         double result = table.interpolate(Math.nextDown(1.0));
 
@@ -244,9 +201,9 @@ public final class InterpolatingTable1DTest {
 
     @Test
     public void combinedExtremeFiniteXAndYValuesRemainLinearAndFinite() {
-        InterpolatingTable1D table = InterpolatingTable1D.ofSortedPairs(
-                -Double.MAX_VALUE, -Double.MAX_VALUE,
-                Double.MAX_VALUE, Double.MAX_VALUE);
+        InterpolatingTable1D table = InterpolatingTable1D.ofSorted(
+                new double[]{-Double.MAX_VALUE, Double.MAX_VALUE},
+                new double[]{-Double.MAX_VALUE, Double.MAX_VALUE});
 
         assertEquals(-Double.MAX_VALUE / 2.0,
                 table.interpolate(-Double.MAX_VALUE / 2.0),
@@ -261,22 +218,20 @@ public final class InterpolatingTable1DTest {
 
     @Test
     public void finiteSubnormalSamplesAndIntervalsRemainValid() {
-        InterpolatingTable1D subnormal = InterpolatingTable1D.ofSortedPairs(
-                0.0, 0.0,
-                2.0 * Double.MIN_VALUE, 2.0);
+        InterpolatingTable1D subnormal = InterpolatingTable1D.ofSorted(
+                new double[]{0.0, 2.0 * Double.MIN_VALUE}, new double[]{0.0, 2.0});
         assertEquals(1.0, subnormal.interpolate(Double.MIN_VALUE), 0.0);
 
-        InterpolatingTable1D finiteExtrema = InterpolatingTable1D.ofSortedPairs(
-                -Double.MAX_VALUE, -Double.MIN_VALUE,
-                0.0, 0.0,
-                Double.MAX_VALUE, Double.MIN_VALUE);
+        InterpolatingTable1D finiteExtrema = InterpolatingTable1D.ofSorted(
+                new double[]{-Double.MAX_VALUE, 0.0, Double.MAX_VALUE},
+                new double[]{-Double.MIN_VALUE, 0.0, Double.MIN_VALUE});
         assertEquals(0.0, finiteExtrema.interpolate(0.0), 0.0);
         assertTrue(Double.isFinite(finiteExtrema.interpolate(-1.0)));
         assertTrue(Double.isFinite(finiteExtrema.interpolate(1.0)));
     }
 
     @Test
-    public void publicSurfaceHasThreeFactoriesOneQueryAndTheFunctionalAdapter() throws Exception {
+    public void publicSurfaceHasOneSortedFactoryOneQueryAndTheFunctionalAdapter() throws Exception {
         assertTrue(DoubleUnaryOperator.class.isAssignableFrom(InterpolatingTable1D.class));
         assertEquals(0, InterpolatingTable1D.class.getConstructors().length);
         assertEquals(0, InterpolatingTable1D.class.getDeclaredClasses().length);
@@ -291,22 +246,13 @@ public final class InterpolatingTable1DTest {
                 factoryCount++;
             }
         }
-        assertEquals(3, factoryCount);
-        assertEquals(new HashSet<>(Arrays.asList(
-                "ofSorted", "ofUnsorted", "ofSortedPairs")), factories);
+        assertEquals(1, factoryCount);
+        assertEquals(new HashSet<>(Arrays.asList("ofSorted")), factories);
 
         Method sortedFactory = InterpolatingTable1D.class.getDeclaredMethod(
                 "ofSorted", double[].class, double[].class);
-        Method unsortedFactory = InterpolatingTable1D.class.getDeclaredMethod(
-                "ofUnsorted", double[].class, double[].class);
-        Method pairsFactory = InterpolatingTable1D.class.getDeclaredMethod(
-                "ofSortedPairs", double[].class);
         assertPublicStaticTableFactory(sortedFactory);
-        assertPublicStaticTableFactory(unsortedFactory);
-        assertPublicStaticTableFactory(pairsFactory);
         assertFalse(sortedFactory.isVarArgs());
-        assertFalse(unsortedFactory.isVarArgs());
-        assertTrue(pairsFactory.isVarArgs());
 
         Constructor<?>[] constructors = InterpolatingTable1D.class.getDeclaredConstructors();
         assertEquals(1, constructors.length);
@@ -323,6 +269,8 @@ public final class InterpolatingTable1DTest {
                         "applyAsDouble", double.class).getReturnType());
 
         assertNoDeclaredMethod("builder");
+        assertNoDeclaredMethod("ofUnsorted");
+        assertNoDeclaredMethod("ofSortedPairs");
         assertNoDeclaredMethod("size");
         assertNoDeclaredMethod("xs");
         assertNoDeclaredMethod("ys");
@@ -330,9 +278,8 @@ public final class InterpolatingTable1DTest {
 
     @Test
     public void diagnosticsRetainStableKeysAndHumanReadablePairs() {
-        InterpolatingTable1D table = InterpolatingTable1D.ofSortedPairs(
-                10.0, 100.0,
-                30.0, 300.0);
+        InterpolatingTable1D table = InterpolatingTable1D.ofSorted(
+                new double[]{10.0, 30.0}, new double[]{100.0, 300.0});
 
         table.debugDump(null, "ignored");
 
@@ -402,42 +349,8 @@ public final class InterpolatingTable1DTest {
         return (Number) value;
     }
 
-    private static double[] pairs(double[] xs, double[] ys) {
-        double[] pairs = new double[xs.length * 2];
-        for (int i = 0; i < xs.length; i++) {
-            pairs[2 * i] = xs[i];
-            pairs[2 * i + 1] = ys[i];
-        }
-        return pairs;
-    }
-
-    private interface Factory {
-        InterpolatingTable1D create(double[] xs, double[] ys);
-    }
-
     private interface ThrowingRunnable {
         void run();
-    }
-
-    private static final NamedFactory[] FACTORIES = {
-            new NamedFactory("ofSorted", new double[]{10.0, 20.0, 30.0},
-                    InterpolatingTable1D::ofSorted),
-            new NamedFactory("ofUnsorted", new double[]{30.0, 10.0, 20.0},
-                    InterpolatingTable1D::ofUnsorted),
-            new NamedFactory("ofSortedPairs", new double[]{10.0, 20.0, 30.0},
-                    (xs, ys) -> InterpolatingTable1D.ofSortedPairs(pairs(xs, ys)))
-    };
-
-    private static final class NamedFactory {
-        private final String name;
-        private final double[] xs;
-        private final Factory factory;
-
-        private NamedFactory(String name, double[] xs, Factory factory) {
-            this.name = name;
-            this.xs = xs;
-            this.factory = factory;
-        }
     }
 
     private static final class CapturingDebugSink implements DebugSink {
