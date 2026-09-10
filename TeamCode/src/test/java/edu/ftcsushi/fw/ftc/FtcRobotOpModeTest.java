@@ -547,11 +547,13 @@ public final class FtcRobotOpModeTest {
         RecordingDriveSource source = new RecordingDriveSource(events);
         RecordingDriveSink sink = new RecordingDriveSink(events);
         RecordingTask root = new RecordingTask("root", events);
+        RecordingDriveSink rejectedSink = new RecordingDriveSink(events);
 
         mode.configureAction = program -> {
             expectNullPointer(() -> program.service(null));
             expectNullPointer(() -> program.output(null));
-            expectNullPointer(() -> program.drive(null, sink));
+            expectNullPointer(() -> program.drive(null, rejectedSink));
+            assertEquals(1, rejectedSink.stopCalls);
             expectNullPointer(() -> program.drive(source, null));
             expectNullPointer(() -> program.rootTask(null));
             expectNullPointer(() -> program.presenter(null));
@@ -581,6 +583,9 @@ public final class FtcRobotOpModeTest {
         assertEquals(1, service.stopCalls);
         assertEquals(1, output.stopCalls);
         assertEquals(1, sink.stopCalls);
+        assertEquals(1, rejectedSink.stopCalls);
+        assertEquals(0, rejectedSink.updateCalls);
+        assertEquals(0, rejectedSink.driveCalls);
         assertEquals(1, root.startCalls);
     }
 
@@ -632,7 +637,7 @@ public final class FtcRobotOpModeTest {
         assertEquals(0, shared.cancelCalls);
         assertEquals(0, rejectedDrive.updateCalls);
         assertEquals(0, rejectedDrive.driveCalls);
-        assertEquals(0, rejectedDrive.stopCalls);
+        assertEquals(1, rejectedDrive.stopCalls);
         assertEquals(0, rejectedRoot.startCalls);
         assertEquals(0, rejectedRoot.cancelCalls);
         assertEquals(1, acceptedRoot.startCalls);
@@ -677,7 +682,7 @@ public final class FtcRobotOpModeTest {
         assertEquals(1, accepted.stopCalls);
         assertEquals(0, rejected.startCalls);
         assertEquals(0, rejected.updateCalls);
-        assertEquals(0, rejected.stopCalls);
+        assertEquals(1, rejected.stopCalls);
         assertEquals(0, rejected.presenterCalls);
         assertEquals(0, rejected.driveCalls);
         assertEquals(0, rejectedRoot.startCalls);

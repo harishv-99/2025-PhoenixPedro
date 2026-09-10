@@ -328,7 +328,13 @@ advance only the clock and presenters.
 
 On configuration or runtime `RuntimeException`, the same terminal cleanup runs and preserves the
 original failure. An owner registered before a later configuration failure is still stopped, so
-construct and transfer each truthful service/output as soon as its constructor returns.
+construct and transfer each completed, exclusively owned service/output/drive sink immediately.
+The registration method either accepts a fresh non-null owner or attempts its stop once if
+registration rejects it with a `RuntimeException`; a duplicate identity receives no extra stop call.
+This applies only after method entry, not to construction or argument-evaluation failures. Borrowed sources and
+data-only roles acquire no stop responsibility, and unstarted Tasks remain inactive. The
+[`cleanup ownership contract`](<Recommended Robot Design.md#coordinated-cleanup-is-automatic-for-declared-program-owners>)
+explains the exact boundary and reentrant rejection behavior without adding another registration API.
 
 If generic route or guidance Tasks also invoke the same stateful drive sink's update hook, that sink
 must make repeated calls in one `LoopClock.cycle()` idempotent. The composition root remains the

@@ -263,7 +263,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 149 | DOC-21 | Integrate calibration testers with a new robot | Done | Independent example and three layered Test & Tune lessons reviewed; user authorized destination-specific commit, PR, and merge on 2026-09-08. Physical adopting-robot validation remains separate. |
 | 150 | MATH-02 | Finite two-dimensional calibration tables | Done | Parallel immutable 1D/2D tables, migrated callers, and optional beginner lesson reviewed; 2,891 tests and strict docs/API checks pass. User authorized the exact branch/repository/master publication on 2026-09-10. |
 | 151 | TASK-07 | Terminal Task cleanup composition | Done | Shared timed lifecycle, cleanup adopters, synchronized guides, and 2,759 passing tests; Android Studio review and destination-specific publication authorized on 2026-09-09. |
-| 152 | RUNTIME-04 | Managed registration ownership transfer | Proposed | Evaluate a stronger existing registration contract that removes adopter cleanup guards without stopping already-owned resources. |
+| 152 | RUNTIME-04 | Managed registration ownership transfer | Done | Implemented the approved existing-method ownership contract and removed six caller guards. 2,910 tests and strict docs/Javadocs pass; user approved the reviewed diff and authorized branch publication and merge to master. |
 | 153 | VISION-04 | Bounded recent field-location memory | Proposed | Remember recently observed ball/cluster locations, refresh unambiguous spatial matches, and expire unseen entries without velocity prediction or physical-identity claims. |
 | 154 | SPATIAL-03 | Bounded intake-sweep geometry | Proposed | Answer point coverage for explicitly supported intake corridors without claiming capture or collision clearance. |
 | 155 | EXAMPLE-13 | Bounded multi-object collection | Proposed | Extend the maintained adaptive-collection example with robot-owned ordering, capacity, return cost, confirmation, and fallback. |
@@ -34137,11 +34137,212 @@ obtains the skill-required approval before API or major lifecycle changes.
 
 ### RUNTIME-04 - Managed registration ownership transfer
 
-- **Status:** **Proposed**.
-- **Evidence and current callers:** the managed host already owns update/stop lifetimes, but
-  `robots/examples/pedro/basic/BasicPedroAuto` and production composition roots still guard service
-  or output registration to clean newly constructed owners when registration fails. Inspect all
-  supported `RobotProgram` registration roles and failure paths, their tests, and custom-host seams.
+- **Status (2026-09-10): Done.** The user approved the recorded design with
+  "proceed with design." Implementation proceeds on the existing item branch after a fresh fetch
+  confirmed its base still equals `origin/master`. Implementation and automated verification are
+  complete. The user has now approved the reviewed diff and explicitly authorized committing,
+  pushing, opening a pull request, and merging to the destination recorded below.
+- **Decision-gate baseline:** The user authorized moving to the next decision gate after
+  publishing MATH-02. PR #165 is merged as `a7f251103f594c49e27eb0b3488b6a311cb5aaf1`, containing
+  reviewed commit `d08c8fae865870ace3673ce6b0b43ea76fec2683`; both required GitHub checks passed,
+  the merge tree equals the reviewed tree, and local `master` was fast-forwarded without rewriting
+  history. Research proceeds on `codex/runtime-04-managed-registration-ownership` from that
+  fetched `origin/master`. That earlier authority covered research only; no framework/application
+  source changes occurred before the subsequent explicit design approval above.
+- **Confirmed pre-change failure path:** `RobotProgram.service` and `output` validate lifecycle,
+  null and identity before retaining the supplied owner; `drive` additionally validates the source
+  and single-drive limit before retaining its sink behind a private output. Rejection never stops
+  the candidate. `FtcRobotOpMode` later cleans only accepted lists, so an already-returned new
+  owner rejected by registration is not recovered by host teardown. Existing tests deliberately
+  assert zero stops for rejected second/late owners and reuse a sink after `drive(null, sink)`.
+  This is a traced/test-asserted contract change, not an unverified assertion of an accidental leak
+  on every ordinary configuration. Current accepted-owner phase and cleanup behavior is correct.
+- **Complete public-layer inventory:** `RobotProgram` has one package-private constructor, no
+  public factory/builder, and nine declared public methods: `callbackBindings`, `taskBindings`,
+  `prestart`, `service`, `output`, `drive`, `rootTask`, `presenter`, and `stopHandoff`. The three
+  generic resource declarations return the exact concrete supplied owner; `prestart` likewise
+  returns its data-only owner. Root/presenter/handoff registration returns void; binding accessors
+  return the stable callback/task interfaces. `FtcRobotOpMode.configure(program)` is the only
+  ordinary entry, with final FTC callbacks. Preserve every signature, return type and public
+  layer; no staged parameters, inline cleanup-answer types, extra registration layer or facade.
+- **Role distinctions:** only `Service`, `Output`, and the `DriveCommandSink` argument offer a
+  resource with a known stop operation. DriveSource is borrowed and must not be reset/stopped by
+  failed registration. `Prestart` and `Presenter` are data/read-only roles, bindings save future
+  callbacks/Tasks, and stop-handoff callbacks are a publication transaction rather than a resource.
+  An unstarted root Task keeps active-only cancellation; do not invent pre-start cancellation or
+  infer stop ownership merely because an object implements several interfaces. All registered
+  identities still participate in duplicate protection across roles.
+- **All maintained callers:** 26 resource declarations occur in 17 main-source files under
+  `edu.ftcsushi.robots`: `BasicSwitchTeleOp`; `FieldRelativeExampleRobot`; `FirstDriveTeleOp`;
+  `StarterRobot`; `BasicFlywheelTeleOp`; `BasicClawAuto`/`BasicClawTeleOp`; `BasicLiftAuto`/
+  `BasicLiftHomeTeleOp`/`BasicLiftTeleOp`; `BasicMechanismsAuto`; `ReferenceFeedingAuto`/
+  `ReferenceFeedingTeleOp`; `ReferenceFlywheelMechanismOpMode`; `ReferencePeriodicTurretOpMode`;
+  `BasicPedroAuto`; and `PhoenixRobot`. Only the last two contain the six equivalent guarded
+  declarations. Additional root/prestart/presenter/handoff clients are `StarterAuto`,
+  `PhoenixTeleOpProgram` and `PhoenixAutoProgram`; other thin hosts delegate to these roots.
+  `ReferenceCoordinatedShotSoftwareScenarioTest` has three direct managed resource declarations
+  already using the canonical grammar. No executable registration adopter exists under `fw`;
+  `FtcManualBulkCachingService` and `FtcImuHeadingEstimator` implement the service role but do not
+  register themselves. Dedicated dynamic tester/native-Pedro hosts remain distinct lifecycles.
+- **Alternatives and student decisions:**
+
+  | Approach | Representative robot call | Decisions and cost |
+  | --- | --- | --- |
+  | No change / documentation only | `registerServiceOrClean(program, service, service::stop)` | Student names the role, owner, and a second cleanup choice; every adopter retains rejection, suppression and identity assumptions. |
+  | Smallest robot-local helper | `registerServiceOrStop(program, heartbeat)` | Hides a catch but leaves another helper/method/API spelling in robot code and cannot know all program-owned identities. |
+  | Stronger existing registration (approved) | `program.service(heartbeat)` | Student supplies the completed exclusive owner and its existing role/order once; the role already defines stop. Framework owns acceptance/rejection cleanup mechanics. |
+  | Supplier or builder registration | `program.service(() -> new MyService(...))` | Can reject a closed program before construction, but adds a second authoring grammar or migration, immediate-factory versus later-behavior teaching, reentrancy/late-return handling, and still cannot clean a constructor that never returned. |
+
+  COMMON-01's rejection of generic `InitRuntimeGuard`, cleanup scopes, automatic retry,
+  `AutoCloseable` adoption and public cleanup transactions remains valid. The changed fact is
+  narrower: this managed boundary already receives one completed owner and knows its existing stop
+  contract. The chosen layer provides distinct lifetime ownership without exporting a registry,
+  requiring two-phase construction or hiding robot policy. A supplier's early-validation benefit
+  does not justify another layer for the actual six guarded callers.
+- **Approved transfer rule:** entering `service(owner)`, `output(owner)`, or
+  `drive(source, sink)` with a non-null identity not previously known to this program offers that
+  completed, exclusively owned resource for its whole program lifetime. The program either accepts
+  it with the unchanged lifecycle or, on a registration `RuntimeException`, attempts its stop once
+  before rethrowing. This includes closed/stopped-program calls, a null drive source with a real
+  new sink, and a second drive with a new sink. Null owners offer nothing. Argument/constructor
+  failures before method entry and a null receiver remain outside this boundary.
+- **Identity and failure rules:** before invoking rejected-owner cleanup, retain that exact
+  identity as rejected/cleanup-claimed. It never joins active service/output lists, cannot be
+  accepted later in any role, and is not stopped again by repeated or reentrant registration or
+  later host teardown, including after cleanup fails. An identity already accepted in any role
+  is rejected without another stop attempt or disturbance of that accepted registration. If its
+  error escapes `configure`, the host's ordinary fail-stop still cleans the accepted graph once;
+  duplicate protection does not suppress normal host failure handling. Preserve the registration
+  exception object as primary, using existing `CleanupActions.attemptAllAfterFailure` to attach
+  cleanup failures. Preserve uncaught `Error` behavior, not an all-Throwable rollback promise.
+- **Reentrancy rule:** rejected-owner cleanup is the first user callback in these registration
+  methods. Keep a private nesting-safe cleanup-in-progress guard: no declaration, binding mutation,
+  prestart/root/presenter addition, or handoff publication may be installed from that callback.
+  A distinct new resource offered there is itself rejected and stopped once; an accepted or already
+  rejected identity remains untouched. STOP remains allowed and terminalizes before cleaning the
+  accepted lists; the rejected candidate is never in those lists. Identity is claimed before
+  callbacks and the guard is restored correctly after nested cleanup or failure. Callbacks still
+  must be short and cooperative; no protection against arbitrary recursive creation or user code
+  continuing unrelated effects is promised. No active-loop scheduling or shutdown order changes.
+- **Exact adopter simplification:** replace `BasicPedroAuto.registerServiceOrStop(...)` with
+  `program.service(new PedroHeartbeat(runtime, startPose))`; replace Phoenix's guarded vision and
+  Auto services with `requiredProgram.service(owner)`, both scoring registrations with
+  `requiredProgram.output(scoringOutput)`, and its guarded TeleOp drive with the existing direct
+  `requiredProgram.drive(source, driveSink)`. Delete three private registration helpers and one
+  inline catch shell, not the role wrappers. Conservative whole-file projection, retaining local
+  variables/formatting: `PhoenixRobot` 1130/1016 physical/nonblank lines -> 1100/987;
+  `BasicPedroAuto` 189/169 -> 176/157; combined **43 physical / 41 nonblank lines removed**.
+  These counts include comments/imports/braces and are projections, not implementation results.
+  No configuration object, heartbeat, presenter or public noun is added to robot code.
+- **Required retained ownership:** all Phoenix/Pedro wrappers stay because they own real startup,
+  phase, profiling, zero-drive or aggregate cleanup behavior. `ManagedAutoService` keeps its
+  attachments, completeness checks and stopped latch. Rejected TeleOp vision now uses the
+  wrapper's complete stop, including clearing pose-restore state, rather than independently naming
+  camera close. `PhoenixAutoProgram.registerMatchHandoffOrStopPedro` remains: the Pedro runtime
+  exists before its handoff declaration and before `declareAuto` reaches service transfer. Its
+  183/165 physical/nonblank lines are not claimed as a removal. Constructor cleanup in scoring,
+  launcher, intake and Pedro owners remains; never-returned partial graphs cannot be registered.
+  Exact wrapper identity does not discover hidden shared hardware, another wrapper's resources,
+  or ownership by another program. Exclusive underlying ownership remains the caller's duty.
+- **Bounded implementation and docs plan:** after approval, change `RobotProgram`'s private
+  ownership bookkeeping/rejection cleanup only, migrate the six guarded sites, and synchronize
+  its Javadocs, `FtcRobotOpMode.configure` contract, the relevant brief Principles ownership rule,
+  `Loop Structure`, `Recommended Robot Design`, `Robot Capabilities & Mode Clients`, Pedro's
+  integration README, Phoenix's local architecture, and the exact `First Pedro Auto` excerpt.
+  Teach completed-owner transfer and immediate rejection cleanup beside the existing declaration,
+  distinguishing it from normal behavior saved for later; keep detailed rejection/reentrancy
+  mechanics in the advanced reference. No beginner navigation growth or new teaching application.
+  Do not reorder Phoenix handoff/assembly, alter tester suppliers, redesign wrappers or retune
+  hardware. Public construction-path and complete robot-code audits repeat at verification.
+- **Verification plan:** focused `FtcRobotOpModeTest` and a narrow registration-contract suite cover
+  accepted identity/normal ordering, pre-START cleanup, null owner versus null source, fresh versus
+  duplicate second drive, all lifecycle states, cross-role duplicates, rejected-identity retry,
+  nested same/new-owner rejection, reentrant STOP, untouched borrowed source, original/suppressed
+  failures and uncaught Error. Deliberately migrate the old null-source sink-reuse and zero-stop
+  rejection assertions; preserve data-only and unstarted-Task behavior. Exercise a migrated Phoenix
+  rejection through the real managed host so duplicate caller cleanup cannot hide behind idempotent
+  fakes. Preserve Phoenix TeleOp/Auto lifecycle-order tests, both Pedro route scenarios, the nine-
+  method host boundary lock, and source-backed docs checks. Run fresh full tests/compile, strict
+  narrative/Javadocs, generated search/API links and tracked/untracked whitespace checks. Software
+  proves one stop attempt and exception/lifecycle behavior, never hardware zero or rollback.
+- **Decision gate closed:** independent core/test, whole-robot caller, and non-robot/docs audits
+  agreed on the narrower existing-method design. Research changed only this tracker. The user has
+  now explicitly approved the changed public stop-on-rejection and unusable-rejected-identity
+  semantics; that approval authorizes implementation, not publication of the unreviewed diff.
+- **Implementation:** one private rejection helper uses the existing identity map to claim a
+  rejected owner before its stop callback, without adding it to an active role. The three existing
+  registration methods retain their validation order and return types; null and already-known
+  identities receive no rejection stop. A saved/restored private guard protects declarations during
+  nested cleanup, and the shared `CleanupActions` helper preserves failure identity/suppression.
+  No public constructor, method, factory, builder, registration layer, or loop phase was added.
+- **Adopter result:** all six guarded sites now use direct registration. `PhoenixRobot` changed
+  from 1130/1016 physical/nonblank lines to 1099/987; `BasicPedroAuto` changed from 189/169 to
+  176/157. Actual combined removal is **44 physical / 41 nonblank lines**. All substantive
+  wrappers, constructor-owned cleanup, and the Auto pre-transfer handoff guard remain.
+- **Adversarial review resolution:** an ACTIVE rejected-owner stop callback can request the
+  explicitly supported host STOP while the registration failure is pending. Ordinary ACTIVE-stop
+  eligibility would publish a successful handoff before that failure returned to an already
+  detached host. STOP now treats rejection cleanup as ineligible for publication and invalidates
+  instead, retaining the existing cleanup order and deferred binding cleanup. This is the approved
+  failure/STOP contract, not a new shutdown path. Manual START/loop calls from cleanup remain
+  unsupported under FTC-owned lifecycle/one-heartbeat rules; no arbitrary-callback sandbox or
+  broader lifecycle redesign is introduced.
+- **Verification findings (resolved):** the first focused run compiled successfully and passed existing
+  managed lifecycle tests. Its new Phoenix assertion incorrectly expected five SDK writes at STOP;
+  tracing the actual owner showed flywheel zero velocity **and** zero power, followed by four
+  other actuator power writes. The regression now pins the complete six-command order plus drive
+  stop and vision close, with non-idempotent counters. This corrects a test expectation, not robot
+  behavior. The second focused run passed all runtime, migrated-caller and concept tests; the
+  remaining documentation failure exposed a scanner that began at AUDIT-01 and never stopped at
+  the next sibling item, incorrectly treating this exact caller inventory as shared teaching
+  guidance. The scanner is now bounded to the intended section, with fixtures protecting opening
+  and tail guidance, all nonterminal queue rows, nested audit subsections, and separate caller
+  evidence. The next focused run passed **107 tests / 7 suites**. The first full run then caught
+  literal production-application names in those new scanner fixtures. Their vocabulary is now
+  synthetic; the actual tracker uses its unchanged real-name regex, and the application-boundary
+  test and allowlist are unchanged. No caller inventory is removed, and shared guidance still
+  cannot depend on a production application. The fresh full rerun below passes both boundaries.
+- **Final automated evidence:** Android Studio JBR 21 / Gradle 8.9 completed
+  `:TeamCode:cleanTestDebugUnitTest :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs` successfully. XML recount:
+  **2,910 tests / 293 suites, zero failures, errors or skips**. This includes the 17 new ownership
+  tests with role/state matrices, the real managed Phoenix rejection scenario, the documentation
+  scanner fixture, preserved host/Auto/TeleOp ordering, both Pedro route scenarios, and the
+  unchanged nine-method public boundary lock. Existing Java 8 source/target and SDK deprecation
+  warnings are not new failures.
+  `build/docs-venv-win/Scripts/python.exe -m zensical build --clean --strict` passed, followed by
+  strict generated Javadocs and the generated checks: **1,041 search sections**, **233 API links**
+  and **101 maintained source links across 57 Markdown pages**. `git diff --check` and a whole-file
+  trailing-whitespace scan cover all **16 tracked/untracked changed files**, including the new
+  registration suite. No removed registration helper remains in maintained source or guides.
+- **Independent closure:** core failure/identity/reentrancy, complete robot-code simplicity,
+  public construction-path/distinct-layer, documentation, and test-validity reviews found no
+  remaining in-scope issue. The final caller inventory remains 26 declarations in 17 main-source
+  files. Framework ownership changes stay at the FTC boundary, with no new core-to-application
+  dependency, alternate registration API, loop allocation, heartbeat or robot policy.
+- **Android Studio review gate (approved):** inspect `RobotProgram`'s three resource declarations, rejected
+  identity guard, nested cleanup and STOP/handoff eligibility; the direct calls and retained
+  lifecycle wrappers in `BasicPedroAuto` and `PhoenixRobot`; and the ownership regressions, updated
+  Principles and beginner Pedro excerpt. Review confirms software stop attempts, no premature
+  duplicate stop, unchanged ordinary phase order, and no successful handoff during rejection.
+  Actual motor zero, camera closure and physical safety still require adopting-robot validation;
+  no robot hardware was exercised and the existing Pedro motion-review gate remains closed.
+- **Publication coordinates:** branch `codex/runtime-04-managed-registration-ownership`, exact
+  origin push destination `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`.
+  The combined reviewed-diff commit/push/PR/merge authorization is recorded below. This approval
+  does not authorize starting VISION-04 or changing the reviewed implementation.
+- **Gate 3 authorization (2026-09-10):** the user sent the exact combined RUNTIME-04 approval,
+  accepting the Android Studio review handoff and authorizing this reviewed 16-file diff to be
+  committed on `codex/runtime-04-managed-registration-ownership`, pushed to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opened as a pull request, and merged into
+  `master`. This records manual software review, not a robot-hardware run or a waiver of the
+  retained physical-validation gates. Recheck the final tracker closeout before staging only the
+  reviewed files; stop after publication without starting the next tracker item.
+- **Intake evidence and callers (historical):** the managed host already owned update/stop
+  lifetimes, but `robots/examples/pedro/basic/BasicPedroAuto` and production composition roots
+  guarded service or output registration to clean newly constructed owners when registration
+  failed. The completed decision inventory above covers the supported roles, failure paths, tests,
+  and distinct custom-host seams.
 - **Bounded scope / leading hypothesis:** strengthen the existing registration path if it can
   truthfully accept cleanup responsibility at one named transfer boundary. Distinguish a new
   transferred owner from an identity already owned by the program. A rejected duplicate must not

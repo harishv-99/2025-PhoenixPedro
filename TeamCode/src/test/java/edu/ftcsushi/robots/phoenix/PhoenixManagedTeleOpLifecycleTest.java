@@ -15,6 +15,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +46,7 @@ import edu.ftcsushi.robots.phoenix.scoring.PhoenixTargeting;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Verifies Phoenix's complete declaration-only TeleOp at the managed FTC boundaries. */
 public final class PhoenixManagedTeleOpLifecycleTest {
@@ -158,6 +160,69 @@ public final class PhoenixManagedTeleOpLifecycleTest {
         assertEquals(1, vision.closeCalls);
     }
 
+    /**
+     * Keeps Phoenix's real assembly, wrappers and managed host, substituting only hardware.
+     * A predeclared drive rejects the fresh Phoenix sink before START; non-idempotent recording
+     * sinks expose any duplicate stop from a leftover caller guard or later host teardown.
+     */
+    @Test
+    public void rejectedFreshPhoenixDriveStopsOnceAndHostCleansEveryAcceptedOwner() {
+        List<String> events = new ArrayList<String>();
+        PhoenixProfile profile = PhoenixProfile.current();
+        TestHardwareMap hardwareMap = TestHardwareMap.forScoring(profile.scoring, events);
+        RecordingVisionLane vision = new RecordingVisionLane(events);
+        RecordingMotionPredictor predictor = new RecordingMotionPredictor(events);
+        RecordingDriveSink rejectedDrive = new RecordingDriveSink(events);
+        RecordingDriveSink acceptedDrive = new RecordingDriveSink(new ArrayList<String>());
+        TestHost host = new TestHost(profile,
+                new RecordingAssembly(vision, predictor, rejectedDrive));
+        host.predeclaredDrive = acceptedDrive;
+        host.hardwareMap = hardwareMap;
+        host.telemetry = new RecordingTelemetry().proxy();
+        host.gamepad1 = new Gamepad();
+        host.gamepad2 = new Gamepad();
+
+        try {
+            host.init();
+            fail("Expected Phoenix's fresh drive to be rejected after the first declaration");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("already has a drive declaration"));
+        }
+
+        assertEquals(1, rejectedDrive.stopCalls);
+        assertEquals(1, acceptedDrive.stopCalls);
+        assertEquals(1, vision.closeCalls);
+        // Device-managed flywheel STOP writes both zero velocity and zero power. The intake
+        // motor and three transfer servos each write power once: six commands from four Plants.
+        assertEquals(6, hardwareMap.commandWrites);
+        assertEquals(Arrays.asList(
+                "drive.stop",
+                "scoring.shooter.velocity",
+                "scoring.shooter.power",
+                "scoring.intake.power",
+                "scoring.intakeTransfer.power",
+                "scoring.shooterTransferRight.power",
+                "scoring.shooterTransferLeft.power",
+                "vision.close"), events);
+        assertEquals(0, vision.readinessCalls);
+        assertEquals(0, predictor.updateCalls);
+        assertEquals(0, rejectedDrive.updateCalls);
+        assertEquals(0, rejectedDrive.driveCalls);
+        assertEquals(0, acceptedDrive.updateCalls);
+        assertEquals(0, acceptedDrive.driveCalls);
+
+        int eventCountAfterFailure = events.size();
+        host.stop();
+        host.stop();
+        host.start();
+        host.loop();
+        assertEquals(1, rejectedDrive.stopCalls);
+        assertEquals(1, acceptedDrive.stopCalls);
+        assertEquals(1, vision.closeCalls);
+        assertEquals(6, hardwareMap.commandWrites);
+        assertEquals(eventCountAfterFailure, events.size());
+    }
+
     private static int firstIndexWithPrefix(List<String> events, String prefix) {
         for (int index = 0; index < events.size(); index++) {
             if (events.get(index).startsWith(prefix)) {
@@ -179,6 +244,7 @@ public final class PhoenixManagedTeleOpLifecycleTest {
     private static final class TestHost extends FtcRobotOpMode {
         private final PhoenixProfile profile;
         private final PhoenixRobot.TeleOpHardwareAssembly assembly;
+        private DriveCommandSink predeclaredDrive;
         private double runtimeSec;
 
         private TestHost(
@@ -191,6 +257,9 @@ public final class PhoenixManagedTeleOpLifecycleTest {
 
         @Override
         protected void configure(RobotProgram program) {
+            if (predeclaredDrive != null) {
+                program.drive(clock -> DriveSignal.zero(), predeclaredDrive);
+            }
             PhoenixRobot robot = new PhoenixRobot(
                     hardwareMap,
                     assembly

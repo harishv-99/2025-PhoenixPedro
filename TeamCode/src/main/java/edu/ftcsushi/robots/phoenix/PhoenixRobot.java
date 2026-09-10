@@ -321,7 +321,7 @@ public final class PhoenixRobot {
                 "TeleOp hardware assembly returned null vision"
         );
         ManagedTeleOpVisionService visionService = new ManagedTeleOpVisionService(vision);
-        registerServiceOrClean(requiredProgram, visionService, vision::close);
+        requiredProgram.service(visionService);
 
         localization = Objects.requireNonNull(
                 teleOpHardwareAssembly.createLocalization(
@@ -356,7 +356,7 @@ public final class PhoenixRobot {
         );
         ManagedTeleOpScoringOutput scoringOutput =
                 new ManagedTeleOpScoringOutput(scoring);
-        registerOutputOrClean(requiredProgram, scoringOutput, scoring::stop);
+        requiredProgram.output(scoringOutput);
 
         PhoenixCapabilities capabilities = createCapabilities();
         teleOpControls.bind(requiredProgram.callbackBindings(), capabilities);
@@ -379,17 +379,10 @@ public final class PhoenixRobot {
                 "TeleOp hardware assembly returned null drive sink"
         );
         ManagedTeleOpDriveSink driveSink = new ManagedTeleOpDriveSink(drive);
-        try {
-            requiredProgram.drive(
-                    new ManagedTeleOpDriveSource(driveAssists.driveSource()),
-                    driveSink
-            );
-        } catch (RuntimeException registrationFailure) {
-            throw CleanupActions.attemptAllAfterFailure(
-                    registrationFailure,
-                    driveSink::stop
-            );
-        }
+        requiredProgram.drive(
+                new ManagedTeleOpDriveSource(driveAssists.driveSource()),
+                driveSink
+        );
     }
 
     /**
@@ -473,7 +466,7 @@ public final class PhoenixRobot {
                 Objects.requireNonNull(autonomousDrive, "autonomousDrive"),
                 Objects.requireNonNull(applyStartingPose, "applyStartingPose")
         );
-        registerServiceOrClean(requiredProgram, autoService, autoService::stop);
+        requiredProgram.service(autoService);
 
         vision = Objects.requireNonNull(
                 autoHardwareAssembly.createVision(hardwareMap, selectedProfile.vision),
@@ -523,7 +516,7 @@ public final class PhoenixRobot {
                 "Auto hardware assembly returned null scoring owner"
         );
         ManagedAutoScoringOutput scoringOutput = new ManagedAutoScoringOutput(scoring);
-        registerOutputOrClean(requiredProgram, scoringOutput, scoring::stop);
+        requiredProgram.output(scoringOutput);
         return createCapabilities();
     }
 
@@ -710,30 +703,6 @@ public final class PhoenixRobot {
                     "PhoenixRobot cannot " + operation + " while its mode is " + mode
                             + "; expected " + requiredMode
             );
-        }
-    }
-
-    private static <T extends RobotProgram.Service> T registerServiceOrClean(
-            RobotProgram program,
-            T service,
-            Runnable cleanup
-    ) {
-        try {
-            return program.service(service);
-        } catch (RuntimeException registrationFailure) {
-            throw CleanupActions.attemptAllAfterFailure(registrationFailure, cleanup);
-        }
-    }
-
-    private static <T extends RobotProgram.Output> T registerOutputOrClean(
-            RobotProgram program,
-            T output,
-            Runnable cleanup
-    ) {
-        try {
-            return program.output(output);
-        } catch (RuntimeException registrationFailure) {
-            throw CleanupActions.attemptAllAfterFailure(registrationFailure, cleanup);
         }
     }
 

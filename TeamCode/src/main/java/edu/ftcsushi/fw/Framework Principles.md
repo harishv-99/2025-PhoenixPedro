@@ -208,6 +208,14 @@ Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one tel
 - STOP or a runtime failure best-effort cancels active work, clears pending work, stops owned outputs
   and resources, and prevents further ordinary commands. A handoff may publish cached state only
   after complete normal ACTIVE-stop cleanup; every other path invalidates it.
+- `program.service`, `output`, and `drive` take cleanup responsibility when they receive a completed,
+  exclusively owned, new non-null resource owner. Registration either accepts it or, on
+  `RuntimeException`, claims its rejected identity and attempts stop once before rethrowing the
+  original failure with cleanup failures suppressed. Known identities are never stopped by duplicate
+  rejection; rejected owners cannot be reused. Rejection cleanup cannot add declarations or bindings,
+  but STOP remains allowed. Constructors retain partial-construction cleanup responsibility; borrowed
+  sources and data-only roles do not transfer resource ownership. A stop attempt does not prove
+  physical zero or rollback, and identity checks cannot detect hidden shared resources.
 - A `Prestart` owns selection data, not hardware/resource lifecycle or a stop hook. Use
   `Tasks.buildAtStart(...)` when a Task depends on frozen selection; do not defer hardware graph
   construction through it.
