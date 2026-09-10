@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.PlantSnapshot;
 import edu.ftcsushi.fw.actuation.PlantTargetResolution;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.task.Task;
 
 /**
@@ -21,12 +22,16 @@ public interface ReferenceFlywheels {
         private final double leftMeasuredVelocityTicksPerSec;
         private final double rightMeasuredVelocityTicksPerSec;
         private final double velocityToleranceTicksPerSec;
+        private final LoopTimestamp sampledAt;
+        private final long sampleCycle;
+        private final long requestId;
 
         /** Package-owned construction prevents callers from fabricating an incoherent capture. */
         Status(PlantSnapshot plantSnapshot,
                double leftMeasuredVelocityTicksPerSec,
                double rightMeasuredVelocityTicksPerSec,
-               double velocityToleranceTicksPerSec) {
+               double velocityToleranceTicksPerSec,
+               LoopTimestamp sampledAt, long sampleCycle, long requestId) {
             this.plantSnapshot = Objects.requireNonNull(plantSnapshot, "plantSnapshot");
             if (!plantSnapshot.hasCommandTarget()
                     || !Double.isFinite(plantSnapshot.commandTarget())) {
@@ -42,6 +47,27 @@ public interface ReferenceFlywheels {
             this.leftMeasuredVelocityTicksPerSec = leftMeasuredVelocityTicksPerSec;
             this.rightMeasuredVelocityTicksPerSec = rightMeasuredVelocityTicksPerSec;
             this.velocityToleranceTicksPerSec = velocityToleranceTicksPerSec;
+            this.sampledAt = Objects.requireNonNull(sampledAt, "sampledAt");
+            this.sampleCycle = sampleCycle;
+            this.requestId = requestId;
+        }
+
+        /**
+         * Returns the successful software sampling time, unavailable initially and after STOP.
+         * This is not a native encoder/controller acquisition timestamp.
+         */
+        public LoopTimestamp sampledAt() {
+            return sampledAt;
+        }
+
+        /** Returns the successful sampling cycle, or {@code -1} when no sample is published. */
+        public long sampleCycle() {
+            return sampleCycle;
+        }
+
+        /** Returns the owner-authored request occurrence associated with this capture. */
+        public long requestId() {
+            return requestId;
         }
 
         /** Returns the captured persistent command, in native encoder ticks per second. */
@@ -89,7 +115,8 @@ public interface ReferenceFlywheels {
         public boolean ready() {
             double requestedVelocity = requestedVelocityTicksPerSec();
             PlantTargetResolution resolution = plantSnapshot.targetResolution();
-            return requestedVelocity > 0.0
+            return sampledAt.isAvailable()
+                    && requestedVelocity > 0.0
                     && leftAtTarget()
                     && rightAtTarget()
                     && resolution.hasTarget()
@@ -118,19 +145,26 @@ public interface ReferenceFlywheels {
     }
 
     /**
-     * Replaces the persistent paired velocity request.
+     * Replaces the persistent paired velocity request with a fresh occurrence, even for the same
+     * value. Previously returned statuses remain historical; compare their request ID with
+     * {@link #requestId()} before using them for a current request.
      *
      * @param velocityTicksPerSec finite request in the mechanism's configured inclusive range
      */
     void setVelocityTicksPerSec(double velocityTicksPerSec);
 
+    /** Returns the current command occurrence, initially zero; every accepted setter advances it. */
+    long requestId();
+
     /**
      * Builds a fresh single-use Task that requests a velocity and waits for both wheels.
      *
-     * <p>Success requires a post-start publication for this request, command-correlated grouped
+     * <p>Success requires a successful publication for this exact request occurrence, in the current
+     * clock epoch, command-correlated grouped
      * Plant arrival, and both independent measurements within tolerance. Timeout leaves the
      * persistent velocity request unchanged. Active cancellation requests {@code 0.0}; the later
-     * normal output heartbeat realizes that request. Neither outcome proves an object launched.</p>
+     * normal output heartbeat realizes that request. A clock-epoch reset cancels the old Task;
+     * it cannot restart that Task's timeout. Neither outcome proves an object launched.</p>
      *
      * @param velocityTicksPerSec finite request in the configured inclusive range
      * @param timeoutSec finite timeout strictly greater than zero, in seconds

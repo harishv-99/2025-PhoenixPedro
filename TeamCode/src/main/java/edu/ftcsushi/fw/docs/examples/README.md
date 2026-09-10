@@ -13,6 +13,7 @@ integration, or evidence boundary.
 |---|---|
 | drive in a field frame and fail closed when heading is unavailable | [Field-relative drive](<Field-relative Drive.md>) |
 | coordinate two measured velocity motors | [Paired flywheel velocity](<../advanced/Paired Flywheel Velocity.md>) |
+| permit one feed from fresh evidence and require observed departure | [Feedback-confirmed feeding](<../advanced/Feedback-confirmed Feeding.md>) |
 | choose among periodic physical positions | [Periodic turret position](<../advanced/Periodic Turret Position.md>) |
 | run a bounded robot-specific hardware experiment | [Subsystem experiments](<Subsystem Experiments.md>) |
 | share one cancellable, capture-confirmed target attempt between TeleOp and Auto | [One bounded vision pickup](<One Bounded Vision Pickup.md>) |

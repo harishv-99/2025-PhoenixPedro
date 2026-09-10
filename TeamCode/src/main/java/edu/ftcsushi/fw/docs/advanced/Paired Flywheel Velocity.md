@@ -12,7 +12,8 @@ one slow wheel.
 **Before this page:** read [one motor velocity](<../build/Single Flywheel Velocity.md>) for encoder
 speed, tolerance, and feedback-based Tasks. No paired hardware is needed to understand this example.
 The new idea is **readiness for a group**: an average can match the request even when neither wheel
-does. Here, both individual speeds must be close enough to the request before feeding is allowed.
+does. Here, both individual speeds must be close enough to the request for wheel readiness. Deciding
+whether an object may be fed also needs the [feeding policy](<Feedback-confirmed Feeding.md>).
 
 ## One command owner, two observations
 
@@ -38,6 +39,11 @@ Notice:
   composes the generic Plant snapshot with two independently sampled velocities.
 - `setVelocityTask(...)` succeeds only after a new publication proves both wheel measurements are
   within tolerance; timeout leaves the request, while active cancellation requests zero.
+
+Wheel status also records which successful request occurrence was sampled and when the software
+sampled it. A same-valued request is still new work; a repeated update in the same clock cycle
+cannot create another eligible sample. These are software observations, not proof of independent
+new motor-controller frames or uninterrupted physical readiness between samples.
 
 ## Complete example files
 
@@ -75,3 +81,7 @@ average to the `1000` request; grouped arrival is true, but per-wheel readiness 
 
 **Next gate:** use [Actuator bring-up](<../testing-calibration/Actuator Bring-up.md>) on each motor,
 then define and run a restrained spin-up experiment with an explicit settling criterion.
+
+For the separate decision to feed an object, continue to
+[Feedback-confirmed feeding](<Feedback-confirmed Feeding.md>). It combines the wheel evidence with
+staging and later departure observations; the spin-up check alone does not authorize feeding.

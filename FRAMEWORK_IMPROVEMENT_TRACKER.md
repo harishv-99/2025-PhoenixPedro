@@ -240,7 +240,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 126 | TEST-02 | Add deterministic localization robustness scenarios | Done | Reviewed and approved: 13 deterministic tests, maintainer instructions, and 2555 passing tests. |
 | 127 | LOCALIZATION-04 | Handle shared measurement evidence explicitly | Done | Reviewed standard-botpose restriction, shared-evidence regressions, and synchronized docs; 2566 tests pass and publication is authorized. |
 | 128 | DIAG-01 | Correlate experiment evidence for offline analysis | Done | Shared read-only downloads, bounded controller recording/replay, and initial frozen reports implemented and reviewed; automated checks pass; publication to master authorized. |
-| 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Proposed | Prove paired-wheel settling, staged-object evidence, bounded departure confirmation, and explicit recovery in an independent example. |
+| 129 | EXAMPLE-11 | Demonstrate feedback-confirmed feeding | Done | Reviewed and approved: sampled settling/departure, queue-free feeding, recovery acknowledgement, locked clients, lesson, and 2810 passing tests; publication to master authorized. |
 | 130 | EXAMPLE-12 | Demonstrate graceful assist degradation | Proposed | Evaluate existing robot-owned manual fallback and teach bounded evidence-loss behavior and explicit reacquisition. |
 | 131 | AUDIT-01 | Cuberobot/DECODE capability closure re-audit | Proposed | Run last and require every frozen benchmark capability to map to current framework support, a completed item, a deliberate rejection, or an evidence-backed deferral. |
 | 132 | SIMPLICITY-01 | Java basic-robot benchmark suite | Done | The reviewed Basic Mechanisms fixtures, seven-gate source-complete course, obsolete startup-page removal, synchronized navigation/regressions, software verification, and destination-specific publication authorization are complete. |
@@ -32726,7 +32726,217 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### EXAMPLE-11 - Demonstrate feedback-confirmed feeding
 
-- **Status:** **Proposed**.
+- **Status:** **Done**.
+- **Manual review and publication authorization (2026-09-09):** the user approved the reviewed
+  EXAMPLE-11 diff and explicitly authorized committing it on
+  `codex/example-11-feedback-confirmed-feeding`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging it into
+  `master`. This closes the software review gate; it does not assert a robot-hardware run or
+  browser-rendered visual result. Both disabled motion locks and physical-adoption gates remain.
+  Publish only the reviewed 29-file scope plus this tracker closeout, then stop before another item.
+- **Implementation / verification (2026-09-09):**
+  - Replaced the launch API and internal transfer queue with `feedOne()`, `abortFeedAttempts()`,
+    privately owned exact release/transfer Plants, bounded factory-built phases, and one private
+    `AbstractTask` evidence-policy owner with once-only `onFinish()` cleanup. No new core API,
+    scheduler, or production-robot adoption. Repeated TeleOp presses create no feed backlog.
+  - Flywheel and inventory publications carry software-sampling timestamps/cycles. Direct and Task
+    wheel requests share occurrence IDs; duplicate reads cannot refresh settling. Failed effectful
+    sampling retains its exception. Inventory STOP withdraws evidence immediately and resets its
+    sources only after an in-flight read unwinds, preserving the existing source operation guard.
+  - Admission requires advancing fresh paired readiness plus consistent staged inventory.
+    Confirmation requires occupied evidence at/after release realization, a strictly later
+    conditioned vacancy, and exact success of both timed phases. Uncertainty requests idle and
+    latches recovery. Acknowledgement commands no motion and cannot revive old work. Output
+    failures remain the active Task's retained exception, not a normal cancellation result.
+  - Clock reset invalidation distinguishes old tasks from tasks constructed in the new epoch,
+    independent of whether the first post-reset output precedes or follows Task start. Explicit
+    abort/recovery invalidation remains separate. Initial Auto START retains its first attempt.
+  - Added disabled, independently motion-locked TeleOp/Auto clients, callback-first controls, a
+    compact software scenario, maintained guide migrations, and one optional advanced lesson with
+    visible defaults, a sampled timeline, full-size diagram link, and physical-adoption limits.
+    The exclusive tuning recipe and DIAG-01 spin-up report meaning are unchanged.
+  - Final `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac :TeamCode:sushiJavadocs`
+    succeeded: **2810 tests in 284 suites; zero failures, errors, or skips**. The eight directly
+    relevant suites contain **73 passing tests**: 36 launcher policy, eight output failure, five
+    controls, one feed scenario, nine flywheel evidence, two flywheel scenarios, eleven inventory
+    contract, and one inventory scenario. Earlier focused testing found the in-flight inventory
+    reset defect; the final suite includes its correction. Existing Java 8 source/target and FTC
+    deprecated-API warnings remain, with no new compiler failure.
+  - Pinned Python dependencies, strict narrative build, and generated search checks passed;
+    search contains **1028 sections across all six guide areas**. Final combined artifact checks
+    are recorded below before handoff. Whitespace checks include untracked files and found no
+    defects. Removed launcher vocabulary is absent from maintained examples/guides. The saved
+    pre-TASK-07 decision stash remains untouched.
+- **Independent closeout review:** owner/evidence and policy/test reviewers checked request
+  occurrence, epochs, sampling, exact deadlines, cleanup, STOP, retained failure, and test validity.
+  A separate public-construction and novice audit confirms one ordinary hardware-map/config path,
+  distinct validation/copy and exclusive-tuning seams, distinct direct versus Task lifetimes,
+  owner-only Status construction, and no redundant wrapper/core API. Findings resolved include
+  once-only abort restoration, first-use acknowledgement explanation, source-reset ordering, and
+  new-versus-old task construction across later resets.
+- **Documentation concept checklist:** optional cross-links are not new beginner prerequisites.
+
+  | Page | Audience and central outcome | Required concepts / first use | Optional depth |
+  | --- | --- | --- | --- |
+  | Feedback-confirmed Feeding | Students after paired-wheel, switch, and timed-Auto lessons; explain what permits and ends one feed | Staging, ordered fill, sampled settling, freshness, departure, and no-motion acknowledgement explained before required code use; explicit defaults and explained client/checkpoint excerpts | Exact API, complete sources, supplied regressions, and physical adoption |
+  | Paired Flywheel Velocity | Optional feedback readers; require both measurements | Existing group-readiness explanation retained; software sampling and request occurrences distinguished from native acquisition | Feeding lesson is an optional next question, not a prerequisite |
+  | Advanced README | Readers choosing a later topic | One outcome-based feeding link; simple TeleOp/Auto foundation unchanged | Independent advanced lessons |
+  | Examples README | Readers choosing a fixture | One feeding entry, no extra opening chapter | Canonical feeding lesson |
+  | Hardware-free Reference Scenarios | Readers selecting evidence by question | One advanced row distinguishes commands from departure and names the kept owners and physical limits | Feeding lesson and supplied scenario |
+  | Tasks & Macros Quickstart | Readers composing cooperative work | Cleanup fragment labeled conceptual; deferred ending action explained; factory decoration distinguished from a custom policy's shared onFinish hook | Actual feeding lesson and exact Task API |
+  | Robot Capabilities & Mode Clients | Readers splitting a larger robot API | Existing capability definitions retained; current feed/abort names replace launch claims | Feeding evidence/recovery lesson |
+  | Framework Lanes & Robot Controls | Readers assigning ownership | Existing ownership vocabulary retained; fixture policy distinguished from a universal lane | Feeding policy details |
+  | FTC Actuators & Plants | FTC-boundary construction readers | Existing exact Plant grammar retained; launcher owns exact release/transfer Plants, not a transfer override queue | Complete example and lesson |
+  | Sushi Cheat Sheet | Current API lookup | Compact feed, abort, acknowledgement, and outcome limits; reference is not another tutorial | Canonical feeding lesson |
+  | Subsystem Experiments | Readers planning measurements | Existing experiment/report question retained; spin-up evidence explicitly differs from feed/departure evidence | Separate feeding lesson and physical permissions |
+
+- **Remaining manual review / publication gate:** inspect the launcher, flywheel/inventory
+  publications, controls, disabled clients, tests, and feeding lesson in Android Studio. Review
+  settling, departure, once-only cleanup, acknowledgement, STOP, and both motion locks. Browser
+  skill setup reported no available browser targets; SVG XML/accessibility and source structure
+  were checked, but rendered wide/narrow and light/dark visual QA remains a manual check, not a
+  claimed result. Staging placement, loaded-wheel response, endpoint travel, safe interruption/
+  retraction, and actual launch remain unverified adopting-robot gates. Publication coordinates:
+  `codex/example-11-feedback-confirmed-feeding` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, PR target `master`. No staging, commit,
+  push, PR, or merge is authorized by implementation approval alone.
+- **Final documentation artifact:** strict clean narrative build and six-area search verification
+  passed, followed by successful `:TeamCode:sushiJavadocs` and authored-link verification:
+  **225 generated API links and 99 maintained source links across 55 Markdown pages**. The
+  generated artifact remains under ignored `build/docs-site`; no generated files are part of
+  the review diff. No browser-rendered or robot-hardware result is implied by these checks.
+  Final post-tracker checks also passed: **56 DocumentationLinksTest tests and 14
+  FrameworkBoundaryTest tests**, zero failures/errors/skips. This targeted run replaces the local
+  JUnit XML directory; the full-suite totals above are from the completed full run. Final
+  `git diff --check` passed; all **29** changed/untracked review files remain unstaged.
+- **Design approved (2026-09-09):** the user's **"proceed"** approves the refreshed example-only
+  API and bounded software recovery contract below. The decision passed **Ready** and implementation
+  is underway on `codex/example-11-feedback-confirmed-feeding`, confirmed against freshly fetched
+  `origin/master` at `fa6cda1`. Physical interruption/retraction, loaded-wheel behavior, staging
+  placement, and jam clearing remain adopting-robot validation; this does not authorize production
+  feeding or an enabled launcher OpMode. Stop for Android Studio review before publication.
+- **Implementation detail correction:** the managed `RobotProgram` deliberately does not expose
+  its root runner's idle state. Preserve that boundary: `ReferenceFeedingControls` retains its last
+  submitted Task and declines another feed factory call while that Task is pending or active,
+  returning `Tasks.noop()` for the extra edge. The original button still owns edge detection. This
+  replaces the earlier idle-state sketch without adding a runner, submission API, or availability-
+  gated input. The tiny no-op may be queued; no additional feed attempt is constructed. Disabled,
+  motion-locked TeleOp/Auto declarations will demonstrate the real managed path.
+- **Decision refresh (2026-09-09):** the user requested that we resume and finish EXAMPLE-11
+  after TASK-07 merged in PR #161 (`fa6cda1`). Read the preserved pre-TASK-07 decision stash
+  `d33bab6201773400c6fe443dd57ef6baf39cffa8` without applying or dropping it; retain its useful
+  evidence here while replacing its obsolete transfer-queue discussion. Fetched `origin/master`
+  and fast-forwarded the existing `codex/example-11-feedback-confirmed-feeding` branch to that
+  merged head, without rewriting history. This gate changes only the tracker, not runtime code.
+- **Confirmed behavior:** the Reference launcher accepts one post-request paired-ready snapshot,
+  then releases for 0.15 seconds and transfers for 0.20 seconds with its illustrative defaults.
+  Its conditioned object-present input is published but never used to admit feeding or confirm
+  departure. The current successful software scenario even supplies no object. Success means
+  command sequencing completed, not that the staged position became vacant. Its internal transfer
+  queue and separate timer can be replaced by one attempt-owned bounded transfer phase.
+- **Evidence gaps:** paired `ready()` already checks both wheels against the accepted, unclamped
+  request; preserve that logic. Flywheel and inventory snapshots lack successful-sampling
+  timestamps/cycles, and duplicate same-cycle updates can publish new objects from cached readings.
+  Snapshot identity therefore cannot prove fresh settling or departure. Numeric equality cannot
+  distinguish an old request from a later same-valued or away-and-back request. Inventory order
+  describes the fixture's ordered-fill assumption, not a universal jam detector.
+- **Public construction and caller audit:**
+  - Launcher: one ordinary `(HardwareMap, Config)` constructor, `Config.defaults()`, delegated
+    `flywheels()`, `launchOne()`, `abortLaunches()`, and cached `status()`. No maintained main-source
+    application constructs this owner. Migrate its two launcher test classes and references in
+    Tasks & Macros Quickstart, Robot Capabilities & Mode Clients, Framework Lanes & Robot Controls,
+    FTC Actuators & Plants, and Sushi Cheat Sheet; no production-application adoption.
+  - Inventory: one `(HardwareMap, Config)` constructor, `Config.defaults()`, cached `status()` and
+    `fullSource()`, plus its managed Service lifecycle. Current direct consumers are its tests.
+  - Flywheel: preserve its ordinary hardware-map/config assembly, configuration copy/validation,
+    direct numeric request, fresh Task factory, and cached status. Its explicitly exclusive-host
+    `createPlantForTuning` factory has distinct value for Panels, not a second ordinary assembly
+    path. Check launcher delegation, focused flywheel OpMode, spin-up experiment/report, tester
+    registration, Panels recipe, tests, and paired-wheel guide when extending request/sample facts.
+  - Reuse existing Task construction paths for bounded writes and waits. A single-use Task and a
+    supplier of fresh Tasks serve different lifetimes. No new builder parameter object, staged
+    construction layer, universal readiness abstraction, or core scheduler is proposed.
+- **Alternatives and robot-code comparison:**
+  - Documentation-only leaves departure and recovery behavior unimplemented. Debouncing an
+    aggregate ready Boolean alone cannot establish request-correlated, fresh paired samples.
+  - Client-written composition makes every TeleOp and Auto author supply wheel waits, staging,
+    release/transfer timing, departure interpretation, and terminal cleanup. A second complete
+    shooter fixture would duplicate the existing owner without a distinct teaching purpose.
+  - Recommended ordinary assembly stays `new ReferenceLauncherMechanism(hardwareMap, config)`:
+    the student supplies hardware facts and the fixture's explicit tuning policy once. Replace
+    `launcher.launchOne()` with `launcher.feedOne()` for one fresh attempt; replace
+    `launcher.abortLaunches()` with `launcher.abortFeedAttempts()` for deliberate invalidation.
+    Add `launcher.acknowledgeRecovery()` for explicit no-motion re-arming with an actionable
+    acceptance/rejection result. Do not retain parallel legacy names. TeleOp chooses the input
+    edge/admission policy; Auto chooses sequencing and handles the attempt outcome. Neither client
+    rebuilds the mechanism's phase graph or independently writes its Plants.
+- **Recommended bounded design, pending approval:**
+  - Keep one launcher owner, its delegated flywheels, and private exact release/transfer Plants.
+    Remove the internal transfer OutputTaskRunner and overlay; the root TaskRunner still schedules
+    Tasks. Single active ownership does not mean that ordinary `TaskBindings.onRise` stops queuing
+    extra presses. Teach no-backlog TeleOp admission in the actual edge callback using the existing
+    runner's idle state, not an availability-gated button source that could manufacture a rise.
+    Auto can explicitly sequence fresh attempts. Do not introduce TASK-08 submission receipts.
+  - Privately reuse the existing inventory service instead of the unused single input; nest its
+    data-only configuration. Explicitly label the first position as this fixture's staged sensor.
+    The launcher owns child sampling once per downstream output cycle. Because Output has no
+    START hook, the first output update initializes the child without invalidating an Auto attempt
+    already started that cycle. Later clock-epoch resets invalidate old attempts; STOP is terminal
+    and cannot lazily restart the child. Never also register this child as a peer service.
+  - Publish successful software-sampling `LoopTimestamp`/cycle facts and correlate flywheel
+    evidence with the owner's successful request occurrence. Duplicate reads, failed publications,
+    old epochs, and same-valued or away-and-back commands cannot manufacture eligible evidence.
+    Keep all direct and Task request paths consistent with the owner-authored occurrence.
+    Preserve the experiment report's unavailable native acquisition time: these are software
+    sampling facts, not proof of new encoder/controller frames or continuous physical dwell.
+  - Admit feeding only with fresh, consistent inventory and an occupied staged position, plus
+    advancing matching independently-ready wheel samples across an explicit settling interval.
+    Anchor that interval at the first eligible sample and reset on a broken prerequisite, request
+    change, or excessive observation gap. Accept normal previous-output-cycle evidence within a
+    configured age bound: managed Tasks normally run before the next output publication.
+  - Use existing bounded Task factories where they express the phase. A small private
+    `AbstractTask` may own the genuinely new composite-evidence decisions; use its shared
+    `onFinish` lifecycle hook for terminal cleanup, not a second manual lifecycle shell or a
+    redundant cleanup decorator. `Tasks.withCleanup` remains appropriate for factory-built
+    composites where it adds cleanup without duplicating an existing owner.
+  - Arm confirmation from an eligible occupied sample at/after successful feed-output realization,
+    then require a strictly later eligible conditioned-vacated sample within the bound. Retain the
+    actual bounded phase outcome, not an unrelated elapsed timer. Call success
+    `DEPARTURE_OBSERVED` or equivalent staged-position wording; a delayed conditioned transition
+    does not prove that feeding caused movement, that a projectile launched, or that it scored.
+    Ordered-fill gaps during movement alone are not a jam; use consistency for admission and
+    acknowledgement rather than silently treating normal departure/refill as a fault.
+  - For this illustrative software policy, during-feed wheel droop or lost eligible evidence
+    ends the attempt, requests existing idle through the source graph, and requires recovery
+    acknowledgement. Preserve standard Task outcomes and separate frozen phase/reason evidence.
+    Uncertain feed timeouts/interruption also latch recovery. Abort/STOP invalidate older attempts
+    before cleanup so stale work cannot command over a replacement. Wheel droop may be normal
+    under load, and idle/retraction is not asserted mechanically safe on an unknown robot.
+  - Acknowledgement performs no reverse, re-home, or feed motion. Require no active attempt plus
+    fresh post-failure idle and consistent inventory publications; explain any rejected prerequisite.
+    It does not resume old work. A new explicit attempt independently checks staging and settling.
+    This is software re-arming, never evidence that an actual jam cleared.
+- **Teaching and verification plan:** add one optional advanced lesson answering "what evidence
+  permits and ends one feed?" Define settling, staged position, observed departure, and recovery
+  acknowledgement at first use; include an explicitly sampled timeline with equivalent prose,
+  visible illustrative configuration, and compact source-backed TeleOp/Auto usage. Link from
+  existing advanced/example indexes and paired-wheel material without adding beginner tabs.
+  Keep real owners, Plants, Tasks, and normal Task-to-output order in deterministic scenarios;
+  replace only outside FTC hardware and independently authored sensor measurements. Cover the
+  regressions below plus duplicate cycles, epoch reset/first START, request occurrence, output
+  realization ordering, repeated presses, competing attempts, retained phase outcomes, cleanup
+  failures, and post-failure re-arming. Preserve DIAG-01 report meaning; add no capture project.
+  Run focused tests, then full unit tests/compile and affected strict documentation/source-link
+  checks before Android Studio review. Prior pre-TASK-07 baseline results are historical only;
+  no new test run or hardware verification is claimed by this decision refresh.
+- **Independent review and required stop:** separate owner/caller and evidence/teaching audits
+  support the narrow extension and identified the sampling, initial-epoch, movement-order, and
+  root-queue caveats above. The execute-framework-improvements skill requires explicit approval
+  before these public API/lifecycle changes and the software-only recovery contract. Keep
+  **Researching** until that approval; then record the approved decision and implement this item
+  alone. Unknown sensor placement, loaded-wheel response, safe interruption, and jam-clearing
+  remain supervised adopting-robot validation gates, not missing facts silently assumed by this
+  example. No enabled launcher OpMode, production behavior change, core extraction, or EXAMPLE-12.
 - **Approved comparison amendment (2026-09-08):** keep the existing bounded feed/confirmation scope
   and do not wait for TASK-07. If terminal-cleanup composition is approved later, that task owns
   migration of genuinely equivalent wrappers here. Wheel settling, attempt ownership, departure

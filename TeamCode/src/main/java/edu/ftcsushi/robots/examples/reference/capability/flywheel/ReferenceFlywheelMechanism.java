@@ -7,14 +7,14 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
 import edu.ftcsushi.fw.actuation.PlantSnapshot;
-import edu.ftcsushi.fw.actuation.ScalarTasks;
 import edu.ftcsushi.fw.core.hal.Direction;
-import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
 import edu.ftcsushi.fw.core.source.ScalarSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.ftc.FtcActuators;
 import edu.ftcsushi.fw.ftc.FtcSensors;
 import edu.ftcsushi.fw.ftc.RobotProgram;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 
@@ -62,6 +62,12 @@ public final class ReferenceFlywheelMechanism
     private final double velocityToleranceTicksPerSec;
 
     private Status lastStatus;
+    private long requestId;
+    private LoopClock ownerClock;
+    private long lastUpdateCycle = Long.MIN_VALUE;
+    private boolean updating;
+    private boolean stopped;
+    private RuntimeException updateFailure;
 
     /**
      * Constructs and privately owns the complete paired flywheel realization.
@@ -92,7 +98,8 @@ public final class ReferenceFlywheelMechanism
                 builtFlywheels.snapshot(),
                 Double.NaN,
                 Double.NaN,
-                c.velocityToleranceTicksPerSec);
+                c.velocityToleranceTicksPerSec,
+                LoopTimestamp.unavailable(), -1, requestId);
     }
 
     /**
@@ -111,7 +118,21 @@ public final class ReferenceFlywheelMechanism
     @Override
     public void setVelocityTicksPerSec(double velocityTicksPerSec) {
         requireVelocityInRange(velocityTicksPerSec);
+        if (stopped) {
+            throw new IllegalStateException("Reference flywheels are stopped; construct a fresh owner.");
+        }
+        if (requestId == Long.MAX_VALUE) {
+            throw new IllegalStateException("Reference flywheel request identity exhausted; "
+                    + "construct a fresh owner.");
+        }
         flywheels.commandTarget().set(velocityTicksPerSec);
+        requestId++;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public long requestId() {
+        return requestId;
     }
 
     /** {@inheritDoc} */
@@ -130,31 +151,99 @@ public final class ReferenceFlywheelMechanism
 
     /**
      * Advances the grouped Plant once, then atomically publishes its capture and both later member
-     * samples. A failed sample leaves the preceding complete Status visible.
+     * samples. Repeated successful same-cycle calls leave the exact publication unchanged. An
+     * effectful failure or reentrant update is retained and rethrown without retrying hardware;
+     * the preceding complete Status remains historical. The timestamp names software sampling,
+     * not native encoder acquisition. A request changed during sampling cannot acquire that sample.
      */
     @Override
     public void update(LoopClock clock) {
-        flywheels.update(clock);
-        PlantSnapshot snapshot = flywheels.snapshot();
-        double leftVelocity = leftMeasuredVelocityTicksPerSec.getAsDouble(clock);
-        double rightVelocity = rightMeasuredVelocityTicksPerSec.getAsDouble(clock);
-        lastStatus = new Status(
-                snapshot,
-                leftVelocity,
-                rightVelocity,
-                velocityToleranceTicksPerSec);
+        checkUpdateFailure();
+        if (stopped) {
+            return;
+        }
+        if (updating) {
+            updateFailure = new IllegalStateException(
+                    "Reference flywheel update must not be called reentrantly.");
+            throw updateFailure;
+        }
+        Objects.requireNonNull(clock, "clock is required");
+        LoopTimestamp sampledAt = clock.nowTimestamp();
+        if (ownerClock != null && ownerClock != clock) {
+            throw new IllegalArgumentException("Reference flywheels require their one owner LoopClock.");
+        }
+        ownerClock = clock;
+        if (lastUpdateCycle == clock.cycle()) {
+            return;
+        }
+        long sampledCycle = clock.cycle();
+        lastUpdateCycle = sampledCycle;
+        long sampledRequestId = requestId;
+        updating = true;
+        try {
+            flywheels.update(clock);
+            checkUpdateFailure();
+            if (stopped) {
+                return;
+            }
+            PlantSnapshot snapshot = flywheels.snapshot();
+            double leftVelocity = leftMeasuredVelocityTicksPerSec.getAsDouble(clock);
+            checkUpdateFailure();
+            if (stopped) {
+                return;
+            }
+            double rightVelocity = rightMeasuredVelocityTicksPerSec.getAsDouble(clock);
+            checkUpdateFailure();
+            if (stopped || sampledRequestId != requestId) {
+                return;
+            }
+            if (sampledCycle != clock.cycle()) {
+                throw new IllegalStateException("Do not advance the LoopClock during flywheel update.");
+            }
+            lastStatus = new Status(snapshot, leftVelocity, rightVelocity,
+                    velocityToleranceTicksPerSec, sampledAt, sampledCycle, sampledRequestId);
+        } catch (RuntimeException failure) {
+            if (updateFailure == null) {
+                updateFailure = failure;
+            } else if (updateFailure != failure) {
+                updateFailure.addSuppressed(failure);
+            }
+            throw updateFailure;
+        } finally {
+            updating = false;
+        }
     }
 
-    /** Terminally stops the one grouped Plant while retaining the last member measurements. */
+    /**
+     * Terminally stops the grouped Plant and withdraws sample availability even when stopping
+     * fails. Member measurements are retained only as historical diagnostics, never ready evidence.
+     */
     @Override
     public void stop() {
+        if (stopped) {
+            return;
+        }
+        stopped = true;
         Status prior = lastStatus;
-        flywheels.stop();
-        lastStatus = new Status(
-                flywheels.snapshot(),
-                prior.leftMeasuredVelocityTicksPerSec(),
-                prior.rightMeasuredVelocityTicksPerSec(),
-                velocityToleranceTicksPerSec);
+        // Withdraw readiness before any vendor stop callback can inspect the owner.
+        lastStatus = new Status(prior.plantSnapshot(), prior.leftMeasuredVelocityTicksPerSec(),
+                prior.rightMeasuredVelocityTicksPerSec(), velocityToleranceTicksPerSec,
+                LoopTimestamp.unavailable(), -1, requestId);
+        try {
+            flywheels.stop();
+        } finally {
+            lastStatus = new Status(flywheels.snapshot(),
+                    prior.leftMeasuredVelocityTicksPerSec(),
+                    prior.rightMeasuredVelocityTicksPerSec(), velocityToleranceTicksPerSec,
+                    LoopTimestamp.unavailable(), -1, requestId);
+        }
+    }
+
+    /** Retains the first uncertain effect instead of retrying it on another output heartbeat. */
+    private void checkUpdateFailure() {
+        if (updateFailure != null) {
+            throw updateFailure;
+        }
     }
 
     /** Builds the canonical grouped realization shared by match and exclusive tuning owners. */
@@ -182,118 +271,63 @@ public final class ReferenceFlywheelMechanism
     }
 
     /**
-     * Adds paired member evidence to the factory-provided command-correlated feedback move.
+     * Waits on the capability's complete grouped and independent-member evidence.
      *
      * <p>The generic move may observe a misleading grouped mean when one wheel is high and the
-     * other low. This wrapper therefore waits for both independent samples from a post-start
-     * publication before reporting success.</p>
+     * other low. This owner-specific wait therefore checks both members and the exact request
+     * occurrence. AbstractTask supplies the shared lifecycle; no second raw-target Task bypasses
+     * the mechanism's request owner.</p>
      */
-    private final class PairedReadyTask implements Task {
+    private final class PairedReadyTask extends AbstractTask {
         private final double requestedVelocityTicksPerSec;
         private final double timeoutSec;
-        private final Task groupedMove;
-
-        private boolean startAttempted;
-        private boolean started;
-        private boolean complete;
-        private double startedAtSec;
-        private Status statusAtStart;
-        private TaskOutcome outcome = TaskOutcome.NOT_DONE;
+        private LoopTimestamp startedAt;
+        private long ownedRequestId;
 
         private PairedReadyTask(double requestedVelocityTicksPerSec, double timeoutSec) {
+            super("ReferenceFlywheels.setVelocityTask");
             this.requestedVelocityTicksPerSec = requestedVelocityTicksPerSec;
             this.timeoutSec = timeoutSec;
-            groupedMove = ScalarTasks.set(
-                            flywheels.commandTarget(),
-                            requestedVelocityTicksPerSec)
-                    .untilReachedBy(flywheels)
-                    .leaveRequestOnCancel()
-                    .build();
         }
 
         @Override
-        public void start(LoopClock clock) {
-            if (startAttempted) {
-                throw new IllegalStateException(
-                        "Reference flywheel velocity Task is single-use. Call "
-                                + "setVelocityTask(...) again for another run.");
-            }
-            startAttempted = true;
-            LoopClock requiredClock = Objects.requireNonNull(
-                    clock,
-                    "Reference flywheel Task start clock is required");
-            started = true;
-            startedAtSec = requiredClock.nowSec();
-            statusAtStart = lastStatus;
-            groupedMove.start(requiredClock);
+        protected void onStart(LoopClock clock) {
+            startedAt = clock.nowTimestamp();
+            setVelocityTicksPerSec(requestedVelocityTicksPerSec);
+            ownedRequestId = requestId;
         }
 
         @Override
-        public void update(LoopClock clock) {
-            if (!started) {
-                throw new IllegalStateException(
-                        "Reference flywheel velocity Task cannot be updated before start(clock)");
-            }
-            if (complete) {
+        protected void onUpdate(LoopClock clock) {
+            checkUpdateFailure();
+            double elapsedSec = startedAt.ageSec(clock);
+            if (!Double.isFinite(elapsedSec)) {
+                // A new clock epoch cannot extend this old bounded request or reuse its evidence.
+                cancel();
                 return;
             }
-            LoopClock requiredClock = Objects.requireNonNull(
-                    clock,
-                    "Reference flywheel Task update clock is required");
-
-            groupedMove.update(requiredClock);
             Status current = lastStatus;
-            boolean groupedReached = groupedMove.isComplete()
-                    && groupedMove.getOutcome() == TaskOutcome.SUCCESS;
-            boolean independentReady = current != statusAtStart
+            boolean independentReady = requestId == ownedRequestId
+                    && current.requestId() == ownedRequestId
+                    && Double.isFinite(current.sampledAt().ageSec(clock))
                     && Double.compare(
                             current.requestedVelocityTicksPerSec(),
                             requestedVelocityTicksPerSec) == 0
+                    && current.plantSnapshot().atCommandTarget()
                     && current.ready();
 
             // Exact-boundary readiness wins over timeout, like ScalarTasks feedback moves.
-            if (groupedReached && independentReady) {
-                finish(TaskOutcome.SUCCESS, false);
-            } else if (Math.max(0.0, requiredClock.nowSec() - startedAtSec) >= timeoutSec) {
-                finish(TaskOutcome.TIMEOUT, true);
+            if (independentReady) {
+                complete(TaskOutcome.SUCCESS);
+            } else if (elapsedSec >= timeoutSec) {
+                complete(TaskOutcome.TIMEOUT);
             }
         }
 
         @Override
-        public void cancel() {
-            if (!started || complete) {
-                return;
-            }
-            complete = true;
-            outcome = TaskOutcome.CANCELLED;
-            CleanupActions.attemptAll(
-                    groupedMove::cancel,
-                    () -> flywheels.commandTarget().set(IDLE_VELOCITY_TICKS_PER_SEC));
-        }
-
-        @Override
-        public boolean isComplete() {
-            return complete;
-        }
-
-        @Override
-        public TaskOutcome getOutcome() {
-            return complete ? outcome : TaskOutcome.NOT_DONE;
-        }
-
-        @Override
-        public String getDebugName() {
-            return complete
-                    ? "ReferenceFlywheels.setVelocityTask(DONE:" + outcome + ")"
-                    : "ReferenceFlywheels.setVelocityTask";
-        }
-
-        private void finish(TaskOutcome terminalOutcome, boolean cancelGroupedMove) {
-            complete = true;
-            outcome = terminalOutcome;
-            if (cancelGroupedMove) {
-                // The child deliberately leaves the persistent request unchanged on timeout.
-                groupedMove.cancel();
+        protected void onCancel() {
+            if (!stopped) {
+                setVelocityTicksPerSec(IDLE_VELOCITY_TICKS_PER_SEC);
             }
         }
     }

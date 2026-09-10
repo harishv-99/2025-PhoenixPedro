@@ -186,20 +186,23 @@ For the backing construction, see [Mechanism Target Planning](<../drive-vision/M
 and exposes a small capability-owned status. Per-wheel balance, piece evidence, and other
 robot-specific readiness stay in that status rather than being invented from generic arrival.
 
-Keep that richer backing flat for ordinary launcher code:
+Use the composed wheel evidence beside the launcher's own feed decision:
 
 ```java
 ReferenceLauncher.Status launcherStatus = launcher.status();
-telemetry.addData("launcher", "%.0f/%.0f ready=%s",
-        launcherStatus.requestedVelocityTicksPerSec(),
-        launcherStatus.appliedVelocityTicksPerSec(),
-        launcherStatus.ready());
+telemetry.addData("wheels.ready", launcherStatus.flywheels().ready());
+telemetry.addData("feed.phase", launcherStatus.phase());
+telemetry.addData("feed.reason", launcherStatus.reason());
+telemetry.addData("feed.recoveryRequired", launcherStatus.recoveryRequired());
 ```
 
 [`ReferenceLauncher.Status`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncher.Status.html>)
-is one immutable publication combining the grouped flywheel snapshot with custom
-per-wheel, sensor, and transient facts. Use `leftAtTarget()` and `rightAtTarget()` when those facts
-matter; reserve `flywheelSnapshot()` for advanced diagnostics.
+is one immutable publication combining `flywheels()` and `inventory()` with the latest owned
+attempt's policy. Use `launcherStatus.flywheels().leftAtTarget()` and `rightAtTarget()` for member
+evidence; reserve its `plantSnapshot()` for advanced diagnostics. `feedOne()` builds a fresh
+bounded attempt; `abortFeedAttempts()` invalidates old attempts, and `acknowledgeRecovery()` is a
+no-motion re-arming decision. See [feedback-confirmed feeding](<../advanced/Feedback-confirmed Feeding.md>)
+before interpreting wheel readiness or staged departure as permission or physical success.
 
 ## Choose a Plant recipe
 

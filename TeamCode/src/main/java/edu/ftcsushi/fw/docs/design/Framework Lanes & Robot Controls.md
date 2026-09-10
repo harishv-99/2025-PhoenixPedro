@@ -1457,6 +1457,9 @@ framework template:
 - focused paired-velocity capability and mechanism: `ReferenceFlywheels` /
   `ReferenceFlywheelMechanism`
 - focused delegated launcher policy: `ReferenceLauncher` / `ReferenceLauncherMechanism`
+- focused no-backlog feed controls and independently locked mode clients:
+  `ReferenceFeedingControls`, `ReferenceFeedingTeleOp`, and `ReferenceFeedingAuto`; see
+  [feedback-confirmed feeding](<../advanced/Feedback-confirmed Feeding.md>)
 - focused periodic-position mechanism: `ReferencePeriodicTurretMechanism`
 - first single-input sensing service: `BasicSwitchService`
 - multi-input sensing service: `ReferenceInventoryStatusService`
@@ -1467,6 +1470,11 @@ framework template:
 Use the Starter for the copyable complete minimum and each focused Reference example only for the
 concern it names. Add a larger robot-owned capability aggregate only when actual mode clients need
 one; do not make one example own another example's lifecycle.
+
+The launcher privately owns its inventory sampler when composing feeding evidence. Register that
+launcher once as an output, not its inventory or flywheels as additional peer services/outputs.
+Standalone inventory still has its own Service use case; these are different owning graphs, not
+two heartbeats for the same instance.
 
 ---
 

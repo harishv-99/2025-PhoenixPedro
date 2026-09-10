@@ -435,28 +435,26 @@ action; it returns one fresh, single-use `Task`. Calling the factory runs neithe
 `Runnable` argument is a no-input, no-result action saved for later; it runs synchronously inside
 the lifecycle call that ends started work, not on a new thread or over future loops.
 
-In the independent launcher, `spinUp` and `feed` are already-built steps. This exact constructor
-excerpt joins them, then registers the owner's ending action:
+This conceptual fragment assumes `spinUp` and `feed` are already-built steps and the mechanism
+owns a short `requestOwnedIdle()` method. It joins the steps and registers that ending action:
 
-<!-- source-excerpt: TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java -->
 ```java
-launchFlow = Tasks.withCleanup(
+Task operation = Tasks.withCleanup(
         Tasks.sequence(spinUp, feed),
-        this::cleanupIfGenerationStillOwned);
+        mechanism::requestOwnedIdle);
 ```
 
-`this::cleanupIfGenerationStillOwned` means "call this method when cleanup is due," not "call it
-now." It compares the launch's saved version with the owner's current version, which changes on
-abort. That check prevents an old launch from changing a newer request after an abort.
-The inner sequence still skips feeding unless spin-up reports exact success.
+`mechanism::requestOwnedIdle` means "call this method when cleanup is due," not "call it now."
+The inner sequence still skips feeding unless spin-up reports exact success. The mechanism's
+ending action must restore only requests that this operation still owns, through its normal
+source graph; generic cleanup does not choose ownership, admission, sensor evidence, or safe motion.
+It does not terminally stop the Plants or prove physical stop.
 
-When the launch still owns those requests, `ReferenceLauncherMechanism` calls its normal
-`requestActiveMatchIdle()` method: clear the temporary transfer queue, request the release
-retracted, and request zero flywheel speed. Those requests still reach the Plants through the
-ordinary output phase.
-The method does not terminally stop the Plants; later reviewed launches can use the same mechanism.
-The launcher still owns launch admission, invalidation of old queued requests, and feed policy;
-generic cleanup cannot make those decisions for it.
+This is a composition explanation, not a complete feeding recipe. The maintained
+[feedback-confirmed feed](<../advanced/Feedback-confirmed Feeding.md>) adds the genuinely distinct
+decisions about wheel settling, staged occupancy, departure, and recovery. Its private
+`AbstractTask` owns those decisions and uses the same shared lifecycle's `onFinish()` hook for
+ending work; it needs neither another lifecycle shell nor a redundant cleanup wrapper.
 
 | Event | Action and result |
 | --- | --- |
@@ -493,8 +491,9 @@ Timed Task families use this same recursive-update convention and run at most on
 cycle. Other composition helpers retain their own documented rules. None of this permits
 reentrant hardware/controller updates or retrying an effectful callback after failure.
 
-See [Complete source: `ReferenceLauncherMechanism.java`](<https://github.com/harishv-99/2025-PhoenixPedro/blob/master/TeamCode/src/main/java/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.java>)
-for its request restoration and retained robot-specific policy. Cleanup changes neither
+See the exact [`Tasks.withCleanup(...)` API](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/task/Tasks.html>)
+for its factory contract, and the linked feeding lesson for a complete robot-owned policy.
+Cleanup changes neither
 `repeatWhileSuccessful(...)` admission nor its requirement to create fresh children.
 
 ---
@@ -796,7 +795,9 @@ flywheel request is persistent: finishing or cancelling a later feed step does n
 erase the earlier velocity request. Read the ending-policy table before adopting this shape. For
 a maintained macro that owns coordinated terminal cleanup, use
 [`ReferenceLauncherMechanism`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/launcher/ReferenceLauncherMechanism.html>)
-and its `launchOne()` capability instead of assuming the final sequence child always runs.
+and its `feedOne()` capability instead of assuming the final sequence child always runs. The
+[feeding lesson](<../advanced/Feedback-confirmed Feeding.md>) also requires sampled staging and
+departure evidence; the composition below does not provide those observations.
 
 Inside the shooter mechanism, retain the two simple Plants as private fields:
 
@@ -850,8 +851,9 @@ The sequence's outcome and its held requests are different facts:
 
 Use this composition only when those persistent requests match the mechanism's declared policy.
 If a larger operation must stop every owned request on any ending, that operation needs a
-coordinated policy like the maintained launcher, expressed with
-[`withCleanup(...)`](<#35-restore-a-request-when-work-ends>) around its started work. A later `spinDown` child is
+coordinated policy. Use [`withCleanup(...)`](<#35-restore-a-request-when-work-ends>) around a
+factory-built composite, or the existing `onFinish()` hook when a genuinely custom evidence policy
+already needs `AbstractTask`, as in the maintained launcher. A later `spinDown` child is
 not cleanup, and changing to `sequenceOnCompletion(...)` alone still cannot make it run on direct
 cancellation. Physical coast-down and feed clearance remain separate hardware observations.
 

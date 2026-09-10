@@ -7,6 +7,7 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.ftc.FtcSensors;
 import edu.ftcsushi.fw.ftc.RobotProgram;
 
@@ -20,7 +21,8 @@ import edu.ftcsushi.fw.ftc.RobotProgram;
  *
  * <p>The service samples once at START and once in each managed service phase. Its source graphs
  * provide same-cycle hardware-read caching and debounce lifecycle. Publication is atomic: a failed
- * three-sensor observation leaves the prior immutable snapshot in place.</p>
+ * three-sensor observation leaves the prior immutable snapshot in place and may retry that cycle.
+ * Repeating a successful update preserves the exact publication, not a newly stamped copy.</p>
  */
 public final class ReferenceInventoryStatusService implements RobotProgram.Service {
 
@@ -63,9 +65,16 @@ public final class ReferenceInventoryStatusService implements RobotProgram.Servi
         public final int conditionedOccupiedPositionCount;
         public final boolean full;
         public final OrderIssue orderIssue;
+        /** Successful software sampling time, not a native sensor-frame acquisition timestamp. */
+        public final LoopTimestamp sampledAt;
+        /** Successful sampling cycle, or {@code -1} before observation and after STOP. */
+        public final long sampleCycle;
 
-        private Status(boolean observed, boolean first, boolean second, boolean third) {
+        private Status(boolean observed, boolean first, boolean second, boolean third,
+                       LoopTimestamp sampledAt, long sampleCycle) {
             this.observed = observed;
+            this.sampledAt = sampledAt;
+            this.sampleCycle = sampleCycle;
             firstPositionOccupied = first;
             secondPositionOccupied = second;
             thirdPositionOccupied = third;
@@ -81,12 +90,17 @@ public final class ReferenceInventoryStatusService implements RobotProgram.Servi
         }
     }
 
-    private static final Status NOT_OBSERVED = new Status(false, false, false, false);
+    private static final Status NOT_OBSERVED = new Status(false, false, false, false,
+            LoopTimestamp.unavailable(), -1);
 
     private final BooleanSource firstOccupied;
     private final BooleanSource secondOccupied;
     private final BooleanSource thirdOccupied;
     private Status status = NOT_OBSERVED;
+    private LoopClock ownerClock;
+    private boolean updating;
+    private boolean stopped;
+    private long lifecycleGeneration;
     private final BooleanSource fullSource = clock -> status.full;
 
     /**
@@ -129,24 +143,73 @@ public final class ReferenceInventoryStatusService implements RobotProgram.Servi
     @Override
     public void start(LoopClock clock) {
         Objects.requireNonNull(clock, "clock is required");
+        if (updating) {
+            throw new IllegalStateException("Reference inventory cannot start during sampling.");
+        }
+        lifecycleGeneration++;
+        stopped = false;
         resetSources();
         status = NOT_OBSERVED;
         update(clock);
     }
 
+    /** Publishes once on complete successful sampling; failed reads do not consume the cycle. */
     @Override
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock is required");
-        boolean first = firstOccupied.getAsBoolean(clock);
-        boolean second = secondOccupied.getAsBoolean(clock);
-        boolean third = thirdOccupied.getAsBoolean(clock);
-        status = new Status(true, first, second, third);
+        if (stopped) {
+            return;
+        }
+        if (updating) {
+            throw new IllegalStateException("Reference inventory sampling must not be reentrant.");
+        }
+        LoopTimestamp sampledAt = clock.nowTimestamp();
+        if (ownerClock != null && ownerClock != clock) {
+            throw new IllegalArgumentException("Reference inventory requires its one owner LoopClock.");
+        }
+        ownerClock = clock;
+        long sampledCycle = clock.cycle();
+        if (status.observed && status.sampleCycle == sampledCycle) {
+            return;
+        }
+        long generation = lifecycleGeneration;
+        updating = true;
+        try {
+            boolean first = firstOccupied.getAsBoolean(clock);
+            if (generation != lifecycleGeneration) {
+                return;
+            }
+            boolean second = secondOccupied.getAsBoolean(clock);
+            if (generation != lifecycleGeneration) {
+                return;
+            }
+            boolean third = thirdOccupied.getAsBoolean(clock);
+            if (generation != lifecycleGeneration) {
+                return;
+            }
+            if (sampledCycle != clock.cycle()) {
+                throw new IllegalStateException("Do not advance the LoopClock during inventory sampling.");
+            }
+            status = new Status(true, first, second, third, sampledAt, sampledCycle);
+        } finally {
+            updating = false;
+            // A sensor callback may stop the owner, but its source operation must unwind before
+            // resetting that source. No in-flight read may republish after the generation changes.
+            if (stopped) {
+                resetSources();
+            }
+        }
     }
 
+    /** Withdraws all sample evidence; only an explicit later service start can sample again. */
     @Override
     public void stop() {
+        lifecycleGeneration++;
+        stopped = true;
         status = NOT_OBSERVED;
-        resetSources();
+        if (!updating) {
+            resetSources();
+        }
     }
 
     private void resetSources() {

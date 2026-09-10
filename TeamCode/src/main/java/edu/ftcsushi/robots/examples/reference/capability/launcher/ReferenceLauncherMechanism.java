@@ -5,71 +5,70 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.actuation.Plant;
-import edu.ftcsushi.fw.actuation.PlantTargetResolver;
-import edu.ftcsushi.fw.actuation.PlantTargets;
 import edu.ftcsushi.fw.actuation.ScalarTasks;
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.hal.Direction;
 import edu.ftcsushi.fw.core.lifecycle.CleanupActions;
-import edu.ftcsushi.fw.core.source.BooleanSource;
-import edu.ftcsushi.fw.core.source.ScalarSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.ftc.FtcActuators;
-import edu.ftcsushi.fw.ftc.FtcSensors;
 import edu.ftcsushi.fw.ftc.RobotProgram;
-import edu.ftcsushi.fw.task.OutputTaskRunner;
+import edu.ftcsushi.fw.task.AbstractTask;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
-import edu.ftcsushi.fw.task.Tasks;
 import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheelMechanism;
 import edu.ftcsushi.robots.examples.reference.capability.flywheel.ReferenceFlywheels;
+import edu.ftcsushi.robots.examples.reference.capability.inventory.ReferenceInventoryStatusService;
 
-/** Owns release/feed policy and delegates paired velocity to one focused flywheel owner. */
-public final class ReferenceLauncherMechanism
-        implements ReferenceLauncher, RobotProgram.Output {
-
-    /** Data-only wiring, bounds, and behavior values for the reference mechanism. */
+/**
+ * Owns one software-only feed policy, paired wheels, inventory, and exact release/transfer Plants.
+ *
+ * <p>Register only this owner as an output. Its private inventory child is sampled after the Plants,
+ * once per output cycle; Tasks consume the preceding complete publication. Neither Tasks nor status
+ * accessors poll hardware. This fixture has no internal queue and no physical recovery routine.</p>
+ */
+public final class ReferenceLauncherMechanism implements ReferenceLauncher, RobotProgram.Output {
+    /** Data-only illustrative wiring and policy; all retained values are defensively copied. */
     public static final class Config {
         public ReferenceFlywheelMechanism.Config flywheels;
+        public ReferenceInventoryStatusService.Config inventory;
         public String transferName;
         public Direction transferDirection;
         public String releaseServoName;
         public Direction releaseServoDirection;
-        public String objectSensorName;
-        public double launchVelocityTicksPerSec;
+        public double feedVelocityTicksPerSec;
+        /** Bounds all prerequisite waiting, including staging and paired settling. */
         public double spinUpTimeoutSec;
+        /** Minimum span of advancing ready samples, not continuous physical dwell. */
+        public double readySettlingSec;
+        /** Inclusive maximum sample age and gap between eligible observations, in seconds. */
+        public double evidenceMaxAgeSec;
+        /** Total bound from release request through transfer and departure confirmation. */
+        public double departureTimeoutSec;
         public double transferPower;
         public double transferDurationSec;
-
-        /**
-         * Native FTC Servo endpoint mapped from the normalized release Plant's retracted target
-         * {@code 0.0}, in inclusive range {@code [0, 1]}. This fact must be backed off from unsafe
-         * travel and reviewed on the assembled mechanism.
-         */
+        /** Native FTC Servo endpoint for normalized retracted request 0; requires physical review. */
         public double releaseRetractedNativePosition;
-
-        /**
-         * Native FTC Servo endpoint mapped from the normalized release Plant's extended target
-         * {@code 1.0}, in inclusive range {@code [0, 1]}. This fact must be backed off from unsafe
-         * travel and reviewed on the assembled mechanism.
-         */
+        /** Native FTC Servo endpoint for normalized extended request 1; requires physical review. */
         public double releaseExtendedNativePosition;
         public double releaseDurationSec;
 
-        private Config() {
-        }
+        private Config() { }
 
-        /** Returns compiling example values, not reviewed physical facts. */
+        /** Returns a compiling software fixture, never permission to operate an assembled shooter. */
         public static Config defaults() {
             Config c = new Config();
             c.flywheels = ReferenceFlywheelMechanism.Config.defaults();
+            c.inventory = ReferenceInventoryStatusService.Config.defaults();
             c.transferName = "transfer";
             c.transferDirection = Direction.FORWARD;
             c.releaseServoName = "release";
             c.releaseServoDirection = Direction.FORWARD;
-            c.objectSensorName = "objectPresent";
-            c.launchVelocityTicksPerSec = 3000.0;
+            c.feedVelocityTicksPerSec = 3000.0;
             c.spinUpTimeoutSec = 2.0;
+            c.readySettlingSec = 0.10;
+            c.evidenceMaxAgeSec = 0.10;
+            c.departureTimeoutSec = 0.50;
             c.transferPower = 0.25;
             c.transferDurationSec = 0.20;
             c.releaseRetractedNativePosition = 0.25;
@@ -79,419 +78,580 @@ public final class ReferenceLauncherMechanism
         }
     }
 
-    private static final double IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC = 0.0;
-    private static final double IDLE_TRANSFER_POWER = 0.0;
-    private static final double RELEASE_RETRACTED_TARGET = 0.0;
-    private static final double RELEASE_EXTENDED_TARGET = 1.0;
-
+    private final Config config;
     private final ReferenceFlywheelMechanism flywheels;
+    private final ReferenceInventoryStatusService inventory;
     private final Plant transfer;
     private final Plant release;
-    private final BooleanSource objectPresent;
-    private final OutputTaskRunner transferOverrides =
-            Tasks.outputQueue(IDLE_TRANSFER_POWER);
-    private final double launchVelocityTicksPerSec;
-    private final double spinUpTimeoutSec;
-    private final double transferPower;
-    private final double transferDurationSec;
-    private final double releaseDurationSec;
-
-    private long launchGeneration;
+    private FeedTask active;
+    private long generation;
+    private long epochGeneration;
+    private LoopClock ownerClock;
+    private LoopTimestamp epochAnchor = LoopTimestamp.unavailable();
+    private boolean inventoryStarted;
+    private boolean stopped;
+    private boolean updating;
+    private long attemptedOutputCycle = -1;
+    private RuntimeException outputFailure;
+    private LoopTimestamp sampledAt = LoopTimestamp.unavailable();
+    private long sampleCycle = -1;
+    private boolean transferActive;
+    private boolean idlePublished;
+    private long idleRequestId = -1;
+    private boolean recoveryRequired;
+    private long recoveryAfterCycle = -1;
+    private Phase lastPhase = Phase.IDLE;
+    private Reason lastReason = Reason.NONE;
     private Status lastStatus;
 
     /**
-     * Constructs the complete mechanism after validating its copied configuration.
-     *
-     * <p>The focused {@link ReferenceFlywheelMechanism} owns the grouped Plant and independent
-     * wheel evidence. This launcher composes that capability with release, transfer, and object
-     * sensing; it does not create a second flywheel target or writer.</p>
+     * Constructs one complete privately owned graph. Validation precedes actuator construction;
+     * partial actuator construction failure best-effort stops every already acquired owner.
      */
-    public ReferenceLauncherMechanism(HardwareMap hardwareMap, Config config) {
+    public ReferenceLauncherMechanism(HardwareMap hardwareMap, Config source) {
         HardwareMap map = Objects.requireNonNull(hardwareMap, "hardwareMap is required");
-        Config c = copyAndValidate(config);
-
-        BooleanSource builtObjectPresent = FtcSensors.digitalLow(map, c.objectSensorName)
-                .debouncedOnOff(0.02, 0.02);
-
-        PlantTargetResolver transferTarget = PlantTargets.overlay(
-                        ScalarSource.of(() -> IDLE_TRANSFER_POWER))
-                .add("temporaryTransfer", transferOverrides.activeSource(), transferOverrides)
-                .build();
-
+        config = copyAndValidate(source);
+        inventory = new ReferenceInventoryStatusService(map, config.inventory);
         ReferenceFlywheelMechanism builtFlywheels = null;
         Plant builtTransfer = null;
         Plant builtRelease = null;
-        Status builtInitialStatus;
         try {
-            builtFlywheels = new ReferenceFlywheelMechanism(map, c.flywheels);
+            builtFlywheels = new ReferenceFlywheelMechanism(map, config.flywheels);
             builtTransfer = FtcActuators.plant(map)
-                    .crServo(c.transferName, c.transferDirection)
+                    .crServo(config.transferName, config.transferDirection)
                     .power()
-                    .targetFromResolver(transferTarget)
+                    .targetFromNewCommand(0.0)
                     .build();
             builtRelease = FtcActuators.plant(map)
-                    .servo(c.releaseServoName, c.releaseServoDirection)
+                    .servo(config.releaseServoName, config.releaseServoDirection)
                     .position()
                     .nonPeriodic()
-                    .bounded(RELEASE_RETRACTED_TARGET, RELEASE_EXTENDED_TARGET)
-                    .rangeMapsToNative(
-                            c.releaseRetractedNativePosition,
-                            c.releaseExtendedNativePosition)
-                    .targetFromNewCommand(RELEASE_RETRACTED_TARGET)
+                    .bounded(0.0, 1.0)
+                    .rangeMapsToNative(config.releaseRetractedNativePosition,
+                            config.releaseExtendedNativePosition)
+                    .targetFromNewCommand(0.0)
                     .build();
-            builtInitialStatus = new Status(
-                    builtFlywheels.status(),
-                    false,
-                    false);
         } catch (RuntimeException failure) {
             ReferenceFlywheelMechanism f = builtFlywheels;
             Plant t = builtTransfer;
             Plant r = builtRelease;
-            throw CleanupActions.attemptAllAfterFailure(
-                    failure,
-                    () -> stopIfBuilt(r),
-                    () -> stopIfBuilt(t),
-                    () -> stopIfBuilt(f));
+            throw CleanupActions.attemptAllAfterFailure(failure,
+                    () -> { if (r != null) r.stop(); },
+                    () -> { if (t != null) t.stop(); },
+                    () -> { if (f != null) f.stop(); }, inventory::stop);
         }
-
         flywheels = builtFlywheels;
         transfer = builtTransfer;
         release = builtRelease;
-        objectPresent = builtObjectPresent;
-        launchVelocityTicksPerSec = c.launchVelocityTicksPerSec;
-        spinUpTimeoutSec = c.spinUpTimeoutSec;
-        transferPower = c.transferPower;
-        transferDurationSec = c.transferDurationSec;
-        releaseDurationSec = c.releaseDurationSec;
-        lastStatus = builtInitialStatus;
+        publishStatus();
     }
 
     /** {@inheritDoc} */
-    @Override
-    public ReferenceFlywheels flywheels() {
-        return flywheels;
+    @Override public ReferenceFlywheels flywheels() { return flywheels; }
+
+    /** {@inheritDoc} */
+    @Override public Task feedOne() { return new FeedTask(generation); }
+
+    /** {@inheritDoc} */
+    @Override public Status status() { return lastStatus; }
+
+    /** {@inheritDoc} */
+    @Override public void abortFeedAttempts() {
+        if (stopped) return;
+        invalidate(Reason.ABORTED);
     }
 
     /** {@inheritDoc} */
-    @Override
-    public void abortLaunches() {
-        launchGeneration++;
-        requestActiveMatchIdle();
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public Task launchOne() {
-        return new LaunchTask(launchGeneration);
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public Status status() {
-        return lastStatus;
+    @Override public RecoveryResult acknowledgeRecovery() {
+        if (stopped) return RecoveryResult.STOPPED;
+        if (active != null) return RecoveryResult.ATTEMPT_ACTIVE;
+        if (!recoveryRequired) return RecoveryResult.NOT_REQUIRED;
+        if (ownerClock == null || !sampledAt.isFresh(ownerClock, config.evidenceMaxAgeSec)
+                || sampleCycle <= recoveryAfterCycle || !idlePublished
+                || flywheels.requestId() != idleRequestId) {
+            return RecoveryResult.WAITING_FOR_IDLE;
+        }
+        ReferenceInventoryStatusService.Status observed = inventory.status();
+        if (!observed.observed || !observed.sampledAt.isFresh(ownerClock, config.evidenceMaxAgeSec)
+                || observed.sampleCycle <= recoveryAfterCycle
+                || observed.orderIssue != ReferenceInventoryStatusService.OrderIssue.NONE) {
+            return RecoveryResult.INVENTORY_UNAVAILABLE;
+        }
+        recoveryRequired = false;
+        generation++; // Acknowledgement does not revive old pending work.
+        publishStatus();
+        return RecoveryResult.ACKNOWLEDGED;
     }
 
     /**
-     * Advances the transfer queue, delegated flywheel owner, and two local Plants in output order,
-     * then publishes one complete launcher Status after every evidence capture succeeds.
+     * Realizes requests, then publishes one complete software observation. Duplicate successful
+     * calls are inert; a failed effect is retained and never retried. Reentrant update is rejected.
+     * STOP during an output prevents subsequent ordinary effects.
      */
-    @Override
-    public void update(LoopClock clock) {
-        transferOverrides.update(clock);
-        flywheels.update(clock);
-        transfer.update(clock);
-        release.update(clock);
-
-        boolean capturedObjectPresent = objectPresent.getAsBoolean(clock);
-        boolean transferPulseActive = transferOverrides.hasActiveTask();
-
-        lastStatus = new Status(
-                flywheels.status(),
-                capturedObjectPresent,
-                transferPulseActive);
+    @Override public void update(LoopClock clock) {
+        if (outputFailure != null) throw outputFailure;
+        if (stopped) return;
+        Objects.requireNonNull(clock, "Reference launcher requires its shared LoopClock");
+        if (updating) {
+            outputFailure = new IllegalStateException("Reference launcher output cannot reenter update");
+            throw outputFailure;
+        }
+        if (ownerClock != null && ownerClock != clock) {
+            throw new IllegalArgumentException("Reference launcher requires one stable LoopClock");
+        }
+        if (attemptedOutputCycle == clock.cycle()) return;
+        attemptedOutputCycle = clock.cycle();
+        updating = true;
+        try {
+            ensureEpoch(clock);
+            flywheels.update(clock);
+            checkOutputCycle(clock);
+            if (stopped) return;
+            transfer.update(clock);
+            checkOutputCycle(clock);
+            if (stopped) return;
+            release.update(clock);
+            checkOutputCycle(clock);
+            if (stopped) return;
+            if (!inventoryStarted) {
+                inventoryStarted = true;
+                inventory.start(clock);
+            } else {
+                inventory.update(clock);
+            }
+            checkOutputCycle(clock);
+            if (stopped) return;
+            sampledAt = clock.nowTimestamp();
+            sampleCycle = clock.cycle();
+            transferActive = transfer.snapshot().appliedTarget() != 0.0;
+            idlePublished = !transferActive && release.snapshot().appliedTarget() == 0.0
+                    && flywheels.status().appliedVelocityTicksPerSec() == 0.0
+                    && flywheels.status().requestedVelocityTicksPerSec() == 0.0;
+            idleRequestId = flywheels.status().requestId();
+            if (active != null && active.feeding && active.releaseRealizedCycle < 0
+                    && release.snapshot().appliedTarget() == 1.0) {
+                active.releaseRealizedCycle = sampleCycle;
+            }
+            publishStatus();
+        } catch (RuntimeException failure) {
+            if (outputFailure == null) outputFailure = failure;
+            FeedTask failedAttempt = active;
+            throw CleanupActions.attemptAllAfterFailure(outputFailure,
+                    () -> { if (failedAttempt != null) failedAttempt.failFromOutput(outputFailure); },
+                    this::stop);
+        } finally {
+            updating = false;
+        }
     }
 
-    /** Terminally stops the complete owned actuator graph and invalidates outstanding launches. */
-    @Override
-    public void stop() {
-        launchGeneration++;
-        Status priorStatus = lastStatus;
+    /** Fail closed even if a hardware callback caught a forbidden recursive call or clock change. */
+    private void checkOutputCycle(LoopClock clock) {
+        if (outputFailure != null) throw outputFailure;
+        if (clock.cycle() != attemptedOutputCycle) {
+            throw new IllegalStateException("Do not advance the LoopClock during launcher output");
+        }
+    }
+
+    /** Terminally stops every owned resource even if cancellation or one stop fails. */
+    @Override public void stop() {
+        if (stopped) return;
+        stopped = true;
+        generation++;
+        FeedTask ending = active;
+        try {
+            CleanupActions.attemptAll(
+                    () -> { if (ending != null) ending.abort(Reason.STOPPED); },
+                    release::stop, transfer::stop, flywheels::stop, inventory::stop);
+        } finally {
+            sampledAt = LoopTimestamp.unavailable();
+            sampleCycle = -1;
+            transferActive = false;
+            idlePublished = false;
+            publishStatus();
+        }
+    }
+
+    /** Reinitialize only a changed epoch; initial START never invalidates a just-started Auto Task. */
+    private void ensureEpoch(LoopClock clock) {
+        if (ownerClock != null && ownerClock != clock) {
+            throw new IllegalArgumentException("Reference launcher requires one stable LoopClock");
+        }
+        ownerClock = clock;
+        if (epochAnchor.isAvailable() && !Double.isFinite(epochAnchor.ageSec(clock))) {
+            invalidate(Reason.CLOCK_RESET);
+            inventoryStarted = false;
+            sampledAt = LoopTimestamp.unavailable();
+            sampleCycle = -1;
+            idlePublished = false;
+        }
+        epochAnchor = clock.nowTimestamp();
+    }
+
+    /** Invalidate old task construction before cancelling the current owner and requesting idle. */
+    private void invalidate(Reason reason) {
+        if (reason == Reason.CLOCK_RESET) {
+            epochGeneration++;
+        } else {
+            generation++;
+        }
+        FeedTask ending = active;
+        try {
+            if (ending != null) {
+                ending.abort(reason); // Its onFinish already attempts every idle request once.
+            } else {
+                requestIdle();
+            }
+        } finally {
+            publishStatus();
+        }
+    }
+
+    /** These are persistent requests; only the ordinary Plant output phase realizes them. */
+    private void requestIdle() {
+        if (stopped) return;
         CleanupActions.attemptAll(
-                transferOverrides::cancelAndClear,
-                release::stop,
-                transfer::stop,
-                flywheels::stop);
-        lastStatus = new Status(
-                flywheels.status(),
-                priorStatus.objectPresent(),
-                false);
+                () -> transfer.commandTarget().set(0.0),
+                () -> release.commandTarget().set(0.0),
+                () -> flywheels.setVelocityTicksPerSec(0.0));
     }
 
-    /** Enqueue the one temporary transfer override used only by a started launch Task. */
-    private void enqueueTransferPulse() {
-        transferOverrides.enqueue(
-                Tasks.outputForSeconds(
-                        "referenceTransfer",
-                        transferPower,
-                        transferDurationSec));
+    /** Policy changes reuse the existing observation time; they cannot refresh evidence. */
+    private void publishStatus() {
+        lastStatus = new Status(flywheels.status(), inventory.status(),
+                active == null ? lastPhase : active.phase,
+                active == null ? lastReason : active.reason,
+                active != null, recoveryRequired, transferActive, sampledAt, sampleCycle);
     }
 
-    /** Clear every temporary request without terminally stopping the owned Plants. */
-    private void requestActiveMatchIdle() {
-        CleanupActions.attemptAll(
-                transferOverrides::cancelAndClear,
-                () -> release.commandTarget().set(RELEASE_RETRACTED_TARGET),
-                () -> flywheels.setVelocityTicksPerSec(
-                        IDLE_FLYWHEEL_VELOCITY_TICKS_PER_SEC));
+    /** Composite sampled-evidence decisions, with lifecycle/failure mechanics inherited once. */
+    private final class FeedTask extends AbstractTask {
+        private final long createdGeneration;
+        private final long createdEpochGeneration;
+        private final LoopTimestamp createdAt;
+        private Task phaseTask;
+        private Phase phase = Phase.SETTLING;
+        private Reason reason = Reason.NONE;
+        private LoopTimestamp startedAt = LoopTimestamp.unavailable();
+        private LoopTimestamp feedStartedAt = LoopTimestamp.unavailable();
+        private LoopTimestamp settledSince = LoopTimestamp.unavailable();
+        private LoopTimestamp previousReadyAt = LoopTimestamp.unavailable();
+        private LoopTimestamp previousFeedSampleAt = LoopTimestamp.unavailable();
+        private long requestId = -1;
+        private long previousSampleCycle = -1;
+        private long releaseRealizedCycle = -1;
+        private long armedOccupiedCycle = -1;
+        private boolean departureObserved;
+        private boolean feeding;
+
+        private FeedTask(long createdGeneration) {
+            super("referenceFeedOne");
+            this.createdGeneration = createdGeneration;
+            createdEpochGeneration = epochGeneration;
+            createdAt = ownerClock == null ? LoopTimestamp.unavailable() : ownerClock.nowTimestamp();
+        }
+
+        /** Claim only after all non-effectful admission checks; construction itself reserves nothing. */
+        @Override protected void onStart(LoopClock clock) {
+            if (stopped) { end(Reason.STOPPED, TaskOutcome.CANCELLED); return; }
+            ensureEpoch(clock);
+            // Reset invalidates old observations, not tasks already constructed in the new epoch.
+            // Before initial START there is no clock capture; only a later observed reset rejects it.
+            boolean currentCreation = createdAt.isAvailable()
+                    ? Double.isFinite(createdAt.ageSec(clock))
+                    : createdEpochGeneration == epochGeneration;
+            if (createdGeneration != generation || !currentCreation) {
+                end(Reason.INVALIDATED, TaskOutcome.CANCELLED); return;
+            }
+            if (active != null) { end(Reason.BUSY, TaskOutcome.CANCELLED); return; }
+            if (recoveryRequired) { end(Reason.RECOVERY_REQUIRED, TaskOutcome.CANCELLED); return; }
+            active = this;
+            startedAt = clock.nowTimestamp();
+            flywheels.setVelocityTicksPerSec(config.feedVelocityTicksPerSec);
+            requestId = flywheels.requestId();
+            publishStatus();
+        }
+
+        /** Consume cached facts only; all phase timing uses the shared clock's own start boundary. */
+        @Override protected void onUpdate(LoopClock clock) {
+            if (ownerClock != clock) {
+                throw new IllegalArgumentException("Reference feed requires its owner's LoopClock");
+            }
+            if (!Double.isFinite(startedAt.ageSec(clock))) {
+                end(Reason.CLOCK_RESET, TaskOutcome.CANCELLED); return;
+            }
+            if (createdGeneration != generation || active != this || stopped) {
+                end(Reason.INVALIDATED, TaskOutcome.CANCELLED); return;
+            }
+            if (!feeding) {
+                settle(clock);
+            } else {
+                feed(clock);
+            }
+        }
+
+        /** Require advancing observations spanning the dwell, resetting on any broken prerequisite. */
+        private void settle(LoopClock clock) {
+            ReferenceFlywheels.Status wheels = flywheels.status();
+            ReferenceInventoryStatusService.Status objects = inventory.status();
+            long currentRequest = flywheels.requestId();
+            if (currentRequest != requestId) {
+                requestId = currentRequest;
+                resetSettling();
+            }
+            boolean eligible = fresh(clock) && wheels.requestId() == requestId
+                    && wheels.requestedVelocityTicksPerSec() == config.feedVelocityTicksPerSec
+                    && wheels.ready() && objects.firstPositionOccupied
+                    && objects.orderIssue == ReferenceInventoryStatusService.OrderIssue.NONE
+                    && wheels.sampledAt().secondsSince(startedAt) >= 0.0;
+            if (!eligible) {
+                resetSettling();
+            } else if (sampleCycle > previousSampleCycle) {
+                double gap = wheels.sampledAt().secondsSince(previousReadyAt);
+                if (!settledSince.isAvailable() || !Double.isFinite(gap)
+                        || gap > config.evidenceMaxAgeSec) {
+                    settledSince = wheels.sampledAt();
+                }
+                previousReadyAt = wheels.sampledAt();
+                previousSampleCycle = sampleCycle;
+                if (wheels.sampledAt().secondsSince(settledSince) >= config.readySettlingSec
+                        && startedAt.ageSec(clock) <= config.spinUpTimeoutSec) {
+                    feeding = true; // Uncertain cancellation from this point requires acknowledgement.
+                    feedStartedAt = clock.nowTimestamp();
+                    previousFeedSampleAt = wheels.sampledAt();
+                    phase = Phase.RELEASING;
+                    phaseTask = ScalarTasks.set(release.commandTarget(), 1.0)
+                            .forSeconds(config.releaseDurationSec).leaveThere().build();
+                    phaseTask.start(clock);
+                    publishStatus();
+                    return;
+                }
+            }
+            if (startedAt.ageSec(clock) >= config.spinUpTimeoutSec) {
+                end(Reason.PREREQUISITE_TIMEOUT, TaskOutcome.TIMEOUT);
+            }
+        }
+
+        /** Discard all previously accumulated ready span without inventing an observation. */
+        private void resetSettling() {
+            settledSince = LoopTimestamp.unavailable();
+            previousReadyAt = LoopTimestamp.unavailable();
+            previousSampleCycle = -1;
+        }
+
+        /** Confirm a post-realization edge and preserve exact timed-phase outcomes. */
+        private void feed(LoopClock clock) {
+            double elapsed = feedStartedAt.ageSec(clock);
+            if (elapsed > config.departureTimeoutSec) {
+                end(Reason.DEPARTURE_TIMEOUT, TaskOutcome.TIMEOUT); return;
+            }
+            if (flywheels.requestId() != requestId) {
+                end(Reason.REQUEST_CHANGED, TaskOutcome.CANCELLED); return;
+            }
+            if (!fresh(clock)) {
+                end(Reason.EVIDENCE_LOST, TaskOutcome.CANCELLED); return;
+            }
+            double observationGap = sampledAt.secondsSince(previousFeedSampleAt);
+            if (!Double.isFinite(observationGap) || observationGap > config.evidenceMaxAgeSec) {
+                end(Reason.EVIDENCE_LOST, TaskOutcome.CANCELLED); return;
+            }
+            previousFeedSampleAt = sampledAt;
+            if (!flywheels.status().ready()) {
+                end(Reason.WHEEL_SPEED_LOST, TaskOutcome.CANCELLED); return;
+            }
+            ReferenceInventoryStatusService.Status objects = inventory.status();
+            if (releaseRealizedCycle >= 0 && objects.sampleCycle >= releaseRealizedCycle) {
+                if (armedOccupiedCycle < 0 && objects.firstPositionOccupied) {
+                    armedOccupiedCycle = objects.sampleCycle;
+                } else if (armedOccupiedCycle >= 0 && objects.sampleCycle > armedOccupiedCycle
+                        && !objects.firstPositionOccupied) {
+                    departureObserved = true;
+                }
+            }
+            if (phaseTask != null) {
+                phaseTask.update(clock);
+                if (!isActive()) return;
+                if (phaseTask.isComplete()) {
+                    TaskOutcome phaseOutcome = phaseTask.getOutcome();
+                    if (phaseOutcome != TaskOutcome.SUCCESS) {
+                        end(Reason.FAILED, phaseOutcome); return;
+                    }
+                    if (phase == Phase.RELEASING) {
+                        release.commandTarget().set(0.0);
+                        phase = Phase.TRANSFERRING;
+                        phaseTask = ScalarTasks.set(transfer.commandTarget(), config.transferPower)
+                                .forSeconds(config.transferDurationSec).leaveThere().build();
+                        phaseTask.start(clock);
+                    } else {
+                        transfer.commandTarget().set(0.0);
+                        phase = Phase.CONFIRMING;
+                        phaseTask = null;
+                    }
+                    publishStatus();
+                }
+            }
+            if (phase == Phase.CONFIRMING && departureObserved) {
+                end(Reason.DEPARTURE_OBSERVED, TaskOutcome.SUCCESS);
+            } else if (elapsed >= config.departureTimeoutSec) {
+                end(Reason.DEPARTURE_TIMEOUT, TaskOutcome.TIMEOUT);
+            }
+        }
+
+        /** Both child observations must belong to the owner's same complete output publication. */
+        private boolean fresh(LoopClock clock) {
+            ReferenceFlywheels.Status wheels = flywheels.status();
+            ReferenceInventoryStatusService.Status objects = inventory.status();
+            return sampledAt.isFresh(clock, config.evidenceMaxAgeSec)
+                    && objects.observed && objects.sampleCycle == sampleCycle
+                    && wheels.sampleCycle() == sampleCycle
+                    && objects.sampledAt.isFresh(clock, config.evidenceMaxAgeSec)
+                    && wheels.sampledAt().isFresh(clock, config.evidenceMaxAgeSec);
+        }
+
+        /** Select a truthful reason before shared terminal cleanup. */
+        private void end(Reason endingReason, TaskOutcome outcome) {
+            reason = endingReason;
+            complete(outcome);
+        }
+
+        /** A named direct abort uses the same guarded cancellation/cleanup path. */
+        private void abort(Reason endingReason) {
+            if (!isComplete()) {
+                if (reason != Reason.FAILED) reason = endingReason;
+                cancel();
+            }
+        }
+
+        /** Preserve the output owner's exception in the active attempt; never release a continuation. */
+        private void failFromOutput(RuntimeException failure) {
+            observe(() -> { throw failure; });
+        }
+
+        /** Cancellation chooses a reason; finalization owns all resource/request cleanup. */
+        @Override protected void onCancel() {
+            if (reason == Reason.NONE) reason = Reason.CANCELLED;
+        }
+
+        /** Retain exceptional failure rather than presenting it as normal cancellation. */
+        @Override protected void onFailure(RuntimeException failure) {
+            reason = Reason.FAILED;
+        }
+
+        /** Cancel owned phase, restore requests once, and freeze policy even if cleanup fails. */
+        @Override protected void onFinish() {
+            if (active != this) return; // Rejected/old attempts never own somebody else's commands.
+            if (feeding && reason != Reason.DEPARTURE_OBSERVED) {
+                recoveryRequired = true;
+                recoveryAfterCycle = ownerClock.cycle();
+                generation++;
+            }
+            try {
+                CleanupActions.attemptAll(
+                        () -> { if (phaseTask != null) phaseTask.cancel(); },
+                        ReferenceLauncherMechanism.this::requestIdle);
+            } catch (RuntimeException failure) {
+                reason = Reason.FAILED;
+                if (feeding) {
+                    recoveryRequired = true;
+                    recoveryAfterCycle = ownerClock.cycle();
+                    generation++;
+                }
+                throw failure;
+            } finally {
+                active = null;
+                lastPhase = phase;
+                lastReason = reason;
+                publishStatus();
+            }
+        }
+
+        /** Frozen per-attempt diagnostics remain attributable after another attempt starts. */
+        @Override protected void debugState(DebugSink dbg, String prefix) {
+            dbg.addData(prefix + ".phase", phase).addData(prefix + ".reason", reason)
+                    .addData(prefix + ".requestId", requestId)
+                    .addData(prefix + ".releaseRealizedCycle", releaseRealizedCycle)
+                    .addData(prefix + ".armedOccupiedCycle", armedOccupiedCycle)
+                    .addData(prefix + ".departureObserved", departureObserved);
+        }
     }
 
-    /**
-     * One example-local lifecycle wrapper around factory-composed launch phases.
-     *
-     * <p>The wrapper owns only invalidation of active or queued tasks created before
-     * {@link #abortLaunches()}. Exact-success sequencing and terminal cleanup belong to the
-     * framework-composed flow. Invalidated work must not overwrite a later shared request.</p>
-     */
-    private final class LaunchTask implements Task {
-        private final long generationAtCreation;
-        private final Task launchFlow;
-
-        private boolean startAttempted;
-        private boolean started;
-        private boolean invalidated;
-
-        private LaunchTask(long generationAtCreation) {
-            this.generationAtCreation = generationAtCreation;
-
-            ReferenceFlywheels.Status[] statusBeforeRequest = {null};
-            Task spinUp = Tasks.sequence(
-                    Tasks.runOnce(() -> {
-                        statusBeforeRequest[0] = flywheels.status();
-                        flywheels.setVelocityTicksPerSec(launchVelocityTicksPerSec);
-                    }),
-                    Tasks.waitUntil(BooleanSource.of(() -> {
-                        ReferenceFlywheels.Status status = flywheels.status();
-                        return status != statusBeforeRequest[0]
-                                && Double.compare(
-                                        status.requestedVelocityTicksPerSec(),
-                                        launchVelocityTicksPerSec) == 0
-                                && status.ready();
-                    }), spinUpTimeoutSec));
-
-            Task feed = Tasks.sequence(
-                    ScalarTasks.set(release.commandTarget(), RELEASE_EXTENDED_TARGET)
-                            .forSeconds(releaseDurationSec)
-                            .leaveThere()
-                            .build(),
-                    Tasks.runOnce(() -> release.commandTarget().set(
-                            RELEASE_RETRACTED_TARGET)),
-                    Tasks.runOnce(ReferenceLauncherMechanism.this::enqueueTransferPulse),
-                    Tasks.waitForSeconds(transferDurationSec));
-
-            launchFlow = Tasks.withCleanup(
-                    Tasks.sequence(spinUp, feed),
-                    this::cleanupIfGenerationStillOwned);
-        }
-
-        /** {@inheritDoc} */
-        @Override
-        public void start(LoopClock clock) {
-            markStartAttempt();
-            Objects.requireNonNull(clock, "Reference launch start clock is required");
-            started = true;
-
-            if (generationAtCreation != launchGeneration) {
-                invalidated = true;
-                return;
-            }
-
-            launchFlow.start(clock);
-        }
-
-        /** {@inheritDoc} */
-        @Override
-        public void update(LoopClock clock) {
-            if (!started) {
-                throw new IllegalStateException(
-                        "Reference launch Task cannot be updated before start(clock). Start the "
-                                + "fresh Task returned by ReferenceLauncher.launchOne().");
-            }
-            if (invalidated) {
-                // A failed invalidation cleanup remains the decorator's retained failure.
-                launchFlow.getOutcome();
-                return;
-            }
-            if (launchFlow.isComplete()) {
-                launchFlow.update(clock);
-                return;
-            }
-
-            if (generationAtCreation != launchGeneration) {
-                finishInvalidated();
-                return;
-            }
-
-            launchFlow.update(clock);
-
-            if (generationAtCreation != launchGeneration) {
-                finishInvalidated();
-                return;
-            }
-        }
-
-        /** {@inheritDoc} */
-        @Override
-        public void cancel() {
-            if (!started || invalidated || launchFlow.isComplete()) {
-                return;
-            }
-            if (generationAtCreation != launchGeneration) {
-                finishInvalidated();
-                return;
-            }
-            launchFlow.cancel();
-        }
-
-        /** {@inheritDoc} */
-        @Override
-        public boolean isComplete() {
-            return invalidated || launchFlow.isComplete();
-        }
-
-        /** {@inheritDoc} */
-        @Override
-        public TaskOutcome getOutcome() {
-            // Never hide a failed cleanup behind this shell's invalidated classification.
-            TaskOutcome flowOutcome = launchFlow.getOutcome();
-            return invalidated ? TaskOutcome.CANCELLED : flowOutcome;
-        }
-
-        /** {@inheritDoc} */
-        @Override
-        public String getDebugName() {
-            return invalidated
-                    ? "ReferenceLauncher.launchOne(DONE:CANCELLED)"
-                    : "ReferenceLauncher.launchOne";
-        }
-
-        /** Report cached shell facts without interpreting a failed or pending cleanup as an outcome. */
-        @Override
-        public void debugDump(DebugSink dbg, String prefix) {
-            if (dbg == null) {
-                return;
-            }
-            String p = (prefix == null || prefix.isEmpty()) ? "referenceLaunch" : prefix;
-            dbg.addData(p + ".startAttempted", startAttempted)
-                    .addData(p + ".started", started)
-                    .addData(p + ".invalidated", invalidated);
-            launchFlow.debugDump(dbg, p + ".flow");
-        }
-
-        /** The decorator calls once; robot ownership decides whether shared cleanup is still valid. */
-        private void cleanupIfGenerationStillOwned() {
-            if (generationAtCreation == launchGeneration) {
-                requestActiveMatchIdle();
-            }
-        }
-
-        /**
-         * Cancel only the private child graph after abort already cleaned shared requests.
-         *
-         * <p>The timed release child deliberately leaves its target unchanged on cancellation, and
-         * no remaining child cancellation can rewrite flywheel intent. Skipping shared cleanup here
-         * prevents an old Task's later update or direct cancellation from overwriting requests made
-         * after {@link #abortLaunches()}; that abort already established the owned cleanup state.</p>
-         */
-        private void finishInvalidated() {
-            invalidated = true;
-            launchFlow.cancel();
-        }
-
-        /** Consume the one allowed start before any child or capability side effect. */
-        private void markStartAttempt() {
-            if (startAttempted) {
-                throw new IllegalStateException(
-                        "Reference launch Task is single-use and start(...) was called more than "
-                                + "once. Create a fresh Task with ReferenceLauncher.launchOne().");
-            }
-            startAttempted = true;
-        }
-    }
-
-    /** Copy and validate every authored fact before the constructor performs hardware lookup. */
+    /** Validate all authored policy before any actuator lookup. */
     private static Config copyAndValidate(Config source) {
         Config s = Objects.requireNonNull(source, "ReferenceLauncherMechanism.Config is required");
         Config c = new Config();
         c.flywheels = ReferenceFlywheelMechanism.copyAndValidate(s.flywheels);
+        ReferenceInventoryStatusService.Config i = Objects.requireNonNull(s.inventory, "inventory");
+        c.inventory = ReferenceInventoryStatusService.Config.defaults();
+        c.inventory.firstPositionSensorName = requireName(i.firstPositionSensorName,
+                "firstPositionSensorName");
+        c.inventory.secondPositionSensorName = requireName(i.secondPositionSensorName,
+                "secondPositionSensorName");
+        c.inventory.thirdPositionSensorName = requireName(i.thirdPositionSensorName,
+                "thirdPositionSensorName");
+        c.inventory.occupiedDebounceSec = nonnegative(i.occupiedDebounceSec, "occupiedDebounceSec");
+        c.inventory.vacatedDebounceSec = nonnegative(i.vacatedDebounceSec, "vacatedDebounceSec");
         c.transferName = requireName(s.transferName, "transferName");
         c.transferDirection = Objects.requireNonNull(s.transferDirection, "transferDirection");
         c.releaseServoName = requireName(s.releaseServoName, "releaseServoName");
-        c.releaseServoDirection = Objects.requireNonNull(s.releaseServoDirection,
-                "releaseServoDirection");
-        c.objectSensorName = requireName(s.objectSensorName, "objectSensorName");
-        c.launchVelocityTicksPerSec = positive(
-                s.launchVelocityTicksPerSec,
-                "launchVelocityTicksPerSec");
-        if (c.launchVelocityTicksPerSec > c.flywheels.maximumVelocityTicksPerSec) {
-            throw new IllegalArgumentException(
-                    "launchVelocityTicksPerSec must be <= maximumVelocityTicksPerSec");
-        }
-        if (c.launchVelocityTicksPerSec <= c.flywheels.velocityToleranceTicksPerSec) {
-            throw new IllegalArgumentException(
-                    "launchVelocityTicksPerSec must be > velocityToleranceTicksPerSec");
+        c.releaseServoDirection = Objects.requireNonNull(s.releaseServoDirection, "releaseServoDirection");
+        c.feedVelocityTicksPerSec = positive(s.feedVelocityTicksPerSec, "feedVelocityTicksPerSec");
+        if (c.feedVelocityTicksPerSec > c.flywheels.maximumVelocityTicksPerSec
+                || c.feedVelocityTicksPerSec <= c.flywheels.velocityToleranceTicksPerSec) {
+            throw new IllegalArgumentException("feedVelocityTicksPerSec must exceed wheel tolerance"
+                    + " and not exceed maximumVelocityTicksPerSec");
         }
         c.spinUpTimeoutSec = positive(s.spinUpTimeoutSec, "spinUpTimeoutSec");
-        c.transferPower = normalizedNonzero(s.transferPower, "transferPower");
+        c.readySettlingSec = positive(s.readySettlingSec, "readySettlingSec");
+        c.evidenceMaxAgeSec = positive(s.evidenceMaxAgeSec, "evidenceMaxAgeSec");
+        c.departureTimeoutSec = positive(s.departureTimeoutSec, "departureTimeoutSec");
+        c.transferPower = s.transferPower;
+        if (!Double.isFinite(c.transferPower) || c.transferPower == 0 || Math.abs(c.transferPower) > 1) {
+            throw new IllegalArgumentException("transferPower must be finite, nonzero, and in [-1, 1]");
+        }
         c.transferDurationSec = positive(s.transferDurationSec, "transferDurationSec");
+        c.releaseDurationSec = positive(s.releaseDurationSec, "releaseDurationSec");
         c.releaseRetractedNativePosition = unit(s.releaseRetractedNativePosition,
                 "releaseRetractedNativePosition");
         c.releaseExtendedNativePosition = unit(s.releaseExtendedNativePosition,
                 "releaseExtendedNativePosition");
-        c.releaseDurationSec = positive(s.releaseDurationSec, "releaseDurationSec");
-        if (Double.compare(
-                c.releaseRetractedNativePosition,
-                c.releaseExtendedNativePosition) == 0) {
-            throw new IllegalArgumentException(
-                    "releaseRetractedNativePosition and releaseExtendedNativePosition "
-                            + "must be different");
+        if (c.releaseRetractedNativePosition == c.releaseExtendedNativePosition) {
+            throw new IllegalArgumentException("releaseRetractedNativePosition and"
+                    + " releaseExtendedNativePosition must be different");
+        }
+        if (c.readySettlingSec >= c.spinUpTimeoutSec) {
+            throw new IllegalArgumentException("readySettlingSec must be less than spinUpTimeoutSec");
+        }
+        if (c.departureTimeoutSec <= c.releaseDurationSec + c.transferDurationSec) {
+            throw new IllegalArgumentException("departureTimeoutSec must exceed releaseDurationSec"
+                    + " + transferDurationSec to allow confirmation after the timed phases");
         }
         return c;
     }
 
     private static String requireName(String value, String field) {
         if (value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException(field + " must be a non-blank FTC hardware name");
+            throw new IllegalArgumentException(field + " must be a nonblank FTC hardware name");
         }
-        return value;
+        return value.trim();
     }
 
     private static double positive(double value, String field) {
-        if (!Double.isFinite(value) || value <= 0.0) {
+        if (!Double.isFinite(value) || value <= 0) {
             throw new IllegalArgumentException(field + " must be finite and > 0, got " + value);
         }
         return value;
     }
 
+    private static double nonnegative(double value, String field) {
+        if (!Double.isFinite(value) || value < 0) {
+            throw new IllegalArgumentException(field + " must be finite and >= 0, got " + value);
+        }
+        return value;
+    }
+
     private static double unit(double value, String field) {
-        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+        if (!Double.isFinite(value) || value < 0 || value > 1) {
             throw new IllegalArgumentException(field + " must be finite and in [0, 1], got " + value);
         }
         return value;
-    }
-
-    private static double normalizedNonzero(double value, String field) {
-        if (!Double.isFinite(value) || value == 0.0 || value < -1.0 || value > 1.0) {
-            throw new IllegalArgumentException(
-                    field + " must be finite, nonzero, and in [-1, 1], got " + value);
-        }
-        return value;
-    }
-
-    private static void stopIfBuilt(Plant plant) {
-        if (plant != null) plant.stop();
-    }
-
-    private static void stopIfBuilt(ReferenceFlywheelMechanism mechanism) {
-        if (mechanism != null) mechanism.stop();
     }
 }
