@@ -1,205 +1,92 @@
 package edu.ftcsushi.robots.examples.reference.capability.launcher;
 
 import org.junit.Test;
-
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 import edu.ftcsushi.fw.testing.ftc.FtcTestHardware;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 /**
- * Causal software scenarios for the launcher's feed policy after paired-wheel readiness.
- *
- * <p>Question: does one real launch Task wait for independent readiness, order release before
- * transfer, preserve outcomes, and clean its requests? Keep real: launcher, Plants, Task graph,
- * and heartbeat. Replace: FTC devices only. Observe: commands, cached status, and Task outcome.
- * This cannot prove safe motion, flywheel balance under load, object release, or scoring.</p>
+ * Question: do completed feed commands alone prove the staged position became vacant?
+ * Keep real: launcher, inventory, Plants, Tasks, shared clock, and Task-before-output order.
+ * Replace: FTC devices, with independently authored speeds and electrical sensor levels.
+ * Observe: commands, conditioned staged position, and exact Task outcome.
+ * Cannot conclude: physical motion, safe interruption, launch, or scoring.
  */
 public final class ReferenceLauncherSoftwareScenarioTest {
-
-    private static final double CYCLE_SEC = 0.02;
-    private static final double EPSILON = 1e-9;
-
     @Test
-    public void launchReactsToIndependentMeasurementsThenRunsReleaseAndTransfer() {
-        // ARRANGE / REQUEST: start one fresh launch with zero measured wheel velocity.
-        Scenario scenario = new Scenario();
-        scenario.launch = scenario.launcher.launchOne();
-        scenario.launch.start(scenario.time.clock());
-        scenario.launch.update(scenario.time.clock());
-        scenario.launcher.update(scenario.time.clock());
+    public void completedCommandsWaitForAnObservedDeparture() {
+        // ARRANGE / REQUEST: first position occupied; both independent readings are 1000 ticks/s.
+        Scenario s = new Scenario();
+        Task feed = s.launcher.feedOne();
+        feed.start(s.time.clock());
+        feed.update(s.time.clock());
+        s.launcher.update(s.time.clock());
+        assertFalse("a request is not a completed feed", feed.isComplete());
 
-        double targetTicksPerSec = scenario.config.launchVelocityTicksPerSec;
-        assertEquals(targetTicksPerSec,
-                scenario.left.commandedVelocityTicksPerSec(), EPSILON);
-        assertEquals(targetTicksPerSec,
-                scenario.right.commandedVelocityTicksPerSec(), EPSILON);
-        assertEquals(0.0,
-                scenario.launcher.status().flywheels()
-                        .leftMeasuredVelocityTicksPerSec(), EPSILON);
-        assertEquals(0.0,
-                scenario.launcher.status().flywheels()
-                        .rightMeasuredVelocityTicksPerSec(), EPSILON);
-        assertFalse("a recorded command is not measured feedback",
-                scenario.launcher.status().flywheels().ready());
-        assertFeedIdle(scenario);
+        // HEARTBEAT: sampled settling, release, then transfer all run in normal loop order.
+        s.advance(feed, 20);
+        assertEquals(ReferenceLauncher.Phase.CONFIRMING, s.launcher.status().phase());
+        assertEquals(0.0, s.transfer.power(), 1e-9);
+        assertEquals(s.config.releaseRetractedNativePosition, s.release.position(), 1e-9);
+        assertTrue(s.launcher.status().inventory().firstPositionOccupied);
+        assertEquals("finished commands do not establish vacancy", TaskOutcome.NOT_DONE,
+                feed.getOutcome());
 
-        // INJECT EVIDENCE: a correct group mean is insufficient when both members are wrong.
-        double outsideTolerance =
-                scenario.config.flywheels.velocityToleranceTicksPerSec + 25.0;
-        scenario.left.setMeasuredVelocityTicksPerSec(
-                targetTicksPerSec + outsideTolerance);
-        scenario.right.setMeasuredVelocityTicksPerSec(
-                targetTicksPerSec - outsideTolerance);
-        scenario.advance(CYCLE_SEC);
-        assertFalse("opposite errors must not become ready by averaging",
-                scenario.launcher.status().flywheels().ready());
-        assertFeedIdle(scenario);
-
-        // INJECT EVIDENCE: both independent measurements now justify the feed transition.
-        scenario.left.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
-        scenario.right.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
-        // HEARTBEAT / ASSERT: release is observable before the temporary transfer pulse.
-        scenario.advance(CYCLE_SEC);
-        assertTrue(scenario.launcher.status().flywheels().leftAtTarget());
-        assertTrue(scenario.launcher.status().flywheels().rightAtTarget());
-        assertTrue(scenario.launcher.status().flywheels().ready());
-        assertFeedIdle(scenario);
-
-        scenario.advance(CYCLE_SEC);
-        assertEquals(scenario.config.releaseExtendedNativePosition,
-                scenario.release.position(), EPSILON);
-        assertEquals("release must be observable before transfer starts",
-                0.0, scenario.transfer.power(), EPSILON);
-        assertFalse(scenario.launch.isComplete());
-
-        scenario.advance(scenario.config.releaseDurationSec + CYCLE_SEC);
-        assertEquals(scenario.config.releaseRetractedNativePosition,
-                scenario.release.position(), EPSILON);
-        assertEquals(scenario.config.transferPower,
-                scenario.transfer.power(), EPSILON);
-        assertTrue(scenario.launcher.status().transferPulseActive());
-        assertFalse(scenario.launch.isComplete());
-
-        // ASSERT: natural success retains its outcome and leaves every mechanism request idle.
-        scenario.advance(scenario.config.transferDurationSec + CYCLE_SEC);
-        assertTrue(scenario.launch.isComplete());
-        assertEquals(TaskOutcome.SUCCESS, scenario.launch.getOutcome());
-        assertActiveMatchIdle(scenario);
-        assertTerminalCleanupDoesNotRepeat(scenario, TaskOutcome.SUCCESS);
+        // INJECT EVIDENCE: HIGH means vacant for this active-low staged sensor.
+        s.staged.setHigh(true);
+        s.advance(feed, 1); // Output publishes the new observation after this cycle's Task.
+        assertFalse(feed.isComplete());
+        s.advance(feed, 1); // The next Task phase consumes that later observation.
+        assertEquals(TaskOutcome.SUCCESS, feed.getOutcome());
+        assertEquals(ReferenceLauncher.Reason.DEPARTURE_OBSERVED, s.launcher.status().reason());
+        assertEquals(0.0, s.left.commandedVelocityTicksPerSec(), 1e-9);
+        assertFalse(s.launcher.status().recoveryRequired());
+        // NEXT GATE: validate actual staging, loaded-wheel response, and safe interruption on robot.
     }
 
-    @Test
-    public void stalledWheelTimesOutWithoutFeedingThenCleansUp() {
-        // ARRANGE / REQUEST: one wheel can reach the request while its partner remains stalled.
-        Scenario scenario = new Scenario();
-        scenario.launch = scenario.launcher.launchOne();
-        scenario.launch.start(scenario.time.clock());
-        scenario.launch.update(scenario.time.clock());
-        scenario.launcher.update(scenario.time.clock());
-
-        double targetTicksPerSec = scenario.config.launchVelocityTicksPerSec;
-        assertEquals(targetTicksPerSec,
-                scenario.left.commandedVelocityTicksPerSec(), EPSILON);
-        assertEquals(targetTicksPerSec,
-                scenario.right.commandedVelocityTicksPerSec(), EPSILON);
-        assertFeedIdle(scenario);
-
-        scenario.left.setMeasuredVelocityTicksPerSec(targetTicksPerSec);
-        scenario.right.setMeasuredVelocityTicksPerSec(0.0);
-        scenario.advance(CYCLE_SEC);
-        assertTrue(scenario.launcher.status().flywheels().leftAtTarget());
-        assertFalse(scenario.launcher.status().flywheels().rightAtTarget());
-        assertFalse(scenario.launcher.status().flywheels().ready());
-        assertFeedIdle(scenario);
-
-        double finalCycleSec = 0.01;
-        double preDeadlineSec = scenario.config.spinUpTimeoutSec - finalCycleSec;
-        scenario.advance(preDeadlineSec - scenario.time.clock().nowSec());
-        assertEquals(preDeadlineSec, scenario.time.clock().nowSec(), EPSILON);
-        assertFalse(scenario.launch.isComplete());
-        assertFeedIdle(scenario);
-
-        // HEARTBEAT / ASSERT: the exact deadline reports TIMEOUT and never starts feed.
-        scenario.advance(finalCycleSec);
-        assertEquals(scenario.config.spinUpTimeoutSec,
-                scenario.time.clock().nowSec(), EPSILON);
-        assertTrue(scenario.launch.isComplete());
-        assertEquals(TaskOutcome.TIMEOUT, scenario.launch.getOutcome());
-        assertActiveMatchIdle(scenario);
-        assertTerminalCleanupDoesNotRepeat(scenario, TaskOutcome.TIMEOUT);
-    }
-
-    private static void assertTerminalCleanupDoesNotRepeat(Scenario scenario,
-                                                          TaskOutcome outcome) {
-        // A later capability request belongs to new robot intent, not the already ended launch.
-        double laterVelocityTicksPerSec = 600.0;
-        scenario.launcher.flywheels().setVelocityTicksPerSec(laterVelocityTicksPerSec);
-        scenario.launch.cancel();
-        scenario.advance(CYCLE_SEC);
-        scenario.launch.cancel();
-        scenario.advance(CYCLE_SEC);
-
-        assertTrue(scenario.launch.isComplete());
-        assertEquals(outcome, scenario.launch.getOutcome());
-        assertEquals(laterVelocityTicksPerSec,
-                scenario.left.commandedVelocityTicksPerSec(), EPSILON);
-        assertEquals(laterVelocityTicksPerSec,
-                scenario.right.commandedVelocityTicksPerSec(), EPSILON);
-        assertFeedIdle(scenario);
-    }
-
-    private static void assertActiveMatchIdle(Scenario scenario) {
-        ReferenceLauncher.Status status = scenario.launcher.status();
-        assertEquals(0.0, status.flywheels().requestedVelocityTicksPerSec(), EPSILON);
-        assertFalse(status.flywheels().ready());
-        assertEquals(0.0, scenario.left.commandedVelocityTicksPerSec(), EPSILON);
-        assertEquals(0.0, scenario.right.commandedVelocityTicksPerSec(), EPSILON);
-        assertFeedIdle(scenario);
-    }
-
-    private static void assertFeedIdle(Scenario scenario) {
-        assertFalse(scenario.launcher.status().transferPulseActive());
-        assertEquals(0.0, scenario.transfer.power(), EPSILON);
-        assertEquals(scenario.config.releaseRetractedNativePosition,
-                scenario.release.position(), EPSILON);
-    }
-
+    /** Only outside readings are authored; recorded commands never become simulated feedback. */
     private static final class Scenario {
-        private final ReferenceLauncherMechanism.Config config =
-                ReferenceLauncherMechanism.Config.defaults();
-        private final FtcTestHardware hardware = new FtcTestHardware();
-        private final FtcTestHardware.MotorProbe left =
-                hardware.addMotor(config.flywheels.leftMotorName);
-        private final FtcTestHardware.MotorProbe right =
-                hardware.addMotor(config.flywheels.rightMotorName);
-        private final FtcTestHardware.CrServoProbe transfer =
-                hardware.addCrServo(config.transferName);
-        private final FtcTestHardware.ServoProbe release =
-                hardware.addServo(config.releaseServoName);
-        private final FtcTestHardware.DigitalProbe objectSensor =
-                hardware.addDigitalInput(config.objectSensorName);
-        private final ManualLoopClock time = new ManualLoopClock();
-        private final ReferenceLauncherMechanism launcher;
+        final ReferenceLauncherMechanism.Config config = ReferenceLauncherMechanism.Config.defaults();
+        final FtcTestHardware hardware = new FtcTestHardware();
+        final ManualLoopClock time = new ManualLoopClock();
+        final FtcTestHardware.MotorProbe left;
+        final FtcTestHardware.CrServoProbe transfer;
+        final FtcTestHardware.ServoProbe release;
+        final FtcTestHardware.DigitalProbe staged;
+        final ReferenceLauncherMechanism launcher;
 
-        private Task launch;
-
-        private Scenario() {
-            left.setMeasuredVelocityTicksPerSec(0.0);
-            right.setMeasuredVelocityTicksPerSec(0.0);
-            objectSensor.setHigh(true); // HIGH is explicit active-low evidence for no object.
+        Scenario() {
+            // Explicit software-only timings, not reviewed hardware settings.
+            config.feedVelocityTicksPerSec = 1000.0;
+            config.readySettlingSec = 0.125;
+            config.evidenceMaxAgeSec = 0.25;
+            config.releaseDurationSec = 0.125;
+            config.transferDurationSec = 0.25;
+            config.departureTimeoutSec = 0.75;
+            config.inventory.occupiedDebounceSec = 0.0;
+            config.inventory.vacatedDebounceSec = 0.0;
+            left = hardware.addMotor(config.flywheels.leftMotorName);
+            FtcTestHardware.MotorProbe right = hardware.addMotor(config.flywheels.rightMotorName);
+            left.setMeasuredVelocityTicksPerSec(1000.0);
+            right.setMeasuredVelocityTicksPerSec(1000.0);
+            transfer = hardware.addCrServo(config.transferName);
+            release = hardware.addServo(config.releaseServoName);
+            staged = hardware.addDigitalInput(config.inventory.firstPositionSensorName);
+            staged.setHigh(false);
+            hardware.addDigitalInput(config.inventory.secondPositionSensorName).setHigh(true);
+            hardware.addDigitalInput(config.inventory.thirdPositionSensorName).setHigh(true);
             launcher = new ReferenceLauncherMechanism(hardware, config);
         }
 
-        /** Advance one cycle in managed Task-before-output order. */
-        private void advance(double dtSec) {
-            time.nextCycle(dtSec);
-            launch.update(time.clock());
-            launcher.update(time.clock());
+        void advance(Task feed, int cycles) {
+            for (int i = 0; i < cycles; i++) {
+                time.nextCycle(0.03125);
+                feed.update(time.clock());
+                launcher.update(time.clock());
+            }
         }
     }
 }

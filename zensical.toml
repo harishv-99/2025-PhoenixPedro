@@ -67,6 +67,7 @@ nav = [
     { "Focused examples" = [
       { "Examples home" = "docs/examples/README.md" },
       { "Paired flywheel velocity" = "docs/advanced/Paired Flywheel Velocity.md" },
+      { "Feedback-confirmed feeding" = "docs/advanced/Feedback-confirmed Feeding.md" },
       { "Periodic turret position" = "docs/advanced/Periodic Turret Position.md" },
       { "Field-relative drive" = "docs/examples/Field-relative Drive.md" },
       { "Subsystem experiments" = "docs/examples/Subsystem Experiments.md" },

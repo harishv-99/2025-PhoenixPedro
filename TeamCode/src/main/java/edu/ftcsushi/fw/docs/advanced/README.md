@@ -18,6 +18,8 @@ Build lessons, while geometry and vision introduce their own additional concepts
 
 - [Paired flywheel velocity](<Paired Flywheel Velocity.md>) — one grouped velocity command, two
   independent measurements, and readiness that requires both.
+- [Feedback-confirmed feeding](<Feedback-confirmed Feeding.md>) — sampled readiness permits one
+  feed; a later staged-vacant observation confirms departure, not scoring.
 - [Periodic turret position](<Periodic Turret Position.md>) — one requested angle may have several
   equivalent physical representatives; choose the nearest legal one.
 - [Mechanism target planning](<../drive-vision/Mechanism Target Planning.md>) — overlays and planned

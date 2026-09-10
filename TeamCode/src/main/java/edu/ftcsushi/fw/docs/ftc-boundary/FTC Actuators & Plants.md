@@ -1469,7 +1469,11 @@ owns one grouped Plant snapshot plus captured per-wheel measurements and readine
 the complete value only after a successful mechanism update. Its requested/selected/applied
 velocity methods keep ordinary robot code in capability vocabulary; `plantSnapshot()` is reserved
 for advanced diagnostics. `ReferenceLauncher.Status` composes that immutable value as
-`flywheels()` beside object and transfer facts rather than mirroring the velocity fields.
+`flywheels()` beside `inventory()`, phase, reason, and transfer facts rather than mirroring the
+velocity fields. The wheel and inventory publications retain software sampling time/cycle; wheel
+evidence also names the successful request occurrence. Reading status cannot renew that evidence.
+See [feedback-confirmed feeding](<../advanced/Feedback-confirmed Feeding.md>) for how one
+robot-owned policy combines them without treating readiness or a vacant sensor as proof of scoring.
 
 ---
 
@@ -1781,7 +1785,11 @@ tolerance facts, and an active Plant intent that requested and applied that same
 fallback or modification. It does not replace those per-wheel facts with the group's earlier
 aggregate arrival sample. A successful
 terminal stop publishes a post-stop flywheel Status with readiness false; older Status values
-remain immutable historical captures. The launcher separately publishes transfer state.
+remain immutable historical captures. Successful output publications also retain request occurrence
+and software sampling time/cycle. Same-valued commands are distinct requests, and duplicate
+same-cycle updates cannot manufacture another publication. Those facts do not certify independent
+native acquisition frames or continuous physical readiness. The launcher separately publishes
+transfer state and its [sampled feed/departure policy](<../advanced/Feedback-confirmed Feeding.md>).
 
 If robot testing instead proves that the wheels need independently commanded targets—for example,
 a live additive or nonlinear trajectory trim—then the mechanism has two commanded degrees of

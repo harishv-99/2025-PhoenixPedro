@@ -143,6 +143,11 @@ from the card's starting state? The trial action changes only flywheel velocity 
 a release or transfer pulse because the focused mechanism owns only the two flywheels. No object is
 launched or scored.
 
+The separate [feedback-confirmed feeding example](<../advanced/Feedback-confirmed Feeding.md>)
+adds staged-object evidence, sampled settling, and bounded departure confirmation. This spin-up
+experiment and its downloadable report do not run that policy or certify it; their terminal
+`TARGET_REACHED` retains the narrower wheel-readiness meaning described here.
+
 The checked-in card remains locked:
 
 | Card decision | Reference location | Meaning |

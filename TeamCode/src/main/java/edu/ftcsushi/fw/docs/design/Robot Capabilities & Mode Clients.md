@@ -358,7 +358,8 @@ clock, runner, telemetry commit, or manual cleanup path.
 
 Focused Reference examples demonstrate advanced roles without adding a second complete robot
 template. `ReferenceFlywheels` is one mode-neutral numeric capability;
-`ReferenceLauncherMechanism` delegates to it while owning release/feed policy; and
+`ReferenceLauncherMechanism` delegates to it while owning sampled settling, release/transfer,
+departure confirmation, and recovery acknowledgement; and
 `ReferenceCoordinatedShotService` is a separate upstream computation owner. A season robot may
 group several such families when its real TeleOp and Auto clients benefit, but a one-member
 forwarding aggregate adds no capability. The Basic Pedro example separately demonstrates a
@@ -366,6 +367,13 @@ persistent vendor heartbeat, truthful route status, and one Auto-only root.
 
 Each example is an independent application of the managed grammar. Copy the example closest to the
 problem being solved rather than combining their profiles, roots, or lifecycle owners.
+
+The [feedback-confirmed feeding lesson](<../advanced/Feedback-confirmed Feeding.md>) keeps both
+mode clients small: TeleOp creates `feedOne()` only on a press when its last created attempt is
+neither pending nor active; Auto declares one fresh `feedOne()` as its root. The launcher owns no
+internal feed queue. `abortFeedAttempts()` invalidates old work through the capability, while
+`acknowledgeRecovery()` is a separate no-motion decision that never resumes it. Neither client
+rebuilds the phase graph or writes the private Plants. Observed staged departure is not scoring.
 
 ---
 
