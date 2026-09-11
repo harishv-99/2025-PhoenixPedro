@@ -2,6 +2,7 @@ package edu.ftcsushi.fw.spatial;
 
 import java.util.Objects;
 
+import edu.ftcsushi.fw.sensing.observation.FieldTargetSelectionResult;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 
@@ -10,7 +11,8 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
  *
  * <p>This value retains the exact domain result; it does not sample a source, solve geometry,
  * refresh a timestamp, or manufacture a common physical identity. A selected tag, a selected
- * observation, and a computed approach have different evidence and expiry rules. Inspect the
+ * observation, a remembered field location, and a computed approach have different evidence and
+ * expiry rules. Inspect the
  * typed result for those rules and the accompanying spatial solution for the evidence actually
  * used by that solve. A selection can remain inspectable when geometry is unavailable.</p>
  */
@@ -23,23 +25,29 @@ public final class ReferenceSelectionResult {
         APRIL_TAG,
         /** A geometric choice from one captured observation frame, not tracked identity. */
         OBSERVED_TARGET,
+        /** A bounded remembered field location, not current visibility or physical identity. */
+        REMEMBERED_TARGET,
         /** An observed or explicitly committed desired robot-center field pose. */
         APPROACH
     }
 
     private static final ReferenceSelectionResult NONE =
-            new ReferenceSelectionResult(Kind.NONE, null, null, null);
+            new ReferenceSelectionResult(Kind.NONE, null, null, null, null);
 
     private final Kind kind;
     private final TagSelectionResult aprilTag;
     private final TargetSelectionResult observedTarget;
+    private final FieldTargetSelectionResult rememberedTarget;
     private final ApproachResult2d approach;
 
     private ReferenceSelectionResult(Kind kind, TagSelectionResult aprilTag,
-                                     TargetSelectionResult observedTarget, ApproachResult2d approach) {
+                                     TargetSelectionResult observedTarget,
+                                     FieldTargetSelectionResult rememberedTarget,
+                                     ApproachResult2d approach) {
         this.kind = kind;
         this.aprilTag = aprilTag;
         this.observedTarget = observedTarget;
+        this.rememberedTarget = rememberedTarget;
         this.approach = approach;
     }
 
@@ -49,18 +57,24 @@ public final class ReferenceSelectionResult {
     /** Retains the exact immutable tag result, including an unavailable selection's evidence. */
     public static ReferenceSelectionResult aprilTag(TagSelectionResult result) {
         return new ReferenceSelectionResult(Kind.APRIL_TAG,
-                Objects.requireNonNull(result, "tag selection result"), null, null);
+                Objects.requireNonNull(result, "tag selection result"), null, null, null);
     }
 
     /** Retains the exact frame selection, original capture time, freshness policy, and reason. */
     public static ReferenceSelectionResult observedTarget(TargetSelectionResult result) {
         return new ReferenceSelectionResult(Kind.OBSERVED_TARGET, null,
-                Objects.requireNonNull(result, "observed target selection result"), null);
+                Objects.requireNonNull(result, "observed target selection result"), null, null);
+    }
+
+    /** Retains exact memory-entry, last-sighting, ranking and lifetime evidence without sampling. */
+    public static ReferenceSelectionResult rememberedTarget(FieldTargetSelectionResult result) {
+        return new ReferenceSelectionResult(Kind.REMEMBERED_TARGET, null, null,
+                Objects.requireNonNull(result, "remembered target selection result"), null);
     }
 
     /** Retains the exact approach and its observed-versus-committed evidence contract. */
     public static ReferenceSelectionResult approach(ApproachResult2d result) {
-        return new ReferenceSelectionResult(Kind.APPROACH, null, null,
+        return new ReferenceSelectionResult(Kind.APPROACH, null, null, null,
                 Objects.requireNonNull(result, "approach result"));
     }
 
@@ -75,6 +89,7 @@ public final class ReferenceSelectionResult {
         switch (kind) {
             case APRIL_TAG: return aprilTag.hasSelection;
             case OBSERVED_TARGET: return observedTarget.hasSelection();
+            case REMEMBERED_TARGET: return rememberedTarget.hasSelection();
             case APPROACH: return approach.hasApproach();
             default: return false;
         }
@@ -96,6 +111,15 @@ public final class ReferenceSelectionResult {
     public TargetSelectionResult observedTarget() {
         requireKind(Kind.OBSERVED_TARGET);
         return observedTarget;
+    }
+
+    /**
+     * Returns the retained field-memory selection, whose eligibility may expire or be revoked.
+     * @throws IllegalStateException unless {@link #kind()} is {@link Kind#REMEMBERED_TARGET}
+     */
+    public FieldTargetSelectionResult rememberedTarget() {
+        requireKind(Kind.REMEMBERED_TARGET);
+        return rememberedTarget;
     }
 
     /**

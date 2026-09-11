@@ -595,18 +595,20 @@ public final class DriveGuidance {
             }
             if (s.translationTarget != null && !canSolveTranslationWithAprilTags(s.translationTarget)) {
                 errors.add("relativeAprilTags(...) translateTo() requires a direct or selected tag-relative "
-                        + "point; field-fixed and robotRelativePointInches(...) targets require absolutePose(...)");
+                        + "point; field-fixed, remembered and robotRelativePointInches(...) targets require absolutePose(...)");
             }
             if (s.facingTarget != null && !canSolveAimWithAprilTags(s.facingTarget)) {
                 errors.add("relativeAprilTags(...) faceTo() requires a direct or selected tag-relative "
-                        + "point/frame; field-fixed targets require absolutePose(...)");
+                        + "point/frame; field-fixed and remembered targets require absolutePose(...)");
             }
         } else {
             if (s.translationTarget != null && !isObservedPointTarget(s.translationTarget)) {
-                errors.add("observedPoints() translateTo() requires References.selectedTargetPoint(...)");
+                errors.add("observedPoints() translateTo() requires References.selectedTargetPoint(...); "
+                        + "remembered field targets require absolutePose(...)");
             }
             if (s.facingTarget != null && !isObservedPointTarget(s.facingTarget)) {
-                errors.add("observedPoints() faceTo() requires References.selectedTargetPoint(...)");
+                errors.add("observedPoints() faceTo() requires References.selectedTargetPoint(...); "
+                        + "remembered field targets require absolutePose(...)");
             }
         }
         if (!errors.isEmpty()) {
@@ -735,7 +737,7 @@ public final class DriveGuidance {
     }
 
     private static boolean canResolvePointWithLocalization(ReferencePoint2d ref, TagLayout layout) {
-        if (References.isFieldPoint(ref) || References.isObservedPoint(ref)) {
+        if (References.isFieldPoint(ref) || References.isObservedPoint(ref) || References.isRememberedPoint(ref)) {
             return true;
         }
         if (References.isDirectTagPoint(ref) || References.isSelectedTagPoint(ref)) {

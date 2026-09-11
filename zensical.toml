@@ -72,6 +72,7 @@ nav = [
       { "Periodic turret position" = "docs/advanced/Periodic Turret Position.md" },
       { "Field-relative drive" = "docs/examples/Field-relative Drive.md" },
       { "Subsystem experiments" = "docs/examples/Subsystem Experiments.md" },
+      { "Remember recent ball locations" = "docs/examples/Remember Recent Field Locations.md" },
       { "One bounded vision pickup" = "docs/examples/One Bounded Vision Pickup.md" },
       { "Know when aim assistance stops" = "docs/examples/When Aim Assistance Stops.md" },
       { "Timestamped adaptive collection" = "docs/examples/Timestamped Adaptive Collection.md" },

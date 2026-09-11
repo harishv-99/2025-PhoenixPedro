@@ -16,6 +16,7 @@ integration, or evidence boundary.
 | permit one feed from fresh evidence and require observed departure | [Feedback-confirmed feeding](<../advanced/Feedback-confirmed Feeding.md>) |
 | choose among periodic physical positions | [Periodic turret position](<../advanced/Periodic Turret Position.md>) |
 | run a bounded robot-specific hardware experiment | [Subsystem experiments](<Subsystem Experiments.md>) |
+| retain and query recent locations without claiming continued visibility | [Remember recently seen ball locations](<Remember Recent Field Locations.md>) |
 | share one cancellable, capture-confirmed target attempt between TeleOp and Auto | [One bounded vision pickup](<One Bounded Vision Pickup.md>) |
 | distinguish aligned aim from lost assistance with explicit retry and driver pulses | [Know when aim assistance stops](<When Aim Assistance Stops.md>) |
 | combine timestamped vision, pose history, bounded retries, and park takeover | [Timestamped adaptive collection](<Timestamped Adaptive Collection.md>) |

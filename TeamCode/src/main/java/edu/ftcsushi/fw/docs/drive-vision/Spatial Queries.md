@@ -193,14 +193,33 @@ a valid same-clock timestamp; it imposes no finite age cap. Set `maxAgeSec(...)`
 Calling `minQuality(...)` explicitly requires a known score—even `minQuality(0)` rejects unknown
 quality. A pose lane's score describes its pose evidence, not a fabricated combined target score.
 
+### Resolve a remembered field point
+
+A **remembered location** retains a prior sighting's field point and capture time; it is not a new
+camera observation. The optional [recent-location example](<../examples/Remember Recent Field Locations.md>)
+constructs its bounded memory and selector, then feeds
+`References.selectedFieldTargetPoint(selected)` to the same point targets shown above.
+Use the existing `absolutePose(...)` lane: it relates that retained field point to the admitted
+robot pose. `observedPoints()` and `relativeAprilTags(...)` cannot solve this field-only evidence.
+
+The selection's age bound and owner-issued lifetime must both remain valid. Reset, STOP, expiry,
+or eviction can make an old retained selection unusable even when a caller holds it in a constant
+source. A new robot pose never renews its last sighting; the solved general timestamp remains the
+older of required sighting and pose evidence. This is different from an explicitly committed
+approach destination. No memory refresh is performed by the query, and no geometry result is
+fresh pickup or capture confirmation.
+
 ### Inspect what was selected separately from what was solved
 
 Each lane's `translationSelection` and `facingSelection` is a
 [`ReferenceSelectionResult`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ReferenceSelectionResult.html>).
 This immutable view keeps the original selection result, not another camera read. Its `kind()`
-says which detail is available: `APRIL_TAG`, `OBSERVED_TARGET`, `APPROACH`, or `NONE` for a fixed
-reference with no selection. Check that kind before reading `aprilTag()`, `observedTarget()`, or
-`approach()`; a mismatched accessor is a programming error.
+says which detail is available: `APRIL_TAG`, `OBSERVED_TARGET`, `REMEMBERED_TARGET`, `APPROACH`,
+or `NONE` for a fixed reference with no selection. Check that kind before reading `aprilTag()`,
+`observedTarget()`, `rememberedTarget()`, or `approach()`; a mismatched accessor is a programming error.
+The remembered payload retains the exact memory entry and snapshot, effective age bound,
+ranking metric/reason, and any pose used to rank it. These are last-sighting and selection facts,
+not a visibility report.
 
 `hasSelection()` means a choice was made, not that its evidence is still usable. For example, a
 retained ball choice can be too old to solve, and a held tag ID can remain selected while hidden.

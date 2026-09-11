@@ -45,7 +45,7 @@ public final class DocumentationLinksTest {
             "https://github.com/harishv-99/2025-PhoenixPedro/";
     private static final String FENCE =
             String.valueOf((char) 96) + (char) 96 + (char) 96;
-    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 31;
+    private static final int PUBLISHED_SHELL_COMMAND_PAIR_COUNT = 32;
 
     private static final List<String> GUIDE_AREAS = Arrays.asList(
             "Get Started",
@@ -322,8 +322,8 @@ public final class DocumentationLinksTest {
         for (Integer count : PUBLISHED_SHELL_PAIRS_BY_PAGE.values()) {
             approvedPairs += count;
         }
-        assertEquals("The approved inventory must cover exactly 22 published pages",
-                22, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
+        assertEquals("The approved inventory must cover exactly 23 published pages",
+                23, PUBLISHED_SHELL_PAIRS_BY_PAGE.size());
         assertEquals("The per-page inventory must account for every approved pair",
                 PUBLISHED_SHELL_COMMAND_PAIR_COUNT, approvedPairs);
 
@@ -2470,6 +2470,45 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void rememberedLocationExampleTeachesAgeOwnershipAndPreservesTheBeginnerPath() throws IOException {
+        Path root = repositoryRoot();
+        Path framework = root.resolve(FRAMEWORK_DOCS_PATH);
+        String page = readUtf8(framework.resolve("docs/examples/Remember Recent Field Locations.md"));
+        String example = readUtf8(root.resolve("TeamCode/src/main/java/edu/ftcsushi/robots/examples/"
+                + "visionmemory/RecentFieldLocations.java"));
+        String scenario = readUtf8(root.resolve("TeamCode/src/test/java/edu/ftcsushi/robots/examples/"
+                + "visionmemory/RecentFieldLocationsSoftwareScenarioTest.java"));
+        for (String concept : Arrays.asList("read-only software example", "ObservationSources.inField(",
+                "poseHistory.lookupSource()", "**at that capture time**", "not physical defaults",
+                "snapshot's publication time is not another camera exposure", "freshWithinSec(0.50)",
+                "REMEMBERED_TARGET", "rememberedTarget()", "resetBeforeTransition(clock)",
+                "trajectorySegmentId()", "before the operation", "do not themselves clear memory",
+                "Remembered entries cannot", "**Keep real:**", "**Replace:**", "**Observe:**",
+                "**Cannot conclude:**", "**Next gate:**", "recent-field-locations.svg")) {
+            assertTrue("Missing memory teaching boundary: " + concept, page.contains(concept));
+        }
+        for (String snippet : Arrays.asList("FieldTargetMemory.fromFieldObjects(fieldObjects)",
+                ".retainingForSec(1.0)", ".matchingWithinInches(2.0)", ".maxEntries(4)",
+                "TargetSelections.fromRecentFieldLocations(memory.source())",
+                "FieldTargetSelectionPolicies.nearestToRobot(localization, 0.20, 0.10)",
+                "References.selectedFieldTargetPoint(selected)",
+                ".absolutePose(localization, 0.20, 0.10).build()")) {
+            assertTrue("Missing documented constructor: " + snippet, page.contains(snippet));
+            assertTrue("Example no longer uses documented constructor: " + snippet, example.contains(snippet));
+        }
+        assertTrue(example.contains("implements RobotProgram.Service"));
+        assertTrue(scenario.contains("RecentFieldLocationsSoftwareScenarioTest"));
+        assertTrue(scenario.contains("ObservationSources.inField("));
+        assertTrue(readUtf8(root.resolve("zensical.toml")).contains(
+                "\"Remember recent ball locations\" = \"docs/examples/Remember Recent Field Locations.md\""));
+        String svg = readUtf8(framework.resolve("docs/assets/diagrams/recent-field-locations.svg"));
+        assertTrue(svg.contains("<title") && svg.contains("<desc") && svg.contains("viewBox="));
+        assertTrue(page.contains("In words:"));
+        assertFalse(BUILD_NAV_TARGETS.contains("docs/examples/Remember Recent Field Locations.md"));
+        assertFalse(GET_STARTED_NAV_TARGETS.contains("docs/examples/Remember Recent Field Locations.md"));
+    }
+
+    @Test
     public void trackerApplicationScanProtectsGuidanceWithoutAbsorbingOtherItemInventories() {
         Pattern syntheticApplicationReference = Pattern.compile("(?i)demobot");
         List<String> openingGuidance = Arrays.asList(
@@ -3418,6 +3457,7 @@ public final class DocumentationLinksTest {
         counts.put("docs/build/Single Flywheel Velocity.md", 1);
         counts.put("docs/examples/Field-relative Drive.md", 1);
         counts.put("docs/examples/Hardware-free Reference Scenarios.md", 2);
+        counts.put("docs/examples/Remember Recent Field Locations.md", 1);
         counts.put("docs/examples/Subsystem Experiments.md", 1);
         counts.put("docs/getting-started/Build and Run.md", 3);
         counts.put("docs/getting-started/First Software Tour.md", 3);

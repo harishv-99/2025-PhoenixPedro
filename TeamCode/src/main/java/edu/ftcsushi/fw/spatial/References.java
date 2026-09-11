@@ -11,6 +11,7 @@ import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.source.Source;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.sensing.observation.FieldTargetSelectionResult;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
 import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
@@ -159,6 +160,20 @@ public final class References {
     }
 
     /**
+     * Borrows a selected recent field location without turning it into a fixed field fact.
+     * Only absolute-pose solving can use this reference; the original robot-at-capture geometry
+     * is not current camera-only feedback. Capture age and memory-entry lifetime remain required.
+     *
+     * <p>A constant retained result keeps its old location and sighting time, and becomes unusable
+     * on expiry or owner invalidation. Queries never reset the borrowed source or memory. As with
+     * other spatial references, reset transitions belong before consumer sampling; invalidation
+     * does not retroactively change already-published query or guidance snapshots.</p>
+     */
+    public static ReferencePoint2d selectedFieldTargetPoint(Source<FieldTargetSelectionResult> selection) {
+        return new RememberedPointRef(Objects.requireNonNull(selection, "selection").memoized());
+    }
+
+    /**
      * Borrows a computed desired robot-center field pose. The result owns its live-versus-committed
      * evidence contract. Use robot-center control frames, not a second copy of the intake offset.
      */
@@ -169,6 +184,11 @@ public final class References {
     /** Whether this reference is an observation-backed point (not a fixed field fact). */
     public static boolean isObservedPoint(ReferencePoint2d reference) {
         return reference instanceof ObservedPointRef;
+    }
+
+    /** Whether this reference supplies remembered field evidence requiring absolute-pose solving. */
+    public static boolean isRememberedPoint(ReferencePoint2d reference) {
+        return reference instanceof RememberedPointRef;
     }
 
     /** Whether this reference supplies a computed robot-center approach pose. */
@@ -382,6 +402,12 @@ public final class References {
     }
 
     public static Pose2d tryResolveFieldPoint(ReferencePoint2d ref, TagLayout layout, LoopClock clock) {
+        if (ref instanceof RememberedPointRef) {
+            FieldTargetSelectionResult selected = ((RememberedPointRef) ref).get(clock);
+            if (!selected.isUsable(clock)) return null;
+            return new Pose2d(selected.entry().lastSighting().fieldXInches,
+                    selected.entry().lastSighting().fieldYInches, 0.0);
+        }
         if (ref instanceof ObservedPointRef) {
             TargetSelectionResult selected = ((ObservedPointRef) ref).get(clock);
             if (!selected.isUsable(clock) || !selected.observation().hasFieldPosition()) return null;
@@ -668,6 +694,20 @@ public final class References {
             TagFrameOffset offset = offsetsByTag.get(tagId);
             return offset != null ? new Pose2d(offset.forwardInches, offset.leftInches, offset.headingRad) : null;
         }
+    }
+
+    /** One borrowed memory selection shared by a consumer's geometry and provenance reads. */
+    static final class RememberedPointRef implements ReferencePoint2d {
+        final Source<FieldTargetSelectionResult> selection;
+
+        RememberedPointRef(Source<FieldTargetSelectionResult> selection) { this.selection = selection; }
+
+        /** Returns one sampled value; eligibility is checked separately against its live lifetime. */
+        FieldTargetSelectionResult get(LoopClock clock) {
+            return Objects.requireNonNull(selection.get(clock), "Remembered point selection returned null");
+        }
+
+        @Override public String toString() { return "RememberedPointRef{borrowed field selection}"; }
     }
 
     static final class ObservedPointRef implements ReferencePoint2d {
