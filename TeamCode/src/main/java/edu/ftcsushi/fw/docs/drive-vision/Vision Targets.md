@@ -187,6 +187,30 @@ the separate fixed-tag localization rules remain intact; a detected colored patc
 a localization landmark merely because it has a field position. Quality is unknown (`NaN`) when
 the producer supplies no meaningful score; no fictitious confidence is added.
 
+## Keep recent locations when the camera turns away
+
+A **remembered location** is a last-seen field point with its original sighting time, not a claim
+that a ball is still visible or still there. [`FieldTargetMemory`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/FieldTargetMemory.html>)
+can retain several such points from the `fieldObjects` source above. It has one explicit update
+owner, a finite age bound, a matching radius in inches, and a bounded entry count. A new unambiguous
+nearby sighting refreshes a location; an unseen one stays fixed until it expires. It does not
+predict motion or give anonymous balls AprilTag-like IDs.
+
+Use `TargetSelections.fromRecentFieldLocations(memory.source()).choose(...)` to choose among
+those mixed-age field entries. [`FieldTargetSelectionPolicies`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/FieldTargetSelectionPolicies.html>)
+offers `nearFieldPoint(x, y, radiusInches)` and
+`nearestToRobot(localization, poseAgeSec, minPoseQuality)`. The latter needs a usable **current**
+pose to compare remembered locations fairly; it never compares distances from different old robot
+poses. Selection inherits memory's retention bound unless a stricter `freshWithinSec(...)` is
+explicitly requested. Neither policy plans capacity-aware collection or estimates intake yield.
+
+Follow [Remember recently seen ball locations](<../examples/Remember Recent Field Locations.md>)
+for the complete read-only owner, synthetic values, observed/remembered/expired diagram, capture-time
+projection, reset fences, and software checkpoint. Reset memory before coordinate or camera
+transitions; temporary camera loss alone is not a reset. This field-memory path requires usable
+localization for robot-relative spatial consumption and cannot replace a fresh whole-image
+pickup check.
+
 ## Select a tag: observed or inferred
 
 A tag has an ID, so an aiming attempt can keep the same target even when another candidate moves

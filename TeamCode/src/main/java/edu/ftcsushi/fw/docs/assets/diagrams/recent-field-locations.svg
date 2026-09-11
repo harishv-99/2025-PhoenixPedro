@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 560" role="img" aria-labelledby="title desc">
+  <title id="title">Three last sightings expire independently</title>
+  <desc id="desc">Synthetic one-second retention. A, B, and C are observed at zero seconds.
+    At 0.60 seconds only A and B are observed again; C keeps its zero-second sighting.
+    At 1.10 seconds a new empty frame arrives. A and B remain remembered, while C has expired.
+    At 1.70 seconds another empty frame arrives and A and B expire. Time increases downward;
+    sample spacing is not to scale. No physical movement or continued presence of an unseen
+    object is asserted.</desc>
+  <rect width="420" height="560" rx="12" fill="#ffffff"/>
+  <g font-family="sans-serif" font-size="20" fill="#162b3d">
+    <text x="16" y="32" font-size="22" font-weight="700">Last sightings age independently</text>
+    <text x="16" y="61">Retention: 1.0 s (synthetic)</text>
+    <text x="16" y="92">O = observed; M = remembered</text>
+    <text x="16" y="118">X = expired; not a verified ball count</text>
+    <text x="16" y="167">Time (s)</text>
+    <g text-anchor="middle">
+      <text x="184" y="152" font-weight="700">A</text>
+      <text x="272" y="152" font-weight="700">B</text>
+      <text x="360" y="152" font-weight="700">C</text>
+      <text x="184" y="178">(20, 0)</text>
+      <text x="272" y="178">(20, 10)</text>
+      <text x="360" y="178">(40, 0)</text>
+    </g>
+    <path d="M119 199 V428 l-5 -9 m5 9 l5 -9" stroke="#162b3d" fill="none" stroke-width="2"/>
+    <g>
+      <text x="24" y="227">0.00</text>
+      <text x="24" y="289">0.60</text>
+      <text x="24" y="351">1.10</text>
+      <text x="24" y="413">1.70</text>
+    </g>
+    <g stroke="#25614c" stroke-width="2" fill="#e8f3ed">
+      <circle cx="184" cy="220" r="21"/><circle cx="272" cy="220" r="21"/>
+      <circle cx="360" cy="220" r="21"/>
+      <circle cx="184" cy="282" r="21"/><circle cx="272" cy="282" r="21"/>
+    </g>
+    <g stroke="#765118" stroke-width="2" fill="#fff3d9">
+      <rect x="339" y="261" width="42" height="42" rx="5"/>
+      <rect x="163" y="323" width="42" height="42" rx="5"/>
+      <rect x="251" y="323" width="42" height="42" rx="5"/>
+    </g>
+    <g font-size="22" text-anchor="middle" font-weight="700">
+      <text x="184" y="228">O</text><text x="272" y="228">O</text><text x="360" y="228">O</text>
+      <text x="184" y="290">O</text><text x="272" y="290">O</text><text x="360" y="290">M</text>
+      <text x="184" y="352">M</text><text x="272" y="352">M</text><text x="360" y="352">X</text>
+      <text x="184" y="414">X</text><text x="272" y="414">X</text><text x="360" y="414">X</text>
+    </g>
+    <text x="16" y="460">Coordinates: field X/Y in inches.</text>
+    <text x="16" y="486">Sample spacing is not to scale.</text>
+    <text x="16" y="518">Markers report software evidence.</text>
+    <text x="16" y="544">No claim of unseen physical behavior.</text>
+  </g>
+</svg>

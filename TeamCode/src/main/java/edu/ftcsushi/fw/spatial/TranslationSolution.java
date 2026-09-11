@@ -27,13 +27,16 @@ public final class TranslationSolution {
     public final double rangeInches;
     /** Lane-specific score, or NaN when no calibrated score is supplied; not pickup probability. */
     public final double quality;
-    /** Oldest required live evidence; a committed goal does not pretend to be a new sighting. */
+    /** Oldest required evidence; remembered sightings are not refreshed by a new robot pose. */
     public final LoopTimestamp timestamp;
     /** Pose evidence used for a field solve; unavailable for direct observed-point feedback. */
     public final LoopTimestamp robotPoseTimestamp;
     /** Original target sighting, or unavailable for an authored fixed target. */
     public final LoopTimestamp targetObservationTimestamp;
-    /** True when target age constrains this result; false for an explicit committed destination. */
+    /**
+     * True when target age constrains this result, including remembered locations; not visibility.
+     * False for an explicit committed destination or an authored fixed target.
+     */
     public final boolean liveTarget;
 
     /**
@@ -66,12 +69,13 @@ public final class TranslationSolution {
     }
 
     /** Adds provenance without treating a new pose or committed goal as a new target sighting. */
-    TranslationSolution withTargetEvidence(LoopTimestamp observation, boolean live) {
+    TranslationSolution withTargetEvidence(LoopTimestamp observation, boolean requiresSightingAge) {
         LoopTimestamp effective = timestamp;
         double difference = timestamp.secondsSince(observation);
-        if (live && Double.isFinite(difference) && difference > 0.0) effective = observation;
+        if (requiresSightingAge && Double.isFinite(difference) && difference > 0.0) effective = observation;
         return new TranslationSolution(robotToTargetPoint, translationFrameToTargetPoint,
-                hasRangeInches, rangeInches, quality, effective, robotPoseTimestamp, observation, live);
+                hasRangeInches, rangeInches, quality, effective, robotPoseTimestamp,
+                observation, requiresSightingAge);
     }
 
     /** A direct observation solves in its capture frame without a field-pose estimate. */

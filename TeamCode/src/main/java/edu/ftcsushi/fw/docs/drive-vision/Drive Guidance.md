@@ -228,6 +228,38 @@ region, safe staging, loss behavior, capture feedback, cancellation, and limits 
 Guidance arrival is **not** capture confirmation. See
 [one bounded vision pickup](<../examples/One Bounded Vision Pickup.md>) for that separate policy.
 
+### Use a remembered field location
+
+A remembered location is a last sighting with a bounded lifetime, not current camera geometry.
+The [read-only recent-location example](<../examples/Remember Recent Field Locations.md>) shows
+how a service privately owns that memory and its selector. For a guidance-owning service,
+`rememberedSelection` below means its own `FieldTargetSelectionSource`, constructed through
+`TargetSelections.fromRecentFieldLocations(memory.source()).choose(...)` inside that owner.
+It is not the earlier visible-frame `selected` source or an exposed field of the read-only example.
+Its result follows the same selection -> reference -> consumer relationship as a selected AprilTag:
+
+```java
+ReferencePoint2d point = References.selectedFieldTargetPoint(rememberedSelection);
+DriveGuidancePlan faceRememberedPoint = DriveGuidance.plan().faceTo().point(point)
+        .solveWith().absolutePose(localization)
+        .maxAgeSec(0.20).minQuality(0.10).doneAbsolutePose()
+        .build();
+```
+
+This constructs a plan, not an active drive command. The illustrative pose age/quality gates are
+explicit; robot-center control and the [controller tuning defaults](<#controller-tuning>) still
+apply and require physical review. Memory owns the separate sighting-age bound. A blocked camera
+need not prevent a solve while both remembered location and admitted pose remain usable, but
+neither `observedPoints(...)` nor `relativeAprilTags(...)` can interpret a remembered field point.
+There is no camera-only fallback or permission for a blind pickup maneuver.
+
+The same plan can supply the existing query, overlay, or fresh Task; no memory-specific drive API
+is needed. Its status carries `REMEMBERED_TARGET` selection evidence and keeps pose/sighting times
+separate. Reset memory before changing coordinates or camera configuration, and complete that
+transition before guidance samples. Memory invalidation does not retroactively rewrite a status
+or cancel an already active Task. The behavior owner still handles activation, evidence loss,
+fresh-image recheck, travel limits, and independent capture feedback.
+
 ### Each consumer owns its runtime
 
 `DriveGuidancePlan` is reusable configuration; each call to `overlay()`, `query()`, or
@@ -417,6 +449,8 @@ The status also retains `translationSelection` and `facingSelection` using the s
 For object guidance, inspect the `OBSERVED_TARGET` payload to see the selected frame, original
 capture timestamp, and selection reason. For tag guidance, the `APRIL_TAG` payload retains the
 held identity, live preview, and actual-versus-inferred evidence. These details are available
+for remembered field locations through `REMEMBERED_TARGET` and `rememberedTarget()` as well,
+with a last sighting rather than a fresh whole frame. Read each payload according to its kind,
 without polling the camera again. A selected target is not proof of usable guidance: the solved
 error flags above still decide whether there is an answer, including when output is zero.
 

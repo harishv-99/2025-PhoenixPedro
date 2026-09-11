@@ -264,7 +264,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 150 | MATH-02 | Finite two-dimensional calibration tables | Done | Parallel immutable 1D/2D tables, migrated callers, and optional beginner lesson reviewed; 2,891 tests and strict docs/API checks pass. User authorized the exact branch/repository/master publication on 2026-09-10. |
 | 151 | TASK-07 | Terminal Task cleanup composition | Done | Shared timed lifecycle, cleanup adopters, synchronized guides, and 2,759 passing tests; Android Studio review and destination-specific publication authorized on 2026-09-09. |
 | 152 | RUNTIME-04 | Managed registration ownership transfer | Done | Implemented the approved existing-method ownership contract and removed six caller guards. 2,910 tests and strict docs/Javadocs pass; user approved the reviewed diff and authorized branch publication and merge to master. |
-| 153 | VISION-04 | Bounded recent field-location memory | Proposed | Remember recently observed ball/cluster locations, refresh unambiguous spatial matches, and expire unseen entries without velocity prediction or physical-identity claims. |
+| 153 | VISION-04 | Bounded recent field-location memory | Done | Bounded memory, typed field selection/reference, and independent lesson reviewed; 3,054 tests and strict docs/API checks pass. User approved the reviewed diff and authorized exact branch/repository/master publication on 2026-09-11. Collection remains AUTO-03. |
 | 154 | SPATIAL-03 | Bounded intake-sweep geometry | Proposed | Answer point coverage for explicitly supported intake corridors without claiming capture or collision clearance. |
 | 155 | EXAMPLE-13 | Bounded multi-object collection | Proposed | Extend the maintained adaptive-collection example with robot-owned ordering, capacity, return cost, confirmation, and fallback. |
 | 156 | CTRL-03 | Coherent externally supplied motion setpoints | Proposed | Evaluate one position/velocity/acceleration input through the existing Plant control path, only with concrete adopter simplification. |
@@ -34785,7 +34785,369 @@ obtains the skill-required approval before API or major lifecycle changes.
 
 ### VISION-04 - Bounded recent field-location memory
 
-- **Status:** **Proposed**.
+- **Status:** **Done** on `codex/vision-04-recent-field-memory`.
+- **Gate 3 manual review / publication authorization (2026-09-11):** the user confirmed
+  `VISION-04 looks good` and explicitly authorized committing the reviewed diff on
+  `codex/vision-04-recent-field-memory`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request and merging into
+  `master`. This closes the requested human-review gate and authorizes those publication steps;
+  it does not establish hardware accuracy or add a rendered screenshot verification claim.
+  The prior pending/manual and implementation-only notes below are historical gate records.
+  No next-item implementation is authorized; AUTO-03 and VISION-07 remain separate tasks.
+- **Implementation approval (2026-09-11):** after the public-API design handoff and clarification
+  of field-object projection and current versus future selection policies, the user directed
+  `proceed`. This approves VISION-04 implementation only; AUTO-03 and other later items remain
+  separate. The item branch starts from fetched `origin/master` `7bcc103` and retains the reviewed
+  tracker decision. No staging, commit, push, pull request, merge, or physical motion is authorized.
+- **Gate 2 implementation / review handoff (2026-09-11):** implemented the approved sole staged
+  `FieldTargetMemory` construction, explicit once-per-cycle owner, passive typed view, immutable
+  mixed-age snapshots, conservative full-graph association, capture watermark/reset fences,
+  deterministic capacity/expiry, failure suspension/recovery, and terminal STOP. Field selection
+  inherits retention or accepts one stricter bound; only near-field-point and current-robot-pose
+  policies are provided. `References.selectedFieldTargetPoint` and `REMEMBERED_TARGET` carry exact
+  entry/snapshot/ranking evidence through existing absolute-pose spatial/guidance consumers.
+  Separate pose/sighting timestamps survive; remembered evidence cannot solve as camera-only feedback.
+  The independent `robots.examples.visionmemory.RecentFieldLocations` service owns memory,
+  selection and a read-only query; it invalidates memory before external transitions and uses
+  the existing trajectory segment guard. No production robot, existing pickup/adaptive behavior,
+  camera owner, drive writer, intake, or enabled OpMode changed.
+- **Documentation delivered:** Advanced-only `Remember Recent Field Locations.md`, complete
+  maintained service/scenario, accessible observed/remembered/expired SVG and text equivalent,
+  plus synchronized vision, spatial, guidance and sensing-reference guides. The lesson explains
+  `fieldObjects`, capture-time history, every active synthetic bound, one-heartbeat ownership,
+  reset/STOP, evidence inspection and physical limits. Beginner tabs are unchanged.
+- **Independent adversarial review:** memory/lifecycle, selection/spatial and example/docs reviews
+  found no remaining blocker. Repeated the construction/distinct-capability audit: one memory
+  factory, one ordinary/stricter selector entry, factory-only reusable policies, private entry/result
+  construction, and one reference bridge; no Config/constructor/build aliases or duplicate motion
+  APIs. Review added shared-clock mutation, submicrosecond future capture, callback STOP after
+  caught reentry, both evidence-age orders, and retained-memory/pickup-boundary regressions.
+  Clarified the guidance snippet's distinct field-selection variable and compacted the diagram for
+  narrow layouts. SVG XML/accessibility/static checks pass; rendered desktop/mobile inspection
+  could not run because Browser reported no available browser and no standalone rasterizer was
+  installed. Include visual inspection in manual review; no screenshot validation is claimed.
+- **Automated verification (2026-09-11):** focused tests passed, then final full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed **3,054 tests across
+  306 suites, zero failures/errors/skips**. New coverage comprises 30 memory, 16 selection,
+  9 spatial/guidance, 6 maintained-service, 2 pickup-boundary tests and 1 documentation contract.
+  Initial documentation inventory/label mismatches were fixed and the full run repeated successfully.
+  Strict Zensical and `:TeamCode:sushiJavadocs` passed; generated guide search verifies 1,058
+  sections across six areas; generated-link verification passes 247 API links and 108 maintained
+  source links across 59 Markdown pages. Scoped diff, tracked/untracked whitespace and caller/boundary
+  checks pass. Existing Java-21/source-8 and SDK deprecation warnings remain. No hardware validation.
+- **Pending manual gate / publication coordinates:** inspect memory lifetime/reset behavior,
+  field-only references and original sighting age, the independent software trace, unchanged
+  fresh-image pickup gate, and desktop/narrow lesson layout. Matching radius, retention,
+  field/camera accuracy, ball persistence and capture/clearance require adopting-robot evidence;
+  this change enables no motion. Leave the diff unstaged pending combined review/publication
+  authorization for `codex/vision-04-recent-field-memory`, push destination
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, PR target and merge branch `master`.
+  AUTO-03 capacity-aware collection and VISION-07 visibility metadata remain separate items.
+- **Gate 1 start (2026-09-11):** the user's `next task` direction follows VISION-06 publication
+  in PR #168, merged as `7bcc103`. Local `master` is clean and synchronized with `origin/master`.
+  Inspect only this item's evidence, ownership, construction paths, consumers, and alternatives;
+  no implementation or publication is authorized by this next-task direction.
+- **Initial source / independent consumer audit (2026-09-11):** `TargetObservations2d.fromFrame`
+  owns one bounded image and requires every member's exact capture timestamp. `TargetSelectionResult`
+  owns one actual member and retains that whole frame. `ObservationSources.inField` deliberately
+  reprojects on later reads; object/frame allocation is therefore not capture identity. Deduplicate
+  by original same-clock capture time, not Java frame identity, and preserve a monotonic considered
+  capture watermark. Decide explicitly whether an initially unprojectable capture is consumed or
+  retried; no later projection may renew its original sighting time.
+- **Construction / caller inventory:** `TargetSelections.fromVisibleObjects(source)` has one
+  age/policy construction path and six factory-only `TargetSelectionPolicies`. Its nearest-robot,
+  control-origin, bearing and neighbor metrics use one robot-at-capture frame; reusing them across
+  mixed capture frames would be incorrect. `TargetObservation2d`'s robot-position/pose/bearing
+  factories and `withFieldPoseLookup` represent distinct measurement evidence, not memory-entry
+  construction. `References.selectedTargetPoint(Source<TargetSelectionResult>)` consumes that
+  visible-frame result; another parameterized `Source` overload alone would clash under Java
+  erasure. VISION-06's common selection wrapper can retain a distinct typed memory payload if
+  this decision gate chooses a direct memory-reference consumer; no new solve lane is needed for
+  an eligible field point solved against current localization.
+  Camera owners expose borrowed floor-object sources. No production-application or tool Java
+  caller constructs the object selector or field projection. `VisionPickup` borrows the result;
+  its software fixtures construct the selector/projection. The adaptive example's vision service
+  and projection instead rank one frame's field band, and its attempt freezes a route decision.
+  Neither example already provides reusable multi-frame memory.
+- **Initial recommended boundary:** one optional bounded data-state owner, advanced by the existing
+  owning service, with immutable mixed-age snapshots and owner/generation-scoped location keys.
+  Preserve visible-frame selection and fresh whole-image pickup checks. No camera lane, scheduler,
+  pose update, motion owner, universal target ID, synthetic frame, or guessed confidence is needed.
+  An independent software consumer can demonstrate remembering three locations, refreshing two,
+  leaving the third unchanged, and expiring it; do not complicate existing single-attempt lessons
+  merely to force adoption. Regional ranking, capacity policy, scans, and collection remain later
+  items in the approved program.
+- **Initial local design questions (resolved by the decision below):** finalize the single construction/update/read
+  path and smallest selection/reference consumer; compare explicit owner reset wiring with a
+  narrowly typed generation input. Current projected frames/history lookups do not reveal all
+  same-clock coordinate or camera resets. `PoseTrajectoryEstimator.trajectorySegmentId()` and
+  Limelight's pipeline generation are existing side-effect-free owner facts; unavailable vision
+  alone is not a reset. A reset must also fence old captures so cached images cannot repopulate
+  cleared memory. Specify one-to-one ambiguous-match handling, duplicate geometry on first
+  admission, equal/out-of-order captures, oldest eviction, transactional failure behavior,
+  invalidation of retained keys, and bounded work. Compare documentation-only and example-local
+  bookkeeping with the reusable owner, then record exact proposed robot call sites, rejected
+  layers, tests and teaching scope before requesting public-API implementation approval.
+- **Gate 1 decision (2026-09-11):** the user's subsequent `proceed` authorizes completing this
+  design review. The recommended public shape below follows the approved program, but requires
+  its own implementation approval. Only this tracker is edited; no Java, normative guide,
+  production robot, motion configuration, or later-item implementation changes at this gate.
+
+#### Chosen owner and construction
+
+Add `FieldTargetMemory` under protected-core `sensing.observation`. Its only public construction
+path is the following staged factory; the final `maxEntries` answer constructs the owner:
+
+```java
+FieldTargetMemory memory = FieldTargetMemory.fromFieldObjects(fieldObjects)
+        .retainingForSec(memoryAgeSec)
+        .matchingWithinInches(matchRadiusInches)
+        .maxEntries(maxRememberedLocations);
+```
+
+`fieldObjects` is the existing borrowed `ObservationSources.inField(camera.floorObjects(),
+poseHistory.lookupSource())` path. It describes one producer, modeled object kind, fixed camera
+geometry and field-coordinate system. The source already supplies capture-time projection; memory
+does not read current pose to relocate an old image or own localization/history. Its initial scope
+is anonymous positioned observations (`targetId == -1`) with an available exact-timestamp field
+lookup and finite field coordinates. Identified tags remain on the existing tag path; invalid,
+bearing-only, identified, or unprojectable members are ineligible with diagnostic counts/reasons.
+
+The student answers four distinct questions once: source, maximum sighting age, matching radius,
+and storage/work capacity. Retention and radius must be finite and non-negative; capacity must be
+within `[1, TargetObservations2d.MAX_OBSERVATIONS]` (currently 256). Zero retention admits only
+current-time captures; zero radius permits exact-location matches. There are no approved physical
+defaults. Reusable application configuration may store these primitive facts; another public
+framework Config constructor/factory, unbounded mode, builder alias, or trailing `build()` adds
+no capability and is not introduced. Retained builder stages are independent, validated immutable
+answers and construction never samples borrowed sources.
+
+`update(clock)` is the only advancing operation. An existing robot-owned service calls it after
+camera/localization/history processing. `snapshot()` returns the last immutable publication for
+status. `source()` returns one stable borrowed `FieldTargetMemory.View`, a narrow
+`Source<FieldTargetMemory.Snapshot>` exposing the immutable `retentionSec()` bound without
+sampling. That extra domain contract allows selector construction to validate age immediately;
+the view cannot mutate, reset or stop memory. Its inherited source reset is deliberately inert,
+as with the pose-history lookup view. Do not implement another service/lane in protected core.
+
+Nested `Snapshot`, `Entry`, and `Key` are owner-created values with no public primitive assembly.
+Each entry retains its exact last-sighting `TargetObservation2d`, including capture time, field
+lookup/projection provenance, and unknown quality; its field coordinates are those of that sighting.
+A snapshot holds an immutable bounded entry list plus publication/input-decision diagnostics.
+Publication time is not capture time. Entries from different images are never wrapped in a
+synthetic `TargetObservations2d`. Count means remembered location hypotheses, not verified balls.
+
+#### Matching, capture order and bounded work
+
+For each successful update, prepare the complete next state before publishing it:
+
+1. Expire entries whose original last-sighting age exceeds the inclusive retention bound.
+2. Consider only a valid current-clock capture strictly newer than the processed-capture watermark
+   and any reset fence. Compare `LoopTimestamp.secondsSince`, not object identity. Equal-time
+   timestamps in newly allocated frames are duplicates. Invalid/future timestamps cannot advance
+   the watermark. A valid newer capture already older than retention may advance the considered
+   watermark, but cannot participate in matching or create entries. Empty and unavailable inputs
+   remain different diagnostic facts.
+3. A valid new capture is consumed once, even when its projection is unavailable or no member
+   qualifies. Later history availability/reprojection cannot reinterpret it as another sighting;
+   wait for a newer capture. This intentionally trades a potentially recoverable delayed frame for
+   simpler, conservative admission. Exceptions do not commit a considered-capture watermark.
+4. Form the entire old-entry/new-candidate proximity graph before changing entries. An edge exists
+   at inclusive distance `<= matchRadiusInches`. Refresh only a pair with exactly one neighbor on
+   both sides. Ambiguous candidates with existing neighbors neither refresh nor create entries.
+   Never use greedy input order, predicted position, velocity, or appearance.
+5. Exact duplicate field-coordinate groups cannot refresh or create entries; signed zero is the
+   same coordinate. Keep every such duplicate in ambiguity counts so dropping duplicates cannot
+   falsely make another nearby candidate a unique match. No additional physical duplicate-radius
+   tuning is introduced. Distinct nearby new positions remain separate hypotheses even when their
+   separation is smaller than the association radius; do not erase an initially observed cluster.
+6. An eligible candidate with no existing neighbor can create an entry. Assign keys in canonical
+   field-coordinate order, never detector-list order. Refresh retains a key but creates a new
+   immutable entry. All matching uses the pre-update retained set, not earlier births in this frame.
+7. If capacity is exceeded, evict oldest original last sightings first, then owner-issued sequence
+   for equal times. Entry/frame bounds bound pairwise work and allocation; no unbounded history,
+   image data, or graph search is retained. Expiry still runs with unavailable, empty or repeated
+   input, and an unseen entry never moves or receives a new sighting time.
+
+Small unambiguous position changes therefore update one location rather than leaving a trail.
+A change beyond the matching radius can still create another hypothesis while the old one ages
+out. Crossing/closely spaced objects can be ambiguous and remain unrefreshed. State these limits;
+neither the radius nor the algorithm proves identity or stationary-object persistence.
+
+#### Lifecycle, reset and evidence validity
+
+- Use one stable clock. Claim an update cycle before polling the borrowed source. Successful
+  duplicate updates do nothing; a same-cycle failure rethrows the retained first RuntimeException.
+  Reentrant update/reset fails closed even if a callback catches it. No partial match, insertion,
+  expiry, key retirement or watermark commit is published. A later cycle may retry unless stopped.
+  A failed advance makes the borrowed view unavailable through the retained failure and suspends
+  owner-backed entry eligibility until a successful update or terminal invalidation; diagnostic
+  snapshots do not turn failed polling into accepted evidence.
+- `reset(clock)` immediately invalidates this owner's keys, empties published memory, and records
+  `clock.nowTimestamp()` as an exclusive admission fence. Delayed or cached captures at/before
+  that boundary cannot repopulate it. Reset does not release a claimed same-cycle polling/failure
+  guard. Reset before the first update is supported and binds the same stable clock.
+- `stop()` is clock-independent, terminal and idempotent, including before START. It revokes keys
+  and publishes stopped/empty evidence; updates or resets cannot revive it. A stop reached from
+  a borrowed callback prevents the outer update from publishing its prepared state afterward.
+- Clock reset makes old timestamps ineligible immediately; the next advancing call starts a new
+  memory generation with a new admission fence. Known same-clock field/history/camera changes
+  require owner wiring: invalidate before a rebase, history reset, camera replacement/configuration
+  or pipeline transition, including an operation that might fail after partial effects. Use the
+  existing `trajectorySegmentId()` to detect known incompatible trajectory changes before memory
+  and downstream consumers run. Ordinary accepted corrections, missing history, empty images and
+  camera unavailability are not themselves reset signals.
+- No generic generation registry, synthetic camera identity, or VISION-07 view-context expansion is
+  added. Out-of-band changes that bypass the owning service cannot be discovered from generic
+  projected frames. Explain this limit and wire reset in the complete example rather than claiming
+  automatic detection. New producer/field graphs require new owners, not mutation of retained input.
+- Keys are scoped to an owner, generation and entry lifetime, never `targetId`. Private read-only
+  validity witnesses are revoked on reset, STOP, eviction or expiry. A retained entry/selection is
+  immutable historical evidence, but current eligibility also checks its original capture age and
+  owner/lifetime validity, like LoopTimestamp's existing clock-epoch check. Refresh cannot move or
+  redate an old snapshot; an old constant selection cannot revive a retired key.
+- These operations do not cancel Tasks, stop drive, or rewrite already-published spatial/guidance
+  snapshots. Perform transitions before consumer sampling, or explicitly withdraw active behavior
+  and reset locally owned query/selection runtimes for a mid-cycle transition. Never reset borrowed
+  camera/localization/history from memory. Targeted removal/capture acknowledgement is deferred
+  until a consumer can truthfully associate independent capture feedback with that location.
+
+#### Parallel selection and reference consumption
+
+Add one `TargetSelections.fromRecentFieldLocations(FieldTargetMemory.View)` entry point. Its
+ordinary `.choose(FieldTargetSelectionPolicy)` terminal inherits the memory's finite usable-age
+bound, avoiding a repeated answer. Optional `.freshWithinSec(stricterAgeSec)` before `choose`
+selects a finite non-negative limit no greater than retention, validated without reading the source.
+The stricter limit describes eligible last sightings, not a fresh whole-image pickup recheck.
+
+```java
+FieldTargetSelectionSource selected = TargetSelections.fromRecentFieldLocations(memory.source())
+        .choose(FieldTargetSelectionPolicies.nearFieldPoint(
+                searchXInches, searchYInches, searchRadiusInches));
+ReferencePoint2d point = References.selectedFieldTargetPoint(selected);
+
+SpatialQuery query = SpatialQuery.builder()
+        .translateTo(SpatialTargets.point(point))
+        .andFaceTo(SpatialTargets.point(point))
+        .solveWith(SpatialSolveSet.builder()
+                .absolutePose(localization, poseAgeSec, minPoseQuality).build())
+        .build();
+```
+
+`FieldTargetSelectionPolicy` has only factory construction through
+`FieldTargetSelectionPolicies.nearFieldPoint(x, y, radius)` and
+`nearestToRobot(localization, poseAgeSec, minPoseQuality)` initially. The first ranks stored field
+locations without requiring current localization. The second reads one already-published valid
+pose per successful calculation and ranks relative to that pose, not the robot's different old
+capture positions; it records the ranking pose evidence. A new pose cannot refresh a sighting.
+Both choose the lowest finite distance and use canonical field coordinates/key sequence for ties.
+No known-good pose, no candidate for the pose-dependent rule. Never update the borrowed estimator.
+Policies can be stored and reused, so policy values are meaningful rather than inline-only wrappers.
+Keep custom/cluster/capacity/region ranking and entry-hold/reacquisition strategies out of this item.
+
+The returned `FieldTargetSelectionSource` is continuous and successful-cycle memoized; failed value
+calculations may retry. `reset()` clears only its own cache, never the memory or policy inputs.
+Its owner-created `FieldTargetSelectionResult` keeps the exact chosen entry, source snapshot,
+effective age bound, metric/reason, and optional ranking pose evidence. `hasSelection()` describes
+the historical choice; `isUsable(clock)` checks that retained evidence and its lifetime. No
+primitive result/key factory can manufacture a live memory membership.
+
+`References.selectedFieldTargetPoint(Source<FieldTargetSelectionResult>)` preserves the borrowed
+source seam, including a deliberately retained result. A distinct name avoids Java erasure and
+explicitly excludes camera-only solving. Add `REMEMBERED_TARGET` and its typed payload to
+`ReferenceSelectionResult`, and field-reference/provenance handling to `References` and
+`SpatialQuerySupport`. Reuse the existing absolute-pose solve; `observedPoints()` and direct-tag
+solving cannot use a remembered field location. Guidance validates incompatible evidence modes at
+construction where its existing checks can know the reference kind.
+
+Keep last-sighting and solving-pose timestamps separately; the solution's general freshness is
+the older required evidence, not just fresh localization. Clarify any internal `live` naming that
+actually means sighting-time-required, rather than visibility. The same point feeds query or
+guidance plan/overlay/fresh Task without another drive API. This item adds no approach or pickup
+state machine and does not authorize hidden-target motion by itself.
+
+#### Alternatives, public-layer disposition and teaching
+
+| Alternative | Ordinary robot-code consequence | Decision |
+| --- | --- | --- |
+| Documentation only / keep one frozen destination | No new code, but cannot retain a recently seen cluster across images. | Insufficient for the approved use case; retain this simpler option when memory is unnecessary. |
+| Local lists, timestamps, matching and reset loops | Each robot service must implement and test the same multi-frame lifecycle; TeleOp/Auto can diverge. | Reject repeated bookkeeping; the reusable owner removes it. |
+| Constructor plus Config plus builder aliases | Another authoring type and several equivalent setup paths for three required scalar answers. | Use only the staged memory factory; application config can store primitive facts. |
+| Lazy memory advancement from selector reads | Selection/telemetry demand decides which camera captures enter memory. | Choose one explicit service-owned heartbeat and passive view. |
+| Reuse one captured-frame result/policy for memory | Fakes a common capture time or compares coordinates from different robot poses. | Keep visible APIs unchanged and add typed field evidence; no universal target/result rewrite. |
+| Require selection age again for every memory consumer | Repeats the same bound when the action wants all eligible memory. | Inherit retention; offer a named stricter override only when it changes policy. |
+| Generic generation supplier or broad camera metadata redesign | Robot code invents a combined lifecycle token; missing reset boundaries remain undetectable. | Use explicit owner reset wiring and existing trajectory facts; later view metadata remains VISION-07. |
+| SORT/prediction, greedy nearest matching, disappearance removal | More tuning or unjustified identity/absence claims. | Retain conservative one-to-one position evidence and age expiry only. |
+
+Existing public layers retain distinct capabilities: the four TagSelections source overloads
+(observed/inferred, fixed/historical mount), their ID/age/quality/policy/hold stages; visible object
+source/age/policy construction; authored measurement and captured-frame factories; References'
+fixed/tag/selected/approach/frame-point forms; and runtime SpatialQuery versus reusable
+SpatialQuerySpec, plus plan-owned guidance runtime factories. No redundant siblings or aliases
+are added to them. Field-memory policy/result types represent different evidence and prevent
+mixing capture frames; the View exposes required immutable bounds and read-only ownership.
+
+Provide one independent hardware-neutral `robots.examples.visionmemory.RecentFieldLocations`
+service and a supplied software scenario. It privately owns memory, selection and a read-only
+spatial query, borrows field frames and the authoritative trajectory estimator, and publishes one
+immutable status. Its explicit reset helper invalidates those local owners before coordinate/camera
+transitions; its segment guard catches known trajectory discontinuities before use. STOP revokes
+memory without stopping borrowed hardware. No drive sink, intake command, Task, enabled FTC OpMode,
+or production-application dependency is introduced. Preserve VisionPickup's fresh newer-whole-frame
+recheck and the adaptive example's single frozen band decision; do not expand their simple lessons.
+
+Update Vision Targets, Spatial Queries, Drive Guidance and the sensing reference alongside exact
+Javadocs. Add an optional focused example explanation, linked from the existing advanced examples
+index, not the beginner tabs. Teach "seen now / remembered / expired" before the new names, with
+a small labeled multi-frame diagram and adjacent text equivalent. Show setup values, heartbeat,
+reset/STOP and the actual software observation; label numerical fixture values synthetic and
+physical radius/retention/location accuracy as adopting-robot validation. Keep the shared
+selection -> reference -> consumer relationship visible without teaching memory as live vision.
+
+#### Verification and approval boundary
+
+Focused tests cover three stationary field locations through independent authored robot translation
+and rotation; a newer image refreshes two and leaves the third's exact position/time unchanged until
+expiry. Cover full bipartite ambiguity, duplicate groups as blockers, nearby distinct births,
+reordered detections, zero/inclusive bounds, finite extremes, canonical ties and oldest eviction.
+Exercise equal-time distinct timestamp objects, repeated reprojection, out-of-order/future/foreign
+clock input, new-but-retention-expired captures, observed-empty versus unavailable,
+first-projection failure consumption, and bounded
+allocation/work. Check retained builder stages and no construction/source-view/diagnostic polling.
+
+Lifecycle checks include repeated/failed/reentrant update, caught reentry, next-cycle recovery,
+reset before first update, exclusive reset fences, no same-cycle poll replay, callback STOP,
+clock/field/history/camera invalidation, stopped-owner rejection, no borrowed reset and old key
+revocation. Test old constant selections after reset, expiry, eviction and STOP through a fresh
+query; do not assert retroactive mutation of an already-returned spatial snapshot.
+
+Selection/spatial checks cover inherited and stricter age validation, both policies, current-pose
+ranking evidence, stale/invalid pose, exact memory payload propagation, older-required-evidence
+timestamps, no camera-only solve, same-cycle cache/retry and local reset. The complete independent
+service test keeps production memory/history/projection/selection/query code real and substitutes
+only input observations and poses. Retain a regression proving memory cannot satisfy VisionPickup's
+fresh-image recheck, arrival is not capture, and cancellation remains terminal in that existing path.
+
+After approval: fetch origin/master; create `codex/vision-04-recent-field-memory`; implement only
+this item; run focused then full `:TeamCode:testDebugUnitTest`,
+`:TeamCode:compileDebugJavaWithJavac`, `:TeamCode:sushiJavadocs`, strict narrative/link checks,
+caller/API-boundary scans and whitespace checks. Re-run independent lifecycle and API-simplicity
+reviews. Deterministic success proves memory/evidence/lifecycle contracts, not physical matching
+tolerances, field accuracy, persistence of a ball, capture, clearance, or match benefit.
+
+**Design gate:** Ready is a design record, not implementation or publication. Requested next
+approval: **"Approve the VISION-04 design and proceed with implementation."** Stop before Java
+edits until that approval. Later Android Studio review and exact branch/repository/master
+publication authorization remain separate gates.
+
+**Independent design review:** separate lifecycle/matching and API/consumer reviews found no
+remaining architectural blocker. Both identified the need to state stale-new-capture admission
+explicitly; the algorithm and planned tests now prohibit its matching/birth while permitting a
+valid considered watermark. `git diff --check`, tracker control-character/trailing-whitespace
+checks, and the scoped diff audit pass. Only VISION-04's table status and decision record changed;
+historical entries and other task statuses remain intact. No Java build, test execution or hardware
+verification is claimed for this tracker-only design gate.
+
 - **Current approved contract (2026-09-11):** the approved bounded vision collection program above
   supplies the current design and places VISION-06 first. Its one-to-one ambiguity handling,
   generation-scoped keys, eviction and reset requirements amend the historical intake below;

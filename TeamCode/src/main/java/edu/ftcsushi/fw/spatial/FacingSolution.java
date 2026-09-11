@@ -24,13 +24,16 @@ public final class FacingSolution {
      */
     public final double quality;
 
-    /** Oldest required live evidence; a committed goal does not pretend to be a new sighting. */
+    /** Oldest required evidence; remembered sightings are not refreshed by a new robot pose. */
     public final LoopTimestamp timestamp;
     /** Pose evidence used for a field solve; unavailable for direct observed-point feedback. */
     public final LoopTimestamp robotPoseTimestamp;
     /** Original target sighting, or unavailable for an authored fixed target. */
     public final LoopTimestamp targetObservationTimestamp;
-    /** Whether target observation age, rather than a bounded commitment, remains a live constraint. */
+    /**
+     * Whether target observation age remains a constraint, including remembered locations.
+     * This is not current visibility; authored targets and bounded commitments use false.
+     */
     public final boolean liveTarget;
 
     /**
@@ -56,12 +59,13 @@ public final class FacingSolution {
         this.liveTarget = liveTarget;
     }
 
-    /** Preserves target provenance and uses the older live evidence for ordinary age gates. */
-    FacingSolution withTargetEvidence(LoopTimestamp observation, boolean live) {
+    /** Preserves target provenance and uses the older age-constrained evidence for age gates. */
+    FacingSolution withTargetEvidence(LoopTimestamp observation, boolean requiresSightingAge) {
         LoopTimestamp effective = timestamp;
         double difference = timestamp.secondsSince(observation);
-        if (live && Double.isFinite(difference) && difference > 0.0) effective = observation;
-        return new FacingSolution(facingErrorRad, quality, effective, robotPoseTimestamp, observation, live);
+        if (requiresSightingAge && Double.isFinite(difference) && difference > 0.0) effective = observation;
+        return new FacingSolution(facingErrorRad, quality, effective, robotPoseTimestamp,
+                observation, requiresSightingAge);
     }
 
     /** A direct observation solves in its capture frame without a field-pose estimate. */

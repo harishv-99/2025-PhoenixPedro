@@ -4,6 +4,7 @@ import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
+import edu.ftcsushi.fw.sensing.observation.FieldTargetSelectionResult;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.CameraMountLogic;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
@@ -24,7 +25,7 @@ final class SpatialQuerySupport {
         if (solution == null) return null;
         TargetEvidence evidence = targetEvidence(target, clock);
         return evidence == null ? solution
-                : solution.withTargetEvidence(evidence.timestamp, evidence.live);
+                : solution.withTargetEvidence(evidence.timestamp, evidence.requiresSightingAge);
     }
 
     /** Facing counterpart to the translation evidence bridge. */
@@ -32,7 +33,7 @@ final class SpatialQuerySupport {
         if (solution == null) return null;
         TargetEvidence evidence = targetEvidence(target, clock);
         return evidence == null ? solution
-                : solution.withTargetEvidence(evidence.timestamp, evidence.live);
+                : solution.withTargetEvidence(evidence.timestamp, evidence.requiresSightingAge);
     }
 
     private static TargetEvidence targetEvidence(Object target, LoopClock clock) {
@@ -49,6 +50,11 @@ final class SpatialQuerySupport {
             return new TargetEvidence(((References.ObservedPointRef) reference).get(clock)
                     .observation().timestamp, true);
         }
+        if (reference instanceof References.RememberedPointRef) {
+            FieldTargetSelectionResult selected = ((References.RememberedPointRef) reference).get(clock);
+            return new TargetEvidence(selected.hasSelection()
+                    ? selected.entry().lastSighting().timestamp : LoopTimestamp.unavailable(), true);
+        }
         if (reference instanceof References.ApproachFrameRef) {
             ApproachResult2d approach = ((References.ApproachFrameRef) reference).get(clock);
             return new TargetEvidence(approach.observation().timestamp, !approach.isCommitted());
@@ -58,8 +64,11 @@ final class SpatialQuerySupport {
 
     private static final class TargetEvidence {
         final LoopTimestamp timestamp;
-        final boolean live;
-        TargetEvidence(LoopTimestamp timestamp, boolean live) { this.timestamp = timestamp; this.live = live; }
+        final boolean requiresSightingAge;
+        TargetEvidence(LoopTimestamp timestamp, boolean requiresSightingAge) {
+            this.timestamp = timestamp;
+            this.requiresSightingAge = requiresSightingAge;
+        }
     }
 
     static Pose2d resolveFieldPointTarget(Object target,
@@ -183,6 +192,9 @@ final class SpatialQuerySupport {
         }
         if (ref instanceof References.ObservedPointRef) {
             return ReferenceSelectionResult.observedTarget(((References.ObservedPointRef) ref).get(clock));
+        }
+        if (ref instanceof References.RememberedPointRef) {
+            return ReferenceSelectionResult.rememberedTarget(((References.RememberedPointRef) ref).get(clock));
         }
         if (ref instanceof References.TagPointRef) {
             References.TagPointRef tp = (References.TagPointRef) ref;

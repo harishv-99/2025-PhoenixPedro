@@ -26,7 +26,9 @@ package edu.ftcsushi.fw.spatial;
  * selected-tag references resolve through the selector's current state at evaluation time.
  * {@link References#selectedTargetPoint} instead borrows a geometric observation selection with
  * its original capture time and freshness policy; it does not turn a located object into a fixed
- * field fact or a tracked physical identity.</p>
+ * field fact or a tracked physical identity. {@link References#selectedFieldTargetPoint} instead
+ * borrows a bounded remembered field selection: it requires an absolute-pose solve and preserves
+ * last-sighting age and owner-backed entry validity even while the target is out of view.</p>
  *
  * @see ReferenceFrame2d when the reference also has a meaningful local orientation
  * @see References
