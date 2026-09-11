@@ -115,12 +115,16 @@ matters now; it does not assign a permanent identity to an unlabeled ball. The f
 choice constructs a selector but does not yet sample the camera:
 
 ```java
-Source<TargetSelectionResult> selected = TargetSelections.from(objects)
+TargetSelectionSource selected = TargetSelections.fromVisibleObjects(objects)
         .freshWithinSec(0.20)
-        .nearestToRobot();
+        .choose(TargetSelectionPolicies.nearestToRobot());
 ```
 
 The chained calls form a **builder**: answer how old the sighting may be, then how to choose.
+`TargetSelectionPolicies.nearestToRobot()` creates a reusable selection rule; it does not read
+the camera. `choose(...)` completes construction. `TargetSelectionSource` is a source whose
+`get(clock)` returns a `TargetSelectionResult`: one choice from an actual captured frame.
+It continuously reconsiders the candidates; anonymous objects do not have a held-identity mode.
 Here `0.20` seconds is an explicit illustrative freshness limit, stricter than the camera's default
 `0.25`. `nearestToRobot()` compares distance from the robot center **at capture**, not lens range
 and not the robot's later position. The owning service samples once in its managed `update(clock)`:
@@ -137,8 +141,9 @@ becomes too old, no selection is usable—even if the camera returns that same i
 Unavailable data includes a reason. A confirmed empty frame is different: the camera delivered a
 usable frame with no matching candidates. Neither case means a target at `(0, 0)`.
 
-Other [`TargetSelections`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/TargetSelections.html>)
-choices replace only the final policy call:
+Other [`TargetSelectionPolicies`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/TargetSelectionPolicies.html>)
+choices replace only the rule passed to `choose(...)`. Each table entry is called on
+`TargetSelectionPolicies`, just like `nearestToRobot()` above:
 
 | Want to choose… | Policy |
 |---|---|
@@ -162,9 +167,9 @@ conversion can ask where the robot was at the original capture time.
 ```java
 Source<TargetObservations2d> fieldObjects = ObservationSources.inField(
         camera.floorObjects(), poseHistory.lookupSource());
-Source<TargetSelectionResult> selected = TargetSelections.from(fieldObjects)
+TargetSelectionSource selected = TargetSelections.fromVisibleObjects(fieldObjects)
         .freshWithinSec(0.20)
-        .nearFieldPoint(48.0, 24.0, 12.0);
+        .choose(TargetSelectionPolicies.nearFieldPoint(48.0, 24.0, 12.0));
 ```
 
 Here the illustrated field location is `(48, 24)` inches and the allowed radius is `12` inches.
@@ -205,13 +210,13 @@ TagSelectionSource visibleChoice = TagSelections
         .fromVisibleTags(tags.tagSensor(), camera.cameraMountConfig())
         .among(scoringIds).freshWithinSec(0.25)
         .choose(TagSelectionPolicies.smallestAbsCameraBearing())
-        .stickyWhen(attemptActive).holdUntilDisabled().build();
+        .holdWhile(attemptActive);
 
 TagSelectionSource poseChoice = TagSelections
         .fromFieldPose(localization, fixedLayout, camera.cameraMountConfig())
         .among(scoringIds).freshWithinSec(0.50).minQuality(0.10)
         .choose(TagSelectionPolicies.smallestAbsCameraBearing())
-        .stickyWhen(attemptActive).holdUntilDisabled().build();
+        .holdWhile(attemptActive);
 ```
 
 Choose **one** source for the behavior; there is no implicit switching between them.
@@ -230,10 +235,13 @@ distance; `priorityOrder(...)` follows an authored ID preference.
 For a complete attempt, keep selection enabled through aiming **and** feeding, then make its
 release observable. If release and the next request happen between samples, the owning service
 must explicitly call `selected.reset()` before starting the next attempt. That reset is local and
-never resets the camera or localization. `stickyUntilReset().holdUntilReset()` is the alternative
+never resets the camera or localization. `holdUntilReset()` is the alternative
 when the owner already has an explicit attempt reset boundary; `continuous()` is for live preview
 or deliberately changing targets. Ordinary loss does not release a held ID; the explicit
-`reacquireAfterLossSec(...)` alternative authorizes that behavior if wanted.
+`holdWhileReacquiringAfterLossSec(attemptActive, seconds)` or
+`holdUntilResetReacquiringAfterLossSec(seconds)` alternative authorizes choosing again after the
+selected tag has lacked usable evidence for the stated duration. These terminal calls return the
+source directly: there is no further `build()` or second lifetime answer.
 
 ### Reuse the selected identity for aim, distance, and approach
 

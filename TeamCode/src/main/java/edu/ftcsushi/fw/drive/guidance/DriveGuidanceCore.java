@@ -7,12 +7,12 @@ import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.drive.DriveOverlayMask;
 import edu.ftcsushi.fw.drive.DriveOverlayOutput;
 import edu.ftcsushi.fw.drive.DriveSignal;
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcsushi.fw.spatial.ReferenceSelectionResult;
 
 /** One explicit evidence authority shared by overlays, Tasks, and queries. */
 final class DriveGuidanceCore {
-    private static final TagSelectionResult NO_SELECTION =
-            TagSelectionResult.none();
+    private static final ReferenceSelectionResult NO_SELECTION =
+            ReferenceSelectionResult.none();
     private final DriveGuidancePlan plan;
     private final DriveGuidanceEvaluator evaluator;
     private Step lastStep;
@@ -108,13 +108,13 @@ final class DriveGuidanceCore {
         final double leftErrorIn;
         final boolean hasOmegaError;
         final double omegaErrorRad;
-        final TagSelectionResult translationSelection;
-        final TagSelectionResult facingSelection;
+        final ReferenceSelectionResult translationSelection;
+        final ReferenceSelectionResult facingSelection;
 
         Step(DriveOverlayOutput out, DriveGuidanceSpec.SolveMode solveMode,
              boolean hasTranslationError, double forwardErrorIn, double leftErrorIn,
              boolean hasOmegaError, double omegaErrorRad,
-             TagSelectionResult translationSelection, TagSelectionResult facingSelection) {
+             ReferenceSelectionResult translationSelection, ReferenceSelectionResult facingSelection) {
             this.out = out;
             this.solveMode = solveMode;
             this.hasTranslationError = hasTranslationError;

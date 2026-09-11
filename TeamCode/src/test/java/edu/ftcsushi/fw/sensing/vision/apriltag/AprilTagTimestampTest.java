@@ -204,8 +204,7 @@ public final class AprilTagTimestampTest {
                 .among(Collections.singleton(5))
                 .freshWithinSec(0.20)
                 .choose(TagSelectionPolicies.closestRange())
-                .continuous()
-                .build();
+                .continuous();
 
         assertTrue(selection.get(time.clock()).hasFreshSelectedObservation);
 

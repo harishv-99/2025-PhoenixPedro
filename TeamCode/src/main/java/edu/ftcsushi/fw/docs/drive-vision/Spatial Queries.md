@@ -164,7 +164,7 @@ state.
 
 An observed target and a desired robot destination answer different questions. After
 [locating and selecting a target](<Vision Targets.md>), use
-[`References.observedPoint(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/References.html>)
+[`References.selectedTargetPoint(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/References.html>)
 for the actual observed point. The stateless lane built with
 [`SpatialSolveSet.builder().observedPoints()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialSolveSet.html>)
 solves it in robot coordinates at capture, without pretending the robot has been localized.
@@ -192,6 +192,23 @@ score was supplied. `SpatialSolutionGate.defaults()` accepts unknown quality but
 a valid same-clock timestamp; it imposes no finite age cap. Set `maxAgeSec(...)` for a bounded age.
 Calling `minQuality(...)` explicitly requires a known score—even `minQuality(0)` rejects unknown
 quality. A pose lane's score describes its pose evidence, not a fabricated combined target score.
+
+### Inspect what was selected separately from what was solved
+
+Each lane's `translationSelection` and `facingSelection` is a
+[`ReferenceSelectionResult`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ReferenceSelectionResult.html>).
+This immutable view keeps the original selection result, not another camera read. Its `kind()`
+says which detail is available: `APRIL_TAG`, `OBSERVED_TARGET`, `APPROACH`, or `NONE` for a fixed
+reference with no selection. Check that kind before reading `aprilTag()`, `observedTarget()`, or
+`approach()`; a mismatched accessor is a programming error.
+
+`hasSelection()` means a choice was made, not that its evidence is still usable. For example, a
+retained ball choice can be too old to solve, and a held tag ID can remain selected while hidden.
+Read the lane's solved channels and their timestamps for actual solve evidence. A tag selector's
+camera observation is not automatically the observation used by a different solving camera.
+`SpatialTranslationSelection.selection` and `SpatialFacingSelection.selection` retain this same
+view when a result selector chooses one lane. No universal visibility or confidence score joins
+these genuinely different evidence types.
 
 ### The tool and sensor have different jobs
 

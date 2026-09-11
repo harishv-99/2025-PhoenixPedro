@@ -36,10 +36,10 @@ public final class SpatialFiniteEvidenceTest {
                 .build().get(time.clock()).laneResult(0);
         assertNull(result.translation);
         assertNull(result.facing);
-        assertEquals(7, result.translationSelection.selectedTagId);
-        assertEquals(8, result.facingSelection.selectedTagId);
-        assertFalse(result.translationSelection.hasFreshSelectedObservation);
-        assertFalse(result.facingSelection.hasFreshSelectedObservation);
+        assertEquals(7, result.translationSelection.aprilTag().selectedTagId);
+        assertEquals(8, result.facingSelection.aprilTag().selectedTagId);
+        assertFalse(result.translationSelection.aprilTag().hasFreshSelectedObservation);
+        assertFalse(result.facingSelection.aprilTag().hasFreshSelectedObservation);
     }
 
     @Test public void invalidHistoricalTranslationFrameLosesOnlyTranslation() {

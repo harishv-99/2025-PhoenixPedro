@@ -5,7 +5,7 @@ import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
 
 /**
- * Delayed robot-at-capture visual feedback for {@link References#observedPoint} references.
+ * Delayed robot-at-capture visual feedback for {@link References#selectedTargetPoint} references.
  *
  * <p>No field pose is invented and no motion compensation is promised. The selected observation's
  * freshness policy remains authoritative. Rigid tools work directly; a moving tool requires a
@@ -45,7 +45,9 @@ final class ObservedTargetSpatialSolveLane implements SpatialSolveLane {
                 if (!Double.isFinite(facing.facingErrorRad)) facing = null;
             }
         }
-        return SpatialLaneResult.of(translation, facing, null, null);
+        return SpatialLaneResult.of(translation, facing,
+                SpatialQuerySupport.translationSelectionSnapshot(request.translationTarget, request.clock),
+                SpatialQuerySupport.facingSelectionSnapshot(request.facingTarget, request.clock));
     }
 
     private static TargetObservation2d observation(Object target, SpatialSolveRequest request) {

@@ -21,6 +21,7 @@ import edu.ftcsushi.fw.localization.fusion.OdometryCorrectionFusionEstimator;
 import edu.ftcsushi.fw.sensing.observation.ObservationSources;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
+import edu.ftcsushi.fw.sensing.observation.TargetSelectionPolicies;
 import edu.ftcsushi.fw.sensing.observation.TargetSelections;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
@@ -237,9 +238,9 @@ public final class VisionPickupLocalizationScenarioTest {
             predictor.publish(clock(), true, pose, predictorQuality);
             correction.estimate = VisionPickupTestRig.estimate(pose, 0.9, clock().nowTimestamp());
             publishEnvironment(pose, targets);
-            Source<TargetSelectionResult> selected = TargetSelections.from(ObservationSources.inField(
+            Source<TargetSelectionResult> selected = TargetSelections.fromVisibleObjects(ObservationSources.inField(
                     Source.of(clock -> raw), history.lookupSource()))
-                    .freshWithinSec(0.20).nearestToRobot();
+                    .freshWithinSec(0.20).choose(TargetSelectionPolicies.nearestToRobot());
             pickup = new VisionPickup(VisionPickupTestRig.configured(), selected, fusion,
                     Source.of(clock -> feedback), intakeRequests::add, clock -> manual);
         }

@@ -603,10 +603,10 @@ public final class DriveGuidance {
             }
         } else {
             if (s.translationTarget != null && !isObservedPointTarget(s.translationTarget)) {
-                errors.add("observedPoints() translateTo() requires References.observedPoint(...)");
+                errors.add("observedPoints() translateTo() requires References.selectedTargetPoint(...)");
             }
             if (s.facingTarget != null && !isObservedPointTarget(s.facingTarget)) {
-                errors.add("observedPoints() faceTo() requires References.observedPoint(...)");
+                errors.add("observedPoints() faceTo() requires References.selectedTargetPoint(...)");
             }
         }
         if (!errors.isEmpty()) {

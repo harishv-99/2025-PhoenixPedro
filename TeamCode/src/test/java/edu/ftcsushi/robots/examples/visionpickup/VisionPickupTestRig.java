@@ -19,6 +19,7 @@ import edu.ftcsushi.fw.sensing.observation.ObservationSources;
 import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
+import edu.ftcsushi.fw.sensing.observation.TargetSelectionPolicies;
 import edu.ftcsushi.fw.sensing.observation.TargetSelections;
 import edu.ftcsushi.fw.spatial.AxisAlignedBoxRegion2d;
 import edu.ftcsushi.fw.spatial.RobotFrameRectangle2d;
@@ -56,9 +57,9 @@ final class VisionPickupTestRig {
         publishPose(pose, 1.0);
         publishFrame(pose, fieldTargets);
         feedback = VisionPickup.CaptureFeedback.observed(false, clock().nowTimestamp());
-        selected = TargetSelections.from(ObservationSources.inField(
+        selected = TargetSelections.fromVisibleObjects(ObservationSources.inField(
                 Source.of(clock -> raw), history.lookupSource()))
-                .freshWithinSec(selectorMaxAgeSec).nearestToRobot();
+                .freshWithinSec(selectorMaxAgeSec).choose(TargetSelectionPolicies.nearestToRobot());
         pickup = new VisionPickup(config, Source.of(clock -> {
             if (selectionHook != null) selectionHook.run();
             return selectionOverride == null ? selected.get(clock) : selectionOverride;

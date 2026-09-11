@@ -683,8 +683,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 .among(ids)
                 .freshWithinSec(aprilTags.maxDetectionAgeSec)
                 .choose(TagSelectionPolicies.closestRange())
-                .continuous()
-                .build();
+                .continuous();
 
         AprilTagPoseEstimator.Config cfg = aprilTags.toAprilTagPoseEstimatorConfig();
 

@@ -1,7 +1,5 @@
 package edu.ftcsushi.fw.spatial;
 
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
-
 /**
  * Per-lane result from one {@link SpatialQuery} sample.
  *
@@ -10,18 +8,20 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
  */
 public final class SpatialLaneResult {
 
-    private static final TagSelectionResult NO_SELECTION =
-            TagSelectionResult.none();
+    private static final ReferenceSelectionResult NO_SELECTION =
+            ReferenceSelectionResult.none();
 
     public final TranslationSolution translation;
     public final FacingSolution facing;
-    public final TagSelectionResult translationSelection;
-    public final TagSelectionResult facingSelection;
+    /** Exact target selection provenance, even when the translation solve is unavailable. */
+    public final ReferenceSelectionResult translationSelection;
+    /** Exact target selection provenance, independent of the facing solve's evidence authority. */
+    public final ReferenceSelectionResult facingSelection;
 
     private SpatialLaneResult(TranslationSolution translation,
                               FacingSolution facing,
-                              TagSelectionResult translationSelection,
-                              TagSelectionResult facingSelection) {
+                              ReferenceSelectionResult translationSelection,
+                              ReferenceSelectionResult facingSelection) {
         this.translation = translation;
         this.facing = facing;
         this.translationSelection = translationSelection != null ? translationSelection : NO_SELECTION;
@@ -35,11 +35,15 @@ public final class SpatialLaneResult {
         return new SpatialLaneResult(null, null, NO_SELECTION, NO_SELECTION);
     }
 
-    /** Creates a lane result from solved channel outputs and selection snapshots. */
+    /**
+     * Creates a lane result from solved channel outputs and selection snapshots.
+     * A null selection becomes {@link ReferenceSelectionResult#none()}; a retained domain result
+     * is not discarded merely because its corresponding solution is null.
+     */
     public static SpatialLaneResult of(TranslationSolution translation,
                                        FacingSolution facing,
-                                       TagSelectionResult translationSelection,
-                                       TagSelectionResult facingSelection) {
+                                       ReferenceSelectionResult translationSelection,
+                                       ReferenceSelectionResult facingSelection) {
         return new SpatialLaneResult(translation, facing, translationSelection, facingSelection);
     }
 

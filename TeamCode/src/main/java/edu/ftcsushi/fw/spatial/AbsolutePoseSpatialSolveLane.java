@@ -149,8 +149,8 @@ final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
         return SpatialLaneResult.of(
                 SpatialQuerySupport.targetEvidence(translation, request.translationTarget, request.clock),
                 SpatialQuerySupport.targetEvidence(facing, request.facingTarget, request.clock),
-                SpatialQuerySupport.translationSelectionSnapshot(request.translationTarget, request.clock, null, Double.POSITIVE_INFINITY),
-                SpatialQuerySupport.facingSelectionSnapshot(request.facingTarget, request.clock, null, Double.POSITIVE_INFINITY)
+                SpatialQuerySupport.translationSelectionSnapshot(request.translationTarget, request.clock),
+                SpatialQuerySupport.facingSelectionSnapshot(request.facingTarget, request.clock)
         );
     }
 

@@ -22,11 +22,11 @@ public final class TargetSelectionsTest {
     @Test public void nearestRobotAndControlOriginExpressDifferentDistances() {
         ManualLoopClock time = new ManualLoopClock();
         TargetObservations2d frame = frame(time, 2, 0, 10, 0);
-        TargetSelections.PolicyStep policies = TargetSelections.from(Source.constant(frame)).freshWithinSec(0.2);
-        assertEquals(2, policies.nearestToRobot().get(time.clock()).observation().forwardInches, EPS);
-        assertEquals(10, policies.nearestToControlFrame(new Pose2d(9, 0, 1))
+        TargetSelections.PolicyStep policies = TargetSelections.fromVisibleObjects(Source.constant(frame)).freshWithinSec(0.2);
+        assertEquals(2, policies.choose(TargetSelectionPolicies.nearestToRobot()).get(time.clock()).observation().forwardInches, EPS);
+        assertEquals(10, policies.choose(TargetSelectionPolicies.nearestToControlFrame(new Pose2d(9, 0, 1)))
                 .get(time.clock()).observation().forwardInches, EPS);
-        assertEquals(-1, policies.nearestToRobot().get(time.clock()).observation().targetId);
+        assertEquals(-1, policies.choose(TargetSelectionPolicies.nearestToRobot()).get(time.clock()).observation().targetId);
     }
 
     @Test public void geometricTiesDoNotDependOnListOrderOrAssignIds() {
@@ -54,8 +54,8 @@ public final class TargetSelectionsTest {
             @Override public double getAsDouble(LoopClock clock) { reads.incrementAndGet(); return Math.PI / 2; }
             @Override public void reset() { resets.incrementAndGet(); }
         };
-        Source<TargetSelectionResult> selected = TargetSelections.from(source).freshWithinSec(0.2)
-                .nearestBearingRad(bearing);
+        TargetSelectionSource selected = TargetSelections.fromVisibleObjects(source).freshWithinSec(0.2)
+                .choose(TargetSelectionPolicies.nearestBearingRad(bearing));
         TargetSelectionResult first = selected.get(time.clock());
         assertSame(first, selected.get(time.clock()));
         assertEquals(1, reads.get());
@@ -69,8 +69,8 @@ public final class TargetSelectionsTest {
     @Test public void neighborsCountOnlyOtherCandidatesInOneFrame() {
         ManualLoopClock time = new ManualLoopClock();
         TargetObservations2d frame = frame(time, 1, 0, 2, 0, 3, 0, 30, 0);
-        TargetSelectionResult selection = TargetSelections.from(Source.constant(frame)).freshWithinSec(0.2)
-                .mostNeighborsWithinInches(1).get(time.clock());
+        TargetSelectionResult selection = TargetSelections.fromVisibleObjects(Source.constant(frame)).freshWithinSec(0.2)
+                .choose(TargetSelectionPolicies.mostNeighborsWithinInches(1)).get(time.clock());
         assertEquals(2, selection.observation().forwardInches, EPS);
         assertEquals(-2, selection.metricValue(), EPS);
         assertEquals(-1, selection.observation().targetId);
@@ -81,24 +81,24 @@ public final class TargetSelectionsTest {
         f.publish(100, 20, 0);
         TargetObservations2d raw = frame(f.time, 2, 0, 10, 0);
         Source<TargetObservations2d> field = ObservationSources.inField(Source.constant(raw), f.history.lookupSource());
-        TargetSelectionResult selected = TargetSelections.from(field).freshWithinSec(0.2)
-                .nearFieldPoint(111, 20, 1).get(f.time.clock());
+        TargetSelectionResult selected = TargetSelections.fromVisibleObjects(field).freshWithinSec(0.2)
+                .choose(TargetSelectionPolicies.nearFieldPoint(111, 20, 1)).get(f.time.clock());
         assertEquals(110, selected.observation().fieldXInches, EPS);
-        assertFalse(TargetSelections.from(field).freshWithinSec(0.2).nearFieldPoint(111, 20, 0.9)
+        assertFalse(TargetSelections.fromVisibleObjects(field).freshWithinSec(0.2).choose(TargetSelectionPolicies.nearFieldPoint(111, 20, 0.9))
                 .get(f.time.clock()).hasSelection());
-        assertFalse(TargetSelections.from(Source.constant(raw)).freshWithinSec(0.2)
-                .nearFieldPoint(2, 0, 100).get(f.time.clock()).hasSelection());
+        assertFalse(TargetSelections.fromVisibleObjects(Source.constant(raw)).freshWithinSec(0.2)
+                .choose(TargetSelectionPolicies.nearFieldPoint(2, 0, 100)).get(f.time.clock()).hasSelection());
     }
 
     @Test public void customCostExcludesNonfiniteAndExceptionsCanRetrySameCycle() {
         ManualLoopClock time = new ManualLoopClock();
         TargetObservations2d frame = frame(time, 2, 0, 10, 0);
         AtomicInteger calls = new AtomicInteger();
-        Source<TargetSelectionResult> selected = TargetSelections.from(Source.constant(frame)).freshWithinSec(0.2)
-                .lowestCost(point -> {
+        TargetSelectionSource selected = TargetSelections.fromVisibleObjects(Source.constant(frame)).freshWithinSec(0.2)
+                .choose(TargetSelectionPolicies.lowestCost(point -> {
                     if (calls.incrementAndGet() == 1) throw new IllegalStateException("retry");
                     return point.forwardInches == 2 ? Double.NaN : -point.forwardInches;
-                });
+                }));
         try { selected.get(time.clock()); fail("first calculation must fail"); }
         catch (IllegalStateException expected) { }
         TargetSelectionResult result = selected.get(time.clock());
@@ -115,7 +115,7 @@ public final class TargetSelectionsTest {
         assertEquals("observed empty frame", nearest(TargetObservations2d.fromFrame(
                 time.clock().nowTimestamp(), Collections.emptyList())).get(time.clock()).reason());
         TargetObservations2d frame = frame(time, 2, 0);
-        Source<TargetSelectionResult> selection = nearest(frame);
+        TargetSelectionSource selection = nearest(frame);
         assertTrue(selection.get(time.clock()).isUsable(time.clock()));
         time.nextCycle(0.21);
         assertFalse(selection.get(time.clock()).hasSelection());
@@ -139,23 +139,23 @@ public final class TargetSelectionsTest {
     @Test public void malformedConfigurationAndInventedMembershipAreRejected() {
         ManualLoopClock time = new ManualLoopClock();
         TargetObservations2d frame = frame(time, 2, 0);
-        TargetSelections.FreshnessStep fresh = TargetSelections.from(Source.constant(frame));
+        TargetSelections.FreshnessStep fresh = TargetSelections.fromVisibleObjects(Source.constant(frame));
         invalid(() -> fresh.freshWithinSec(-1));
         invalid(() -> fresh.freshWithinSec(Double.NaN));
         invalid(() -> fresh.freshWithinSec(Double.POSITIVE_INFINITY));
         TargetSelections.PolicyStep policies = fresh.freshWithinSec(0.2);
-        invalid(() -> policies.nearFieldPoint(Double.NaN, 0, 1));
-        invalid(() -> policies.nearFieldPoint(0, 0, -1));
-        invalid(() -> policies.mostNeighborsWithinInches(Double.POSITIVE_INFINITY));
-        invalid(() -> policies.nearestToControlFrame(new Pose2d(0, Double.NaN, 0)));
+        invalid(() -> policies.choose(TargetSelectionPolicies.nearFieldPoint(Double.NaN, 0, 1)));
+        invalid(() -> policies.choose(TargetSelectionPolicies.nearFieldPoint(0, 0, -1)));
+        invalid(() -> policies.choose(TargetSelectionPolicies.mostNeighborsWithinInches(Double.POSITIVE_INFINITY)));
+        invalid(() -> policies.choose(TargetSelectionPolicies.nearestToControlFrame(new Pose2d(0, Double.NaN, 0))));
         TargetObservation2d invented = TargetObservation2d.ofRobotRelativePosition(2, 0, Double.NaN, frame.timestamp());
         invalid(() -> TargetSelectionResult.selected(frame, invented, 0.2, 1, "not in frame"));
         invalid(() -> TargetSelectionResult.selected(frame, frame.observations().get(0), 0.2, Double.NaN, "bad cost"));
-        assertFalse(policies.nearestBearingRad(ScalarSource.constant(Double.NaN)).get(time.clock()).hasSelection());
+        assertFalse(policies.choose(TargetSelectionPolicies.nearestBearingRad(ScalarSource.constant(Double.NaN))).get(time.clock()).hasSelection());
     }
 
-    private static Source<TargetSelectionResult> nearest(TargetObservations2d frame) {
-        return TargetSelections.from(Source.constant(frame)).freshWithinSec(0.2).nearestToRobot();
+    private static TargetSelectionSource nearest(TargetObservations2d frame) {
+        return TargetSelections.fromVisibleObjects(Source.constant(frame)).freshWithinSec(0.2).choose(TargetSelectionPolicies.nearestToRobot());
     }
 
     private static TargetObservations2d frame(ManualLoopClock time, double... xy) {

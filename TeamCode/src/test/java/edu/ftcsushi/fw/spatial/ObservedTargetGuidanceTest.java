@@ -20,6 +20,7 @@ import edu.ftcsushi.fw.localization.PoseTrajectoryEstimator;
 import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
+import edu.ftcsushi.fw.sensing.observation.TargetSelectionPolicies;
 import edu.ftcsushi.fw.sensing.observation.TargetSelections;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
@@ -35,7 +36,7 @@ public final class ObservedTargetGuidanceTest {
         ManualLoopClock time = new ManualLoopClock(2.0);
         LoopTimestamp capture = time.clock().nowTimestamp();
         TargetObservation2d ball = TargetObservation2d.ofRobotRelativePosition(18, 4, Double.NaN, capture);
-        ReferencePoint2d point = References.observedPoint(selection(ball));
+        ReferencePoint2d point = References.selectedTargetPoint(selection(ball));
         SpatialControlFrames frames = SpatialControlFrames.robotCenter()
                 .withFacingFrame(new Pose2d(6, 1, 0.2))
                 .withTranslationFrame(new Pose2d(6, 1, 0.2));
@@ -62,7 +63,7 @@ public final class ObservedTargetGuidanceTest {
         ManualLoopClock time = new ManualLoopClock(0.0);
         Trajectory pose = new Trajectory();
         TargetObservation2d ball = fieldObservation(time.clock(), pose, 20, 3);
-        ReferencePoint2d point = References.observedPoint(selection(ball));
+        ReferencePoint2d point = References.selectedTargetPoint(selection(ball));
         DriveGuidanceQuery query = DriveGuidance.plan().faceTo().point(point)
                 .solveWith().absolutePose(pose).doneAbsolutePose().build().query();
         assertTrue(query.get(time.clock()).hasOmegaError);
@@ -78,10 +79,12 @@ public final class ObservedTargetGuidanceTest {
         time.nextCycle(0.05);
         pose.publish(time.clock());
         SpatialQuery query = SpatialQuery.builder()
-                .translateTo(SpatialTargets.point(References.observedPoint(selection(ball))))
+                .translateTo(SpatialTargets.point(References.selectedTargetPoint(selection(ball))))
                 .solveWith(SpatialSolveSet.builder().absolutePose(pose).build()).build();
-        TranslationSolution solution = query.get(time.clock()).laneResult(0).translation;
+        SpatialLaneResult lane = query.get(time.clock()).laneResult(0);
+        TranslationSolution solution = lane.translation;
         assertNotNull(solution);
+        assertSame(ball, lane.translationSelection.observedTarget().observation());
         assertSame(ball.timestamp, solution.targetObservationTimestamp);
         assertSame(pose.estimate.timestamp, solution.robotPoseTimestamp);
         assertSame(ball.timestamp, solution.timestamp);
@@ -153,13 +156,14 @@ public final class ObservedTargetGuidanceTest {
                     .solveWith().observedPoints(DriveGuidanceSpec.LossPolicy.PASS_THROUGH).build();
             fail("A field point requires field-pose evidence");
         } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("observedPoint"));
+            assertTrue(expected.getMessage().contains("selectedTargetPoint"));
         }
     }
 
     private static Source<TargetSelectionResult> selection(TargetObservation2d observation) {
-        return TargetSelections.from(Source.constant(TargetObservations2d.fromFrame(observation.timestamp,
-                Collections.singletonList(observation)))).freshWithinSec(0.2).nearestToRobot();
+        return TargetSelections.fromVisibleObjects(Source.constant(TargetObservations2d.fromFrame(observation.timestamp,
+                Collections.singletonList(observation)))).freshWithinSec(0.2)
+                .choose(TargetSelectionPolicies.nearestToRobot());
     }
 
     private static TargetObservation2d fieldObservation(LoopClock clock, Trajectory pose, double x, double y) {

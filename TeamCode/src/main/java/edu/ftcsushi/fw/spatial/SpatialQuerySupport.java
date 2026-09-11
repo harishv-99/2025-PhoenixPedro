@@ -12,8 +12,8 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 
 final class SpatialQuerySupport {
 
-    static final TagSelectionResult NO_SELECTION =
-            TagSelectionResult.none();
+    static final ReferenceSelectionResult NO_SELECTION =
+            ReferenceSelectionResult.none();
 
     private SpatialQuerySupport() {
         // utility holder
@@ -173,73 +173,65 @@ final class SpatialQuerySupport {
         return detections.forId(clock, id, maxAgeSec);
     }
 
-    static TagSelectionResult pointSelectionSnapshot(ReferencePoint2d ref,
-                                                     LoopClock clock,
-                                                     AprilTagDetections detections,
-                                                     double maxAgeSec) {
+    /** Retains the point's selection authority without substituting a solving camera's evidence. */
+    static ReferenceSelectionResult pointSelectionSnapshot(ReferencePoint2d ref, LoopClock clock) {
         if (ref == null || References.isFieldPoint(ref)) {
             return NO_SELECTION;
         }
         if (References.isFramePoint(ref)) {
-            return frameSelectionSnapshot(References.framePointBaseFrame(ref), clock, detections, maxAgeSec);
+            return frameSelectionSnapshot(References.framePointBaseFrame(ref), clock);
+        }
+        if (ref instanceof References.ObservedPointRef) {
+            return ReferenceSelectionResult.observedTarget(((References.ObservedPointRef) ref).get(clock));
         }
         if (ref instanceof References.TagPointRef) {
             References.TagPointRef tp = (References.TagPointRef) ref;
-            return TagSelectionResult.forTagId(tp.tagId);
+            return ReferenceSelectionResult.aprilTag(TagSelectionResult.forTagId(tp.tagId));
         }
         if (ref instanceof References.SelectedTagPointRef) {
             TagSelectionResult sel = ((References.SelectedTagPointRef) ref).selection.get(clock);
-            return sel != null ? sel : NO_SELECTION;
+            return sel != null ? ReferenceSelectionResult.aprilTag(sel) : NO_SELECTION;
         }
         return NO_SELECTION;
     }
 
-    static TagSelectionResult frameSelectionSnapshot(ReferenceFrame2d ref,
-                                                     LoopClock clock,
-                                                     AprilTagDetections detections,
-                                                     double maxAgeSec) {
+    /** Retains selected-tag or computed-approach provenance, including unavailable domain results. */
+    static ReferenceSelectionResult frameSelectionSnapshot(ReferenceFrame2d ref, LoopClock clock) {
         if (ref == null || References.isFieldFrame(ref)) {
             return NO_SELECTION;
         }
+        if (ref instanceof References.ApproachFrameRef) {
+            return ReferenceSelectionResult.approach(((References.ApproachFrameRef) ref).get(clock));
+        }
         if (ref instanceof References.TagFrameRef) {
             References.TagFrameRef tf = (References.TagFrameRef) ref;
-            return TagSelectionResult.forTagId(tf.tagId);
+            return ReferenceSelectionResult.aprilTag(TagSelectionResult.forTagId(tf.tagId));
         }
         if (ref instanceof References.SelectedTagFrameRef) {
             TagSelectionResult sel = ((References.SelectedTagFrameRef) ref).selection.get(clock);
-            return sel != null ? sel : NO_SELECTION;
+            return sel != null ? ReferenceSelectionResult.aprilTag(sel) : NO_SELECTION;
         }
         return NO_SELECTION;
     }
 
-    static TagSelectionResult translationSelectionSnapshot(TranslationTarget2d target,
-                                                           LoopClock clock,
-                                                           AprilTagDetections detections,
-                                                           double maxAgeSec) {
+    /** Extracts selection provenance independently of whether translation geometry was solved. */
+    static ReferenceSelectionResult translationSelectionSnapshot(TranslationTarget2d target, LoopClock clock) {
         if (!(target instanceof SpatialTargets.ReferencePointTarget)) {
             return NO_SELECTION;
         }
         return pointSelectionSnapshot(((SpatialTargets.ReferencePointTarget) target).reference,
-                clock,
-                detections,
-                maxAgeSec);
+                clock);
     }
 
-    static TagSelectionResult facingSelectionSnapshot(FacingTarget2d target,
-                                                   LoopClock clock,
-                                                   AprilTagDetections detections,
-                                                   double maxAgeSec) {
+    /** Extracts point/frame selection provenance independently of the facing solution. */
+    static ReferenceSelectionResult facingSelectionSnapshot(FacingTarget2d target, LoopClock clock) {
         if (target instanceof SpatialTargets.ReferencePointTarget) {
             return pointSelectionSnapshot(((SpatialTargets.ReferencePointTarget) target).reference,
-                    clock,
-                    detections,
-                    maxAgeSec);
+                    clock);
         }
         if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
             return frameSelectionSnapshot(((SpatialTargets.ReferenceFrameHeadingTarget) target).reference,
-                    clock,
-                    detections,
-                    maxAgeSec);
+                    clock);
         }
         return NO_SELECTION;
     }
