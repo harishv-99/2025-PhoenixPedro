@@ -97,7 +97,8 @@ public final class AprilTagSpatialSolveLaneBoundaryTest {
         assertEquals(Pose2d.wrapToPi(robotToTagB.headingRad + 0.3), result.facing.facingErrorRad, EPS);
         assertSame(b.frameTimestamp(), result.translation.timestamp);
         assertSame(b.frameTimestamp(), result.facing.timestamp);
-        assertSame(a.frameTimestamp(), result.translationSelection.currentSelectedCandidate.evidenceTimestamp);
+        assertSame(a.frameTimestamp(), result.translationSelection.aprilTag().currentSelectedCandidate.evidenceTimestamp);
+        assertSame(selection.get(time.clock()), result.translationSelection.aprilTag());
     }
 
     @Test public void stricterSolveAgeCannotBorrowFreshnessFromSelectedCameraGeometry() {
@@ -114,7 +115,7 @@ public final class AprilTagSpatialSolveLaneBoundaryTest {
         assertTrue(selection.get(time.clock()).hasFreshSelectedObservation);
         assertNull(result.translation);
         assertNull(result.facing);
-        assertEquals(7, result.translationSelection.selectedTagId);
+        assertEquals(7, result.translationSelection.aprilTag().selectedTagId);
     }
 
     @Test public void poseSelectedIdentityCanGuideAgainstActualSensorWithoutFakeSelectedObservation() {
@@ -127,7 +128,7 @@ public final class AprilTagSpatialSolveLaneBoundaryTest {
         TagSelectionSource selection = TagSelections.fromFieldPose(pose,
                 new SimpleTagLayout().addPose(7, new Pose3d(100, 0, 0, 0, 0, 0)), CameraMountConfig.identity())
                 .among(ids(7)).freshWithinSec(0.2).minQuality(0.1)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .choose(TagSelectionPolicies.closestRange()).continuous();
         AprilTagDetections actual = frame(time, tag(7, 15, 3, 0));
         SpatialLaneResult result = SpatialQuery.builder().translateTo(SpatialTargets.point(
                 References.relativeToSelectedTagPoint(selection, 0, 0))).solveWith(SpatialSolveSet.builder()
@@ -166,8 +167,8 @@ public final class AprilTagSpatialSolveLaneBoundaryTest {
         frames[0] = frame(time, tag(8, 0, 20, 0));
         SpatialLaneResult next = mappedQuery.get(time.clock()).laneResult(0);
         SpatialLaneResult nextShared = sharedQuery.get(time.clock()).laneResult(0);
-        assertEquals(8, next.translationSelection.selectedTagId);
-        assertSame(next.translationSelection, next.facingSelection);
+        assertEquals(8, next.translationSelection.aprilTag().selectedTagId);
+        assertSame(next.translationSelection.aprilTag(), next.facingSelection.aprilTag());
         assertEquals(-3, next.translation.robotToTargetPoint.xInches, EPS);
         assertEquals(24, next.translation.robotToTargetPoint.yInches, EPS);
         assertEquals(-0.4, next.facing.facingErrorRad, EPS);
@@ -184,7 +185,7 @@ public final class AprilTagSpatialSolveLaneBoundaryTest {
     private static TagSelectionSource selected(Source<AprilTagDetections> frames, CameraMountConfig mount,
                                                Set<Integer> ids) {
         return TagSelections.fromVisibleTags(frames, mount).among(ids).freshWithinSec(1)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .choose(TagSelectionPolicies.closestRange()).continuous();
     }
 
     private static Set<Integer> ids(Integer... ids) { return new LinkedHashSet<>(Arrays.asList(ids)); }

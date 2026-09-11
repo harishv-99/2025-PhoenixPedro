@@ -566,8 +566,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
                 .among(previewIds)
                 .freshWithinSec(aprilTagMaxAgeSec())
                 .choose(TagSelectionPolicies.closestRange())
-                .continuous()
-                .build();
+                .continuous();
     }
 
     private double aprilTagMaxAgeSec() {

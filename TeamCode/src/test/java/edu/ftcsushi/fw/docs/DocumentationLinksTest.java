@@ -2448,6 +2448,28 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void selectionDocsTeachOneConstructionPathAndSeparateSelectionFromSolving() throws IOException {
+        Path framework = repositoryRoot().resolve("TeamCode/src/main/java/edu/ftcsushi/fw");
+        String vision = readUtf8(framework.resolve("docs/drive-vision/Vision Targets.md"));
+        String spatial = readUtf8(framework.resolve("docs/drive-vision/Spatial Queries.md"));
+        String guidance = readUtf8(framework.resolve("docs/drive-vision/Drive Guidance.md"));
+        assertTrue(vision.contains("TargetSelections.fromVisibleObjects(objects)"));
+        assertTrue(vision.contains(".choose(TargetSelectionPolicies.nearestToRobot())"));
+        assertTrue(vision.contains(".holdWhile(attemptActive)"));
+        assertTrue(vision.contains("anonymous objects do not have a held-identity mode"));
+        assertTrue(spatial.contains("ReferenceSelectionResult") && spatial.contains("OBSERVED_TARGET"));
+        assertTrue(spatial.contains("a choice was made, not that its evidence is still usable"));
+        assertTrue(guidance.contains("without polling the camera again"));
+        for (String guide : Arrays.asList(vision, spatial, guidance)) {
+            assertFalse(guide.contains("TargetSelections.from("));
+            assertFalse(guide.contains("References.observedPoint("));
+            assertFalse(guide.contains(".stickyWhen("));
+            assertFalse(guide.contains(".stickyUntilReset("));
+            assertFalse(guide.contains(".continuous().build("));
+        }
+    }
+
+    @Test
     public void trackerApplicationScanProtectsGuidanceWithoutAbsorbingOtherItemInventories() {
         Pattern syntheticApplicationReference = Pattern.compile("(?i)demobot");
         List<String> openingGuidance = Arrays.asList(

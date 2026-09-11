@@ -23,17 +23,18 @@ import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 
 /**
  * Choose one tag identity from either actual visible tags or known field tags ranked using the
- * authoritative robot pose. The two sources share policies and one sticky-selection engine;
+ * authoritative robot pose. The two sources share policies and one held-selection engine;
  * neither silently falls back to the other. Candidate geometry uses the one supplied camera mount.
  *
  * <p>All live inputs are borrowed: construction never samples them, selection never updates an
  * estimator, and reset never resets sensors, enable signals, estimators, or mount history. A
- * fixed layout is snapshotted when built. Historical mounts are requested only at the accepted
- * evidence timestamp; a null/throwing lookup fails the read, without current-mount substitution.</p>
+ * fixed layout is snapshotted when a terminal lifetime method constructs the source. Historical
+ * mounts are requested only at the accepted evidence timestamp; a null/throwing lookup fails the
+ * read, without current-mount substitution.</p>
  *
  * <p>One successful snapshot commits per clock cycle. Failed reads may retry without partial
  * latch changes. Reentrant reads/reset are errors. Explicit reset and clock-epoch changes clear
- * local selection state. A sticky enable is a sampled lifetime: its owner must make release
+ * local selection state. A hold enable is a sampled lifetime: its owner must make release
  * observable or explicitly reset this selector before starting a new attempt.</p>
  */
 public final class TagSelections {
@@ -111,43 +112,40 @@ public final class TagSelections {
         ModeStep choose(TagSelectionPolicy policy);
     }
 
-    /** Choose continuous identity or a bounded application-owned commitment lifetime. */
+    /** Choose a lifetime and construct an independent selector without sampling live inputs. */
     public interface ModeStep {
-        /** Select the current preview every cycle. */
-        BuildStep continuous();
-        /** Hold a selection while this borrowed enable is true; false releases it. */
-        StickyWhenLossStep stickyWhen(BooleanSource enabled);
-        /** Hold a selection until explicit reset or a clock epoch change. */
-        StickyUntilResetLossStep stickyUntilReset();
-    }
-
-    /** Explicit loss policy for an enabled attempt. */
-    public interface StickyWhenLossStep {
-        /** Retain identity without current geometry until disabled. */
-        BuildStep holdUntilDisabled();
-        /** Allow another choice after an inclusive finite, non-negative loss duration in seconds. */
-        BuildStep reacquireAfterLossSec(double seconds);
-    }
-
-    /** Explicit loss policy for a reset-owned commitment. */
-    public interface StickyUntilResetLossStep {
-        /** Retain identity without current geometry until local reset or clock epoch change. */
-        BuildStep holdUntilReset();
-        /** Allow another choice after an inclusive finite, non-negative loss duration in seconds. */
-        BuildStep reacquireAfterLossSec(double seconds);
-    }
-
-    /** All required questions answered. */
-    public interface BuildStep {
-        /** Build an independent local selector; live dependencies remain borrowed. */
-        TagSelectionSource build();
+        /** Construct a selector that selects the current preview every cycle. */
+        TagSelectionSource continuous();
+        /**
+         * Hold the chosen identity while this borrowed non-null enable is true; false releases it.
+         * Evidence loss retains the identity, not old geometry or continued visibility.
+         * The owner must make release observable or reset the selector before a new attempt.
+         */
+        TagSelectionSource holdWhile(BooleanSource enabled);
+        /**
+         * Hold the chosen identity until local reset or a clock-epoch change, including through
+         * evidence loss. Reset never resets borrowed inputs.
+         */
+        TagSelectionSource holdUntilReset();
+        /**
+         * Hold while the borrowed non-null enable is true, permitting another choice after the
+         * selected identity has lacked
+         * usable evidence for an inclusive finite, non-negative duration in seconds. False releases
+         * the identity. Zero permits replacement on the first sample that observes the loss.
+         */
+        TagSelectionSource holdWhileReacquiringAfterLossSec(BooleanSource enabled, double seconds);
+        /**
+         * Hold until local reset or a clock-epoch change, permitting another choice after an
+         * inclusive finite, non-negative loss duration in seconds. Zero permits replacement on
+         * the first sample that observes the loss; retained intent never manufactures geometry.
+         */
+        TagSelectionSource holdUntilResetReacquiringAfterLossSec(double seconds);
     }
 
     private enum Mode { CONTINUOUS, STICKY_WHEN, STICKY_UNTIL_RESET }
 
-    /** Shared configuration and sticky stages; source-specific required stages remain distinct. */
-    private static final class Builder implements PolicyStep, ModeStep, StickyWhenLossStep,
-            StickyUntilResetLossStep, BuildStep {
+    /** Shared configuration; source-specific evidence and terminal lifetime answers stay explicit. */
+    private static final class Builder implements PolicyStep, ModeStep {
         private final Source<AprilTagDetections> detections;
         private final AbsolutePoseEstimator pose;
         private final TagLayout layout;
@@ -156,10 +154,6 @@ public final class TagSelections {
         private double maxAgeSec = Double.NaN;
         private double minQuality = Double.NaN;
         private TagSelectionPolicy policy;
-        private Mode mode;
-        private BooleanSource enabled;
-        private double reacquireSec = Double.POSITIVE_INFINITY;
-        private boolean lossChosen;
 
         Builder(Source<AprilTagDetections> detections, AbsolutePoseEstimator pose, TagLayout layout,
                 TimeAwareSource<CameraMountConfig> mount) {
@@ -199,64 +193,43 @@ public final class TagSelections {
             return this;
         }
 
-        @Override public BuildStep continuous() {
-            mode = Mode.CONTINUOUS;
-            enabled = null;
-            lossChosen = true;
-            reacquireSec = Double.POSITIVE_INFINITY;
-            return this;
+        @Override public TagSelectionSource continuous() {
+            return finish(Mode.CONTINUOUS, null, Double.POSITIVE_INFINITY);
         }
 
-        @Override public StickyWhenLossStep stickyWhen(BooleanSource enabled) {
-            mode = Mode.STICKY_WHEN;
-            this.enabled = Objects.requireNonNull(enabled, "enabled");
-            lossChosen = false;
-            return this;
+        @Override public TagSelectionSource holdWhile(BooleanSource enabled) {
+            return finish(Mode.STICKY_WHEN, Objects.requireNonNull(enabled, "enabled"),
+                    Double.POSITIVE_INFINITY);
         }
 
-        @Override public StickyUntilResetLossStep stickyUntilReset() {
-            mode = Mode.STICKY_UNTIL_RESET;
-            enabled = null;
-            lossChosen = false;
-            return this;
+        @Override public TagSelectionSource holdUntilReset() {
+            return finish(Mode.STICKY_UNTIL_RESET, null, Double.POSITIVE_INFINITY);
         }
 
-        @Override public BuildStep holdUntilDisabled() {
-            if (mode != Mode.STICKY_WHEN) throw new IllegalStateException("choose stickyWhen(...) first");
-            return hold();
-        }
-
-        @Override public BuildStep holdUntilReset() {
-            if (mode != Mode.STICKY_UNTIL_RESET) throw new IllegalStateException("choose stickyUntilReset() first");
-            return hold();
-        }
-
-        private BuildStep hold() {
-            lossChosen = true;
-            reacquireSec = Double.POSITIVE_INFINITY;
-            return this;
-        }
-
-        @Override public BuildStep reacquireAfterLossSec(double seconds) {
-            if (mode != Mode.STICKY_WHEN && mode != Mode.STICKY_UNTIL_RESET) {
-                throw new IllegalStateException("choose a sticky mode before reacquireAfterLossSec(...)");
-            }
+        @Override public TagSelectionSource holdWhileReacquiringAfterLossSec(BooleanSource enabled,
+                                                                           double seconds) {
+            Objects.requireNonNull(enabled, "enabled");
             requireDuration(seconds, "reacquireAfterLossSec");
-            reacquireSec = seconds;
-            lossChosen = true;
-            return this;
+            return finish(Mode.STICKY_WHEN, enabled, seconds);
         }
 
-        @Override public TagSelectionSource build() {
-            if (ids == null || !Double.isFinite(maxAgeSec) || policy == null || mode == null || !lossChosen
+        @Override public TagSelectionSource holdUntilResetReacquiringAfterLossSec(double seconds) {
+            requireDuration(seconds, "reacquireAfterLossSec");
+            return finish(Mode.STICKY_UNTIL_RESET, null, seconds);
+        }
+
+        /** Snapshot fixed facts and lifetime options without retaining mutable builder state. */
+        private TagSelectionSource finish(Mode mode, BooleanSource enabled, double reacquireSec) {
+            if (ids == null || !Double.isFinite(maxAgeSec) || policy == null
                     || (pose != null && !Double.isFinite(minQuality))) {
-                throw new IllegalStateException("answer candidate IDs, freshness, pose quality, policy, and mode before build()");
+                throw new IllegalStateException("answer candidate IDs, freshness, pose quality, and policy"
+                        + " before choosing a selection lifetime");
             }
             TagLayout fixedLayout = layout == null ? null : TagLayouts.snapshot(layout);
             if (fixedLayout != null) {
                 for (Integer id : ids) fixedLayout.requireFieldToTagPose(id);
             }
-            return new BuiltSelectionSource(this, fixedLayout);
+            return new BuiltSelectionSource(this, fixedLayout, mode, enabled, reacquireSec);
         }
     }
 
@@ -285,7 +258,8 @@ public final class TagSelections {
         private State state = new State();
         private boolean operationInProgress;
 
-        BuiltSelectionSource(Builder builder, TagLayout layout) {
+        BuiltSelectionSource(Builder builder, TagLayout layout, Mode mode,
+                             BooleanSource enabled, double reacquireSec) {
             detections = builder.detections;
             pose = builder.pose;
             this.layout = layout;
@@ -294,9 +268,9 @@ public final class TagSelections {
             maxAgeSec = builder.maxAgeSec;
             minQuality = builder.minQuality;
             policy = builder.policy;
-            mode = builder.mode;
-            enabled = builder.enabled;
-            reacquireSec = builder.reacquireSec;
+            this.mode = mode;
+            this.enabled = enabled;
+            this.reacquireSec = reacquireSec;
         }
 
         @Override public Set<Integer> candidateIds() { return ids; }

@@ -42,7 +42,7 @@ public final class ObservationSourcesTest {
                     lookups.incrementAndGet();
                     return mount;
                 }).among(Collections.singleton(7)).freshWithinSec(0.2)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .choose(TagSelectionPolicies.closestRange()).continuous();
         Source<TargetObservation2d> observed = ObservationSources.aprilTag(selection);
         time.nextCycle(0.1);
         Pose3d expected = mount.robotToCameraPose().then(frame.observations.get(0).cameraToTagPose);
@@ -63,7 +63,7 @@ public final class ObservationSourcesTest {
                 Collections.singletonList(AprilTagObservation.target(7, new Pose3d(10, 0, 0, 0, 0, 0))))};
         TagSelectionSource selection = TagSelections.fromVisibleTags(clock -> frame[0], CameraMountConfig.identity())
                 .among(Collections.singleton(7)).freshWithinSec(0.2).choose(TagSelectionPolicies.closestRange())
-                .stickyWhen(BooleanSource.constant(true)).holdUntilDisabled().build();
+                .holdWhile(BooleanSource.constant(true));
         Source<TargetObservation2d> projected = ObservationSources.aprilTag(selection);
         assertTrue(projected.get(time.clock()).hasPosition());
         time.nextCycle(0.02);
@@ -81,7 +81,7 @@ public final class ObservationSourcesTest {
         TagSelectionSource selection = TagSelections.fromFieldPose(f.estimator,
                 new SimpleTagLayout().addPose(7, new Pose3d(30, 2, 10, 0, 0, 0)), CameraMountConfig.identity())
                 .among(Collections.singleton(7)).freshWithinSec(0.2).minQuality(0.1)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .choose(TagSelectionPolicies.closestRange()).continuous();
         assertTrue(selection.get(f.time.clock()).hasSelection);
         assertNotNull(selection.get(f.time.clock()).currentSelectedCandidate);
         assertFalse(ObservationSources.aprilTag(selection).get(f.time.clock()).hasPosition());

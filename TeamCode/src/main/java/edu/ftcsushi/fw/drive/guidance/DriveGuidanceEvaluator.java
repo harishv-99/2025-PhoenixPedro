@@ -6,7 +6,7 @@ import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.localization.PoseEstimate;
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcsushi.fw.spatial.ReferenceSelectionResult;
 import edu.ftcsushi.fw.spatial.FacingSolution;
 import edu.ftcsushi.fw.spatial.SpatialLaneResult;
 import edu.ftcsushi.fw.spatial.SpatialQuery;
@@ -27,8 +27,8 @@ import edu.ftcsushi.fw.spatial.TranslationSolution;
  */
 final class DriveGuidanceEvaluator {
 
-    private static final TagSelectionResult NO_SELECTION =
-            TagSelectionResult.none();
+    private static final ReferenceSelectionResult NO_SELECTION =
+            ReferenceSelectionResult.none();
 
     private final DriveGuidanceSpec spec;
     private final SpatialQuery spatialQuery;
@@ -90,7 +90,7 @@ final class DriveGuidanceEvaluator {
         SpatialLaneResult lane = laneResult(sample, 0);
 
         TranslationSolve translation;
-        TagSelectionResult translationSelection;
+        ReferenceSelectionResult translationSelection;
         if (spec.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint) {
             translation = solveRobotRelativeTranslation(clock, cfg, sample);
             translationSelection = NO_SELECTION;
@@ -268,8 +268,8 @@ final class DriveGuidanceEvaluator {
         final double omegaErrorRad;
         final boolean hasRangeInches;
         final double rangeInches;
-        final TagSelectionResult translationSelection;
-        final TagSelectionResult facingSelection;
+        final ReferenceSelectionResult translationSelection;
+        final ReferenceSelectionResult facingSelection;
 
         Solution(boolean valid,
                  boolean canTranslate,
@@ -279,8 +279,8 @@ final class DriveGuidanceEvaluator {
                  double omegaErrorRad,
                  boolean hasRangeInches,
                  double rangeInches,
-                 TagSelectionResult translationSelection,
-                 TagSelectionResult facingSelection) {
+                 ReferenceSelectionResult translationSelection,
+                 ReferenceSelectionResult facingSelection) {
             this.valid = valid;
             this.canTranslate = canTranslate;
             this.canOmega = canOmega;

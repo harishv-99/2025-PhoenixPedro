@@ -299,8 +299,10 @@ among tags, share one completed `TagSelectionSource`:
   an already-published robot pose; its stages additionally require `minQuality(...)`. It does not
   claim that any tag was seen.
 
-Both paths then choose a policy and either continuous selection or an explicitly bounded sticky
-lifetime. Policies see one immutable list of candidates with camera-relative and robot-relative
+Both paths then answer `choose(policy)` and finish with `continuous()` or an explicit held-selection
+lifetime such as `holdWhile(attemptActive)`. Holding keeps the selected ID for that attempt even
+when another tag would win now; it does not keep missing geometry usable. The lifetime answer
+returns the source directly. Policies see one immutable list of candidates with camera-relative and robot-relative
 geometry. The observed path retains the actual observation; the field-pose path retains pose
 evidence instead, without fabricating a camera frame. Selection never updates localization.
 

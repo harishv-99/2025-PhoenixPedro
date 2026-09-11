@@ -56,7 +56,7 @@ public final class TagSelectionEvidenceTest {
         TagSelectionResult inferred = TagSelections.fromFieldPose(pose,
                 new SimpleTagLayout().addPose(7, fieldToTag), mount)
                 .among(ids(7)).freshWithinSec(0.2).minQuality(0.5)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build().get(time.clock());
+                .choose(TagSelectionPolicies.closestRange()).continuous().get(time.clock());
         assertEquals(7, inferred.selectedTagId);
         assertPose(cameraToTag, inferred.currentSelectedCandidate.cameraToTagPose);
         assertPose(observed.currentSelectedCandidate.robotToTagPose,
@@ -82,7 +82,7 @@ public final class TagSelectionEvidenceTest {
         assertFalse(empty.hasSelection);
         TagSelectionResult unknown = TagSelections.fromVisibleTags(Source.constant(AprilTagDetections.none()),
                 CameraMountConfig.identity()).among(ids(7)).freshWithinSec(0.2)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build().get(time.clock());
+                .choose(TagSelectionPolicies.closestRange()).continuous().get(time.clock());
         assertFalse(unknown.visibilityTimestamp.isAvailable());
     }
 
@@ -91,7 +91,7 @@ public final class TagSelectionEvidenceTest {
         AprilTagDetections[] frames = {frame(time, tag(7, 30, 1), tag(8, 30, 10))};
         TagSelectionSource selection = TagSelections.fromVisibleTags(clock -> frames[0], CameraMountConfig.identity())
                 .among(ids(7, 8)).freshWithinSec(0.2).choose(TagSelectionPolicies.smallestAbsCameraBearing())
-                .stickyWhen(BooleanSource.constant(true)).holdUntilDisabled().build();
+                .holdWhile(BooleanSource.constant(true));
         TagSelectionResult first = selection.get(time.clock());
         TagSelectionChoice decision = first.selectionDecision;
         time.nextCycle(0.02);
@@ -126,7 +126,7 @@ public final class TagSelectionEvidenceTest {
         };
         TagSelectionSource selection = TagSelections.fromVisibleTags(source, CameraMountConfig.identity())
                 .among(ids(7, 8)).freshWithinSec(0.2).choose(TagSelectionPolicies.closestRange())
-                .stickyWhen(gate).holdUntilDisabled().build();
+                .holdWhile(gate);
         assertEquals(7, selection.get(time.clock()).selectedTagId);
         time.nextCycle(0.02);
         enabled[0] = false;
@@ -151,7 +151,7 @@ public final class TagSelectionEvidenceTest {
         ManualLoopClock time = new ManualLoopClock();
         TagSelectionSource selection = TagSelections.fromVisibleTags(Source.constant(frame(time, tag(7, 30, 0))),
                 CameraMountConfig.identity()).among(ids(7)).freshWithinSec(100)
-                .choose(TagSelectionPolicies.closestRange()).stickyUntilReset().holdUntilReset().build();
+                .choose(TagSelectionPolicies.closestRange()).holdUntilReset();
         assertEquals(7, selection.get(time.clock()).selectedTagId);
         time.clock().reset(0);
         TagSelectionResult reset = selection.get(time.clock());
@@ -165,7 +165,7 @@ public final class TagSelectionEvidenceTest {
         AprilTagDetections[] frames = {frame(time, tag(7, 30, 0))};
         TagSelectionSource selection = TagSelections.fromVisibleTags(clock -> frames[0], CameraMountConfig.identity())
                 .among(ids(7, 8)).freshWithinSec(1).choose(TagSelectionPolicies.closestRange())
-                .stickyUntilReset().reacquireAfterLossSec(0.25).build();
+                .holdUntilResetReacquiringAfterLossSec(0.25);
         assertEquals(7, selection.get(time.clock()).selectedTagId);
         time.nextCycle(5);
         frames[0] = frame(time, tag(8, 30, 0));
@@ -213,7 +213,7 @@ public final class TagSelectionEvidenceTest {
                 .addPose(8, new Pose3d(30, -2, 0, 0, 0, 0))
                 .addPose(7, new Pose3d(30, 2, 0, 0, 0, 0)), CameraMountConfig.identity())
                 .among(ids(8, 7)).freshWithinSec(0.2).minQuality(0)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build().get(time.clock()).selectedTagId);
+                .choose(TagSelectionPolicies.closestRange()).continuous().get(time.clock()).selectedTagId);
     }
 
     @Test public void nonfiniteGeometryNeverReachesCustomPolicyAndDuplicateIdUsesFirstOccurrence() {
@@ -280,7 +280,7 @@ public final class TagSelectionEvidenceTest {
             return CameraMountConfig.of(2, 0, 0, 0, 0, 0);
         };
         TagSelectionSource selection = TagSelections.fromVisibleTags(Source.constant(frame), mount)
-                .among(ids(7, 8)).freshWithinSec(0.2).choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .among(ids(7, 8)).freshWithinSec(0.2).choose(TagSelectionPolicies.closestRange()).continuous();
         assertEquals(0, calls[0]);
         time.nextCycle(0.1);
         TagSelectionResult selected = selection.get(time.clock());
@@ -294,7 +294,7 @@ public final class TagSelectionEvidenceTest {
             assertSame(capture, timestamp);
             return CameraMountConfig.identity();
         }).among(ids(7)).freshWithinSec(0.2).minQuality(0)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .choose(TagSelectionPolicies.closestRange()).continuous();
         assertSame(capture, field.get(time.clock()).currentSelectedCandidate.evidenceTimestamp);
     }
 
@@ -308,28 +308,28 @@ public final class TagSelectionEvidenceTest {
                     if (calls[0] == 1) throw failure;
                     if (calls[0] == 2) return null;
                     return CameraMountConfig.identity();
-                }).among(ids(7)).freshWithinSec(0.2).choose(TagSelectionPolicies.closestRange()).continuous().build();
+                }).among(ids(7)).freshWithinSec(0.2).choose(TagSelectionPolicies.closestRange()).continuous();
         assertSame(failure, expect(IllegalStateException.class, () -> selection.get(time.clock())));
         expect(NullPointerException.class, () -> selection.get(time.clock()));
         assertTrue(selection.get(time.clock()).hasSelection);
         assertEquals(3, calls[0]);
     }
 
-    @Test public void layoutAndEligibleIdsAreSnapshotsAndMissingMappedIdFailsAtBuild() {
+    @Test public void layoutAndEligibleIdsAreSnapshotsAndMissingMappedIdFailsAtTerminalFactory() {
         FakePose pose = new FakePose();
         ManualLoopClock time = new ManualLoopClock();
         pose.value = new PoseEstimate(Pose3d.zero(), true, 1, time.clock().nowTimestamp());
         SimpleTagLayout layout = layout();
         Set<Integer> ids = ids(7);
         TagSelectionSource selection = TagSelections.fromFieldPose(pose, layout, CameraMountConfig.identity())
-                .among(ids).freshWithinSec(1).minQuality(0).choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .among(ids).freshWithinSec(1).minQuality(0).choose(TagSelectionPolicies.closestRange()).continuous();
         ids.add(8);
         layout.addPose(7, new Pose3d(100, 0, 0, 0, 0, 0));
         assertEquals(Collections.singleton(7), selection.candidateIds());
         assertEquals(30, selection.get(time.clock()).currentSelectedCandidate.cameraRangeInches(), EPS);
         expect(IllegalArgumentException.class, () -> TagSelections.fromFieldPose(pose, layout,
                 CameraMountConfig.identity()).among(ids(8)).freshWithinSec(1).minQuality(0)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build());
+                .choose(TagSelectionPolicies.closestRange()).continuous());
     }
 
     @Test public void configurationRejectsInvalidBoundsAndAuthoredIdentityContainsNoEvidence() {
@@ -355,13 +355,13 @@ public final class TagSelectionEvidenceTest {
     private static TagSelectionSource visible(ManualLoopClock time, CameraMountConfig mount,
                                              TagSelectionPolicy policy, AprilTagObservation... tags) {
         return TagSelections.fromVisibleTags(Source.constant(frame(time, tags)), mount)
-                .among(ids(7, 8)).freshWithinSec(0.2).choose(policy).continuous().build();
+                .among(ids(7, 8)).freshWithinSec(0.2).choose(policy).continuous();
     }
 
     private static TagSelectionSource field(FakePose pose, double age, double quality) {
         return TagSelections.fromFieldPose(pose, layout(), CameraMountConfig.identity())
                 .among(ids(7)).freshWithinSec(age).minQuality(quality)
-                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+                .choose(TagSelectionPolicies.closestRange()).continuous();
     }
 
     private static SimpleTagLayout layout() {

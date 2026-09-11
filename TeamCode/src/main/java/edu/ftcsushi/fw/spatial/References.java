@@ -149,8 +149,12 @@ public final class References {
      * Borrows a geometric selection as a live target point. Reads preserve its observation age;
      * localization cannot turn an expired sighting into a fixed field fact. The source owns any
      * selection state and is never reset by a query or guidance consumer.
+     *
+     * <p>The same reference supports direct robot-at-capture solving or field-pose solving when
+     * its selected observation has capture-time field projection. Spatial results retain the
+     * exact selection separately from solved geometry through {@link ReferenceSelectionResult}.</p>
      */
-    public static ReferencePoint2d observedPoint(Source<TargetSelectionResult> selection) {
+    public static ReferencePoint2d selectedTargetPoint(Source<TargetSelectionResult> selection) {
         return new ObservedPointRef(Objects.requireNonNull(selection, "selection").memoized());
     }
 

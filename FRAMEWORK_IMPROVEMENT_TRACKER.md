@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -282,6 +282,262 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 168 | TASK-08 | Attribute queued submissions and withdrawals | Proposed | Compare retained Tasks and owner-local attempt state with a narrow queue result that also observes withdrawal before start and composes truthful outcomes. |
 | 169 | DOC-22 | Align capability guidance with outcome-aware sequences | Proposed | Correct the confirmed stale sequence-success explanation; teach deliberate completion continuation separately from ordinary success gating, without adding robot guards or changing Task behavior. |
 | 170 | DRIVE-05 | Unified target selection and guidance/localization boundary | Done | Explicit field-pose/direct-tag guidance, parallel observed/pose-based tag selection, caller migration, and independent example implemented. Automated checks pass; user approved the reviewed diff and authorized publication to master on 2026-09-10. |
+| 171 | VISION-06 | Parallel reference selection and evidence | Done | Reviewed compact selection factories, common spatial/guidance provenance, migrated callers/docs, and 2,990 passing tests; user authorized the exact branch/repository/master publication on 2026-09-11. |
+| 172 | DRIVE-06 | Shared point approach and verified camera-only pickup | Proposed | Share tool-relative point approaches; require fresh close alignment before a bounded camera-unseen final intake, with independent capture confirmation. |
+| 173 | SPATIAL-04 | Whole-motion static travel bounds | Proposed | Check complete fixed-heading translations and conservative in-place turns against allowed/forbidden rectangles; no collision-safety claim. |
+| 174 | PEDRO-03 | Managed bounded-motion execution and power limits | Proposed | Execute the exact checked geometry, retain reviewed power limits, and guard before the recurring follower heartbeat. |
+| 175 | VISION-07 | Capture-coherent useful-view coverage | Proposed | Publish optional camera-configuration-coherent footprints and credit whole cells from distinct accepted captures, not presumed detection completeness. |
+| 176 | AUTO-02 | Bounded automatic stop-and-look survey | Proposed | Generate finite viewpoints and checked connections; settle, observe, and report honest partial or complete modeled coverage. |
+| 177 | AUTO-03 | Capacity-aware bounded region collection | Proposed | Choose singles or short sweeps from recent evidence; coordinate capture progress, retry suppression, and finite collection limits. |
+
+### Approved bounded vision collection program (2026-09-11)
+
+The user approved the detailed plan with **"Implement the plan."** This supersedes the pending
+vision portion of the older Cuttlefish/Worlds order, not its completed work or unrelated deferrals.
+Implement one item per branch, Android Studio review, and destination-specific publication cycle:
+
+`VISION-06` -> `VISION-04` -> `DRIVE-06` -> `SPATIAL-03` -> `SPATIAL-04` -> `PEDRO-03` ->
+`VISION-07` -> `AUTO-02` -> `AUTO-03` -> `EXAMPLE-13`, then resume `CTRL-03`, `SENSOR-02`,
+`LOCALIZATION-05`, and the expanded `AUDIT-02` closure. Order is not a dependency between every
+adjacent pair. SOURCE-03, VISION-05, DRIVE-04, and other recorded deferrals remain unchanged.
+The current branch implements VISION-06 only; later records retain their own decision/evidence gates.
+
+**Approved behavior and boundaries:**
+
+- Keep tags and objects parallel at selection -> reference/approach -> spatial query, guidance,
+  or fresh Task. Preserve real tag IDs versus anonymous observations and memory-entry keys.
+- Field-localized operation may use fixed tag layout or eligible recent object locations while
+  hidden. Camera-only operation uses live ranking; it does not associate objects across images.
+- Authorize camera-only final intake from fresh, unique, close alignment while still visible,
+  never merely because the target disappeared. Final motion is time/command bounded without a
+  fictitious distance guarantee. Require independent capture evidence before repetition.
+- Localized regional survey moves, settles, then looks. It may turn and translate through checked
+  finite connections. Partial survey explicitly permits collecting eligible observed evidence;
+  cancellation, invalid localization, lifecycle failure, and the overall hard deadline do not.
+- Room for one means the closest feasible single pickup. More room permits short productive
+  clusters/sweeps. Continuous rows require localization; camera-only repeats fresh single pickups.
+- No velocity/appearance/SORT tracking, interception, automatic absence inference, dynamic robot
+  avoidance, arbitrary obstacle navigation, moving-camera support, or guaranteed capture/clearance.
+- Keep one camera owner, coordinated localization/field transform, LoopClock, and final drive writer.
+  Memory and coverage preserve original capture times; fresh pose does not refresh a sighting.
+- Collection stops where it finishes. Return/scoring/parking remains explicit enclosing Auto
+  policy. An optional return reservation constrains geometry/time admission without secretly
+  executing return or authorizing motion after cancellation.
+
+**Deferred implementation contracts within this approved sequence:**
+
+- VISION-04 adds bounded capture-time field memory after VISION-06. Refresh only unambiguous
+  one-to-one proximity matches; ambiguous matches do not refresh or merge. Keep per-entry original
+  time/provenance, deterministic oldest eviction, frame deduplication, and owner/generation keys.
+  Clock, coordinate, camera, and incompatible trajectory resets invalidate evidence. An empty
+  image never proves absence. Memory does not disguise multi-frame records as one fresh frame.
+- SPATIAL-03 supplies pure fixed-heading intake-corridor encounter geometry: tool offset once,
+  explicit width/end bounds, finite and degenerate cases, and no capture or robot-clearance claim.
+  AUTO-03, rather than example-local loops, owns reusable bounded candidate enumeration and ranking.
+- EXAMPLE-13 becomes the complete independent consumer of these framework owners. Robot code
+  supplies geometry, camera/localization, intake feedback, constraints, and intent rather than
+  scan/candidate loops. Compare all affected edu.ftcsushi.robots code, not only the short OpMode.
+  Keep simple examples simple; synchronize/retire superseded examples without production-application dependency.
+- AUDIT-02 additionally requires terminal dispositions for VISION-06, DRIVE-06, SPATIAL-04,
+  PEDRO-03, VISION-07, AUTO-02, and AUTO-03. Preserve its pinned comparison sources, original
+  capability classification, and explicit exclusion of predictive/physical-identity tracking.
+
+### VISION-06 - Parallel reference selection and evidence
+
+- **Status / approval:** Done on `codex/vision-06-selection-evidence`, based on fetched
+  `origin/master` `0d6c642`. The user's 2026-09-11 implementation request approves this public API
+  design. No commit, push, PR, or merge is authorized by that implementation request.
+- **Confirmed behavior:** TagSelections repeats lifetime answers through sticky/loss/build stages.
+  TargetSelections directly constructs continuous frame selection through six inline policy
+  methods. SpatialLaneResult, selected-lane wrappers, and DriveGuidanceStatus expose only
+  TagSelectionResult; observed points and approaches therefore lose comparable selection metadata
+  despite already using the same spatial/guidance geometry.
+- **Caller/construction audit:** TagSelections has four source factories (visible/field pose,
+  fixed/historical mount), staged IDs/age/pose quality/policy, then redundant terminal stages.
+  TagSelectionResult authored identity and TagSelectionSources custom-source validation remain
+  meaningful advanced value/source seams. TargetSelections has one source/age facade and six
+  terminal policies, backed by memoized source evaluation; selected/none results retain actual
+  frames. References has fixed and selected tag points/frames, observed points, computed approaches,
+  and frame-point projections; each describes distinct evidence/geometry. SpatialQuery and
+  SpatialQuerySpec distinguish an ordinary runtime from a reusable spec. Guidance plan-owned
+  overlay/query/Task factories remain distinct consumers, not duplicate construction layers.
+- **Affected callers:** tag factories in AprilTagLocalizationTester and
+  PinpointAprilTagCorrectedLocalizationTester; tag selection/evidence/transactional/timestamp,
+  ObservationSources, and spatial-boundary tests. Object factories in TargetSelectionsTest,
+  ObservedTargetGuidanceTest and visionpickup test fixtures/scenarios; References.observedPoint
+  in VisionPickup and framework tests/guides. Spatial/guidance internals and selected-lane wrappers
+  carry tag-specific metadata; no production robot consumes those metadata fields. Inspect and
+  migrate remaining search matches, documentation contracts, and examples in this same change.
+- **Alternatives:** documentation-only leaves the object status gap. Adding object-only sibling
+  fields duplicates consumer structure. A universal target builder or generic usability score
+  conflates held IDs, actual sightings, and committed intent. Keeping legacy construction aliases
+  adds competing ordinary paths. Choose compact source-specific factories and one immutable
+  spatial selection wrapper retaining the exact typed payload, without new confidence or ownership.
+- **Simplicity comparison:** tag code changes from `.choose(policy).stickyWhen(enabled)
+  .holdUntilDisabled().build()` to `.choose(policy).holdWhile(enabled)`; the student chooses
+  lifetime once. Object code becomes `.fromVisibleObjects(objects).freshWithinSec(age)
+  .choose(TargetSelectionPolicies.nearestToRobot())`, with no unnecessary continuous/build answer.
+  Reusable named policies match the tag family while retaining their distinct geometric metrics.
+  A common status kind plus typed payload replaces tag-only fields; no extra camera sampling is
+  required. No universal target-ID string, generic isUsable, or copied mirror status is introduced.
+- **Approved edits:** five terminal tag choices: continuous, holdWhile, holdUntilReset, and explicit
+  holdWhileReacquiringAfterLossSec/holdUntilResetReacquiringAfterLossSec. Remove obsolete stages.
+  Add TargetSelectionSource and TargetSelectionPolicies; migrate all six policies and callers.
+  Rename References.observedPoint to selectedTargetPoint. Add ReferenceSelectionResult with NONE,
+  APRIL_TAG, OBSERVED_TARGET, and APPROACH kinds and exact immutable typed payloads. Carry it
+  through spatial lanes, selected-lane results, evaluator/core, and guidance status. Actual solve
+  evidence remains authoritative and separate from selection/acquisition evidence. No memory,
+  camera footprint, motion, approach builder, pickup state machine, or later-task types are added.
+- **Parameter/layer disposition:** retain Set<Integer>, mount history, reusable policies, offsets,
+  and immutable specs because callers store/share them or they describe independent facts. Remove
+  redundant sticky/loss/build lifetime stages rather than adding counterparts. Object choice
+  returns its source directly; policies are reusable values rather than duplicate inline overloads.
+- **Verification:** regression tests for every terminal spelling and independent retained-stage
+  construction; parity across visible/inferred tags and observed/field-projected objects; exact
+  payload retention for stale/unsolved evidence and committed approaches; distinct solve-camera
+  timestamps; no borrowed resets/polling; transactional same-cycle retry; removed API guards.
+  Run focused then full TeamCode unit tests/Java compilation, strict narrative/Javadoc checks,
+  whitespace and caller searches. Software-only changes require no physical run to prove API
+  semantics; camera accuracy, useful age limits, and motion remain adopting-robot validation.
+- **Implemented / independent review (2026-09-11):** completed the approved construction changes,
+  exact typed selection snapshots, current callers, API Javadocs and optional guides. References
+  retains its borrowed `Source<TargetSelectionResult>` seam so a robot-owned checked snapshot does
+  not need an artificial selector adapter. TargetSelectionPolicy has package-private construction;
+  its six public factory policies and lowestCost extension are the one construction layer.
+  Independent adversarial reviews covered both public construction families, retained-stage
+  isolation, callback/cache/reset behavior, common metadata propagation, and complete caller/docs
+  migration. No blocking findings remained; clarified guidance's selection-provenance wording.
+- **Concept checklist:** Vision Targets teaches a reusable ranking rule beside choose(policy) and
+  the typed source, then explains tag holding beside the terminal lifetime call. Spatial Queries
+  explains the common result's kind and typed payload before distinguishing chosen from solved;
+  Drive Guidance links that explanation and keeps error-presence gates authoritative. The tag
+  localization guide retains observation-versus-inference and ownership; the reference page routes
+  to canonical factories. All remain optional advanced/reference pages after the same prerequisites;
+  no introductory navigation, motion policy, production-application behavior, or new visual changed.
+- **Automated evidence:** focused selection/spatial/guidance/pickup/docs run: 41 suites, 368 tests,
+  zero failures/errors/skips. Full `:TeamCode:testDebugUnitTest` and
+  `:TeamCode:compileDebugJavaWithJavac`: 301 suites, 2,990 tests, zero failures/errors/skips.
+  Strict Zensical narrative build and `:TeamCode:sushiJavadocs` succeeded; combined guide/search/API
+  artifact files exist and are nonempty. New tests cover five tag-construction cases, nine object
+  API/lifecycle cases, seven shared-provenance cases and the documentation contract. Stale API
+  searches leave only intentional removal assertions; diff and new-file whitespace checks pass.
+  Existing Java 8 source/target-on-JDK-21 and SDK deprecation warnings remain. Final checks rerun
+  after tracker/comment closeout. Physical camera accuracy, matching thresholds, and motion are not
+  claimed, and no motion-enabled example or later collection owner is implemented here.
+- **Android Studio review / publication authorization (2026-09-11):** the user approved the reviewed
+  VISION-06 diff, covering compact selection factories, ReferenceSelectionResult and spatial/guidance
+  status, their regression tests, and synchronized optional guides/tracker sequence. The combined
+  authorization explicitly permits committing on `codex/vision-06-selection-evidence`, pushing to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. No on-robot run is required for this software-only API refactor. Publication follows
+  that exact reviewed scope; this approval does not authorize starting VISION-04 or enabling motion.
+
+### DRIVE-06 - Shared point approach and verified camera-only pickup
+
+- **Status:** Proposed; depends on VISION-06. Preserve the approved concept and complete its local
+  caller/lifecycle decision gate before code.
+- Add SpatialApproach2d.facePoint(point, robotToTool, positiveStandOff) directly consumable by
+  spatial query/spec and guidance; retain oriented-frame approaches for authored headings.
+  Expand to tool-relative facing and stand-off translation with the tool offset applied once.
+- GuidedApproach owns stable DriveSource, fresh Task factory, immutable status and cancellation.
+  Guide -> stopped verification using distinct fresh captures -> one time/command-bounded final
+  intake -> finish. Live ranking may change before verification; unique close/aligned evidence
+  authorizes the handoff while visible. Independent fresh capture is required for success/repeat.
+- Borrow guidance/intake/feedback; no camera/localizer heartbeat or hardware ownership. TeleOp uses
+  the existing one final source-driven path. Existing field/wall pickup policy remains separate.
+  Test pre-start/active/terminal cancellation, deadlines from phase entry, freshness, ambiguous
+  handoff, loss before handoff, final occlusion, and false capture prevention.
+
+### SPATIAL-04 - Whole-motion static travel bounds
+
+- **Status:** Proposed; builds on existing spatial values, independently of memory.
+- StaticTravelBounds2d retains one allowed box, finite forbidden boxes, robot rectangle, and
+  explicit clearance/tracking allowances. A turn uses the all-orientation enclosing circle;
+  fixed-heading translation checks the convex hull of the eight endpoint footprint corners.
+  Require strict containment and no forbidden intersection after margins; tangency rejects.
+- Support translate-then-turn and turn-then-translate only. Reject unsupported curves, non-finite
+  and overflowed geometry, invalid margins, and empty usable bounds. Zero-length translation is
+  a stationary footprint check, not an extra drive leg. No wall-contact exception or detour search.
+- Include finite-segment deviation (including overshoot), heading deviation, instantaneous bounds,
+  pose freshness/quality, and coordinate-generation checks for runtime execution. Status describes
+  authored-bounds compliance, never SAFE. Test offset origins, walls/corners, forbidden crossings,
+  reversed/zero motion, rotation envelopes and near-boundary/extreme floating-point cases.
+
+### PEDRO-03 - Managed bounded-motion execution and power limits
+
+- **Status:** Proposed; checked motion depends on SPATIAL-04. Current First Pedro Auto physical
+  gate is blocked because managed routes cannot retain a reviewed globalMaxPower limit.
+- Extend the existing runtime/adapter, not another follower owner. Retain and enforce reviewed
+  limits through start/replacement/cancel. Execute checked BezierLine legs with constant heading
+  and separately checked guidance turns; no smoothing or linear-heading substitution.
+- Revalidate each once-at-start leg before side effects. Share authoritative Sushi predictor/pose
+  coordination and one field transform with projection/checking. Guard after localization and
+  before the recurring follower heartbeat, plus at start. Failure latches the exact attempt,
+  cancels its route, physically stops immediately, and forbids same-cycle restart. Preserve
+  stopped-state heartbeat, vendor-hidden update accounting, and per-start truthful outcomes.
+- Test power retention, exact geometry, ordering, reset/deviation/pose loss, reentry, cancellation,
+  and route failure. Verify the pinned vendor seam without claiming physical stopping. Keep
+  examples disabled until separately reviewed adopting-robot limits and motion evidence exist.
+
+### VISION-07 - Capture-coherent useful-view coverage
+
+- **Status:** Proposed; reuse VISION-03/SPATIAL-02 camera/projection boundaries.
+- Attach optional immutable view context to the existing published object frame: source/config
+  generation, conservative convex robot-frame footprint, height/range and mount/calibration
+  assumptions. Both Webcam and Limelight publish/validate the same contract; explicit reviewed
+  configuration is required when native metadata is insufficient. Never guess from advertised FOV.
+- A bounded coverage ledger credits a whole cell only when all corners lie within the footprint
+  at its actual capture-time pose. Default two distinct post-settle acceptable captures per cell.
+  Processed-empty may count; unavailable/stale/duplicate/overflow cannot. Changed profile/epoch
+  invalidates coverage. Retain per-cell original times; no visibility, absence, or inventory proof.
+- Test offset/rotated footprints, boundary cells, reset/config mismatch, duplicate/empty frames,
+  missing pose history and actual-versus-requested viewing poses; no second camera owner.
+
+### AUTO-02 - Bounded automatic stop-and-look survey
+
+- **Status:** Proposed; depends on SPATIAL-04, VISION-07, and a verified motion edge (PEDRO-03 for
+  the ordinary Pedro example).
+- RegionSurvey generates an 8x8 requested-region grid and current plus 3x3 bounded candidate
+  positions. At each, consider current/start heading and headings toward cell centers adjusted
+  for useful footprint bearing: at most 650 view candidates. Evaluate incrementally with a finite
+  per-cycle work budget, remaining at zero intent while planning; no long startup loop.
+- Filter checked reachable candidates and remaining translation/rotation/time limits. Rank most
+  newly coverable whole cells, least translation, least rotation, stable order. Move via checked
+  primitives -> settle -> observe fresh actual captures; do not continuously scan or infer blur
+  tolerance. Bound view attempts and observed travel as well as elapsed time.
+- Report NONE/PARTIAL/COMPLETE modeled historical coverage and exact stop reason. Exhausted finite
+  candidates do not prove no possible view exists. Partial survey permits AUTO-03 to use eligible
+  observations; user cancel, required-pose loss, exceptions and overall deadline forbid continuing.
+  Test complete/partial/unreachable cases, loop work limits, settling and capture boundaries,
+  offset cameras, motion rejection, and no automatic restart. No detection-completeness claim.
+
+### AUTO-03 - Capacity-aware bounded region collection
+
+- **Status:** Proposed; depends on VISION-04, DRIVE-06, SPATIAL-03/04, AUTO-02 and motion edge.
+- Keep fresh inventory occupancy/capacity distinct from timestamped monotonic confirmed-capture
+  progress. A one-slot switch adapter requires a fresh empty-to-occupied transition; continuously
+  high occupancy or internal inventory transfer is not repeated capture evidence.
+- A pure planner consumes coherent memory/pose/inventory, region and constraints. Bound to 32
+  deterministic seeds, eight neighboring endpoints per seed, 288 total single/sweep candidates,
+  and incremental work. Filter expired/ambiguous/outside/suppressed evidence and inadmissible
+  staging/sweep/optional return geometry/time. One free slot ranks shortest feasible single;
+  multiple slots rank capacity-capped encounter opportunities divided by estimated total time.
+  Deterministic cost/geometry ties; no optimality, distinct-ball-count, or capture guarantee.
+- RegionCollection.collectFrom(region) returns a fresh Task: validate -> survey -> freeze plan ->
+  fresh attempt -> inspect capture and exact motion outcome -> repeat within bounds. Bound survey
+  passes, child attempts, consecutive no-progress and attempts per neighborhood. Spatial local
+  point/corridor suppression survives memory-key churn but never deletes shared evidence.
+- Capture events during a sweep do not identify specific removed entries. Normal partial finish
+  with confirmed captures is SUCCESS with reason; no-capture policy finish is UNKNOWN; already
+  full is successful no-op; hard deadline TIMEOUT; cancellation/required-evidence loss CANCELLED;
+  exceptions propagate after cleanup. Retain partial progress and exact child failures.
+- Return/score/park remains enclosing Auto behavior. Optional return reservation checks cost and
+  geometry only. Test capacity changes, stale/reset feedback, no-progress loops, ambiguous targets,
+  partial survey admission, deadline/cancel/failure precedence, and truthful driver status/pulses.
+
+All items synchronize exact APIs, Javadocs, optional guides, and independent examples. Teach the
+robot problem before new terms; keep introductory navigation compact. Hardware examples remain
+disabled pending adopting-robot camera/footprint/intake/localization/power/clearance/STOP validation.
 
 ### Diagnostic follow-up intake (approved 2026-09-08)
 
@@ -317,9 +573,10 @@ other task priorities and statuses remain unchanged, and CAL-10 remains next.
    `CAL-10` remains the next decision gate; completed robustness work is not reopened.
 2. Run the original `AUDIT-01` with its unchanged frozen repositories, capability matrix, and
    terminal-disposition prerequisites. It closes that earlier program, not this new comparison.
-3. Run `MATH-02` -> `TASK-07` -> `RUNTIME-04` -> `DRIVE-05` -> `VISION-04` -> `SPATIAL-03` -> `EXAMPLE-13` ->
-   `CTRL-03` -> `SENSOR-02` -> `LOCALIZATION-05`, one item per branch and approval cycle.
-4. Run `AUDIT-02` after those nine implementation candidates have reached **Done** (including an
+3. The completed `MATH-02` -> `TASK-07` -> `RUNTIME-04` -> `DRIVE-05` portion stays closed. Follow the
+   **Approved bounded vision collection program (2026-09-11)** above, then `CTRL-03` -> `SENSOR-02`
+   -> `LOCALIZATION-05`, one item per branch and approval cycle.
+4. Run `AUDIT-02` after all implementation candidates in that amended sequence have reached **Done** (including an
    approved, recorded, verified no-change result) or evidence-backed **Deferred** with a concrete
    reactivation trigger. Include the two newly deferred opportunities in its classification, but
    do not wait for unavailable hardware or model evidence.
@@ -34529,12 +34786,17 @@ obtains the skill-required approval before API or major lifecycle changes.
 ### VISION-04 - Bounded recent field-location memory
 
 - **Status:** **Proposed**.
+- **Current approved contract (2026-09-11):** the approved bounded vision collection program above
+  supplies the current design and places VISION-06 first. Its one-to-one ambiguity handling,
+  generation-scoped keys, eviction and reset requirements amend the historical intake below;
+  complete this item's local decision gate before implementation. No physical thresholds are approved.
 - **User-approved narrowing (2026-09-08):** retain recently observed field locations for a resting
   ball or cluster, including while turning or temporarily outside camera view. Compare subsequent
   observations by location, not appearance or predicted motion. This supersedes both the original
   broader tracker hypothesis and the tentative suggestion to defer the whole item. The user
   authorized updating the backlog to this scope; no API, algorithm details, numerical thresholds,
-  implementation start, or motion-policy change is approved. Other task priorities are unchanged.
+  implementation start, or motion-policy change was approved by that September 8 intake. The
+  September 11 program above now supplies the approved implementation direction and ordering.
 - **Evidence and current callers:** `TargetSelections` chooses from one current frame;
   `TargetObservations2d` already retains an immutable bounded frame with its original timestamp.
   `VisionPickup` commits one resting-target destination, rechecks a fresh frame at staging, and
@@ -34614,7 +34876,8 @@ obtains the skill-required approval before API or major lifecycle changes.
   corridor primitive. Decide supported motion shapes, degenerate paths, boundary inclusion, and
   bounded calculation/approximation semantics from an independent complete consumer. Do not
   introduce a collection optimizer, field occupancy map, generic path language, or Pedro types in
-  core. EXAMPLE-13 owns candidate count, route order, capacity, return destination, and scoring.
+  core. AUTO-03 owns reusable bounded candidate enumeration/ranking and collection lifecycle;
+  EXAMPLE-13 supplies the robot's configuration, region, return/scoring intent, and complete wiring.
 - **Required checks / documentation:** independent offset/width/endpoint fixtures, reversed and
   zero-length motion under the chosen contract, tangential boundaries, duplicate points, rotated
   corridors, field-frame transforms, finite extremes, and near-wall cases that must not imply
@@ -34635,17 +34898,18 @@ obtains the skill-required approval before API or major lifecycle changes.
   routes, and bounded Auto fallback. It does not compare intake coverage and return cost for
   multiple objects. The pinned Cuttlefish and I.C.E. paths supply strategy examples, not a reusable
   optimal planner or a guarantee that Bezier control points are visited.
-- **Bounded scope / leading hypothesis:** extend that maintained example with an optional bounded
-  multi-object policy rather than another beginner robot or framework game planner. Robot-owned
-  code selects an explicit bounded candidate set, evaluates supported corridor coverage and return
-  cost, accounts for remaining capacity/time, and chooses among a small bounded plan set. Preserve
+- **Bounded scope / approved direction (2026-09-11):** extend that maintained example with the
+  completed bounded survey/collection owners from the approved program above, rather than copying
+  their reusable scan, candidate, or retry loops into robot code. Robot-owned configuration supplies
+  the region, capacity evidence, geometry, constraints, and optional return reservation. Preserve
   a coherent observation snapshot, current-pose start-time route construction, truthful follower
   outcomes, independent capture confirmation, and explicit fallback/abort.
 - **Decision gate and simplicity:** compare a small extension with the current band-based,
   one-route collection policy and local strategy alternatives. Use VISION-04/SPATIAL-03 only where
   their completed contracts remove bookkeeping; a deferred prerequisite requires a bounded
-  alternative approved at Gate 1. Keep utility, capacity, target preferences, pursuit permission, wall/corner
-  contact, revalidation, and retry policy in the robot package. No unbounded permutation search,
+  alternative approved at Gate 1. Keep physical settings, target preferences, pursuit permission,
+  and return/scoring policy in the robot package; use AUTO-03's bounded ranking and retry owner.
+  No wall-contact permission bypasses SPATIAL-04. No unbounded permutation search,
   hidden pipeline switch, global optimum promise, or general navigation/collision planner.
 - **Required checks / documentation:** no/one/many candidates, duplicate or ambiguous location matches,
   capacity/time limits, cluster versus nearest/return-cost tradeoffs, stale/rebased observations,
@@ -34653,7 +34917,8 @@ obtains the skill-required approval before API or major lifecycle changes.
   STOP. Enforce hard candidate/work limits; failed route construction leaves the follower
   untouched. Include wall/corner rejection when permissions/clearance are absent. Teach one
   optional outcome with a complete independent source graph and visible illustrative values.
-- **Dependencies / completion / deferral:** follow terminal VISION-04/SPATIAL-03 dispositions and
+- **Dependencies / completion / deferral:** follow the terminal dispositions of the approved
+  VISION-06 through AUTO-03 program (including VISION-04 and SPATIAL-03) and
   reuse completed EXAMPLE-10, AUTO-01, route, inventory, and relevant EXAMPLE-12 behavior. This task
   may consume a recent cluster snapshot or bounded location memory, not velocity predictions or
   claimed physical IDs. Retained candidate locations are not confirmed current inventory, and
@@ -34771,8 +35036,9 @@ obtains the skill-required approval before API or major lifecycle changes.
   Sushi at audit start; compare with the intake baseline where assessing changed robot-code burden.
   Do not enlarge or repeat AUDIT-01, add teams, or rank source quality from awards alone.
 - **Start condition:** the original robustness queue and AUDIT-01 have terminal dispositions, then
-  MATH-02, TASK-07, RUNTIME-04, VISION-04, SPATIAL-03, EXAMPLE-13, CTRL-03, SENSOR-02, and
-  LOCALIZATION-05 each reach **Done** (including approved, recorded, verified no-change) or
+  MATH-02, TASK-07, RUNTIME-04, DRIVE-05, VISION-06, VISION-04, DRIVE-06, SPATIAL-03, SPATIAL-04,
+  PEDRO-03, VISION-07, AUTO-02, AUTO-03, EXAMPLE-13, CTRL-03, SENSOR-02, and LOCALIZATION-05
+  each reach **Done** (including approved, recorded, verified no-change) or
   evidence-backed **Deferred** with a concrete trigger. VISION-05 and DRIVE-04 must have current
   explicit dispositions; their missing model/hardware evidence does not block closure.
 - **Required result:** classify every frozen row as implemented, already supported, robot-owned,

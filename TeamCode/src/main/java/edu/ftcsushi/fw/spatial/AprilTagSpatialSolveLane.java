@@ -49,9 +49,9 @@ final class AprilTagSpatialSolveLane implements SpatialSolveLane {
         }
         return SpatialLaneResult.of(translation, facing,
                 SpatialQuerySupport.translationSelectionSnapshot(request.translationTarget,
-                        request.clock, detections, maxAgeSec),
+                        request.clock),
                 SpatialQuerySupport.facingSelectionSnapshot(request.facingTarget,
-                        request.clock, detections, maxAgeSec));
+                        request.clock));
     }
 
     /** A relative lane never interprets a field-only target through a temporary robot field pose. */

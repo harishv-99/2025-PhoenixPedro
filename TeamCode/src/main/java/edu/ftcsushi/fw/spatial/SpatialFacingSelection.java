@@ -1,7 +1,6 @@
 package edu.ftcsushi.fw.spatial;
 
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 
 /**
  * Selected facing solution plus provenance from a {@link SpatialQueryResult}.
@@ -9,12 +8,13 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 public final class SpatialFacingSelection {
     public final int laneIndex;
     public final FacingSolution solution;
-    public final TagSelectionResult tagSelection;
+    /** Exact target-selection provenance from the chosen lane, not that lane's sensor evidence. */
+    public final ReferenceSelectionResult selection;
 
-    SpatialFacingSelection(int laneIndex, FacingSolution solution, TagSelectionResult tagSelection) {
+    SpatialFacingSelection(int laneIndex, FacingSolution solution, ReferenceSelectionResult selection) {
         this.laneIndex = laneIndex;
         this.solution = solution;
-        this.tagSelection = tagSelection;
+        this.selection = selection;
     }
 
     /**

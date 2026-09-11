@@ -57,9 +57,7 @@ public final class TagSelectionTransactionalTest {
                 .among(setOf(1, 2))
                 .freshWithinSec(1.0)
                 .choose(firstCandidatePolicy())
-                .stickyWhen(enabled)
-                .reacquireAfterLossSec(0.0)
-                .build();
+                .holdWhileReacquiringAfterLossSec(enabled, 0.0);
 
         TagSelectionResult first = selection.get(time.clock());
         assertEquals(1, first.selectedTagId);
@@ -109,9 +107,7 @@ public final class TagSelectionTransactionalTest {
                     }
                     return firstCandidate.choose(candidates);
                 })
-                .stickyWhen(BooleanSource.constant(true))
-                .reacquireAfterLossSec(0.0)
-                .build();
+                .holdWhileReacquiringAfterLossSec(BooleanSource.constant(true), 0.0);
 
         assertEquals(1, selection.get(time.clock()).selectedTagId);
 
@@ -170,9 +166,7 @@ public final class TagSelectionTransactionalTest {
                 .among(Collections.singleton(3))
                 .freshWithinSec(1.0)
                 .choose(firstCandidatePolicy())
-                .stickyWhen(enabled)
-                .holdUntilDisabled()
-                .build();
+                .holdWhile(enabled);
         assertEquals(3, selection.get(time.clock()).selectedTagId);
         RuntimeException failure = new RuntimeException("enable reset failed");
         enabled.resetFailure = failure;
@@ -190,8 +184,7 @@ public final class TagSelectionTransactionalTest {
                 .among(Collections.singleton(candidateId))
                 .freshWithinSec(1.0)
                 .choose(firstCandidatePolicy())
-                .continuous()
-                .build();
+                .continuous();
     }
 
     private static TagSelectionPolicy firstCandidatePolicy() {

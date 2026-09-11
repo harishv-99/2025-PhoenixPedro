@@ -360,7 +360,7 @@ public final class VisionPickup implements RobotProgram.Service {
         aimSelection = TargetSelectionResult.none(TargetObservations2d.unavailable("aim not evaluated"),
                 this.config.maxObservationAgeSec, "aim not evaluated");
         aimQuery = this.config.enableMotion ? DriveGuidance.plan()
-                .faceTo().point(References.observedPoint(Source.of(ignored -> aimSelection)))
+                .faceTo().point(References.selectedTargetPoint(Source.of(ignored -> aimSelection)))
                 .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(this.config.robotToIntake))
                 .solveWith().absolutePose(localization)
                 .maxAgeSec(this.config.maxPoseAgeSec).minQuality(this.config.minPoseQuality)

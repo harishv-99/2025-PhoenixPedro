@@ -23,7 +23,10 @@ package edu.ftcsushi.fw.spatial;
  *
  * <p>References can be authored in field coordinates, relative to one fixed AprilTag ID, or
  * relative to a shared {@code TagSelectionSource}. The point object itself remains immutable;
- * selected-tag references resolve through the selector's current state at evaluation time.</p>
+ * selected-tag references resolve through the selector's current state at evaluation time.
+ * {@link References#selectedTargetPoint} instead borrows a geometric observation selection with
+ * its original capture time and freshness policy; it does not turn a located object into a fixed
+ * field fact or a tracked physical identity.</p>
  *
  * @see ReferenceFrame2d when the reference also has a meaningful local orientation
  * @see References

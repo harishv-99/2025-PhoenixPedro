@@ -172,7 +172,7 @@ selection source, with its explicit capture-age limit. `robotToIntakeFrame` desc
 intake position and facing direction relative to the robot. It is not the camera mount.
 
 ```java
-ReferencePoint2d point = References.observedPoint(selected);
+ReferencePoint2d point = References.selectedTargetPoint(selected);
 DriveGuidancePlan aim = DriveGuidance.plan().faceTo().point(point)
         .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(robotToIntakeFrame))
         .solveWith().observedPoints(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
@@ -411,6 +411,14 @@ telemetry.addData("shooterFacing.evidence", status.solveMode);
 Create one query per independent owner because each query owns its cycle cache, controller
 state, and explicit reset lifecycle. The plan and its robot-owned spatial dependencies may still be
 shared safely.
+
+The status also retains `translationSelection` and `facingSelection` using the same
+[selection view as spatial queries](<Spatial Queries.md#inspect-what-was-selected-separately-from-what-was-solved>).
+For object guidance, inspect the `OBSERVED_TARGET` payload to see the selected frame, original
+capture timestamp, and selection reason. For tag guidance, the `APRIL_TAG` payload retains the
+held identity, live preview, and actual-versus-inferred evidence. These details are available
+without polling the camera again. A selected target is not proof of usable guidance: the solved
+error flags above still decide whether there is an answer, including when output is zero.
 
 ## Translation + facing
 

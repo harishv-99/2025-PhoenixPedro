@@ -3,14 +3,14 @@ package edu.ftcsushi.fw.drive.guidance;
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.drive.DriveOverlayMask;
 import edu.ftcsushi.fw.drive.DriveSignal;
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcsushi.fw.spatial.ReferenceSelectionResult;
 
 /**
  * Immutable evidence and command snapshot for one explicit guidance mode.
  *
  * <p>The mode identifies the configured authority, not success. Error-presence flags identify
  * solved requested channels; a ZERO_OUTPUT fallback can own a mask without supplying any error
- * evidence. Selection snapshots retain target-identity provenance independently of solved geometry.</p>
+ * evidence. Selection snapshots retain target-selection provenance independently of solved geometry.</p>
  */
 public final class DriveGuidanceStatus {
     public final DriveGuidanceSpec.SolveMode solveMode;
@@ -21,8 +21,10 @@ public final class DriveGuidanceStatus {
     public final double leftErrorIn;
     public final boolean hasOmegaError;
     public final double omegaErrorRad;
-    public final TagSelectionResult translationSelection;
-    public final TagSelectionResult facingSelection;
+    /** Retained tag, observed-target, or approach choice; not translation arrival or visibility. */
+    public final ReferenceSelectionResult translationSelection;
+    /** Retained choice independently of the configured facing solve's availability. */
+    public final ReferenceSelectionResult facingSelection;
     public final Pose2d fieldToTranslationFrameAnchor;
 
     private DriveGuidanceStatus(DriveGuidanceCore core, DriveGuidanceCore.Step step) {

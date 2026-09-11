@@ -25,6 +25,7 @@ import edu.ftcsushi.fw.sensing.observation.ObservationSources;
 import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
+import edu.ftcsushi.fw.sensing.observation.TargetSelectionPolicies;
 import edu.ftcsushi.fw.sensing.observation.TargetSelections;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.FloorTargetModel;
@@ -621,9 +622,9 @@ public final class VisionPickupSoftwareScenarioTest {
 
         Fixture(VisionPickup.Config config, Pose2d pose, double... fieldTargets) {
             publish(pose, fieldTargets);
-            selected = TargetSelections.from(
+            selected = TargetSelections.fromVisibleObjects(
                     ObservationSources.inField(Source.of(clock -> raw), history.lookupSource()))
-                    .freshWithinSec(config.maxObservationAgeSec).nearestToRobot();
+                    .freshWithinSec(config.maxObservationAgeSec).choose(TargetSelectionPolicies.nearestToRobot());
             pickup = new VisionPickup(config, Source.of(clock -> {
                 if (selectionHook != null) selectionHook.run();
                 if (selectionOverride != null) return selectionOverride;

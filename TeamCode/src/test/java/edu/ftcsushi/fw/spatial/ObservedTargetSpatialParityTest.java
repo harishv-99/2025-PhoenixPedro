@@ -16,6 +16,7 @@ import edu.ftcsushi.fw.sensing.observation.ObservationSources;
 import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelections;
+import edu.ftcsushi.fw.sensing.observation.TargetSelectionPolicies;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
@@ -34,9 +35,9 @@ public final class ObservedTargetSpatialParityTest {
         TimeAwareSource<Pose2d> tool = (clock, requested) -> requested.secondsSince(capture) == 0
                 ? new Pose2d(2, 1, Math.PI / 2) : new Pose2d(6, 4, -Math.PI / 2);
         TargetObservation2d point = TargetObservation2d.ofRobotRelativePosition(10, 3, Double.NaN, capture);
-        ReferencePoint2d reference = References.observedPoint(TargetSelections.from(Source.constant(
+        ReferencePoint2d reference = References.selectedTargetPoint(TargetSelections.fromVisibleObjects(Source.constant(
                 TargetObservations2d.fromFrame(capture, Collections.singletonList(point))))
-                .freshWithinSec(0.2).nearestToRobot());
+                .freshWithinSec(0.2).choose(TargetSelectionPolicies.nearestToRobot()));
         SpatialControlFrames frames = SpatialControlFrames.robotCenter().withTranslationFrame(tool);
         SpatialQuery geometry = SpatialQuery.builder().translateTo(SpatialTargets.point(reference))
                 .controlFrames(frames).solveWith(SpatialSolveSet.builder()
@@ -60,9 +61,9 @@ public final class ObservedTargetSpatialParityTest {
                 AprilTagObservation.target(5, new Pose3d(10, 3, 0, 0.4, 0, 0))));
         AprilTagSensor tags = clock -> frame;
         ReferencePoint2d direct = References.relativeToTagPoint(5, 0, 0);
-        ReferencePoint2d observed = References.observedPoint(TargetSelections.from(
+        ReferencePoint2d observed = References.selectedTargetPoint(TargetSelections.fromVisibleObjects(
                 ObservationSources.aprilTags(Source.constant(frame), CameraMountConfig.identity()))
-                .freshWithinSec(0.2).nearestToRobot());
+                .freshWithinSec(0.2).choose(TargetSelectionPolicies.nearestToRobot()));
         SpatialQuery directQuery = SpatialQuery.builder().translateTo(SpatialTargets.point(direct))
                 .andFaceTo(SpatialTargets.point(direct)).solveWith(SpatialSolveSet.builder()
                         .relativeAprilTags(tags, CameraMountConfig.identity()).build()).build();
@@ -92,9 +93,9 @@ public final class ObservedTargetSpatialParityTest {
         LoopTimestamp capture = time.clock().nowTimestamp();
         TargetObservation2d point = TargetObservation2d.ofRobotRelativePosition(
                 Double.MAX_VALUE, 0, Double.NaN, capture);
-        ReferencePoint2d reference = References.observedPoint(TargetSelections.from(Source.constant(
+        ReferencePoint2d reference = References.selectedTargetPoint(TargetSelections.fromVisibleObjects(Source.constant(
                 TargetObservations2d.fromFrame(capture, Collections.singletonList(point))))
-                .freshWithinSec(0.2).lowestCost(candidate -> 0));
+                .freshWithinSec(0.2).choose(TargetSelectionPolicies.lowestCost(candidate -> 0)));
         for (DriveGuidanceSpec.LossPolicy loss : DriveGuidanceSpec.LossPolicy.values()) {
             DriveGuidanceStatus status = DriveGuidance.plan().translateTo().point(reference)
                     .controlFrames(SpatialControlFrames.robotCenter().withTranslationFrame(
