@@ -34,9 +34,6 @@ import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
@@ -734,12 +731,18 @@ public final class PhoenixScoringCleanupTest {
             int scoringTagId = profile.targeting.scoringTargets.keySet().iterator().next();
             targeting = new PhoenixTargeting(
                     profile.targeting,
-                    profile.localization.estimation.aprilTags.fieldPoseSolver,
-                    new CurrentFrameAprilTagSensor(scoringTagId),
                     CameraMountConfig.identity(),
-                    new NoPoseEstimator(),
+                    new AbsolutePoseEstimator() {
+                        @Override public void update(LoopClock current) { }
+                        @Override public PoseEstimate getEstimate() {
+                            Pose3d tag = profile.fixedAprilTagLayout.requireFieldToTagPose(
+                                    profile.targeting.redAllianceScoringTagId);
+                            return new PoseEstimate(new Pose3d(tag.xInches - 36.0, tag.yInches,
+                                    0.0, 0.0, 0.0, 0.0), true, 1.0, clock.nowTimestamp());
+                        }
+                    },
                     profile.fixedAprilTagLayout,
-                    Source.constant(profile.targeting.scoringTargets.keySet()),
+                    Source.constant(profile.targeting.redAllianceScoringTagId),
                     BooleanSource.constant(true),
                     BooleanSource.constant(false)
             );
@@ -777,12 +780,10 @@ public final class PhoenixScoringCleanupTest {
     private static PhoenixTargeting targetingFor(PhoenixProfile profile) {
         return new PhoenixTargeting(
                 profile.targeting,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
                 profile.fixedAprilTagLayout,
-                Source.constant(profile.targeting.scoringTargets.keySet()),
+                Source.constant(profile.targeting.redAllianceScoringTagId),
                 BooleanSource.constant(true),
                 BooleanSource.constant(false)
         );
@@ -792,32 +793,6 @@ public final class PhoenixScoringCleanupTest {
         assertEquals(expected.length, actual.length);
         for (int index = 0; index < expected.length; index++) {
             assertEquals(expected[index], actual[index], 0.0);
-        }
-    }
-
-    private static final class EmptyAprilTagSensor implements AprilTagSensor {
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            return AprilTagDetections.none();
-        }
-    }
-
-    private static final class CurrentFrameAprilTagSensor implements AprilTagSensor {
-        private final int tagId;
-
-        CurrentFrameAprilTagSensor(int tagId) {
-            this.tagId = tagId;
-        }
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            return AprilTagDetections.fromFrame(
-                    clock.nowTimestamp(),
-                    Collections.singletonList(AprilTagObservation.target(
-                            tagId,
-                            new Pose3d(36.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-                    ))
-            );
         }
     }
 

@@ -33,10 +33,12 @@ public final class PhoenixAutoTasks {
     }
 
     /**
-     * Build one truthful scoring attempt: wait briefly for a selected target, capture shot
+     * Build one truthful scoring attempt: wait briefly for a configured target with usable
+     * corrected pose and a finite range suggestion, capture shot
      * velocity, run Phoenix aim, request one shot, and wait for the shot queue to drain.
      *
-     * <p>Each phase must succeed before the next phase begins. Target-selection, aiming, and shot-
+     * <p>Camera visibility is not a separate gate. Each phase must succeed before the next phase
+     * begins. Target-evidence, aiming, and shot-
      * drain timeouts remain {@link edu.ftcsushi.fw.task.TaskOutcome#TIMEOUT}; cancellation and
      * unknown terminal outcomes likewise remain visible to the owning Auto routine. Phoenix's
      * Pedro routine treats that bounded target/scoring timeout as the explicit return/park
@@ -52,10 +54,12 @@ public final class PhoenixAutoTasks {
         final PhoenixCapabilities.Scoring scoring = capabilities.scoring();
         final PhoenixCapabilities.Targeting targeting = capabilities.targeting();
 
-        BooleanSource targetSelected = BooleanSource.of(
-                () -> targeting.status().selection.hasSelection
+        BooleanSource targetUsable = BooleanSource.of(
+                () -> targeting.status().configuredTagId >= 0
+                        && targeting.status().hasUsablePose
+                        && targeting.status().hasSuggestedVelocity
         );
-        Task waitForTargetTask = Tasks.waitUntil(targetSelected, auto.waitForTargetSec);
+        Task waitForTargetTask = Tasks.waitUntil(targetUsable, auto.waitForTargetSec);
         Task aimTask = targeting.aimTask(driveSink, aimConfig(auto));
         Task waitForShotTask = Tasks.waitUntil(
                 BooleanSource.of(() -> !scoring.hasPendingShots()),

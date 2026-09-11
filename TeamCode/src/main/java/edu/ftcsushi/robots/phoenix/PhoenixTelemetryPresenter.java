@@ -9,8 +9,6 @@ import edu.ftcsushi.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcsushi.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcsushi.fw.task.Task;
 
 /**
@@ -255,21 +253,17 @@ final class PhoenixTelemetryPresenter {
             telemetry.addLine(">>> AIM OVERRIDE <<<");
         }
 
-        TagSelectionResult selection = targeting.selection;
-        if (selection == null || !selection.hasSelection) {
+        if (targeting.configuredTagId < 0) {
             return;
         }
 
-        AprilTagObservation obs = selection.hasFreshSelectedObservation
-                ? selection.selectedObservation
-                : AprilTagObservation.noTarget();
         DriveGuidanceStatus aimStatus = targeting.aimStatus;
 
-        telemetry.addData("tagId", selection.selectedTagId);
+        telemetry.addData("target.configuredTagId", targeting.configuredTagId);
         telemetry.addData("target.label", targeting.targetLabel);
-        telemetry.addData("tag.visible", selection.hasFreshSelectedObservation);
-        telemetry.addData("distIn", selection.hasFreshSelectedObservation ? obs.cameraRangeInches() : Double.NaN);
-        telemetry.addData("bearingTagDeg", selection.hasFreshSelectedObservation ? Math.toDegrees(obs.cameraBearingRad()) : Double.NaN);
+        telemetry.addData("pose.usableForTargeting", targeting.hasUsablePose);
+        telemetry.addData("pose.timestampAvailable", targeting.poseTimestamp.isAvailable());
+        telemetry.addData("cameraToTagRange3dInches", targeting.cameraToTagRange3dInches);
         telemetry.addData(
                 "aimOffset(fwd,left)",
                 String.format("%.1f, %.1f", targeting.aimOffsetForwardInches, targeting.aimOffsetLeftInches)
@@ -281,10 +275,8 @@ final class PhoenixTelemetryPresenter {
                         : Double.NaN
         );
         telemetry.addData(
-                "aim.source",
-                (aimStatus != null && aimStatus.hasOmegaError)
-                        ? aimStatus.omegaSource
-                        : DriveGuidanceStatus.ChannelSource.NONE
+                "aim.solveMode",
+                aimStatus != null ? aimStatus.solveMode : "UNAVAILABLE"
         );
         telemetry.addData("aim.tolDeg", targeting.aimToleranceDeg);
         telemetry.addData("aim.readyTolDeg", targeting.aimReadyToleranceDeg);

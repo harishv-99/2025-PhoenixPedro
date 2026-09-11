@@ -4,6 +4,8 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
+import edu.ftcsushi.fw.core.source.TimeAwareSource;
+import edu.ftcsushi.fw.core.source.TimeAwareSources;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.field.TagLayout;
@@ -27,8 +29,8 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
  *
  * <p>Internally the estimator delegates the actual multi-tag solve to
  * {@link FixedTagFieldPoseSolver}. That shared solver applies weighting, optional SDK-pose use,
- * and outlier rejection so localization and guidance's temporary AprilTag field-pose bridge stay
- * behaviorally aligned.</p>
+ * and outlier rejection. Field guidance reads this estimator (or a corrected localizer), rather
+ * than calculating a competing field pose inside a relative camera solve.</p>
  */
 public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
 
@@ -48,11 +50,6 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
          * detections object is still non-null. Values must be finite and >= 0.</p>
          */
         public double maxDetectionAgeSec = 0.50;
-
-        /**
-         * Camera mount extrinsics in the robot frame.
-         */
-        public CameraMountConfig cameraMount = CameraMountConfig.identity();
 
         private Config() {
             // Defaults assigned in field initializers.
@@ -76,7 +73,6 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
             Config c = new Config();
             c.fieldPoseSolver = fieldPoseSolver != null ? fieldPoseSolver.copy() : null;
             c.maxDetectionAgeSec = this.maxDetectionAgeSec;
-            c.cameraMount = this.cameraMount;
             return c;
         }
     }
@@ -85,6 +81,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
     private final TagLayout layout;
     private final Config cfg;
     private final FixedTagFieldPoseSolver fieldPoseSolver;
+    private final TimeAwareSource<CameraMountConfig> cameraMount;
 
     private PoseEstimate lastEstimate;
     private AprilTagDetections lastDetections = AprilTagDetections.none();
@@ -103,12 +100,32 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
      *
      * @param tags shared AprilTag observation source
      * @param layout fixed field-tag facts to validate and snapshot
-     * @param cfg complete estimator setup; non-null
-     * @throws NullPointerException if {@code cfg}, its nested solver config or mount, {@code tags},
+     * @param cameraMount fixed robot-to-camera mount; non-null
+     * @param cfg estimator policy; non-null
+     * @throws NullPointerException if {@code cfg}, its nested solver config, {@code cameraMount}, {@code tags},
      *                              or {@code layout} is null
      * @throws IllegalArgumentException if the layout or estimator configuration is invalid
      */
-    public AprilTagPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
+    public AprilTagPoseEstimator(AprilTagSensor tags, TagLayout layout,
+                                 CameraMountConfig cameraMount, Config cfg) {
+        this(tags, layout, TimeAwareSources.fixed(Objects.requireNonNull(cameraMount, "cameraMount")), cfg);
+    }
+
+    /**
+     * Creates an estimator with a borrowed capture-time camera-mount history.
+     *
+     * <p>Lookup occurs once at an eligible detection frame's original timestamp, never during
+     * construction. A moving-camera provider must supply genuine history at that time, not a
+     * current-only substitute. Null or failing lookups propagate under this estimator's retained
+     * same-cycle failure contract. This owner never updates or resets the history provider.</p>
+     *
+     * @param tags borrowed tag sensor
+     * @param layout fixed field facts, defensively snapshotted
+     * @param cameraMount fixed or historical robot-to-camera mount provider
+     * @param cfg estimator policy, defensively copied and validated
+     */
+    public AprilTagPoseEstimator(AprilTagSensor tags, TagLayout layout,
+                                 TimeAwareSource<CameraMountConfig> cameraMount, Config cfg) {
         Config snapshot = captureConfig(cfg);
         FixedTagFieldPoseSolver solver = new FixedTagFieldPoseSolver(
                 Objects.requireNonNull(
@@ -116,10 +133,9 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
                         "AprilTagPoseEstimator.Config.fieldPoseSolver"
                 )
         );
-        Objects.requireNonNull(snapshot.cameraMount, "AprilTagPoseEstimator.Config.cameraMount");
-
         this.cfg = snapshot;
         this.fieldPoseSolver = solver;
+        this.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
         this.tags = Objects.requireNonNull(tags, "tags");
         this.layout = TagLayouts.snapshot(Objects.requireNonNull(layout, "layout"));
         this.lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
@@ -200,7 +216,8 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
         lastSolve = fieldPoseSolver.solve(
                 freshDetections.observations,
                 layout,
-                cfg.cameraMount
+                Objects.requireNonNull(cameraMount.getAt(clock, freshDetections.frameTimestamp()),
+                        "cameraMount.getAt(clock, timestamp) returned null")
         );
 
         if (!lastSolve.hasPose) {

@@ -8,7 +8,6 @@ import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.drive.DriveCommandSink;
 import edu.ftcsushi.fw.drive.DriveSignal;
 import edu.ftcsushi.fw.drive.guidance.DriveGuidanceTask;
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.fw.task.TaskOutcome;
 import edu.ftcsushi.fw.task.TaskRunner;
@@ -276,6 +275,28 @@ public final class PhoenixAutoTasksTest {
         assertEquals(1, scoring.captureCount);
         assertEquals(0, scoring.requestCount);
         assertEquals(0, scoring.cancelTransientCount);
+    }
+
+    @Test
+    public void configuredIdentityPoseAndRangeSuggestionAreIndependentAutoWaitRequirements() {
+        boolean[][] missing = {{false, true, true}, {true, false, true}, {true, true, false}};
+        for (boolean[] evidence : missing) {
+            FakeScoring scoring = new FakeScoring();
+            ControlledTask aim = ControlledTask.finishingWith(TaskOutcome.SUCCESS);
+            FakeTargeting targeting = new FakeTargeting(
+                    targetingStatus(evidence[0], evidence[1], evidence[2]), aim);
+            PhoenixAutoConfig auto = PhoenixAutoConfig.defaults();
+            auto.waitForTargetSec = 0.20;
+            Task attempt = buildFactoryAttempt(scoring, targeting, auto);
+            LoopClock clock = clockAt(0.0);
+            attempt.start(clock);
+            tick(attempt, clock, 0.0);
+            tick(attempt, clock, 0.20);
+            assertEquals(TaskOutcome.TIMEOUT, attempt.getOutcome());
+            assertEquals(0, scoring.captureCount);
+            assertEquals(0, scoring.requestCount);
+            assertEquals(0, aim.startCount);
+        }
     }
 
     @Test
@@ -879,22 +900,11 @@ public final class PhoenixAutoTasksTest {
     }
 
     private static PhoenixCapabilities.TargetingStatus targetingStatus(boolean hasSelection) {
-        TagSelectionResult selection = hasSelection
-                ? new TagSelectionResult(
-                        false,
-                        -1,
-                        null,
-                        true,
-                        20,
-                        false,
-                        false,
-                        null,
-                        Collections.singleton(20),
-                        "test",
-                        "selected for test",
-                        0.0
-                )
-                : TagSelectionResult.none(Collections.<Integer>emptySet());
+        return targetingStatus(hasSelection, hasSelection, hasSelection);
+    }
+
+    private static PhoenixCapabilities.TargetingStatus targetingStatus(
+            boolean configured, boolean usablePose, boolean suggestion) {
         return new PhoenixCapabilities.TargetingStatus(
                 false,
                 false,
@@ -902,32 +912,39 @@ public final class PhoenixAutoTasksTest {
                 false,
                 0.0,
                 0.0,
-                selection,
+                configured ? 20 : -1,
+                usablePose,
+                edu.ftcsushi.fw.core.time.LoopTimestamp.unavailable(),
+                suggestion ? 36.0 : Double.NaN,
                 null,
                 "test target",
                 0.0,
                 0.0,
-                false,
-                Double.NaN,
+                suggestion,
+                suggestion ? 1400.0 : Double.NaN,
                 null,
                 null
         );
     }
 
     private static final class FakeTargeting implements PhoenixCapabilities.Targeting {
-        private final boolean hasSelection;
+        private final PhoenixCapabilities.TargetingStatus snapshot;
         private final Task aimTask;
         int aimTaskCallCount;
         DriveGuidanceTask.Config lastAimConfig;
 
         FakeTargeting(boolean hasSelection, Task aimTask) {
-            this.hasSelection = hasSelection;
+            this(targetingStatus(hasSelection), aimTask);
+        }
+
+        FakeTargeting(PhoenixCapabilities.TargetingStatus snapshot, Task aimTask) {
+            this.snapshot = snapshot;
             this.aimTask = aimTask;
         }
 
         @Override
         public PhoenixCapabilities.TargetingStatus status() {
-            return targetingStatus(hasSelection);
+            return snapshot;
         }
 
         @Override

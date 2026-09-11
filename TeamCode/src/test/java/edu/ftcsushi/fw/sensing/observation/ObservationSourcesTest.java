@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.source.Source;
+import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.source.TimeAwareSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
@@ -16,6 +17,10 @@ import edu.ftcsushi.fw.localization.PoseTrajectoryEstimator;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
+import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionPolicies;
+import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionSource;
+import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelections;
+import edu.ftcsushi.fw.field.SimpleTagLayout;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.*;
@@ -23,6 +28,64 @@ import static org.junit.Assert.*;
 /** Capture-time history, failed-lookup provenance, and borrowed-source ownership tests. */
 public final class ObservationSourcesTest {
     private static final double EPS = 1.0e-9;
+
+    @Test public void selectedTagProjectionUsesOneHistoricalMountAndRetainsActualHeadingAndTimestamp() {
+        ManualLoopClock time = new ManualLoopClock();
+        LoopTimestamp capture = time.clock().nowTimestamp();
+        AprilTagDetections frame = AprilTagDetections.fromFrame(capture, Collections.singletonList(
+                AprilTagObservation.target(7, new Pose3d(10, 2, 3, 0.4, 0.1, 0.2))));
+        CameraMountConfig mount = CameraMountConfig.of(4, 1, 8, 0.3, -0.2, 0.1);
+        AtomicInteger lookups = new AtomicInteger();
+        TagSelectionSource selection = TagSelections.fromVisibleTags(Source.constant(frame),
+                (clock, timestamp) -> {
+                    assertSame(capture, timestamp);
+                    lookups.incrementAndGet();
+                    return mount;
+                }).among(Collections.singleton(7)).freshWithinSec(0.2)
+                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+        Source<TargetObservation2d> observed = ObservationSources.aprilTag(selection);
+        time.nextCycle(0.1);
+        Pose3d expected = mount.robotToCameraPose().then(frame.observations.get(0).cameraToTagPose);
+        TargetObservation2d target = observed.get(time.clock());
+        assertEquals(7, target.targetId);
+        assertEquals(expected.xInches, target.forwardInches, EPS);
+        assertEquals(expected.yInches, target.leftInches, EPS);
+        assertEquals(expected.yawRad, target.targetHeadingRad, EPS);
+        assertSame(capture, target.timestamp);
+        assertFalse(target.hasQuality());
+        observed.get(time.clock());
+        assertEquals(1, lookups.get());
+    }
+
+    @Test public void heldOldTagDecisionNeverBecomesAFreshObservationAfterLossOrClockReset() {
+        ManualLoopClock time = new ManualLoopClock();
+        AprilTagDetections[] frame = {AprilTagDetections.fromFrame(time.clock().nowTimestamp(),
+                Collections.singletonList(AprilTagObservation.target(7, new Pose3d(10, 0, 0, 0, 0, 0))))};
+        TagSelectionSource selection = TagSelections.fromVisibleTags(clock -> frame[0], CameraMountConfig.identity())
+                .among(Collections.singleton(7)).freshWithinSec(0.2).choose(TagSelectionPolicies.closestRange())
+                .stickyWhen(BooleanSource.constant(true)).holdUntilDisabled().build();
+        Source<TargetObservation2d> projected = ObservationSources.aprilTag(selection);
+        assertTrue(projected.get(time.clock()).hasPosition());
+        time.nextCycle(0.02);
+        frame[0] = AprilTagDetections.fromFrame(time.clock().nowTimestamp(), Collections.emptyList());
+        assertTrue(selection.get(time.clock()).hasSelection);
+        assertFalse(projected.get(time.clock()).hasPosition());
+        time.clock().reset(0);
+        assertFalse(projected.get(time.clock()).hasPosition());
+        assertFalse(selection.get(time.clock()).hasSelection);
+    }
+
+    @Test public void poseSelectedIdentityAndGeometryAreNotCameraObservations() {
+        Fixture f = new Fixture();
+        f.publish(0, 0, 0);
+        TagSelectionSource selection = TagSelections.fromFieldPose(f.estimator,
+                new SimpleTagLayout().addPose(7, new Pose3d(30, 2, 10, 0, 0, 0)), CameraMountConfig.identity())
+                .among(Collections.singleton(7)).freshWithinSec(0.2).minQuality(0.1)
+                .choose(TagSelectionPolicies.closestRange()).continuous().build();
+        assertTrue(selection.get(f.time.clock()).hasSelection);
+        assertNotNull(selection.get(f.time.clock()).currentSelectedCandidate);
+        assertFalse(ObservationSources.aprilTag(selection).get(f.time.clock()).hasPosition());
+    }
 
     @Test public void exactFieldProjectionPreservesRobotCoordinatesDetectorQualityAndCaptureTime() {
         Fixture f = new Fixture();

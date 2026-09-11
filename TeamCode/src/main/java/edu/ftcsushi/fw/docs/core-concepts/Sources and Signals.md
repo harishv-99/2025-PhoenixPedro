@@ -277,6 +277,12 @@ state; the composition roots that supplied those collaborators retain their rese
 Likewise, drive overlay composition owns activation transitions and cache bookkeeping but does not
 reset the overlay's robot-owned dependencies; `DriveOverlay` intentionally has no `reset()` hook.
 
+Tag selectors follow that borrowed-input rule too: `TagSelectionSource.reset()` clears its own
+held identity, loss timer, and cache, not its sensor, localizer, mount history, or enable signal.
+`ObservationSources.aprilTag(selection)` and the tag-selection projections also reset only their
+local state. The owner explicitly resets the selector before a new attempt if a release was not
+sampled. Holding an ID is intent; it never refreshes an old observation or establishes visibility.
+
 ---
 
 ## Deriving rate from linear position

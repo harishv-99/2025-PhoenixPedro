@@ -14,6 +14,7 @@ import edu.ftcsushi.fw.sensing.vision.CameraMountLogic;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionCandidate;
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionSource;
 
 /**
@@ -27,8 +28,8 @@ public final class ObservationSources {
     }
 
     /**
-     * Create an observation source from a shared {@link TagSelectionSource} and a
-     * {@link CameraMountConfig} describing where the camera is mounted on the robot.
+     * Project current actual observed geometry from a shared {@link TagSelectionSource}.
+     * The selector already applied its one camera mount; there is no second mount answer.
      *
      * <p>The selector decides which tag is semantically relevant; this helper simply converts the
      * selector's <em>fresh selected observation</em> into a planar robot-frame observation.
@@ -36,9 +37,8 @@ public final class ObservationSources {
      * The selected observation's exact camera-frame timestamp is forwarded; this source does not
      * create a new timestamp when a retained selection is sampled.</p>
      */
-    public static Source<TargetObservation2d> aprilTag(TagSelectionSource selection, CameraMountConfig mount) {
+    public static Source<TargetObservation2d> aprilTag(TagSelectionSource selection) {
         Objects.requireNonNull(selection, "selection must not be null");
-        Objects.requireNonNull(mount, "mount must not be null");
 
         return new Source<TargetObservation2d>() {
             /**
@@ -50,8 +50,14 @@ public final class ObservationSources {
                 if (!sel.hasFreshSelectedObservation) {
                     return TargetObservation2d.none();
                 }
-                AprilTagObservation obs = sel.selectedObservation;
-                return CameraMountLogic.robotObservation2d(obs, mount, clock);
+                TagSelectionCandidate candidate = sel.currentSelectedCandidate;
+                if (!Double.isFinite(candidate.evidenceTimestamp.ageSec(clock))) {
+                    return TargetObservation2d.none();
+                }
+                Pose3d robotToTag = candidate.robotToTagPose;
+                return TargetObservation2d.ofRobotRelativePose(candidate.tagId,
+                        robotToTag.xInches, robotToTag.yInches, robotToTag.yawRad,
+                        Double.NaN, candidate.evidenceTimestamp);
             }
 
             /**

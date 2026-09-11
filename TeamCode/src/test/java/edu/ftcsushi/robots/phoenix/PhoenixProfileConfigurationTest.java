@@ -340,8 +340,8 @@ public final class PhoenixProfileConfigurationTest {
         assertRawDouble(0.50, targeting.aimReadyToleranceDeg);
         assertRawDouble(0.05, targeting.aimReadyDebounceSec);
         assertRawDouble(0.05, targeting.aimMinOmegaCmd);
-        assertRawDouble(0.50, targeting.selectionMaxAgeSec);
-        assertRawDouble(0.20, targeting.selectionReacquireSec);
+        assertRawDouble(0.50, targeting.poseMaxAgeSec);
+        assertRawDouble(0.10, targeting.poseMinQuality);
         assertRawDouble(0.0, targeting.defaultAimOffset.forwardInches);
         assertRawDouble(0.0, targeting.defaultAimOffset.leftInches);
         assertShotTable(targeting.shotVelocityTable);

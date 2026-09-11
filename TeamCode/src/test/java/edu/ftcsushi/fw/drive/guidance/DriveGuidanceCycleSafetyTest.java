@@ -5,14 +5,12 @@ import org.junit.Test;
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.source.Source;
+import edu.ftcsushi.fw.core.source.TimeAwareSource;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.drive.DriveOverlayMask;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.PoseEstimate;
-import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.fw.spatial.FacingSolution;
 import edu.ftcsushi.fw.spatial.SpatialControlFrames;
 import edu.ftcsushi.fw.spatial.SpatialLaneResult;
@@ -25,9 +23,12 @@ import edu.ftcsushi.fw.spatial.TranslationSolution;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -35,11 +36,10 @@ import static org.junit.Assert.fail;
 public final class DriveGuidanceCycleSafetyTest {
 
     @Test
-    public void adaptiveBlendAdvancesOnlyOnceForRepeatedSameCycleReads() {
+    public void singleAuthorityAdvancesOnlyOnceForRepeatedSameCycleReads() {
         ManualLoopClock time = new ManualLoopClock();
         RecordingLane localization = RecordingLane.localization();
-        RecordingLane aprilTags = RecordingLane.aprilTagsInRange();
-        DriveGuidanceCore core = new DriveGuidanceCore(adaptivePlan(time, localization, aprilTags));
+        DriveGuidanceCore core = new DriveGuidanceCore(localizationPlan(time, localization));
         core.onEnable();
 
         time.nextCycle(0.03);
@@ -47,20 +47,14 @@ public final class DriveGuidanceCycleSafetyTest {
         DriveGuidanceCore.Step repeated = core.step(time.clock(), DriveOverlayMask.ALL);
 
         assertSame(first, repeated);
-        assertEquals(0.20, first.blendTTranslate, 1e-9);
-        assertEquals(0.20, first.blendTOmega, 1e-9);
+        assertEquals(DriveGuidanceSpec.SolveMode.ABSOLUTE_POSE, first.solveMode);
         assertEquals(1, localization.solveCount);
-        assertEquals(1, aprilTags.solveCount);
     }
 
     @Test
     public void differentMasksInOneCycleFailWithRecoveryOptions() {
         ManualLoopClock time = new ManualLoopClock();
-        DriveGuidanceQuery query = adaptivePlan(
-                time,
-                RecordingLane.localization(),
-                RecordingLane.aprilTagsInRange()
-        ).query();
+        DriveGuidanceQuery query = localizationPlan(time, RecordingLane.localization()).query();
 
         query.sample(time.clock(), DriveOverlayMask.TRANSLATION_ONLY);
 
@@ -82,8 +76,7 @@ public final class DriveGuidanceCycleSafetyTest {
     public void independentRuntimesMayUseDifferentMasksInTheSameCycle() {
         ManualLoopClock time = new ManualLoopClock();
         RecordingLane localization = RecordingLane.localization();
-        RecordingLane aprilTags = RecordingLane.aprilTagsInRange();
-        DriveGuidancePlan plan = adaptivePlan(time, localization, aprilTags);
+        DriveGuidancePlan plan = localizationPlan(time, localization);
         DriveGuidanceQuery translationQuery = plan.query();
         DriveGuidanceQuery omegaQuery = plan.query();
 
@@ -98,7 +91,6 @@ public final class DriveGuidanceCycleSafetyTest {
         assertEquals(DriveOverlayMask.TRANSLATION_ONLY, translation.mask);
         assertEquals(DriveOverlayMask.OMEGA_ONLY, omega.mask);
         assertEquals(2, localization.solveCount);
-        assertEquals(2, aprilTags.solveCount);
     }
 
     @Test
@@ -125,45 +117,37 @@ public final class DriveGuidanceCycleSafetyTest {
     }
 
     @Test
-    public void explicitQueryResetClearsOwnedBlendAndSameCycleCaches() {
+    public void explicitQueryResetClearsSameCycleCaches() {
         ManualLoopClock time = new ManualLoopClock();
         RecordingLane localization = RecordingLane.localization();
-        RecordingLane aprilTags = RecordingLane.aprilTagsInRange();
-        DriveGuidanceQuery query = adaptivePlan(time, localization, aprilTags).query();
+        DriveGuidanceQuery query = localizationPlan(time, localization).query();
 
         time.nextCycle(0.03);
         query.sample(time.clock());
         time.nextCycle(0.03);
         DriveGuidanceStatus beforeReset = query.sample(time.clock());
-        assertEquals(0.40, beforeReset.blendTTranslate, 1e-9);
 
         query.reset();
         DriveGuidanceStatus afterReset = query.sample(time.clock());
 
         assertNotSame(beforeReset, afterReset);
-        assertEquals(0.20, afterReset.blendTTranslate, 1e-9);
         assertEquals(3, localization.solveCount);
-        assertEquals(3, aprilTags.solveCount);
     }
 
     @Test
     public void clockResetInvalidatesCycleCachesWithoutResettingGuidanceState() {
         ManualLoopClock time = new ManualLoopClock();
         RecordingLane localization = RecordingLane.localization();
-        RecordingLane aprilTags = RecordingLane.aprilTagsInRange();
-        DriveGuidanceQuery query = adaptivePlan(time, localization, aprilTags).query();
+        DriveGuidanceQuery query = localizationPlan(time, localization).query();
 
         time.nextCycle(0.03);
         DriveGuidanceStatus beforeClockReset = query.sample(time.clock());
-        assertEquals(0.20, beforeClockReset.blendTTranslate, 1e-9);
 
         time.clock().reset(time.clock().nowSec());
         DriveGuidanceStatus afterClockReset = query.sample(time.clock());
 
         assertNotSame(beforeClockReset, afterClockReset);
-        assertEquals(0.20, afterClockReset.blendTTranslate, 1e-9);
         assertEquals(2, localization.solveCount);
-        assertEquals(2, aprilTags.solveCount);
     }
 
     @Test
@@ -175,7 +159,7 @@ public final class DriveGuidanceCycleSafetyTest {
                 .translateTo()
                     .robotRelativePointInches(4.0, 0.0)
                 .solveWith()
-                    .localizationOnlyWithDefaults(estimator)
+                    .absolutePose(estimator).doneAbsolutePose()
                 .build()
                 .query();
 
@@ -193,36 +177,61 @@ public final class DriveGuidanceCycleSafetyTest {
         assertEquals(10.0, recaptured.fieldToTranslationFrameAnchor.xInches, 1e-9);
     }
 
-    private static DriveGuidancePlan adaptivePlan(ManualLoopClock time,
-                                                  RecordingLane localization,
-                                                  RecordingLane aprilTags) {
-        SpatialTargets.FieldPoint target = SpatialTargets.fieldPoint(12.0, 2.0);
-        SpatialControlFrames frames = SpatialControlFrames.robotCenter();
-        SpatialSolveSet solveSet = SpatialSolveSet.builder()
-                .add(localization)
-                .add(aprilTags)
-                .build();
-        SpatialQuerySpec spatialSpec = SpatialQuerySpec.builder()
-                .translateTo(target)
-                .andFaceTo(target)
-                .controlFrames(frames)
-                .solveWith(solveSet)
-                .build();
-        DriveGuidanceSpec.ResolveWith resolveWith = DriveGuidanceSpec.ResolveWith.create(
-                DriveGuidanceSpec.SolveMode.ADAPTIVE,
-                new DriveGuidanceSpec.AprilTags(NO_TAGS, CameraMountConfig.identity()),
-                new DriveGuidanceSpec.Localization(
-                        new FixedPoseEstimator(PoseEstimate.noPose(time.clock().nowTimestamp()))
-                ),
-                null,
-                new DriveGuidanceSpec.TranslationTakeover(9.0, 12.0, 0.15),
-                DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID,
-                DriveGuidanceSpec.LossPolicy.PASS_THROUGH
-        );
-        return new DriveGuidancePlan(
-                new DriveGuidanceSpec(target, target, frames, resolveWith, spatialSpec, 0, 1),
-                DriveGuidancePlan.Tuning.defaults()
-        );
+    @Test
+    public void invalidSixDofPoseOrQualityCannotCaptureRobotRelativeAnchor() {
+        Pose3d[] badPoses = {
+                new Pose3d(99, 0, Double.NaN, 0, 0, 0),
+                new Pose3d(99, 0, 0, 0, Double.POSITIVE_INFINITY, 0),
+                new Pose3d(99, 0, 0, 0, 0, Double.NaN),
+                new Pose3d(99, 0, 0, 0, 0, 0),
+                new Pose3d(99, 0, 0, 0, 0, 0)
+        };
+        double[] badQualities = {1.0, 1.0, 1.0, 1.01, Double.NaN};
+        for (int i = 0; i < badPoses.length; i++) {
+            ManualLoopClock time = new ManualLoopClock();
+            MutablePoseEstimator estimator = new MutablePoseEstimator();
+            estimator.estimate = new PoseEstimate(badPoses[i], true, badQualities[i],
+                    time.clock().nowTimestamp());
+            DriveGuidanceQuery query = DriveGuidance.plan().translateTo()
+                    .robotRelativePointInches(4, 0)
+                    .solveWith().absolutePose(estimator).doneAbsolutePose().build().query();
+            DriveGuidanceStatus invalid = query.sample(time.clock());
+            assertFalse(invalid.hasTranslationError);
+            assertNull(invalid.fieldToTranslationFrameAnchor);
+
+            time.nextCycle(0.02);
+            estimator.setPose(10, time.clock().nowTimestamp());
+            DriveGuidanceStatus valid = query.sample(time.clock());
+            assertTrue(valid.hasTranslationError);
+            assertEquals(10, valid.fieldToTranslationFrameAnchor.xInches, 1e-9);
+            assertEquals(4, valid.forwardErrorIn, 1e-9);
+        }
+    }
+
+    @Test
+    public void illegalFrameCallbackClockChangeCannotCommitFirstAnchor() {
+        ManualLoopClock time = new ManualLoopClock();
+        MutablePoseEstimator estimator = new MutablePoseEstimator();
+        estimator.setPose(99, time.clock().nowTimestamp());
+        boolean[] advanceDuringSample = {true};
+        TimeAwareSource<Pose2d> frame = (clock, timestamp) -> {
+            if (advanceDuringSample[0]) time.nextCycle(0.01);
+            return Pose2d.zero();
+        };
+        DriveGuidanceQuery query = DriveGuidance.plan().translateTo()
+                .robotRelativePointInches(4, 0)
+                .controlFrames(SpatialControlFrames.robotCenter().withTranslationFrame(frame))
+                .solveWith().absolutePose(estimator).doneAbsolutePose().build().query();
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> query.sample(time.clock()));
+        assertTrue(failure.getMessage().contains("LoopClock"));
+        assertNull(query.last());
+
+        advanceDuringSample[0] = false;
+        estimator.setPose(10, time.clock().nowTimestamp());
+        DriveGuidanceStatus retried = query.sample(time.clock());
+        assertEquals(10, retried.fieldToTranslationFrameAnchor.xInches, 1e-9);
+        assertEquals(4, retried.forwardErrorIn, 1e-9);
     }
 
     private static DriveGuidancePlan localizationPlan(ManualLoopClock time, RecordingLane lane) {
@@ -234,30 +243,21 @@ public final class DriveGuidanceCycleSafetyTest {
                 .controlFrames(frames)
                 .solveWith(SpatialSolveSet.builder().add(lane).build())
                 .build();
-        DriveGuidanceSpec.Localization localization = new DriveGuidanceSpec.Localization(
-                new FixedPoseEstimator(PoseEstimate.noPose(time.clock().nowTimestamp()))
+        DriveGuidanceSpec.AbsolutePose localization = new DriveGuidanceSpec.AbsolutePose(
+                new FixedPoseEstimator(PoseEstimate.noPose(time.clock().nowTimestamp())), 0.5, 0.1
         );
         DriveGuidanceSpec.ResolveWith resolveWith = DriveGuidanceSpec.ResolveWith.create(
-                DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY,
+                DriveGuidanceSpec.SolveMode.ABSOLUTE_POSE,
                 null,
                 localization,
-                null,
-                null,
                 null,
                 DriveGuidanceSpec.LossPolicy.PASS_THROUGH
         );
         return new DriveGuidancePlan(
-                new DriveGuidanceSpec(target, target, frames, resolveWith, spatialSpec, 0, -1),
+                new DriveGuidanceSpec(target, target, frames, resolveWith, spatialSpec),
                 DriveGuidancePlan.Tuning.defaults()
         );
     }
-
-    private static final AprilTagSensor NO_TAGS = new AprilTagSensor() {
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            return AprilTagDetections.none();
-        }
-    };
 
     private static final class RecordingLane implements SpatialSolveLane {
         private final double forwardInches;
@@ -274,10 +274,6 @@ public final class DriveGuidanceCycleSafetyTest {
 
         static RecordingLane localization() {
             return new RecordingLane(10.0, false, Double.NaN);
-        }
-
-        static RecordingLane aprilTagsInRange() {
-            return new RecordingLane(20.0, true, 5.0);
         }
 
         @Override

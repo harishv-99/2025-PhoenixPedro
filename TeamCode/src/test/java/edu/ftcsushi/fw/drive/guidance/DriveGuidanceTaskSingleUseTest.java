@@ -190,7 +190,7 @@ public final class DriveGuidanceTaskSingleUseTest {
                 .translateTo()
                     .fieldPointInches(12.0, 0.0)
                 .solveWith()
-                    .localizationOnlyWithDefaults(new NoPoseEstimator(timestamp))
+                    .absolutePose(new NoPoseEstimator(timestamp)).doneAbsolutePose()
                 .build();
     }
 

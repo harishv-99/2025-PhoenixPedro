@@ -7,274 +7,115 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.core.source.TimeAwareSource;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
-import edu.ftcsushi.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 
 /**
- * Immutable ordered collection of {@link SpatialSolveLane}s.
+ * Immutable ordered spatial algorithms, created through one staged builder.
  *
- * <p>The order is significant. A consumer may choose to interpret the first lane as a primary
- * solve source and the second lane as a secondary source, or it may simply inspect all results in
- * order for telemetry and decision-making.</p>
- *
- * <p>The builder is staged so an empty solve set cannot be built accidentally. Start with
- * {@link #builder()}, add at least one lane using {@link FirstLaneStep#add(SpatialSolveLane)},
- * {@link FirstLaneStep#absolutePose(AbsolutePoseEstimator)}, or one of the AprilTag helpers, and
- * then continue adding lanes or call {@link MoreLanesStep#build()}.</p>
+ * <p>An absolute-pose lane reads an already updated localizer. A relative-AprilTag lane interprets
+ * actual camera observations without estimating a field pose. Observed points retain their own
+ * capture evidence. Ordering exposes alternative geometry for explicit inspection or priority;
+ * it does not fuse poses, update localization, or command hardware.</p>
  */
 public final class SpatialSolveSet {
-
     private final List<SpatialSolveLane> lanes;
 
     private SpatialSolveSet(List<SpatialSolveLane> lanes) {
         this.lanes = lanes;
     }
 
-    /**
-     * Starts a staged solve-set builder.
-     *
-     * <p>The returned stage intentionally does not expose {@code build()}; a solve set with no
-     * lanes is not meaningful, so the first conceptual question is which solve lane should be
-     * evaluated first.</p>
-     */
-    public static FirstLaneStep builder() {
-        return new Builder();
-    }
+    /** Starts a builder that requires at least one algorithm before build is available. */
+    public static FirstLaneStep builder() { return new Builder(); }
 
-    /**
-     * Returns the immutable ordered lane list.
-     */
-    public List<SpatialSolveLane> lanes() {
-        return lanes;
-    }
+    /** Returns the immutable ordered algorithms. */
+    public List<SpatialSolveLane> lanes() { return lanes; }
 
-    /**
-     * Returns how many solve lanes are present.
-     */
-    public int size() {
-        return lanes.size();
-    }
+    /** Returns the number of algorithms. */
+    public int size() { return lanes.size(); }
 
-    /**
-     * Returns one solve lane by its ordered index.
-     */
-    public SpatialSolveLane lane(int index) {
-        return lanes.get(index);
-    }
+    /** Returns the algorithm at the requested zero-based index. */
+    public SpatialSolveLane lane(int index) { return lanes.get(index); }
 
-    /**
-     * First solve-lane stage. Pick the first lane to evaluate.
-     */
+    /** Select the first algorithm; all supplied sources and estimators remain borrowed. */
     public interface FirstLaneStep {
-        /**
-         * Adds one explicit solve lane in evaluation order.
-         */
+        /** Adds a custom algorithm; its lifecycle remains with its supplier. */
         MoreLanesStep add(SpatialSolveLane lane);
 
-        /**
-         * Adds an absolute-pose-backed solve lane with default gating.
-         */
+        /** Reads field pose with a 0.50-second age limit and minimum producer quality 0.10. */
         MoreLanesStep absolutePose(AbsolutePoseEstimator estimator);
 
-        /**
-         * Adds an absolute-pose-backed solve lane with explicit freshness and quality gates.
-         *
-         * @param maxAgeSec  maximum accepted estimator age, in seconds
-         * @param minQuality minimum accepted estimator quality in {@code [0, 1]}
-         */
-        MoreLanesStep absolutePose(AbsolutePoseEstimator estimator,
-                                   double maxAgeSec,
-                                   double minQuality);
+        /** Reads field pose with explicit finite age (seconds) and quality in [0, 1]. */
+        MoreLanesStep absolutePose(AbsolutePoseEstimator estimator, double maxAgeSec, double minQuality);
+
+        /** Interprets direct tag-relative geometry with a fixed mount and 0.50-second age limit. */
+        MoreLanesStep relativeAprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount);
+
+        /** Interprets direct tag-relative geometry with a fixed mount and finite age limit. */
+        MoreLanesStep relativeAprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount,
+                                       double maxAgeSec);
 
         /**
-         * Adds a live-AprilTag solve lane with default freshness and field-pose bridge settings.
+         * Interprets direct tag-relative geometry using mount history at the exposure timestamp.
+         * The supplied source must provide that history; no current-mount fallback is supplied.
          */
-        MoreLanesStep aprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount);
+        MoreLanesStep relativeAprilTags(AprilTagSensor sensor,
+                                       TimeAwareSource<CameraMountConfig> cameraMount,
+                                       double maxAgeSec);
 
-        /**
-         * Adds a live-AprilTag solve lane with an explicit maximum tag age, in seconds.
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                CameraMountConfig cameraMount,
-                                double maxAgeSec);
-
-        /**
-         * Adds a live-AprilTag solve lane with a dynamic timestamp-aware robot->camera mount.
-         *
-         * <p>Use this for turret-mounted cameras or other sensors whose mount changes over time.</p>
-         *
-         * @param maxAgeSec maximum accepted tag age, in seconds
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                TimeAwareSource<CameraMountConfig> cameraMount,
-                                double maxAgeSec);
-
-        /**
-         * Adds a live-AprilTag solve lane with explicit freshness and a configured fixed-tag
-         * field-pose solver.
-         *
-         * @param maxAgeSec maximum accepted tag age, in seconds
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                CameraMountConfig cameraMount,
-                                double maxAgeSec,
-                                FixedTagFieldPoseSolver fieldPoseSolver);
-
-        /**
-         * Adds a live-AprilTag solve lane with a dynamic camera mount and a configured field-pose
-         * solver.
-         *
-         * @param maxAgeSec maximum accepted tag age, in seconds
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                TimeAwareSource<CameraMountConfig> cameraMount,
-                                double maxAgeSec,
-                                FixedTagFieldPoseSolver fieldPoseSolver);
+        /** Interprets selected observed points in the robot frame at their capture time. */
+        MoreLanesStep observedPoints();
     }
 
-    /**
-     * Non-empty solve-set stage. Additional lanes may be added, or the set can be built.
-     */
-    public interface MoreLanesStep {
-        /**
-         * Adds one explicit solve lane in evaluation order.
-         */
-        MoreLanesStep add(SpatialSolveLane lane);
-
-        /**
-         * Adds an absolute-pose-backed solve lane with default gating.
-         */
-        MoreLanesStep absolutePose(AbsolutePoseEstimator estimator);
-
-        /**
-         * Adds an absolute-pose-backed solve lane with explicit freshness and quality gates.
-         *
-         * @param maxAgeSec  maximum accepted estimator age, in seconds
-         * @param minQuality minimum accepted estimator quality in {@code [0, 1]}
-         */
-        MoreLanesStep absolutePose(AbsolutePoseEstimator estimator,
-                                   double maxAgeSec,
-                                   double minQuality);
-
-        /**
-         * Adds a live-AprilTag solve lane with default freshness and field-pose bridge settings.
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount);
-
-        /**
-         * Adds a live-AprilTag solve lane with an explicit maximum tag age, in seconds.
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                CameraMountConfig cameraMount,
-                                double maxAgeSec);
-
-        /**
-         * Adds a live-AprilTag solve lane with a dynamic timestamp-aware robot->camera mount.
-         *
-         * <p>Use this for turret-mounted cameras or other sensors whose mount changes over time.</p>
-         *
-         * @param maxAgeSec maximum accepted tag age, in seconds
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                TimeAwareSource<CameraMountConfig> cameraMount,
-                                double maxAgeSec);
-
-        /**
-         * Adds a live-AprilTag solve lane with explicit freshness and a configured fixed-tag
-         * field-pose solver.
-         *
-         * @param maxAgeSec maximum accepted tag age, in seconds
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                CameraMountConfig cameraMount,
-                                double maxAgeSec,
-                                FixedTagFieldPoseSolver fieldPoseSolver);
-
-        /**
-         * Adds a live-AprilTag solve lane with a dynamic camera mount and a configured field-pose
-         * solver.
-         *
-         * @param maxAgeSec maximum accepted tag age, in seconds
-         */
-        MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                TimeAwareSource<CameraMountConfig> cameraMount,
-                                double maxAgeSec,
-                                FixedTagFieldPoseSolver fieldPoseSolver);
-
-        /**
-         * Builds the immutable non-empty solve set.
-         */
+    /** Nonempty stage: more algorithms may be added, or the immutable set may be built. */
+    public interface MoreLanesStep extends FirstLaneStep {
+        /** Copies the declared algorithms into an immutable nonempty ordered set. */
         SpatialSolveSet build();
     }
 
     private static final class Builder implements FirstLaneStep, MoreLanesStep {
-        private final ArrayList<SpatialSolveLane> lanes = new ArrayList<SpatialSolveLane>();
+        private final ArrayList<SpatialSolveLane> lanes = new ArrayList<>();
 
-        @Override
-        public MoreLanesStep add(SpatialSolveLane lane) {
+        @Override public MoreLanesStep add(SpatialSolveLane lane) {
             lanes.add(Objects.requireNonNull(lane, "lane"));
             return this;
         }
 
-        @Override
-        public MoreLanesStep absolutePose(AbsolutePoseEstimator estimator) {
+        @Override public MoreLanesStep absolutePose(AbsolutePoseEstimator estimator) {
             return add(new AbsolutePoseSpatialSolveLane(estimator));
         }
 
-        @Override
-        public MoreLanesStep absolutePose(AbsolutePoseEstimator estimator,
-                                          double maxAgeSec,
-                                          double minQuality) {
+        @Override public MoreLanesStep absolutePose(AbsolutePoseEstimator estimator,
+                                                  double maxAgeSec, double minQuality) {
             return add(new AbsolutePoseSpatialSolveLane(estimator, maxAgeSec, minQuality));
         }
 
-        @Override
-        public MoreLanesStep aprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount) {
+        @Override public MoreLanesStep relativeAprilTags(AprilTagSensor sensor,
+                                                       CameraMountConfig cameraMount) {
             return add(new AprilTagSpatialSolveLane(sensor, cameraMount));
         }
 
-        @Override
-        public MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                       CameraMountConfig cameraMount,
-                                       double maxAgeSec) {
+        @Override public MoreLanesStep relativeAprilTags(AprilTagSensor sensor,
+                                                       CameraMountConfig cameraMount,
+                                                       double maxAgeSec) {
             return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec));
         }
 
-        @Override
-        public MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                       TimeAwareSource<CameraMountConfig> cameraMount,
-                                       double maxAgeSec) {
+        @Override public MoreLanesStep relativeAprilTags(AprilTagSensor sensor,
+                                                       TimeAwareSource<CameraMountConfig> cameraMount,
+                                                       double maxAgeSec) {
             return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec));
         }
 
-        @Override
-        public MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                       CameraMountConfig cameraMount,
-                                       double maxAgeSec,
-                                       FixedTagFieldPoseSolver fieldPoseSolver) {
-            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolver));
+        @Override public MoreLanesStep observedPoints() {
+            return add(new ObservedTargetSpatialSolveLane());
         }
 
-        @Override
-        public MoreLanesStep aprilTags(AprilTagSensor sensor,
-                                       TimeAwareSource<CameraMountConfig> cameraMount,
-                                       double maxAgeSec,
-                                       FixedTagFieldPoseSolver fieldPoseSolver) {
-            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolver));
-        }
-
-        @Override
-        public SpatialSolveSet build() {
-            if (lanes.isEmpty()) {
-                throw new IllegalStateException("SpatialSolveSet requires at least one solve lane");
-            }
-            return new SpatialSolveSet(Collections.unmodifiableList(new ArrayList<SpatialSolveLane>(lanes)));
+        @Override public SpatialSolveSet build() {
+            if (lanes.isEmpty()) throw new IllegalStateException("SpatialSolveSet requires a solve lane");
+            return new SpatialSolveSet(Collections.unmodifiableList(new ArrayList<>(lanes)));
         }
     }
 
-    @Override
-    public String toString() {
-        return "SpatialSolveSet{lanes=" + lanes + '}';
-    }
+    @Override public String toString() { return "SpatialSolveSet{lanes=" + lanes + '}'; }
 }

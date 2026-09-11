@@ -199,7 +199,8 @@ public final class AprilTagTimestampTest {
                 time.clock().nowTimestamp(),
                 Collections.singletonList(AprilTagObservation.target(5, Pose3d.zero()))
         );
-        TagSelectionSource selection = TagSelections.from(clock -> cachedFrame)
+        TagSelectionSource selection = TagSelections.fromVisibleTags(clock -> cachedFrame,
+                edu.ftcsushi.fw.sensing.vision.CameraMountConfig.identity())
                 .among(Collections.singleton(5))
                 .freshWithinSec(0.20)
                 .choose(TagSelectionPolicies.closestRange())

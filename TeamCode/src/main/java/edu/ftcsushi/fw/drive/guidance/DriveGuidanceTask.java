@@ -69,9 +69,9 @@ public final class DriveGuidanceTask extends AbstractTask {
         public double timeoutSec = 3.0;
 
         /**
-         * How long we will tolerate having no usable guidance command before timing out.
+         * How long any requested channel may lack finite solved geometry before timing out.
          *
-         * <p>The consecutive interval begins when the task starts, or on the first no-command
+         * <p>Zero-output fallback is not geometry. The interval begins at start, or on the first missing-channel
          * loop after usable guidance was last available. Time from before that boundary is not
          * charged to this timeout. This value must be finite and greater than zero.</p>
          */
@@ -230,8 +230,18 @@ public final class DriveGuidanceTask extends AbstractTask {
             return;
         }
 
-        // No usable command this loop.
-        if (step.out.mask.isNone()) {
+        // Refresh diagnostics before loss handling: old errors cannot survive missing evidence.
+        lastTranslationErrorIn = step.hasTranslationError
+                ? Math.hypot(step.forwardErrorIn, step.leftErrorIn) : Double.NaN;
+        lastOmegaErrorRad = step.hasOmegaError ? step.omegaErrorRad : Double.NaN;
+        boolean wantTranslation = requested.overridesTranslation();
+        boolean wantOmega = requested.overridesOmega();
+        boolean hasEveryRequestedChannel = !requested.isNone()
+                && (!wantTranslation || Double.isFinite(lastTranslationErrorIn))
+                && (!wantOmega || Double.isFinite(lastOmegaErrorRad));
+
+        // A fallback mask/zero signal is not evidence. Partial solves also stop this autonomous Task.
+        if (!hasEveryRequestedChannel) {
             if (!Double.isFinite(noGuidanceStartSec)) {
                 noGuidanceStartSec = clock.nowSec();
             }
@@ -254,15 +264,6 @@ public final class DriveGuidanceTask extends AbstractTask {
         if (!isActive()) {
             return;
         }
-
-        // Update error bookkeeping for debug.
-        lastTranslationErrorIn = step.hasTranslationError
-                ? Math.hypot(step.forwardErrorIn, step.leftErrorIn)
-                : Double.NaN;
-        lastOmegaErrorRad = step.hasOmegaError ? step.omegaErrorRad : Double.NaN;
-
-        boolean wantTranslation = requested.overridesTranslation();
-        boolean wantOmega = requested.overridesOmega();
 
         boolean translationOk = !wantTranslation
                 || (step.hasTranslationError && lastTranslationErrorIn <= cfg.positionTolInches);
@@ -316,7 +317,7 @@ public final class DriveGuidanceTask extends AbstractTask {
      */
     @Override
     protected void debugState(DebugSink dbg, String p) {
-        dbg.addData(p + ".mode", core.lastMode());
+        dbg.addData(p + ".solveMode", core.solveMode());
         dbg.addData(p + ".mask", core.lastStep().out.mask.toString());
         dbg.addData(p + ".axial", core.lastStep().out.signal.axial);
         dbg.addData(p + ".lateral", core.lastStep().out.signal.lateral);
@@ -332,10 +333,6 @@ public final class DriveGuidanceTask extends AbstractTask {
         dbg.addData(p + ".noGuidanceSec", noGuidanceSec)
                 .addData(p + ".maxNoGuidanceSec", cfg.maxNoGuidanceSec);
 
-        // Helpful if you want to tune takeover.
-        dbg.addData(p + ".aprilTagsInRangeForTranslation", core.aprilTagsInRangeForTranslation());
-        dbg.addData(p + ".blendTTranslate", core.blendTTranslate());
-        dbg.addData(p + ".blendTOmega", core.blendTOmega());
 
     }
 }

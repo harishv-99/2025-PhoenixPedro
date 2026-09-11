@@ -88,7 +88,7 @@ public final class DriveGuidanceSources {
                 dbg.addData(p + ".class", "DriveGuidanceStatusSource")
                         .addData(p + ".hasLast", last != null);
                 if (last != null) {
-                    dbg.addData(p + ".mode", last.mode)
+                    dbg.addData(p + ".solveMode", last.solveMode)
                             .addData(p + ".mask", last.mask.toString())
                             .addData(p + ".omegaErrorRad", last.omegaErrorRad)
                             .addData(p + ".translationErrIn", last.translationErrorMagInches());

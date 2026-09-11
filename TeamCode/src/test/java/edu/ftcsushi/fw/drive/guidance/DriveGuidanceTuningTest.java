@@ -184,7 +184,7 @@ public final class DriveGuidanceTuningTest {
                 .translateTo()
                 .fieldPointInches(12.0, 8.0)
                 .solveWith()
-                .localizationOnlyWithDefaults(ESTIMATOR)
+                .absolutePose(ESTIMATOR).doneAbsolutePose()
                 .driveTuning()
                 .translateKp(0.2)
                 .maxTranslateCmd(0.3)
@@ -233,7 +233,7 @@ public final class DriveGuidanceTuningTest {
                 .translateTo()
                 .fieldPointInches(12.0, 8.0)
                 .solveWith()
-                .localizationOnlyWithDefaults(ESTIMATOR)
+                .absolutePose(ESTIMATOR).doneAbsolutePose()
                 .driveTuning();
     }
 
@@ -242,7 +242,7 @@ public final class DriveGuidanceTuningTest {
                 .translateTo()
                 .fieldPointInches(12.0, 8.0)
                 .solveWith()
-                .localizationOnlyWithDefaults(ESTIMATOR)
+                .absolutePose(ESTIMATOR).doneAbsolutePose()
                 .build();
     }
 

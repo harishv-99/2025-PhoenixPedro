@@ -40,7 +40,7 @@ public final class PhoenixTeleOpPrestartTest {
                 PhoenixAlliance.RED
         );
         LoopClock clock = initializedClock();
-        Source<Set<Integer>> eligibleTagIds = prestart.eligibleScoringTagIds();
+        Source<Integer> eligibleTagIds = prestart.selectedScoringTagId();
         RecordingTelemetry telemetry = new RecordingTelemetry();
 
         assertTrue(expectIllegalState(() -> eligibleTagIds.get(clock))
@@ -63,7 +63,7 @@ public final class PhoenixTeleOpPrestartTest {
 
         assertEquals(RobotProgram.StartDisposition.READY, prestart.freezeForStart());
         assertEquals(PhoenixAlliance.RED, prestart.frozenAlliance());
-        assertEquals(Collections.singleton(redTagId), eligibleTagIds.get(clock));
+        assertEquals(Integer.valueOf(redTagId), eligibleTagIds.get(clock));
         assertTrue(expectIllegalState(() -> prestart.update(clock))
                 .getMessage().contains("already frozen"));
         assertTrue(expectIllegalState(prestart::freezeForStart)
@@ -106,8 +106,8 @@ public final class PhoenixTeleOpPrestartTest {
         assertEquals(RobotProgram.StartDisposition.READY, prestart.freezeForStart());
         assertEquals(PhoenixAlliance.RED, prestart.frozenAlliance());
         assertEquals(
-                Collections.singleton(redTagId),
-                prestart.eligibleScoringTagIds().get(clock)
+                Integer.valueOf(redTagId),
+                prestart.selectedScoringTagId().get(clock)
         );
         assertTrue(expectIllegalState(
                 () -> prestart.seedDraftFromAuto(PhoenixAlliance.BLUE)

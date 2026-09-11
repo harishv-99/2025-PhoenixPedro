@@ -32,7 +32,7 @@ fresh sections for one declaration; long-lived owners capture only the active se
 - `PhoenixCapabilities` -> shared mode-neutral robot API and public status snapshots used by TeleOp and Auto
 - `PhoenixTeleOpControls` -> TeleOp stick/button semantics
 - `.scoring.PhoenixScoring` -> scoring requests, policy, all scoring Plants, update order, and status production
-- `.scoring.PhoenixTargeting` -> selected-tag policy, aim status, and shot suggestions
+- `.scoring.PhoenixTargeting` -> configured field target, corrected-pose aim status, and shot suggestions
 - `PhoenixReadiness` -> immutable mode-specific calibration/field/route warnings and blockers
 - `PhoenixRobot` -> composition root; declares managed TeleOp or Auto roles
 - `RobotProgram` -> managed mode clock, phase order, prestart policy, telemetry commit, and cleanup
@@ -314,13 +314,29 @@ private static final InterpolatingTable1D CURRENT =
                 new double[]{1500.0, 1430.0, 1450.0});
 ```
 
-The first array lists ranges in inches; the second lists the matching flywheel velocities in native
+The first array lists camera-origin to tag-center 3D ranges in inches; the second lists the matching flywheel velocities in native
 units. Entries at the same index form one calibration row. The table factory copies both arrays,
 requires equal nonzero lengths and finite values, and rejects duplicate or out-of-order distances
 while loading the checked-in recipe;
-do not add a duplicate robot-local validation loop. During a match, a fresh tag alone does not prove
-that its derived range is finite. Phoenix publishes a shot suggestion only when the table result is
-finite, so unavailable live geometry cannot masquerade as a clamped endpoint shot.
+do not add a duplicate robot-local validation loop. Production computes the camera's field pose as
+`fieldToRobot.then(robotToCamera)`, using the corrected robot pose, and measures to the selected
+fixed tag center. Camera height and the rotation of its robot-local forward/left offset matter.
+The table does not use floor-plane distance, the tag-local aim offset, or a shooter-to-basket
+distance. Its existing reviewed rows remain unchanged.
+
+Both this range and field aiming require the same captured pose to be available and finite,
+no older than `PhoenixTargeting.Config.poseMaxAgeSec` (default 0.50 seconds), and have finite
+quality between `poseMinQuality` (default 0.10) and 1.0. Old START epochs and unavailable times
+are not admitted. These thresholds are application choices, not physical confidence guarantees.
+Only a finite range and finite table result produce a suggestion. Finite out-of-table ranges
+still clamp to an endpoint under the existing table policy; that is not proof the shot is valid.
+Occlusion does not itself prevent a suggestion while corrected localization is usable.
+
+The driver captures a suggestion explicitly and may still nudge the selected speed manually.
+Auto waits for a usable pose/range suggestion, captures it once, and then aims under its existing
+bounded timeout/fallback policy. Neither path continuously retargets flywheel speed. Recheck real
+shot outcomes under controlled conditions after changes to localization, camera mounting, or
+field geometry; passing software geometry tests is not calibration acceptance.
 
 The FTC controller may quantize gains, so copy the displayed **readback values** into:
 
@@ -758,10 +774,10 @@ Phoenix treats localization as three different roles:
 
 That split keeps each extension at the role whose contract it satisfies.
 
-The raw AprilTag estimator composes camera freshness/mount data with a
-`FixedTagFieldPoseSolver.Config`. Phoenix targeting constructs its own configured
-`FixedTagFieldPoseSolver` from the same authored policy before building guidance plans. The two
-runtime owners therefore use the same authored policy without sharing a mutable Config.
+The raw AprilTag estimator owns camera freshness, field layout, mount data, and the captured
+`FixedTagFieldPoseSolver.Config`. The corrected estimator incorporates its accepted evidence.
+Phoenix targeting consumes only that corrected pose and configured field target; it neither
+reads raw observations nor runs a separate tag-to-field pose solve.
 
 Other additions that fit this model include:
 

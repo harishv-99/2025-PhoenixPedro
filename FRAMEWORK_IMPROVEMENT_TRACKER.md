@@ -281,6 +281,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 167 | DIAG-07 | Record camera-calibration sample history | Proposed | Preserve bounded fixed-setup sample history and evaluate mount/rotation-mean replay, not image processing or physical acceptance. |
 | 168 | TASK-08 | Attribute queued submissions and withdrawals | Proposed | Compare retained Tasks and owner-local attempt state with a narrow queue result that also observes withdrawal before start and composes truthful outcomes. |
 | 169 | DOC-22 | Align capability guidance with outcome-aware sequences | Proposed | Correct the confirmed stale sequence-success explanation; teach deliberate completion continuation separately from ordinary success gating, without adding robot guards or changing Task behavior. |
+| 170 | DRIVE-05 | Unified target selection and guidance/localization boundary | Done | Explicit field-pose/direct-tag guidance, parallel observed/pose-based tag selection, caller migration, and independent example implemented. Automated checks pass; user approved the reviewed diff and authorized publication to master on 2026-09-10. |
 
 ### Diagnostic follow-up intake (approved 2026-09-08)
 
@@ -316,7 +317,7 @@ other task priorities and statuses remain unchanged, and CAL-10 remains next.
    `CAL-10` remains the next decision gate; completed robustness work is not reopened.
 2. Run the original `AUDIT-01` with its unchanged frozen repositories, capability matrix, and
    terminal-disposition prerequisites. It closes that earlier program, not this new comparison.
-3. Run `MATH-02` -> `TASK-07` -> `RUNTIME-04` -> `VISION-04` -> `SPATIAL-03` -> `EXAMPLE-13` ->
+3. Run `MATH-02` -> `TASK-07` -> `RUNTIME-04` -> `DRIVE-05` -> `VISION-04` -> `SPATIAL-03` -> `EXAMPLE-13` ->
    `CTRL-03` -> `SENSOR-02` -> `LOCALIZATION-05`, one item per branch and approval cycle.
 4. Run `AUDIT-02` after those nine implementation candidates have reached **Done** (including an
    approved, recorded, verified no-change result) or evidence-backed **Deferred** with a concrete
@@ -840,6 +841,167 @@ decision gate after the intake merge is verified; it does not approve a SAFE-04 
 implementation.
 
 ## Task definitions and decision records
+
+### DRIVE-05 approved implementation (2026-09-10)
+
+The user's **"Implement the plan"** approves the combined guidance/localization boundary and
+parallel tag-selection design, including the subsequent robot-code examples. The placement-error
+discussion clarified configuration versus physical evidence; it did not add field surveying,
+fixture tracking, per-tag uncertainty models, or automatic field-map correction. DRIVE-05 is the
+current item before VISION-04. VISION-04 and the diagnostic follow-ups remain separate.
+
+**Decision gate: Ready; implementation: Done.** Branch:
+`codex/drive-05-guidance-localization-boundary`, created from fetched `origin/master` at
+`5f8e09a17266caef1f189d1efd7a113a226357f8`. The original implementation request did not authorize
+publication; the separate user review and destination-specific authorization below closes that gate.
+
+**Confirmed behavior and inventory.** Guidance currently offers localization-only, tag-only,
+observed-point and adaptive construction, including redundant default aliases and source-empty
+stages. Its relative tag spatial lane also solves a temporary field pose. Valid single-source
+results can report no source, and zero-output loss can hide missing guidance from the Task timer.
+Selected direct references can use the selector's camera observation with another solve lane's
+mount. Tag selection currently ranks only real observations, shares preview/held-decision
+diagnostics, and cascades reset to borrowed detections/enables. FixedTagFieldPoseSolver remains
+needed by localization and calibration; moving-mount field solving must move to the estimator.
+
+Affected public construction families are DriveGuidance spec/plan/plan(spec), their solve/tuning
+stages and fresh plan-owned overlay/query/task runtimes; SpatialQuery builder versus reusable
+SpatialQuerySpec/from; SpatialSolveSet builder plus redundant public built-in lane constructors;
+AprilTagPoseEstimator's constructor/configuration; TagSelections stages and policy/choice/result
+construction; selected-observation projections. The three maintained selector adopters are Phoenix
+targeting and the two AprilTag/corrected-localization testers. Guidance/spatial/estimator callers
+include those tools, shared calibration/configuration, Phoenix, Reference and vision-pickup/adaptive-
+collection examples, their tests, and linked guides/API references. Each family is migrated in one
+diff; no compatibility aliases are retained. Reusable specs and tuning bundles remain distinct
+from independent stateful runtimes; source arguments are supplied directly at their solve stages.
+
+**Alternatives and simplicity.** Documentation-only and local bug fixes leave competing field-pose
+ownership and cannot select a new target during camera occlusion. Separate observed/pose selectors
+would duplicate ranking, sticky-state and failure semantics. A generic target registry, implicit
+observed-first fallback, and guidance-owned pose blending introduce unrelated choices. Instead,
+students choose one target, one evidence model, and one runtime use. Both tag-selection entrypoints
+share ranking and holding grammar; a camera mount is answered once at each evidence boundary.
+
+**Approved implementation contract.**
+
+- Guidance uses `absolutePose(estimator)`, `relativeAprilTags(sensor, mount)`, or
+  `observedPoints(lossPolicy)`. Remove adaptive/takeover/blend policies and default aliases. Keep
+  pose/tag age defaults at 0.50 s, pose quality at 0.10, and pass-through overlay loss. Direct tag
+  guidance remains useful with or without localization; field-only targets require a field pose.
+- Canonical built-in spatial construction is the staged SpatialSolveSet builder; retain the custom
+  lane seam and explicit ordered advanced queries. No relative lane computes a hidden field pose.
+  AprilTagPoseEstimator receives one fixed or historical mount separately from policy. Historical
+  lookup uses the supporting detection timestamp, never a current-mount fallback or borrowed reset.
+- Selectors use `fromVisibleTags(tags, mount)` or `fromFieldPose(estimator, layout, mount)`, then
+  candidate IDs, freshness, pose-only minimum quality, shared policy and holding stages. Candidate
+  geometry is full camera/robot-relative Pose3d with original observed/pose evidence. Preserve common
+  and per-ID point/frame offsets, multiple visible candidates and alliance-selected sets. Built-in
+  metric ties choose the lowest ID; optional bearing bounds are explicit, not invented camera FOV.
+- Preview, held selection decision, current selected evidence, and actual visibility are separate.
+  Pose inference never fabricates observations. Custom policies must return a current supplied
+  candidate. Preserve atomic successful per-cycle publication, failure retry and reentry rejection;
+  reset clears only local state, and a clock reset clears old selector intent. Direct solves look
+  up the selected ID in their own fresh camera frame and use that frame's mount/time.
+- Guidance status names one solve mode and truthful solved channels. Auto requires all requested
+  finite errors; missing guidance stops through the drive's immediate active-stop path and advances
+  its loss timer even under ZERO_OUTPUT. Legitimate zero output is not evidence loss.
+- Phoenix retains its START-frozen single alliance tag (RED 24 / BLUE 20), corrected-pose aiming,
+  and pose-derived **3D camera-origin-to-selected-tag-center** range. Preserve table rows, speed
+  capture/manual adjustment, feed ownership, override and bounded fallback. No multi-zone strategy
+  is added to Phoenix; its multi-ID seam becomes one selected-ID source. Aim/range share pose gates.
+- Teach one independent direct-tag alignment example and focused multi-target snippets/tests.
+  Synchronize principles, guides, Javadocs, all maintained callers and Phoenix-local architecture.
+  Configured fixed geometry is the computational model, not proof of physical placement or accuracy.
+
+**Verification plan.** Test selection/mapping parallelism, pose-only acquisition without sightings,
+occlusion/holding/retry/reset, geometry with rotated/off-center cameras and historical mounts,
+foreign-policy winners and source/mount mismatch; test exclusive field-pose ownership, direct
+no-localizer solves, delayed/rejected corrections, truthful partial-channel/loss/stop behavior, and
+Phoenix range/capture invariants. Include the independent 30-inch camera/tag range oracle. Run full
+TeamCode compilation/unit tests, strict docs/Javadocs, generated-search/API-link checks, whitespace
+and an independent API/ownership review. Hardware accuracy, tuning, shooting and stopping remain
+adopting-robot validation. Record exact evidence and stop for Android Studio review and separate
+destination-specific publication authorization before staging or committing.
+
+**Implementation and independent review (2026-09-10).** The approved API paths and caller migration
+are implemented. Independent selector/guidance construction audits found distinct value in retained
+spec versus runtime and reusable tuning, and no reason to restore removed source-empty/default
+aliases or public built-in spatial constructors. Separate reviewers traced corrected-pose ownership,
+selected-ID resolution using the solve camera, loss masking versus solved evidence, and local-only
+selector resets. Adversarial checks additionally closed finite six-component pose/quality admission,
+invalid per-channel dynamic geometry, robot-relative anchor publication after an illegal callback
+clock change, and finite candidate range overflow. The existing pose-lock capture helper now uses
+the same finite absolute-pose admission contract; its enable-only capture semantics are unchanged.
+
+The independent `robots.examples.tagalignment` graph has complete profile, managed camera ownership,
+held TeleOp overlay, and bounded fresh Auto Task. Both hardware entrypoints are disabled and the
+profile separately rejects motion until reviewed. It does not depend on a production application,
+field localization, or the deferred multi-object tracking work. Framework Principles now records
+field-pose authority, identity/evidence separation, historical-mount ownership, and truthful Task
+loss. Phoenix table rows and the camera-origin-to-tag-center 3D range convention are unchanged.
+
+**Page-by-page concept audit.** No beginner tab or required course step is added; these remain
+optional advanced branches with one central outcome and directly linked prerequisites.
+
+| Page / audience | Central outcome and required concepts | First explanation before required use | Optional depth |
+| --- | --- | --- | --- |
+| Drive Guidance / drive-assist adopter | Apply drive correction from explicitly chosen evidence; pose, relative geometry, overlay, loss | Existing frame prerequisites; pose versus observation before mode table; loss/defaults beside examples | Tuning, timing, moving mounts and complete direct-tag example later on the same page |
+| Spatial Queries / geometry consumer | Ask for geometry without actuation; reference, lane, frame, evidence time | Opening definitions and canonical built-in construction; direct versus field authority beside builder | Historical frames, ordered query selection, mechanism conversion |
+| Vision Targets / optional vision adopter | Choose a useful target location; observed versus inferred selection, bearing, preview/hold | Bearing and already-updated localizer/layout before tag snippets; localization prerequisite for pose alternative | Per-ID maps and provenance follow the ordinary shared-offset form |
+| AprilTag Localization & Fixed Layouts / localization adopter | Own field-pose estimation from trusted tag facts | Existing detector/layout/estimator distinction; explicit guidance boundary before configured-solver snippet | Historical mounts, calibration and correction diagnostics |
+| Sources & Signals / composition maintainer | Understand source observation and reset ownership | Existing source/reset definitions; tag selectors placed in borrowed-reset explanation | Domain guides carry target-selection grammar |
+| Mechanism Target Planning / mechanism adopter | Convert selected geometry to one Plant request | Existing spatial-request boundary now identifies explicit evidence source and original timestamp | Spatial Queries and Drive Guidance own geometry/controller detail |
+| Drive geometry reference / API lookup | Find canonical construction | Public SpatialSolveSet link replaces internal built-in lane link | Linked advanced guides |
+| Tag-alignment complete source / optional adopter | Approach a visible tag without field localization | Relative point/frame, illustrative units/defaults, complete manifest, managed ownership, isolated hardware gates | Central Drive Guidance page and source tests |
+| Phoenix-local guides / application maintainer | Preserve single-alliance target and captured shot behavior | Corrected pose, admitted evidence, and 3D lens-to-tag-center range stated at targeting description | Application architecture/calibration detail, not framework teaching authority |
+
+The first complete suite ran 2,962 tests and exposed six failures. One was missing-pose normalization
+in the application snapshot source; the remaining assertions reflected changed evidence rejection,
+removed borrowed-sensor reset, or incorrect test setup/timing. These were corrected without loosening
+finite/freshness or ownership requirements. An item-specific tracker record was moved out of global
+queue guidance so its production-caller inventory remains properly scoped. Initial strict narrative
+build passed; the later complete example source-link correction also passed. Final evidence below
+will record the completed rerun, generated artifacts, and review gate.
+
+Visual QA limitation: mandatory Browser skill setup fails before opening a page because its runtime
+cannot write kernel assets (`os error 3`); even the minimal runtime probe fails. No browser screenshot,
+wide/narrow layout, theme, or rendered Mermaid verification is claimed. The authored diagram includes
+accessibility title/description and a visible textual equivalent; rendered inspection remains part
+of the manual review request.
+
+**Final automated evidence and review gate (2026-09-10).**
+
+- `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed, repeated with final
+  `:TeamCode:sushiJavadocs`: **2,968 tests across 298 suites; 0 failures, 0 errors, 0 skipped**.
+  Includes selector/history/geometry/authority/loss regressions, all maintained applications and
+  examples, and documentation/boundary checks. Existing Java 8-on-JDK-21 and SDK deprecation
+  warnings remain; no new compilation or Javadoc errors.
+- Narrative build passed with the existing Windows documentation environment:
+  `build/docs-venv-win/Scripts/python.exe -m zensical build --clean --strict`, with a final strict
+  rebuild after correcting complete-source labels. Regenerated Javadocs after that narrative build
+  so its clean output did not remove the combined artifact's API tree.
+- Generated checks passed: **235 API links and 107 maintained source links across 58 Markdown
+  pages**, and **1,046 indexed sections across the same six guide areas**.
+- `git diff --check` and a scan of every changed/untracked Java/Markdown file passed with zero
+  trailing-whitespace findings. Removed guidance/selector spelling scan is clean in maintained
+  source and docs. Production shot-table file is unchanged. Index remains empty.
+- Hardware camera accuracy, field placement, aiming/tuning, shooting consistency, and physical stop
+  remain unverified. The new example is disabled and requires explicit profile review before motion.
+- Review in Android Studio: explicit solve-mode construction and truthful unavailable flags;
+  visible-versus-pose selection and held-ID/reset behavior; Phoenix corrected-pose aim/range and
+  unchanged shot-table/capture semantics; disabled direct-tag TeleOp/Auto and loss/STOP behavior.
+  Review the Drive Guidance/Vision Targets narrative and new ownership diagram in wide/narrow,
+  light/dark views because automated browser inspection was unavailable.
+- Publication coordinates confirmed: branch `codex/drive-05-guidance-localization-boundary`,
+  origin push URL `https://github.com/harishv-99/2025-PhoenixPedro.git`, target `master`.
+  At the implementation handoff, publication remained subject to separate user authorization.
+
+**User review and publication authorization (2026-09-10).** The user approved the reviewed DRIVE-05
+diff with the combined review-and-publication reply, authorizing its commit on
+`codex/drive-05-guidance-localization-boundary`, push to
+`https://github.com/harishv-99/2025-PhoenixPedro.git`, pull request, and merge into `master`.
+Manual review is accepted and the item is Done. This approval does not claim physical robot
+validation or automated browser QA, and it does not authorize starting the next tracker item.
 
 ### TEST-01 - Pure framework test harness
 

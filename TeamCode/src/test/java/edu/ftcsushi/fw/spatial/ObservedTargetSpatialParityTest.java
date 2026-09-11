@@ -47,7 +47,7 @@ public final class ObservedTargetSpatialParityTest {
 
         DriveGuidanceStatus status = DriveGuidance.plan().translateTo().point(reference)
                 .controlFrames(frames).solveWith()
-                .observationsOnly(DriveGuidanceSpec.LossPolicy.PASS_THROUGH).build().query().get(time.clock());
+                .observedPoints(DriveGuidanceSpec.LossPolicy.PASS_THROUGH).build().query().get(time.clock());
         assertTrue(status.hasTranslationError);
         assertEquals(8, status.forwardErrorIn, 1e-12);
         assertEquals(2, status.leftErrorIn, 1e-12);
@@ -65,7 +65,7 @@ public final class ObservedTargetSpatialParityTest {
                 .freshWithinSec(0.2).nearestToRobot());
         SpatialQuery directQuery = SpatialQuery.builder().translateTo(SpatialTargets.point(direct))
                 .andFaceTo(SpatialTargets.point(direct)).solveWith(SpatialSolveSet.builder()
-                        .aprilTags(tags, CameraMountConfig.identity()).build()).build();
+                        .relativeAprilTags(tags, CameraMountConfig.identity()).build()).build();
         SpatialQuery observedQuery = SpatialQuery.builder().translateTo(SpatialTargets.point(observed))
                 .andFaceTo(SpatialTargets.point(observed)).solveWith(SpatialSolveSet.builder()
                         .add(new ObservedTargetSpatialSolveLane()).build()).build();
@@ -99,7 +99,7 @@ public final class ObservedTargetSpatialParityTest {
             DriveGuidanceStatus status = DriveGuidance.plan().translateTo().point(reference)
                     .controlFrames(SpatialControlFrames.robotCenter().withTranslationFrame(
                             new Pose2d(-Double.MAX_VALUE, 0, 0)))
-                    .solveWith().observationsOnly(loss).build().query().get(time.clock());
+                    .solveWith().observedPoints(loss).build().query().get(time.clock());
             assertFalse(status.hasTranslationError);
             assertTrue(Double.isFinite(status.signal.axial));
             assertTrue(Double.isFinite(status.signal.lateral));

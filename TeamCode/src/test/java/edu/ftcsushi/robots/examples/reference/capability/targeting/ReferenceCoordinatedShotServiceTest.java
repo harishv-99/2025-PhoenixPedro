@@ -296,8 +296,9 @@ public final class ReferenceCoordinatedShotServiceTest {
         invalidSpatial.predictor.publishStationary(
                 pose(Double.NaN, 0.0, 0.0), 0.80, invalidSpatial.time.clock());
         invalidSpatial.service.start(invalidSpatial.time.clock());
+        // The built-in pose lane rejects non-finite geometry before exposing a solved channel.
         assertUnavailable(invalidSpatial.service.solution(),
-                ReferenceCoordinatedShotService.Reason.SPATIAL_INVALID);
+                ReferenceCoordinatedShotService.Reason.SPATIAL_UNAVAILABLE);
 
         ReferenceCoordinatedShotService.Config farConfig = testConfig();
         farConfig.targetFieldXInches = 201.0;

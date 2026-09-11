@@ -60,11 +60,11 @@ protected void configure(RobotProgram program) {
 The entry makes its standalone default explicit. The package-private program owner creates one
 fresh `PhoenixProfile.current()` graph, installs one visible `PhoenixTeleOpPrestart`, performs the
 ordinary cross-owner motor preflight, constructs `new PhoenixRobot(hardwareMap)`, and calls
-`declareTeleOp(program, profile, gamepad1, gamepad2, prestart.eligibleScoringTagIds())`. It then
+`declareTeleOp(program, profile, gamepad1, gamepad2, prestart.selectedScoringTagId())`. It then
 consumes the optional match snapshot after localization exists, using its alliance only to seed the
 still-editable INIT menu. The profile and Gamepads are mode-active declaration inputs; the root does
 not retain them as an aggregate. The prestart's value at FTC START is the sole frozen
-targeting-eligibility authority.
+configured scoring-target authority.
 
 Every production or diagnostic Phoenix-season Auto extends `PhoenixAutoOpMode` and returns only a
 setup:
@@ -136,7 +136,7 @@ establish physical calibration or safe stopping distance.
 mode-active dependencies to their owners. Each long-lived owner captures only the configuration it
 uses; neither the root nor a mode owner retains or copies the complete `PhoenixProfile`. TeleOp
 receives both Gamepads at its declaration boundary; Auto receives no dormant Gamepad dependency.
-The prestart owners supply a source that becomes one singleton scoring-tag set after their
+The prestart owners supply a source that supplies one scoring-tag id after their
 `PhoenixAlliance` freezes. The ordinary Phoenix Auto host supplies always-enabled aim and no
 override, while the same single `declareAuto(...)` boundary retains clock-aware enable and override
 sources for an advanced direct assembly; neither choice owns a second lifecycle.
@@ -317,34 +317,46 @@ prove motor-port identity/direction, Pinpoint pod placement or READY behavior, f
 tuning, field-transform alignment, path clearance, stopping distance, or physical STOP. Those
 remain adopting-robot evidence documented in the calibration guide.
 
-## Targeting eligibility
+## Corrected-pose targeting
 
-Phoenix keeps the complete configured scoring-target catalog and fixed tag layout. This allows all
-appropriate fixed tags to support pose solving and field localization.
+Phoenix keeps the complete scoring-target catalog and fixed tag layout. The localization lane owns
+which tag evidence corrects robot pose; targeting never constructs a second tag-to-field solver.
 
-`PhoenixTargeting` additionally receives one robot-owned
-`Source<Set<Integer>> eligibleScoringTagIds`:
+`PhoenixTargeting` receives one robot-owned `Source<Integer> selectedScoringTagId`. Both TeleOp
+and Auto map their START-frozen alliance to one configured id: RED is 24 and BLUE is 20. At the first
+managed targeting update, the service validates and freezes that id, its label, its tag-local
+forward/left aim offset, and its field tag pose before reading localization. Missing or malformed
+selected facts fail fast; inactive catalog entries do not join this session's graph. An opposite-
+alliance tag can support localization without becoming the scoring target. `reset()` clears only
+the owned session and requires a fresh drive graph; the selected-id source and localization are
+borrowed, not reset by targeting.
 
-- TeleOp supplies the singleton mapped from its START-frozen alliance.
-- Auto supplies the same singleton shape mapped from its START-frozen alliance.
+Targeting captures one corrected pose snapshot per cycle after the managed localization service
+updates. Its private read-only estimator view shares that exact pose with the aim query, TeleOp
+overlay, and Auto aim Task without advancing localization again. Both aiming and the speed
+suggestion require available, finite pose evidence with an original timestamp no older than
+`poseMaxAgeSec = 0.50` and a finite quality in `[poseMinQuality = 0.10, 1.0]`. These are Phoenix
+policy defaults, not physical safety thresholds or a probability of successful aiming. An old
+START epoch, unavailable time, stale pose, or malformed quality cannot provide a new suggestion.
 
-At the first targeting update of a session, the owner validates and defensively freezes that set,
-then builds one exact selector, fixed-layout subset, offset map, and guidance plan before reading the
-sensor. Null, empty, null-member, unknown-ID, or missing fixed-layout entries fail fast. Inactive
-catalog entries therefore cannot enter the current mode's plan. Eligibility is applied before
-candidate preview and sticky selection, so an opposite-alliance tag cannot become either mode's
-scoring target. This does not filter localization: its solver still owns the complete fixed tag
-layout. `reset()` begins a new targeting session and requires a fresh drive graph.
+Aim uses the fixed tag's planar forward/left aim offset and corrected field pose. The shot table
+still consumes **camera-origin to selected-tag-center 3D distance in inches**: compose
+`fieldToRobot.then(robotToCamera)`, then measure from that camera origin to the fixed tag center.
+This is neither floor-plane distance nor shooter-to-basket distance, and the aim offset does not
+move the range endpoint. The reviewed shot-table rows are unchanged. Camera occlusion alone does
+not block either calculation while localization remains usable; it does not prove that odometry
+has remained accurate.
 
-The localization Config contains data-only `FixedTagFieldPoseSolver.Config` tuning. The root passes
-that selected nested fact to `PhoenixTargeting`, which validates and captures it once as a completed
-`FixedTagFieldPoseSolver` for its guidance plans. Localization independently captures the same
-authored Config in its `AprilTagPoseEstimator`. Later edits to the short-lived profile draft cannot
-change either running solve policy.
+Status retains the configured tag id and label even when pose evidence is unusable. It reports
+pose admission and original timestamp, the named 3D range, aim error/readiness, and finite speed
+suggestion separately. It makes no claim that the target was observed this cycle. Driver speed
+capture, manual nudges, aim override, feed gating, and terminal cleanup retain their existing
+owners; a new range is a suggestion, not continuous flywheel retargeting.
 
-Target visibility is handled inside the routine. The scoring attempt waits for its bounded
-`waitForTargetSec`; timeout is retained truthfully, and `PhoenixPedroPreParkTask` selects the
-explicit return/park fallback. No pre-reset INIT timestamp crosses the START clock epoch.
+Auto waits at most `waitForTargetSec` for the configured target plus usable pose and finite range
+suggestion, then captures speed and runs aim. It does not wait for raw camera visibility. Timeout
+is retained truthfully, and `PhoenixPedroPreParkTask` selects the explicit return/park fallback.
+No pre-reset INIT timestamp crosses the START clock epoch.
 
 `PhoenixAutoTasks.aimAndShootOne(...)` returns a `Tasks.withCleanup(...)` Task. Its private
 phase driver retains Phoenix's existing target/aim/shot-wait transition timing and phase-specific
@@ -545,7 +557,7 @@ Do not:
 - retain or broadly copy `PhoenixProfile` in the composition root;
 - make route Tasks the only Pedro heartbeat owner;
 - filter the complete profile to choose an alliance target;
-- let opposite-alliance observations enter preview/sticky target selection;
+- replace the START-frozen scoring id with a visible opposite-alliance tag;
 - make sensor visibility a structural START-readiness requirement;
 - infer route success from a vendor idle flag;
 - let presenters advance state;

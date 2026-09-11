@@ -1,5 +1,7 @@
 package edu.ftcsushi.fw.tools.tester.calibration;
 
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver.EncoderDirection;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -39,7 +41,6 @@ import edu.ftcsushi.fw.ftc.vision.VisionReadiness;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.apriltag.AprilTagPoseEstimator;
-import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.fw.tools.tester.TesterContext;
@@ -940,6 +941,7 @@ public final class PinpointTesterConfigTest {
         AprilTagPoseEstimator retainedEstimator = new AprilTagPoseEstimator(
                 sensor,
                 layout,
+                CameraMountConfig.identity(),
                 AprilTagPoseEstimator.Config.defaults()
         );
         setField(

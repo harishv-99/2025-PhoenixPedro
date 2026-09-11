@@ -562,7 +562,7 @@ public final class PinpointAprilTagCorrectedLocalizationTester extends BaseTeleO
         Set<Integer> previewIds = trackAny && !fixedIds.isEmpty()
                 ? fixedIds
                 : Collections.singleton(selectedTagId);
-        selection = TagSelections.from(tagSensor)
+        selection = TagSelections.fromVisibleTags(tagSensor, activeCameraMount)
                 .among(previewIds)
                 .freshWithinSec(aprilTagMaxAgeSec())
                 .choose(TagSelectionPolicies.closestRange())

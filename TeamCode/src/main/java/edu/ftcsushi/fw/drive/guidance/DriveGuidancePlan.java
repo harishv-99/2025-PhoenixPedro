@@ -310,7 +310,7 @@ public final class DriveGuidancePlan {
      * <pre>{@code
      * DriveGuidancePlan plan = DriveGuidance.plan()
      *         .translateTo().fieldPointInches(48.0, 24.0)
-     *         .solveWith().localizationOnlyWithDefaults(poseEstimator)
+     *         .solveWith().absolutePose(poseEstimator).doneAbsolutePose()
      *         .driveTuning().use(DriveGuidancePlan.Tuning.defaults()).doneDriveTuning()
      *         .build();
      *

@@ -16,7 +16,7 @@ tags:
 | ask a frame-explicit spatial question | [`SpatialQuery`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialQuery.html>) |
 | name robot, field, and other reference frames | [`References`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/References.html>) |
 | compute a robot-center destination from a located target | [`ApproachResult2d`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ApproachResult2d.html>) |
-| solve delayed robot-at-capture target feedback | [`ObservedTargetSpatialSolveLane`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ObservedTargetSpatialSolveLane.html>) |
+| solve delayed robot-at-capture target feedback | [`SpatialSolveSet.builder().observedPoints()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialSolveSet.html>) |
 
 ## Remember
 

@@ -270,7 +270,7 @@ public final class PhoenixMatchHandoffTest {
             fail("Expected restore before TeleOp initialization to fail");
         } catch (IllegalStateException expectedFailure) {
             assertTrue(expectedFailure.getMessage().contains(
-                    "declareTeleOp(program, profile, gamepad1, gamepad2, eligibleScoringTagIds)"
+                    "declareTeleOp(program, profile, gamepad1, gamepad2, selectedScoringTagId)"
             ));
         }
 
@@ -294,7 +294,7 @@ public final class PhoenixMatchHandoffTest {
             fail("Expected restore after robot stop to fail");
         } catch (IllegalStateException expectedFailure) {
             assertTrue(expectedFailure.getMessage().contains(
-                    "declareTeleOp(program, profile, gamepad1, gamepad2, eligibleScoringTagIds)"
+                    "declareTeleOp(program, profile, gamepad1, gamepad2, selectedScoringTagId)"
             ));
         }
         assertEquals(1, resetter.calls);

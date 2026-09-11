@@ -433,6 +433,22 @@ finite range clamping and loss of target evidence through explicit status rather
   height assumption; preserve robot-at-capture coordinates, capture time, and pose-history lookup
   provenance. Missing calibration, identity, orientation, or quality stays missing. Fresh robot
   localization must not refresh an old target sighting.
+- Localization owns field-pose estimation and correction. Field guidance reads one explicitly
+  selected absolute-pose estimator; it must not bypass that owner's admission or fusion policy
+  with a second raw-tag field solve. Direct tag-relative guidance is a separate explicit choice,
+  usable with or without localization; it never secretly falls back to field-pose inference.
+- Target selection owns identity, not the downstream solve's sensor evidence. Observed-tag and
+  field-pose-derived selection share policies and held-target semantics, but inferred candidates
+  never claim actual visibility. Preserve the acquisition decision separately from live preview
+  and current evidence. A selected reference resolves its ID using the chosen solve source and
+  that source's freshness limit, not another selector's observation or mount.
+- Treat configured fixed layouts, mounts, and tag-relative offsets as computational facts, not
+  verified physical placement. Historical camera transforms are sampled at the original eligible
+  evidence timestamp; never silently substitute the current mount. Consumers borrow these sources
+  and reset only their local runtime state.
+- A guidance Task requires finite solved errors for every requested channel. Missing or partial
+  evidence stops active guidance and advances its bounded loss timer; masked zero output is not
+  arrival or proof of a solution. Keep solved status distinct from commanded output.
 - A computed approach names the desired robot-center pose; apply a tool offset exactly once.
   Freezing an observed destination is explicit bounded robot intent, not continued visibility or
   object tracking. Recheck before an occluding final maneuver. Arrival, intake command, and timeout

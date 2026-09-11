@@ -63,7 +63,6 @@ A Sushi `TagLayout` is the framework contract for **field-fixed** tags only.
 Anything that promotes AprilTag observations into a field pose should use a `TagLayout`, not the raw FTC detector library. In practice that includes:
 
 - `AprilTagPoseEstimator`
-- guidance paths that temporarily solve a field pose from tags
 - corrected/global localization lanes
 - calibration tools that depend on field-fixed tags
 
@@ -290,12 +289,26 @@ After a deliberate `LoopClock.reset(...)`, that retained identity fails closed u
 publishes a genuinely new frame/result in the current clock epoch. Robot code does not manage frame
 IDs, reset epochs, or timestamp caches.
 
-A robot that needs one semantic tag builds one `TagSelectionSource` with the staged
-`TagSelections.from(...).among(...).freshWithinSec(...).choose(...)...build()` grammar and shares
-that completed source. Selection samples, sticky/loss state, diagnostics, result, and cycle publish
-together only after the detection, freshness, policy, and enable reads succeed. A failure cannot
-silently latch a partial winner or make the previous result look current; recursive selection fails
-clearly and a later nonrecursive same-cycle call may retry.
+Choosing **which tag a behavior refers to** is separate from estimating robot pose. A robot with
+one configured target can refer directly to that id; it needs no visibility selector. For a choice
+among tags, share one completed `TagSelectionSource`:
+
+- `TagSelections.fromVisibleTags(tags, mount)` ranks real current tag observations after
+  `among(...)` and `freshWithinSec(...)`.
+- `TagSelections.fromFieldPose(estimator, fixedLayout, mount)` ranks known field tags relative to
+  an already-published robot pose; its stages additionally require `minQuality(...)`. It does not
+  claim that any tag was seen.
+
+Both paths then choose a policy and either continuous selection or an explicitly bounded sticky
+lifetime. Policies see one immutable list of candidates with camera-relative and robot-relative
+geometry. The observed path retains the actual observation; the field-pose path retains pose
+evidence instead, without fabricating a camera frame. Selection never updates localization.
+
+Selection samples, sticky/loss state, diagnostics, result, and cycle publish together only after
+all required reads succeed. A failure cannot silently latch a partial winner or make the previous
+result look current; recursive selection fails clearly and a later nonrecursive same-cycle call
+may retry. Reset clears only the selector's local state, not borrowed camera, mount, enable, or
+pose inputs. See [Spatial Queries](<Spatial Queries.md>) for the full selection/reference contract.
 
 For Limelight, `ResultSnapshot.frameTimestamp()` is the owner's best SDK-supported estimate of
 camera exposure time: Control Hub receipt staleness plus the reported capture and targeting
@@ -603,52 +616,72 @@ Sushi's shared AprilTag solver does this:
 - reject outliers
 - compute one fused field pose and a quality score
 
-That shared policy is used by:
-
-- `AprilTagPoseEstimator`
-- guidance paths that temporarily solve a field pose from tags
-
-That keeps guidance and localization from drifting into subtly different AprilTag policies.
+That policy belongs to `AprilTagPoseEstimator`, which can feed the corrected localizer. Field
+guidance consumes the chosen estimator's already-published pose; it does not run another
+tag-to-field solve or blend an image-based steering answer with field-based steering. A robot
+without field localization may instead deliberately choose relative-AprilTag guidance for
+observed tag-relative alignment. That mode does not create a robot field pose.
 
 When an observation already supplies a field pose, agreement with explicit camera/tag geometry
 allows the solver to select that candidate; it does not count the two alternatives as independent
 measurements. They can share the same image, mount, and field-layout mistakes. Compare against
 independently known robot placement before treating agreement as evidence of physical accuracy.
 
-### Sharing solver tuning cleanly
+### Keep field solving in the localization owner
 
-`AprilTagPoseEstimator.Config` composes three data-only answers: `fieldPoseSolver`,
-`maxDetectionAgeSec`, and `cameraMount`. The solver Config is not an estimator subtype. Each
-long-lived consumer validates and snapshots the policy once, so a running estimator or guidance
-plan cannot drift when the authoring draft changes.
+`AprilTagPoseEstimator.Config` contains two data-only policy answers: `fieldPoseSolver` and
+`maxDetectionAgeSec`. The solver Config is not an estimator subtype. The camera mount is a
+separate constructor dependency, just like the borrowed sensor; it is not a second mount answer
+inside policy Config. Each retaining owner validates and snapshots its authored policy.
 
-When localization and guidance should deliberately share the same weighting, outlier, and
-plausibility policy, author one solver Config and construct the configured solver explicitly:
+For advanced direct assembly, convert the FTC lane's authored AprilTag policy without passing a
+mount into that conversion. The `tags` and `mount` below come from the same borrowed camera view
+shown in section 3; `fixedLayout` contains the trusted field landmarks:
 
 ```java
-AprilTagPoseEstimator.Config tagCfg = profile.localization.estimation.aprilTags
-        .toAprilTagPoseEstimatorConfig(profile.vision.activeCameraMount());
+AprilTagPoseEstimator.Config tagCfg = locCfg.estimation.aprilTags
+        .toAprilTagPoseEstimatorConfig();
+AprilTagPoseEstimator tagLocalizer =
+        new AprilTagPoseEstimator(tags, fixedLayout, mount, tagCfg);
+```
 
-AprilTagPoseEstimator tagLocalizer = new AprilTagPoseEstimator(tags, fixedLayout, tagCfg);
-FixedTagFieldPoseSolver guidanceSolver =
-        new FixedTagFieldPoseSolver(tagCfg.fieldPoseSolver);
+The ordinary `FtcOdometryAprilTagLocalizationLane` constructs that owner for you; do not add this
+direct owner beside the lane. A custom composition may use `tagLocalizer` as its correction source
+as described in section 7. Its lifecycle owner updates it before downstream consumers.
 
+Field guidance then reads the authoritative estimate. Here `correctedLocalizer` is the completed
+corrected owner, updated earlier in the same shared loop. This plan faces field heading zero and
+uses no camera-side fallback:
+
+```java
 DriveGuidancePlan plan = DriveGuidance.plan()
         .faceTo()
             .fieldHeadingRad(0.0)
         .solveWith()
-            .adaptive()
-            .localization(correctedLocalizer)
-            .aprilTags(tags, profile.vision.activeCameraMount())
-            .aprilTagMaxAgeSec(0.50)
-            .fixedAprilTagLayout(fixedLayout)
-            .aprilTagFieldPoseSolver(guidanceSolver)
-            .doneAdaptive()
+            .absolutePose(correctedLocalizer)
+            .maxAgeSec(0.50)
+            .minQuality(0.10)
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneAbsolutePose()
         .build();
 ```
 
-Use `FixedTagFieldPoseSolver.Config.defaults()` and `CameraMountConfig.identity()` explicitly when
-those software baselines are intended. Neither proves a physically calibrated camera or field.
+These explicit age and quality limits match the framework's software defaults; they are not
+physical accuracy or safety guarantees. Guidance checks evidence without updating localization.
+With insufficient evidence, `PASS_THROUGH` leaves unsolved drive channels to the surrounding
+drive composition. A field tag target additionally supplies `fixedAprilTagLayout(fixedLayout)`
+in that branch; the layout defines the target, not a hidden pose solver.
+
+For a moving camera, the advanced estimator overload takes a borrowed
+`TimeAwareSource<CameraMountConfig>`. It looks up the mount at the accepted frame's original
+capture timestamp. The provider must retain genuine mount history; a current-only substitute
+cannot correct a delayed image. The estimator neither advances nor resets the provider, and a
+failed/null lookup fails that update under its retained same-cycle failure contract. For a fixed
+camera, the ordinary `CameraMountConfig` constructor argument supplies the one immutable mount.
+
+Use `FixedTagFieldPoseSolver.Config.defaults()` and `CameraMountConfig.identity()` only when
+those software/geometry baselines are intended. Identity describes a camera at the robot origin
+with matching axes; neither baseline proves a physically calibrated camera or field.
 
 ---
 

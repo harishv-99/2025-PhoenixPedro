@@ -6,7 +6,6 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Objects;
-import java.util.Set;
 
 import edu.ftcsushi.fw.core.debug.LoopPhaseProfiler;
 import edu.ftcsushi.fw.core.geometry.Pose2d;
@@ -278,7 +277,7 @@ public final class PhoenixRobot {
      * @param profile fresh complete Phoenix profile consumed only during this declaration
      * @param gamepad1 active driver Gamepad retained by the controls source graph
      * @param gamepad2 active operator Gamepad retained by the controls source graph
-     * @param eligibleScoringTagIds non-empty configured scoring-AprilTag subset selected by the
+     * @param selectedScoringTagId configured scoring-AprilTag id selected by the
      *                              mode client's frozen alliance policy
      */
     public void declareTeleOp(
@@ -286,7 +285,7 @@ public final class PhoenixRobot {
             PhoenixProfile profile,
             Gamepad gamepad1,
             Gamepad gamepad2,
-            Source<Set<Integer>> eligibleScoringTagIds
+            Source<Integer> selectedScoringTagId
     ) {
         RobotProgram requiredProgram = Objects.requireNonNull(
                 program,
@@ -296,9 +295,9 @@ public final class PhoenixRobot {
                 profile,
                 "Phoenix TeleOp profile is required"
         );
-        Source<Set<Integer>> requiredEligibleScoringTagIds = Objects.requireNonNull(
-                eligibleScoringTagIds,
-                "Phoenix TeleOp eligibleScoringTagIds source is required"
+        Source<Integer> requiredSelectedScoringTagId = Objects.requireNonNull(
+                selectedScoringTagId,
+                "Phoenix TeleOp selectedScoringTagId source is required"
         );
         beginMode(RuntimeMode.MANAGED_TELEOP, "declareTeleOp");
         loopPhaseProfiler.reset();
@@ -338,9 +337,8 @@ public final class PhoenixRobot {
 
         targeting = createTargeting(
                 selectedProfile.targeting,
-                selectedProfile.localization,
                 selectedProfile.fixedAprilTagLayout,
-                requiredEligibleScoringTagIds,
+                requiredSelectedScoringTagId,
                 enabledAutoAim,
                 teleOpControls.aimOverrideSource()
         );
@@ -435,7 +433,7 @@ public final class PhoenixRobot {
      * @param profile fresh complete Phoenix profile consumed only during this declaration
      * @param autonomousDrive sole Auto drive heartbeat and stop owner
      * @param motionPredictor predictor owned by the same Auto runtime
-     * @param eligibleScoringTagIds non-empty configured scoring-tag subset eligible in this mode
+     * @param selectedScoringTagId configured scoring-tag id selected in this mode
      * @param autoAimEnabledSource policy that enables target selection and aim gating
      * @param aimOverrideSource policy that bypasses aim-readiness gating while true
      * @param applyStartingPose exact-START action that applies the frozen Auto pose
@@ -446,7 +444,7 @@ public final class PhoenixRobot {
             PhoenixProfile profile,
             DriveCommandSink autonomousDrive,
             MotionPredictor motionPredictor,
-            Source<Set<Integer>> eligibleScoringTagIds,
+            Source<Integer> selectedScoringTagId,
             BooleanSource autoAimEnabledSource,
             BooleanSource aimOverrideSource,
             Runnable applyStartingPose
@@ -490,11 +488,10 @@ public final class PhoenixRobot {
 
         targeting = createTargeting(
                 selectedProfile.targeting,
-                selectedProfile.localization,
                 selectedProfile.fixedAprilTagLayout,
                 Objects.requireNonNull(
-                        eligibleScoringTagIds,
-                        "eligibleScoringTagIds"
+                        selectedScoringTagId,
+                        "selectedScoringTagId"
                 ),
                 Objects.requireNonNull(
                         autoAimEnabledSource,
@@ -544,23 +541,16 @@ public final class PhoenixRobot {
     }
 
     private PhoenixTargeting createTargeting(PhoenixTargeting.Config targetingConfig,
-                                             FtcOdometryAprilTagLocalizationLane.Config localizationConfig,
                                              TagLayout fixedAprilTagLayout,
-                                             Source<Set<Integer>> eligibleScoringTagIds,
+                                             Source<Integer> selectedScoringTagId,
                                              BooleanSource autoAimEnabledSource,
                                              BooleanSource aimOverrideSource) {
-        FtcOdometryAprilTagLocalizationLane.Config requiredLocalization = Objects.requireNonNull(
-                localizationConfig,
-                "PhoenixProfile.localization is required for targeting"
-        );
         return new PhoenixTargeting(
                 targetingConfig,
-                requiredLocalization.estimation.aprilTags.fieldPoseSolver,
-                vision.aprilTags().tagSensor(),
                 vision.aprilTags().cameraMountConfig(),
                 localization.globalEstimator(),
                 fixedAprilTagLayout,
-                eligibleScoringTagIds,
+                selectedScoringTagId,
                 autoAimEnabledSource,
                 aimOverrideSource
         );
@@ -1079,7 +1069,7 @@ public final class PhoenixRobot {
                 throw new IllegalStateException(
                     "Cannot restore the Auto pose because Phoenix TeleOp is not declared; "
                                 + "call declareTeleOp(program, profile, gamepad1, gamepad2, "
-                                + "eligibleScoringTagIds) first"
+                                + "selectedScoringTagId) first"
                 );
             }
             if (startBoundaryReached) {

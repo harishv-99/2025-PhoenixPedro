@@ -362,9 +362,9 @@ public final class VisionPickup implements RobotProgram.Service {
         aimQuery = this.config.enableMotion ? DriveGuidance.plan()
                 .faceTo().point(References.observedPoint(Source.of(ignored -> aimSelection)))
                 .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(this.config.robotToIntake))
-                .solveWith().localizationOnly().localization(localization)
+                .solveWith().absolutePose(localization)
                 .maxAgeSec(this.config.maxPoseAgeSec).minQuality(this.config.minPoseQuality)
-                .onLoss(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT).doneLocalizationOnly()
+                .onLoss(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT).doneAbsolutePose()
                 .driveTuning().use(this.config.guidanceTuning).doneDriveTuning().build().query() : null;
     }
 
@@ -760,9 +760,8 @@ public final class VisionPickup implements RobotProgram.Service {
                 if (template == null) { finish(TaskOutcome.CANCELLED, "no authored admissible approach template"); return; }
                 ReferenceFrame2d goal = References.approachFrame(Source.of(ignored -> approach));
                 stagingQuery = DriveGuidance.plan().translateTo().point(References.framePoint(goal))
-                        .andFaceTo().frameHeading(goal).solveWith().localizationOnly()
-                        .localization(localization).maxAgeSec(config.maxPoseAgeSec).minQuality(config.minPoseQuality)
-                        .onLoss(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT).doneLocalizationOnly()
+                        .andFaceTo().frameHeading(goal).solveWith().absolutePose(localization).maxAgeSec(config.maxPoseAgeSec).minQuality(config.minPoseQuality)
+                        .onLoss(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT).doneAbsolutePose()
                         .driveTuning().use(config.guidanceTuning).doneDriveTuning().build().query();
                 phase = Phase.STAGING;
                 phaseStartedAt = clock.nowTimestamp();

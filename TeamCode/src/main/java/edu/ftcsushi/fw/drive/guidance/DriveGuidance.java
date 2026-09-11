@@ -8,7 +8,6 @@ import edu.ftcsushi.fw.drive.DriveOverlay;
 import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.field.TagLayouts;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
-import edu.ftcsushi.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.fw.spatial.FacingTarget2d;
@@ -57,11 +56,8 @@ import edu.ftcsushi.fw.spatial.TranslationTarget2d;
  *         .andFaceTo()
  *             .frameHeading(slotFace)
  *         .solveWith()
- *             .adaptive()
- *                 .localization(poseEstimator)
- *                 .aprilTags(tagSensor, cameraMount)
- *                 .fixedAprilTagLayout(tagLayout)
- *                 .doneAdaptive()
+ *             .absolutePose(poseEstimator)
+ *                 .doneAbsolutePose()
  *         .driveTuning()
  *             .aimKp(2.8)
  *             .doneDriveTuning()
@@ -69,7 +65,7 @@ import edu.ftcsushi.fw.spatial.TranslationTarget2d;
  * }</pre>
  *
  * <p>This reference-first API describes targets as semantic points or frames. The evaluation layer
- * decides whether to solve them from field pose, live AprilTags, or both.</p>
+ * uses the explicitly selected evidence authority; it never blends or switches pose sources.</p>
  */
 public final class DriveGuidance {
 
@@ -138,6 +134,11 @@ public final class DriveGuidance {
 
     /**
      * Creates a pose-lock overlay that holds the current field pose using default tuning.
+     *
+     * <p>Activation captures only a finite, available pose no older than 0.50 seconds with finite
+     * quality in [0.10, 1]. The same gate applies to active feedback. Invalid initial evidence
+     * leaves the overlay inactive until re-enabled; temporary loss after a valid capture passes
+     * manual commands through without changing that captured target.</p>
      */
     public static DriveOverlay poseLock(AbsolutePoseEstimator poseEstimator) {
         return poseLock(poseEstimator, DriveGuidancePlan.Tuning.defaults());
@@ -145,6 +146,7 @@ public final class DriveGuidance {
 
     /**
      * Creates a pose-lock overlay with custom tuning.
+     * Evidence admission and enable-only target capture are the same as {@link #poseLock(AbsolutePoseEstimator)}.
      */
     public static DriveOverlay poseLock(AbsolutePoseEstimator poseEstimator, DriveGuidancePlan.Tuning tuning) {
         return new PoseLockOverlay(poseEstimator, tuning);
@@ -408,206 +410,50 @@ public final class DriveGuidance {
     // Resolve / solve-mode builders
     // ------------------------------------------------------------------------
 
-    /**
-     * First solve-mode stage: choose one explicit solve mode.
-     *
-     * <p>Use the {@code ...WithDefaults(...)} methods when the default freshness/policy settings are
-     * acceptable. Enter the named branch when you need to tune mode-specific options such as max age,
-     * field layout, adaptive takeover, or loss policy.</p>
-     */
+    /** Choose one evidence authority and supply its required source in the same answer. */
     public interface ResolveModeChoice<RETURN> {
         /**
-         * Uses the selected observed-point reference as delayed robot-frame visual feedback.
-         * The reference supplies freshness; this answer explicitly chooses target-loss behavior.
-         * No localization or capture-time-to-current-motion compensation is implied.
+         * Reads one already-updated absolute pose. Defaults: age at most 0.50 seconds, quality
+         * at least 0.10, and pass-through on loss. Neither the estimator nor its sensors are updated.
          */
-        RETURN observationsOnly(DriveGuidanceSpec.LossPolicy onLoss);
-        /**
-         * Uses localization only with default lane bounds and loss policy.
-         */
-        RETURN localizationOnlyWithDefaults(AbsolutePoseEstimator poseEstimator);
+        AbsolutePoseTuningStage<RETURN> absolutePose(AbsolutePoseEstimator poseEstimator);
 
         /**
-         * Enters the localization-only branch to configure lane bounds or loss policy.
+         * Uses the actual observed tag-relative target with a fixed camera mount. Defaults:
+         * frame age at most 0.50 seconds and pass-through on loss. Field-only targets are rejected.
          */
-        LocalizationOnlyEstimatorStage<RETURN> localizationOnly();
+        RelativeAprilTagsTuningStage<RETURN> relativeAprilTags(
+                AprilTagSensor aprilTags, CameraMountConfig cameraMount);
 
         /**
-         * Uses live AprilTags only with default lane bounds and loss policy.
+         * Uses an observed-point reference as delayed robot-at-capture feedback. The reference owns
+         * freshness; this answer chooses loss behavior. No current-motion compensation is implied.
          */
-        RETURN aprilTagsOnlyWithDefaults(AprilTagSensor aprilTags, CameraMountConfig cameraMount);
-
-        /**
-         * Enters the AprilTag-only branch to configure lane bounds, field layout, or loss policy.
-         */
-        AprilTagsOnlySensorStage<RETURN> aprilTagsOnly();
-
-        /**
-         * Uses adaptive localization + AprilTag arbitration with default lane bounds and loss policy.
-         */
-        RETURN adaptiveWithDefaults(AbsolutePoseEstimator poseEstimator,
-                                    AprilTagSensor aprilTags,
-                                    CameraMountConfig cameraMount);
-
-        /**
-         * Enters the adaptive branch to configure both lanes and adaptive policy.
-         */
-        AdaptiveLocalizationStage<RETURN> adaptive();
+        RETURN observedPoints(DriveGuidanceSpec.LossPolicy onLoss);
     }
 
-    /**
-     * Localization-only branch stage: provide the required pose estimator.
-     */
-    public interface LocalizationOnlyEstimatorStage<RETURN> {
-        /**
-         * Supplies the localization lane used by localization-only guidance.
-         */
-        LocalizationOnlyTuningStage<RETURN> localization(AbsolutePoseEstimator poseEstimator);
+    /** Optional settings for the one borrowed absolute-pose authority. */
+    public interface AbsolutePoseTuningStage<RETURN> {
+        /** Maximum accepted pose age, finite non-negative seconds, inclusive. */
+        AbsolutePoseTuningStage<RETURN> maxAgeSec(double maxAgeSec);
+        /** Minimum accepted producer quality, finite in [0, 1], not an accuracy guarantee. */
+        AbsolutePoseTuningStage<RETURN> minQuality(double minQuality);
+        /** Supplies fixed tag metadata; the completed spec validates and snapshots it. */
+        AbsolutePoseTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
+        /** Chooses the output behavior independently for each unsolved requested channel. */
+        AbsolutePoseTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
+        /** Closes this multi-setting branch. */
+        RETURN doneAbsolutePose();
     }
 
-    /**
-     * Localization-only optional tuning branch.
-     */
-    public interface LocalizationOnlyTuningStage<RETURN> {
-        /**
-         * Sets maximum accepted pose age in seconds.
-         */
-        LocalizationOnlyTuningStage<RETURN> maxAgeSec(double maxAgeSec);
-
-        /**
-         * Sets minimum accepted pose quality in [0, 1].
-         */
-        LocalizationOnlyTuningStage<RETURN> minQuality(double minQuality);
-
-        /**
-         * Supplies fixed field metadata so localization can resolve fixed-tag references. The
-         * completed guidance spec or plan validates and snapshots the layout.
-         */
-        LocalizationOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
-
-        /**
-         * Chooses what guidance outputs when the requested channels cannot be solved.
-         */
-        LocalizationOnlyTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
-
-        /**
-         * Returns to the parent builder after localization-only configuration.
-         */
-        RETURN doneLocalizationOnly();
-    }
-
-    /**
-     * AprilTag-only branch stage: provide the required live AprilTag lane.
-     */
-    public interface AprilTagsOnlySensorStage<RETURN> {
-        /**
-         * Supplies the AprilTag sensor and the camera mount used by AprilTag-only guidance.
-         */
-        AprilTagsOnlyTuningStage<RETURN> aprilTags(AprilTagSensor aprilTags, CameraMountConfig cameraMount);
-    }
-
-    /**
-     * AprilTag-only optional tuning branch.
-     */
-    public interface AprilTagsOnlyTuningStage<RETURN> {
-        /**
-         * Sets maximum accepted AprilTag frame age in seconds.
-         */
-        AprilTagsOnlyTuningStage<RETURN> maxAgeSec(double maxAgeSec);
-
-        /**
-         * Supplies fixed field metadata for field-fixed AprilTag solving. The completed guidance
-         * spec or plan validates and snapshots the layout.
-         */
-        AprilTagsOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
-
-        /**
-         * Supplies the configured multi-tag field-pose solver for fixed-tag solving.
-         */
-        AprilTagsOnlyTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver);
-
-        /**
-         * Chooses what guidance outputs when the requested channels cannot be solved.
-         */
-        AprilTagsOnlyTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
-
-        /**
-         * Returns to the parent builder after AprilTag-only configuration.
-         */
-        RETURN doneAprilTagsOnly();
-    }
-
-    /**
-     * Adaptive branch stage: provide the required localization lane first.
-     */
-    public interface AdaptiveLocalizationStage<RETURN> {
-        /**
-         * Supplies the localization lane used by adaptive guidance.
-         */
-        AdaptiveAprilTagsStage<RETURN> localization(AbsolutePoseEstimator poseEstimator);
-    }
-
-    /**
-     * Adaptive branch stage: provide the required AprilTag lane.
-     */
-    public interface AdaptiveAprilTagsStage<RETURN> {
-        /**
-         * Supplies the AprilTag sensor and camera mount used by adaptive guidance.
-         */
-        AdaptiveTuningStage<RETURN> aprilTags(AprilTagSensor aprilTags, CameraMountConfig cameraMount);
-    }
-
-    /**
-     * Adaptive optional tuning branch.
-     */
-    public interface AdaptiveTuningStage<RETURN> {
-        /**
-         * Sets maximum accepted localization pose age in seconds.
-         */
-        AdaptiveTuningStage<RETURN> localizationMaxAgeSec(double maxAgeSec);
-
-        /**
-         * Sets minimum accepted localization pose quality in [0, 1].
-         */
-        AdaptiveTuningStage<RETURN> localizationMinQuality(double minQuality);
-
-        /**
-         * Sets maximum accepted AprilTag frame age in seconds.
-         */
-        AdaptiveTuningStage<RETURN> aprilTagMaxAgeSec(double maxAgeSec);
-
-        /**
-         * Supplies fixed field metadata for field-fixed AprilTag/localization reference solving.
-         * The completed guidance spec or plan validates and snapshots the layout.
-         */
-        AdaptiveTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
-
-        /**
-         * Supplies the configured multi-tag field-pose solver for fixed-tag solving.
-         */
-        AdaptiveTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver);
-
-        /**
-         * Configures adaptive translation takeover hysteresis and blend timing, in inches/seconds.
-         */
-        AdaptiveTuningStage<RETURN> translationTakeover(double enterRangeInches,
-                                                        double exitRangeInches,
-                                                        double blendSec);
-
-        /**
-         * Configures adaptive omega arbitration.
-         */
-        AdaptiveTuningStage<RETURN> omegaPolicy(DriveGuidanceSpec.OmegaPolicy omegaPolicy);
-
-        /**
-         * Chooses what guidance outputs when the requested channels cannot be solved.
-         */
-        AdaptiveTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
-
-        /**
-         * Returns to the parent builder after adaptive configuration.
-         */
-        RETURN doneAdaptive();
+    /** Optional settings for direct observed tag geometry, never a field-pose estimator. */
+    public interface RelativeAprilTagsTuningStage<RETURN> {
+        /** Maximum accepted camera-frame age, finite non-negative seconds, inclusive. */
+        RelativeAprilTagsTuningStage<RETURN> maxAgeSec(double maxAgeSec);
+        /** Chooses the output behavior independently for each unsolved requested channel. */
+        RelativeAprilTagsTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
+        /** Closes this multi-setting branch. */
+        RETURN doneRelativeAprilTags();
     }
     // ------------------------------------------------------------------------
     // Implementation
@@ -622,19 +468,14 @@ public final class DriveGuidance {
 
         AprilTagSensor aprilTagSensor;
         CameraMountConfig cameraMount;
-        double tagsMaxAgeSec = DriveGuidanceSpec.AprilTags.DEFAULT_MAX_AGE_SEC;
-        FixedTagFieldPoseSolver aprilTagFieldPoseSolver =
-                new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults());
+        double tagsMaxAgeSec = DriveGuidanceSpec.RelativeAprilTags.DEFAULT_MAX_AGE_SEC;
 
         AbsolutePoseEstimator poseEstimator;
-        double poseMaxAgeSec = DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC;
-        double poseMinQuality = DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY;
+        double poseMaxAgeSec = DriveGuidanceSpec.AbsolutePose.DEFAULT_MAX_AGE_SEC;
+        double poseMinQuality = DriveGuidanceSpec.AbsolutePose.DEFAULT_MIN_QUALITY;
 
         DriveGuidanceSpec.SolveMode solveMode;
         TagLayout fixedAprilTagLayout;
-        DriveGuidanceSpec.TranslationTakeover translationTakeover;
-        DriveGuidanceSpec.OmegaPolicy omegaPolicy = DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID;
-        boolean omegaPolicyExplicit = false;
         DriveGuidanceSpec.LossPolicy onLoss = DriveGuidanceSpec.LossPolicy.PASS_THROUGH;
     }
 
@@ -651,60 +492,32 @@ public final class DriveGuidance {
                 : null;
         validateCapabilitiesOrThrow(s, fixedAprilTagLayout);
 
-        DriveGuidanceSpec.AprilTags tags = null;
-        if (s.aprilTagSensor != null && s.cameraMount != null) {
-            tags = new DriveGuidanceSpec.AprilTags(
-                    s.aprilTagSensor,
-                    s.cameraMount,
-                    s.tagsMaxAgeSec,
-                    s.aprilTagFieldPoseSolver
-            );
-        }
-
-        DriveGuidanceSpec.Localization localization = null;
-        if (s.poseEstimator != null) {
-            localization = new DriveGuidanceSpec.Localization(s.poseEstimator, s.poseMaxAgeSec, s.poseMinQuality);
-        }
-
-        DriveGuidanceSpec.SolveMode mode = effectiveSolveMode(s, tags != null, localization != null);
+        DriveGuidanceSpec.RelativeAprilTags tags = s.aprilTagSensor != null
+                ? new DriveGuidanceSpec.RelativeAprilTags(s.aprilTagSensor, s.cameraMount, s.tagsMaxAgeSec)
+                : null;
+        DriveGuidanceSpec.AbsolutePose absolutePose = s.poseEstimator != null
+                ? new DriveGuidanceSpec.AbsolutePose(s.poseEstimator, s.poseMaxAgeSec, s.poseMinQuality)
+                : null;
         DriveGuidanceSpec.ResolveWith rw = DriveGuidanceSpec.ResolveWith.create(
-                mode,
-                tags,
-                localization,
-                fixedAprilTagLayout,
-                s.translationTakeover,
-                s.omegaPolicy,
-                s.onLoss
-        );
+                s.solveMode, tags, absolutePose, fixedAprilTagLayout, s.onLoss);
 
-        SpatialSolveSet.MoreLanesStep solveSetBuilder = null;
-        int localizationLaneIndex = -1;
-        int aprilTagsLaneIndex = -1;
-        int nextLaneIndex = 0;
-
-        if (mode == DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY) {
-            solveSetBuilder = SpatialSolveSet.builder()
-                    .add(new edu.ftcsushi.fw.spatial.ObservedTargetSpatialSolveLane());
+        SpatialSolveSet solveSet;
+        switch (s.solveMode) {
+            case ABSOLUTE_POSE:
+                solveSet = SpatialSolveSet.builder()
+                        .absolutePose(absolutePose.poseEstimator, absolutePose.maxAgeSec, absolutePose.minQuality)
+                        .build();
+                break;
+            case RELATIVE_APRIL_TAGS:
+                solveSet = SpatialSolveSet.builder()
+                        .relativeAprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec).build();
+                break;
+            case OBSERVED_POINTS:
+                solveSet = SpatialSolveSet.builder().observedPoints().build();
+                break;
+            default:
+                throw new IllegalStateException("A supported solveWith() mode is required");
         }
-
-        if (localization != null) {
-            localizationLaneIndex = nextLaneIndex++;
-            solveSetBuilder = SpatialSolveSet.builder()
-                    .absolutePose(localization.poseEstimator, localization.maxAgeSec, localization.minQuality);
-        }
-        if (tags != null) {
-            aprilTagsLaneIndex = nextLaneIndex++;
-            if (solveSetBuilder == null) {
-                solveSetBuilder = SpatialSolveSet.builder()
-                        .aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolver);
-            } else {
-                solveSetBuilder.aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolver);
-            }
-        }
-        if (solveSetBuilder == null) {
-            throw new IllegalStateException("DriveGuidance solveWith() must provide at least one solve lane");
-        }
-        SpatialSolveSet solveSet = solveSetBuilder.build();
 
         SpatialQuerySpec spatialQuerySpec = null;
         TranslationTarget2d spatialTranslationTarget = (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint)
@@ -739,9 +552,7 @@ public final class DriveGuidance {
                 s.facingTarget,
                 s.controlFrames,
                 rw,
-                spatialQuerySpec,
-                localizationLaneIndex,
-                aprilTagsLaneIndex
+                spatialQuerySpec
         );
     }
 
@@ -757,146 +568,57 @@ public final class DriveGuidance {
      */
     private static void validateCapabilitiesOrThrow(State s, TagLayout fixedAprilTagLayout) {
         ArrayList<String> errors = new ArrayList<String>();
-
-        boolean hasAprilTags = s.aprilTagSensor != null && s.cameraMount != null;
-        boolean hasLocalization = s.poseEstimator != null;
-        boolean hasLayout = fixedAprilTagLayout != null;
-
-        if (!hasAprilTags && !hasLocalization
-                && s.solveMode != DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY) {
-            errors.add("solveWith() must choose localizationOnlyWithDefaults(...), aprilTagsOnlyWithDefaults(...), adaptiveWithDefaults(...), or enter one of the solve-mode branches");
-        }
-
-        if ((s.aprilTagSensor != null) ^ (s.cameraMount != null)) {
-            errors.add("aprilTags(...) requires both an AprilTagSensor and a CameraMountConfig");
-        }
-
-        if (hasAprilTags && (!Double.isFinite(s.tagsMaxAgeSec) || s.tagsMaxAgeSec < 0.0)) {
-            errors.add("aprilTags(...): maxAgeSec must be >= 0");
-        }
-
-        if (hasLocalization) {
+        if (s.solveMode == null) {
+            errors.add("solveWith() requires absolutePose(...), relativeAprilTags(...), or observedPoints(...)");
+        } else if (s.solveMode == DriveGuidanceSpec.SolveMode.ABSOLUTE_POSE) {
+            if (s.poseEstimator == null) errors.add("absolutePose(...) requires a pose estimator");
             if (!Double.isFinite(s.poseMaxAgeSec) || s.poseMaxAgeSec < 0.0) {
-                errors.add("localization(...): maxAgeSec must be >= 0");
+                errors.add("absolutePose(...): maxAgeSec must be finite and >= 0");
             }
             if (!Double.isFinite(s.poseMinQuality) || s.poseMinQuality < 0.0 || s.poseMinQuality > 1.0) {
-                errors.add("localization(...): minQuality must be in [0, 1]");
+                errors.add("absolutePose(...): minQuality must be finite and in [0, 1]");
             }
-        }
-
-        DriveGuidanceSpec.SolveMode mode = effectiveSolveMode(s, hasAprilTags, hasLocalization);
-        if (mode == DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY) {
-            if (s.translationTarget != null && !isObservedPointTarget(s.translationTarget)) {
-                errors.add("observationsOnly() translateTo() requires References.observedPoint(...)");
-            }
-            if (s.facingTarget != null && !isObservedPointTarget(s.facingTarget)) {
-                errors.add("observationsOnly() faceTo() requires References.observedPoint(...)");
-            }
-        }
-        if (mode == DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY) {
-            if (!hasLocalization) {
-                errors.add("localizationOnly() requires localization(...)");
-            }
-            if (hasAprilTags) {
-                errors.add("localizationOnly() does not accept aprilTags(...); use adaptive() when both lanes are intended");
-            }
-        } else if (mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY) {
-            if (!hasAprilTags) {
-                errors.add("aprilTagsOnly() requires aprilTags(...)");
-            }
-            if (hasLocalization) {
-                errors.add("aprilTagsOnly() does not accept localization(...); use adaptive() when both lanes are intended");
-            }
-        } else if (mode == DriveGuidanceSpec.SolveMode.ADAPTIVE) {
-            if (!hasAprilTags || !hasLocalization) {
-                errors.add("adaptive() requires both localization(...) and aprilTags(...)");
-            }
-        }
-
-        if (s.translationTakeover != null) {
-            if (!Double.isFinite(s.translationTakeover.enterRangeInches) || s.translationTakeover.enterRangeInches < 0.0) {
-                errors.add("translationTakeover(...): enterRangeInches must be >= 0");
-            }
-            if (!Double.isFinite(s.translationTakeover.exitRangeInches) || s.translationTakeover.exitRangeInches < 0.0) {
-                errors.add("translationTakeover(...): exitRangeInches must be >= 0");
-            }
-            if (!Double.isFinite(s.translationTakeover.blendSec) || s.translationTakeover.blendSec < 0.0) {
-                errors.add("translationTakeover(...): blendSec must be >= 0");
-            }
-            if (Double.isFinite(s.translationTakeover.enterRangeInches)
-                    && Double.isFinite(s.translationTakeover.exitRangeInches)
-                    && s.translationTakeover.exitRangeInches < s.translationTakeover.enterRangeInches) {
-                errors.add("translationTakeover(...): exitRangeInches must be >= enterRangeInches");
-            }
-            if (mode != DriveGuidanceSpec.SolveMode.ADAPTIVE) {
-                errors.add("translationTakeover(...) is only used in adaptive() mode");
-            }
-        }
-
-        boolean canLocT = hasLocalization
-                && canSolveTranslationWithLocalization(s.translationTarget, fixedAprilTagLayout);
-        boolean canTagsT = hasAprilTags
-                && canSolveTranslationWithAprilTags(s.translationTarget, hasLayout);
-        boolean canLocO = hasLocalization
-                && canSolveAimWithLocalization(s.facingTarget, fixedAprilTagLayout);
-        boolean canTagsO = hasAprilTags
-                && canSolveAimWithAprilTags(s.facingTarget, hasLayout);
-
-        if (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint && !hasLocalization) {
-            errors.add("robotRelativePointInches(...) requires localization(...)");
-        }
-
-        if (s.translationTarget != null) {
-            if (mode == DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY && !canLocT) {
+            if (s.translationTarget != null
+                    && !canSolveTranslationWithLocalization(s.translationTarget, fixedAprilTagLayout)) {
                 errors.add(localizationFailureForTranslationTarget(s.translationTarget, fixedAprilTagLayout));
             }
-            if (mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY && !canTagsT) {
-                errors.add("translateTo() target cannot be solved from aprilTags(...); add fixedAprilTagLayout(...) for field-fixed references or choose localization()/adaptive() as appropriate");
-            }
-            if (mode == DriveGuidanceSpec.SolveMode.ADAPTIVE && !canLocT && !canTagsT) {
-                errors.add("translateTo() target cannot be solved by either adaptive lane; check localization(...), aprilTags(...), and fixedAprilTagLayout(...)");
-            }
-        }
-
-        if (s.facingTarget != null) {
-            if (mode == DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY && !canLocO) {
+            if (s.facingTarget != null
+                    && !canSolveAimWithLocalization(s.facingTarget, fixedAprilTagLayout)) {
                 errors.add(localizationFailureForFacingTarget(s.facingTarget, fixedAprilTagLayout));
             }
-            if (mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY && !canTagsO) {
-                errors.add("faceTo() target cannot be solved from aprilTags(...); add fixedAprilTagLayout(...) for field-fixed references or choose localization()/adaptive() as appropriate");
+        } else if (s.solveMode == DriveGuidanceSpec.SolveMode.RELATIVE_APRIL_TAGS) {
+            if (s.aprilTagSensor == null || s.cameraMount == null) {
+                errors.add("relativeAprilTags(...) requires a sensor and camera mount");
             }
-            if (mode == DriveGuidanceSpec.SolveMode.ADAPTIVE && !canLocO && !canTagsO) {
-                errors.add("faceTo() target cannot be solved by either adaptive lane; check localization(...), aprilTags(...), and fixedAprilTagLayout(...)");
+            if (!Double.isFinite(s.tagsMaxAgeSec) || s.tagsMaxAgeSec < 0.0) {
+                errors.add("relativeAprilTags(...): maxAgeSec must be finite and >= 0");
+            }
+            if (s.translationTarget != null && !canSolveTranslationWithAprilTags(s.translationTarget)) {
+                errors.add("relativeAprilTags(...) translateTo() requires a direct or selected tag-relative "
+                        + "point; field-fixed and robotRelativePointInches(...) targets require absolutePose(...)");
+            }
+            if (s.facingTarget != null && !canSolveAimWithAprilTags(s.facingTarget)) {
+                errors.add("relativeAprilTags(...) faceTo() requires a direct or selected tag-relative "
+                        + "point/frame; field-fixed targets require absolutePose(...)");
+            }
+        } else {
+            if (s.translationTarget != null && !isObservedPointTarget(s.translationTarget)) {
+                errors.add("observedPoints() translateTo() requires References.observedPoint(...)");
+            }
+            if (s.facingTarget != null && !isObservedPointTarget(s.facingTarget)) {
+                errors.add("observedPoints() faceTo() requires References.observedPoint(...)");
             }
         }
-
-        if (mode == DriveGuidanceSpec.SolveMode.ADAPTIVE) {
-            boolean dualT = s.translationTarget != null && canLocT && canTagsT;
-            boolean dualO = s.facingTarget != null && canLocO && canTagsO;
-            if (!dualT && !dualO) {
-                errors.add("adaptive() requires at least one requested channel to be solvable by both lanes; otherwise choose localizationOnly() or aprilTagsOnly()");
-            }
-            if (s.translationTakeover != null && s.translationTarget != null && !dualT) {
-                errors.add("translationTakeover(...) is not applicable because translation cannot be solved by both adaptive lanes");
-            }
-            if (s.omegaPolicyExplicit && s.facingTarget != null && !dualO) {
-                errors.add("omegaPolicy(...) is not applicable because omega cannot be solved by both adaptive lanes");
-            }
-        }
-
         if (!errors.isEmpty()) {
-            StringBuilder msg = new StringBuilder();
-            msg.append("Invalid DriveGuidance plan:\n");
-            for (String error : errors) {
-                msg.append(" - ").append(error).append('\n');
-            }
-            throw new IllegalStateException(msg.toString());
+            StringBuilder message = new StringBuilder("Invalid DriveGuidance plan:\n");
+            for (String error : errors) message.append(" - ").append(error).append('\n');
+            throw new IllegalStateException(message.toString());
         }
     }
 
     private static String localizationFailureForTranslationTarget(TranslationTarget2d target,
                                                                   TagLayout layout) {
-        String base = "translateTo() target cannot be solved from localization(...)";
+        String base = "translateTo() target cannot be solved from absolutePose(...)";
         if (target instanceof SpatialTargets.ReferencePointTarget) {
             return explainLocalizationPointFailure(
                     ((SpatialTargets.ReferencePointTarget) target).reference,
@@ -904,12 +626,12 @@ public final class DriveGuidance {
                     base
             );
         }
-        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose aprilTags()/adaptive() as appropriate";
+        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose relativeAprilTags(...) for direct observed-tag geometry";
     }
 
     private static String localizationFailureForFacingTarget(FacingTarget2d target,
                                                              TagLayout layout) {
-        String base = "faceTo() target cannot be solved from localization(...)";
+        String base = "faceTo() target cannot be solved from absolutePose(...)";
         if (target instanceof SpatialTargets.ReferencePointTarget) {
             return explainLocalizationPointFailure(
                     ((SpatialTargets.ReferencePointTarget) target).reference,
@@ -924,7 +646,7 @@ public final class DriveGuidance {
                     base
             );
         }
-        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose aprilTags()/adaptive() as appropriate";
+        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose relativeAprilTags(...) for direct observed-tag geometry";
     }
 
     private static String explainLocalizationPointFailure(ReferencePoint2d ref,
@@ -946,7 +668,7 @@ public final class DriveGuidance {
                 return base + "; localization requires every candidate tag ID to be present in fixedAprilTagLayout(...); missing " + missing;
             }
         }
-        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose aprilTags()/adaptive() as appropriate";
+        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose relativeAprilTags(...) for direct observed-tag geometry";
     }
 
     private static String explainLocalizationFrameFailure(ReferenceFrame2d ref,
@@ -965,21 +687,7 @@ public final class DriveGuidance {
                 return base + "; localization requires every candidate tag ID to be present in fixedAprilTagLayout(...); missing " + missing;
             }
         }
-        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose aprilTags()/adaptive() as appropriate";
-    }
-
-    private static DriveGuidanceSpec.SolveMode effectiveSolveMode(State s,
-                                                                  boolean hasAprilTags,
-                                                                  boolean hasLocalization) {
-        if (s.solveMode != null) {
-            return s.solveMode;
-        }
-        if (hasAprilTags && hasLocalization) {
-            return DriveGuidanceSpec.SolveMode.ADAPTIVE;
-        }
-        return hasAprilTags
-                ? DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY
-                : DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY;
+        return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose relativeAprilTags(...) for direct observed-tag geometry";
     }
 
     private static boolean canSolveTranslationWithLocalization(TranslationTarget2d target,
@@ -996,18 +704,9 @@ public final class DriveGuidance {
         return false;
     }
 
-    private static boolean canSolveTranslationWithAprilTags(TranslationTarget2d target,
-                                                            boolean hasLayout) {
-        if (target instanceof DriveGuidanceSpec.RobotRelativePoint) {
-            return false;
-        }
-        if (target instanceof SpatialTargets.FieldPoint) {
-            return hasLayout;
-        }
-        if (target instanceof SpatialTargets.ReferencePointTarget) {
-            return canResolvePointWithAprilTags(((SpatialTargets.ReferencePointTarget) target).reference, hasLayout);
-        }
-        return false;
+    private static boolean canSolveTranslationWithAprilTags(TranslationTarget2d target) {
+        return target instanceof SpatialTargets.ReferencePointTarget
+                && canResolvePointWithAprilTags(((SpatialTargets.ReferencePointTarget) target).reference);
     }
 
     private static boolean canSolveAimWithLocalization(FacingTarget2d target,
@@ -1027,21 +726,12 @@ public final class DriveGuidance {
         return false;
     }
 
-    private static boolean canSolveAimWithAprilTags(FacingTarget2d target,
-                                                    boolean hasLayout) {
-        if (target instanceof SpatialTargets.FieldPoint) {
-            return hasLayout;
-        }
-        if (target instanceof SpatialTargets.FieldHeading) {
-            return hasLayout;
-        }
+    private static boolean canSolveAimWithAprilTags(FacingTarget2d target) {
         if (target instanceof SpatialTargets.ReferencePointTarget) {
-            return canResolvePointWithAprilTags(((SpatialTargets.ReferencePointTarget) target).reference, hasLayout);
+            return canResolvePointWithAprilTags(((SpatialTargets.ReferencePointTarget) target).reference);
         }
-        if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
-            return canResolveFrameWithAprilTags(((SpatialTargets.ReferenceFrameHeadingTarget) target).reference, hasLayout);
-        }
-        return false;
+        return target instanceof SpatialTargets.ReferenceFrameHeadingTarget
+                && canResolveFrameWithAprilTags(((SpatialTargets.ReferenceFrameHeadingTarget) target).reference);
     }
 
     private static boolean canResolvePointWithLocalization(ReferencePoint2d ref, TagLayout layout) {
@@ -1057,17 +747,10 @@ public final class DriveGuidance {
         return false;
     }
 
-    private static boolean canResolvePointWithAprilTags(ReferencePoint2d ref, boolean hasLayout) {
-        if (References.isFieldPoint(ref) || References.isObservedPoint(ref)) {
-            return hasLayout;
-        }
-        if (References.isDirectTagPoint(ref) || References.isSelectedTagPoint(ref)) {
-            return true;
-        }
-        if (References.isFramePoint(ref)) {
-            return canResolveFrameWithAprilTags(References.framePointBaseFrame(ref), hasLayout);
-        }
-        return false;
+    private static boolean canResolvePointWithAprilTags(ReferencePoint2d ref) {
+        if (References.isDirectTagPoint(ref) || References.isSelectedTagPoint(ref)) return true;
+        return References.isFramePoint(ref)
+                && canResolveFrameWithAprilTags(References.framePointBaseFrame(ref));
     }
 
     private static boolean canResolveFrameWithLocalization(ReferenceFrame2d ref, TagLayout layout) {
@@ -1080,13 +763,9 @@ public final class DriveGuidance {
         return false;
     }
 
-    private static boolean canResolveFrameWithAprilTags(ReferenceFrame2d ref, boolean hasLayout) {
-        if (References.isFieldFrame(ref) || References.isApproachFrame(ref)) {
-            return hasLayout;
-        }
+    private static boolean canResolveFrameWithAprilTags(ReferenceFrame2d ref) {
         return References.isDirectTagFrame(ref) || References.isSelectedTagFrame(ref);
     }
-
 
     // ------------------------------------------------------------------------
     // Builder implementations
@@ -1097,25 +776,17 @@ public final class DriveGuidance {
                 && References.isObservedPoint(((SpatialTargets.ReferencePointTarget) target).reference);
     }
 
+    /** Clears old builder branch answers before choosing a single new authority. */
     private static void resetSolve(State s, DriveGuidanceSpec.SolveMode mode) {
         s.solveMode = mode;
         s.aprilTagSensor = null;
         s.cameraMount = null;
-        s.tagsMaxAgeSec = DriveGuidanceSpec.AprilTags.DEFAULT_MAX_AGE_SEC;
-        s.aprilTagFieldPoseSolver =
-                new FixedTagFieldPoseSolver(FixedTagFieldPoseSolver.Config.defaults());
+        s.tagsMaxAgeSec = DriveGuidanceSpec.RelativeAprilTags.DEFAULT_MAX_AGE_SEC;
         s.poseEstimator = null;
-        s.poseMaxAgeSec = DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC;
-        s.poseMinQuality = DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY;
+        s.poseMaxAgeSec = DriveGuidanceSpec.AbsolutePose.DEFAULT_MAX_AGE_SEC;
+        s.poseMinQuality = DriveGuidanceSpec.AbsolutePose.DEFAULT_MIN_QUALITY;
         s.fixedAprilTagLayout = null;
-        s.translationTakeover = null;
-        s.omegaPolicy = DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID;
-        s.omegaPolicyExplicit = false;
         s.onLoss = DriveGuidanceSpec.LossPolicy.PASS_THROUGH;
-    }
-
-    private static void setAprilTagFieldPoseSolver(State s, FixedTagFieldPoseSolver solver) {
-        s.aprilTagFieldPoseSolver = Objects.requireNonNull(solver, "solver");
     }
 
     private static abstract class ConfiguredTargetBuilder<SELF, AFTER_SOLVE> {
@@ -1365,240 +1036,80 @@ public final class DriveGuidance {
         }
 
         @Override
-        public RETURN observationsOnly(DriveGuidanceSpec.LossPolicy onLoss) {
-            resetSolve(s, DriveGuidanceSpec.SolveMode.OBSERVATIONS_ONLY);
-            s.onLoss = Objects.requireNonNull(onLoss, "onLoss");
-            return ret;
+        public AbsolutePoseTuningStage<RETURN> absolutePose(AbsolutePoseEstimator poseEstimator) {
+            Objects.requireNonNull(poseEstimator, "poseEstimator");
+            resetSolve(s, DriveGuidanceSpec.SolveMode.ABSOLUTE_POSE);
+            s.poseEstimator = poseEstimator;
+            return new AbsolutePoseStep<RETURN>(s, ret);
         }
 
         @Override
-        public RETURN localizationOnlyWithDefaults(AbsolutePoseEstimator poseEstimator) {
-            resetSolve(s, DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY);
-            s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
-            return ret;
+        public RelativeAprilTagsTuningStage<RETURN> relativeAprilTags(
+                AprilTagSensor aprilTags, CameraMountConfig cameraMount) {
+            Objects.requireNonNull(aprilTags, "aprilTags");
+            Objects.requireNonNull(cameraMount, "cameraMount");
+            resetSolve(s, DriveGuidanceSpec.SolveMode.RELATIVE_APRIL_TAGS);
+            s.aprilTagSensor = aprilTags;
+            s.cameraMount = cameraMount;
+            return new RelativeAprilTagsStep<RETURN>(s, ret);
         }
 
         @Override
-        public LocalizationOnlyEstimatorStage<RETURN> localizationOnly() {
-            resetSolve(s, DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY);
-            return new LocalizationOnlyStep<RETURN>(s, ret);
-        }
-
-        @Override
-        public RETURN aprilTagsOnlyWithDefaults(AprilTagSensor aprilTags, CameraMountConfig cameraMount) {
-            resetSolve(s, DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY);
-            s.aprilTagSensor = Objects.requireNonNull(aprilTags, "aprilTags");
-            s.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
-            return ret;
-        }
-
-        @Override
-        public AprilTagsOnlySensorStage<RETURN> aprilTagsOnly() {
-            resetSolve(s, DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY);
-            return new AprilTagsOnlyStep<RETURN>(s, ret);
-        }
-
-        @Override
-        public RETURN adaptiveWithDefaults(AbsolutePoseEstimator poseEstimator,
-                                           AprilTagSensor aprilTags,
-                                           CameraMountConfig cameraMount) {
-            resetSolve(s, DriveGuidanceSpec.SolveMode.ADAPTIVE);
-            s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
-            s.aprilTagSensor = Objects.requireNonNull(aprilTags, "aprilTags");
-            s.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
-            return ret;
-        }
-
-        @Override
-        public AdaptiveLocalizationStage<RETURN> adaptive() {
-            resetSolve(s, DriveGuidanceSpec.SolveMode.ADAPTIVE);
-            return new AdaptiveStep<RETURN>(s, ret);
-        }
-    }
-
-    private static final class LocalizationOnlyStep<RETURN>
-            implements LocalizationOnlyEstimatorStage<RETURN>, LocalizationOnlyTuningStage<RETURN> {
-        private final State s;
-        private final RETURN ret;
-
-        LocalizationOnlyStep(State s, RETURN ret) {
-            this.s = s;
-            this.ret = ret;
-        }
-
-        @Override
-        public LocalizationOnlyTuningStage<RETURN> localization(AbsolutePoseEstimator poseEstimator) {
-            s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
-            return this;
-        }
-
-        @Override
-        public LocalizationOnlyTuningStage<RETURN> maxAgeSec(double maxAgeSec) {
-            s.poseMaxAgeSec = maxAgeSec;
-            return this;
-        }
-
-        @Override
-        public LocalizationOnlyTuningStage<RETURN> minQuality(double minQuality) {
-            s.poseMinQuality = minQuality;
-            return this;
-        }
-
-        @Override
-        public LocalizationOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout) {
-            s.fixedAprilTagLayout = tagLayout;
-            return this;
-        }
-
-        @Override
-        public LocalizationOnlyTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss) {
-            s.onLoss = Objects.requireNonNull(onLoss, "onLoss");
-            return this;
-        }
-
-        @Override
-        public RETURN doneLocalizationOnly() {
-            if (s.poseEstimator == null) {
-                throw new IllegalStateException("localizationOnly() requires localization(...) before doneLocalizationOnly()");
-            }
+        public RETURN observedPoints(DriveGuidanceSpec.LossPolicy onLoss) {
+            Objects.requireNonNull(onLoss, "onLoss");
+            resetSolve(s, DriveGuidanceSpec.SolveMode.OBSERVED_POINTS);
+            s.onLoss = onLoss;
             return ret;
         }
     }
 
-    private static final class AprilTagsOnlyStep<RETURN>
-            implements AprilTagsOnlySensorStage<RETURN>, AprilTagsOnlyTuningStage<RETURN> {
+    private static final class AbsolutePoseStep<RETURN> implements AbsolutePoseTuningStage<RETURN> {
         private final State s;
         private final RETURN ret;
 
-        AprilTagsOnlyStep(State s, RETURN ret) {
+        AbsolutePoseStep(State s, RETURN ret) {
             this.s = s;
             this.ret = ret;
         }
 
-        @Override
-        public AprilTagsOnlyTuningStage<RETURN> aprilTags(AprilTagSensor aprilTags, CameraMountConfig cameraMount) {
-            s.aprilTagSensor = Objects.requireNonNull(aprilTags, "aprilTags");
-            s.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
+        @Override public AbsolutePoseTuningStage<RETURN> maxAgeSec(double value) {
+            s.poseMaxAgeSec = value;
             return this;
         }
-
-        @Override
-        public AprilTagsOnlyTuningStage<RETURN> maxAgeSec(double maxAgeSec) {
-            s.tagsMaxAgeSec = maxAgeSec;
+        @Override public AbsolutePoseTuningStage<RETURN> minQuality(double value) {
+            s.poseMinQuality = value;
             return this;
         }
-
-        @Override
-        public AprilTagsOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout) {
-            s.fixedAprilTagLayout = tagLayout;
+        @Override public AbsolutePoseTuningStage<RETURN> fixedAprilTagLayout(TagLayout layout) {
+            s.fixedAprilTagLayout = Objects.requireNonNull(layout, "tagLayout");
             return this;
         }
-
-        @Override
-        public AprilTagsOnlyTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver) {
-            setAprilTagFieldPoseSolver(s, solver);
+        @Override public AbsolutePoseTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy value) {
+            s.onLoss = Objects.requireNonNull(value, "onLoss");
             return this;
         }
-
-        @Override
-        public AprilTagsOnlyTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss) {
-            s.onLoss = Objects.requireNonNull(onLoss, "onLoss");
-            return this;
-        }
-
-        @Override
-        public RETURN doneAprilTagsOnly() {
-            if (s.aprilTagSensor == null || s.cameraMount == null) {
-                throw new IllegalStateException("aprilTagsOnly() requires aprilTags(...) before doneAprilTagsOnly()");
-            }
-            return ret;
-        }
+        @Override public RETURN doneAbsolutePose() { return ret; }
     }
 
-    private static final class AdaptiveStep<RETURN>
-            implements AdaptiveLocalizationStage<RETURN>, AdaptiveAprilTagsStage<RETURN>, AdaptiveTuningStage<RETURN> {
+    private static final class RelativeAprilTagsStep<RETURN>
+            implements RelativeAprilTagsTuningStage<RETURN> {
         private final State s;
         private final RETURN ret;
 
-        AdaptiveStep(State s, RETURN ret) {
+        RelativeAprilTagsStep(State s, RETURN ret) {
             this.s = s;
             this.ret = ret;
         }
 
-        @Override
-        public AdaptiveAprilTagsStage<RETURN> localization(AbsolutePoseEstimator poseEstimator) {
-            s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
+        @Override public RelativeAprilTagsTuningStage<RETURN> maxAgeSec(double value) {
+            s.tagsMaxAgeSec = value;
             return this;
         }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> aprilTags(AprilTagSensor aprilTags, CameraMountConfig cameraMount) {
-            s.aprilTagSensor = Objects.requireNonNull(aprilTags, "aprilTags");
-            s.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
+        @Override public RelativeAprilTagsTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy value) {
+            s.onLoss = Objects.requireNonNull(value, "onLoss");
             return this;
         }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> localizationMaxAgeSec(double maxAgeSec) {
-            s.poseMaxAgeSec = maxAgeSec;
-            return this;
-        }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> localizationMinQuality(double minQuality) {
-            s.poseMinQuality = minQuality;
-            return this;
-        }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> aprilTagMaxAgeSec(double maxAgeSec) {
-            s.tagsMaxAgeSec = maxAgeSec;
-            return this;
-        }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout) {
-            s.fixedAprilTagLayout = tagLayout;
-            return this;
-        }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> aprilTagFieldPoseSolver(FixedTagFieldPoseSolver solver) {
-            setAprilTagFieldPoseSolver(s, solver);
-            return this;
-        }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> translationTakeover(double enterRangeInches,
-                                                               double exitRangeInches,
-                                                               double blendSec) {
-            s.translationTakeover = new DriveGuidanceSpec.TranslationTakeover(enterRangeInches, exitRangeInches, blendSec);
-            return this;
-        }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> omegaPolicy(DriveGuidanceSpec.OmegaPolicy omegaPolicy) {
-            s.omegaPolicy = Objects.requireNonNull(omegaPolicy, "omegaPolicy");
-            s.omegaPolicyExplicit = true;
-            return this;
-        }
-
-        @Override
-        public AdaptiveTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss) {
-            s.onLoss = Objects.requireNonNull(onLoss, "onLoss");
-            return this;
-        }
-
-        @Override
-        public RETURN doneAdaptive() {
-            if (s.poseEstimator == null) {
-                throw new IllegalStateException("adaptive() requires localization(...) before aprilTags(...)");
-            }
-            if (s.aprilTagSensor == null || s.cameraMount == null) {
-                throw new IllegalStateException("adaptive() requires aprilTags(...) before doneAdaptive()");
-            }
-            return ret;
-        }
+        @Override public RETURN doneRelativeAprilTags() { return ret; }
     }
 
     private static final class DriveTuningStep implements DriveTuningBranch {

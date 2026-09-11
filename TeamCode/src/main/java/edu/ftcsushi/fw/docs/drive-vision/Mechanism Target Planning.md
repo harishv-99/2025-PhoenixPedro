@@ -784,6 +784,13 @@ Spatial queries can feed a mechanism target, but the conversion remains robot po
 solve chooses geometry; robot-specific kinematics map that geometry into one absolute Plant-unit
 request; `PlantTargets.plan(request)` resolves the final reachable Plant target.
 
+Choose the spatial evidence before converting the result. `SpatialSolveSet.builder().absolutePose(...)`
+reads the already-updated localizer; `relativeAprilTags(...)` reads a fresh observation of the
+requested tag directly, with no hidden field-pose fallback. A shared selected-tag point or frame
+can feed both drivetrain guidance and this mechanism query. Selection supplies the ID; each query
+uses its own declared source and age limit. Keep the original solution timestamp when constructing
+an observed Plant request. See [explicit guidance evidence](<Drive Guidance.md#choose-evidence-explicitly>).
+
 The optional
 [`ReferenceCoordinatedShotService`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/reference/capability/targeting/ReferenceCoordinatedShotService.html>)
 uses the translation channel because turret, flywheel, and hood must derive from one vector. These

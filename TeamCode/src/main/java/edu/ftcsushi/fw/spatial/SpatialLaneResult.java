@@ -1,7 +1,5 @@
 package edu.ftcsushi.fw.spatial;
 
-import java.util.Collections;
-
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 
 /**
@@ -13,7 +11,7 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 public final class SpatialLaneResult {
 
     private static final TagSelectionResult NO_SELECTION =
-            TagSelectionResult.none(Collections.<Integer>emptySet());
+            TagSelectionResult.none();
 
     public final TranslationSolution translation;
     public final FacingSolution facing;

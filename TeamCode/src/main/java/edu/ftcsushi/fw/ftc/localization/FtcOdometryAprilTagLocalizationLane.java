@@ -133,14 +133,13 @@ public final class FtcOdometryAprilTagLocalizationLane {
          * localization tuning with the specific camera mount from a shared vision lane.
          *
          * <p>This conversion does not validate or invent defaults. It independently copies a
-         * non-null solver draft, preserves a null draft or mount, and leaves the active estimator
+         * non-null solver draft, preserves a null draft, and leaves the active estimator
          * owner to reject incomplete configuration.</p>
          */
-        public AprilTagPoseEstimator.Config toAprilTagPoseEstimatorConfig(CameraMountConfig cameraMount) {
+        public AprilTagPoseEstimator.Config toAprilTagPoseEstimatorConfig() {
             AprilTagPoseEstimator.Config c = AprilTagPoseEstimator.Config.defaults();
             c.fieldPoseSolver = this.fieldPoseSolver != null ? this.fieldPoseSolver.copy() : null;
             c.maxDetectionAgeSec = this.maxDetectionAgeSec;
-            c.cameraMount = cameraMount;
             return c;
         }
     }
@@ -734,7 +733,8 @@ public final class FtcOdometryAprilTagLocalizationLane {
         AprilTagPoseEstimator aprilTagPoseEstimator = new AprilTagPoseEstimator(
                 tagSensor,
                 layoutSnapshot,
-                aprilTags.toAprilTagPoseEstimatorConfig(cameraMount)
+                cameraMount,
+                aprilTags.toAprilTagPoseEstimatorConfig()
         );
 
         return new EstimatorInputs(

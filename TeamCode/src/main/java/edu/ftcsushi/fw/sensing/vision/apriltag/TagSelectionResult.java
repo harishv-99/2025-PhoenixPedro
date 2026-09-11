@@ -4,114 +4,71 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
+
 /**
- * Immutable snapshot of a selector's preview and selected-tag state.
- *
- * <p>Sushi intentionally distinguishes between two ideas:</p>
- * <ul>
- *   <li><b>Preview:</b> which tag would win <em>right now</em> if the selector needed to choose?</li>
- *   <li><b>Selection:</b> which tag is the robot currently committed to?</li>
- * </ul>
- *
- * <p>This matters for sticky aim-assist workflows. Before the driver enables aiming, telemetry can
- * preview the likely winner. Once enabled, the selector can latch that winner while still exposing
- * whether the selected tag is freshly visible this loop.</p>
+ * Immutable selected identity, current preview, and evidence snapshot. A held identity is intent,
+ * not continued visibility. The frozen selection decision is separate from current geometry:
+ * consumers must never reinterpret its old observation as a new sighting.
  */
 public final class TagSelectionResult {
-
+    /** Choice that would win now, or null. May name a different tag from the held selection. */
+    public final TagSelectionChoice previewChoice;
+    /** Decision that established this selection; frozen while held, null for an authored ID. */
+    public final TagSelectionChoice selectionDecision;
+    /** Current usable geometry for the selected ID, or null when unavailable. */
+    public final TagSelectionCandidate currentSelectedCandidate;
     public final boolean hasPreview;
     public final int previewTagId;
-    public final AprilTagObservation previewObservation;
-
     public final boolean hasSelection;
     public final int selectedTagId;
     public final boolean latched;
+    /** True only for current actual observed geometry, never for field-pose calculations. */
     public final boolean hasFreshSelectedObservation;
+    /** Current actual observation or {@link AprilTagObservation#noTarget()}. */
     public final AprilTagObservation selectedObservation;
-
+    /** Eligible IDs actually reported by a fresh camera frame, not inferred from field pose. */
     public final Set<Integer> visibleCandidateIds;
+    /** Frame evidence time; unavailable means visibility is UNKNOWN, not an observed empty view. */
+    public final LoopTimestamp visibilityTimestamp;
 
-    public final String policyName;
-    public final String reason;
-    public final double metricValue;
-
-    /**
-     * Creates a full immutable selection snapshot.
-     *
-     * <p>The snapshot deliberately separates preview from committed selection so UI/telemetry can
-     * answer both “what would win if enabled right now?” and “what tag is this behavior actually
-     * committed to?”</p>
-     */
-    public TagSelectionResult(boolean hasPreview,
-                              int previewTagId,
-                              AprilTagObservation previewObservation,
-                              boolean hasSelection,
-                              int selectedTagId,
-                              boolean latched,
-                              boolean hasFreshSelectedObservation,
-                              AprilTagObservation selectedObservation,
-                              Set<Integer> visibleCandidateIds,
-                              String policyName,
-                              String reason,
-                              double metricValue) {
-        this.hasPreview = hasPreview;
-        this.previewTagId = hasPreview ? previewTagId : -1;
-        this.previewObservation = previewObservation != null
-                ? previewObservation
-                : AprilTagObservation.noTarget();
-        this.hasSelection = hasSelection;
-        this.selectedTagId = hasSelection ? selectedTagId : -1;
-        this.latched = latched;
-        this.hasFreshSelectedObservation = hasFreshSelectedObservation;
-        this.selectedObservation = selectedObservation != null
-                ? selectedObservation
-                : AprilTagObservation.noTarget();
-        LinkedHashSet<Integer> ids = new LinkedHashSet<Integer>();
-        if (visibleCandidateIds != null) {
-            ids.addAll(visibleCandidateIds);
-        }
-        this.visibleCandidateIds = Collections.unmodifiableSet(ids);
-        this.policyName = (policyName == null || policyName.isEmpty()) ? "policy" : policyName;
-        this.reason = (reason == null || reason.isEmpty()) ? this.policyName : reason;
-        this.metricValue = metricValue;
+    TagSelectionResult(TagSelectionChoice previewChoice, int selectedTagId, boolean latched,
+                       TagSelectionChoice selectionDecision,
+                       TagSelectionCandidate currentSelectedCandidate,
+                       Set<Integer> visibleCandidateIds, LoopTimestamp visibilityTimestamp) {
+        this.previewChoice = previewChoice;
+        this.hasPreview = previewChoice != null;
+        this.previewTagId = hasPreview ? previewChoice.candidate.tagId : -1;
+        this.selectedTagId = selectedTagId;
+        this.hasSelection = selectedTagId >= 0;
+        this.latched = hasSelection && latched;
+        this.selectionDecision = selectionDecision;
+        this.currentSelectedCandidate = currentSelectedCandidate;
+        this.hasFreshSelectedObservation = currentSelectedCandidate != null
+                && currentSelectedCandidate.evidenceKind == TagSelectionCandidate.EvidenceKind.OBSERVED
+                && currentSelectedCandidate.observation != null;
+        this.selectedObservation = hasFreshSelectedObservation
+                ? currentSelectedCandidate.observation : AprilTagObservation.noTarget();
+        this.visibleCandidateIds = Collections.unmodifiableSet(new LinkedHashSet<>(visibleCandidateIds));
+        this.visibilityTimestamp = visibilityTimestamp;
     }
 
-    /**
-     * Returns a snapshot with no preview winner and no committed selection.
-     */
-    public static TagSelectionResult none(Set<Integer> visibleCandidateIds) {
-        return new TagSelectionResult(
-                false,
-                -1,
-                AprilTagObservation.noTarget(),
-                false,
-                -1,
-                false,
-                false,
-                AprilTagObservation.noTarget(),
-                visibleCandidateIds,
-                "none",
-                "no selection",
-                Double.NaN
-        );
+    /** No identity, decision, geometry, or visibility evidence. */
+    public static TagSelectionResult none() {
+        return new TagSelectionResult(null, -1, false, null, null,
+                Collections.emptySet(), LoopTimestamp.unavailable());
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public String toString() {
-        return "TagSelectionResult{"
-                + "hasPreview=" + hasPreview
-                + ", previewTagId=" + previewTagId
-                + ", hasSelection=" + hasSelection
-                + ", selectedTagId=" + selectedTagId
-                + ", latched=" + latched
-                + ", hasFreshSelectedObservation=" + hasFreshSelectedObservation
-                + ", visibleCandidateIds=" + visibleCandidateIds
-                + ", policyName='" + policyName + '\''
-                + ", reason='" + reason + '\''
-                + ", metricValue=" + metricValue
-                + '}';
+    /** Authored identity only: no fabricated policy decision, geometry, or visibility. */
+    public static TagSelectionResult forTagId(int tagId) {
+        if (tagId < 0) throw new IllegalArgumentException("tagId must be non-negative");
+        return new TagSelectionResult(null, tagId, false, null, null,
+                Collections.emptySet(), LoopTimestamp.unavailable());
+    }
+
+    @Override public String toString() {
+        return "TagSelectionResult{previewTagId=" + previewTagId + ", selectedTagId=" + selectedTagId
+                + ", latched=" + latched + ", currentSelectedCandidate=" + currentSelectedCandidate
+                + ", visibleCandidateIds=" + visibleCandidateIds + '}';
     }
 }

@@ -182,6 +182,116 @@ the separate fixed-tag localization rules remain intact; a detected colored patc
 a localization landmark merely because it has a field position. Quality is unknown (`NaN`) when
 the producer supplies no meaningful score; no fictitious confidence is added.
 
+## Select a tag: observed or inferred
+
+A tag has an ID, so an aiming attempt can keep the same target even when another candidate moves
+closer to the image center. A **preview** is the candidate that would win now. A **held selection**
+is the ID already chosen for the attempt. Keeping that ID does not mean the tag remains visible.
+
+These alternatives use the same ranking and hold policy. `scoringIds` is the nonempty set chosen
+for the alliance during setup; the IDs and field geometry belong to the adopting robot's config.
+`attemptActive` is a Boolean source that stays true through the entire aim-and-shoot attempt.
+The code constructs sources; the owning service samples the chosen source in its managed loop.
+
+**Bearing** is a signed horizontal direction angle in radians from a frame's forward axis;
+`smallestAbsCameraBearing()` ranks nearest camera-forward. For the pose-derived alternative,
+first read the [AprilTag localization model](<AprilTag Localization & Fixed Layouts.md>).
+`localization` is an `AbsolutePoseEstimator` already updated by its owning service, and
+`fixedLayout` records trusted tag positions on the field. Update localization before selection;
+the selector only reads its estimate and never advances it.
+
+```java
+TagSelectionSource visibleChoice = TagSelections
+        .fromVisibleTags(tags.tagSensor(), camera.cameraMountConfig())
+        .among(scoringIds).freshWithinSec(0.25)
+        .choose(TagSelectionPolicies.smallestAbsCameraBearing())
+        .stickyWhen(attemptActive).holdUntilDisabled().build();
+
+TagSelectionSource poseChoice = TagSelections
+        .fromFieldPose(localization, fixedLayout, camera.cameraMountConfig())
+        .among(scoringIds).freshWithinSec(0.50).minQuality(0.10)
+        .choose(TagSelectionPolicies.smallestAbsCameraBearing())
+        .stickyWhen(attemptActive).holdUntilDisabled().build();
+```
+
+Choose **one** source for the behavior; there is no implicit switching between them.
+Field-pose selection calculates where each fixed tag should be relative to the camera; it needs usable
+position **and** heading, not heading alone. It can select a never-seen tag while the camera is
+blocked. That is an inferred direction, not a report of what the camera sees.
+
+The shown age limits are illustrative. Pose quality must be at least `0.10`; that producer score
+is not a probability of successful aiming. The no-argument bearing policy has no angular cutoff.
+Use `smallestAbsCameraBearing(Math.toRadians(30))` for an explicit inclusive 30-degree acquisition
+limit, or `smallestAbsRobotBearing(...)` to rank from robot-forward instead. The latter gets its
+mount from the source, not a second argument. Neither policy models occlusion or a full optical
+field of view. Equal built-in metrics choose the lowest tag ID. `closestRange()` ranks 3D lens-to-tag
+distance; `priorityOrder(...)` follows an authored ID preference.
+
+For a complete attempt, keep selection enabled through aiming **and** feeding, then make its
+release observable. If release and the next request happen between samples, the owning service
+must explicitly call `selected.reset()` before starting the next attempt. That reset is local and
+never resets the camera or localization. `stickyUntilReset().holdUntilReset()` is the alternative
+when the owner already has an explicit attempt reset boundary; `continuous()` is for live preview
+or deliberately changing targets. Ordinary loss does not release a held ID; the explicit
+`reacquireAfterLossSec(...)` alternative authorizes that behavior if wanted.
+
+### Reuse the selected identity for aim, distance, and approach
+
+Let `selected` be the one selected source above. A tag-relative **offset** describes the target
+in the tag's axes, not the robot's axes. The same offset can apply to every candidate:
+
+```java
+ReferencePoint2d scoringPoint = References.relativeToSelectedTagPoint(selected, 6.0, -1.5);
+ReferenceFrame2d approach = References.relativeToSelectedTagFrame(selected, 12.0, 0.0, Math.PI);
+```
+
+These illustrative inches/radians are not a field specification. When different tags need different
+definitions, supply one map entry for every candidate ID:
+
+```java
+Map<Integer, References.TagPointOffset> points = new HashMap<>();
+points.put(20, References.pointOffset(6.0, -1.5));
+points.put(24, References.pointOffset(5.0, 2.0));
+ReferencePoint2d scoringPoint = References.relativeToSelectedTagPoint(selected, points);
+
+Map<Integer, References.TagFrameOffset> poses = new HashMap<>();
+poses.put(20, References.frameOffset(12.0, 0.0, Math.PI));
+poses.put(24, References.frameOffset(10.0, 2.0, Math.PI));
+ReferenceFrame2d approach = References.relativeToSelectedTagFrame(selected, poses);
+```
+
+A `Map` pairs each ID with its definition. The factories copy and validate the entries, including
+coverage of all candidate IDs. These examples assume exactly `{20, 24}`; use your configured set.
+Offsets may describe different scoring destinations, or the same physical destination from several
+tags. The author must verify that physical relationship; the framework does not infer it.
+
+Pass `scoringPoint` to both a facing plan and a translation-only spatial query for distance.
+Pass `References.framePoint(approach)` and the frame heading to a full approach plan. Both
+`absolutePose(...)` and `relativeAprilTags(...)` can use these references. The reference carries
+identity, not a cached camera answer: the chosen solve source must supply its own usable pose or
+fresh selected-tag observation. For example, a selector using camera A cannot lend its observation
+to a guidance solve explicitly configured with camera B.
+
+Choose the distance convention deliberately: a translation solution's `frameDistanceInches()` is
+planar distance from the configured control frame to the target point. It is not automatically
+3D camera-to-tag-center distance. Use the same selected ID and evidence policy for aim and range;
+do not build a second independently choosing selector for the shooter.
+
+### Read status without inventing visibility
+
+`TagSelectionResult.previewChoice` describes the current ranking winner. `selectionDecision`
+retains the acquisition choice while held; `currentSelectedCandidate` supplies the selected ID's
+current usable geometry or is null. Each candidate labels its evidence `OBSERVED` or `FIELD_POSE`
+and retains its original evidence timestamp. Only `OBSERVED` can supply a real observation.
+
+`hasFreshSelectedObservation` is therefore false for pose-derived selection.
+`visibleCandidateIds` and `visibilityTimestamp` report only actual fresh camera evidence;
+an unavailable visibility timestamp means **unknown**, not a confirmed empty image.
+`ObservationSources.aprilTag(selected)` projects only current actual observations into generic
+robot-at-capture geometry. It takes no second mount and never projects an old held decision or
+an inferred field candidate as a sighting. `TagSelectionResult.forTagId(id)` is an authored
+identity-only value, not a fabricated selection decision or camera observation.
+
 ## Software checkpoint and next action
 
 The software checks ask whether a known image direction reaches the expected target location.

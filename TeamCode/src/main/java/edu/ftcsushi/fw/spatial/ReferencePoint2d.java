@@ -16,9 +16,8 @@ package edu.ftcsushi.fw.spatial;
  *         .faceTo()
  *             .point(speakerAim)
  *         .solveWith()
- *             .localizationOnly()
- *             .localization(poseEstimator)
- *             .doneLocalizationOnly()
+ *             .absolutePose(poseEstimator)
+ *             .doneAbsolutePose()
  *         .build();
  * }</pre>
  *

@@ -1649,8 +1649,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             }
 
             AprilTagPoseEstimator.Config estCfg =
-                    cfg.aprilTags.toAprilTagPoseEstimatorConfig(cameraMount);
-            tagEstimator = new AprilTagPoseEstimator(tagSensor, layout, estCfg);
+                    cfg.aprilTags.toAprilTagPoseEstimatorConfig();
+            tagEstimator = new AprilTagPoseEstimator(tagSensor, layout, cameraMount, estCfg);
             aprilTagAssistNotice = null;
             visionFailure = null;
             visionReadiness = initialReadiness;

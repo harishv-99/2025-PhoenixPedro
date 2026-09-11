@@ -5,7 +5,7 @@ import java.util.Set;
 import edu.ftcsushi.fw.core.source.Source;
 
 /**
- * Stateful, inspectable selected-tag source built on top of raw AprilTag detections.
+ * Stateful, inspectable selected-tag identity built from observed or field-pose evidence.
  *
  * <p>A selector is the shared answer to questions like:</p>
  * <ul>
@@ -21,7 +21,9 @@ import edu.ftcsushi.fw.core.source.Source;
  * <p>One successful selection observation is published per loop cycle. Detection, freshness,
  * policy, enable, sticky/loss state, diagnostics, and the returned result commit together only
  * after the complete observation succeeds. A failed observation may be retried in the same cycle;
- * recursive sampling or sampling/reset overlap is rejected as a source-graph lifecycle error.</p>
+ * recursive sampling or sampling/reset overlap is rejected as a source-graph lifecycle error.
+ * Reset clears only local state; all inputs remain borrowed. Clock-epoch changes also clear held
+ * selection, preventing an old attempt from surviving a new OpMode clock lifetime.</p>
  */
 public interface TagSelectionSource extends Source<TagSelectionResult> {
 

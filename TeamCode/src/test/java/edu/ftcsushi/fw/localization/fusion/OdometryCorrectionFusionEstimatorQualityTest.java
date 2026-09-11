@@ -10,7 +10,8 @@ import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.MotionDelta;
 import edu.ftcsushi.fw.localization.MotionPredictor;
 import edu.ftcsushi.fw.localization.PoseEstimate;
-import edu.ftcsushi.fw.spatial.AbsolutePoseSpatialSolveLane;
+import edu.ftcsushi.fw.spatial.SpatialSolveSet;
+import edu.ftcsushi.fw.spatial.SpatialSolveLane;
 import edu.ftcsushi.fw.spatial.SpatialLaneResult;
 import edu.ftcsushi.fw.spatial.SpatialSolveRequest;
 import edu.ftcsushi.fw.spatial.SpatialTargets;
@@ -351,7 +352,7 @@ public final class OdometryCorrectionFusionEstimatorQualityTest {
     public void realSpatialGateRejectsWeakScoreAcceptsStrongerScoreAndDoesNotScaleGeometry() {
         Fixture fixture = acceptingStationary(0.20, 0.10, config());
         // .5 is an explicit software scenario threshold, not a physical safety recommendation.
-        AbsolutePoseSpatialSolveLane lane = new AbsolutePoseSpatialSolveLane(fixture.estimator, 1.0, 0.50);
+        SpatialSolveLane lane = SpatialSolveSet.builder().absolutePose(fixture.estimator, 1.0, 0.50).build().lane(0);
         SpatialSolveRequest request = new SpatialSolveRequest(fixture.clock,
                 SpatialTargets.fieldPoint(8.0, 4.0), SpatialTargets.fieldHeading(0.30),
                 null, null, Pose2d.zero(), Pose2d.zero(), null);
